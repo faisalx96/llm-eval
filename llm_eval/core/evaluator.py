@@ -39,6 +39,7 @@ class Evaluator:
     
     def __init__(
         self,
+        client: Langfuse,
         task: Any,
         dataset: str,
         metrics: List[Union[str, Callable]],
@@ -66,7 +67,7 @@ class Evaluator:
         self.metrics = self._prepare_metrics(metrics)
         
         # Initialize Langfuse client
-        self.client = self._init_langfuse()
+        self.client = client or self._init_langfuse()
         
         # Load and validate dataset
         self.dataset = LangfuseDataset(self.client, dataset)
