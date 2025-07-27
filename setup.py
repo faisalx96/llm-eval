@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="llm-eval",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Faisal Bin Hussein",
+    author_email="faisalx96@yahoo.com",
     description="Simple, automated LLM evaluation framework built on Langfuse",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/llm-eval",
+    url="https://github.com/faisalx96/llm-eval",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
