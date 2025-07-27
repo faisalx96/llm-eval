@@ -36,12 +36,12 @@ def main():
         else:
             return 1.0  # Just right
     
-    print("🎯 Mixing DeepEval metrics with custom metrics...")
+    print("🎯 Mixing Built-in metrics with custom metrics...")
     evaluator_mixed = Evaluator(
         task=ai_assistant,
         dataset="quickstart-demo",
         metrics=[
-            "answer_relevancy",
+            # "answer_relevancy", # DeepEval metric
             response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ]

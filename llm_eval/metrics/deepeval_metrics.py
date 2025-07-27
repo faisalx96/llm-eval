@@ -138,9 +138,10 @@ def discover_deepeval_metrics() -> Dict[str, Callable]:
                 
     except ImportError:
         raise ImportError(
-            "DeepEval is required for evaluation metrics.\n"
-            "Please install it with: pip install deepeval\n"
-            "Or reinstall llm-eval: pip install --upgrade llm-eval"
+            "DeepEval is required for advanced evaluation metrics.\n"
+            "For air-gapped environments, you can use built-in metrics only.\n"
+            "To install DeepEval: pip install llm-eval[deepeval]\n"
+            "Or use only built-in metrics: exact_match, contains, fuzzy_match"
         )
     except Exception as e:
         # Log but don't fail - some metrics might have issues
