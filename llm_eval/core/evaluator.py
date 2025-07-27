@@ -41,7 +41,7 @@ class Evaluator:
         self,
         client: Langfuse,
         task: Any,
-        dataset: str,
+        dataset: str, 
         metrics: List[Union[str, Callable]],
         config: Optional[Dict[str, Any]] = None
     ):
