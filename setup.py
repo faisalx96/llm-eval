@@ -29,7 +29,6 @@ setup(
         "pydantic>=2.0.0",
         "rich>=13.0.0",  # For nice progress bars
         "aiohttp>=3.8.0",  # For async HTTP
-        "deepeval>=0.20.0",  # For evaluation metrics
         "python-dotenv>=0.19.0",  # For environment variables
         "nest_asyncio>=1.5.0",  # For Jupyter notebook compatibility
     ],
@@ -42,9 +41,11 @@ setup(
             "mypy>=1.0.0",
             "jupyter>=1.0.0",
         ],
+        "deepeval": ["deepeval>=0.20.0"],  # For advanced evaluation metrics
         "langchain": ["langchain>=0.1.0"],
         "langgraph": ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"],
         "openai": ["openai>=1.0.0"],
+        "all": ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"],  # All optional dependencies
     },
     entry_points={
         "console_scripts": [
