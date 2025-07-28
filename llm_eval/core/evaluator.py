@@ -39,7 +39,6 @@ class Evaluator:
     
     def __init__(
         self,
-        # client: Langfuse,
         task: Any,
         dataset: str, 
         metrics: List[Union[str, Callable]],
