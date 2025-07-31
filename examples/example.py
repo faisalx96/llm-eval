@@ -51,8 +51,7 @@ def main():
         ]
     )
     
-    results_mixed = evaluator_mixed.run(auto_save=True)
-    results_mixed.print_summary()
+    results_mixed = evaluator_mixed.run(show_table=False)
 
 
 if __name__ == "__main__":

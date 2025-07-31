@@ -8,7 +8,7 @@ import functools
 import time
 
 from langfuse import Langfuse
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
@@ -144,12 +144,13 @@ class Evaluator:
                 raise ValueError(f"Metric must be string or callable, got {type(metric)}")
         return prepared
     
-    def run(self, show_progress: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
+    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
         """
         Run the evaluation synchronously.
         
         Args:
             show_progress: Whether to show progress bar
+            show_table: Whether to show live per-item status table
             auto_save: Whether to automatically save results after evaluation
             save_format: Format for auto-save ("json" or "csv")
             
@@ -173,14 +174,20 @@ class Evaluator:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
         # Run the async evaluation
-        return asyncio.run(self.arun(show_progress, auto_save, save_format))
+        result = asyncio.run(self.arun(show_progress, show_table, auto_save, save_format))
+        
+        # Always print summary
+        result.print_summary()
+        
+        return result
     
-    async def arun(self, show_progress: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
+    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
         """
         Run the evaluation asynchronously.
         
         Args:
             show_progress: Whether to show progress bar
+            show_table: Whether to show live per-item status table
             auto_save: Whether to automatically save results after evaluation
             save_format: Format for auto-save ("json" or "csv")
             
@@ -214,16 +221,16 @@ class Evaluator:
         
         # Progress tracking with live display
         if show_progress:
-            # Create layout with progress bar and status table
-            layout = Layout()
-            
             # Progress bar
             progress = Progress(
                 SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
+                TextColumn("[progress.description]{task.description}", style="cyan"),
+                TextColumn("│", style="dim"),  # Separator
                 BarColumn(bar_width=40),
+                TextColumn("│", style="dim"),  # Separator
                 TaskProgressColumn(),
-                TimeRemainingColumn(),
+                TextColumn("│", style="dim"),  # Separator
+                TimeElapsedColumn(),
                 expand=False
             )
             
@@ -231,74 +238,99 @@ class Evaluator:
             total_work = len(items) * len(self.metrics)
             task_progress = progress.add_task(f"Evaluating {len(items)} items with {len(self.metrics)} metrics", total=total_work)
             
-            def generate_display():
-                # Create status table
-                table = Table(title="Evaluation Status", expand=True, show_lines=True)
-                table.add_column("Input", style="cyan", ratio=2)
-                table.add_column("Output", style="green", ratio=2)
-                table.add_column("Expected", style="yellow", ratio=2)
-                
-                # Add metric columns
-                for metric_name in self.metrics.keys():
-                    table.add_column(metric_name, style="magenta", ratio=1)
-                
-                # Add time column
-                table.add_column("Time", style="blue", ratio=1)
-                
-                # Add rows for each item
-                for idx in range(len(items)):
-                    status = item_statuses[idx]
-                    row_data = [
-                        status['input'],
-                        status['output'],
-                        status['expected']
-                    ]
+            if show_table:
+                def generate_display():
+                    # Create status table
+                    table = Table(title="Evaluation Status", expand=True, show_lines=True)
+                    table.add_column("Input", style="cyan", ratio=2)
+                    table.add_column("Output", style="green", ratio=2)
+                    table.add_column("Expected", style="yellow", ratio=2)
                     
-                    # Add metric values
+                    # Add metric columns
                     for metric_name in self.metrics.keys():
-                        row_data.append(status['metrics'][metric_name])
+                        table.add_column(metric_name, style="magenta", ratio=1)
                     
-                    # Add time
-                    row_data.append(status['time'])
+                    # Add time column
+                    table.add_column("Time", style="blue", ratio=1)
                     
-                    # Color the row based on status
-                    if status['status'] == 'completed':
-                        table.add_row(*row_data, style="green")
-                    elif status['status'] == 'error':
-                        table.add_row(*row_data, style="red")
-                    elif status['status'] == 'in_progress':
-                        table.add_row(*row_data, style="yellow")
-                    else:
-                        table.add_row(*row_data)
+                    # Add rows for each item
+                    for idx in range(len(items)):
+                        status = item_statuses[idx]
+                        row_data = [
+                            status['input'],
+                            status['output'],
+                            status['expected']
+                        ]
+                        
+                        # Add metric values
+                        for metric_name in self.metrics.keys():
+                            row_data.append(status['metrics'][metric_name])
+                        
+                        # Add time
+                        row_data.append(status['time'])
+                        
+                        # Color the row based on status
+                        if status['status'] == 'completed':
+                            table.add_row(*row_data, style="green")
+                        elif status['status'] == 'error':
+                            table.add_row(*row_data, style="red")
+                        elif status['status'] == 'in_progress':
+                            table.add_row(*row_data, style="yellow")
+                        else:
+                            table.add_row(*row_data)
+                    
+                    # Create a simple vertical group instead of layout
+                    from rich.console import Group
+                    return Group(progress, table)
                 
-                # Create a simple vertical group instead of layout
-                from rich.console import Group
-                return Group(progress, table)
+                # Start live display with table
+                with Live(generate_display(), console=console, refresh_per_second=10) as live:
+                    # Run evaluations
+                    semaphore = asyncio.Semaphore(self.max_concurrency)
+                    tasks = []
+                    
+                    for idx, item in enumerate(items):
+                        task = self._evaluate_item_with_status(
+                            item, idx, semaphore, progress, task_progress, 
+                            item_statuses, live, generate_display
+                        )
+                        tasks.append(task)
+                    
+                    # Gather results
+                    eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Process results
+                    for idx, eval_result in enumerate(eval_results):
+                        if isinstance(eval_result, Exception):
+                            result.add_error(f"item_{idx}", str(eval_result))
+                        else:
+                            result.add_result(f"item_{idx}", eval_result)
+            else:
+                # Start live display with progress bar only
+                with Live(progress, console=console, refresh_per_second=10) as live:
+                    # Run evaluations
+                    semaphore = asyncio.Semaphore(self.max_concurrency)
+                    tasks = []
+                    
+                    for idx, item in enumerate(items):
+                        task = self._evaluate_item_with_progress_only(
+                            item, idx, semaphore, progress, task_progress
+                        )
+                        tasks.append(task)
+                    
+                    # Gather results
+                    eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Process results
+                    for idx, eval_result in enumerate(eval_results):
+                        if isinstance(eval_result, Exception):
+                            result.add_error(f"item_{idx}", str(eval_result))
+                        else:
+                            result.add_result(f"item_{idx}", eval_result)
             
-            # Start live display
-            with Live(generate_display(), console=console, refresh_per_second=4) as live:
-                # Run evaluations
-                semaphore = asyncio.Semaphore(self.max_concurrency)
-                tasks = []
-                
-                for idx, item in enumerate(items):
-                    task = self._evaluate_item_with_status(
-                        item, idx, semaphore, progress, task_progress, 
-                        item_statuses, live, generate_display
-                    )
-                    tasks.append(task)
-                
-                # Gather results
-                eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                # Process results
-                for idx, eval_result in enumerate(eval_results):
-                    if isinstance(eval_result, Exception):
-                        result.add_error(f"item_{idx}", str(eval_result))
-                    else:
-                        result.add_result(f"item_{idx}", eval_result)
-            
+            console.print()  # Empty line for spacing
             console.print(f"[green]✅ Evaluation complete![/green] Processed {len(items)} items with {len(self.metrics)} metrics", style="bold")
+            console.print()  # Empty line for spacing
         else:
             # Run without progress display
             semaphore = asyncio.Semaphore(self.max_concurrency)
@@ -326,8 +358,10 @@ class Evaluator:
             try:
                 saved_path = result.save(format=save_format)
                 console.print(f"[blue]📁 Auto-saved results to: {saved_path}[/blue]")
+                console.print()  # Empty line for spacing
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
+                console.print()  # Empty line for spacing
         
         return result
     
@@ -534,4 +568,71 @@ class Evaluator:
                 for metric_name in self.metrics.keys():
                     item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
                 live.update(generate_display())
+                raise RuntimeError(f"Task execution failed: {e}")
+    
+    async def _evaluate_item_with_progress_only(
+        self, 
+        item: Any, 
+        index: int, 
+        semaphore: asyncio.Semaphore, 
+        progress, 
+        task_progress
+    ) -> Dict[str, Any]:
+        """Evaluate a single dataset item with progress bar only (no table)."""
+        async with semaphore:
+            try:
+                # Start timing
+                start_time = time.time()
+                
+                # Run task with Langfuse tracing
+                with item.run(
+                    run_name=self.run_name,
+                    run_metadata={**self.run_metadata, "item_index": index}
+                ) as trace:
+                    # Execute task
+                    output = await self.task_adapter.arun(item.input, trace)
+                    
+                    # Compute metrics
+                    scores = {}
+                    for metric_name, metric_func in self.metrics.items():
+                        try:
+                            score = await self._compute_metric(
+                                metric_func, 
+                                output, 
+                                getattr(item, 'expected_output', None),
+                                item.input
+                            )
+                            scores[metric_name] = score
+                            
+                            # Log score to Langfuse
+                            trace.score_trace(
+                                name=metric_name,
+                                value=score if isinstance(score, (int, float, bool)) else str(score),
+                                data_type=self._get_score_type(score)
+                            )
+                            
+                            # Update progress after each metric
+                            if progress and task_progress is not None:
+                                progress.update(task_progress, advance=1)
+                                
+                        except Exception as e:
+                            scores[metric_name] = {"error": str(e)}
+                            # Still advance progress even on error
+                            if progress and task_progress is not None:
+                                progress.update(task_progress, advance=1)
+                    
+                    # Calculate elapsed time
+                    end_time = time.time()
+                    elapsed = end_time - start_time
+                    
+                    return {
+                        "output": output,
+                        "scores": scores,
+                        "success": True,
+                        "time": elapsed
+                    }
+                    
+            except asyncio.TimeoutError:
+                raise TimeoutError(f"Evaluation timed out after {self.timeout}s")
+            except Exception as e:
                 raise RuntimeError(f"Task execution failed: {e}")
