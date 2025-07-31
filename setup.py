@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="llm-eval",
-    version="0.1.1",
+    version="0.2.0",
     author="Faisal Bin Hussein",
     author_email="faisalx96@yahoo.com",
     description="Simple, automated LLM evaluation framework built on Langfuse",
