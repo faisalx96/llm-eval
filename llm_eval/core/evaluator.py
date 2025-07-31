@@ -208,10 +208,14 @@ class Evaluator:
         # Initialize status tracking for each item
         item_statuses = {}
         for idx, item in enumerate(items):
+            # More generous truncation - let Rich handle the ellipsis
+            input_text = str(item.input)
+            expected_text = str(getattr(item, 'expected_output', 'N/A'))
+            
             item_statuses[idx] = {
-                'input': str(item.input)[:50] + '...' if len(str(item.input)) > 50 else str(item.input),
+                'input': input_text,
                 'output': '[dim]pending[/dim]',
-                'expected': str(getattr(item, 'expected_output', 'N/A'))[:50] + '...' if hasattr(item, 'expected_output') and len(str(getattr(item, 'expected_output', ''))) > 50 else str(getattr(item, 'expected_output', 'N/A')),
+                'expected': expected_text,
                 'metrics': {metric: '[dim]pending[/dim]' for metric in self.metrics.keys()},
                 'status': 'pending',
                 'time': '[dim]pending[/dim]',
@@ -241,17 +245,17 @@ class Evaluator:
             if show_table:
                 def generate_display():
                     # Create status table
-                    table = Table(title="Evaluation Status", expand=True, show_lines=True)
-                    table.add_column("Input", style="cyan", ratio=2)
-                    table.add_column("Output", style="green", ratio=2)
-                    table.add_column("Expected", style="yellow", ratio=2)
+                    table = Table(title="Evaluation Status", expand=True, show_lines=True, width=None)
+                    table.add_column("Input", style="cyan", ratio=3, max_width=50, overflow="ellipsis")
+                    table.add_column("Output", style="green", ratio=3, max_width=50, overflow="ellipsis")
+                    table.add_column("Expected", style="yellow", ratio=3, max_width=50, overflow="ellipsis")
                     
                     # Add metric columns
                     for metric_name in self.metrics.keys():
-                        table.add_column(metric_name, style="magenta", ratio=1)
+                        table.add_column(metric_name, style="magenta", ratio=1, max_width=15)
                     
                     # Add time column
-                    table.add_column("Time", style="blue", ratio=1)
+                    table.add_column("Time", style="blue", ratio=1, max_width=10)
                     
                     # Add rows for each item
                     for idx in range(len(items)):
@@ -485,8 +489,7 @@ class Evaluator:
                     output = await self.task_adapter.arun(item.input, trace)
                     
                     # Update output in status
-                    output_str = str(output)[:50] + '...' if len(str(output)) > 50 else str(output)
-                    item_statuses[index]['output'] = output_str
+                    item_statuses[index]['output'] = str(output)
                     live.update(generate_display())
                     
                     # Compute metrics
