@@ -14,8 +14,13 @@ evaluator = Evaluator(
     metrics=["answer_relevancy", "faithfulness", "hallucination"]
 )
 
-results = evaluator.run()
+# Run evaluation with auto-save
+results = evaluator.run(auto_save=True, save_format="json")
 print(results.summary())
+
+# Or save manually in different formats
+results.save_json("my_results.json")  # Complete results
+results.save_csv("my_results.csv")    # For Excel analysis
 ```
 
 ## Features
@@ -26,6 +31,10 @@ print(results.summary())
 - 🎯 **Professional Metrics** - Powered by DeepEval's evaluation suite (included)
 - ⚡ **Async Support** - Evaluate hundreds of examples in parallel
 - 🛡️ **Production Ready** - Comprehensive error handling and recovery
+- 📺 **Live Progress Display** - Real-time status updates showing inputs, outputs, and metrics
+- ⏱️ **Performance Tracking** - Detailed timing statistics for each evaluation
+- 💾 **Export Results** - Save as JSON or CSV for further analysis
+- 🔄 **Auto-save** - Automatically save results after evaluation
 
 ## Installation
 

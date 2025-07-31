@@ -1,0 +1,48 @@
+{
+  "dataset_name": "quickstart-demo",
+  "run_name": "eval-20250731-195543",
+  "start_time": "2025-07-31T19:55:43.897304",
+  "end_time": "2025-07-31T19:56:05.866366",
+  "duration": 21.969062,
+  "total_items": 3,
+  "success_rate": 1.0,
+  "metrics": [
+    "exact_match"
+  ],
+  "metric_stats": {
+    "exact_match": {
+      "mean": 0.6666666666666666,
+      "std": 0.5773502691896257,
+      "min": 0.0,
+      "max": 1.0,
+      "success_rate": 1.0
+    }
+  },
+  "results": {
+    "item_0": {
+      "output": "I don't know the answer to that question.",
+      "scores": {
+        "exact_match": 0.0
+      },
+      "success": true,
+      "time": 16.327242136001587
+    },
+    "item_1": {
+      "output": "4",
+      "scores": {
+        "exact_match": 1.0
+      },
+      "success": true,
+      "time": 16.32658314704895
+    },
+    "item_2": {
+      "output": "Paris",
+      "scores": {
+        "exact_match": 1.0
+      },
+      "success": true,
+      "time": 21.327901363372803
+    }
+  },
+  "errors": {}
+}

@@ -2,6 +2,8 @@
 Example showing automatic DeepEval metrics discovery and usage.
 """
 
+import random
+import time
 from dotenv import load_dotenv
 from llm_eval import Evaluator, list_available_metrics
 
@@ -12,7 +14,9 @@ load_dotenv()
 def ai_assistant(question: str) -> str:
     """A simple AI assistant for demonstration."""
     question_lower = question.lower()
-    
+    delay = random.randint(5, 20)  # random integer between 1 and 5
+    time.sleep(delay)
+
     if "capital of france" in question_lower:
         return "Paris is the capital and largest city of France."
     elif "python" in question_lower:
@@ -47,7 +51,7 @@ def main():
         ]
     )
     
-    results_mixed = evaluator_mixed.run()
+    results_mixed = evaluator_mixed.run(auto_save=True)
     results_mixed.print_summary()
 
 

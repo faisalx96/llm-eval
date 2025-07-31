@@ -3,6 +3,9 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import statistics
+import json
+import csv
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -100,6 +103,35 @@ class EvaluationResult:
             'success_rate': len(scores) / (len(scores) + errors)
         }
     
+    def get_timing_stats(self) -> Dict[str, float]:
+        """
+        Get timing statistics for all evaluations.
+        
+        Returns dict with: mean, std, min, max, total
+        """
+        times = []
+        
+        for result in self.results.values():
+            if 'time' in result and isinstance(result['time'], (int, float)):
+                times.append(float(result['time']))
+        
+        if not times:
+            return {
+                'mean': 0.0,
+                'std': 0.0,
+                'min': 0.0,
+                'max': 0.0,
+                'total': 0.0
+            }
+        
+        return {
+            'mean': statistics.mean(times),
+            'std': statistics.stdev(times) if len(times) > 1 else 0.0,
+            'min': min(times),
+            'max': max(times),
+            'total': sum(times)
+        }
+    
     def summary(self) -> str:
         """Generate a text summary of results."""
         lines = []
@@ -149,12 +181,17 @@ class EvaluationResult:
                 f"{stats['success_rate']:.1%}"
             )
         
+        # Get timing statistics
+        timing_stats = self.get_timing_stats()
+        
         # Print overview panel
         overview = Panel(
             f"[bold]Dataset:[/bold] {self.dataset_name}\n"
             f"[bold]Total Items:[/bold] {self.total_items}\n"
             f"[bold]Success Rate:[/bold] {self.success_rate:.1%}\n"
-            f"[bold]Duration:[/bold] {self.duration:.1f}s" if self.duration else "",
+            f"[bold]Total Duration:[/bold] {self.duration:.1f}s\n"
+            f"[bold]Average Item Time:[/bold] {timing_stats['mean']:.2f}s ± {timing_stats['std']:.2f}s\n"
+            f"[bold]Time Range:[/bold] [{timing_stats['min']:.2f}s, {timing_stats['max']:.2f}s]" if self.duration else "",
             title="Overview",
             expand=False
         )
@@ -193,3 +230,104 @@ class EvaluationResult:
     def successful_items(self) -> List[str]:
         """Get list of successful item IDs."""
         return list(self.results.keys())
+    
+    def save_json(self, filepath: Optional[str] = None) -> str:
+        """
+        Save results to JSON file.
+        
+        Args:
+            filepath: Optional custom filepath. If not provided, generates one.
+            
+        Returns:
+            Path to the saved file
+        """
+        if filepath is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = f"eval_results_{self.dataset_name}_{timestamp}.json"
+        
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(filepath, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2, default=str)
+        
+        console.print(f"[green]✅ Results saved to:[/green] {filepath}")
+        return str(filepath)
+    
+    def save_csv(self, filepath: Optional[str] = None) -> str:
+        """
+        Save results to CSV file for spreadsheet analysis.
+        
+        Args:
+            filepath: Optional custom filepath. If not provided, generates one.
+            
+        Returns:
+            Path to the saved file
+        """
+        if filepath is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = f"eval_results_{self.dataset_name}_{timestamp}.csv"
+        
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare rows for CSV
+        rows = []
+        for item_id, result in self.results.items():
+            row = {
+                'item_id': item_id,
+                'output': str(result.get('output', ''))[:100],  # Truncate long outputs
+                'success': result.get('success', False),
+                'time': result.get('time', 0.0)
+            }
+            
+            # Add metric scores
+            if 'scores' in result:
+                for metric_name, score in result['scores'].items():
+                    if isinstance(score, dict) and 'error' in score:
+                        row[f'metric_{metric_name}'] = 'ERROR'
+                        row[f'metric_{metric_name}_error'] = score['error']
+                    else:
+                        row[f'metric_{metric_name}'] = score
+            
+            rows.append(row)
+        
+        # Add failed items
+        for item_id, error in self.errors.items():
+            row = {
+                'item_id': item_id,
+                'output': f'ERROR: {error[:100]}',
+                'success': False,
+                'time': 0.0
+            }
+            for metric in self.metrics:
+                row[f'metric_{metric}'] = 'N/A'
+            rows.append(row)
+        
+        # Write CSV
+        if rows:
+            with open(filepath, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+                writer.writeheader()
+                writer.writerows(rows)
+        
+        console.print(f"[green]✅ Results saved to:[/green] {filepath}")
+        return str(filepath)
+    
+    def save(self, format: str = "json", filepath: Optional[str] = None) -> str:
+        """
+        Save results in specified format.
+        
+        Args:
+            format: Export format - "json" or "csv"
+            filepath: Optional custom filepath
+            
+        Returns:
+            Path to the saved file
+        """
+        if format.lower() == "json":
+            return self.save_json(filepath)
+        elif format.lower() == "csv":
+            return self.save_csv(filepath)
+        else:
+            raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")

@@ -148,30 +148,124 @@ evaluator = Evaluator(
 )
 ```
 
+## Live Progress Display
+
+When running evaluations, you'll see a real-time status table showing:
+
+```
+Evaluation Status
+┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┓
+┃ Input                  ┃ Output               ┃ Expected             ┃ exact_match  ┃ fuzzy    ┃ Time  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━┩
+│ What is the capital... │ Paris                │ Paris                │ ✓            │ 1.000    │ 2.34s │
+│ Explain Python prog... │ Python is a high...  │ Python is a progr... │ ✗            │ 0.756    │ 3.12s │
+│ Calculate 15 + 27      │ running...           │ 42                   │ pending      │ pending  │ ...   │
+└────────────────────────┴──────────────────────┴──────────────────────┴──────────────┴──────────┴───────┘
+```
+
+The display updates in real-time as each evaluation completes, showing:
+- **Input/Output/Expected**: Truncated to 50 characters for readability
+- **Metric columns**: Live updates as each metric is computed
+- **Time**: Execution time for each item
+- **Color coding**: Green (completed), Yellow (in progress), Red (errors)
+
 ## Understanding Results
 
-After running evaluation, you'll see a summary like this:
+After running evaluation, you'll see a comprehensive summary:
 
 ```
 Overview
 Dataset: my-test-dataset
 Total Items: 50
 Success Rate: 96.0%
-Duration: 12.3s
+Total Duration: 125.3s
+Average Item Time: 2.51s ± 0.34s
+Time Range: [1.23s, 4.56s]
 
-Metric Results:
-  exact_match:
-    Mean: 0.720    (72% exactly correct)
-    Range: [0.0, 1.0]
-  fuzzy_match:
-    Mean: 0.865    (86.5% similarity on average)
-    Range: [0.45, 1.0]
+Evaluation Results: experiment-42
+┏━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
+┃ Metric      ┃  Mean ┃ Std Dev ┃   Min ┃   Max ┃ Success ┃
+┡━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
+│ exact_match │ 0.720 │   0.449 │ 0.000 │ 1.000 │  100.0% │
+│ fuzzy_match │ 0.865 │   0.123 │ 0.450 │ 1.000 │  100.0% │
+└─────────────┴───────┴─────────┴───────┴───────┴─────────┘
 ```
 
 ### What the numbers mean:
-- **Success Rate**: How many test cases ran without errors
+- **Success Rate**: Percentage of test cases that ran without errors
+- **Total Duration**: Time to complete all evaluations
+- **Average Item Time**: Mean execution time per item with standard deviation
+- **Time Range**: Fastest and slowest item execution times
 - **Mean**: Average score across all test cases
-- **Range**: Lowest and highest scores
+- **Std Dev**: Standard deviation showing score consistency
+- **Min/Max**: Lowest and highest scores achieved
+
+## Saving and Exporting Results
+
+LLM-Eval provides multiple ways to save your evaluation results for further analysis:
+
+### Auto-save During Evaluation
+
+Enable automatic saving when running evaluations:
+
+```python
+# Auto-save as JSON (default)
+results = evaluator.run(auto_save=True)
+
+# Auto-save as CSV for spreadsheet analysis
+results = evaluator.run(auto_save=True, save_format="csv")
+```
+
+Files are saved with timestamps: `eval_results_datasetname_20240115_143022.json`
+
+### Manual Save Options
+
+Save results after evaluation completes:
+
+```python
+# Save as JSON with all details
+results.save_json("my_results.json")
+
+# Save as CSV for Excel/Google Sheets
+results.save_csv("analysis/results.csv") 
+
+# Use generic save method
+results.save(format="json", filepath="custom_path.json")
+```
+
+### Export Formats
+
+**JSON Format** includes:
+- Complete evaluation metadata
+- All metric scores per item
+- Execution times
+- Full outputs and errors
+- Statistical summaries
+
+**CSV Format** includes:
+- Item IDs and truncated outputs
+- Success status
+- Individual metric scores as columns
+- Execution times
+- Perfect for pivot tables and charts
+
+### Example: Analysis Workflow
+
+```python
+# Run evaluation with auto-save
+results = evaluator.run(auto_save=True, save_format="csv")
+
+# Also save JSON for complete record
+results.save_json("detailed_results.json")
+
+# Access results programmatically
+stats = results.get_timing_stats()
+print(f"Average time per item: {stats['mean']:.2f}s")
+
+# Get specific metric performance
+accuracy = results.get_metric_stats("exact_match")
+print(f"Accuracy: {accuracy['mean']:.1%}")
+```
 
 ## Tips for Success
 
@@ -297,6 +391,13 @@ evaluator = Evaluator(
         "langfuse_secret_key": "sk-...",
         "langfuse_host": "https://cloud.langfuse.com"
     }
+)
+
+# Run with export options
+results = evaluator.run(
+    show_progress=True,      # Show live status display
+    auto_save=True,          # Auto-save results
+    save_format="json"       # Format: "json" or "csv"
 )
 ```
 
