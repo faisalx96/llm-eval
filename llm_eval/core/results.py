@@ -159,48 +159,110 @@ class EvaluationResult:
         
         return "\n".join(lines)
     
-    def print_summary(self):
+    def _format_duration(self, seconds: float) -> str:
+        """Format duration in a human-readable way."""
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            secs = seconds % 60
+            if secs > 0:
+                return f"{minutes}m {secs}s"
+            return f"{minutes}m"
+        else:
+            hours = seconds // 3600
+            remaining = seconds % 3600
+            minutes = remaining // 60
+            if minutes > 0:
+                return f"{hours}h {minutes}m"
+            return f"{hours}h"
+    
+    def print_summary(self, html_url: Optional[str] = None):
         """Print a rich formatted summary to console."""
-        # Create summary table
-        table = Table(title=f"Evaluation Results: {self.run_name}")
-        table.add_column("Metric", style="cyan")
-        table.add_column("Mean", justify="right", style="green")
-        table.add_column("Std Dev", justify="right")
-        table.add_column("Min", justify="right")
-        table.add_column("Max", justify="right")
-        table.add_column("Success", justify="right", style="yellow")
+        from rich.console import Group
+        from rich.rule import Rule
+        from rich.align import Align
+        
+        # Get timing statistics
+        timing_stats = self.get_timing_stats()
+        
+        # Create the metrics table
+        from rich.box import ROUNDED
+        table = Table(box=ROUNDED, show_header=True, header_style="bold", expand=True)
+        table.add_column("Metric", style="cyan", width=30)
+        table.add_column("Mean", justify="right", style="green", width=10)
+        table.add_column("Std Dev", justify="right", width=10)
+        table.add_column("Min", justify="right", width=10)
+        table.add_column("Max", justify="right", width=10)
+        table.add_column("Success", justify="right", style="yellow", width=10)
         
         for metric in self.metrics:
             stats = self.get_metric_stats(metric)
             table.add_row(
                 metric,
-                f"{stats['mean']:.3f}",
-                f"{stats['std']:.3f}",
-                f"{stats['min']:.3f}",
-                f"{stats['max']:.3f}",
-                f"{stats['success_rate']:.1%}"
+                f"{stats['mean']:.0f}",
+                f"{stats['std']:.0f}",
+                f"{stats['min']:.0f}",
+                f"{stats['max']:.0f}",
+                f"{int(stats['success_rate'] * 100)}%"
             )
         
-        # Get timing statistics
-        timing_stats = self.get_timing_stats()
+        # Build content sections
+        header_line = f"[bold]Dataset:[/bold] {self.dataset_name} │ [bold]{self.run_name}[/bold]"
         
-        # Print overview panel
-        overview = Panel(
-            f"[bold]Dataset:[/bold] {self.dataset_name}\n"
-            f"[bold]Total Items:[/bold] {self.total_items}\n"
-            f"[bold]Success Rate:[/bold] {self.success_rate:.1%}\n"
-            f"[bold]Total Duration:[/bold] {self.duration:.1f}s\n"
-            f"[bold]Average Item Time:[/bold] {timing_stats['mean']:.2f}s ± {timing_stats['std']:.2f}s\n"
-            f"[bold]Time Range:[/bold] [{timing_stats['min']:.2f}s, {timing_stats['max']:.2f}s]" if self.duration else "",
-            title="Overview",
-            expand=False
+        # Create timing statistics section
+        from rich.columns import Columns
+        from rich.text import Text
+        
+        timing_items = [
+            Text.from_markup(f"[bold cyan]⏱  Total:[/bold cyan] {self._format_duration(self.duration)}"),
+            Text.from_markup(f"[bold green]➜ Average:[/bold green] {self._format_duration(timing_stats['mean'])}"),
+            Text.from_markup(f"[bold yellow]~  Std Dev:[/bold yellow] {self._format_duration(timing_stats['std'])}"),
+            Text.from_markup(f"[bold blue]⬇  Min:[/bold blue] {self._format_duration(timing_stats['min'])}"),
+            Text.from_markup(f"[bold red]⬆  Max:[/bold red] {self._format_duration(timing_stats['max'])}"),
+        ]
+        
+        timing_info = Columns(timing_items, equal=True, expand=True)
+        
+        # Create content group
+        content_parts = [
+            header_line,
+            Rule(style="dim"),
+            "",
+            Align.center("[bold]Timing Statistics[/bold]"),
+            "",
+            timing_info,
+            "",
+            Rule(style="dim"),
+            "",
+            Align.center("[bold]Metric Performance[/bold]"),
+            "",
+            table,
+        ]
+        
+        # Don't add HTML URL to the display
+        
+        # Add error summary if there are errors
+        if self.errors:
+            content_parts.extend([
+                "",
+                Rule(style="dim"),
+                "",
+                f"[red]⚠️  Errors:[/red] {len(self.errors)} items failed"
+            ])
+        
+        # Create the final panel
+        panel = Panel(
+            Group(*content_parts),
+            title="[bold cyan]✨ Evaluation Results[/bold cyan]",
+            expand=False,
+            border_style="cyan",
+            padding=(1, 3),
+            width=100
         )
         
-        console.print(overview)
-        console.print(table)
-        
-        if self.errors:
-            console.print(f"\n[red]Errors:[/red] {len(self.errors)} items failed")
+        console.print(panel)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert results to dictionary format."""
@@ -251,7 +313,7 @@ class EvaluationResult:
         with open(filepath, 'w') as f:
             json.dump(self.to_dict(), f, indent=2, default=str)
         
-        console.print(f"[green]✅ Results saved to:[/green] {filepath}")
+        console.print(f"[blue]📁 Results saved to:[/blue] {filepath}")
         return str(filepath)
     
     def save_csv(self, filepath: Optional[str] = None) -> str:
@@ -311,7 +373,7 @@ class EvaluationResult:
                 writer.writeheader()
                 writer.writerows(rows)
         
-        console.print(f"[green]✅ Results saved to:[/green] {filepath}")
+        console.print(f"[blue]📁 Results saved to:[/blue] {filepath}")
         return str(filepath)
     
     def save(self, format: str = "json", filepath: Optional[str] = None) -> str:

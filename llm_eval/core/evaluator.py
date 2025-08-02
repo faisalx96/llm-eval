@@ -152,7 +152,7 @@ class Evaluator:
                 raise ValueError(f"Metric must be string or callable, got {type(metric)}")
         return prepared
     
-    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
+    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json", keep_server_alive: bool = True) -> EvaluationResult:
         """
         Run the evaluation synchronously.
         
@@ -185,7 +185,14 @@ class Evaluator:
         result = asyncio.run(self.arun(show_progress, show_table, auto_save, save_format))
         
         # Always print summary
-        result.print_summary()
+        console.print()  # Add spacing after evaluation panel
+        html_url = getattr(result, 'html_url', None)
+        result.print_summary(html_url)
+        
+        # If HTML server is running, keep it alive
+        if html_url and show_table:
+            console.print(f"\n[dim]Press Enter to stop the web server and exit...[/dim]")
+            input()
         
         return result
     
@@ -236,18 +243,28 @@ class Evaluator:
         html_url = None
         http_server = None
         http_port = None
+        eval_dir = None
         
         if show_table:
-            # Create a temporary directory for the HTML file
-            temp_dir = Path(tempfile.mkdtemp(prefix='llm_eval_'))
-            html_file = temp_dir / 'index.html'
+            # Create a directory for HTML files in user's home directory
+            base_dir = Path.home() / '.llm_eval' / 'results'
+            base_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Clean up old HTML files (older than 1 hour)
+            self._cleanup_old_html_files(base_dir, max_age_hours=1)
+            
+            # Create a subdirectory for this evaluation
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            eval_dir = base_dir / f"{self.dataset_name}_{timestamp}"
+            eval_dir.mkdir(parents=True, exist_ok=True)
+            html_file = eval_dir / 'index.html'
             
             # Write initial HTML
             html_content = self._generate_html_table(item_statuses, items)
             html_file.write_text(html_content)
             
             # Start HTTP server
-            http_port, http_server = self._start_http_server(temp_dir)
+            http_port, http_server = self._start_http_server(eval_dir)
             html_url = f"http://localhost:{http_port}/"
         
         # Progress tracking with live display
@@ -289,9 +306,9 @@ class Evaluator:
 [red]✗ Failed:[/red] {failed}
 [blue]◯ Pending:[/blue] {pending}
 
-[bold magenta]Success Rate:[/bold magenta] {success_rate:.1f}%
+[bold magenta]Success Rate:[/bold magenta] {success_rate:.0f}%
 
-📊 [bold cyan]View detailed results in your browser:[/bold cyan]
+🌐 [bold cyan]View detailed results in your browser:[/bold cyan]
 👉 [bold blue underline]{html_url}[/bold blue underline]"""
                     
                     # Combine progress bar and summary text
@@ -302,10 +319,11 @@ class Evaluator:
                     
                     panel = Panel(
                         content, 
-                        title="[bold cyan]📊 Evaluation Summary[/bold cyan]",
+                        title="[bold cyan][yellow]⚡[/yellow] Evaluation Progress[/bold cyan]",
                         expand=False, 
                         border_style="cyan", 
-                        padding=(1, 2)
+                        padding=(1, 2),
+                        width=100
                     )
                     
                     return panel
@@ -379,9 +397,6 @@ class Evaluator:
                         else:
                             result.add_result(f"item_{idx}", eval_result)
             
-            console.print()  # Empty line for spacing
-            console.print(f"[green]✅ Evaluation complete![/green] Processed {len(items)} items with {len(self.metrics)} metrics", style="bold")
-            console.print()  # Empty line for spacing
         else:
             # Run without progress display
             semaphore = asyncio.Semaphore(self.max_concurrency)
@@ -404,22 +419,22 @@ class Evaluator:
         # Mark evaluation as finished
         result.finish()
         
+        # Store HTML URL and file path if available
+        if html_url:
+            result.html_url = html_url
+            if html_file:
+                result.html_file = str(html_file)
+        
         # Auto-save if requested
         if auto_save:
             try:
                 saved_path = result.save(format=save_format)
                 console.print(f"[blue]📁 Auto-saved results to: {saved_path}[/blue]")
-                console.print()  # Empty line for spacing
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
-                console.print()  # Empty line for spacing
         
-        # Clean up HTTP server if it was started
-        if http_server:
-            try:
-                http_server.shutdown()
-            except:
-                pass
+        # Keep HTTP server running - don't shut it down
+        # The server will be cleaned up when the process exits
         
         return result
     
@@ -550,10 +565,15 @@ class Evaluator:
                 metric_value = status['metrics'][metric_name]
                 metric_class = ""
                 if metric_value == '[dim]pending[/dim]':
-                    metric_value = '-'
-                    metric_class = "metric-pending"
+                    # If the item is in progress, show running instead of pending
+                    if status['status'] == 'in_progress':
+                        metric_value = 'running...'
+                        metric_class = "metric-computing"
+                    else:
+                        metric_value = 'pending'
+                        metric_class = "metric-pending"
                 elif metric_value == '[yellow]computing...[/yellow]':
-                    metric_value = '...'
+                    metric_value = 'computing...'
                     metric_class = "metric-computing"
                 elif metric_value == '[red]error[/red]' or metric_value == '[red]N/A[/red]':
                     metric_value = 'error'
@@ -562,17 +582,40 @@ class Evaluator:
             
             # Clean up time value
             time_value = status['time']
+            time_class = ""
             if '[yellow]running...[/yellow]' in str(time_value):
                 time_value = 'running...'
+                time_class = "metric-computing"
             elif '[red]' in str(time_value):
                 time_value = time_value.replace('[red]', '').replace('[/red]', '')
+                time_class = "metric-error"
             elif time_value == '[dim]pending[/dim]':
-                time_value = '-'
+                time_value = 'pending'
+                time_class = "metric-pending"
             
-            # Escape HTML in content
+            # Clean and escape HTML in content
             import html
             input_text = html.escape(str(status['input'])[:100])
-            output_text = html.escape(str(status['output'])[:100])
+            
+            # Clean output text and determine class
+            output_text = str(status['output'])
+            output_class = ""
+            if output_text == '[dim]pending[/dim]':
+                # If the item is in progress, show running instead of pending
+                if status['status'] == 'in_progress':
+                    output_text = 'running...'
+                    output_class = "metric-computing"
+                else:
+                    output_text = 'pending'
+                    output_class = "metric-pending"
+            elif '[red]' in output_text:
+                output_text = output_text.replace('[red]', '').replace('[/red]', '')
+                output_class = "metric-error"
+            elif '[yellow]' in output_text:
+                output_text = output_text.replace('[yellow]', '').replace('[/yellow]', '')
+                output_class = "metric-computing"
+            output_text = html.escape(output_text[:100])
+            
             expected_text = html.escape(str(status['expected'])[:100])
             
             row_html = f'''
@@ -580,10 +623,10 @@ class Evaluator:
                 <td class="status-cell"><span class="status-icon">{status_icon}</span></td>
                 <td class="index-cell">{idx + 1}</td>
                 <td class="content-cell" title="{html.escape(str(status['input']))}">{input_text}</td>
-                <td class="content-cell" title="{html.escape(str(status['output']))}">{output_text}</td>
+                <td class="content-cell {output_class}" title="{html.escape(str(status['output']))}">{output_text}</td>
                 <td class="content-cell" title="{html.escape(str(status['expected']))}">{expected_text}</td>
                 {"".join(metric_cells)}
-                <td class="time-cell">{time_value}</td>
+                <td class="time-cell {time_class}">{time_value}</td>
             </tr>
             '''
             table_rows.append(row_html)
@@ -862,6 +905,25 @@ class Evaluator:
         
         return html_content
     
+    def _cleanup_old_html_files(self, base_dir: Path, max_age_hours: int = 1):
+        """Clean up HTML result directories older than max_age_hours."""
+        import shutil
+        from datetime import timedelta
+        
+        now = datetime.now()
+        cutoff_time = now - timedelta(hours=max_age_hours)
+        
+        try:
+            for item in base_dir.iterdir():
+                if item.is_dir():
+                    # Check directory modification time
+                    mtime = datetime.fromtimestamp(item.stat().st_mtime)
+                    if mtime < cutoff_time:
+                        shutil.rmtree(item)
+        except Exception:
+            # Silently ignore cleanup errors
+            pass
+    
     def _start_http_server(self, directory: Path) -> tuple[int, socketserver.TCPServer]:
         """Start a simple HTTP server to serve the HTML file."""
         
@@ -936,7 +998,7 @@ class Evaluator:
                             if isinstance(score, bool):
                                 item_statuses[index]['metrics'][metric_name] = '✓' if score else '✗'
                             elif isinstance(score, (int, float)):
-                                item_statuses[index]['metrics'][metric_name] = f"{score:.3f}"
+                                item_statuses[index]['metrics'][metric_name] = f"{int(score)}"
                             else:
                                 item_statuses[index]['metrics'][metric_name] = str(score)[:20]
                             
@@ -966,7 +1028,7 @@ class Evaluator:
                     item_statuses[index]['end_time'] = end_time
                     item_statuses[index]['status'] = 'completed'
                     elapsed = end_time - start_time
-                    item_statuses[index]['time'] = f"{elapsed:.2f}s"
+                    item_statuses[index]['time'] = f"{int(elapsed)}s"
                     live.update(generate_display())
                     
                     return {
@@ -981,7 +1043,7 @@ class Evaluator:
                 item_statuses[index]['end_time'] = end_time
                 item_statuses[index]['status'] = 'error'
                 item_statuses[index]['output'] = '[red]timeout[/red]'
-                item_statuses[index]['time'] = f"[red]{end_time - start_time:.2f}s[/red]"
+                item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
                 for metric_name in self.metrics.keys():
                     item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
                 live.update(generate_display())
@@ -991,7 +1053,7 @@ class Evaluator:
                 item_statuses[index]['end_time'] = end_time
                 item_statuses[index]['status'] = 'error'
                 item_statuses[index]['output'] = f'[red]error: {str(e)[:30]}[/red]'
-                item_statuses[index]['time'] = f"[red]{end_time - start_time:.2f}s[/red]"
+                item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
                 for metric_name in self.metrics.keys():
                     item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
                 live.update(generate_display())
