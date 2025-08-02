@@ -13,7 +13,7 @@ load_dotenv()
 
 def ai_assistant(question: str) -> str:
     """A simple AI assistant for demonstration."""
-    question_lower = question.lower()
+    question_lower = question['question'].lower()
     delay = random.randint(5, 20)  # random integer between 1 and 5
     time.sleep(delay)
 
@@ -43,7 +43,7 @@ def main():
     print("🎯 Mixing Built-in metrics with custom metrics...")
     evaluator_mixed = Evaluator(
         task=ai_assistant,
-        dataset="quickstart-demo",
+        dataset="saudi-qa-verification-v1",
         metrics=[
             # "answer_relevancy", # DeepEval metric
             response_length_check,  # Custom metric
@@ -51,7 +51,7 @@ def main():
         ]
     )
     
-    results_mixed = evaluator_mixed.run(show_table=False)
+    results_mixed = evaluator_mixed.run(show_table=True)
 
 
 if __name__ == "__main__":
