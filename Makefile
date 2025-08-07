@@ -126,12 +126,30 @@ watch:
 	@echo "Watching for changes... (requires entr: pip install entr)"
 	find llm_eval tests -name "*.py" | entr -c make test-fast
 
+# Application running commands
+run-api:
+	python -m llm_eval.api.main
+
+run-frontend:
+	cd frontend && npm run dev
+
+run-all:
+	@echo "Starting API server and frontend..."
+	@make -j 2 run-api run-frontend
+
 # Docker commands (if needed)
 docker-build:
 	docker build -t llm-eval:latest .
+	cd frontend && docker build -t llm-eval-frontend:latest .
 
 docker-test:
 	docker run --rm llm-eval:latest make test
+
+docker-compose-up:
+	docker-compose up -d
+
+docker-compose-down:
+	docker-compose down
 
 # Release commands
 check-release: clean check-all build

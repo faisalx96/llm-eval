@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:langfuse.com)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(python -m pytest tests/unit/test_search.py -v)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(rm:*)",
+      "Bash(ls:*)",
+      "Bash(chmod:*)",
+      "Bash(.venv39/bin/pip install:*)",
+      "Bash(./.myenv/bin/pip install:*)",
+      "Bash(./.venv39/Scripts/pip.exe install:*)",
+      "Bash(./.venv39/Scripts/python.exe:*)",
+      "Bash(.venv39/Scripts/python.exe examples/sprint1_complete_workflow.py:*)",
+      "Bash(PYTHONIOENCODING=utf-8 .venv39/Scripts/python.exe examples/sprint1_complete_workflow.py)",
+      "Bash(.venv39/Scripts/python.exe:*)",
+      "Bash(unzip:*)",
+      "Bash(.venv39/Scripts/pip.exe install:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run format:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(pip3 install:*)",
+      "Bash(npx next build:*)",
+      "Bash(/mnt/c/Users/Faisal/Projects/Evaluation/.venv39/Scripts/python.exe -c \"\nimport subprocess\nimport sys\nimport os\nos.chdir(''/mnt/c/Users/Faisal/Projects/Evaluation'')\nresult = subprocess.run([sys.executable, ''-m'', ''llm_eval.api.main''], \n                       capture_output=True, text=True, timeout=5)\nprint(''STDOUT:'')\nprint(result.stdout)\nprint(''STDERR:'')  \nprint(result.stderr)\nprint(''Return code:'', result.returncode)\n\")"
+    ],
+    "deny": []
+  }
+}

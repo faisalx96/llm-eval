@@ -1,17 +1,8 @@
-# Virtual environments
-.venv/
-.venv39/
-.myenv/
-venv/
-env/
-
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -28,91 +19,96 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+.myenv/
+.venv/
+.venv39/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# PyInstaller
-*.manifest
-*.spec
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+coverage.xml
+*.log
+test-results/
+junit.xml
 
-# IDE files
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
-# Claude Code settings (keep local only)
-.claude/
+# Node.js / Frontend
+node_modules/
+.next/
+out/
+.nuxt/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# DeepEval cache
-.deepeval/
-
-# Environment variables (keep local only)
+# Environment
 .env
 .env.local
+.env.*.local
+.env.production
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-*.log
-
-# Testing
-.coverage
-.pytest_cache/
-.tox/
-htmlcov/
-coverage.xml
-.hypothesis/
-test-results/
-performance_report.json
-benchmark_results/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Guides
-CLAUDE.md
-AIR_GAPPED_GUIDE.md
-
-# Project specific - cleanup
+# Reports and outputs
 *.xlsx
-*.xls
+*.csv
 *.html
 !frontend/**/*.html
-test_*.py
-*_test.py
-sprint1_reports/
+*.pdf
+reports/
+output/
+results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+.cache/
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Project specific
+llm_eval_runs.db*
+sprint*_reports/
 test_reports/
-docs/archive/
-serve_demo.py
-launch_*.py
-EXECUTIVE_*.md
-SPRINT*_*.md
-*_DEMO.html
-*_demo.html
+performance_results/
+.langfuse_cache/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Documentation builds
+docs/_build/
+docs/.doctrees/
 
-# Frontend
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/.vercel/
-frontend/*.log
-frontend/npm-debug.log*
-frontend/yarn-debug.log*
-frontend/yarn-error.log*
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Package managers
+poetry.lock
+Pipfile.lock

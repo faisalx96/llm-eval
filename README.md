@@ -1,5 +1,9 @@
 # LLM-Eval: UI-First Evaluation Platform
 
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Transform from code-based to UI-first LLM evaluation! Built on [Langfuse](https://langfuse.com) with a powerful web dashboard for managing and analyzing evaluation runs.
 
 ## 🚀 Quick Start
@@ -79,11 +83,13 @@ cd frontend && npm install
 
 ## 📚 Documentation
 
-- **[Product Usage Guide](PRODUCT_USAGE_GUIDE.md)** - Sprint 2 features overview
-- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Technical implementation  
-- **[User Guide](docs/USER_GUIDE.md)** - Detailed usage instructions
+- **[Quick Start Guide](docs/USER_GUIDE.md)** - Get started in 5 minutes
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Technical implementation details
 - **[API Reference](docs/API_REFERENCE.md)** - REST API documentation
+- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Production deployment
+- **[Testing Guide](docs/TESTING_GUIDE.md)** - Testing strategy and examples
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Project Roadmap](docs/ROADMAP.md)** - Development plan and milestones
 
 ## 🛠️ Development
 
