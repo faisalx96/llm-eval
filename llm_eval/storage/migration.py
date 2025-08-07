@@ -123,7 +123,7 @@ def _infer_task_type(metrics: List[str]) -> Optional[str]:
         return 'qa'
     elif 'accuracy' in metric_set or 'precision' in metric_set:
         return 'classification'
-    elif 'rouge' in metric_set or 'bleu' in metric_set:
+    elif any(m.startswith('rouge') for m in metric_set) or 'bleu' in metric_set:
         return 'summarization'
     elif 'faithfulness' in metric_set or 'answer_relevancy' in metric_set:
         return 'rag'

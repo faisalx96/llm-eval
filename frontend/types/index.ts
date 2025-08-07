@@ -81,3 +81,19 @@ export interface WebSocketMessage {
   data: any;
   timestamp: string;
 }
+
+export interface RunItem {
+  id: string;
+  run_id: string;
+  input_data: Record<string, any>;
+  output_data?: Record<string, any>;
+  expected_output?: Record<string, any>;
+  scores: Record<string, number>;
+  status: 'success' | 'failed' | 'pending';
+  error_message?: string;
+  response_time?: number;
+  tokens_used?: number;
+  cost?: number;
+  created_at: string;
+  processed_at?: string;
+}

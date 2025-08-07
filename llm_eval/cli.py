@@ -23,17 +23,20 @@ logger = logging.getLogger(__name__)
 
 def load_function_from_file(file_path: str, function_name: str):
     """Load a function from a Python file."""
-    spec = importlib.util.spec_from_file_location("user_module", file_path)
-    if spec is None or spec.loader is None:
-        raise ValueError(f"Cannot load module from {file_path}")
-    
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    
-    if not hasattr(module, function_name):
-        raise ValueError(f"Function '{function_name}' not found in {file_path}")
-    
-    return getattr(module, function_name)
+    try:
+        spec = importlib.util.spec_from_file_location("user_module", file_path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Cannot load module from {file_path}")
+        
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        if not hasattr(module, function_name):
+            raise ValueError(f"Function '{function_name}' not found in {file_path}")
+        
+        return getattr(module, function_name)
+    except FileNotFoundError:
+        raise ValueError(f"Cannot load module from {file_path}: File not found")
 
 
 def main():

@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../lib/api';
-import { EvaluationRun, RunMetrics } from '../types';
+import { EvaluationRun, RunMetrics, RunItem, PaginatedResponse } from '../types';
 
 interface UseRunDetailState {
   run: EvaluationRun | null;
   metrics: RunMetrics | null;
+  items: PaginatedResponse<RunItem> | null;
   loading: boolean;
   error: string | null;
 }
 
 interface UseRunDetailReturn extends UseRunDetailState {
   refetch: () => Promise<void>;
+  fetchItems: (limit?: number, offset?: number, status?: 'success' | 'failed' | 'pending') => Promise<void>;
   exportRun: (format?: 'excel' | 'json' | 'csv') => Promise<void>;
   clearError: () => void;
 }
@@ -19,6 +21,7 @@ export function useRunDetail(runId: string): UseRunDetailReturn {
   const [state, setState] = useState<UseRunDetailState>({
     run: null,
     metrics: null,
+    items: null,
     loading: true,
     error: null,
   });
@@ -38,6 +41,7 @@ export function useRunDetail(runId: string): UseRunDetailReturn {
       setState({
         run: runResponse,
         metrics: metricsResponse,
+        items: null, // Items will be fetched separately
         loading: false,
         error: null,
       });
@@ -51,6 +55,24 @@ export function useRunDetail(runId: string): UseRunDetailReturn {
   }, [runId]);
 
   const refetch = useCallback(() => fetchRunDetail(), [fetchRunDetail]);
+
+  const fetchItems = useCallback(async (limit: number = 20, offset: number = 0, status?: 'success' | 'failed' | 'pending') => {
+    if (!runId) return;
+
+    try {
+      const itemsResponse = await apiClient.getRunItems(runId, { limit, offset, status });
+      setState(prev => ({
+        ...prev,
+        items: itemsResponse,
+        error: null,
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to fetch run items',
+      }));
+    }
+  }, [runId]);
 
   const exportRun = useCallback(async (format: 'excel' | 'json' | 'csv' = 'excel') => {
     if (!runId) return;
@@ -87,6 +109,7 @@ export function useRunDetail(runId: string): UseRunDetailReturn {
   return {
     ...state,
     refetch,
+    fetchItems,
     exportRun,
     clearError,
   };

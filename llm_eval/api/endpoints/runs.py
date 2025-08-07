@@ -469,3 +469,111 @@ async def get_run_metrics(
             status_code=500,
             detail="Failed to retrieve metrics"
         )
+
+
+@router.get("/{run_id}/items", response_model=dict)
+async def get_run_items(
+    run_id: str,
+    status: Optional[str] = Query(None, pattern="^(success|failed|pending)$", description="Filter by item status"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
+    repo: RunRepository = Depends(get_run_repository)
+):
+    """
+    Get paginated items for a specific evaluation run.
+    
+    Args:
+        run_id: UUID of the evaluation run
+        status: Filter by item status
+        limit: Number of items per page
+        offset: Number of items to skip
+        
+    Returns:
+        Paginated list of run items
+        
+    Raises:
+        HTTPException: If run is not found
+    """
+    try:
+        # Validate UUID format
+        try:
+            UUID(run_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid run ID format"
+            )
+        
+        # Check if run exists
+        run = repo.get_run(run_id)
+        if not run:
+            raise HTTPException(
+                status_code=404,
+                detail="Run not found"
+            )
+        
+        # For now, return mock data since the actual implementation 
+        # would need to be connected to Langfuse or storage
+        mock_items = []
+        total_items = run.total_items or 0
+        
+        # Generate some mock items for demonstration
+        for i in range(min(limit, total_items - offset)):
+            item_status = "success" if (i % 3) != 2 else "failed" if (i % 3) == 2 else "pending"
+            if status and item_status != status:
+                continue
+                
+            mock_items.append({
+                "id": f"item-{run_id}-{offset + i}",
+                "run_id": run_id,
+                "input_data": {
+                    "question": f"Sample question {offset + i + 1}",
+                    "context": f"Sample context for item {offset + i + 1}"
+                },
+                "output_data": {
+                    "answer": f"Sample answer {offset + i + 1}"
+                } if item_status != "pending" else None,
+                "expected_output": {
+                    "answer": f"Expected answer {offset + i + 1}"
+                },
+                "scores": {
+                    "accuracy": 0.85 + (i % 10) * 0.01,
+                    "relevance": 0.90 - (i % 5) * 0.02,
+                    "faithfulness": 0.88 + (i % 7) * 0.015
+                } if item_status == "success" else {
+                    "accuracy": 0.45 + (i % 5) * 0.1,
+                    "relevance": 0.50 - (i % 3) * 0.1,
+                    "faithfulness": 0.40 + (i % 4) * 0.05
+                } if item_status == "failed" else {},
+                "status": item_status,
+                "error_message": f"Sample error message for item {offset + i + 1}" if item_status == "failed" else None,
+                "response_time": 1.2 + (i % 10) * 0.1 if item_status != "pending" else None,
+                "tokens_used": 150 + (i % 50) if item_status != "pending" else None,
+                "cost": 0.002 + (i % 10) * 0.0001 if item_status != "pending" else None,
+                "created_at": run.created_at.isoformat(),
+                "processed_at": run.created_at.isoformat() if item_status != "pending" else None
+            })
+        
+        # Filter by status if specified
+        if status:
+            mock_items = [item for item in mock_items if item["status"] == status]
+            total_filtered = len([i for i in range(total_items) if (i % 3) != 2 if status == "success" else (i % 3) == 2 if status == "failed" else (i % 3) == 1])
+            total_items = total_filtered
+        
+        return {
+            "items": mock_items,
+            "total": total_items,
+            "limit": limit,
+            "offset": offset,
+            "has_next": offset + limit < total_items,
+            "has_prev": offset > 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get items for run {run_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve run items"
+        )

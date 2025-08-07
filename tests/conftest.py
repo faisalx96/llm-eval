@@ -186,24 +186,33 @@ def create_test_task_file(temp_dir: Path, task_code: str) -> Path:
 @pytest.fixture
 def performance_monitor():
     """Performance monitoring fixture."""
-    import psutil
     import time
     
     class PerformanceMonitor:
         def __init__(self):
             self.start_time = None
             self.end_time = None
-            self.process = psutil.Process()
             self.start_memory = None
             self.peak_memory = None
+            
+            # Try to import psutil for memory monitoring
+            try:
+                import psutil
+                self.process = psutil.Process()
+                self._has_psutil = True
+            except ImportError:
+                self.process = None
+                self._has_psutil = False
         
         def start(self):
             self.start_time = time.time()
-            self.start_memory = self.process.memory_info().rss / 1024 / 1024  # MB
+            if self._has_psutil:
+                self.start_memory = self.process.memory_info().rss / 1024 / 1024  # MB
         
         def stop(self):
             self.end_time = time.time()
-            self.peak_memory = self.process.memory_info().rss / 1024 / 1024  # MB
+            if self._has_psutil:
+                self.peak_memory = self.process.memory_info().rss / 1024 / 1024  # MB
         
         def get_duration(self):
             if self.start_time and self.end_time:
@@ -211,7 +220,7 @@ def performance_monitor():
             return None
         
         def get_memory_usage(self):
-            if self.start_memory and self.peak_memory:
+            if self._has_psutil and self.start_memory and self.peak_memory:
                 return self.peak_memory - self.start_memory
             return None
     

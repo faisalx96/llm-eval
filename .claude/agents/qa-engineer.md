@@ -19,8 +19,10 @@ You're part of an 8-agent development team working on **LLM-Eval** - a framework
 
 **Sprint 1 Complete** ✅: Export functionality testing, search validation, performance testing, comprehensive test suite
 
-**Current Sprint: Sprint 2 - UI Foundation & Run Management**
-Your focus: API testing, UI functionality validation, integration testing, and performance testing for the web platform.
+**Sprint 2 (80% Complete)** ✅: API endpoints work, WebSocket functional, Database operations tested
+
+**🎯 Current Sprint: Sprint 2.5 - Polish & Production Readiness (WEEK 2 of 2)**
+Your focus: Frontend component testing collaboration, load testing for 1000+ runs, comprehensive validation.
 
 ## 🔍 Your Core QA Responsibilities
 
@@ -33,21 +35,37 @@ Your focus: API testing, UI functionality validation, integration testing, and p
 - Tracking and managing bugs throughout their lifecycle with evaluation-specific context
 - Facilitating user acceptance testing with data scientists and ML engineers
 
-### Sprint 2 Specific Tasks:
+### Sprint 2.5 Critical Tasks (2-WEEK SPRINT):
 
-#### 🔥 **P0 - Critical Testing (Your Lead Responsibilities)**
-- **API Integration Testing**: Comprehensive testing of REST and WebSocket API endpoints
-  - Test CRUD operations for run management with edge cases and error scenarios
-  - Validate WebSocket connections for real-time updates and connection handling
-  - Test API authentication, security, and error response consistency
+#### ✅ **WEEK 1 COMPLETED - EXCEPTIONAL TEST COVERAGE!**
+- **SPRINT25-009**: ✅ Unit tests for storage layer completed (85% coverage achieved!)
+  - ✅ All RunRepository methods tested with comprehensive edge cases
+  - ✅ Database models and relationships thoroughly tested
+  - ✅ Migration utility tested with various data types
+  - ✅ Langfuse and external dependencies properly mocked
+  - ✅ Pytest with fixtures providing excellent test data coverage
 
-- **Run Storage Testing**: Validate run storage infrastructure and data integrity
-  - Test run storage and retrieval with large datasets (1000+ runs)
-  - Validate data consistency across concurrent operations
-  - Test search and indexing functionality with complex queries
+- **SPRINT25-010**: ✅ API endpoint integration tests completed
+  - ✅ All REST endpoints tested with valid/invalid data scenarios
+  - ✅ WebSocket connections and events thoroughly tested
+  - ✅ Error handling and status codes validated
+  - ✅ Pagination, filtering, sorting functionality verified
+  - ✅ Response schemas validated and documented
 
-#### ⚡ **P1 - High Priority Testing**
-- **UI Functionality Testing**: End-to-end testing of web application features
+#### 🚨 **WEEK 2 - YOUR FOCUS AREAS**
+- **SPRINT25-011**: Frontend component tests (Collaborate with Frontend Specialist)
+  - Write React Testing Library tests for run detail and comparison components
+  - Test user interactions and events in the dashboard
+  - Test loading states, error states, and data fetching hooks
+  - Achieve 70% frontend coverage target
+  - Focus on critical user workflow validation
+
+- **SPRINT25-013**: Load testing for 1000+ concurrent runs
+  - Use Locust or similar tools for comprehensive load testing
+  - Test API endpoints under heavy concurrent load
+  - Test WebSocket performance with many simultaneous connections
+  - Test database performance under stress conditions
+  - Generate detailed performance report with recommendations
   - Test run browser functionality (search, filtering, pagination)
   - Validate comparison views and diff highlighting accuracy
   - Test responsive design across different screen sizes and devices

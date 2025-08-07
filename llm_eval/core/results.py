@@ -103,7 +103,7 @@ class EvaluationResult:
         errors = 0
         
         for result in self.results.values():
-            if 'scores' in result and metric_name in result['scores']:
+            if result is not None and 'scores' in result and metric_name in result['scores']:
                 score = result['scores'][metric_name]
                 if isinstance(score, (int, float)):
                     scores.append(float(score))
@@ -138,7 +138,7 @@ class EvaluationResult:
         times = []
         
         for result in self.results.values():
-            if 'time' in result and isinstance(result['time'], (int, float)):
+            if result is not None and 'time' in result and isinstance(result['time'], (int, float)):
                 times.append(float(result['time']))
         
         if not times:
@@ -322,6 +322,19 @@ class EvaluationResult:
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
+        # Determine all possible field names upfront
+        base_fields = ['item_id', 'output', 'success', 'time']
+        metric_fields = []
+        metric_error_fields = []
+        
+        # Add metric fields for all configured metrics
+        for metric in self.metrics:
+            metric_fields.append(f'metric_{metric}')
+            metric_error_fields.append(f'metric_{metric}_error')
+        
+        # Combine all possible fieldnames
+        fieldnames = base_fields + metric_fields + metric_error_fields
+        
         # Prepare rows for CSV
         rows = []
         for item_id, result in self.results.items():
@@ -331,6 +344,10 @@ class EvaluationResult:
                 'success': result.get('success', False),
                 'time': result.get('time', 0.0)
             }
+            
+            # Initialize all metric fields to empty strings
+            for field in metric_fields + metric_error_fields:
+                row[field] = ''
             
             # Add metric scores
             if 'scores' in result:
@@ -351,15 +368,18 @@ class EvaluationResult:
                 'success': False,
                 'time': 0.0
             }
+            # Initialize all metric fields
+            for field in metric_fields + metric_error_fields:
+                row[field] = ''
             for metric in self.metrics:
                 row[f'metric_{metric}'] = 'N/A'
             rows.append(row)
         
-        # Write CSV
-        if rows:
-            with open(filepath, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-                writer.writeheader()
+        # Write CSV (always write, even if empty)
+        with open(filepath, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            if rows:
                 writer.writerows(rows)
         
         console.print(f"[green]✅ Results saved to:[/green] {filepath}")

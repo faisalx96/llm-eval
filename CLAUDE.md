@@ -3,7 +3,7 @@
 ## Project Overview
 We are building a **UI-first LLM/agent evaluation platform** targeting **technical developers** who need to streamline and automate the evaluation phase of their LLM and agentic products. The platform uses Langfuse as its backbone and focuses on transitioning developers from code-based evaluation to UI-driven evaluation with powerful comparison and analysis tools.
 
-## Current State (Post-Sprint 2)
+## Current State (Sprint 2.5 Week 2)
 ✅ **Sprint 1 Complete:**
 - Template system for quick evaluation setup
 - Workflow automation from setup to reporting  
@@ -12,7 +12,7 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 - Search/filtering capabilities
 - Rich console UI with progress tracking
 
-✅ **Sprint 2 (80% Complete):**
+✅ **Sprint 2 Complete:**
 - Database storage infrastructure (SQLAlchemy)
 - REST API server (FastAPI) 
 - Web dashboard (Next.js/React)
@@ -20,12 +20,19 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 - Basic run listing and filtering
 - Fixed critical bugs (redirect loops, UUID issues)
 
-🎯 **Sprint 2.5 (Active):**
-- Production readiness and polish
-- Complete test coverage (target: 80%)
-- Performance optimization for 1000+ runs
-- Documentation and deployment guides
-- CI/CD pipeline setup
+🔄 **Sprint 2.5 Week 2 (Active):**
+**Week 1 Complete:**
+- ✅ Run detail page with item-level results (SPRINT25-001)
+- ✅ Comparison API with statistical analysis (SPRINT25-002)
+- ✅ Storage layer tests - 175+ tests, 80% coverage (SPRINT25-009)
+- ✅ CI/CD pipeline < 5 min execution (SPRINT25-018)
+- ✅ All test failures fixed (100% pass rate)
+
+**Week 2 In Progress:**
+- 📋 Comparison UI (SPRINT25-003)
+- 📋 Database indexes (SPRINT25-005)
+- 📋 WebSocket memory fixes (SPRINT25-007)
+- 📋 Load testing for 1000+ runs (SPRINT25-013)
 
 ## Target Users & Vision
 **Primary:** Technical developers building LLM applications
@@ -134,11 +141,36 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 - <1% error rate in production
 - All features documented
 
+## Testing Philosophy & Requirements
+
+### **CRITICAL TESTING RULES:**
+1. **Sprint Completion Rule**: A sprint is NEVER considered DONE unless ALL its tests are PASSING
+2. **Test Summary Required**: Always provide a test summary showing pass/fail rates before marking sprint complete
+3. **Focus on Core + New Features**: Prioritize testing core functionality and new sprint features
+4. **No Test Cheating**: 
+   - Fix actual bugs in code, don't just modify tests to pass
+   - If skipping tests, document WHY and get approval
+   - Be transparent about any test modifications
+
+### **Test Categories:**
+- **Core Tests** (MUST PASS): Evaluator, Results, Metrics, Storage
+- **Sprint Feature Tests** (MUST PASS): New features added in current sprint
+- **Integration Tests** (SHOULD PASS): End-to-end workflows
+- **Optional Tests** (CAN SKIP): PostgreSQL-specific, external dependencies
+
+### **Test Verification Before Sprint Completion:**
+```bash
+# Must run before marking any sprint as complete:
+python -m pytest tests/ --tb=short -q
+# Expected output: 100% pass rate for core and sprint features
+```
+
 ## Commands to Run
 ```bash
 # Development setup
 pip install -e .
 pip install -e ".[dev]"
+pip install psutil  # Required for performance tests
 
 # Run tests
 pytest tests/

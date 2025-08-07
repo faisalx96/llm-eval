@@ -46,3 +46,13 @@ def get_metric(name: str) -> Callable:
         f"Metric '{name}' not found. "
         f"Available metrics: {', '.join(sorted(available))}"
     )
+
+
+def list_metrics() -> list:
+    """
+    List all available metrics.
+    
+    Returns:
+        List of available metric names
+    """
+    return sorted(list(_custom_metrics.keys()) + list(builtin_metrics.keys()))

@@ -38,6 +38,10 @@ def contains_expected(output: Any, expected: Any) -> float:
     
     return 1.0 if expected_str in output_str else 0.0
 
+# Alias for backward compatibility
+contains = contains_expected
+contains_match = contains_expected
+
 
 def fuzzy_match(output: Any, expected: Any, threshold: float = 0.8) -> float:
     """

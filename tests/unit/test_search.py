@@ -511,8 +511,8 @@ class TestComplexQueries:
         # Should complete quickly (< 1 second for 1000 items)
         assert (end_time - start_time) < 1.0
         
-        # Should return correct number of matches (items 500-999)
-        assert result['total_matches'] == 500
+        # Should return correct number of matches (items 501-999, since 500/1000.0 = 0.5 is NOT > 0.5)
+        assert result['total_matches'] == 499
 
 
 if __name__ == "__main__":

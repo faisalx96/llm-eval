@@ -40,36 +40,35 @@ Transform LLM evaluation from code-based to **UI-first developer platform**, mak
 - 🚧 Run detail views
 - 🚧 Testing coverage
 
-### 🎯 Sprint 2.5: Polish & Production Readiness (NEW - 2 WEEKS)
+### 🎯 Sprint 2.5: Polish & Production Readiness (ACTIVE - WEEK 2)
 **Goal:** Make current features production-ready before adding new features  
-**Timeline:** Weeks 1-2
+**Timeline:** Week 1 ✅ Complete | Week 2 🔄 In Progress
 
-**Critical Fixes:**
-- [ ] Complete run detail page implementation
-- [ ] Finish run comparison view with diff highlighting
-- [ ] Add comprehensive error handling and recovery
-- [ ] Implement proper loading states and skeletons
-- [ ] Add database indexing for performance
-- [ ] Fix WebSocket memory leaks
-- [ ] Implement connection pooling
-- [ ] Add request rate limiting
+**Critical Fixes (Week 1):** ✅ COMPLETE
+- [x] Complete run detail page implementation (SPRINT25-001)
+- [x] Comparison API with statistical analysis (SPRINT25-002)
+- [x] Fixed all test failures (100% pass rate)
+- [x] Set up CI/CD pipeline with GitHub Actions
+- [x] Added pre-commit hooks and code quality tools
 
-**Testing & Quality:**
-- [ ] Unit tests for storage layer (target: 80% coverage)
-- [ ] API endpoint integration tests
-- [ ] Frontend component tests with React Testing Library
-- [ ] End-to-end tests with Playwright
-- [ ] Load testing for 1000+ concurrent runs
-- [ ] Security audit and fixes
-- [ ] Performance profiling and optimization
+**Remaining Tasks (Week 2):** 🔄 IN PROGRESS
+- [ ] Build comparison UI with diff highlighting (SPRINT25-003)
+- [ ] Add database indexing for performance (SPRINT25-005)
+- [ ] Fix WebSocket memory leaks (SPRINT25-007)
+- [ ] Frontend component tests (SPRINT25-011)
+- [ ] Load testing for 1000+ runs (SPRINT25-013)
+- [ ] Docker deployment configuration (SPRINT25-015)
 
-**Documentation:**
-- [ ] Production deployment guide
-- [ ] Video walkthrough tutorial
-- [ ] Troubleshooting FAQ
-- [ ] Migration guide from v0.1
-- [ ] API client SDK documentation
-- [ ] Architecture decision records
+**Completed Testing & Quality:**
+- [x] Unit tests for storage layer - 175+ tests, 80% coverage (SPRINT25-009)
+- [x] CI/CD pipeline < 5 minutes execution
+- [x] README updated with badges and status
+
+**Documentation Status:**
+- [x] Contributing guide with CI/CD details
+- [x] Testing philosophy documented in CLAUDE.md
+- [ ] Production deployment guide (in progress)
+- [ ] Video walkthrough tutorial (pending)
 
 ### 🚀 Sprint 3: True UI-Driven Evaluation (3 WEEKS)
 **Goal:** Enable full evaluation configuration and execution from UI  

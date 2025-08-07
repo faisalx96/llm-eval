@@ -4,7 +4,7 @@ This module defines the SQLAlchemy models for storing evaluation runs,
 results, and metadata to support the UI-first evaluation platform.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import json
 
@@ -12,7 +12,7 @@ from sqlalchemy import (
     Column, Integer, String, DateTime, Float, Boolean, Text, JSON,
     ForeignKey, Index, UniqueConstraint, CheckConstraint
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -54,7 +54,7 @@ class EvaluationRun(Base):
     metric_configs = Column(JSON, nullable=True, doc="Metric-specific configurations")
     
     # Timing information
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     started_at = Column(DateTime, nullable=True, doc="When evaluation actually started")
     completed_at = Column(DateTime, nullable=True, doc="When evaluation finished")
     duration_seconds = Column(Float, nullable=True, doc="Total evaluation duration")
@@ -275,7 +275,7 @@ class RunMetric(Base):
     percentiles = Column(JSON, nullable=True, doc="Common percentiles (25th, 75th, 95th, etc.)")
     
     # Metadata
-    computed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    computed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     run = relationship("EvaluationRun", back_populates="metrics")
@@ -340,7 +340,7 @@ class RunComparison(Base):
     
     # Comparison metadata
     comparison_type = Column(String(50), nullable=False, default="full", doc="Type of comparison performed")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     created_by = Column(String(255), nullable=True)
     
     # Comparison results
@@ -377,8 +377,8 @@ class Project(Base):
     # Project metadata
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Access control
     created_by = Column(String(255), nullable=True)

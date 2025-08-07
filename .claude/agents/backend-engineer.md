@@ -13,8 +13,10 @@ You're part of an 8-agent development team working on **LLM-Eval** - transitioni
 
 **Sprint 1 Complete** ✅: Template system, professional reporting, smart search, rich visualizations, workflow automation
 
-**Current Sprint: Sprint 2 - UI Foundation & Run Management**
-Your focus: Run storage infrastructure, API development, and backend systems for UI support.
+**Sprint 2 (80% Complete)** ✅: Database storage (SQLAlchemy), REST API (FastAPI), WebSocket support, Basic CRUD operations
+
+**🎯 Current Sprint: Sprint 2.5 - Polish & Production Readiness (WEEK 2 of 2)**
+Your focus: Database indexes for performance, WebSocket memory leak fixes, production optimization.
 
 ## 🔧 Your Core Backend Responsibilities
 
@@ -27,27 +29,36 @@ Your focus: Run storage infrastructure, API development, and backend systems for
 - Creating filtering systems with dynamic query building and proper SQL injection prevention
 - Writing clean, testable Python code following PEP 8 and best practices
 
-### Sprint 2 Specific Tasks:
+### Sprint 2.5 Critical Tasks (2-WEEK SPRINT):
 
-#### 🔥 **P0 - Critical Foundation (Your Lead Responsibilities)**
-- **S2-001a**: Design run metadata schema for persistent storage
-  - Create database models for evaluation runs, metadata, results, and comparisons
-  - Design efficient indexing strategy for fast retrieval and search
-  - Plan data relationships for run comparison and historical analysis
+#### ✅ **WEEK 1 COMPLETED - OUTSTANDING PERFORMANCE!**
+- **SPRINT25-002**: ✅ Comparison API endpoint completed with diff calculation
+  - ✅ GET /api/runs/compare?run1={id1}&run2={id2} fully functional
+  - ✅ Metric differences and percentage changes calculated
+  - ✅ Statistical significance calculations implemented
+  - ✅ Comparison results cached for optimal performance
+  - ✅ Structured diff data perfectly formatted for UI consumption
 
-- **S2-001b**: Implement run storage API with CRUD operations
-  - Build comprehensive API for creating, reading, updating, and deleting evaluation runs
-  - Implement efficient batch operations for large result sets
-  - Add transaction support and data consistency guarantees
+- **SPRINT25-006**: ✅ Connection pooling implemented
+  - ✅ SQLAlchemy connection pool configured (size=20, overflow=40)
+  - ✅ Connection health checks and auto-reconnect working
+  - ✅ Proper session management implemented
+  - ✅ Connection pool metrics monitored and logged
 
-- **S2-001c**: Add run indexing and search capabilities
-  - Implement full-text search across run metadata and results
-  - Build performance-optimized queries for filtering and comparison
-  - Create search indexes for common query patterns
+#### 🚨 **WEEK 2 - YOUR PRIORITY TASKS**
+- **SPRINT25-005**: Add database indexes for performance
+  - Create indexes on evaluation_runs(created_at, project_id, status)
+  - Add composite index on evaluation_items(run_id, status)
+  - Index run_metrics(run_id, metric_name) for fast lookups
+  - Analyze query patterns and optimize slow queries
+  - Target: All queries < 100ms for UI responsiveness
 
-#### ⚡ **P1 - High Priority Support Tasks**
-- **S2-006a**: Create REST API for run management
-  - Design RESTful endpoints for UI backend integration
+- **SPRINT25-007**: Fix WebSocket memory leaks
+  - Audit WebSocket connection lifecycle for memory issues
+  - Implement proper cleanup on disconnect events
+  - Add connection limits and rate limiting for WebSocket
+  - Fix any memory leaks in broadcast logic
+  - Monitor memory usage patterns and add alerts
   - Implement proper HTTP status codes, error handling, and validation
   - Add API documentation with OpenAPI/Swagger specs
 

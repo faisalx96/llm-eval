@@ -26,18 +26,18 @@ class SearchQueryParser:
         self.patterns = [
             # Failure patterns
             (re.compile(r'\b(failures?|failed|errors?)\b', re.I), self._parse_failures),
-            (re.compile(r'\b(success(?:ful)?|passed)\b', re.I), self._parse_successes),
+            (re.compile(r'\b(success(?:es|ful)?|passed)\b', re.I), self._parse_successes),
             
             # Performance patterns
             (re.compile(r'\b(slow|sluggish|timeout)\b.*?\b(responses?|evaluations?|items?)\b', re.I), self._parse_slow),
             (re.compile(r'\b(fast|quick|rapid)\b.*?\b(responses?|evaluations?|items?)\b', re.I), self._parse_fast),
             (re.compile(r'\btook\s+(more|less)\s+than\s+(\d+(?:\.\d+)?)\s*(seconds?|s|minutes?|m)\b', re.I), self._parse_time_threshold),
             
-            # Metric-specific patterns
-            (re.compile(r'\b(low|poor|bad)\b.*?\b(relevancy|relevance|accuracy|score)\b', re.I), self._parse_low_metrics),
-            (re.compile(r'\b(high|good|excellent)\b.*?\b(relevancy|relevance|accuracy|score)\b', re.I), self._parse_high_metrics),
-            (re.compile(r'\b(perfect|exact)\b.*?\b(match(?:es)?)\b', re.I), self._parse_perfect_matches),
-            (re.compile(r'\b(zero|no)\b.*?\b(match(?:es)?|score)\b', re.I), self._parse_zero_matches),
+            # Metric-specific patterns - more flexible matching
+            (re.compile(r'\b(low|poor|bad)\b.*?\b(relevancy|relevance|accuracy|scores?)\b', re.I), self._parse_low_metrics),
+            (re.compile(r'\b(high|good|excellent)\b.*?\b(relevancy|relevance|accuracy|scores?)\b', re.I), self._parse_high_metrics),
+            (re.compile(r'\b(perfect|exact)\b.*?\b(match(?:es)?|scores?)\b', re.I), self._parse_perfect_matches),
+            (re.compile(r'\b(zero|no)\b.*?\b(match(?:es)?|scores?)\b', re.I), self._parse_zero_matches),
             
             # Specific metric thresholds
             (re.compile(r'\b(\w+(?:_\w+)*)\s*([<>=!]+)\s*(\d+(?:\.\d+)?)\b', re.I), self._parse_metric_comparison),
@@ -125,7 +125,8 @@ class SearchQueryParser:
                 'matched_items': list(evaluation_result.results.keys()),
                 'matched_errors': list(evaluation_result.errors.keys()),
                 'total_matches': evaluation_result.total_items,
-                'query_info': parsed_query
+                'query_info': parsed_query,
+                'parsed': parsed_query['parsed']
             }
         
         matched_items = []
@@ -146,7 +147,8 @@ class SearchQueryParser:
             'matched_items': matched_items,
             'matched_errors': matched_errors,
             'total_matches': len(matched_items) + len(matched_errors),
-            'query_info': parsed_query
+            'query_info': parsed_query,
+            'parsed': parsed_query['parsed']
         }
     
     def _item_matches_filters(self, result: Dict[str, Any], filters: List[Dict[str, Any]], item_id: str) -> bool:
@@ -296,12 +298,18 @@ class SearchQueryParser:
     def _parse_low_metrics(self, query: str, pattern: re.Pattern, available_metrics: Optional[List[str]]) -> Optional[Dict[str, Any]]:
         """Parse low metric score queries."""
         # Extract metric type from query
-        metric_match = re.search(r'\b(relevancy|relevance|accuracy|score)\b', query, re.I)
+        metric_match = re.search(r'\b(relevancy|relevance|accuracy|scores?)\b', query, re.I)
         if not metric_match:
             return None
         
         metric_type = metric_match.group(1).lower()
-        metric_name = self._resolve_metric_name(metric_type, available_metrics)
+        
+        # Handle generic "scores" case - use first available metric as default
+        if metric_type in ('score', 'scores') and available_metrics:
+            metric_name = available_metrics[0]  # Use first available metric
+            metric_type = 'scores'
+        else:
+            metric_name = self._resolve_metric_name(metric_type, available_metrics)
         
         return {
             'type': 'metric_comparison',
@@ -313,12 +321,18 @@ class SearchQueryParser:
     
     def _parse_high_metrics(self, query: str, pattern: re.Pattern, available_metrics: Optional[List[str]]) -> Optional[Dict[str, Any]]:
         """Parse high metric score queries."""
-        metric_match = re.search(r'\b(relevancy|relevance|accuracy|score)\b', query, re.I)
+        metric_match = re.search(r'\b(relevancy|relevance|accuracy|scores?)\b', query, re.I)
         if not metric_match:
             return None
         
         metric_type = metric_match.group(1).lower()
-        metric_name = self._resolve_metric_name(metric_type, available_metrics)
+        
+        # Handle generic "scores" case - use first available metric as default
+        if metric_type in ('score', 'scores') and available_metrics:
+            metric_name = available_metrics[0]  # Use first available metric
+            metric_type = 'scores'
+        else:
+            metric_name = self._resolve_metric_name(metric_type, available_metrics)
         
         return {
             'type': 'metric_comparison',
@@ -330,7 +344,12 @@ class SearchQueryParser:
     
     def _parse_perfect_matches(self, query: str, pattern: re.Pattern, available_metrics: Optional[List[str]]) -> Dict[str, Any]:
         """Parse perfect/exact match queries."""
-        metric_name = self._resolve_metric_name('match', available_metrics)
+        # Check if query mentions "scores" specifically
+        if re.search(r'\bscores?\b', query, re.I):
+            # Use first available metric for perfect scores
+            metric_name = available_metrics[0] if available_metrics else 'exact_match'
+        else:
+            metric_name = self._resolve_metric_name('match', available_metrics)
         
         return {
             'type': 'metric_comparison',
@@ -342,7 +361,12 @@ class SearchQueryParser:
     
     def _parse_zero_matches(self, query: str, pattern: re.Pattern, available_metrics: Optional[List[str]]) -> Dict[str, Any]:
         """Parse zero match queries."""
-        metric_name = self._resolve_metric_name('match', available_metrics)
+        # Check if query mentions "scores" specifically
+        if re.search(r'\bscores?\b', query, re.I):
+            # Use first available metric for zero scores
+            metric_name = available_metrics[0] if available_metrics else 'exact_match'
+        else:
+            metric_name = self._resolve_metric_name('match', available_metrics)
         
         return {
             'type': 'metric_comparison',

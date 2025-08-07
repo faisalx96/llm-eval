@@ -13,8 +13,10 @@ You're part of an 8-agent development team working on **LLM-Eval** - transitioni
 
 **Sprint 1 Complete** ✅: Template system, professional reporting, smart search, rich visualizations, workflow automation
 
-**Current Sprint: Sprint 2 - UI Foundation & Run Management**
-Your focus: Developer-focused web UI, run browser components, and comparison interfaces.
+**Sprint 2 (80% Complete)** ✅: Database storage, REST API, Web dashboard, WebSocket support, Basic run listing
+
+**🎯 Current Sprint: Sprint 2.5 - Polish & Production Readiness (WEEK 2 of 2)**
+Your focus: Comparison UI implementation, frontend component testing, production polish.
 
 ## 🔧 Your Core Frontend Responsibilities
 
@@ -27,34 +29,30 @@ Your focus: Developer-focused web UI, run browser components, and comparison int
 - Ensuring cross-browser compatibility and mobile responsiveness
 - Optimizing frontend performance and user interactions
 
-### Sprint 2 Specific Tasks:
+### Sprint 2.5 Critical Tasks (2-WEEK SPRINT):
 
-#### 🔥 **P0 - Critical Foundation (Your Lead Responsibilities)**
-- **S2-002a**: Set up modern web framework (React/Next.js)
-  - Initialize Next.js project with TypeScript and modern tooling
-  - Configure build system, routing, and development environment
-  - Set up component library foundation and build processes
+#### ✅ **WEEK 1 COMPLETED - EXCELLENT WORK!**
+- **SPRINT25-001**: ✅ Run detail page implemented (/dashboard/runs/[id])
+  - ✅ Comprehensive run metadata display with status indicators
+  - ✅ Interactive metrics summary with Plotly charts
+  - ✅ Item-level results table with efficient pagination
+  - ✅ Score distributions and error analysis visualizations
+  - ✅ Loading states and error boundaries throughout
 
-- **S2-002b**: Create developer-focused UI design system
-  - Design component library optimized for technical users (not business/executive interfaces)
-  - Create dark/light themes with professional developer aesthetics
-  - Build reusable UI components for data display and interaction
+#### 🚨 **WEEK 2 - YOUR FOCUS TASKS**
+- **SPRINT25-003**: Build comparison UI with diff highlighting
+  - Create side-by-side comparison view for two runs
+  - Implement diff highlighting for metric changes (red/green indicators)
+  - Show statistical significance indicators and percentage changes
+  - Add export comparison results feature
+  - Build responsive comparison layout that works on mobile
 
-- **S2-002d**: Build responsive layout with sidebar navigation
-  - Create main application layout with navigation for run management
-  - Implement responsive design that works on various screen sizes
-  - Design intuitive navigation patterns for evaluation workflow
-
-#### ⚡ **P1 - High Priority Tasks**
-- **S2-005a**: Create run browser with search and filtering
-  - Build comprehensive run browser interface with search capabilities
-  - Implement advanced filtering UI for runs by date, metrics, status, etc.
-  - Create list/grid views with sorting and pagination
-
-- **S2-005c**: Implement error analysis and debugging views
-  - Design interfaces for analyzing failed evaluations and errors
-  - Create detailed result inspection views with drill-down capabilities
-  - Build debugging tools for developers to understand evaluation issues
+- **SPRINT25-011**: Frontend component tests (Supporting QA Engineer)
+  - Write React Testing Library tests for run detail components
+  - Test comparison UI interactions and diff highlighting
+  - Test error states, loading states, and user interactions
+  - Focus on critical user workflows and edge cases
+  - Target: 70% test coverage for your frontend components
 
 ## 💻 Technical Context
 

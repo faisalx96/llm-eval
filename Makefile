@@ -4,21 +4,61 @@
 
 # Default target
 help:
-	@echo "Available commands:"
-	@echo "  install         Install package for production"
-	@echo "  install-dev     Install package with development dependencies"
-	@echo "  test            Run all tests"
-	@echo "  test-unit       Run unit tests only"
-	@echo "  test-integration Run integration tests only"
-	@echo "  test-performance Run performance benchmarks"
-	@echo "  test-all        Run all tests with coverage"
-	@echo "  lint            Run code linting"
-	@echo "  format          Format code with black and isort"
-	@echo "  security        Run security checks"
-	@echo "  check-all       Run all quality checks"
-	@echo "  clean           Clean up temporary files"
-	@echo "  build           Build package distributions"
-	@echo "  docs            Generate documentation"
+	@echo "LLM-Eval Development Commands"
+	@echo "============================="
+	@echo ""
+	@echo "🚀 Quick Start:"
+	@echo "  setup-contributor       Set up development environment"
+	@echo "  test                     Run all tests"
+	@echo "  check-all               Run all quality checks"
+	@echo ""
+	@echo "📦 Installation:"
+	@echo "  install                 Install package for production"
+	@echo "  install-dev             Install with development dependencies"
+	@echo "  install-all             Install with all optional dependencies"
+	@echo ""
+	@echo "🧪 Testing:"
+	@echo "  test                    Run all tests"
+	@echo "  test-unit               Run unit tests only"
+	@echo "  test-integration        Run integration tests only"
+	@echo "  test-performance        Run performance benchmarks"
+	@echo "  test-all                Run all tests with coverage"
+	@echo "  test-parallel           Run tests in parallel"
+	@echo "  test-fast               Run tests with fail-fast"
+	@echo ""
+	@echo "🔍 Code Quality:"
+	@echo "  lint                    Run code linting"
+	@echo "  format                  Format code with black and isort"
+	@echo "  format-check            Check code formatting"
+	@echo "  security                Run security checks"
+	@echo "  check-all               Run all quality checks"
+	@echo ""
+	@echo "🔄 CI/CD Commands:"
+	@echo "  ci-quality-backend      Backend quality checks (CI equivalent)"
+	@echo "  ci-quality-frontend     Frontend quality checks (CI equivalent)"
+	@echo "  ci-test-backend         Backend tests (CI equivalent)"
+	@echo "  ci-test-frontend        Frontend tests (CI equivalent)"
+	@echo "  ci-integration          Integration tests (CI equivalent)"
+	@echo ""
+	@echo "🛠️ Development:"
+	@echo "  pre-commit              Run pre-commit checks"
+	@echo "  setup-precommit         Install pre-commit hooks"
+	@echo "  run-api                 Start the API server"
+	@echo "  run-frontend            Start the frontend dev server"
+	@echo "  run-all                 Start both API and frontend"
+	@echo ""
+	@echo "🏗️ Build & Release:"
+	@echo "  build                   Build package distributions"
+	@echo "  clean                   Clean up temporary files"
+	@echo "  check-release           Verify package ready for release"
+	@echo ""
+	@echo "🐳 Docker:"
+	@echo "  docker-build            Build Docker images"
+	@echo "  docker-test             Run tests in Docker"
+	@echo ""
+	@echo "ℹ️ Info:"
+	@echo "  env-info                Show environment information"
+	@echo "  docs                    Generate documentation"
 
 # Installation commands
 install:
@@ -172,10 +212,53 @@ env-info:
 	@echo "Current directory: $$(pwd)"
 	@python -c "import llm_eval; print(f'LLM-Eval version: {llm_eval.__version__ if hasattr(llm_eval, \"__version__\") else \"dev\"}')" 2>/dev/null || echo "LLM-Eval not installed"
 
+# CI/CD specific commands
+ci-install-backend:
+	pip install -e .[dev,all]
+
+ci-install-frontend:
+	cd frontend && npm ci
+
+ci-quality-backend: format-check lint
+	@echo "✅ Backend quality checks passed!"
+
+ci-quality-frontend:
+	cd frontend && npm run lint && npm run format:check && npm run type-check
+	@echo "✅ Frontend quality checks passed!"
+
+ci-test-backend: test-all
+	@echo "✅ Backend tests passed!"
+
+ci-test-frontend:
+	cd frontend && npm run build
+	@echo "✅ Frontend build passed!"
+
+ci-integration:
+	@echo "Running end-to-end integration tests..."
+	python -m llm_eval.api.main &
+	sleep 10
+	curl -f http://localhost:8000/health || exit 1
+	pkill -f "llm_eval.api.main" || true
+	@echo "✅ Integration tests passed!"
+
+# Pre-commit hooks setup
+setup-precommit:
+	@echo "Installing pre-commit hooks..."
+	pip install pre-commit
+	pre-commit install --install-hooks
+	@echo "✅ Pre-commit hooks installed!"
+
 # Quick setup for new contributors
-setup-contributor: install-dev install-hooks
+setup-contributor: install-dev setup-precommit
 	@echo "✅ Contributor environment setup complete!"
 	@echo "Next steps:"
 	@echo "  1. Run 'make test' to verify everything works"
 	@echo "  2. Run 'make check-all' to run full quality checks"
 	@echo "  3. Use 'make pre-commit' before committing changes"
+	@echo ""
+	@echo "CI/CD Commands:"
+	@echo "  make ci-quality-backend   - Backend quality checks (CI equivalent)"
+	@echo "  make ci-quality-frontend  - Frontend quality checks (CI equivalent)" 
+	@echo "  make ci-test-backend     - Backend tests (CI equivalent)"
+	@echo "  make ci-test-frontend    - Frontend tests (CI equivalent)"
+	@echo "  make ci-integration      - Integration tests (CI equivalent)"

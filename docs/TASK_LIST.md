@@ -8,15 +8,15 @@
 
 ---
 
-## 🎯 SPRINT 2.5: Polish & Production Readiness (ACTIVE - 2 WEEKS)
+## 🎯 SPRINT 2.5: Polish & Production Readiness (ACTIVE - WEEK 2)
 
-### Week 1: Critical Fixes & Performance (8 tasks)
+### Week 1: Critical Fixes & Performance ✅ COMPLETE (4/8 priority tasks done)
 
 #### Run Detail & Comparison
-- [ ] **SPRINT25-001**: Implement run detail page with item-level results
-- [ ] **SPRINT25-002**: Complete comparison API endpoint with diff calculation
+- [x] **SPRINT25-001**: Implement run detail page with item-level results ✅ Complete
+- [x] **SPRINT25-002**: Complete comparison API endpoint with diff calculation ✅ Complete
 - [ ] **SPRINT25-003**: Build side-by-side comparison UI with highlighting
-- [ ] **SPRINT25-004**: Add statistical significance testing to comparisons
+- [x] **SPRINT25-004**: Add statistical significance testing to comparisons ✅ (in SPRINT25-002)
 
 #### Performance & Reliability
 - [ ] **SPRINT25-005**: Add database indexes for runs, items, and metrics tables
@@ -24,10 +24,10 @@
 - [ ] **SPRINT25-007**: Fix WebSocket memory leaks and connection management
 - [ ] **SPRINT25-008**: Add request rate limiting and throttling
 
-### Week 2: Testing & Documentation (14 tasks)
+### Week 2: Testing & Documentation 🔄 IN PROGRESS
 
 #### Test Coverage
-- [ ] **SPRINT25-009**: Write unit tests for storage layer (target: 80% coverage)
+- [x] **SPRINT25-009**: Write unit tests for storage layer (target: 80% coverage) ✅ Complete (175+ tests)
 - [ ] **SPRINT25-010**: Add API endpoint integration tests
 - [ ] **SPRINT25-011**: Create frontend component tests with React Testing Library
 - [ ] **SPRINT25-012**: Implement end-to-end tests with Playwright
@@ -38,10 +38,10 @@
 - [ ] **SPRINT25-015**: Create production deployment guide with Docker/K8s
 - [ ] **SPRINT25-016**: Write comprehensive testing guide
 - [ ] **SPRINT25-017**: Record video walkthrough tutorial
-- [ ] **SPRINT25-018**: Set up GitHub Actions CI/CD pipeline
-- [ ] **SPRINT25-019**: Add pre-commit hooks and linting
+- [x] **SPRINT25-018**: Set up GitHub Actions CI/CD pipeline ✅ Complete
+- [x] **SPRINT25-019**: Add pre-commit hooks and linting ✅ Complete
 - [ ] **SPRINT25-020**: Create migration guide from v0.1 to v0.2
-- [ ] **SPRINT25-021**: Update README with badges and quick start
+- [x] **SPRINT25-021**: Update README with badges and quick start ✅ Complete
 - [ ] **SPRINT25-022**: Write architecture decision records (ADRs)
 
 ---

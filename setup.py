@@ -49,6 +49,7 @@ setup(
             "black>=22.0.0",
             "isort>=5.10.0",
             "mypy>=1.0.0",
+            "psutil>=5.9.0",
             "flake8>=6.0.0",
             "bandit>=1.7.5",
             "safety>=2.3.0",

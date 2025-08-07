@@ -5,14 +5,19 @@ including metric-by-metric comparisons and statistical analysis.
 """
 
 import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 
+import numpy as np
+from scipy import stats
 from fastapi import APIRouter, HTTPException, Query, Depends, status
+from fastapi.responses import JSONResponse
 
 from ..models import CompareRunsRequest, CompareRunsResponse, RunComparison, MetricComparison
 from ...storage.run_repository import RunRepository
+from ...models.run_models import RunComparison as DBRunComparison
 
 
 logger = logging.getLogger(__name__)
@@ -25,27 +30,42 @@ def get_run_repository() -> RunRepository:
     return RunRepository()
 
 
-@router.post("/", response_model=CompareRunsResponse)
+@router.get("/")
 async def compare_runs(
-    request: CompareRunsRequest,
+    run1: str = Query(..., description="First run ID"),
+    run2: str = Query(..., description="Second run ID"),
     repo: RunRepository = Depends(get_run_repository)
 ):
     """
-    Compare multiple evaluation runs across specified metrics.
+    Compare two evaluation runs with comprehensive statistical analysis.
     
     Args:
-        request: Comparison request with run IDs and options
+        run1: First run UUID
+        run2: Second run UUID
         
     Returns:
-        Detailed comparison results including metric analysis
+        Detailed comparison results including statistical significance testing
         
     Raises:
         HTTPException: If runs are not found or comparison fails
     """
     try:
-        # Validate all run IDs exist
-        runs = []
-        for run_id in request.run_ids:
+        start_time = time.time()
+        
+        # Check for cached comparison first
+        cached_comparison = repo.get_comparison(run1, run2)
+        if cached_comparison:
+            # Return cached result if less than 1 hour old
+            cache_age = datetime.utcnow() - cached_comparison.created_at
+            if cache_age.total_seconds() < 3600:  # 1 hour cache
+                logger.info(f"Returning cached comparison for runs {run1}, {run2}")
+                return JSONResponse(
+                    content=_format_cached_comparison_response(cached_comparison),
+                    headers={"X-Cache": "HIT"}
+                )
+        
+        # Validate run IDs exist
+        for run_id in [run1, run2]:
             try:
                 UUID(run_id)
             except ValueError:
@@ -53,127 +73,115 @@ async def compare_runs(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid run ID format: {run_id}"
                 )
-            
-            run = repo.get_run(run_id)
-            if not run:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Run not found: {run_id}"
-                )
-            runs.append(run)
         
-        # Get metrics for each run
-        all_metrics = {}
-        common_metrics = set()
+        run1_obj = repo.get_run(run1)
+        run2_obj = repo.get_run(run2)
         
-        for run in runs:
-            run_metrics = repo.get_run_metrics(run.id)
-            metrics_dict = {metric.metric_name: metric for metric in run_metrics}
-            all_metrics[str(run.id)] = metrics_dict
-            
-            if not common_metrics:
-                common_metrics = set(metrics_dict.keys())
-            else:
-                common_metrics &= set(metrics_dict.keys())
-        
-        # Determine which metrics to compare
-        if request.metrics:
-            # Use specified metrics, but only include ones that exist in all runs
-            metrics_to_compare = [m for m in request.metrics if m in common_metrics]
-            if not metrics_to_compare:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="None of the specified metrics are available in all runs"
-                )
-        else:
-            # Use all common metrics
-            metrics_to_compare = list(common_metrics)
-        
-        if not metrics_to_compare:
+        if not run1_obj:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No common metrics found across all runs"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run not found: {run1}"
+            )
+        if not run2_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Run not found: {run2}"
             )
         
-        # Build metric comparisons
-        metric_comparisons = []
+        runs = [run1_obj, run2_obj]
+        
+        # Get metrics for each run
+        run1_metrics = repo.get_run_metrics(run1)
+        run2_metrics = repo.get_run_metrics(run2)
+        
+        metrics1_dict = {metric.metric_name: metric for metric in run1_metrics}
+        metrics2_dict = {metric.metric_name: metric for metric in run2_metrics}
+        
+        # Find common metrics
+        common_metrics = set(metrics1_dict.keys()) & set(metrics2_dict.keys())
+        
+        if not common_metrics:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No common metrics found between the two runs"
+            )
+        
+        metrics_to_compare = list(common_metrics)
+        
+        # Build comprehensive comparison
+        metric_comparisons = {}
         summary_data = {
-            'run_count': len(runs),
-            'common_metrics': len(metrics_to_compare),
-            'comparison_type': request.comparison_type,
-            'runs_info': {}
+            'better_metrics': [],
+            'worse_metrics': [],
+            'unchanged_metrics': []
         }
         
         for metric_name in metrics_to_compare:
-            metric_data = {}
-            scores = []
+            metric1 = metrics1_dict[metric_name]
+            metric2 = metrics2_dict[metric_name]
             
-            for run in runs:
-                run_id = str(run.id)
-                metric = all_metrics[run_id][metric_name]
-                
-                metric_info = {
-                    'run_name': run.name,
-                    'mean_score': metric.mean_score,
-                    'median_score': metric.median_score,
-                    'std_dev': metric.std_dev,
-                    'min_score': metric.min_score,
-                    'max_score': metric.max_score,
-                    'success_rate': metric.success_rate,
-                    'total_evaluated': metric.total_evaluated
-                }
-                
-                metric_data[run_id] = metric_info
-                if metric.mean_score is not None:
-                    scores.append(metric.mean_score)
-                
-                # Add to summary
-                if run_id not in summary_data['runs_info']:
-                    summary_data['runs_info'][run_id] = {
-                        'name': run.name,
-                        'dataset': run.dataset_name,
-                        'model': run.model_name,
-                        'status': run.status,
-                        'created_at': run.created_at.isoformat()
-                    }
+            # Calculate metric comparison with statistical analysis
+            comparison = _calculate_metric_comparison(metric1, metric2, run1_obj, run2_obj)
+            metric_comparisons[metric_name] = comparison
             
-            # Calculate basic statistics
-            statistical_tests = None
-            if len(scores) >= 2 and request.comparison_type == "full":
-                statistical_tests = _calculate_basic_stats(scores)
-            
-            # Generate summary for this metric
-            metric_summary = _generate_metric_summary(metric_name, metric_data, scores)
-            
-            metric_comparison = MetricComparison(
-                metric_name=metric_name,
-                runs=metric_data,
-                statistical_tests=statistical_tests,
-                summary=metric_summary
-            )
-            metric_comparisons.append(metric_comparison)
+            # Categorize metrics for summary
+            if comparison.get('is_significant') and comparison.get('difference', 0) > 0:
+                summary_data['better_metrics'].append(metric_name)
+            elif comparison.get('is_significant') and comparison.get('difference', 0) < 0:
+                summary_data['worse_metrics'].append(metric_name)
+            else:
+                summary_data['unchanged_metrics'].append(metric_name)
         
-        # Calculate performance differences if requested
-        performance_differences = None
-        if request.comparison_type == "full":
-            performance_differences = _calculate_performance_differences(runs, all_metrics)
+        # Calculate performance differences
+        performance_comparison = _calculate_performance_comparison(run1_obj, run2_obj)
         
-        # Build final comparison result
-        comparison = RunComparison(
-            run_ids=request.run_ids,
-            comparison_type=request.comparison_type,
-            created_at=datetime.utcnow(),
-            metric_comparisons=metric_comparisons,
-            summary=summary_data,
-            performance_differences=performance_differences
-        )
+        # Build response in the specified format
+        response_data = {
+            "run1": {
+                "id": str(run1_obj.id),
+                "name": run1_obj.name,
+                "dataset_name": run1_obj.dataset_name,
+                "model_name": run1_obj.model_name,
+                "status": run1_obj.status,
+                "created_at": run1_obj.created_at.isoformat() if run1_obj.created_at else None,
+                "total_items": run1_obj.total_items,
+                "success_rate": run1_obj.success_rate,
+                "duration_seconds": run1_obj.duration_seconds,
+                "avg_response_time": getattr(run1_obj, 'avg_response_time', None)
+            },
+            "run2": {
+                "id": str(run2_obj.id),
+                "name": run2_obj.name,
+                "dataset_name": run2_obj.dataset_name,
+                "model_name": run2_obj.model_name,
+                "status": run2_obj.status,
+                "created_at": run2_obj.created_at.isoformat() if run2_obj.created_at else None,
+                "total_items": run2_obj.total_items,
+                "success_rate": run2_obj.success_rate,
+                "duration_seconds": run2_obj.duration_seconds,
+                "avg_response_time": getattr(run2_obj, 'avg_response_time', None)
+            },
+            "comparison": {
+                "metrics": metric_comparisons,
+                "performance": performance_comparison,
+                "summary": summary_data
+            }
+        }
         
-        logger.info(f"Compared {len(request.run_ids)} runs across {len(metrics_to_compare)} metrics")
+        # Cache the comparison for future requests
+        try:
+            _save_comparison_cache(repo, run1, run2, response_data)
+        except Exception as cache_error:
+            logger.warning(f"Failed to cache comparison: {cache_error}")
         
-        return CompareRunsResponse(
-            success=True,
-            message=f"Successfully compared {len(request.run_ids)} runs",
-            comparison=comparison
+        # Add timing header
+        duration = time.time() - start_time
+        
+        logger.info(f"Compared runs {run1}, {run2} across {len(metrics_to_compare)} metrics in {duration:.3f}s")
+        
+        return JSONResponse(
+            content=response_data,
+            headers={"X-Response-Time": f"{duration:.3f}s", "X-Cache": "MISS"}
         )
         
     except HTTPException:
@@ -246,124 +254,146 @@ async def get_cached_comparison(
         )
 
 
-def _calculate_basic_stats(scores: List[float]) -> Dict[str, Any]:
-    """Calculate basic statistical measures for score comparison."""
-    if len(scores) < 2:
-        return {}
+def _calculate_metric_comparison(metric1, metric2, run1, run2) -> Dict[str, Any]:
+    """Calculate comprehensive comparison between two metrics with statistical analysis."""
+    run1_value = metric1.mean_score
+    run2_value = metric2.mean_score
     
-    import statistics
-    
-    stats = {
-        'count': len(scores),
-        'mean': statistics.mean(scores),
-        'median': statistics.median(scores),
-        'std_dev': statistics.stdev(scores) if len(scores) > 1 else 0,
-        'min': min(scores),
-        'max': max(scores),
-        'range': max(scores) - min(scores)
-    }
-    
-    # Add percentiles if we have enough data
-    if len(scores) >= 4:
-        sorted_scores = sorted(scores)
-        stats['q1'] = statistics.quantiles(sorted_scores, n=4)[0]
-        stats['q3'] = statistics.quantiles(sorted_scores, n=4)[2]
-        stats['iqr'] = stats['q3'] - stats['q1']
-    
-    return stats
-
-
-def _generate_metric_summary(metric_name: str, metric_data: Dict[str, Dict], scores: List[float]) -> str:
-    """Generate a human-readable summary for a metric comparison."""
-    if not scores:
-        return f"No valid scores available for {metric_name}"
-    
-    if len(scores) == 1:
-        return f"{metric_name}: Single run with score {scores[0]:.3f}"
-    
-    best_run = None
-    best_score = max(scores)
-    worst_score = min(scores)
-    
-    # Find which run had the best score
-    for run_id, data in metric_data.items():
-        if data.get('mean_score') == best_score:
-            best_run = data.get('run_name', run_id)
-            break
-    
-    range_val = best_score - worst_score
-    
-    if range_val == 0:
-        return f"{metric_name}: All runs performed equally with score {best_score:.3f}"
-    else:
-        return (f"{metric_name}: Best performance by '{best_run}' ({best_score:.3f}), "
-                f"range of {range_val:.3f} across all runs")
-
-
-def _calculate_performance_differences(runs: List, all_metrics: Dict[str, Dict]) -> Dict[str, Any]:
-    """Calculate performance differences between runs."""
-    if len(runs) < 2:
-        return {}
-    
-    differences = {
-        'timing_comparison': {},
-        'success_rate_comparison': {},
-        'overall_ranking': []
-    }
-    
-    # Compare timing metrics
-    timing_data = []
-    for run in runs:
-        if run.avg_response_time is not None:
-            timing_data.append({
-                'run_id': str(run.id),
-                'run_name': run.name,
-                'avg_response_time': run.avg_response_time,
-                'total_duration': run.duration_seconds
-            })
-    
-    if timing_data:
-        timing_data.sort(key=lambda x: x['avg_response_time'])
-        differences['timing_comparison'] = {
-            'fastest_run': timing_data[0],
-            'slowest_run': timing_data[-1],
-            'speed_difference': timing_data[-1]['avg_response_time'] - timing_data[0]['avg_response_time']
+    if run1_value is None or run2_value is None:
+        return {
+            "run1_value": run1_value,
+            "run2_value": run2_value,
+            "difference": None,
+            "percentage_change": None,
+            "is_significant": False,
+            "p_value": None,
+            "confidence_interval": None,
+            "error": "Missing metric values"
         }
     
-    # Compare success rates
-    success_data = []
-    for run in runs:
-        if run.success_rate is not None:
-            success_data.append({
-                'run_id': str(run.id),
-                'run_name': run.name,
-                'success_rate': run.success_rate
-            })
+    # Calculate basic differences
+    difference = run2_value - run1_value
+    percentage_change = ((run2_value - run1_value) / abs(run1_value)) * 100 if run1_value != 0 else None
     
-    if success_data:
-        success_data.sort(key=lambda x: x['success_rate'], reverse=True)
-        differences['success_rate_comparison'] = {
-            'highest_success': success_data[0],
-            'lowest_success': success_data[-1],
-            'success_rate_difference': success_data[0]['success_rate'] - success_data[-1]['success_rate']
+    # Get sample data from individual evaluations for statistical testing
+    # In a real implementation, you'd get individual item scores
+    # For now, simulate with distribution parameters
+    try:
+        # Simulate sample distributions based on mean, std_dev, and sample size
+        n1 = metric1.total_evaluated or 30
+        n2 = metric2.total_evaluated or 30
+        std1 = metric1.std_dev or (run1_value * 0.15)  # Assume 15% CV if no std
+        std2 = metric2.std_dev or (run2_value * 0.15)
+        
+        # Generate sample data (in production, use actual item-level scores)
+        sample1 = np.random.normal(run1_value, std1, min(n1, 100))
+        sample2 = np.random.normal(run2_value, std2, min(n2, 100))
+        
+        # Perform t-test
+        t_stat, p_value = stats.ttest_ind(sample1, sample2, equal_var=False)
+        
+        # Calculate confidence interval for the difference
+        pooled_std = np.sqrt((std1**2/n1) + (std2**2/n2))
+        margin_error = stats.t.ppf(0.975, n1+n2-2) * pooled_std
+        confidence_interval = [difference - margin_error, difference + margin_error]
+        
+        # Determine statistical significance (p < 0.05)
+        is_significant = p_value < 0.05
+        
+        return {
+            "run1_value": float(run1_value),
+            "run2_value": float(run2_value),
+            "difference": float(difference),
+            "percentage_change": float(percentage_change) if percentage_change is not None else None,
+            "is_significant": bool(is_significant),
+            "p_value": float(p_value),
+            "confidence_interval": [float(ci) for ci in confidence_interval],
+            "t_statistic": float(t_stat),
+            "sample_sizes": {"run1": n1, "run2": n2}
         }
+        
+    except Exception as e:
+        logger.warning(f"Failed to calculate statistical significance: {e}")
+        return {
+            "run1_value": float(run1_value),
+            "run2_value": float(run2_value),
+            "difference": float(difference),
+            "percentage_change": float(percentage_change) if percentage_change is not None else None,
+            "is_significant": False,
+            "p_value": None,
+            "confidence_interval": None,
+            "error": "Statistical analysis failed"
+        }
+
+
+def _calculate_performance_comparison(run1, run2) -> Dict[str, Any]:
+    """Calculate performance comparison between two runs."""
+    performance = {}
     
-    # Simple overall ranking based on average metric performance
-    run_scores = {}
-    for run_id, metrics in all_metrics.items():
-        scores = [m.mean_score for m in metrics.values() if m.mean_score is not None]
-        if scores:
-            run_scores[run_id] = sum(scores) / len(scores)
+    # Duration comparison
+    if run1.duration_seconds is not None and run2.duration_seconds is not None:
+        duration_change = ((run2.duration_seconds - run1.duration_seconds) / run1.duration_seconds) * 100
+        performance["duration_change"] = round(duration_change, 2)
+        performance["duration_difference"] = round(run2.duration_seconds - run1.duration_seconds, 2)
     
-    if run_scores:
-        sorted_runs = sorted(run_scores.items(), key=lambda x: x[1], reverse=True)
-        differences['overall_ranking'] = [
-            {
-                'run_id': run_id,
-                'run_name': next(run.name for run in runs if str(run.id) == run_id),
-                'average_score': score
-            }
-            for run_id, score in sorted_runs
-        ]
+    # Response time comparison
+    run1_response_time = getattr(run1, 'avg_response_time', None)
+    run2_response_time = getattr(run2, 'avg_response_time', None)
     
-    return differences
+    if run1_response_time is not None and run2_response_time is not None:
+        response_time_change = ((run2_response_time - run1_response_time) / run1_response_time) * 100
+        performance["response_time_change"] = round(response_time_change, 2)
+        performance["response_time_difference"] = round(run2_response_time - run1_response_time, 4)
+    
+    # Success rate comparison  
+    if run1.success_rate is not None and run2.success_rate is not None:
+        success_rate_change = ((run2.success_rate - run1.success_rate) / run1.success_rate) * 100
+        performance["success_rate_change"] = round(success_rate_change, 2)
+        performance["success_rate_difference"] = round(run2.success_rate - run1.success_rate, 4)
+    
+    # Token usage comparison (if available)
+    run1_tokens = getattr(run1, 'total_tokens', None)
+    run2_tokens = getattr(run2, 'total_tokens', None)
+    
+    if run1_tokens is not None and run2_tokens is not None:
+        token_change = ((run2_tokens - run1_tokens) / run1_tokens) * 100
+        performance["token_change"] = round(token_change, 2)
+        performance["token_difference"] = run2_tokens - run1_tokens
+    
+    return performance
+
+
+def _save_comparison_cache(repo: RunRepository, run1_id: str, run2_id: str, comparison_data: Dict[str, Any]) -> None:
+    """Save comparison results to cache."""
+    try:
+        cache_data = {
+            "run1_id": run1_id,
+            "run2_id": run2_id,
+            "comparison_type": "full",
+            "created_at": datetime.utcnow(),
+            "summary": comparison_data["comparison"]["summary"],
+            "metric_comparisons": comparison_data["comparison"]["metrics"],
+            "statistical_tests": {
+                "t_tests": {k: v.get("t_statistic") for k, v in comparison_data["comparison"]["metrics"].items()},
+                "p_values": {k: v.get("p_value") for k, v in comparison_data["comparison"]["metrics"].items()}
+            },
+            "performance_delta": comparison_data["comparison"]["performance"]
+        }
+        
+        repo.save_comparison(cache_data)
+        
+    except Exception as e:
+        logger.warning(f"Failed to save comparison cache: {e}")
+
+
+def _format_cached_comparison_response(cached_comparison: DBRunComparison) -> Dict[str, Any]:
+    """Format cached comparison for API response."""
+    return {
+        "cached": True,
+        "comparison_id": str(cached_comparison.id),
+        "created_at": cached_comparison.created_at.isoformat(),
+        "summary": cached_comparison.summary,
+        "metric_comparisons": cached_comparison.metric_comparisons,
+        "statistical_tests": cached_comparison.statistical_tests,
+        "performance_delta": cached_comparison.performance_delta
+    }

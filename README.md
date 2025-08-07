@@ -1,8 +1,12 @@
 # LLM-Eval: UI-First Evaluation Platform
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![CI/CD Pipeline](https://github.com/faisalx96/llm-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/ci.yml)
+[![Security Analysis](https://github.com/faisalx96/llm-eval/actions/workflows/codeql.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/codeql.yml)
+[![Deployment](https://github.com/faisalx96/llm-eval/actions/workflows/deploy.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/deploy.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Codecov](https://codecov.io/gh/faisalx96/llm-eval/branch/main/graph/badge.svg)](https://codecov.io/gh/faisalx96/llm-eval)
 
 Transform from code-based to UI-first LLM evaluation! Built on [Langfuse](https://langfuse.com) with a powerful web dashboard for managing and analyzing evaluation runs.
 

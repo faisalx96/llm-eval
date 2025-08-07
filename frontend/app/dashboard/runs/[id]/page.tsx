@@ -11,6 +11,10 @@ import { Loading } from '@/components/ui/loading';
 import { Container } from '@/components/layout/container';
 import { useRunDetail, useWebSocket } from '@/hooks';
 import { RunStatus } from '@/types';
+import { RunItemsTable } from '@/components/ui/run-items-table';
+import { MetricChart } from '@/components/ui/metric-chart';
+import { RunDetailSkeleton, MetricsSkeleton, RunItemsTableSkeleton } from '@/components/ui/skeleton';
+import { ErrorBoundary, ChartErrorBoundary, TableErrorBoundary } from '@/components/ui/error-boundary';
 
 const RunDetailPage: React.FC = () => {
   const params = useParams();
@@ -21,9 +25,11 @@ const RunDetailPage: React.FC = () => {
   const { 
     run, 
     metrics, 
+    items,
     loading, 
     error, 
     refetch, 
+    fetchItems,
     exportRun, 
     clearError 
   } = useRunDetail(runId);
@@ -41,7 +47,23 @@ const RunDetailPage: React.FC = () => {
     }
   }, [lastMessage, runId, refetch]);
 
-  const getStatusBadge = (status: RunStatus) => {
+  // Memoized computed values for performance
+  const progressPercentage = React.useMemo(() => {
+    if (!run || run.total_items === 0) return 0;
+    return Math.round((run.processed_items / run.total_items) * 100);
+  }, [run?.processed_items, run?.total_items]);
+
+  const metricsChartData = React.useMemo(() => {
+    if (!metrics?.metric_details) return [];
+    return Object.entries(metrics.metric_details).map(([metric, details]) => ({
+      metric,
+      score: details.score,
+      passed: details.passed_items,
+      failed: details.failed_items,
+    }));
+  }, [metrics?.metric_details]);
+
+  const getStatusBadge = React.useCallback((status: RunStatus) => {
     switch (status) {
       case 'completed':
         return <Badge variant="success" size="md">Completed</Badge>;
@@ -56,13 +78,13 @@ const RunDetailPage: React.FC = () => {
       default:
         return <Badge variant="secondary" size="md">Unknown</Badge>;
     }
-  };
+  }, []);
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTimestamp = React.useCallback((timestamp: string) => {
     return new Date(timestamp).toLocaleString();
-  };
+  }, []);
 
-  const formatDuration = (seconds?: number) => {
+  const formatDuration = React.useCallback((seconds?: number) => {
     if (!seconds) return 'N/A';
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -72,25 +94,17 @@ const RunDetailPage: React.FC = () => {
       return `${hours}h ${remainingMins}m ${secs}s`;
     }
     return `${mins}m ${secs}s`;
-  };
-
-  const getProgressPercentage = () => {
-    if (!run || run.total_items === 0) return 0;
-    return Math.round((run.processed_items / run.total_items) * 100);
-  };
+  }, []);
 
   const handleExport = async (format: 'excel' | 'json' | 'csv') => {
     await exportRun(format);
   };
 
-  if (loading) {
+  if (loading && !run) {
     return (
       <div className="flex-1 overflow-auto">
         <Container className="py-8">
-          <div className="text-center">
-            <Loading size="lg" />
-            <p className="text-neutral-600 dark:text-neutral-300 mt-4">Loading run details...</p>
-          </div>
+          <RunDetailSkeleton />
         </Container>
       </div>
     );
@@ -253,7 +267,9 @@ const RunDetailPage: React.FC = () => {
       case 'metrics':
         return (
           <div className="space-y-6">
-            {metrics ? (
+            {loading && !metrics ? (
+              <MetricsSkeleton />
+            ) : metrics ? (
               <>
                 {/* Overall Scores */}
                 <div>
@@ -279,6 +295,20 @@ const RunDetailPage: React.FC = () => {
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
                     Detailed Metrics
                   </h3>
+                  
+                  {/* Visual Chart */}
+                  <div className="mb-6">
+                    <h4 className="text-md font-medium text-neutral-900 dark:text-white mb-3">
+                      Score Distribution
+                    </h4>
+                    <ChartErrorBoundary>
+                      <MetricChart
+                        data={metricsChartData}
+                      />
+                    </ChartErrorBoundary>
+                  </div>
+
+                  {/* Detailed Table */}
                   <div className="space-y-4">
                     {Object.entries(metrics.metric_details).map(([metric, details]) => (
                       <div key={metric} className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-4">
@@ -437,6 +467,28 @@ const RunDetailPage: React.FC = () => {
           </div>
         );
       
+      case 'items':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
+                Evaluation Items
+              </h3>
+              {loading && !items ? (
+                <RunItemsTableSkeleton />
+              ) : (
+                <TableErrorBoundary>
+                  <RunItemsTable
+                    items={items}
+                    loading={loading}
+                    onFetchItems={fetchItems}
+                  />
+                </TableErrorBoundary>
+              )}
+            </div>
+          </div>
+        );
+      
       case 'configuration':
         return (
           <div className="space-y-6">
@@ -474,129 +526,132 @@ const RunDetailPage: React.FC = () => {
   const tabItems = [
     { id: 'overview', label: 'Overview', content: getTabContent('overview') },
     { id: 'metrics', label: 'Metrics', content: getTabContent('metrics') },
+    { id: 'items', label: 'Items', content: getTabContent('items') },
     { id: 'errors', label: 'Errors', content: getTabContent('errors') },
     { id: 'configuration', label: 'Configuration', content: getTabContent('configuration') },
   ];
 
   return (
-    <div className="flex-1 overflow-auto">
-      <Container className="py-8 space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-2">
-              <Link 
-                href="/dashboard" 
-                className="text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <h1 className="text-3xl font-bold text-neutral-900 dark:text-white truncate">
-                {run.name}
-              </h1>
-              {getStatusBadge(run.status)}
-            </div>
-            
-            {run.description && (
-              <p className="text-neutral-600 dark:text-neutral-300">
-                {run.description}
-              </p>
-            )}
-            
-            <div className="flex items-center gap-4 mt-3 text-sm text-neutral-500 dark:text-neutral-400">
-              <span>Created: {formatTimestamp(run.created_at)}</span>
-              {run.duration_seconds && (
-                <>
-                  <span>•</span>
-                  <span>Duration: {formatDuration(run.duration_seconds)}</span>
-                </>
-              )}
-              {run.template_name && (
-                <>
-                  <span>•</span>
-                  <span>Template: {run.template_name}</span>
-                </>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3">
-            {run.langfuse_session_id && (
-              <a 
-                href={`https://cloud.langfuse.com/project/sessions/${run.langfuse_session_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button variant="outline" size="md" className="w-full sm:w-auto">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    <ErrorBoundary>
+      <div className="flex-1 overflow-auto">
+        <Container className="py-8 space-y-8">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-2">
+                <Link 
+                  href="/dashboard" 
+                  className="text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
-                  View in Langfuse
-                </Button>
-              </a>
-            )}
+                </Link>
+                <h1 className="text-3xl font-bold text-neutral-900 dark:text-white truncate">
+                  {run.name}
+                </h1>
+                {getStatusBadge(run.status)}
+              </div>
+              
+              {run.description && (
+                <p className="text-neutral-600 dark:text-neutral-300">
+                  {run.description}
+                </p>
+              )}
+              
+              <div className="flex items-center gap-4 mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+                <span>Created: {formatTimestamp(run.created_at)}</span>
+                {run.duration_seconds && (
+                  <>
+                    <span>•</span>
+                    <span>Duration: {formatDuration(run.duration_seconds)}</span>
+                  </>
+                )}
+                {run.template_name && (
+                  <>
+                    <span>•</span>
+                    <span>Template: {run.template_name}</span>
+                  </>
+                )}
+              </div>
+            </div>
             
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="md"
-                onClick={() => handleExport('excel')}
-                disabled={run.status !== 'completed'}
-              >
-                Export Excel
-              </Button>
-              <Button 
-                variant="outline" 
-                size="md"
-                onClick={() => handleExport('json')}
-                disabled={run.status !== 'completed'}
-              >
-                Export JSON
-              </Button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              {run.langfuse_session_id && (
+                <a 
+                  href={`https://cloud.langfuse.com/project/sessions/${run.langfuse_session_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" size="md" className="w-full sm:w-auto">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    View in Langfuse
+                  </Button>
+                </a>
+              )}
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="md"
+                  onClick={() => handleExport('excel')}
+                  disabled={run.status !== 'completed' || loading}
+                >
+                  Export Excel
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="md"
+                  onClick={() => handleExport('json')}
+                  disabled={run.status !== 'completed' || loading}
+                >
+                  Export JSON
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Progress Bar (for running evaluations) */}
-        {run.status === 'running' && (
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
-                Evaluation Progress
-              </h3>
-              <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                {run.processed_items} / {run.total_items} items processed
-              </span>
-            </div>
-            <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3">
-              <div 
-                className="bg-warning-500 h-3 rounded-full transition-all duration-1000 ease-out"
-                style={{ width: `${getProgressPercentage()}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-              <span>{getProgressPercentage()}% complete</span>
-              {run.failed_items > 0 && (
-                <span className="text-destructive-600 dark:text-destructive-400">
-                  {run.failed_items} failed
+          {/* Progress Bar (for running evaluations) */}
+          {run.status === 'running' && (
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
+                  Evaluation Progress
+                </h3>
+                <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                  {run.processed_items} / {run.total_items} items processed
                 </span>
-              )}
-            </div>
-          </Card>
-        )}
+              </div>
+              <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3">
+                <div 
+                  className="bg-warning-500 h-3 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${progressPercentage}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mt-2">
+                <span>{progressPercentage}% complete</span>
+                {run.failed_items > 0 && (
+                  <span className="text-destructive-600 dark:text-destructive-400">
+                    {run.failed_items} failed
+                  </span>
+                )}
+              </div>
+            </Card>
+          )}
 
-        {/* Main Content Tabs */}
-        <Card>
-          <Tabs
-            items={tabItems}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-          />
-        </Card>
-      </Container>
-    </div>
+          {/* Main Content Tabs */}
+          <Card>
+            <Tabs
+              items={tabItems}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
+          </Card>
+        </Container>
+      </div>
+    </ErrorBoundary>
   );
 };
 

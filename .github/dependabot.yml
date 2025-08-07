@@ -1,0 +1,155 @@
+version: 2
+
+updates:
+  # Python dependencies (backend)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "faisalx96"
+    assignees:
+      - "faisalx96"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Group development dependencies together
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "pytest*"
+          - "black"
+          - "isort"
+          - "mypy"
+          - "flake8*"
+          - "bandit"
+          - "safety"
+          - "coverage"
+      
+      # Group FastAPI related updates
+      fastapi-ecosystem:
+        patterns:
+          - "fastapi"
+          - "uvicorn"
+          - "pydantic"
+          - "starlette"
+      
+      # Group async/concurrency libraries
+      async-libraries:
+        patterns:
+          - "aiohttp"
+          - "asyncio*"
+          - "nest_asyncio"
+          - "websockets"
+      
+      # Group database related packages
+      database-packages:
+        patterns:
+          - "sqlalchemy"
+          - "psycopg2*"
+          - "alembic"
+
+  # Node.js dependencies (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "faisalx96"
+    assignees:
+      - "faisalx96"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "frontend"
+      - "javascript"
+    groups:
+      # Group React ecosystem updates
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "next*"
+          - "@types/react*"
+      
+      # Group TypeScript related packages
+      typescript-ecosystem:
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "@typescript-eslint/*"
+      
+      # Group linting and formatting tools
+      code-quality:
+        dependency-type: "development"
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "@eslint/*"
+      
+      # Group UI and styling packages
+      ui-styling:
+        patterns:
+          - "tailwindcss*"
+          - "@tailwindcss/*"
+          - "class-variance-authority"
+          - "clsx"
+      
+      # Group visualization libraries
+      visualization:
+        patterns:
+          - "plotly*"
+          - "@types/plotly*"
+          - "react-plotly*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "faisalx96"
+    assignees:
+      - "faisalx96"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci/cd"
+      - "github-actions"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "06:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "faisalx96"
+    assignees:
+      - "faisalx96"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"

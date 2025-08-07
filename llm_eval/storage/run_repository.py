@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Union
 from uuid import UUID
+from contextlib import contextmanager
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
@@ -30,10 +31,31 @@ class RunRepository:
         self._db_manager = get_database_manager() if session is None else None
     
     def _get_session(self):
-        """Get database session."""
+        """Get database session context manager or direct session."""
         if self.session:
+            # For direct session, return it directly
             return self.session
-        return self._db_manager.get_session()
+        else:
+            # For database manager, return the context manager
+            return self._db_manager.get_session()
+    
+    def _get_session_context(self):
+        """Get database session context manager."""
+        if self.session:
+            # For direct session, create a context manager that handles rollback
+            @contextmanager
+            def session_context():
+                try:
+                    yield self.session
+                    # Don't commit for provided sessions - let the caller handle it
+                except Exception:
+                    # Rollback on error and re-raise
+                    self.session.rollback()
+                    raise
+            return session_context()
+        else:
+            # For database manager, return the context manager
+            return self._db_manager.get_session()
     
     # CRUD Operations for Evaluation Runs
     
@@ -51,7 +73,7 @@ class RunRepository:
             IntegrityError: If run creation fails due to constraint violations
         """
         try:
-            with self._get_session() as session:
+            with self._get_session_context() as session:
                 run = EvaluationRun(**run_data)
                 session.add(run)
                 session.flush()  # Get the ID without committing
@@ -100,9 +122,21 @@ class RunRepository:
         Returns:
             EvaluationRun instance or None if not found
         """
-        with self._get_session() as session:
+        if run_id is None:
+            return None
+            
+        try:
+            # Convert to UUID if string
+            if isinstance(run_id, str):
+                uuid_obj = UUID(run_id)
+            else:
+                uuid_obj = run_id
+        except (ValueError, TypeError):
+            return None
+            
+        with self._get_session_context() as session:
             return session.query(EvaluationRun).filter(
-                EvaluationRun.id == str(run_id)
+                EvaluationRun.id == uuid_obj
             ).first()
     
     def update_run(self, run_id: Union[str, UUID], updates: Dict[str, Any]) -> Optional[EvaluationRun]:
@@ -116,9 +150,21 @@ class RunRepository:
         Returns:
             Updated EvaluationRun instance or None if not found
         """
-        with self._get_session() as session:
+        if run_id is None:
+            return None
+            
+        try:
+            # Convert to UUID if string
+            if isinstance(run_id, str):
+                uuid_obj = UUID(run_id)
+            else:
+                uuid_obj = run_id
+        except (ValueError, TypeError):
+            return None
+            
+        with self._get_session_context() as session:
             run = session.query(EvaluationRun).filter(
-                EvaluationRun.id == str(run_id)
+                EvaluationRun.id == uuid_obj
             ).first()
             
             if run:
@@ -140,9 +186,21 @@ class RunRepository:
         Returns:
             True if run was deleted, False if not found
         """
-        with self._get_session() as session:
+        if run_id is None:
+            return False
+            
+        try:
+            # Convert to UUID if string
+            if isinstance(run_id, str):
+                uuid_obj = UUID(run_id)
+            else:
+                uuid_obj = run_id
+        except (ValueError, TypeError):
+            return False
+            
+        with self._get_session_context() as session:
             run = session.query(EvaluationRun).filter(
-                EvaluationRun.id == str(run_id)
+                EvaluationRun.id == uuid_obj
             ).first()
             
             if run:
@@ -192,7 +250,7 @@ class RunRepository:
         Returns:
             List of EvaluationRun instances
         """
-        with self._get_session() as session:
+        with self._get_session_context() as session:
             query = session.query(EvaluationRun)
             
             # Apply filters
@@ -269,7 +327,7 @@ class RunRepository:
     def count_runs(self, **filters) -> int:
         """Count evaluation runs matching filters."""
         # Use same filtering logic as list_runs but count instead
-        with self._get_session() as session:
+        with self._get_session_context() as session:
             query = session.query(func.count(EvaluationRun.id))
             
             # Apply same filters as list_runs (simplified)
@@ -290,7 +348,7 @@ class RunRepository:
         Returns:
             List of matching EvaluationRun instances
         """
-        with self._get_session() as session:
+        with self._get_session_context() as session:
             search_pattern = f"%{search_term}%"
             
             query = session.query(EvaluationRun).filter(
@@ -315,9 +373,21 @@ class RunRepository:
         Returns:
             List of RunMetric instances
         """
-        with self._get_session() as session:
+        if run_id is None:
+            return []
+            
+        try:
+            # Convert to UUID if string
+            if isinstance(run_id, str):
+                uuid_obj = UUID(run_id)
+            else:
+                uuid_obj = run_id
+        except (ValueError, TypeError):
+            return []
+            
+        with self._get_session_context() as session:
             return session.query(RunMetric).filter(
-                RunMetric.run_id == str(run_id)
+                RunMetric.run_id == uuid_obj
             ).all()
     
     def get_metric_stats(self, metric_name: str, project_id: Optional[str] = None) -> Dict[str, Any]:
@@ -331,14 +401,27 @@ class RunRepository:
         Returns:
             Dictionary with aggregate statistics
         """
-        with self._get_session() as session:
-            query = session.query(
-                func.count(RunMetric.id).label('run_count'),
-                func.avg(RunMetric.mean_score).label('overall_mean'),
-                func.min(RunMetric.mean_score).label('min_mean'),
-                func.max(RunMetric.mean_score).label('max_mean'),
-                func.stddev(RunMetric.mean_score).label('std_dev')
-            ).filter(RunMetric.metric_name == metric_name)
+        with self._get_session_context() as session:
+            # Check if we're using SQLite (which doesn't have stddev function)
+            engine_name = session.bind.dialect.name
+            
+            if engine_name == 'sqlite':
+                # For SQLite, calculate std_dev manually or skip it
+                query = session.query(
+                    func.count(RunMetric.id).label('run_count'),
+                    func.avg(RunMetric.mean_score).label('overall_mean'),
+                    func.min(RunMetric.mean_score).label('min_mean'),
+                    func.max(RunMetric.mean_score).label('max_mean')
+                ).filter(RunMetric.metric_name == metric_name)
+            else:
+                # For PostgreSQL and other databases with stddev function
+                query = session.query(
+                    func.count(RunMetric.id).label('run_count'),
+                    func.avg(RunMetric.mean_score).label('overall_mean'),
+                    func.min(RunMetric.mean_score).label('min_mean'),
+                    func.max(RunMetric.mean_score).label('max_mean'),
+                    func.stddev(RunMetric.mean_score).label('std_dev')
+                ).filter(RunMetric.metric_name == metric_name)
             
             if project_id:
                 query = query.join(EvaluationRun).filter(
@@ -347,13 +430,33 @@ class RunRepository:
             
             result = query.first()
             
+            # For SQLite, calculate standard deviation manually if we have data
+            std_dev = 0.0
+            if engine_name == 'sqlite' and result and result.run_count > 1:
+                # Get all values for manual std_dev calculation
+                values_query = session.query(RunMetric.mean_score).filter(
+                    RunMetric.metric_name == metric_name
+                )
+                if project_id:
+                    values_query = values_query.join(EvaluationRun).filter(
+                        EvaluationRun.project_id == project_id
+                    )
+                
+                values = [row[0] for row in values_query.all() if row[0] is not None]
+                if len(values) > 1:
+                    mean = sum(values) / len(values)
+                    variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+                    std_dev = variance ** 0.5
+            elif engine_name != 'sqlite' and result:
+                std_dev = float(result.std_dev) if hasattr(result, 'std_dev') and result.std_dev else 0.0
+            
             return {
                 'metric_name': metric_name,
                 'run_count': result.run_count or 0,
                 'overall_mean': float(result.overall_mean) if result.overall_mean else 0.0,
                 'min_mean': float(result.min_mean) if result.min_mean else 0.0,
                 'max_mean': float(result.max_mean) if result.max_mean else 0.0,
-                'std_dev': float(result.std_dev) if result.std_dev else 0.0
+                'std_dev': std_dev
             }
     
     # Comparison Operations
@@ -369,12 +472,29 @@ class RunRepository:
         Returns:
             RunComparison instance or None if not found
         """
-        with self._get_session() as session:
+        if run1_id is None or run2_id is None:
+            return None
+            
+        try:
+            # Convert to UUIDs if strings
+            if isinstance(run1_id, str):
+                uuid1_obj = UUID(run1_id)
+            else:
+                uuid1_obj = run1_id
+                
+            if isinstance(run2_id, str):
+                uuid2_obj = UUID(run2_id)
+            else:
+                uuid2_obj = run2_id
+        except (ValueError, TypeError):
+            return None
+            
+        with self._get_session_context() as session:
             # Check both directions (run1,run2) and (run2,run1)
             comparison = session.query(RunComparison).filter(
                 or_(
-                    and_(RunComparison.run1_id == str(run1_id), RunComparison.run2_id == str(run2_id)),
-                    and_(RunComparison.run1_id == str(run2_id), RunComparison.run2_id == str(run1_id))
+                    and_(RunComparison.run1_id == uuid1_obj, RunComparison.run2_id == uuid2_obj),
+                    and_(RunComparison.run1_id == uuid2_obj, RunComparison.run2_id == uuid1_obj)
                 )
             ).first()
             
@@ -390,7 +510,7 @@ class RunRepository:
         Returns:
             Created RunComparison instance
         """
-        with self._get_session() as session:
+        with self._get_session_context() as session:
             comparison = RunComparison(**comparison_data)
             session.add(comparison)
             session.flush()
