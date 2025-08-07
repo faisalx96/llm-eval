@@ -66,6 +66,12 @@ Thumbs.db
 .coverage
 .pytest_cache/
 .tox/
+htmlcov/
+coverage.xml
+.hypothesis/
+test-results/
+performance_report.json
+benchmark_results/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -78,3 +84,35 @@ dmypy.json
 # Guides
 CLAUDE.md
 AIR_GAPPED_GUIDE.md
+
+# Project specific - cleanup
+*.xlsx
+*.xls
+*.html
+!frontend/**/*.html
+test_*.py
+*_test.py
+sprint1_reports/
+test_reports/
+docs/archive/
+serve_demo.py
+launch_*.py
+EXECUTIVE_*.md
+SPRINT*_*.md
+*_DEMO.html
+*_demo.html
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*

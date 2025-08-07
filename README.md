@@ -1,65 +1,135 @@
-# LLM-Eval: Simple LLM Evaluation Framework
+# LLM-Eval: UI-First Evaluation Platform
 
-Evaluate your LLM applications with just 3 lines of code! Built on [Langfuse](https://langfuse.com) for seamless integration with your existing observability stack.
+Transform from code-based to UI-first LLM evaluation! Built on [Langfuse](https://langfuse.com) with a powerful web dashboard for managing and analyzing evaluation runs.
 
-## Quick Start
+## 🚀 Quick Start
 
+### 1. Install
+```bash
+pip install -e .
+```
+
+### 2. Basic Evaluation (Memory Only)
 ```python
 from llm_eval import Evaluator
 
-# That's it! Just provide your task, dataset name, and metrics
 evaluator = Evaluator(
-    task=my_llm_function,
-    dataset="my-langfuse-dataset",
-    metrics=["answer_relevancy", "faithfulness", "hallucination"]
+    task=your_llm_function,
+    dataset="your-langfuse-dataset",  
+    metrics=["exact_match", "f1_score"]
 )
 
-# Run evaluation with auto-save
-results = evaluator.run(auto_save=True, save_format="json")
-print(results.summary())
-
-# Or save manually in different formats
-results.save_json("my_results.json")  # Complete results
-results.save_csv("my_results.csv")    # For Excel analysis
+results = evaluator.run()
 ```
 
-## Features
+### 3. UI-First Evaluation (NEW!)
+```python
+evaluator = Evaluator(
+    task=your_llm_function,
+    dataset="your-langfuse-dataset",
+    metrics=["exact_match", "f1_score"],
+    config={"project_id": "my-project"}  # ← This enables UI storage!
+)
 
-- 🚀 **Simple API** - Get started in minutes, not hours
-- 🔌 **Framework Agnostic** - Works with LangChain, LangGraph, OpenAI, or any Python function
-- 📊 **Built on Langfuse** - All evaluations tracked and visible in your Langfuse dashboard
-- 🎯 **Professional Metrics** - Powered by DeepEval's evaluation suite (included)
-- ⚡ **Async Support** - Evaluate hundreds of examples in parallel
-- 🛡️ **Production Ready** - Comprehensive error handling and recovery
-- 📺 **Live Progress Display** - Real-time status updates showing inputs, outputs, and metrics
-- ⏱️ **Performance Tracking** - Detailed timing statistics for each evaluation
-- 💾 **Export Results** - Save as JSON or CSV for further analysis
-- 🔄 **Auto-save** - Automatically save results after evaluation
+results = evaluator.run()
+```
 
-## Installation
+### 4. Launch Dashboard
+```bash
+# Terminal 1: Start API
+python -m llm_eval.api.main
+
+# Terminal 2: Start Frontend  
+cd frontend && npm run dev
+
+# Visit: http://localhost:3000
+```
+
+## ✨ What You Get
+
+**Just add `config={'project_id': 'your-project'}` and unlock:**
+
+- 🗄️ **Database Storage** - Results automatically saved
+- 🖥️ **Web Dashboard** - Browse and manage runs  
+- 🔍 **Run Comparison** - Side-by-side analysis
+- 📊 **Visualizations** - Charts and reports
+- 🔄 **Real-time Updates** - Live progress tracking
+- 📤 **Export Tools** - Excel, CSV, JSON formats
+
+## 📋 Requirements
+
+**Environment Variables:**
+```bash
+LANGFUSE_SECRET_KEY="your_secret_key"
+LANGFUSE_PUBLIC_KEY="your_public_key" 
+LANGFUSE_HOST="https://cloud.langfuse.com"
+```
+
+**Dependencies:**
+```bash
+# Core functionality
+pip install langfuse deepeval rich
+
+# Visualization features
+pip install plotly openpyxl pandas
+
+# Web dashboard
+cd frontend && npm install
+```
+
+## 📚 Documentation
+
+- **[Product Usage Guide](PRODUCT_USAGE_GUIDE.md)** - Sprint 2 features overview
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Technical implementation  
+- **[User Guide](docs/USER_GUIDE.md)** - Detailed usage instructions
+- **[API Reference](docs/API_REFERENCE.md)** - REST API documentation
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
+## 🛠️ Development
 
 ```bash
-pip install llm-eval
+# Setup
+pip install -e .
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+
+# Start development servers
+python -m llm_eval.api.main          # API server
+cd frontend && npm run dev            # Frontend dev server
 ```
 
-For LangChain support:
-```bash
-pip install llm-eval[langchain]
+## 🎯 Architecture
+
+```
+LLM-Eval Platform
+├── Core Library (Python)           # Evaluation engine
+├── REST API (FastAPI)             # Run management
+├── Web Dashboard (Next.js)        # UI-first interface  
+├── Database (SQLite/PostgreSQL)   # Run storage
+└── Langfuse Integration           # Dataset & tracing
 ```
 
-## Documentation
+## 📈 Roadmap
 
-- [User Guide](docs/USER_GUIDE.md) - Friendly introduction and common patterns
-- [API Reference](docs/API.md) - Detailed technical documentation
-- [Examples](examples/) - Jupyter notebooks with real-world scenarios
+- **Sprint 1** ✅ - Template system, smart search, Excel reports
+- **Sprint 2** ✅ - Web dashboard, database storage, run comparison  
+- **Sprint 3** 🚧 - UI-driven evaluation, advanced analytics
+- **Sprint 4** 📋 - A/B testing, CI/CD integration, collaboration
 
-## Requirements
+## 🤝 Contributing
 
-- Python 3.8+
-- Langfuse account (free tier available)
-- Your evaluation datasets stored in Langfuse
-- OpenAI API key (for DeepEval metrics)
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open pull request
 
-## License
+## 📄 License
 
-MIT
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+**Transform your LLM evaluation workflow from code-heavy to UI-first!** 🚀

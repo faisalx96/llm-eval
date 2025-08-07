@@ -1,0 +1,201 @@
+{
+  "qa_basic": {
+    "description": "Basic question-answering dataset for testing",
+    "items": [
+      {
+        "id": "qa_1",
+        "input": "What is the capital of France?",
+        "expected_output": "Paris",
+        "metadata": {
+          "category": "geography",
+          "difficulty": "easy"
+        }
+      },
+      {
+        "id": "qa_2", 
+        "input": "What is 2 + 2?",
+        "expected_output": "4",
+        "metadata": {
+          "category": "math",
+          "difficulty": "easy"
+        }
+      },
+      {
+        "id": "qa_3",
+        "input": "Who wrote Romeo and Juliet?",
+        "expected_output": "William Shakespeare",
+        "metadata": {
+          "category": "literature",
+          "difficulty": "medium"
+        }
+      },
+      {
+        "id": "qa_4",
+        "input": "What is the chemical formula for water?",
+        "expected_output": "H2O",
+        "metadata": {
+          "category": "chemistry",
+          "difficulty": "easy"
+        }
+      },
+      {
+        "id": "qa_5",
+        "input": "In which year did World War II end?",
+        "expected_output": "1945",
+        "metadata": {
+          "category": "history",
+          "difficulty": "medium"
+        }
+      }
+    ]
+  },
+  "sentiment_analysis": {
+    "description": "Sentiment analysis dataset for testing",
+    "items": [
+      {
+        "id": "sent_1",
+        "input": "I love this product! It's amazing and works perfectly.",
+        "expected_output": "positive",
+        "metadata": {
+          "confidence": 0.95
+        }
+      },
+      {
+        "id": "sent_2",
+        "input": "This is terrible. I hate it and want my money back.",
+        "expected_output": "negative", 
+        "metadata": {
+          "confidence": 0.98
+        }
+      },
+      {
+        "id": "sent_3",
+        "input": "The weather is okay today.",
+        "expected_output": "neutral",
+        "metadata": {
+          "confidence": 0.75
+        }
+      },
+      {
+        "id": "sent_4",
+        "input": "Outstanding service and quality! Highly recommended.",
+        "expected_output": "positive",
+        "metadata": {
+          "confidence": 0.92
+        }
+      },
+      {
+        "id": "sent_5",
+        "input": "Complete waste of time and money. Avoid at all costs.",
+        "expected_output": "negative",
+        "metadata": {
+          "confidence": 0.96
+        }
+      }
+    ]
+  },
+  "text_classification": {
+    "description": "Multi-class text classification dataset",
+    "items": [
+      {
+        "id": "class_1",
+        "input": "The new iPhone has an excellent camera and battery life.",
+        "expected_output": "technology",
+        "metadata": {
+          "subcategory": "mobile"
+        }
+      },
+      {
+        "id": "class_2",
+        "input": "The Lakers won against the Warriors in a thrilling game.",
+        "expected_output": "sports",
+        "metadata": {
+          "subcategory": "basketball"
+        }
+      },
+      {
+        "id": "class_3",
+        "input": "Stock market reached new highs as investors remain optimistic.",
+        "expected_output": "finance",
+        "metadata": {
+          "subcategory": "stocks"
+        }
+      },
+      {
+        "id": "class_4",
+        "input": "New research shows promising results for cancer treatment.",
+        "expected_output": "health",
+        "metadata": {
+          "subcategory": "medical"
+        }
+      },
+      {
+        "id": "class_5",
+        "input": "Climate summit addresses urgent environmental concerns.",
+        "expected_output": "environment",
+        "metadata": {
+          "subcategory": "climate"
+        }
+      }
+    ]
+  },
+  "code_generation": {
+    "description": "Code generation and completion dataset",
+    "items": [
+      {
+        "id": "code_1",
+        "input": "Write a Python function to calculate factorial",
+        "expected_output": "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n - 1)",
+        "metadata": {
+          "language": "python",
+          "complexity": "medium"
+        }
+      },
+      {
+        "id": "code_2",
+        "input": "Create a function to reverse a string",
+        "expected_output": "def reverse_string(s):\n    return s[::-1]",
+        "metadata": {
+          "language": "python",
+          "complexity": "easy"
+        }
+      },
+      {
+        "id": "code_3",
+        "input": "Write a function to check if a number is prime",
+        "expected_output": "def is_prime(n):\n    if n < 2:\n        return False\n    for i in range(2, int(n ** 0.5) + 1):\n        if n % i == 0:\n            return False\n    return True",
+        "metadata": {
+          "language": "python",
+          "complexity": "medium"
+        }
+      }
+    ]
+  },
+  "summarization": {
+    "description": "Text summarization dataset",
+    "items": [
+      {
+        "id": "summ_1",
+        "input": "Artificial Intelligence (AI) has transformed numerous industries by automating complex tasks and providing insights from large datasets. Machine learning algorithms can now recognize patterns, make predictions, and even generate creative content. From healthcare diagnostics to autonomous vehicles, AI applications continue to expand rapidly.",
+        "expected_output": "AI has revolutionized industries through automation and data analysis, with applications spanning healthcare to autonomous vehicles.",
+        "metadata": {
+          "length": "short",
+          "topic": "technology"
+        }
+      },
+      {
+        "id": "summ_2", 
+        "input": "Climate change represents one of the most pressing challenges of our time. Rising global temperatures are causing ice caps to melt, sea levels to rise, and weather patterns to become more extreme. Scientists emphasize the need for immediate action to reduce greenhouse gas emissions and transition to renewable energy sources.",
+        "expected_output": "Climate change causes rising temperatures, melting ice caps, and extreme weather, requiring urgent action on emissions and renewable energy.",
+        "metadata": {
+          "length": "short",
+          "topic": "environment"
+        }
+      }
+    ]
+  },
+  "performance_test": {
+    "description": "Large dataset for performance testing",
+    "items": []
+  }
+}
