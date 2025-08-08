@@ -15,7 +15,7 @@ evaluator = Evaluator(
 )
 results = evaluator.run()
 
-# With UI storage (Sprint 2)
+# With UI storage (saves to local database)
 evaluator = Evaluator(
     task=your_function,
     dataset="your-dataset", 
@@ -199,6 +199,42 @@ curl http://localhost:8000/api/runs/{run_id}
 
 # Filter runs
 curl "http://localhost:8000/api/runs/?status=completed&project_id=my-project"
+```
+
+## CLI Commands
+
+### Starting the Platform
+```bash
+# Start everything (UI + API)
+llm-eval start
+
+# Check status
+llm-eval status
+
+# Stop services
+llm-eval stop
+```
+
+### Database Management
+```bash
+# Initialize database
+llm-eval db init
+
+# Check health
+llm-eval db health
+
+# List runs
+llm-eval runs list
+```
+
+### Running Evaluations
+```bash
+# From command line
+llm-eval evaluate \
+  --task-file my_bot.py \
+  --task-function chat \
+  --dataset my-dataset \
+  --metrics exact_match,contains
 ```
 
 ## Performance Optimization

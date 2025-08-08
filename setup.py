@@ -37,6 +37,7 @@ setup(
         "fastapi>=0.104.0",  # REST API framework
         "uvicorn>=0.24.0",  # ASGI server
         "websockets>=12.0",  # WebSocket support
+        "requests>=2.28.0",  # HTTP library for CLI
     ],
     extras_require={
         "dev": [
@@ -79,9 +80,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "llm-eval=llm_eval.cli:main",
-            "llm-eval-db=llm_eval.cli:db",
-            "llm-eval-api=llm_eval.api.main:run_server",
+            "llm-eval=llm_eval.cli:cli_main",
         ],
     },
 )

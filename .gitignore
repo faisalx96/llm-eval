@@ -48,6 +48,33 @@ junit.xml
 *.sqlite
 *.sqlite3
 
+# TypeScript/Frontend
+tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+frontend/.next/
+
+# Local data (SQLite databases)
+data/
+*.db
+*.db-shm
+*.db-wal
+llm_eval_runs.db*
+
+# Docker volumes
+logs/
+
+# Cleanup/temporary documentation
+*CLEANUP*.md
+*TO_DELETE*.md
+*REORGANIZATION*.md
+*SUMMARY.md
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
 # IDE
 .vscode/
 .idea/

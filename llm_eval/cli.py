@@ -5,6 +5,9 @@ import json
 import sys
 import importlib.util
 import logging
+import subprocess
+import os
+import shutil
 from pathlib import Path
 from typing import Dict, Any
 
@@ -712,16 +715,173 @@ def delete(run_id, confirm):
         sys.exit(1)
 
 
-# Add the new command groups to the main CLI
-if __name__ == "__main__":
-    import sys
+@click.group()
+def cli():
+    """LLM-Eval: Local UI-first evaluation platform for LLMs."""
+    pass
+
+
+@cli.command()
+@click.option('--docker/--no-docker', default=True, help='Use Docker for setup')
+@click.option('--port', default=8000, help='API port')
+@click.option('--frontend-port', default=3000, help='Frontend port')
+def start(docker, port, frontend_port):
+    """Start LLM-Eval locally (one-command setup)."""
+    try:
+        if docker:
+            # Check for docker-compose
+            if not shutil.which('docker-compose'):
+                console.print("[red]❌ docker-compose not found.[/red]")
+                console.print("Please install Docker Desktop from https://www.docker.com/products/docker-desktop")
+                sys.exit(1)
+            
+            # Check for .env file
+            env_path = Path('.env')
+            if not env_path.exists():
+                console.print("[yellow]📝 Creating .env from template...[/yellow]")
+                env_example = Path('.env.example')
+                if env_example.exists():
+                    shutil.copy('.env.example', '.env')
+                    console.print("[yellow]⚠️  Please add your Langfuse credentials to .env file[/yellow]")
+                    console.print("Then run 'llm-eval start' again.")
+                    sys.exit(1)
+                else:
+                    console.print("[red]❌ .env.example not found[/red]")
+                    sys.exit(1)
+            
+            # Start Docker containers
+            console.print("[green]🐳 Starting Docker containers...[/green]")
+            try:
+                subprocess.run(['docker-compose', 'up', '-d'], check=True)
+                console.print("[green]✅ Docker containers started![/green]")
+                console.print(f"")
+                console.print(f"🎉 LLM-Eval is running!")
+                console.print(f"📊 Open [bold cyan]http://localhost:{frontend_port}[/bold cyan] in your browser")
+                console.print(f"")
+                console.print(f"To stop: docker-compose down")
+                console.print(f"To view logs: docker-compose logs -f")
+            except subprocess.CalledProcessError as e:
+                console.print(f"[red]❌ Failed to start Docker containers: {e}[/red]")
+                sys.exit(1)
+        else:
+            # Manual start (for development)
+            console.print("[yellow]Starting in development mode (no Docker)...[/yellow]")
+            console.print(f"")
+            console.print("Run these commands in separate terminals:")
+            console.print(f"1. API:      python -m llm_eval.api.main")
+            console.print(f"2. Frontend: cd frontend && npm run dev")
+            console.print(f"")
+            console.print(f"Then open [bold cyan]http://localhost:{frontend_port}[/bold cyan]")
+            
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Startup interrupted[/yellow]")
+        sys.exit(1)
+    except Exception as e:
+        console.print(f"[red]❌ Error: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+def stop():
+    """Stop running LLM-Eval containers."""
+    try:
+        if shutil.which('docker-compose'):
+            console.print("[yellow]Stopping Docker containers...[/yellow]")
+            subprocess.run(['docker-compose', 'down'], check=True)
+            console.print("[green]✅ LLM-Eval stopped[/green]")
+        else:
+            console.print("[yellow]Docker not found. If running manually, stop with Ctrl+C[/yellow]")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]❌ Failed to stop containers: {e}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+def status():
+    """Check status of LLM-Eval services."""
+    try:
+        import requests
+        
+        # Check API
+        try:
+            api_response = requests.get('http://localhost:8000/api/health', timeout=2)
+            if api_response.status_code == 200:
+                console.print("[green]✅ API is running at http://localhost:8000[/green]")
+            else:
+                console.print("[yellow]⚠️  API returned status {api_response.status_code}[/yellow]")
+        except requests.exceptions.RequestException:
+            console.print("[red]❌ API is not running[/red]")
+        
+        # Check Frontend
+        try:
+            frontend_response = requests.get('http://localhost:3000', timeout=2)
+            if frontend_response.status_code == 200:
+                console.print("[green]✅ Frontend is running at http://localhost:3000[/green]")
+            else:
+                console.print("[yellow]⚠️  Frontend returned status {frontend_response.status_code}[/yellow]")
+        except requests.exceptions.RequestException:
+            console.print("[red]❌ Frontend is not running[/red]")
+        
+        # Check Docker
+        if shutil.which('docker-compose'):
+            result = subprocess.run(['docker-compose', 'ps'], capture_output=True, text=True)
+            if result.returncode == 0:
+                console.print("\n[bold]Docker containers:[/bold]")
+                console.print(result.stdout)
+        
+    except Exception as e:
+        console.print(f"[red]❌ Error checking status: {e}[/red]")
+        sys.exit(1)
+
+
+# Add existing command groups
+cli.add_command(db)
+cli.add_command(runs)
+
+
+# Legacy support for direct evaluation
+@cli.command(name='evaluate')
+@click.option('--task-file', required=True, help='Python file containing the task function')
+@click.option('--task-function', required=True, help='Name of the function to evaluate')
+@click.option('--dataset', required=True, help='Name of the Langfuse dataset')
+@click.option('--metrics', required=True, help='Comma-separated list of metrics')
+@click.option('--config', help='JSON configuration string')
+@click.option('--output', help='File to save results')
+@click.option('--quiet', '-q', is_flag=True, help='Only show summary')
+def evaluate(task_file, task_function, dataset, metrics, config, output, quiet):
+    """Run an evaluation (legacy CLI interface)."""
+    # Call the original main() with constructed argv
+    original_argv = sys.argv
+    sys.argv = [
+        'llm-eval',
+        '--task-file', task_file,
+        '--task-function', task_function,
+        '--dataset', dataset,
+        '--metrics', metrics
+    ]
+    if config:
+        sys.argv.extend(['--config', config])
+    if output:
+        sys.argv.extend(['--output', output])
+    if quiet:
+        sys.argv.append('--quiet')
     
-    # If called with 'db' or 'runs' subcommands, use click
-    if len(sys.argv) > 1 and sys.argv[1] in ['db', 'runs']:
-        if sys.argv[1] == 'db':
-            db()
-        elif sys.argv[1] == 'runs':
-            runs()
-    else:
-        # Use the original argparse-based main function
+    try:
         main()
+    finally:
+        sys.argv = original_argv
+
+
+# Main entry point
+def cli_main():
+    """Main CLI entry point."""
+    # If no arguments or help, show click CLI
+    if len(sys.argv) == 1 or (len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h', 'start', 'stop', 'status', 'db', 'runs', 'evaluate']):
+        cli()
+    else:
+        # Legacy argparse mode for backward compatibility
+        main()
+
+
+if __name__ == "__main__":
+    cli_main()

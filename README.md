@@ -1,23 +1,40 @@
-# LLM-Eval: UI-First Evaluation Platform
+# LLM-Eval: Local UI-First Evaluation Platform
 
 [![CI/CD Pipeline](https://github.com/faisalx96/llm-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/ci.yml)
-[![Security Analysis](https://github.com/faisalx96/llm-eval/actions/workflows/codeql.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/codeql.yml)
-[![Deployment](https://github.com/faisalx96/llm-eval/actions/workflows/deploy.yml/badge.svg)](https://github.com/faisalx96/llm-eval/actions/workflows/deploy.yml)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Codecov](https://codecov.io/gh/faisalx96/llm-eval/branch/main/graph/badge.svg)](https://codecov.io/gh/faisalx96/llm-eval)
 
-Transform from code-based to UI-first LLM evaluation! Built on [Langfuse](https://langfuse.com) with a powerful web dashboard for managing and analyzing evaluation runs.
+**🏠 A local, privacy-first LLM evaluation tool with a beautiful UI. No cloud, no servers - runs entirely on your machine.**
 
-## 🚀 Quick Start
+Transform from code-based to UI-first LLM evaluation! Built on [Langfuse](https://langfuse.com) with a powerful web dashboard for managing and analyzing evaluation runs locally.
 
-### 1. Install
+## 🚀 Quick Start (One Command!)
+
 ```bash
-pip install -e .
+# Install
+pip install llm-eval
+
+# Start everything with one command!
+llm-eval start
+
+# Open http://localhost:3000 - That's it!
 ```
 
-### 2. Basic Evaluation (Memory Only)
+### What happens:
+1. Checks for Docker (offers to help install if missing)
+2. Creates .env file from template (if needed)
+3. Starts API and Frontend in Docker containers
+4. Opens your browser to the UI
+
+### Other commands:
+```bash
+llm-eval status  # Check if services are running
+llm-eval stop    # Stop all services
+llm-eval --help  # See all available commands
+```
+
+### Basic Evaluation Example
 ```python
 from llm_eval import Evaluator
 
@@ -30,7 +47,7 @@ evaluator = Evaluator(
 results = evaluator.run()
 ```
 
-### 3. UI-First Evaluation (NEW!)
+### UI-First Evaluation (Saves to Local Database)
 ```python
 evaluator = Evaluator(
     task=your_llm_function,
@@ -42,12 +59,14 @@ evaluator = Evaluator(
 results = evaluator.run()
 ```
 
-### 4. Launch Dashboard
+### Access the Dashboard
 ```bash
-# Terminal 1: Start API
+# Everything runs locally at:
+http://localhost:3000   # Frontend UI
+http://localhost:8000   # API (if needed)
 python -m llm_eval.api.main
 
-# Terminal 2: Start Frontend  
+# Terminal 2: Start Frontend (localhost:3000)  
 cd frontend && npm run dev
 
 # Visit: http://localhost:3000

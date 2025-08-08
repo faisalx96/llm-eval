@@ -1,7 +1,9 @@
 # LLM-Eval Framework Project Instructions
 
 ## Project Overview
-We are building a **UI-first LLM/agent evaluation platform** targeting **technical developers** who need to streamline and automate the evaluation phase of their LLM and agentic products. The platform uses Langfuse as its backbone and focuses on transitioning developers from code-based evaluation to UI-driven evaluation with powerful comparison and analysis tools.
+We are building a **LOCAL-ONLY, UI-first LLM/agent evaluation platform** targeting **technical developers** who need to streamline and automate the evaluation phase of their LLM and agentic products. The platform uses Langfuse as its backbone and focuses on transitioning developers from code-based evaluation to UI-driven evaluation with powerful comparison and analysis tools.
+
+**IMPORTANT: This is NOT a deployed product. Users install and run it locally on their own machines. No cloud deployment, no Kubernetes, no production servers.**
 
 ## Current State (Sprint 2.5 Week 2)
 ✅ **Sprint 1 Complete:**
@@ -60,13 +62,13 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 ### 2. Documentation Standards
 - **ROADMAP.md**: Elevated 16-week plan with clear milestones
 - **TASK_LIST.md**: 190+ tasks tracked with sprint assignments
-- **DEPLOYMENT_GUIDE.md**: Production deployment instructions
+- **INSTALLATION_GUIDE.md**: Local installation instructions
 - **TESTING_GUIDE.md**: Comprehensive testing strategy
 - **DEVELOPER_GUIDE.md**: Technical implementation details
 - **TROUBLESHOOTING.md**: Common issues and solutions
 
 ### 3. Code Quality Standards
-- Production-ready code without conversational artifacts
+- Clean, professional code without conversational artifacts
 - Clear error messages that guide developers to solutions
 - Async-first design for performance at scale
 - Comprehensive logging for debugging evaluation issues
@@ -76,7 +78,7 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 - **Langfuse-Centric**: All evaluation infrastructure built on Langfuse
 - **Dataset Requirements**: Must read from Langfuse (no local files)
 - **Tracing**: All evaluation traces logged to Langfuse
-- **Storage**: SQLAlchemy with PostgreSQL for production
+- **Storage**: SQLAlchemy with SQLite (default) or PostgreSQL (optional)
 - **API**: FastAPI with WebSocket support
 - **Frontend**: Next.js with TypeScript
 - **Performance**: Async operations and parallel processing
@@ -84,7 +86,7 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 
 ## Sprint Plan Summary
 
-### Sprint 2.5: Polish & Production (2 weeks - ACTIVE)
+### Sprint 2.5: Polish & Local Readiness (2 weeks - ACTIVE)
 **Week 1 Focus:**
 - [ ] SPRINT25-001: Complete run detail page
 - [ ] SPRINT25-002: Finish comparison API
@@ -93,7 +95,7 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 
 **Week 2 Focus:**
 - [ ] SPRINT25-009: Unit test coverage (80%)
-- [ ] SPRINT25-015: Deployment documentation
+- [ ] SPRINT25-015: Installation and setup documentation
 - [ ] SPRINT25-018: CI/CD pipeline
 - [ ] SPRINT25-021: Update README
 
@@ -112,8 +114,8 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 ### Sprint 5: Enterprise Features (4 weeks)
 - Authentication & authorization
 - Team collaboration
-- PostgreSQL optimization
-- Kubernetes deployment
+- Local database optimization
+- Simple installation process
 
 ### Sprint 6: Platform Ecosystem (4 weeks)
 - Plugin architecture
@@ -156,7 +158,7 @@ We are building a **UI-first LLM/agent evaluation platform** targeting **technic
 - **Core Tests** (MUST PASS): Evaluator, Results, Metrics, Storage
 - **Sprint Feature Tests** (MUST PASS): New features added in current sprint
 - **Integration Tests** (SHOULD PASS): End-to-end workflows
-- **Optional Tests** (CAN SKIP): PostgreSQL-specific, external dependencies
+- **Optional Tests** (CAN SKIP): PostgreSQL-specific (since SQLite is default), external dependencies
 
 ### **Test Verification Before Sprint Completion:**
 ```bash
@@ -191,9 +193,9 @@ mypy llm_eval/
 
 ## Key Technical Decisions
 
-### Storage Strategy
-- **Development**: SQLite for simplicity
-- **Production**: PostgreSQL with connection pooling
+### Storage Strategy (LOCAL ONLY)
+- **Default**: SQLite for simplicity (no setup required)
+- **Optional**: Local PostgreSQL if user prefers
 - **Caching**: Redis for performance
 - **File Storage**: S3/GCS for large results
 
@@ -275,4 +277,4 @@ mypy llm_eval/
 
 **Last Updated**: January 2025  
 **Current Version**: v0.2.5 (Sprint 2.5 Active)  
-**Next Milestone**: Production Ready (2 weeks)
+**Next Milestone**: Local Installation Ready (2 weeks)

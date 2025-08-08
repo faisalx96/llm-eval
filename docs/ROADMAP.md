@@ -1,12 +1,13 @@
-# 🚀 LLM-Eval Platform Roadmap - ELEVATED
+# 🚀 LLM-Eval Platform Roadmap
 
 ## Vision
-Transform LLM evaluation from code-based to **UI-first developer platform**, making evaluation as easy as clicking buttons while maintaining full programmatic access and enterprise-grade reliability.
+Transform LLM evaluation from code-based to **UI-first developer platform** that runs locally. Developers should do 80% of their evaluation work through the UI, not code.
 
 ## Current State (January 2025)
-- ✅ **Sprint 1**: Complete - Core evaluation engine with visualizations
-- 🔄 **Sprint 2**: 80% Complete - Web dashboard, storage, API functional
-- ⚠️ **Key Gaps**: Testing coverage (0%), production readiness, true UI-driven evaluation
+- ✅ **UI Dashboard**: Complete - View, compare, and analyze runs
+- ✅ **Local-First**: Everything runs on your machine
+- ✅ **One-Command Setup**: `llm-eval start` launches the UI
+- 🎯 **Next Goal**: Enable evaluation configuration and execution from UI
 
 ## Sprint Overview
 
@@ -40,14 +41,18 @@ Transform LLM evaluation from code-based to **UI-first developer platform**, mak
 - 🚧 Run detail views
 - 🚧 Testing coverage
 
-### 🎯 Sprint 2.5: Polish & Production Readiness (ACTIVE - WEEK 2)
-**Goal:** Make current features production-ready before adding new features  
-**Timeline:** Week 1 ✅ Complete | Week 2 🔄 In Progress
+### ✅ Current Features (UI-FIRST)
+**What You Can Do in the UI Today:**
+- ✅ View all evaluation runs in a beautiful dashboard
+- ✅ Compare runs side-by-side with visual diffs
+- ✅ Drill into item-level results and failures
+- ✅ Export professional reports
+- ✅ Real-time updates via WebSocket
 
-**Critical Fixes (Week 1):** ✅ COMPLETE
-- [x] Complete run detail page implementation (SPRINT25-001)
-- [x] Comparison API with statistical analysis (SPRINT25-002)
-- [x] Fixed all test failures (100% pass rate)
+**What Still Requires Code:**
+- 🔄 Running new evaluations (coming in Sprint 3)
+- 🔄 Creating datasets (uses Langfuse UI)
+- 🔄 Defining custom metrics
 - [x] Set up CI/CD pipeline with GitHub Actions
 - [x] Added pre-commit hooks and code quality tools
 

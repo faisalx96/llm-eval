@@ -154,14 +154,23 @@ def get_deepeval_metrics() -> Dict[str, Callable]:
     """Get all available DeepEval metrics plus our custom ones."""
     metrics = discover_deepeval_metrics()
     
-    # Add exact match for backward compatibility
+    # Add built-in metrics for backward compatibility
     def exact_match(output: Any, expected: Any) -> float:
         """Simple exact match comparison."""
         if output is None or expected is None:
             return 0.0
         return 1.0 if str(output).strip() == str(expected).strip() else 0.0
     
+    def contains(output: Any, expected: Any) -> float:
+        """Check if output contains expected substring."""
+        if output is None or expected is None:
+            return 0.0
+        return 1.0 if str(expected) in str(output) else 0.0
+    
     metrics['exact_match'] = exact_match
+    metrics['contains'] = contains
+    metrics['contains_expected'] = contains  # Alias
+    metrics['contains_match'] = contains  # Alias
     
     return metrics
 
