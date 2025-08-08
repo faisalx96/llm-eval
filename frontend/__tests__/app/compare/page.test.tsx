@@ -29,7 +29,7 @@ describe('Compare Page', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockUseSearchParams.mockReturnValue(new URLSearchParams())
-    
+
     // Mock window.history
     Object.defineProperty(window, 'history', {
       writable: true,
@@ -49,7 +49,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(screen.getByText('Compare Runs')).toBeInTheDocument()
       expect(screen.getByText(/Side-by-side comparison of evaluation runs/)).toBeInTheDocument()
     })
@@ -63,7 +63,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(screen.getByText('Run 1 (Baseline)')).toBeInTheDocument()
       expect(screen.getByText('Run 2 (Comparison)')).toBeInTheDocument()
     })
@@ -77,7 +77,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(screen.getByText('Select Two Runs to Compare')).toBeInTheDocument()
       expect(screen.getByText(/Choose two completed evaluation runs/)).toBeInTheDocument()
     })
@@ -87,7 +87,7 @@ describe('Compare Page', () => {
     it('initializes with run IDs from URL parameters', () => {
       const searchParams = new URLSearchParams('?run1=test-run-1&run2=test-run-2')
       mockUseSearchParams.mockReturnValue(searchParams)
-      
+
       mockUseRunComparison.mockReturnValue({
         comparison: null,
         loading: false,
@@ -96,7 +96,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(mockUseRunComparison).toHaveBeenCalledWith('test-run-1', 'test-run-2')
     })
 
@@ -109,7 +109,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       // This would be triggered by RunSelector components changing
       // The actual URL update logic is tested through the effect
       expect(window.history.replaceState).toHaveBeenCalled()
@@ -126,7 +126,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       // Should show skeleton components
       const skeletons = document.querySelectorAll('[class*="h-64"], [class*="h-48"], [class*="h-96"]')
       expect(skeletons.length).toBeGreaterThan(0)
@@ -144,7 +144,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(screen.getByText('Comparison Failed')).toBeInTheDocument()
       expect(screen.getByText('Failed to load comparison data')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
@@ -153,7 +153,7 @@ describe('Compare Page', () => {
     it('calls refetch when retry button is clicked', async () => {
       const user = userEvent.setup()
       const refetch = jest.fn()
-      
+
       mockUseRunComparison.mockReturnValue({
         comparison: null,
         loading: false,
@@ -162,10 +162,10 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       const retryButton = screen.getByRole('button', { name: 'Retry' })
       await user.click(retryButton)
-      
+
       expect(refetch).toHaveBeenCalled()
     })
   })
@@ -184,7 +184,7 @@ describe('Compare Page', () => {
 
     it('displays comparison summary with key metrics', () => {
       render(<Compare />)
-      
+
       expect(screen.getByText('Comparison Summary')).toBeInTheDocument()
       expect(screen.getByText('Overall Winner')).toBeInTheDocument()
       expect(screen.getByText('Significant Improvements')).toBeInTheDocument()
@@ -194,14 +194,14 @@ describe('Compare Page', () => {
 
     it('shows correct winner based on comparison data', () => {
       render(<Compare />)
-      
+
       // Based on mock data, Run 2 is the winner
       expect(screen.getByText('Run 2')).toBeInTheDocument()
     })
 
     it('displays improvement and regression counts', () => {
       render(<Compare />)
-      
+
       expect(screen.getByText('1')).toBeInTheDocument() // Significant improvements
       expect(screen.getByText('1')).toBeInTheDocument() // Significant regressions (appears twice)
       expect(screen.getByText('2')).toBeInTheDocument() // Items compared
@@ -209,7 +209,7 @@ describe('Compare Page', () => {
 
     it('renders comparison chart', () => {
       render(<Compare />)
-      
+
       // The ComparisonChart component should be rendered
       // This is tested more thoroughly in the ComparisonChart tests
       expect(screen.getByText('Metric Comparison')).toBeInTheDocument()
@@ -217,7 +217,7 @@ describe('Compare Page', () => {
 
     it('displays metric differences section', () => {
       render(<Compare />)
-      
+
       expect(screen.getByText('Metric Differences')).toBeInTheDocument()
       // Should show MetricDiff components for each metric
       expect(screen.getByText('exact_match')).toBeInTheDocument()
@@ -226,7 +226,7 @@ describe('Compare Page', () => {
 
     it('renders item-level comparison component', () => {
       render(<Compare />)
-      
+
       // The ItemLevelComparison component should be rendered
       expect(screen.getByText('Item-Level Comparison')).toBeInTheDocument()
     })
@@ -234,7 +234,7 @@ describe('Compare Page', () => {
 
   describe('Export Functionality', () => {
     const mockComparison = mockRunComparison()
-    
+
     beforeEach(() => {
       mockUseRunComparison.mockReturnValue({
         comparison: mockComparison,
@@ -246,13 +246,13 @@ describe('Compare Page', () => {
 
     it('shows export button when comparison is loaded', () => {
       render(<Compare />)
-      
+
       expect(screen.getByRole('button', { name: /Export Excel/ })).toBeInTheDocument()
     })
 
     it('handles export process with loading state', async () => {
       const user = userEvent.setup()
-      
+
       // Mock successful blob response
       const mockBlob = new Blob(['test'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       global.fetch = jest.fn().mockResolvedValue({
@@ -260,17 +260,17 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       const exportButton = screen.getByRole('button', { name: /Export Excel/ })
       await user.click(exportButton)
-      
+
       // Should show loading state briefly
       expect(screen.getByTestId('loading-spinner') || screen.getByText('Export Excel')).toBeInTheDocument()
     })
 
     it('creates download link when export succeeds', async () => {
       const user = userEvent.setup()
-      
+
       // Mock URL.createObjectURL and DOM manipulation
       const mockUrl = 'blob:mock-url'
       global.URL.createObjectURL = jest.fn(() => mockUrl)
@@ -289,10 +289,10 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       const exportButton = screen.getByRole('button', { name: /Export Excel/ })
       await user.click(exportButton)
-      
+
       await waitFor(() => {
         expect(mockLink.click).toHaveBeenCalled()
       })
@@ -301,18 +301,18 @@ describe('Compare Page', () => {
     it('handles export errors gracefully', async () => {
       const user = userEvent.setup()
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation()
-      
+
       global.fetch = jest.fn().mockRejectedValue(new Error('Export failed'))
 
       render(<Compare />)
-      
+
       const exportButton = screen.getByRole('button', { name: /Export Excel/ })
       await user.click(exportButton)
-      
+
       await waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith('Export failed:', expect.any(Error))
       })
-      
+
       consoleSpy.mockRestore()
     })
   })
@@ -321,7 +321,7 @@ describe('Compare Page', () => {
     it('shows refresh button and calls refetch when clicked', async () => {
       const user = userEvent.setup()
       const refetch = jest.fn()
-      
+
       mockUseRunComparison.mockReturnValue({
         comparison: mockRunComparison(),
         loading: false,
@@ -330,10 +330,10 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       const refreshButton = screen.getByRole('button', { name: '' }) // SVG button without text
       expect(refreshButton).toBeInTheDocument()
-      
+
       await user.click(refreshButton)
       expect(refetch).toHaveBeenCalled()
     })
@@ -351,21 +351,21 @@ describe('Compare Page', () => {
 
     it('has responsive grid classes for run selectors', () => {
       render(<Compare />)
-      
+
       const gridContainer = document.querySelector('.grid-cols-1.lg\\:grid-cols-2')
       expect(gridContainer).toBeInTheDocument()
     })
 
     it('has responsive summary grid', () => {
       render(<Compare />)
-      
+
       const summaryGrid = document.querySelector('.md\\:grid-cols-2.lg\\:grid-cols-4')
       expect(summaryGrid).toBeInTheDocument()
     })
 
     it('has responsive metric differences grid', () => {
       render(<Compare />)
-      
+
       const metricGrid = document.querySelector('.lg\\:grid-cols-2.xl\\:grid-cols-3')
       expect(metricGrid).toBeInTheDocument()
     })
@@ -383,13 +383,13 @@ describe('Compare Page', () => {
 
     it('has proper heading hierarchy', () => {
       render(<Compare />)
-      
+
       expect(screen.getByRole('heading', { level: 1, name: 'Compare Runs' })).toBeInTheDocument()
     })
 
     it('provides meaningful empty state guidance', () => {
       render(<Compare />)
-      
+
       expect(screen.getByText('Select Two Runs to Compare')).toBeInTheDocument()
       expect(screen.getByText(/Choose two completed evaluation runs.*detailed comparison/)).toBeInTheDocument()
     })
@@ -403,7 +403,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       expect(screen.getByRole('heading', { name: 'Comparison Failed' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     })
@@ -413,7 +413,7 @@ describe('Compare Page', () => {
     it('prevents comparison when same run is selected for both', () => {
       // This logic is handled by the RunSelector's excludeRunId prop
       render(<Compare />)
-      
+
       // The page itself doesn't show comparison when runIds are the same
       // This is handled by the canCompare logic
       expect(screen.getByText('Select Two Runs to Compare')).toBeInTheDocument()
@@ -428,7 +428,7 @@ describe('Compare Page', () => {
       })
 
       render(<Compare />)
-      
+
       // Should not crash and show empty state
       expect(screen.getByText('Select Two Runs to Compare')).toBeInTheDocument()
     })
@@ -458,7 +458,7 @@ describe('Compare Page', () => {
 
       // Should render without performance issues
       render(<Compare />)
-      
+
       expect(screen.getByText('Compare Runs')).toBeInTheDocument()
     })
   })

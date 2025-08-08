@@ -38,10 +38,10 @@ export interface InputProps
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ 
-    className, 
-    variant, 
-    size, 
+  ({
+    className,
+    variant,
+    size,
     type = 'text',
     leftIcon,
     rightIcon,
@@ -49,7 +49,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     label,
     hint,
     id,
-    ...props 
+    ...props
   }, ref) => {
     // Use React.useId for stable ID generation, fallback to counter for older React versions
     const reactId = React.useId?.() || `input-${++inputIdCounter}`;

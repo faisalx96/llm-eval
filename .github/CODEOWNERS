@@ -1,5 +1,5 @@
 # LLM-Eval Code Owners
-# 
+#
 # This file defines the default reviewers for different parts of the codebase.
 # GitHub will automatically request reviews from these users when PRs are created.
 
@@ -14,7 +14,7 @@ requirements*.txt @faisalx96
 pyproject.toml @faisalx96
 pytest.ini @faisalx96
 
-# Frontend Application  
+# Frontend Application
 frontend/ @faisalx96
 frontend/package.json @faisalx96
 frontend/package-lock.json @faisalx96

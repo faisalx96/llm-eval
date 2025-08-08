@@ -38,9 +38,9 @@ export interface TextareaProps
 }
 
 const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ 
-    className, 
-    variant, 
+  ({
+    className,
+    variant,
     size,
     error,
     label,
@@ -50,7 +50,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     id,
     value,
     onChange,
-    ...props 
+    ...props
   }, ref) => {
     // Use React.useId for stable ID generation, fallback to counter for older React versions
     const reactId = React.useId?.() || `textarea-${++textareaIdCounter}`;

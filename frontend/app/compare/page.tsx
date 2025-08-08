@@ -3,11 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, Button, Container, Loading, Skeleton } from '@/components';
-import { 
-  RunSelector, 
-  MetricDiff, 
-  ComparisonChart, 
-  ItemLevelComparison 
+import {
+  RunSelector,
+  MetricDiff,
+  ComparisonChart,
+  ItemLevelComparison
 } from '@/components';
 import { useRunComparison } from '@/hooks';
 import { apiClient } from '@/lib/api';
@@ -19,7 +19,7 @@ const Compare: React.FC = () => {
   const [exporting, setExporting] = useState(false);
 
   const { comparison, loading, error, refetch } = useRunComparison(
-    runId1 || null, 
+    runId1 || null,
     runId2 || null
   );
 
@@ -28,14 +28,14 @@ const Compare: React.FC = () => {
     const params = new URLSearchParams();
     if (runId1) params.set('run1', runId1);
     if (runId2) params.set('run2', runId2);
-    
+
     const newUrl = `/compare${params.toString() ? `?${params.toString()}` : ''}`;
     window.history.replaceState({}, '', newUrl);
   }, [runId1, runId2]);
 
   const handleExport = async (format: 'excel' | 'json' | 'csv' = 'excel') => {
     if (!runId1 || !runId2) return;
-    
+
     setExporting(true);
     try {
       const blob = await apiClient.exportComparison(runId1, runId2, format);
@@ -78,7 +78,7 @@ const Compare: React.FC = () => {
             label="Run 1 (Baseline)"
             placeholder="Select baseline run..."
           />
-          
+
           <RunSelector
             selectedRunId={runId2}
             onRunSelect={setRunId2}
@@ -99,7 +99,7 @@ const Compare: React.FC = () => {
               Select Two Runs to Compare
             </h3>
             <p className="text-neutral-600 dark:text-neutral-300 max-w-lg mx-auto">
-              Choose two completed evaluation runs from the selectors above to see a detailed comparison with 
+              Choose two completed evaluation runs from the selectors above to see a detailed comparison with
               metric differences, statistical analysis, and item-level breakdowns.
             </p>
           </Card>
@@ -182,7 +182,7 @@ const Compare: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-neutral-900 dark:text-white">
-                    {comparison.comparison.overall_performance.winner === 'run1' 
+                    {comparison.comparison.overall_performance.winner === 'run1'
                       ? comparison.run1.name
                       : comparison.comparison.overall_performance.winner === 'run2'
                       ? comparison.run2.name
@@ -193,7 +193,7 @@ const Compare: React.FC = () => {
                     Overall Winner
                   </div>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="text-2xl font-bold text-success-600 dark:text-success-400">
                     {comparison.comparison.overall_performance.significant_improvements}
@@ -202,7 +202,7 @@ const Compare: React.FC = () => {
                     Significant Improvements
                   </div>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="text-2xl font-bold text-danger-600 dark:text-danger-400">
                     {comparison.comparison.overall_performance.significant_regressions}
@@ -211,7 +211,7 @@ const Compare: React.FC = () => {
                     Significant Regressions
                   </div>
                 </div>
-                
+
                 <div className="text-center">
                   <div className="text-2xl font-bold text-neutral-900 dark:text-white">
                     {comparison.item_level_comparison.length}
@@ -234,7 +234,7 @@ const Compare: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                 {Object.entries(comparison.comparison.metrics).map(([metricName, metricData]) => {
                   const stats = comparison.comparison.statistical_analysis[metricName];
-                  
+
                   return (
                     <MetricDiff
                       key={metricName}

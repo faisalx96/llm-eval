@@ -15,7 +15,7 @@ describe('MetricDiff Component', () => {
   describe('Basic Rendering', () => {
     it('renders metric name and scores correctly', () => {
       render(<MetricDiff {...defaultProps} />)
-      
+
       expect(screen.getByText('exact_match')).toBeInTheDocument()
       expect(screen.getByText('85.0%')).toBeInTheDocument() // Run 1 score
       expect(screen.getByText('90.0%')).toBeInTheDocument() // Run 2 score
@@ -25,7 +25,7 @@ describe('MetricDiff Component', () => {
 
     it('renders all section labels', () => {
       render(<MetricDiff {...defaultProps} />)
-      
+
       expect(screen.getByText('Run 1')).toBeInTheDocument()
       expect(screen.getByText('Run 2')).toBeInTheDocument()
       expect(screen.getByText('Change')).toBeInTheDocument()
@@ -35,39 +35,39 @@ describe('MetricDiff Component', () => {
   describe('Score Formatting', () => {
     it('formats scores between 0-1 as percentages', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           run1Score={0.756}
           run2Score={0.892}
         />
       )
-      
+
       expect(screen.getByText('75.6%')).toBeInTheDocument()
       expect(screen.getByText('89.2%')).toBeInTheDocument()
     })
 
     it('formats scores above 1 as decimals', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           run1Score={1.234}
           run2Score={2.567}
         />
       )
-      
+
       expect(screen.getByText('1.234')).toBeInTheDocument()
       expect(screen.getByText('2.567')).toBeInTheDocument()
     })
 
     it('handles zero scores correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           run1Score={0.0}
           run2Score={0.0}
         />
       )
-      
+
       expect(screen.getByText('0.0%')).toBeInTheDocument()
     })
   })
@@ -75,37 +75,37 @@ describe('MetricDiff Component', () => {
   describe('Difference Formatting', () => {
     it('formats percentage point differences correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           difference={0.156}
         />
       )
-      
+
       expect(screen.getByText('+15.6pp')).toBeInTheDocument()
     })
 
     it('formats negative differences correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           difference={-0.034}
           direction="worse"
         />
       )
-      
+
       expect(screen.getByText('-3.4pp')).toBeInTheDocument()
     })
 
     it('formats large numeric differences correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           difference={2.456}
           run1Score={10.123}
           run2Score={12.579}
         />
       )
-      
+
       expect(screen.getByText('+2.456')).toBeInTheDocument()
     })
   })
@@ -113,10 +113,10 @@ describe('MetricDiff Component', () => {
   describe('Direction Indicators', () => {
     it('shows improvement icon for better direction', () => {
       render(<MetricDiff {...defaultProps} direction="better" />)
-      
+
       const diffContainer = screen.getByText('+5.0pp').parentElement
       expect(diffContainer).toHaveClass('text-success-600', 'dark:text-success-400')
-      
+
       // Check for SVG icon (improvement arrow)
       const svg = diffContainer?.querySelector('svg')
       expect(svg).toBeInTheDocument()
@@ -125,28 +125,28 @@ describe('MetricDiff Component', () => {
 
     it('shows decline icon for worse direction', () => {
       render(
-        <MetricDiff 
-          {...defaultProps} 
+        <MetricDiff
+          {...defaultProps}
           direction="worse"
           difference={-0.05}
           percentageChange={-5.88}
         />
       )
-      
+
       const diffContainer = screen.getByText('-5.0pp').parentElement
       expect(diffContainer).toHaveClass('text-danger-600', 'dark:text-danger-400')
     })
 
     it('shows neutral icon for neutral direction', () => {
       render(
-        <MetricDiff 
-          {...defaultProps} 
+        <MetricDiff
+          {...defaultProps}
           direction="neutral"
           difference={0.00}
           percentageChange={0.0}
         />
       )
-      
+
       const diffContainer = screen.getByText('+0.0pp').parentElement
       expect(diffContainer).toHaveClass('text-neutral-600', 'dark:text-neutral-400')
     })
@@ -155,45 +155,45 @@ describe('MetricDiff Component', () => {
   describe('Statistical Significance', () => {
     it('shows significance badge when is_significant is true', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           isSignificant={true}
         />
       )
-      
+
       expect(screen.getByText('Significant')).toBeInTheDocument()
     })
 
     it('does not show significance badge when is_significant is false', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           isSignificant={false}
         />
       )
-      
+
       expect(screen.queryByText('Significant')).not.toBeInTheDocument()
     })
 
     it('displays p-value when provided', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           pValue={0.0234}
         />
       )
-      
+
       expect(screen.getByText('p = 0.0234')).toBeInTheDocument()
     })
 
     it('displays confidence interval when provided', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           confidenceInterval={[0.012, 0.088]}
         />
       )
-      
+
       expect(screen.getByText('95% CI: [0.012, 0.088]')).toBeInTheDocument()
     })
   })
@@ -201,34 +201,34 @@ describe('MetricDiff Component', () => {
   describe('Percentage Change Display', () => {
     it('shows positive percentage change correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           percentageChange={12.34}
         />
       )
-      
+
       expect(screen.getByText('+12.3% change')).toBeInTheDocument()
     })
 
     it('shows negative percentage change correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           percentageChange={-8.76}
         />
       )
-      
+
       expect(screen.getByText('-8.8% change')).toBeInTheDocument()
     })
 
     it('handles zero percentage change', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           percentageChange={0.0}
         />
       )
-      
+
       expect(screen.getByText('+0.0% change')).toBeInTheDocument()
     })
   })
@@ -236,14 +236,14 @@ describe('MetricDiff Component', () => {
   describe('Complex Scenarios', () => {
     it('renders complete statistical analysis', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           isSignificant={true}
           pValue={0.0045}
           confidenceInterval={[0.023, 0.077]}
         />
       )
-      
+
       expect(screen.getByText('Significant')).toBeInTheDocument()
       expect(screen.getByText('p = 0.0045')).toBeInTheDocument()
       expect(screen.getByText('95% CI: [0.023, 0.077]')).toBeInTheDocument()
@@ -251,18 +251,18 @@ describe('MetricDiff Component', () => {
 
     it('applies custom className', () => {
       const { container } = render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           className="custom-test-class"
         />
       )
-      
+
       expect(container.firstChild).toHaveClass('custom-test-class')
     })
 
     it('handles edge case with very small differences', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           run1Score={0.9999}
           run2Score={1.0000}
@@ -270,7 +270,7 @@ describe('MetricDiff Component', () => {
           percentageChange={0.01}
         />
       )
-      
+
       expect(screen.getByText('99.9%')).toBeInTheDocument()
       expect(screen.getByText('100.0%')).toBeInTheDocument()
       expect(screen.getByText('+0.0pp')).toBeInTheDocument() // Rounded to 0.0pp
@@ -278,7 +278,7 @@ describe('MetricDiff Component', () => {
 
     it('handles large metric values correctly', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           run1Score={1234.567}
           run2Score={2345.678}
@@ -286,7 +286,7 @@ describe('MetricDiff Component', () => {
           percentageChange={90.0}
         />
       )
-      
+
       expect(screen.getByText('1234.567')).toBeInTheDocument()
       expect(screen.getByText('2345.678')).toBeInTheDocument()
       expect(screen.getByText('+1111.111')).toBeInTheDocument()
@@ -297,20 +297,20 @@ describe('MetricDiff Component', () => {
   describe('Accessibility', () => {
     it('has proper semantic structure', () => {
       render(<MetricDiff {...defaultProps} />)
-      
+
       // Check for heading structure
       expect(screen.getByRole('heading', { level: 4 })).toHaveTextContent('exact_match')
     })
 
     it('includes proper ARIA labels for statistical data', () => {
       render(
-        <MetricDiff 
+        <MetricDiff
           {...defaultProps}
           isSignificant={true}
           pValue={0.05}
         />
       )
-      
+
       // The component should be accessible to screen readers
       const significantBadge = screen.getByText('Significant')
       expect(significantBadge).toBeInTheDocument()

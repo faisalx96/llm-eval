@@ -44,17 +44,17 @@ export interface SelectProps
 }
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ 
-    className, 
-    variant, 
-    size, 
+  ({
+    className,
+    variant,
+    size,
     options,
     placeholder,
     error,
     label,
     hint,
     id,
-    ...props 
+    ...props
   }, ref) => {
     // Use React.useId for stable ID generation, fallback to counter for older React versions
     const reactId = React.useId?.() || `select-${++selectIdCounter}`;

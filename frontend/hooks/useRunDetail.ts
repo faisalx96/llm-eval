@@ -79,7 +79,7 @@ export function useRunDetail(runId: string): UseRunDetailReturn {
 
     try {
       const blob = await apiClient.exportRun(runId, format);
-      
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');

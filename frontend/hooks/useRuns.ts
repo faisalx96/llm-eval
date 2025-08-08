@@ -42,7 +42,7 @@ export function useRuns(initialFilters: FilterOptions = {}): UseRunsReturn {
     try {
       const filtersToUse = customFilters || filters;
       const response: PaginatedResponse<EvaluationRun> = await apiClient.getRuns(filtersToUse);
-      
+
       setState({
         runs: response.items,
         loading: false,
@@ -71,7 +71,7 @@ export function useRuns(initialFilters: FilterOptions = {}): UseRunsReturn {
     const timeoutId = setTimeout(() => {
       fetchRuns();
     }, 300); // 300ms throttle
-    
+
     return () => clearTimeout(timeoutId);
   }, [JSON.stringify(filters)]); // Use JSON.stringify to properly compare filters
 

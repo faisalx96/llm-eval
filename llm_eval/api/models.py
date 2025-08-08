@@ -6,22 +6,24 @@ and provide clear API contracts for the frontend.
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, validator, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 # Base response models
 
+
 class APIResponse(BaseModel):
     """Base API response model."""
+
     success: bool = True
     message: Optional[str] = None
 
 
 class PaginatedResponse(BaseModel):
     """Base paginated response model."""
+
     items: List[Any]
     total: int
     page: int = Field(ge=1)
@@ -31,10 +33,12 @@ class PaginatedResponse(BaseModel):
 
 # Evaluation Run Models
 
+
 class RunSummary(BaseModel):
     """Summary view of an evaluation run for list endpoints."""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str
     name: str
     description: Optional[str] = None
@@ -53,8 +57,9 @@ class RunSummary(BaseModel):
 
 class RunDetail(BaseModel):
     """Detailed view of an evaluation run."""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str
     name: str
     description: Optional[str] = None
@@ -85,6 +90,7 @@ class RunDetail(BaseModel):
 
 class CreateRunRequest(BaseModel):
     """Request model for creating a new evaluation run."""
+
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
     dataset_name: str = Field(min_length=1, max_length=255)
@@ -98,14 +104,19 @@ class CreateRunRequest(BaseModel):
     tags: Optional[List[str]] = None
     created_by: Optional[str] = Field(None, max_length=255)
     project_id: Optional[str] = Field(None, max_length=255)
-    status: Optional[str] = Field("running", pattern="^(running|completed|failed|cancelled)$")
+    status: Optional[str] = Field(
+        "running", pattern="^(running|completed|failed|cancelled)$"
+    )
 
 
 class UpdateRunRequest(BaseModel):
     """Request model for updating an evaluation run."""
+
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(running|completed|failed|cancelled)$")
+    status: Optional[str] = Field(
+        None, pattern="^(running|completed|failed|cancelled)$"
+    )
     model_version: Optional[str] = Field(None, max_length=100)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -124,10 +135,12 @@ class UpdateRunRequest(BaseModel):
 
 # Run Metrics Models
 
+
 class RunMetricSummary(BaseModel):
     """Summary of run metrics."""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     metric_name: str
     metric_type: Optional[str] = None
     mean_score: Optional[float] = None
@@ -141,6 +154,7 @@ class RunMetricSummary(BaseModel):
 
 class RunMetricDetail(RunMetricSummary):
     """Detailed run metrics with distribution data."""
+
     successful_evaluations: int = 0
     failed_evaluations: int = 0
     score_distribution: Optional[Dict[str, Any]] = None
@@ -150,12 +164,16 @@ class RunMetricDetail(RunMetricSummary):
 
 # Query and Filter Models
 
+
 class RunFilters(BaseModel):
     """Query filters for listing runs."""
+
     project_id: Optional[str] = None
     dataset_name: Optional[str] = None
     model_name: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(running|completed|failed|cancelled)$")
+    status: Optional[str] = Field(
+        None, pattern="^(running|completed|failed|cancelled)$"
+    )
     created_by: Optional[str] = None
     tags: Optional[List[str]] = None
     min_success_rate: Optional[float] = Field(None, ge=0, le=1)
@@ -167,15 +185,20 @@ class RunFilters(BaseModel):
 
 class RunSorting(BaseModel):
     """Sorting options for run queries."""
-    order_by: str = Field(default="created_at", pattern="^(created_at|name|status|success_rate|duration_seconds)$")
+
+    order_by: str = Field(
+        default="created_at",
+        pattern="^(created_at|name|status|success_rate|duration_seconds)$",
+    )
     descending: bool = True
 
 
 class PaginationParams(BaseModel):
     """Pagination parameters."""
+
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=20, ge=1, le=100)
-    
+
     @property
     def offset(self) -> int:
         """Calculate offset for database queries."""
@@ -184,13 +207,17 @@ class PaginationParams(BaseModel):
 
 # Comparison Models
 
+
 class CompareRunsRequest(BaseModel):
     """Request model for comparing evaluation runs."""
+
     run_ids: List[str] = Field(min_items=2, max_items=10)
     metrics: Optional[List[str]] = None  # If None, compare all common metrics
-    comparison_type: str = Field(default="full", pattern="^(full|metrics_only|summary)$")
-    
-    @validator('run_ids')
+    comparison_type: str = Field(
+        default="full", pattern="^(full|metrics_only|summary)$"
+    )
+
+    @validator("run_ids")
     def validate_unique_run_ids(cls, v):
         if len(v) != len(set(v)):
             raise ValueError("Run IDs must be unique")
@@ -199,6 +226,7 @@ class CompareRunsRequest(BaseModel):
 
 class MetricComparison(BaseModel):
     """Comparison data for a specific metric across runs."""
+
     metric_name: str
     runs: Dict[str, Dict[str, Any]]  # run_id -> metric data
     statistical_tests: Optional[Dict[str, Any]] = None
@@ -207,6 +235,7 @@ class MetricComparison(BaseModel):
 
 class RunComparison(BaseModel):
     """Complete comparison between multiple runs."""
+
     run_ids: List[str]
     comparison_type: str
     created_at: datetime
@@ -217,36 +246,44 @@ class RunComparison(BaseModel):
 
 # Response Models
 
+
 class CreateRunResponse(APIResponse):
     """Response for run creation."""
+
     run: RunDetail
 
 
 class GetRunResponse(APIResponse):
     """Response for single run retrieval."""
+
     run: RunDetail
     metrics: List[RunMetricDetail]
 
 
 class ListRunsResponse(PaginatedResponse):
     """Response for run listing."""
+
     items: List[RunSummary]
 
 
 class CompareRunsResponse(APIResponse):
     """Response for run comparison."""
+
     comparison: RunComparison
 
 
 class RunMetricsResponse(APIResponse):
     """Response for run metrics."""
+
     metrics: List[RunMetricDetail]
 
 
 # Health Check Models
 
+
 class DatabaseHealth(BaseModel):
     """Database health check response."""
+
     status: str
     connection_test: bool
     statistics: Dict[str, Any]
@@ -254,6 +291,7 @@ class DatabaseHealth(BaseModel):
 
 class HealthCheckResponse(BaseModel):
     """Complete health check response."""
+
     status: str
     timestamp: datetime
     database: DatabaseHealth
@@ -262,8 +300,10 @@ class HealthCheckResponse(BaseModel):
 
 # Error Models
 
+
 class ErrorDetail(BaseModel):
     """Detailed error information."""
+
     error: str
     message: str
     type: str
@@ -272,6 +312,7 @@ class ErrorDetail(BaseModel):
 
 class ValidationErrorDetail(BaseModel):
     """Validation error details."""
+
     loc: List[Union[str, int]]
     msg: str
     type: str

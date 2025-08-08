@@ -105,7 +105,7 @@ const ComponentShowcase: React.FC = () => {
                   <Button variant="danger">Danger</Button>
                   <Button variant="link">Link</Button>
                 </Flex>
-                
+
                 <Flex gap="md" wrap="wrap">
                   <Button size="sm">Small</Button>
                   <Button size="md">Medium</Button>
@@ -120,7 +120,7 @@ const ComponentShowcase: React.FC = () => {
                 <Flex gap="md" wrap="wrap">
                   <Button loading>Loading</Button>
                   <Button disabled>Disabled</Button>
-                  <Button 
+                  <Button
                     leftIcon={
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -171,7 +171,7 @@ const ComponentShowcase: React.FC = () => {
                 placeholder="Enter your email"
                 hint="We'll never share your email with anyone else."
               />
-              
+
               <Input
                 label="Password"
                 type="password"
@@ -423,7 +423,7 @@ const ComponentShowcase: React.FC = () => {
             Set up your evaluation parameters
           </p>
         </ModalHeader>
-        
+
         <ModalBody>
           <div className="space-y-4">
             <Select
@@ -450,7 +450,7 @@ const ComponentShowcase: React.FC = () => {
             />
           </div>
         </ModalBody>
-        
+
         <ModalFooter>
           <Button variant="outline" onClick={() => setModalOpen(false)}>
             Cancel

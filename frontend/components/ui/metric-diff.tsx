@@ -91,14 +91,14 @@ export const MetricDiff: React.FC<MetricDiffProps> = ({
             {formatScore(run1Score)}
           </div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Run 2</div>
           <div className="font-mono font-semibold text-neutral-900 dark:text-white">
             {formatScore(run2Score)}
           </div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Change</div>
           <div className={`font-mono font-semibold flex items-center justify-center gap-1 ${getDiffColor()}`}>

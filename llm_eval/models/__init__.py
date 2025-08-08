@@ -2,24 +2,24 @@
 
 from .run_models import (
     Base,
-    EvaluationRun,
     EvaluationItem,
-    RunMetric,
-    RunComparison,
+    EvaluationRun,
     Project,
+    RunComparison,
+    RunMetric,
     create_tables,
     drop_tables,
-    get_session_factory
+    get_session_factory,
 )
 
 __all__ = [
-    'Base',
-    'EvaluationRun', 
-    'EvaluationItem',
-    'RunMetric',
-    'RunComparison',
-    'Project',
-    'create_tables',
-    'drop_tables', 
-    'get_session_factory'
+    "Base",
+    "EvaluationRun",
+    "EvaluationItem",
+    "RunMetric",
+    "RunComparison",
+    "Project",
+    "create_tables",
+    "drop_tables",
+    "get_session_factory",
 ]

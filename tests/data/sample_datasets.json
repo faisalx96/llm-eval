@@ -12,7 +12,7 @@
         }
       },
       {
-        "id": "qa_2", 
+        "id": "qa_2",
         "input": "What is 2 + 2?",
         "expected_output": "4",
         "metadata": {
@@ -63,7 +63,7 @@
       {
         "id": "sent_2",
         "input": "This is terrible. I hate it and want my money back.",
-        "expected_output": "negative", 
+        "expected_output": "negative",
         "metadata": {
           "confidence": 0.98
         }
@@ -184,7 +184,7 @@
         }
       },
       {
-        "id": "summ_2", 
+        "id": "summ_2",
         "input": "Climate change represents one of the most pressing challenges of our time. Rising global temperatures are causing ice caps to melt, sea levels to rise, and weather patterns to become more extreme. Scientists emphasize the need for immediate action to reduce greenhouse gas emissions and transition to renewable energy sources.",
         "expected_output": "Climate change causes rising temperatures, melting ice caps, and extreme weather, requiring urgent action on emissions and renewable energy.",
         "metadata": {

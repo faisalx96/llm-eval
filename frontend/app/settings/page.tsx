@@ -45,7 +45,7 @@ const Settings: React.FC = () => {
                   <Badge variant="success" size="sm">Connected</Badge>
                 </div>
               </div>
-              
+
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -58,7 +58,7 @@ const Settings: React.FC = () => {
                     placeholder="https://cloud.langfuse.com"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     API Key
@@ -70,7 +70,7 @@ const Settings: React.FC = () => {
                     placeholder="Enter your Langfuse API key"
                   />
                 </div>
-                
+
                 <div className="flex gap-3 pt-2">
                   <Button variant="default" size="sm">
                     Test Connection
@@ -92,7 +92,7 @@ const Settings: React.FC = () => {
                   Set default values for new evaluations
                 </p>
               </div>
-              
+
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -110,7 +110,7 @@ const Settings: React.FC = () => {
                     ]}
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     Default Metrics
@@ -124,7 +124,7 @@ const Settings: React.FC = () => {
                     </Button>
                   </div>
                 </div>
-                
+
                 <div className="flex gap-3 pt-2">
                   <Button variant="secondary" size="sm">
                     Reset to Defaults
@@ -146,7 +146,7 @@ const Settings: React.FC = () => {
                   Customize your interface preferences
                 </p>
               </div>
-              
+
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -162,7 +162,7 @@ const Settings: React.FC = () => {
                     ]}
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-sm font-medium text-neutral-900 dark:text-white">
@@ -178,7 +178,7 @@ const Settings: React.FC = () => {
                     <span className="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" />
                   </button>
                 </div>
-                
+
                 <div className="flex gap-3 pt-2">
                   <Button variant="default" size="sm">
                     Save Preferences
@@ -227,21 +227,21 @@ const Settings: React.FC = () => {
                   </svg>
                   Export Settings
                 </Button>
-                
+
                 <Button variant="outline" size="md" className="w-full justify-start">
                   <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
                   Import Settings
                 </Button>
-                
+
                 <Button variant="outline" size="md" className="w-full justify-start">
                   <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Reset All Settings
                 </Button>
-                
+
                 <Button variant="outline" size="md" className="w-full justify-start">
                   <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

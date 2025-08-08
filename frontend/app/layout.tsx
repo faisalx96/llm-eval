@@ -188,7 +188,7 @@ export default function RootLayout({
                   {item.icon}
                 </span>
               )}
-              
+
               {!sidebarCollapsed && (
                 <>
                   <span className="flex-1 text-left truncate">{item.label}</span>

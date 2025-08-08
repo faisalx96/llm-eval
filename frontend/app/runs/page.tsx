@@ -122,10 +122,10 @@ const Runs: React.FC = () => {
       const matchesSearch = run.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            run.dataset.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            run.model.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       const matchesStatus = statusFilter === 'all' || run.status === statusFilter;
       const matchesModel = modelFilter === 'all' || run.model === modelFilter;
-      
+
       return matchesSearch && matchesStatus && matchesModel;
     });
 
@@ -133,15 +133,15 @@ const Runs: React.FC = () => {
     filtered.sort((a, b) => {
       let aValue = a[sortField];
       let bValue = b[sortField];
-      
+
       if (sortField === 'timestamp') {
         aValue = new Date(aValue as string).getTime();
         bValue = new Date(bValue as string).getTime();
       }
-      
+
       if (aValue === null) aValue = 0;
       if (bValue === null) bValue = 0;
-      
+
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
@@ -314,7 +314,7 @@ const Runs: React.FC = () => {
               Manage and analyze your LLM evaluation runs
             </p>
           </div>
-          
+
           <div className="flex gap-3">
             <Link href="/runs/new">
               <Button variant="default" size="md">
@@ -341,7 +341,7 @@ const Runs: React.FC = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                 Status
@@ -358,7 +358,7 @@ const Runs: React.FC = () => {
                 ]}
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                 Model
@@ -372,7 +372,7 @@ const Runs: React.FC = () => {
                 ]}
               />
             </div>
-            
+
             <div className="flex items-end">
               <Button
                 variant="secondary"
@@ -492,7 +492,7 @@ const Runs: React.FC = () => {
             <div className="text-sm text-neutral-600 dark:text-neutral-300">
               Page {currentPage} of {totalPages}
             </div>
-            
+
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -502,11 +502,11 @@ const Runs: React.FC = () => {
               >
                 Previous
               </Button>
-              
+
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const page = i + 1;
                 const isActive = page === currentPage;
-                
+
                 return (
                   <Button
                     key={page}
@@ -518,7 +518,7 @@ const Runs: React.FC = () => {
                   </Button>
                 );
               })}
-              
+
               <Button
                 variant="outline"
                 size="sm"

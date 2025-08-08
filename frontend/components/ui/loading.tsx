@@ -83,7 +83,7 @@ const LoadingSkeleton: React.FC<SkeletonProps> = ({
 }) => {
   const getSkeletonClasses = () => {
     const baseClasses = 'animate-pulse bg-neutral-200 dark:bg-neutral-700';
-    
+
     switch (variant) {
       case 'circular':
         return cn(baseClasses, 'rounded-full');
@@ -97,7 +97,7 @@ const LoadingSkeleton: React.FC<SkeletonProps> = ({
 
   const getDefaultHeight = () => {
     if (height) return typeof height === 'number' ? `${height}px` : height;
-    
+
     switch (variant) {
       case 'text':
         return '1rem';
@@ -112,7 +112,7 @@ const LoadingSkeleton: React.FC<SkeletonProps> = ({
 
   const getDefaultWidth = () => {
     if (width) return typeof width === 'number' ? `${width}px` : width;
-    
+
     switch (variant) {
       case 'circular':
         return '2.5rem';
@@ -184,10 +184,10 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
             <div key={rowIndex} className="p-4">
               <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
                 {Array.from({ length: columns }).map((_, colIndex) => (
-                  <LoadingSkeleton 
-                    key={colIndex} 
-                    height="1rem" 
-                    width={colIndex === 0 ? '90%' : Math.random() > 0.5 ? '70%' : '85%'} 
+                  <LoadingSkeleton
+                    key={colIndex}
+                    height="1rem"
+                    width={colIndex === 0 ? '90%' : Math.random() > 0.5 ? '70%' : '85%'}
                   />
                 ))}
               </div>
@@ -223,17 +223,17 @@ const CardSkeleton: React.FC<CardSkeletonProps> = ({
           {headerLines > 1 && <LoadingSkeleton height="1rem" width="40%" />}
         </div>
       )}
-      
+
       <div className="space-y-3">
         {Array.from({ length: bodyLines }).map((_, index) => (
-          <LoadingSkeleton 
-            key={index} 
-            height="1rem" 
-            width={index === bodyLines - 1 ? '75%' : '100%'} 
+          <LoadingSkeleton
+            key={index}
+            height="1rem"
+            width={index === bodyLines - 1 ? '75%' : '100%'}
           />
         ))}
       </div>
-      
+
       {showFooter && (
         <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <div className="flex gap-3">

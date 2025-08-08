@@ -54,8 +54,8 @@ export const CompareButton: React.FC<CompareButtonProps> = ({
       </Button>
 
       {showModal && (
-        <Modal 
-          isOpen={showModal} 
+        <Modal
+          isOpen={showModal}
           onClose={() => setShowModal(false)}
           title="Compare with Another Run"
         >
@@ -63,7 +63,7 @@ export const CompareButton: React.FC<CompareButtonProps> = ({
             <p className="text-neutral-600 dark:text-neutral-400">
               Select another run to compare with this evaluation.
             </p>
-            
+
             <RunSelector
               selectedRunId={compareWithRunId}
               onRunSelect={setCompareWithRunId}
@@ -71,7 +71,7 @@ export const CompareButton: React.FC<CompareButtonProps> = ({
               label="Compare with"
               placeholder="Select a run to compare with..."
             />
-            
+
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 variant="outline"

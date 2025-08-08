@@ -31,12 +31,12 @@ jobs:
       deploy-staging: ${{ steps.strategy.outputs.deploy-staging }}
       deploy-production: ${{ steps.strategy.outputs.deploy-production }}
       version: ${{ steps.strategy.outputs.version }}
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+
     - name: Determine deployment strategy
       id: strategy
       run: |
@@ -58,7 +58,7 @@ jobs:
           echo "deploy-staging=false" >> $GITHUB_OUTPUT
           echo "deploy-production=false" >> $GITHUB_OUTPUT
         fi
-        
+
         # Extract version from tag or use commit SHA
         if [[ "${{ github.ref }}" == refs/tags/* ]]; then
           VERSION=${GITHUB_REF#refs/tags/}
@@ -72,37 +72,37 @@ jobs:
     runs-on: ubuntu-latest
     needs: determine-deployment
     if: needs.determine-deployment.outputs.deploy-staging == 'true' || needs.determine-deployment.outputs.deploy-production == 'true'
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine wheel
-    
+
     - name: Update version for development builds
       if: ${{ !startsWith(github.ref, 'refs/tags/') }}
       run: |
         # For non-tag builds, append commit SHA to version
         sed -i 's/version="0\.3\.0"/version="0.3.0.dev${{ github.sha }}"/' setup.py
-    
+
     - name: Build package
       run: |
         python -m build
         ls -la dist/
-    
+
     - name: Check package
       run: |
         twine check dist/*
         pip install dist/*.whl
         python -c "import llm_eval; print(f'Successfully imported llm_eval v{llm_eval.__version__}')"
-    
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -115,35 +115,35 @@ jobs:
     runs-on: ubuntu-latest
     needs: determine-deployment
     if: needs.determine-deployment.outputs.deploy-staging == 'true' || needs.determine-deployment.outputs.deploy-production == 'true'
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
-    
+
     - name: Install dependencies
       working-directory: frontend
       run: npm ci
-    
+
     - name: Run type checking
       working-directory: frontend
       run: npm run type-check
-    
+
     - name: Run linting
       working-directory: frontend
       run: npm run lint
-    
+
     - name: Build application
       working-directory: frontend
       run: |
         npm run build
         ls -la .next/
-    
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -158,32 +158,32 @@ jobs:
     runs-on: ubuntu-latest
     needs: [determine-deployment, build-backend, build-frontend]
     if: needs.determine-deployment.outputs.deploy-staging == 'true' || needs.determine-deployment.outputs.deploy-production == 'true'
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
+
     - name: Log in to Container Registry
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Download build artifacts
       uses: actions/download-artifact@v3
       with:
         name: python-packages
         path: dist/
-    
+
     - name: Download frontend build
       uses: actions/download-artifact@v3
       with:
         name: frontend-build
         path: frontend-build/
-    
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -196,7 +196,7 @@ jobs:
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
           type=sha,prefix=sha-
-    
+
     - name: Create Dockerfile
       run: |
         cat > Dockerfile << 'EOF'
@@ -207,47 +207,47 @@ jobs:
         RUN npm ci
         COPY frontend/ ./
         COPY frontend-build/.next ./.next
-        
+
         FROM python:3.11-slim AS backend-builder
         WORKDIR /app
         COPY dist/ ./dist/
         RUN pip install dist/*.whl
-        
+
         FROM python:3.11-slim AS runtime
         WORKDIR /app
-        
+
         # Install system dependencies
         RUN apt-get update && apt-get install -y \
             curl \
             && rm -rf /var/lib/apt/lists/*
-        
+
         # Copy Python package
         COPY --from=backend-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
         COPY --from=backend-builder /usr/local/bin /usr/local/bin
-        
+
         # Copy frontend build
         COPY --from=frontend-builder /frontend/.next /app/frontend/.next
         COPY --from=frontend-builder /frontend/public /app/frontend/public
         COPY frontend/package.json /app/frontend/
-        
+
         # Install Node.js for frontend serving
         RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
             && apt-get install -y nodejs
-        
+
         # Create non-root user
         RUN useradd --create-home --shell /bin/bash llmeval
         USER llmeval
-        
+
         # Health check
         HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
             CMD curl -f http://localhost:8000/health || exit 1
-        
+
         EXPOSE 8000 3000
-        
+
         # Start both backend and frontend
         CMD ["sh", "-c", "llm-eval-api & cd frontend && npm start"]
         EOF
-    
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
@@ -265,23 +265,23 @@ jobs:
     needs: [determine-deployment, docker-build]
     if: needs.determine-deployment.outputs.deploy-staging == 'true'
     environment: staging
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Deploy to staging
       run: |
         echo "🚀 Deploying to staging environment"
         echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-deployment.outputs.version }}"
-        
+
         # Here you would typically:
         # 1. Update Kubernetes manifests
         # 2. Deploy to staging cluster
         # 3. Run smoke tests
         # 4. Update deployment status
-        
+
         echo "✅ Staging deployment completed"
-    
+
     - name: Run staging smoke tests
       run: |
         echo "🧪 Running smoke tests against staging"
@@ -295,23 +295,23 @@ jobs:
     needs: [determine-deployment, deploy-staging, docker-build]
     if: needs.determine-deployment.outputs.deploy-production == 'true' && (needs.deploy-staging.result == 'success' || needs.deploy-staging.result == 'skipped')
     environment: production
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Deploy to production
       run: |
         echo "🚀 Deploying to production environment"
         echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.determine-deployment.outputs.version }}"
-        
+
         # Here you would typically:
         # 1. Update Kubernetes manifests
         # 2. Deploy to production cluster with blue/green or canary strategy
         # 3. Run health checks
         # 4. Update deployment status
-        
+
         echo "✅ Production deployment completed"
-    
+
     - name: Run production health checks
       run: |
         echo "🏥 Running production health checks"
@@ -325,14 +325,14 @@ jobs:
     needs: [determine-deployment, build-backend]
     if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
     environment: pypi
-    
+
     steps:
     - name: Download build artifacts
       uses: actions/download-artifact@v3
       with:
         name: python-packages
         path: dist/
-    
+
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
@@ -344,18 +344,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [determine-deployment, build-backend, build-frontend]
     if: startsWith(github.ref, 'refs/tags/')
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+
     - name: Download build artifacts
       uses: actions/download-artifact@v3
       with:
         name: python-packages
         path: dist/
-    
+
     - name: Generate changelog
       id: changelog
       run: |
@@ -366,27 +366,27 @@ jobs:
         else
           CHANGELOG=$(git log --pretty=format:"* %s (%h)" --no-merges -10)
         fi
-        
+
         echo "changelog<<EOF" >> $GITHUB_OUTPUT
         echo "$CHANGELOG" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
-    
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         body: |
           ## Changes
-          
+
           ${{ steps.changelog.outputs.changelog }}
-          
+
           ## Installation
-          
+
           ```bash
           pip install llm-eval==${{ github.ref_name }}
           ```
-          
+
           ## Docker
-          
+
           ```bash
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           ```
@@ -400,28 +400,28 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-staging, deploy-production, publish-pypi]
     if: always() && (needs.deploy-staging.result != 'skipped' || needs.deploy-production.result != 'skipped')
-    
+
     steps:
     - name: Notify deployment status
       uses: actions/github-script@v6
       with:
         script: |
           const { needs } = context.payload.workflow_run || {};
-          
+
           let summary = '## 🚀 Deployment Summary\n\n';
           summary += '| Environment | Status |\n';
           summary += '|-------------|--------|\n';
-          
+
           if ('${{ needs.deploy-staging.result }}' !== 'skipped') {
             summary += `| Staging | ${{ needs.deploy-staging.result == 'success' && '✅ Success' || '❌ Failed' }} |\n`;
           }
-          
+
           if ('${{ needs.deploy-production.result }}' !== 'skipped') {
             summary += `| Production | ${{ needs.deploy-production.result == 'success' && '✅ Success' || '❌ Failed' }} |\n`;
           }
-          
+
           if ('${{ needs.publish-pypi.result }}' !== 'skipped') {
             summary += `| PyPI | ${{ needs.publish-pypi.result == 'success' && '✅ Published' || '❌ Failed' }} |\n`;
           }
-          
+
           console.log(summary);

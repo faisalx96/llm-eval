@@ -22,29 +22,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install black isort mypy flake8
         pip install -e .[dev]
-    
+
     - name: Format check with Black
       run: black --check --diff llm_eval tests
-    
+
     - name: Import sorting check with isort
       run: isort --check-only --diff llm_eval tests
-    
+
     - name: Lint with flake8
       run: |
         flake8 llm_eval tests --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 llm_eval tests --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    
+
     - name: Type checking with mypy
       run: mypy llm_eval --ignore-missing-imports --no-strict-optional
       continue-on-error: true  # Type checking is advisory for now
@@ -63,15 +63,15 @@ jobs:
             python-version: '3.9'
           - os: macos-latest
             python-version: '3.9'
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Cache pip dependencies
       uses: actions/cache@v3
       with:
@@ -79,13 +79,13 @@ jobs:
         key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/setup.py') }}
         restore-keys: |
           ${{ runner.os }}-pip-${{ matrix.python-version }}-
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
         pip install pytest-xdist pytest-timeout pytest-cov
-    
+
     - name: Run unit tests
       run: |
         pytest tests/unit -v \
@@ -94,13 +94,13 @@ jobs:
           --cov-report=term-missing \
           --timeout=300 \
           -n auto
-    
+
     - name: Run integration tests
       run: |
         pytest tests/integration -v \
           --timeout=600 \
           -n auto
-    
+
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       uses: codecov/codecov-action@v3
@@ -115,20 +115,20 @@ jobs:
     strategy:
       matrix:
         extras: ['deepeval', 'langchain', 'openai', 'all']
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install with ${{ matrix.extras }} extras
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev,${{ matrix.extras }}]
-    
+
     - name: Test import capabilities
       run: |
         python -c "
@@ -136,7 +136,7 @@ jobs:
         from llm_eval.metrics import registry
         print('Available metrics:', registry.list_metrics())
         "
-    
+
     - name: Run subset of tests
       run: |
         pytest tests/unit/test_metrics.py -v \
@@ -147,27 +147,27 @@ jobs:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[benchmark]')
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
         pip install psutil
-    
+
     - name: Run performance benchmarks
       run: |
         pytest tests/performance -v \
           --timeout=1800 \
           --tb=short
-    
+
     - name: Upload benchmark results
       if: always()
       uses: actions/upload-artifact@v3
@@ -181,61 +181,61 @@ jobs:
   export-validation:
     name: Export Format Validation
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
         pip install jsonschema pandas openpyxl
-    
+
     - name: Test JSON export format
       run: |
         python -c "
         import json
         from llm_eval.core.results import EvaluationResult
-        
+
         # Create test result
         result = EvaluationResult('test', 'test-run', ['metric1'])
         result.add_result('item1', {'scores': {'metric1': 0.8}, 'success': True})
         result.finish()
-        
+
         # Test JSON export
         json_path = result.save_json('test_export.json')
         with open(json_path) as f:
             data = json.load(f)
-        
+
         # Validate structure
         assert 'dataset_name' in data
         assert 'results' in data
         assert 'metric_stats' in data
         print('JSON export validation: PASSED')
         "
-    
+
     - name: Test CSV export format
       run: |
         python -c "
         import csv
         from llm_eval.core.results import EvaluationResult
-        
+
         # Create test result
         result = EvaluationResult('test', 'test-run', ['metric1'])
         result.add_result('item1', {'scores': {'metric1': 0.8}, 'success': True})
         result.finish()
-        
+
         # Test CSV export
         csv_path = result.save_csv('test_export.csv')
         with open(csv_path, newline='') as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-        
+
         # Validate structure
         assert len(rows) == 1
         assert 'item_id' in rows[0]
@@ -246,20 +246,20 @@ jobs:
   cli-integration:
     name: CLI Integration Tests
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install package
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
-    
+
     - name: Create test task file
       run: |
         cat > test_task.py << 'EOF'
@@ -267,11 +267,11 @@ jobs:
             """Simple echo task for testing."""
             return f"Echo: {input_text}"
         EOF
-    
+
     - name: Test CLI help
       run: |
         llm-eval --help
-    
+
     - name: Test CLI parameter validation
       run: |
         # This should fail with proper error message
@@ -280,29 +280,29 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install safety bandit
         pip install -e .
-    
+
     - name: Check for security vulnerabilities in dependencies
       run: safety check
       continue-on-error: true
-    
+
     - name: Run bandit security linter
       run: bandit -r llm_eval -f json -o bandit-report.json
       continue-on-error: true
-    
+
     - name: Upload security reports
       if: always()
       uses: actions/upload-artifact@v3
@@ -316,35 +316,35 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint-and-format, frontend-quality, test-matrix, frontend-tests, export-validation, cli-integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Full history for version calculation
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build twine
-    
+
     - name: Build package
       run: python -m build
-    
+
     - name: Check package
       run: twine check dist/*
-    
+
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
       with:
         name: dist-packages
         path: dist/
         retention-days: 90
-    
+
     # Uncomment to publish to PyPI on tags
     # - name: Publish to PyPI
     #   if: startsWith(github.ref, 'refs/tags/')
@@ -356,29 +356,29 @@ jobs:
   frontend-quality:
     name: Frontend Code Quality
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
-    
+
     - name: Install dependencies
       working-directory: frontend
       run: npm ci
-    
+
     - name: Lint with ESLint
       working-directory: frontend
       run: npm run lint
-    
+
     - name: Format check with Prettier
       working-directory: frontend
       run: npm run format:check
-    
+
     - name: Type checking with TypeScript
       working-directory: frontend
       run: npm run type-check
@@ -386,30 +386,30 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
-    
+
     - name: Install dependencies
       working-directory: frontend
       run: npm ci
-    
+
     - name: Build frontend
       working-directory: frontend
       run: npm run build
-    
+
     # Note: Add actual tests when test framework is set up
     # - name: Run tests
     #   working-directory: frontend
     #   run: npm test -- --coverage --watchAll=false
-    # 
+    #
     # - name: Upload coverage
     #   uses: codecov/codecov-action@v3
     #   with:
@@ -421,35 +421,35 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-matrix, frontend-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
-    
+
     - name: Install backend
       run: |
         python -m pip install --upgrade pip
         pip install -e .[dev]
-    
+
     - name: Install frontend
       working-directory: frontend
       run: npm ci
-    
+
     - name: Build frontend
       working-directory: frontend
       run: npm run build
-    
+
     - name: Start backend API
       run: |
         llm-eval-api &
@@ -459,7 +459,7 @@ jobs:
         LANGFUSE_PUBLIC_KEY: 'pk-test-key'
         LANGFUSE_SECRET_KEY: 'sk-test-key'
         LANGFUSE_HOST: 'https://test.langfuse.com'
-    
+
     - name: Run integration tests
       run: |
         pytest tests/integration/test_end_to_end.py -v \
@@ -470,7 +470,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint-and-format, frontend-quality, test-matrix, frontend-tests, export-validation, cli-integration]
     if: always()
-    
+
     steps:
     - name: Check quality gates
       run: |
@@ -479,70 +479,70 @@ jobs:
           echo "❌ Backend code quality checks failed"
           exit 1
         fi
-        
+
         if [[ "${{ needs.frontend-quality.result }}" != "success" ]]; then
           echo "❌ Frontend code quality checks failed"
           exit 1
         fi
-        
+
         if [[ "${{ needs.test-matrix.result }}" != "success" ]]; then
           echo "❌ Backend test suite failed"
           exit 1
         fi
-        
+
         if [[ "${{ needs.frontend-tests.result }}" != "success" ]]; then
           echo "❌ Frontend tests failed"
           exit 1
         fi
-        
+
         if [[ "${{ needs.export-validation.result }}" != "success" ]]; then
           echo "❌ Export validation failed"
           exit 1
         fi
-        
+
         if [[ "${{ needs.cli-integration.result }}" != "success" ]]; then
           echo "❌ CLI integration tests failed"
           exit 1
         fi
-        
+
         echo "✅ All quality gates passed"
-    
+
     - name: Post quality summary
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v6
       with:
         script: |
           const needs = ${{ toJson(needs) }};
-          
+
           let summary = '## 🔍 Quality Gates Summary\n\n';
           summary += '| Component | Check | Status |\n';
           summary += '|-----------|-------|--------|\n';
-          
+
           // Backend checks
           const backendQuality = needs['lint-and-format']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Backend | Code Quality | ${backendQuality} |\n`;
-          
+
           const backendTests = needs['test-matrix']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Backend | Test Suite | ${backendTests} |\n`;
-          
+
           // Frontend checks
           const frontendQuality = needs['frontend-quality']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Frontend | Code Quality | ${frontendQuality} |\n`;
-          
+
           const frontendTests = needs['frontend-tests']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Frontend | Build & Tests | ${frontendTests} |\n`;
-          
+
           // Integration checks
           const exportValidation = needs['export-validation']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Integration | Export Validation | ${exportValidation} |\n`;
-          
+
           const cliIntegration = needs['cli-integration']?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| Integration | CLI Tests | ${cliIntegration} |\n`;
-          
+
           // Overall status
           const allPassed = Object.values(needs).every(job => job.result === 'success');
           summary += `\n**Overall Status:** ${allPassed ? '✅ All checks passed!' : '❌ Some checks failed'}\n`;
-          
+
           // Post comment on PR
           if (context.payload.pull_request) {
             github.rest.issues.createComment({

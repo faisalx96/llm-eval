@@ -1,10 +1,9 @@
-version: '3.8'
+version: "3.8"
 
 # LLM-Eval Local One-Line Setup
 # Run locally with: docker-compose up
 
 services:
-
   # Backend API
   api:
     build:
@@ -19,13 +18,13 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8000
       LOG_LEVEL: INFO
-      
+
       # SQLite database (local file)
       DATABASE_URL: sqlite:////app/data/llm_eval.db
-      
+
       # CORS settings for local frontend
       CORS_ORIGINS: http://localhost:3000
-      
+
       # Langfuse configuration (users provide their own keys)
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
@@ -63,7 +62,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
 
 volumes:
   # Only need local data volume for SQLite

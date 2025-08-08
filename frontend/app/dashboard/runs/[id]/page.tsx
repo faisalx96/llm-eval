@@ -23,22 +23,22 @@ const RunDetailPage: React.FC = () => {
   const runId = params.id as string;
   const [activeTab, setActiveTab] = useState('overview');
 
-  const { 
-    run, 
-    metrics, 
+  const {
+    run,
+    metrics,
     items,
-    loading, 
-    error, 
-    refetch, 
+    loading,
+    error,
+    refetch,
     fetchItems,
-    exportRun, 
-    clearError 
+    exportRun,
+    clearError
   } = useRunDetail(runId);
 
   // WebSocket for real-time updates
-  const { lastMessage } = useWebSocket({ 
-    runId, 
-    autoConnect: run?.status === 'running' 
+  const { lastMessage } = useWebSocket({
+    runId,
+    autoConnect: run?.status === 'running'
   });
 
   // Update run when WebSocket receives updates
@@ -187,8 +187,8 @@ const RunDetailPage: React.FC = () => {
               <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-lg">
                 <div className="text-sm text-neutral-600 dark:text-neutral-300">Success Rate</div>
                 <div className="text-2xl font-bold text-neutral-900 dark:text-white">
-                  {run.total_items > 0 
-                    ? Math.round(((run.processed_items - run.failed_items) / run.total_items) * 100) 
+                  {run.total_items > 0
+                    ? Math.round(((run.processed_items - run.failed_items) / run.total_items) * 100)
                     : 0}%
                 </div>
               </div>
@@ -264,7 +264,7 @@ const RunDetailPage: React.FC = () => {
             </div>
           </div>
         );
-      
+
       case 'metrics':
         return (
           <div className="space-y-6">
@@ -296,7 +296,7 @@ const RunDetailPage: React.FC = () => {
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
                     Detailed Metrics
                   </h3>
-                  
+
                   {/* Visual Chart */}
                   <div className="mb-6">
                     <h4 className="text-md font-medium text-neutral-900 dark:text-white mb-3">
@@ -382,7 +382,7 @@ const RunDetailPage: React.FC = () => {
             ) : (
               <div className="text-center py-8">
                 <div className="text-neutral-500 dark:text-neutral-400 mb-4">
-                  {run.status === 'completed' 
+                  {run.status === 'completed'
                     ? 'No metrics data available for this run.'
                     : 'Metrics will be available after the run completes.'}
                 </div>
@@ -395,7 +395,7 @@ const RunDetailPage: React.FC = () => {
             )}
           </div>
         );
-      
+
       case 'errors':
         return (
           <div className="space-y-6">
@@ -467,7 +467,7 @@ const RunDetailPage: React.FC = () => {
             )}
           </div>
         );
-      
+
       case 'items':
         return (
           <div className="space-y-6">
@@ -489,7 +489,7 @@ const RunDetailPage: React.FC = () => {
             </div>
           </div>
         );
-      
+
       case 'configuration':
         return (
           <div className="space-y-6">
@@ -518,7 +518,7 @@ const RunDetailPage: React.FC = () => {
             )}
           </div>
         );
-      
+
       default:
         return null;
     }
@@ -540,8 +540,8 @@ const RunDetailPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 mb-2">
-                <Link 
-                  href="/dashboard" 
+                <Link
+                  href="/dashboard"
                   className="text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -553,13 +553,13 @@ const RunDetailPage: React.FC = () => {
                 </h1>
                 {getStatusBadge(run.status)}
               </div>
-              
+
               {run.description && (
                 <p className="text-neutral-600 dark:text-neutral-300">
                   {run.description}
                 </p>
               )}
-              
+
               <div className="flex items-center gap-4 mt-3 text-sm text-neutral-500 dark:text-neutral-400">
                 <span>Created: {formatTimestamp(run.created_at)}</span>
                 {run.duration_seconds && (
@@ -576,10 +576,10 @@ const RunDetailPage: React.FC = () => {
                 )}
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row gap-3">
               {run.langfuse_session_id && (
-                <a 
+                <a
                   href={`https://cloud.langfuse.com/project/sessions/${run.langfuse_session_id}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -592,23 +592,23 @@ const RunDetailPage: React.FC = () => {
                   </Button>
                 </a>
               )}
-              
+
               <div className="flex gap-2">
-                <CompareButton 
-                  runId={runId} 
-                  variant="outline" 
+                <CompareButton
+                  runId={runId}
+                  variant="outline"
                   size="md"
                 />
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="md"
                   onClick={() => handleExport('excel')}
                   disabled={run.status !== 'completed' || loading}
                 >
                   Export Excel
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="md"
                   onClick={() => handleExport('json')}
                   disabled={run.status !== 'completed' || loading}
@@ -631,7 +631,7 @@ const RunDetailPage: React.FC = () => {
                 </span>
               </div>
               <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3">
-                <div 
+                <div
                   className="bg-warning-500 h-3 rounded-full transition-all duration-1000 ease-out"
                   style={{ width: `${progressPercentage}%` }}
                 />

@@ -258,7 +258,7 @@ setup-contributor: install-dev setup-precommit
 	@echo ""
 	@echo "CI/CD Commands:"
 	@echo "  make ci-quality-backend   - Backend quality checks (CI equivalent)"
-	@echo "  make ci-quality-frontend  - Frontend quality checks (CI equivalent)" 
+	@echo "  make ci-quality-frontend  - Frontend quality checks (CI equivalent)"
 	@echo "  make ci-test-backend     - Backend tests (CI equivalent)"
 	@echo "  make ci-test-frontend    - Frontend tests (CI equivalent)"
 	@echo "  make ci-integration      - Integration tests (CI equivalent)"

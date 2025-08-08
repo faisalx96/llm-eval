@@ -25,7 +25,7 @@ export const RunSelector: React.FC<RunSelectorProps> = ({
   className = '',
 }) => {
   const [search, setSearch] = useState('');
-  const { runs, loading, error } = useRuns({ 
+  const { runs, loading, error } = useRuns({
     search,
     status: 'completed', // Only allow comparing completed runs
     limit: 50,
@@ -42,10 +42,10 @@ export const RunSelector: React.FC<RunSelectorProps> = ({
 
   const formatRunOption = (run: EvaluationRun) => {
     const date = new Date(run.created_at).toLocaleDateString();
-    const duration = run.duration_seconds 
+    const duration = run.duration_seconds
       ? `${Math.round(run.duration_seconds)}s`
       : '';
-    
+
     return `${run.name} (${date}${duration ? `, ${duration}` : ''})`;
   };
 
@@ -87,7 +87,7 @@ export const RunSelector: React.FC<RunSelectorProps> = ({
       <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
         {label}
       </label>
-      
+
       {/* Search input */}
       <div className="mb-2">
         <Input
@@ -122,13 +122,13 @@ export const RunSelector: React.FC<RunSelectorProps> = ({
               )}
             </div>
           </div>
-          
+
           {selectedRun.description && (
             <div className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
               {selectedRun.description}
             </div>
           )}
-          
+
           <div className="flex items-center gap-4 mt-2 text-xs text-neutral-500 dark:text-neutral-400">
             <span>{selectedRun.total_items} items</span>
             {selectedRun.duration_seconds && (

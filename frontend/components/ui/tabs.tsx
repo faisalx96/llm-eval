@@ -48,15 +48,15 @@ const Tabs: React.FC<TabsProps> = ({
 
   const getTabListClasses = () => {
     const baseClasses = 'flex border-b border-neutral-200 dark:border-neutral-700';
-    
+
     if (variant === 'pills') {
       return 'flex p-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg';
     }
-    
+
     if (fullWidth) {
       return cn(baseClasses, 'w-full');
     }
-    
+
     return baseClasses;
   };
 
@@ -115,7 +115,7 @@ const Tabs: React.FC<TabsProps> = ({
       >
         {items.map((item) => {
           const isActive = item.id === activeTab;
-          
+
           return (
             <button
               key={item.id}

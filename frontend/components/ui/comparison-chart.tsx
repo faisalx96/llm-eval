@@ -18,13 +18,13 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
   const chartData = useMemo(() => {
     const metrics = comparison.comparison.metrics;
     const metricNames = Object.keys(metrics);
-    
+
     const run1Data = metricNames.map(name => ({
       metric: name,
       score: metrics[name].run1_score,
       label: comparison.run1.name,
     }));
-    
+
     const run2Data = metricNames.map(name => ({
       metric: name,
       score: metrics[name].run2_score,
@@ -65,14 +65,14 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-6">
           Metric Comparison
         </h3>
-        
+
         <div className="space-y-6">
           {chartData.metricNames.map((metricName) => {
             const metricData = comparison.comparison.metrics[metricName];
             const run1Score = metricData.run1_score;
             const run2Score = metricData.run2_score;
             const direction = metricData.improvement_direction;
-            
+
             return (
               <div key={metricName} className={`p-4 rounded-lg ${getDiffColor(direction)}`}>
                 <div className="flex items-center justify-between mb-3">
@@ -83,7 +83,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                     {formatScore(Math.abs(metricData.difference))} diff
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {/* Run 1 bar */}
                   <div>
@@ -96,13 +96,13 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                       </span>
                     </div>
                     <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3">
-                      <div 
+                      <div
                         className="bg-primary-500 h-3 rounded-full transition-all duration-300"
                         style={{ width: getBarWidth(run1Score) }}
                       />
                     </div>
                   </div>
-                  
+
                   {/* Run 2 bar */}
                   <div>
                     <div className="flex items-center justify-between text-sm mb-1">
@@ -114,14 +114,14 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
                       </span>
                     </div>
                     <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-3">
-                      <div 
+                      <div
                         className="bg-secondary-500 h-3 rounded-full transition-all duration-300"
                         style={{ width: getBarWidth(run2Score) }}
                       />
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Statistical significance indicator */}
                 {comparison.comparison.statistical_analysis[metricName]?.is_significant && (
                   <div className="mt-2 text-xs text-success-600 dark:text-success-400 flex items-center gap-1">
@@ -135,7 +135,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
             );
           })}
         </div>
-        
+
         <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-400">
             <div className="flex items-center gap-4">
@@ -150,7 +150,7 @@ export const ComparisonChart: React.FC<ComparisonChartProps> = ({
             </div>
             <div>
               Winner: <span className="font-medium">
-                {comparison.comparison.overall_performance.winner === 'run1' 
+                {comparison.comparison.overall_performance.winner === 'run1'
                   ? comparison.run1.name
                   : comparison.comparison.overall_performance.winner === 'run2'
                   ? comparison.run2.name

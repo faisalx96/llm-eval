@@ -67,11 +67,11 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+
     - name: Dependency Review
       uses: actions/dependency-review-action@v4
       with:
@@ -82,25 +82,25 @@ jobs:
   supply-chain-security:
     name: Supply Chain Security
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install pip-audit
       run: pip install pip-audit
-    
+
     - name: Run pip-audit on requirements
       run: |
         pip install -e .
         pip-audit --format=json --output=pip-audit-report.json
       continue-on-error: true
-    
+
     - name: Upload pip-audit report
       if: always()
       uses: actions/upload-artifact@v3
@@ -112,13 +112,13 @@ jobs:
   secrets-scan:
     name: Secrets Scanning
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-    
+
     - name: Run TruffleHog OSS
       uses: trufflesecurity/trufflehog@main
       with:
@@ -131,11 +131,11 @@ jobs:
     name: Container Security Scan
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+
     - name: Build Docker image for scanning
       run: |
         cat > Dockerfile.security << 'EOF'
@@ -145,14 +145,14 @@ jobs:
         RUN pip install -e .
         EOF
         docker build -f Dockerfile.security -t llm-eval:security-scan .
-    
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'llm-eval:security-scan'
         format: 'sarif'
         output: 'trivy-results.sarif'
-    
+
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
       if: always()
@@ -164,30 +164,30 @@ jobs:
     runs-on: ubuntu-latest
     needs: [analyze, supply-chain-security, secrets-scan]
     if: always()
-    
+
     steps:
     - name: Generate security summary
       uses: actions/github-script@v6
       with:
         script: |
           const needs = ${{ toJson(needs) }};
-          
+
           let summary = '## 🔒 Security Analysis Summary\n\n';
           summary += '| Check | Status | Details |\n';
           summary += '|-------|--------|----------|\n';
-          
+
           // CodeQL Analysis
           const codeqlStatus = needs.analyze?.result === 'success' ? '✅ Passed' : '❌ Failed';
           summary += `| CodeQL Analysis | ${codeqlStatus} | Static code analysis for security vulnerabilities |\n`;
-          
+
           // Supply Chain Security
           const supplyChainStatus = needs['supply-chain-security']?.result === 'success' ? '✅ Passed' : '⚠️  Issues Found';
           summary += `| Supply Chain | ${supplyChainStatus} | Dependency vulnerability scanning |\n`;
-          
+
           // Secrets Scanning
           const secretsStatus = needs['secrets-scan']?.result === 'success' ? '✅ Clean' : '❌ Secrets Found';
           summary += `| Secrets Scan | ${secretsStatus} | Scan for exposed secrets and credentials |\n`;
-          
+
           // Add recommendations
           summary += '\n## 🛡️ Security Recommendations\n\n';
           summary += '- Keep dependencies up to date\n';
@@ -195,9 +195,9 @@ jobs:
           summary += '- Regularly review and rotate API keys\n';
           summary += '- Monitor security advisories for used packages\n';
           summary += '- Enable branch protection rules\n';
-          
+
           console.log(summary);
-          
+
           // Post as comment on PR if applicable
           if (context.payload.pull_request) {
             github.rest.issues.createComment({

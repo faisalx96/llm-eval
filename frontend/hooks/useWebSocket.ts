@@ -65,12 +65,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       ws.onclose = (event) => {
         setSocket(null);
         setConnectionState('disconnected');
-        
+
         // Attempt reconnection if not manually closed
         if (event.code !== 1000 && reconnectCount.current < reconnectAttempts) {
           reconnectCount.current++;
           console.log(`Attempting to reconnect (${reconnectCount.current}/${reconnectAttempts})...`);
-          
+
           reconnectTimeout.current = setTimeout(() => {
             connect();
           }, reconnectInterval * reconnectCount.current);
@@ -93,12 +93,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     if (reconnectTimeout.current) {
       clearTimeout(reconnectTimeout.current);
     }
-    
+
     if (socket) {
       socket.close(1000, 'Manual disconnect');
       setSocket(null);
     }
-    
+
     setConnectionState('disconnected');
     reconnectCount.current = reconnectAttempts; // Prevent reconnection
   }, [socket, reconnectAttempts]);

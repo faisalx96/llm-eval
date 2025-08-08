@@ -3,20 +3,29 @@
 # Try to import DeepEval metrics, fall back to built-in only if not available
 try:
     from .deepeval_metrics import get_deepeval_metrics
+
     builtin_metrics = get_deepeval_metrics()
     _has_deepeval = True
 except ImportError:
     # DeepEval not available, use only built-in metrics
-    from .builtin import exact_match, contains_expected, fuzzy_match, response_time, token_count, contains, contains_match
-    
+    from .builtin import (
+        contains,
+        contains_expected,
+        contains_match,
+        exact_match,
+        fuzzy_match,
+        response_time,
+        token_count,
+    )
+
     builtin_metrics = {
-        'exact_match': exact_match,
-        'contains': contains,
-        'contains_expected': contains_expected,
-        'contains_match': contains_match,
-        'fuzzy_match': fuzzy_match,
-        'response_time': response_time,
-        'token_count': token_count,
+        "exact_match": exact_match,
+        "contains": contains,
+        "contains_expected": contains_expected,
+        "contains_match": contains_match,
+        "fuzzy_match": fuzzy_match,
+        "response_time": response_time,
+        "token_count": token_count,
     }
     _has_deepeval = False
 
@@ -25,20 +34,22 @@ def list_available_metrics():
     """List all available metrics with descriptions."""
     print("Available Metrics:")
     print("=" * 50)
-    
+
     if not _has_deepeval:
         print("🔸 Note: Using built-in metrics only (DeepEval not installed)")
-        print("   To get advanced metrics, install with: pip install llm-eval[deepeval]")
+        print(
+            "   To get advanced metrics, install with: pip install llm-eval[deepeval]"
+        )
         print()
-    
+
     for name, metric in sorted(builtin_metrics.items()):
-        if hasattr(metric, '__doc__') and metric.__doc__:
-            description = metric.__doc__.strip().split('\n')[0]
+        if hasattr(metric, "__doc__") and metric.__doc__:
+            description = metric.__doc__.strip().split("\n")[0]
         else:
             description = "No description available"
-        
+
         print(f"• {name:20} - {description}")
-    
+
     total_msg = f"Total: {len(builtin_metrics)} metrics available"
     if _has_deepeval:
         total_msg += " (including DeepEval metrics)"

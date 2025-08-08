@@ -124,7 +124,7 @@ export const MetricsSkeleton: React.FC = () => {
       {/* Detailed metrics skeleton */}
       <div>
         <SkeletonBox className="h-6 w-32 mb-4" />
-        
+
         {/* Chart skeleton */}
         <div className="mb-6">
           <SkeletonBox className="h-5 w-40 mb-3" />

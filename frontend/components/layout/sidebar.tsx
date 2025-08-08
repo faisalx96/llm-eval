@@ -76,17 +76,17 @@ const Sidebar: React.FC<SidebarProps> = ({
               {item.icon}
             </span>
           )}
-          
+
           {!collapsed && (
             <>
               <span className="flex-1 text-left truncate">{item.label}</span>
-              
+
               {item.badge && (
                 <span className="flex-shrink-0">
                   {item.badge}
                 </span>
               )}
-              
+
               {hasChildren && (
                 <svg
                   className={cn(

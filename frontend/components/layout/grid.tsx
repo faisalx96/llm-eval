@@ -48,9 +48,9 @@ const Grid: React.FC<GridProps> = ({
 
   const getResponsiveClasses = () => {
     if (!responsive) return '';
-    
+
     const classes = [];
-    
+
     if (responsive.sm) {
       const colsMap = {
         1: 'sm:grid-cols-1',
@@ -214,9 +214,9 @@ const GridItem: React.FC<GridItemProps> = ({
 
   const getResponsiveClasses = () => {
     if (!responsive) return '';
-    
+
     const classes = [];
-    
+
     if (responsive.sm?.colSpan) {
       const spanMap = {
         1: 'sm:col-span-1',

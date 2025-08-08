@@ -67,7 +67,7 @@ export const mockRunComparison = (overrides: Partial<RunComparison> = {}): RunCo
   const run1 = mockEvaluationRun({ id: 'run-1', name: 'Run 1' })
   const run2 = mockEvaluationRun({ id: 'run-2', name: 'Run 2' })
   const metrics1 = mockRunMetrics({ run_id: 'run-1' })
-  const metrics2 = mockRunMetrics({ 
+  const metrics2 = mockRunMetrics({
     run_id: 'run-2',
     overall_scores: {
       exact_match: 0.90,

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { SkeletonBox } from './skeleton';
 
 // Dynamic import to avoid SSR issues with Plotly
-const Plot = dynamic(() => import('react-plotly.js'), { 
+const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
   loading: () => <SkeletonBox className="h-80 w-full" />
 });
@@ -22,9 +22,9 @@ interface MetricChartProps {
   showInteractiveCharts?: boolean;
 }
 
-export const MetricChart: React.FC<MetricChartProps> = ({ 
-  data, 
-  showInteractiveCharts = true 
+export const MetricChart: React.FC<MetricChartProps> = ({
+  data,
+  showInteractiveCharts = true
 }) => {
   const [chartType, setChartType] = useState<ChartType>('bar');
 
@@ -78,9 +78,9 @@ export const MetricChart: React.FC<MetricChartProps> = ({
                 y: data.map(d => d.score * 100),
                 type: 'bar',
                 marker: {
-                  color: data.map(d => 
-                    d.score >= 0.8 ? '#22c55e' : 
-                    d.score >= 0.6 ? '#f59e0b' : 
+                  color: data.map(d =>
+                    d.score >= 0.8 ? '#22c55e' :
+                    d.score >= 0.6 ? '#f59e0b' :
                     '#ef4444'
                   ),
                 },
@@ -89,11 +89,11 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               },
             ]}
             layout={{
-              xaxis: { 
+              xaxis: {
                 title: 'Metrics',
                 tickangle: -45,
               },
-              yaxis: { 
+              yaxis: {
                 title: 'Score (%)',
                 range: [0, 100]
               },
@@ -193,7 +193,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               layout={{
                 title: { text: 'By Metric' },
                 barmode: 'stack',
-                xaxis: { 
+                xaxis: {
                   title: 'Metrics',
                   tickangle: -45,
                 },
@@ -227,7 +227,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
         const total = item.passed + item.failed;
         const passedPercentage = total > 0 ? (item.passed / total) * 100 : 0;
         const scorePercentage = (item.score / maxScore) * 100;
-        
+
         return (
           <div key={item.metric} className="bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
@@ -243,7 +243,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
                 </span>
               </div>
             </div>
-            
+
             {/* Score Bar */}
             <div className="mb-2">
               <div className="flex items-center justify-between text-xs text-neutral-600 dark:text-neutral-300 mb-1">
@@ -251,7 +251,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
                 <span>{(item.score * 100).toFixed(1)}%</span>
               </div>
               <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
-                <div 
+                <div
                   className={`h-2 rounded-full transition-all duration-500 ${
                     item.score >= 0.8 ? 'bg-success-500' :
                     item.score >= 0.6 ? 'bg-warning-500' :
@@ -270,7 +270,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
                   <span>{passedPercentage.toFixed(1)}%</span>
                 </div>
                 <div className="w-full bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
-                  <div 
+                  <div
                     className="h-2 bg-success-500 rounded-full transition-all duration-500"
                     style={{ width: `${passedPercentage}%` }}
                   />

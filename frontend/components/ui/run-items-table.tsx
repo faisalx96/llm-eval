@@ -95,7 +95,7 @@ export const RunItemsTable: React.FC<RunItemsTableProps> = ({
     return (
       <div className="text-center py-8">
         <div className="text-neutral-500 dark:text-neutral-400 mb-4">
-          {statusFilter !== 'all' 
+          {statusFilter !== 'all'
             ? `No ${statusFilter} items found for this run.`
             : 'No items found for this run.'
           }

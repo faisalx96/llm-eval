@@ -33,7 +33,7 @@ updates:
           - "bandit"
           - "safety"
           - "coverage"
-      
+
       # Group FastAPI related updates
       fastapi-ecosystem:
         patterns:
@@ -41,7 +41,7 @@ updates:
           - "uvicorn"
           - "pydantic"
           - "starlette"
-      
+
       # Group async/concurrency libraries
       async-libraries:
         patterns:
@@ -49,7 +49,7 @@ updates:
           - "asyncio*"
           - "nest_asyncio"
           - "websockets"
-      
+
       # Group database related packages
       database-packages:
         patterns:
@@ -84,14 +84,14 @@ updates:
           - "react*"
           - "next*"
           - "@types/react*"
-      
+
       # Group TypeScript related packages
       typescript-ecosystem:
         patterns:
           - "typescript"
           - "@types/*"
           - "@typescript-eslint/*"
-      
+
       # Group linting and formatting tools
       code-quality:
         dependency-type: "development"
@@ -99,7 +99,7 @@ updates:
           - "eslint*"
           - "prettier*"
           - "@eslint/*"
-      
+
       # Group UI and styling packages
       ui-styling:
         patterns:
@@ -107,7 +107,7 @@ updates:
           - "@tailwindcss/*"
           - "class-variance-authority"
           - "clsx"
-      
+
       # Group visualization libraries
       visualization:
         patterns:

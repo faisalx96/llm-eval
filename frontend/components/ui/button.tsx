@@ -40,16 +40,16 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ 
-    className, 
-    variant, 
-    size, 
-    loading = false, 
-    leftIcon, 
-    rightIcon, 
-    children, 
+  ({
+    className,
+    variant,
+    size,
+    loading = false,
+    leftIcon,
+    rightIcon,
+    children,
     disabled,
-    ...props 
+    ...props
   }, ref) => {
     const isDisabled = disabled || loading;
 

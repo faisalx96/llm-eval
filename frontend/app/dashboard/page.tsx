@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { 
-  Table, 
-  TableHeader, 
-  TableBody, 
-  TableHead, 
-  TableRow, 
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
   TableCell,
-  TableEmpty 
+  TableEmpty
 } from '@/components/ui/table';
 import { Loading } from '@/components/ui/loading';
 import { Container } from '@/components/layout/container';
@@ -27,17 +27,17 @@ const Dashboard: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const { 
-    runs, 
-    loading, 
-    error, 
-    total, 
-    hasNext, 
-    hasPrev, 
-    filters, 
-    setFilters, 
+  const {
+    runs,
+    loading,
+    error,
+    total,
+    hasNext,
+    hasPrev,
+    filters,
+    setFilters,
     refetch,
-    clearError 
+    clearError
   } = useRuns({
     limit: itemsPerPage,
     offset: (currentPage - 1) * itemsPerPage,
@@ -50,16 +50,16 @@ const Dashboard: React.FC = () => {
 
   // Update runs when WebSocket receives updates (with throttling)
   React.useEffect(() => {
-    if (lastMessage?.type === 'run_update' || 
+    if (lastMessage?.type === 'run_update' ||
         lastMessage?.type === 'progress' ||
         lastMessage?.type === 'completion' ||
         lastMessage?.type === 'error') {
-      
+
       // Throttle WebSocket-triggered refetches
       const timeoutId = setTimeout(() => {
         refetch();
       }, 1000); // Only refetch once per second from WebSocket updates
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [lastMessage?.type, lastMessage?.timestamp]); // More specific dependencies
@@ -72,7 +72,7 @@ const Dashboard: React.FC = () => {
         setCurrentPage(1);
       }
     }, 500); // Increased debounce delay
-    
+
     return () => clearTimeout(timeoutId);
   }, [searchTerm, filters.search]); // Only depend on searchTerm and current search filter
 
@@ -80,10 +80,10 @@ const Dashboard: React.FC = () => {
   const handleStatusFilterChange = React.useCallback((status: RunStatus | 'all') => {
     if (status !== statusFilter) {
       setStatusFilter(status);
-      setFilters({ 
-        ...filters, 
-        status: status !== 'all' ? status : undefined, 
-        offset: 0 
+      setFilters({
+        ...filters,
+        status: status !== 'all' ? status : undefined,
+        offset: 0
       });
       setCurrentPage(1);
     }
@@ -99,9 +99,9 @@ const Dashboard: React.FC = () => {
   const handlePageChange = React.useCallback((direction: 'next' | 'prev') => {
     const newPage = direction === 'next' ? currentPage + 1 : currentPage - 1;
     setCurrentPage(newPage);
-    setFilters({ 
-      ...filters, 
-      offset: (newPage - 1) * itemsPerPage 
+    setFilters({
+      ...filters,
+      offset: (newPage - 1) * itemsPerPage
     });
   }, [currentPage, itemsPerPage, filters, setFilters]);
 
@@ -111,7 +111,7 @@ const Dashboard: React.FC = () => {
     const successfulRuns = runs.filter(run => run.status === 'completed').length;
     const failedRuns = runs.filter(run => run.status === 'failed').length;
     const runningRuns = runs.filter(run => run.status === 'running').length;
-    
+
     return {
       totalRuns,
       successfulRuns,
@@ -190,7 +190,7 @@ const Dashboard: React.FC = () => {
               Manage and analyze your LLM evaluation runs
             </p>
           </div>
-          
+
           <div className="flex gap-3">
             <Link href="/runs/new">
               <Button variant="default" size="md">
@@ -329,8 +329,8 @@ const Dashboard: React.FC = () => {
               </svg>
               <h3 className="text-lg font-medium text-neutral-900 dark:text-white mb-2">No runs found</h3>
               <p className="text-neutral-600 dark:text-neutral-300 mb-4">
-                {searchTerm || statusFilter !== 'all' 
-                  ? 'Try adjusting your search or filters.' 
+                {searchTerm || statusFilter !== 'all'
+                  ? 'Try adjusting your search or filters.'
                   : 'Get started by creating your first evaluation run.'}
               </p>
               <Link href="/runs/new">
@@ -343,8 +343,8 @@ const Dashboard: React.FC = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead 
-                    sortable 
+                  <TableHead
+                    sortable
                     sorted={filters.sortBy === 'name' ? filters.sortOrder as 'asc' | 'desc' : false}
                     onClick={() => handleSort('name')}
                   >
@@ -353,15 +353,15 @@ const Dashboard: React.FC = () => {
                   <TableHead>Status</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead>Template</TableHead>
-                  <TableHead 
-                    sortable 
+                  <TableHead
+                    sortable
                     sorted={filters.sortBy === 'created_at' ? filters.sortOrder as 'asc' | 'desc' : false}
                     onClick={() => handleSort('created_at')}
                   >
                     Created
                   </TableHead>
-                  <TableHead 
-                    sortable 
+                  <TableHead
+                    sortable
                     sorted={filters.sortBy === 'duration_seconds' ? filters.sortOrder as 'asc' | 'desc' : false}
                     onClick={() => handleSort('duration_seconds')}
                   >
@@ -372,10 +372,10 @@ const Dashboard: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {runs.length === 0 ? (
-                  <TableEmpty 
-                    colSpan={7} 
-                    message={searchTerm || statusFilter !== 'all' 
-                      ? 'No runs match your filters.' 
+                  <TableEmpty
+                    colSpan={7}
+                    message={searchTerm || statusFilter !== 'all'
+                      ? 'No runs match your filters.'
                       : 'No evaluation runs found.'}
                   />
                 ) : (
@@ -383,8 +383,8 @@ const Dashboard: React.FC = () => {
                     <TableRow key={run.id}>
                       <TableCell>
                         <div>
-                          <Link 
-                            href={`/dashboard/runs/${run.id}`} 
+                          <Link
+                            href={`/dashboard/runs/${run.id}`}
                             className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
                           >
                             {run.name}
@@ -402,7 +402,7 @@ const Dashboard: React.FC = () => {
                       <TableCell>
                         <div className="flex items-center gap-2 min-w-32">
                           <div className="flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full h-2">
-                            <div 
+                            <div
                               className={`h-2 rounded-full transition-all ${
                                 run.status === 'completed' ? 'bg-success-500' :
                                 run.status === 'failed' ? 'bg-destructive-500' :
@@ -433,7 +433,7 @@ const Dashboard: React.FC = () => {
                             </Button>
                           </Link>
                           {run.langfuse_session_id && (
-                            <a 
+                            <a
                               href={`https://cloud.langfuse.com/project/sessions/${run.langfuse_session_id}`}
                               target="_blank"
                               rel="noopener noreferrer"

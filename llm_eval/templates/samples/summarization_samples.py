@@ -1,6 +1,6 @@
 """Sample datasets for summarization evaluation template."""
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 
 def get_summarization_samples() -> List[Dict[str, Any]]:
@@ -19,7 +19,7 @@ Looking forward, the future of AI holds both tremendous promise and uncertainty.
             "expected_output": "AI has evolved from an academic field to a transformative technology driving change across healthcare, finance, transportation, and education through advances in deep learning and neural networks. While offering significant benefits like medical diagnosis assistance and personalized learning, AI presents challenges including bias, privacy concerns, job displacement, and market concentration among tech giants. The future promises further breakthroughs in quantum computing and AGI, requiring careful balance between innovation and risk mitigation through ethical governance.",
             "source_type": "article",
             "target_length": "short",
-            "summary_type": "abstractive"
+            "summary_type": "abstractive",
         },
         {
             "input": """
@@ -33,8 +33,8 @@ Potential solutions include transitioning to renewable energy sources, improving
             """.strip(),
             "expected_output": "The climate crisis has reached critical levels with CO2 concentrations at 415 ppm, causing rising temperatures, extreme weather, ice sheet melting, and ocean acidification. While the Paris Agreement targets limiting warming to 2°C, current commitments are insufficient. Solutions include renewable energy transition, carbon capture, pricing mechanisms, and nature-based approaches, but require global cooperation and significant investment to implement effectively.",
             "source_type": "news",
-            "target_length": "medium", 
-            "summary_type": "abstractive"
+            "target_length": "medium",
+            "summary_type": "abstractive",
         },
         {
             "input": """
@@ -55,7 +55,7 @@ Meeting adjourned at 3:30 PM. Next meeting scheduled for November 1st.
             "expected_output": "The executive team met to review Q3 performance and plan Q4. Key highlights: revenue of $2.4M exceeded targets by 12% with 25% profit margin; mobile app beta launched with 500 testers; marketing campaigns increased web traffic 35% and conversions 28%; operations improved delivery times 20% and customer satisfaction to 4.2/5. Action items assigned for Q4 budget, API testing, holiday campaigns, and employee reviews.",
             "source_type": "meeting_notes",
             "target_length": "medium",
-            "summary_type": "extractive"
+            "summary_type": "extractive",
         },
         {
             "input": """
@@ -92,8 +92,8 @@ Project Manager
             "expected_output": "Project Alpha is 75% complete and ahead of schedule, but faces challenges with third-party API integration due to unexpected authentication protocol changes. This may add 1-2 weeks and cause a 15% budget overrun ($50k). The team is implementing parallel development, consulting specialists, and preparing contingency plans to minimize delays while working toward API completion and testing phases.",
             "source_type": "email",
             "target_length": "short",
-            "summary_type": "abstractive"
-        }
+            "summary_type": "abstractive",
+        },
     ]
 
 
@@ -113,13 +113,13 @@ Financial markets reacted negatively to the news, with the FTSE 100 falling 1.2%
             "expected_output": "The Bank of England raised interest rates to 5.25%, the 14th consecutive increase since 2021, to combat inflation remaining at 6.8%. The 6-3 committee vote could push mortgage rates to 6.5%, affecting 1.4 million households and potentially causing 10% property price declines. Markets fell 1.2% while the pound rose to $1.27, and major banks immediately increased their lending rates.",
             "source_type": "news",
             "target_length": "short",
-            "summary_type": "abstractive"
+            "summary_type": "abstractive",
         }
     ]
 
 
 def get_technical_summarization_samples() -> List[Dict[str, Any]]:
-    """Get sample technical document summarization dataset.""" 
+    """Get sample technical document summarization dataset."""
     return [
         {
             "input": """
@@ -138,6 +138,6 @@ Limitations include increased training time (approximately 20% longer) and the n
             "expected_output": "This paper introduces a dynamic neural network pruning method that adapts network structure during training based on gradient magnitudes. Testing on CIFAR-10, ImageNet, and text datasets with ResNet-50, VGG-16, and BERT models achieved 73% average size reduction while maintaining 97.2% accuracy. The approach outperformed static pruning with 15% better compression and 8% faster inference, though requiring 20% longer training time.",
             "source_type": "research_paper",
             "target_length": "medium",
-            "summary_type": "abstractive"
+            "summary_type": "abstractive",
         }
     ]

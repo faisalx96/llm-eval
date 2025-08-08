@@ -36,7 +36,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
 
     // Apply search filter
     if (search) {
-      items = items.filter(item => 
+      items = items.filter(item =>
         JSON.stringify(item.input_data).toLowerCase().includes(search.toLowerCase()) ||
         item.item_id.toLowerCase().includes(search.toLowerCase())
       );
@@ -78,7 +78,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
       }
 
       if (typeof aValue === 'string' && typeof bValue === 'string') {
-        return sortOrder === 'asc' 
+        return sortOrder === 'asc'
           ? aValue.localeCompare(bValue)
           : bValue.localeCompare(aValue);
       }
@@ -166,7 +166,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
               className="w-full"
             />
           </div>
-          
+
           <div className="flex gap-2">
             <select
               value={statusFilter}
@@ -178,7 +178,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
               <option value="regressed">Regressed</option>
               <option value="failed">Failed</option>
             </select>
-            
+
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
@@ -191,7 +191,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
                 </option>
               ))}
             </select>
-            
+
             <Button
               variant="outline"
               size="sm"
@@ -241,7 +241,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
                   const run1Score = item.run1_scores[metric] || 0;
                   const run2Score = item.run2_scores[metric] || 0;
                   const difference = item.differences[metric] || 0;
-                  
+
                   return (
                     <td key={metric} className="text-center font-mono text-sm">
                       <div className="space-y-1">
@@ -267,7 +267,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
             <div className="text-sm text-neutral-500 dark:text-neutral-400">
               Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} items
             </div>
-            
+
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -278,12 +278,12 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
               >
                 Previous
               </Button>
-              
+
               <div className="flex items-center gap-1">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   const pageNum = currentPage <= 3 ? i + 1 : currentPage - 2 + i;
                   if (pageNum > totalPages) return null;
-                  
+
                   return (
                     <Button
                       key={pageNum}
@@ -297,7 +297,7 @@ export const ItemLevelComparison: React.FC<ItemLevelComparisonProps> = ({
                   );
                 })}
               </div>
-              
+
               <Button
                 variant="outline"
                 size="sm"

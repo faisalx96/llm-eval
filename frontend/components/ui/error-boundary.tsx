@@ -98,7 +98,7 @@ const DefaultErrorFallback: React.FC<ErrorFallbackProps> = ({ error, resetError,
           <p className="text-neutral-600 dark:text-neutral-300 mb-4">
             An unexpected error occurred. Please try refreshing the page or contact support if the problem persists.
           </p>
-          
+
           {isDevelopment && (
             <details className="mb-4">
               <summary className="cursor-pointer text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -124,16 +124,16 @@ const DefaultErrorFallback: React.FC<ErrorFallbackProps> = ({ error, resetError,
             <Button onClick={resetError} variant="default" size="md">
               Try Again
             </Button>
-            <Button 
-              onClick={() => window.location.reload()} 
-              variant="outline" 
+            <Button
+              onClick={() => window.location.reload()}
+              variant="outline"
               size="md"
             >
               Reload Page
             </Button>
-            <Button 
-              onClick={() => window.history.back()} 
-              variant="ghost" 
+            <Button
+              onClick={() => window.history.back()}
+              variant="ghost"
               size="md"
             >
               Go Back
