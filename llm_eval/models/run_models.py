@@ -55,6 +55,7 @@ class EvaluationRun(Base):
     
     # Timing information
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     started_at = Column(DateTime, nullable=True, doc="When evaluation actually started")
     completed_at = Column(DateTime, nullable=True, doc="When evaluation finished")
     duration_seconds = Column(Float, nullable=True, doc="Total evaluation duration")
@@ -105,6 +106,10 @@ class EvaluationRun(Base):
         Index('idx_runs_dataset_status', 'dataset_name', 'status'),
         Index('idx_runs_model_created', 'model_name', 'created_at'),
         Index('idx_runs_project_created', 'project_id', 'created_at'),
+        # Additional high-priority indexes for UI queries
+        Index('idx_runs_project_status', 'project_id', 'status'),
+        Index('idx_runs_updated_at', 'updated_at'),
+        Index('idx_runs_status_created', 'status', 'created_at'),
     )
     
     def __repr__(self):
@@ -124,6 +129,7 @@ class EvaluationRun(Base):
             'metrics_used': self.metrics_used,
             'metric_configs': self.metric_configs,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'duration_seconds': self.duration_seconds,
@@ -207,9 +213,14 @@ class EvaluationItem(Base):
         Index('idx_items_response_time', 'response_time'),
         Index('idx_items_sequence', 'run_id', 'sequence_number'),
         Index('idx_items_langfuse_trace', 'langfuse_trace_id'),
-        # Composite indexes
+        # Composite indexes for pagination and queries
         Index('idx_items_run_status', 'run_id', 'status'),
         Index('idx_items_run_sequence', 'run_id', 'sequence_number'),
+        Index('idx_items_run_created', 'run_id', 'started_at'),
+        Index('idx_items_run_completed', 'run_id', 'completed_at'),
+        # Performance optimization indexes
+        Index('idx_items_tokens_cost', 'tokens_used', 'cost'),
+        Index('idx_items_error_type', 'error_type'),
     )
     
     def __repr__(self):

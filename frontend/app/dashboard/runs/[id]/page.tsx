@@ -13,6 +13,7 @@ import { useRunDetail, useWebSocket } from '@/hooks';
 import { RunStatus } from '@/types';
 import { RunItemsTable } from '@/components/ui/run-items-table';
 import { MetricChart } from '@/components/ui/metric-chart';
+import { CompareButton } from '@/components/ui/compare-button';
 import { RunDetailSkeleton, MetricsSkeleton, RunItemsTableSkeleton } from '@/components/ui/skeleton';
 import { ErrorBoundary, ChartErrorBoundary, TableErrorBoundary } from '@/components/ui/error-boundary';
 
@@ -593,6 +594,11 @@ const RunDetailPage: React.FC = () => {
               )}
               
               <div className="flex gap-2">
+                <CompareButton 
+                  runId={runId} 
+                  variant="outline" 
+                  size="md"
+                />
                 <Button 
                   variant="outline" 
                   size="md"

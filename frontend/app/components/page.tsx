@@ -28,6 +28,7 @@ import {
   Spinner,
   LoadingOverlay,
   Skeleton,
+  SkeletonBox,
   TableSkeleton,
   CardSkeleton,
   Container,
@@ -283,8 +284,12 @@ const ComponentShowcase: React.FC = () => {
               </LoadingOverlay>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Skeleton variant="rectangular" height={100} />
-                <Skeleton variant="text" lines={3} />
+                <SkeletonBox className="h-24" />
+                <div className="space-y-2">
+                  <SkeletonBox className="h-4" />
+                  <SkeletonBox className="h-4" />
+                  <SkeletonBox className="h-4 w-3/4" />
+                </div>
               </div>
             </CardContent>
           </Card>

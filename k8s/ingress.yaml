@@ -1,0 +1,178 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-eval-ingress
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: ingress
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    
+    # WebSocket support for real-time features
+    nginx.ingress.kubernetes.io/websocket-services: "llm-eval-api"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    
+    # SSL/TLS settings
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/server-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # Caching for static assets
+    nginx.ingress.kubernetes.io/server-alias: "www.llm-eval.example.com"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - llm-eval.example.com
+        - api.llm-eval.example.com
+        - www.llm-eval.example.com
+      secretName: llm-eval-tls
+  rules:
+    # Main frontend domain
+    - host: llm-eval.example.com
+      http:
+        paths:
+          # API routes
+          - path: /api(/.*)?
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-api
+                port:
+                  number: 80
+          # WebSocket routes
+          - path: /ws(/.*)?
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-api
+                port:
+                  number: 80
+          # Frontend routes (catch-all)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-frontend
+                port:
+                  number: 80
+    
+    # API subdomain
+    - host: api.llm-eval.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-api
+                port:
+                  number: 80
+    
+    # Redirect www to main domain
+    - host: www.llm-eval.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-frontend
+                port:
+                  number: 80
+
+---
+# Development/staging ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: llm-eval-dev-ingress
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/environment: development
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/websocket-services: "llm-eval-api"
+    # No SSL for development
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: dev.llm-eval.local
+      http:
+        paths:
+          - path: /api(/.*)?
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-api
+                port:
+                  number: 80
+          - path: /ws(/.*)?
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-api
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: llm-eval-frontend
+                port:
+                  number: 80
+
+---
+# Network Policy for ingress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-eval-ingress-policy
+  namespace: llm-eval
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: llm-eval
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 3000
+    - from: []  # Allow all for now - restrict as needed
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 3000

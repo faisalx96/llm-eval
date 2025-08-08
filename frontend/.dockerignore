@@ -1,0 +1,128 @@
+# LLM-Eval Frontend .dockerignore
+# Excludes unnecessary files from Docker build context for faster builds
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js build output
+.next/
+out/
+
+# Testing
+coverage/
+.nyc_output/
+jest-results.xml
+.jest/
+
+# Development files
+.env*.local
+.env.development
+.env.test
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Documentation
+*.md
+README*
+CHANGELOG*
+LICENSE*
+DESIGN_SYSTEM.md
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# ESLint
+.eslintcache
+
+# Prettier
+.prettierignore
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Deployment
+k8s/
+config/
+scripts/
+
+# Backend files (exclude from frontend builds)
+../llm_eval/
+../tests/
+../setup.py
+../requirements.txt
+../*.py
+../*.db
+../*.sqlite*
+
+# Logs
+logs/
+*.log
+log/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Lock files (keep package-lock.json, exclude others)
+yarn.lock
+pnpm-lock.yaml
+
+# Bundle analyzer
+.next/analyze/
+
+# Storybook
+storybook-static/
+
+# PWA
+**/sw.js
+**/workbox-*.js
+**/worker-*.js
+
+# Sentry
+.sentryclirc
+
+# Environment files
+.env.production
+.env.staging
+
+# CI/CD
+.circleci/
+.travis.yml
+.gitlab-ci.yml
+
+# Security
+*.pem
+*.key
+*.crt
+*.p12

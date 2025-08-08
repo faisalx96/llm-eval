@@ -557,7 +557,12 @@ async def get_run_items(
         # Filter by status if specified
         if status:
             mock_items = [item for item in mock_items if item["status"] == status]
-            total_filtered = len([i for i in range(total_items) if (i % 3) != 2 if status == "success" else (i % 3) == 2 if status == "failed" else (i % 3) == 1])
+            if status == "success":
+                total_filtered = len([i for i in range(total_items) if (i % 3) != 2])
+            elif status == "failed":
+                total_filtered = len([i for i in range(total_items) if (i % 3) == 2])
+            else:
+                total_filtered = len([i for i in range(total_items) if (i % 3) == 1])
             total_items = total_filtered
         
         return {

@@ -50,7 +50,7 @@ class WebSocketManager:
     broadcasting of progress updates during evaluation runs.
     """
     
-    def __init__(self):
+    def __init__(self, max_connections: int = 1000, cleanup_interval: int = 300):
         # Active connections: connection_id -> ConnectionInfo
         self.connections: Dict[str, ConnectionInfo] = {}
         
@@ -60,8 +60,20 @@ class WebSocketManager:
         # General status subscriptions: connection_ids
         self.status_subscriptions: Set[str] = set()
         
+        # Connection management settings
+        self.max_connections = max_connections
+        self.cleanup_interval = cleanup_interval
+        
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
+        
+        # Background cleanup task
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
+        
+        # Connection health tracking
+        self._connection_errors: Dict[str, int] = {}  # connection_id -> error_count
+        self._max_errors_per_connection = 5
     
     def generate_connection_id(self) -> str:
         """Generate a unique connection ID."""
@@ -69,14 +81,23 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket) -> str:
         """
-        Accept a new WebSocket connection.
+        Accept a new WebSocket connection with connection limits.
         
         Args:
             websocket: The WebSocket connection
             
         Returns:
             Connection ID for this connection
+            
+        Raises:
+            RuntimeError: If connection limit exceeded
         """
+        async with self._lock:
+            # Check connection limit
+            if len(self.connections) >= self.max_connections:
+                await websocket.close(code=1000, reason="Connection limit exceeded")
+                raise RuntimeError(f"Connection limit exceeded ({self.max_connections})")
+        
         await websocket.accept()
         
         connection_id = self.generate_connection_id()
@@ -86,23 +107,38 @@ class WebSocketManager:
                 websocket=websocket,
                 connected_at=datetime.now()
             )
+            # Initialize error counter
+            self._connection_errors[connection_id] = 0
         
-        logger.info(f"WebSocket connection established: {connection_id}")
+        logger.info(f"WebSocket connection established: {connection_id} ({len(self.connections)}/{self.max_connections})")
+        
+        # Start cleanup task if not already running
+        if not self._cleanup_task or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._background_cleanup())
+        
         return connection_id
     
-    async def disconnect(self, connection_id: str):
+    async def disconnect(self, connection_id: str, force_close: bool = False):
         """
-        Handle WebSocket disconnection.
+        Handle WebSocket disconnection with proper cleanup.
         
         Args:
             connection_id: The connection to disconnect
+            force_close: Whether to force close the WebSocket
         """
         async with self._lock:
             if connection_id in self.connections:
                 connection_info = self.connections[connection_id]
                 
+                # Close WebSocket if still open and force_close is True
+                if force_close:
+                    try:
+                        await connection_info.websocket.close()
+                    except Exception as e:
+                        logger.debug(f"Error closing WebSocket {connection_id}: {e}")
+                
                 # Remove from run subscriptions
-                for run_id in connection_info.run_ids:
+                for run_id in list(connection_info.run_ids):  # Copy to avoid modification during iteration
                     if run_id in self.run_subscriptions:
                         self.run_subscriptions[run_id].discard(connection_id)
                         if not self.run_subscriptions[run_id]:
@@ -111,10 +147,13 @@ class WebSocketManager:
                 # Remove from status subscriptions
                 self.status_subscriptions.discard(connection_id)
                 
+                # Clean up error tracking
+                self._connection_errors.pop(connection_id, None)
+                
                 # Remove connection
                 del self.connections[connection_id]
         
-        logger.info(f"WebSocket connection closed: {connection_id}")
+        logger.info(f"WebSocket connection closed: {connection_id} ({len(self.connections)} remaining)")
     
     async def subscribe_to_run(self, connection_id: str, run_id: str):
         """
@@ -181,23 +220,44 @@ class WebSocketManager:
         
         logger.debug(f"Connection {connection_id} unsubscribed from status updates")
     
-    async def send_personal_message(self, connection_id: str, message: Dict[str, Any]):
+    async def send_personal_message(self, connection_id: str, message: Dict[str, Any]) -> bool:
         """
-        Send a message to a specific connection.
+        Send a message to a specific connection with error tracking.
         
         Args:
             connection_id: Target connection
             message: Message to send
+            
+        Returns:
+            True if message sent successfully, False otherwise
         """
-        async with self._lock:
-            if connection_id in self.connections:
-                websocket = self.connections[connection_id].websocket
-                try:
-                    await websocket.send_text(json.dumps(message))
-                except Exception as e:
-                    logger.warning(f"Failed to send message to {connection_id}: {e}")
-                    # Connection might be broken, remove it
-                    await self.disconnect(connection_id)
+        if connection_id not in self.connections:
+            return False
+            
+        websocket = self.connections[connection_id].websocket
+        
+        try:
+            await websocket.send_text(json.dumps(message))
+            # Reset error count on successful send
+            async with self._lock:
+                self._connection_errors[connection_id] = 0
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to send message to {connection_id}: {e}")
+            
+            # Increment error count
+            async with self._lock:
+                if connection_id in self._connection_errors:
+                    self._connection_errors[connection_id] += 1
+                    
+                    # If too many errors, disconnect
+                    if self._connection_errors[connection_id] >= self._max_errors_per_connection:
+                        logger.error(f"Too many errors for connection {connection_id}, disconnecting")
+                        await self.disconnect(connection_id, force_close=True)
+                        return False
+            
+            return False
     
     async def broadcast_to_run(self, run_id: str, update: ProgressUpdate):
         """
@@ -254,36 +314,185 @@ class WebSocketManager:
             return len(self.run_subscriptions.get(run_id, set()))
     
     async def cleanup_stale_connections(self):
-        """Remove connections that might be stale."""
+        """Remove connections that might be stale with improved health checks."""
         current_time = datetime.now()
         stale_connections = []
         
         async with self._lock:
             for connection_id, info in self.connections.items():
-                # Check if connection has been silent for too long
+                should_remove = False
+                
+                # Check silence duration
                 if info.last_ping:
                     silence_duration = (current_time - info.last_ping).total_seconds()
-                    if silence_duration > 300:  # 5 minutes
-                        stale_connections.append(connection_id)
+                    if silence_duration > 300:  # 5 minutes of silence
+                        should_remove = True
+                        logger.debug(f"Connection {connection_id} silent for {silence_duration}s")
+                
+                # Check connection age without activity
+                connection_age = (current_time - info.connected_at).total_seconds()
+                if not info.last_ping and connection_age > 600:  # 10 minutes without any ping
+                    should_remove = True
+                    logger.debug(f"Connection {connection_id} aged {connection_age}s without activity")
+                
+                # Check error count
+                error_count = self._connection_errors.get(connection_id, 0)
+                if error_count >= self._max_errors_per_connection:
+                    should_remove = True
+                    logger.debug(f"Connection {connection_id} has {error_count} errors")
+                
+                if should_remove:
+                    stale_connections.append(connection_id)
         
         # Remove stale connections
         for connection_id in stale_connections:
-            await self.disconnect(connection_id)
+            logger.info(f"Removing stale connection: {connection_id}")
+            await self.disconnect(connection_id, force_close=True)
+        
+        if stale_connections:
+            logger.info(f"Cleaned up {len(stale_connections)} stale connections")
+    
+    async def _background_cleanup(self):
+        """Background task for periodic connection cleanup."""
+        logger.info("Starting background cleanup task")
+        
+        while not self._shutdown_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(), 
+                    timeout=self.cleanup_interval
+                )
+                # If we get here, shutdown was requested
+                break
+            except asyncio.TimeoutError:
+                # Timeout is expected, time to run cleanup
+                pass
+            
+            try:
+                await self.cleanup_stale_connections()
+            except Exception as e:
+                logger.error(f"Error during background cleanup: {e}")
+        
+        logger.info("Background cleanup task stopped")
+    
+    async def shutdown(self):
+        """Shutdown the WebSocket manager and clean up resources."""
+        logger.info("Shutting down WebSocket manager")
+        
+        # Signal shutdown
+        self._shutdown_event.set()
+        
+        # Wait for cleanup task to finish
+        if self._cleanup_task and not self._cleanup_task.done():
+            try:
+                await asyncio.wait_for(self._cleanup_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("Background cleanup task did not shutdown gracefully")
+                self._cleanup_task.cancel()
+        
+        # Disconnect all connections
+        connection_ids = list(self.connections.keys())
+        for connection_id in connection_ids:
+            await self.disconnect(connection_id, force_close=True)
+        
+        logger.info("WebSocket manager shutdown complete")
+    
+    async def ping_connection(self, connection_id: str) -> bool:
+        """
+        Ping a specific connection to check if it's alive.
+        
+        Args:
+            connection_id: Connection to ping
+            
+        Returns:
+            True if ping successful, False otherwise
+        """
+        if connection_id not in self.connections:
+            return False
+        
+        ping_message = {
+            "event_type": "ping",
+            "timestamp": datetime.now().isoformat(),
+            "connection_id": connection_id
+        }
+        
+        success = await self.send_personal_message(connection_id, ping_message)
+        
+        if success:
+            async with self._lock:
+                if connection_id in self.connections:
+                    self.connections[connection_id].last_ping = datetime.now()
+        
+        return success
+    
+    async def ping_all_connections(self) -> int:
+        """
+        Ping all connections to check health.
+        
+        Returns:
+            Number of successful pings
+        """
+        connection_ids = list(self.connections.keys())
+        successful_pings = 0
+        
+        for connection_id in connection_ids:
+            if await self.ping_connection(connection_id):
+                successful_pings += 1
+        
+        logger.debug(f"Pinged {successful_pings}/{len(connection_ids)} connections successfully")
+        return successful_pings
     
     async def health_check(self) -> Dict[str, Any]:
-        """Get manager health information."""
+        """Get comprehensive manager health information."""
+        current_time = datetime.now()
+        
         async with self._lock:
+            # Connection statistics
+            total_connections = len(self.connections)
+            error_counts = sum(self._connection_errors.values())
+            avg_connection_age = 0
+            
+            if self.connections:
+                total_age = sum(
+                    (current_time - info.connected_at).total_seconds() 
+                    for info in self.connections.values()
+                )
+                avg_connection_age = total_age / len(self.connections)
+            
+            # Health status determination
+            health_status = "healthy"
+            if total_connections >= self.max_connections * 0.9:
+                health_status = "warning"  # Near capacity
+            elif error_counts > total_connections * 2:  # More than 2 errors per connection on average
+                health_status = "warning"
+            
             return {
-                "status": "healthy",
-                "connections": len(self.connections),
-                "run_subscriptions": len(self.run_subscriptions),
-                "status_subscriptions": len(self.status_subscriptions),
-                "timestamp": datetime.now().isoformat()
+                "status": health_status,
+                "connections": {
+                    "total": total_connections,
+                    "limit": self.max_connections,
+                    "utilization": round(total_connections / self.max_connections * 100, 1) if self.max_connections > 0 else 0,
+                    "avg_age_seconds": round(avg_connection_age, 1)
+                },
+                "subscriptions": {
+                    "run_subscriptions": len(self.run_subscriptions),
+                    "status_subscriptions": len(self.status_subscriptions),
+                    "total_run_subscribers": sum(len(subs) for subs in self.run_subscriptions.values())
+                },
+                "errors": {
+                    "total_error_count": error_counts,
+                    "connections_with_errors": len([c for c in self._connection_errors.values() if c > 0])
+                },
+                "cleanup": {
+                    "task_running": self._cleanup_task is not None and not self._cleanup_task.done(),
+                    "cleanup_interval": self.cleanup_interval
+                },
+                "timestamp": current_time.isoformat()
             }
 
 
-# Global WebSocket manager instance
-websocket_manager = WebSocketManager()
+# Global WebSocket manager instance with production settings
+websocket_manager = WebSocketManager(max_connections=1000, cleanup_interval=300)
 
 
 def get_websocket_manager() -> WebSocketManager:
@@ -301,15 +510,35 @@ async def managed_websocket_connection(websocket: WebSocket):
         
     Yields:
         Tuple of (connection_id, manager)
+        
+    Raises:
+        RuntimeError: If connection limit exceeded
     """
     manager = get_websocket_manager()
-    connection_id = await manager.connect(websocket)
+    connection_id = None
     
     try:
+        connection_id = await manager.connect(websocket)
         yield connection_id, manager
+        
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {connection_id}")
+        raise  # Re-raise to let the caller handle
+        
+    except RuntimeError as e:
+        # Connection limit exceeded or other connection errors
+        logger.warning(f"WebSocket connection failed: {e}")
+        raise
+        
     except Exception as e:
         logger.error(f"WebSocket error for {connection_id}: {e}")
+        raise
+        
     finally:
-        await manager.disconnect(connection_id)
+        # Always ensure cleanup happens
+        if connection_id:
+            try:
+                await manager.disconnect(connection_id, force_close=True)
+            except Exception as cleanup_error:
+                logger.error(f"Error during connection cleanup {connection_id}: {cleanup_error}")
+                # Don't re-raise cleanup errors to avoid masking original exceptions

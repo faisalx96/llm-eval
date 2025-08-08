@@ -23,6 +23,9 @@ export const SkeletonBox: React.FC<SkeletonProps> = ({
   );
 };
 
+// Generic skeleton component (alias for SkeletonBox)
+export const Skeleton = SkeletonBox;
+
 // Specialized skeleton components for common use cases
 
 export const RunDetailSkeleton: React.FC = () => {

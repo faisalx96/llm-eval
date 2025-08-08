@@ -1,0 +1,366 @@
+version: '3.8'
+
+# LLM-Eval Production Environment
+# Optimized for production deployment with security and performance
+
+services:
+  # PostgreSQL Database with production settings
+  postgres:
+    image: postgres:15-alpine
+    container_name: llm-eval-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-llm_eval}
+      POSTGRES_USER: ${POSTGRES_USER:-llm_eval}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres.prod.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backups:/backups
+    networks:
+      - llm-eval-internal
+    secrets:
+      - postgres_password
+    command: >
+      postgres
+        -c config_file=/etc/postgresql/postgresql.conf
+        -c shared_buffers=256MB
+        -c effective_cache_size=1GB
+        -c maintenance_work_mem=64MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c default_statistics_target=100
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c work_mem=4MB
+        -c min_wal_size=1GB
+        -c max_wal_size=4GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llm_eval} -d ${POSTGRES_DB:-llm_eval}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # Redis Cache with production configuration
+  redis:
+    image: redis:7-alpine
+    container_name: llm-eval-redis-prod
+    restart: always
+    command: >
+      redis-server
+        --requirepass "${REDIS_PASSWORD}"
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --save 900 1
+        --save 300 10
+        --save 60 10000
+        --appendonly yes
+        --appendfsync everysec
+        --auto-aof-rewrite-percentage 100
+        --auto-aof-rewrite-min-size 64mb
+    volumes:
+      - redis_data:/data
+    networks:
+      - llm-eval-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # Backend API with production optimizations
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE}
+        VCS_REF: ${VCS_REF}
+        VERSION: ${VERSION:-0.3.0}
+    container_name: llm-eval-api-prod
+    restart: always
+    environment:
+      # Application settings
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LOG_LEVEL: INFO
+      
+      # Database configuration
+      DATABASE_URL: postgresql://${POSTGRES_USER:-llm_eval}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-llm_eval}
+      DATABASE_POOL_SIZE: 20
+      DATABASE_MAX_OVERFLOW: 40
+      DATABASE_POOL_RECYCLE: 3600
+      
+      # Redis configuration
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_MAX_CONNECTIONS: 50
+      
+      # Security settings
+      SECRET_KEY_FILE: /run/secrets/secret_key
+      
+      # CORS settings
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS}
+      
+      # Langfuse configuration
+      LANGFUSE_SECRET_KEY_FILE: /run/secrets/langfuse_secret_key
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      
+      # Production features
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_PER_MINUTE: 1000
+      SENTRY_DSN: ${SENTRY_DSN}
+      
+      # Performance settings
+      GUNICORN_WORKERS: 4
+      GUNICORN_WORKER_CONNECTIONS: 1000
+      GUNICORN_MAX_REQUESTS: 1000
+      GUNICORN_MAX_REQUESTS_JITTER: 50
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - llm-eval-internal
+    secrets:
+      - secret_key
+      - langfuse_secret_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # Frontend with production build
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE}
+        VCS_REF: ${VCS_REF}
+        VERSION: ${VERSION:-0.3.0}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NODE_ENV: production
+    container_name: llm-eval-frontend-prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    networks:
+      - llm-eval-internal
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # NGINX Load Balancer and Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: llm-eval-nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+      - nginx_cache:/var/cache/nginx
+    networks:
+      - llm-eval-internal
+      - llm-eval-external
+    depends_on:
+      - api
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
+  # Monitoring and Logging
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: llm-eval-prometheus
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - llm-eval-internal
+    ports:
+      - "9090:9090"
+    profiles:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: llm-eval-grafana
+    restart: always
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - llm-eval-internal
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: llm-eval-loki
+    restart: always
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - llm-eval-internal
+    ports:
+      - "3100:3100"
+    profiles:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: llm-eval-promtail
+    restart: always
+    volumes:
+      - ./logs:/var/log/llm-eval:ro
+      - ./config/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - llm-eval-internal
+    depends_on:
+      - loki
+    profiles:
+      - monitoring
+
+  # Backup service
+  backup:
+    image: postgres:15-alpine
+    container_name: llm-eval-backup
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    networks:
+      - llm-eval-internal
+    depends_on:
+      - postgres
+    command: /backup.sh
+    profiles:
+      - backup
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_cache:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+
+networks:
+  llm-eval-internal:
+    driver: bridge
+    name: llm-eval-internal
+    internal: false
+  llm-eval-external:
+    driver: bridge
+    name: llm-eval-external
+    internal: false
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  secret_key:
+    file: ./secrets/secret_key.txt
+  langfuse_secret_key:
+    file: ./secrets/langfuse_secret_key.txt

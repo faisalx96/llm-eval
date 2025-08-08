@@ -10,6 +10,8 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   loading: () => <SkeletonBox className="h-80 w-full" />
 });
 
+type ChartType = 'bar' | 'distribution';
+
 interface MetricChartProps {
   data: {
     metric: string;
@@ -24,7 +26,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
   data, 
   showInteractiveCharts = true 
 }) => {
-  const [chartType, setChartType] = useState<'bar' | 'distribution'>('bar');
+  const [chartType, setChartType] = useState<ChartType>('bar');
 
   if (!data || data.length === 0) {
     return (
@@ -50,7 +52,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               <button
                 onClick={() => setChartType('bar')}
                 className={`px-3 py-1 text-sm rounded ${
-                  chartType === 'bar'
+                  (chartType as string) === 'bar'
                     ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
                     : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300'
                 }`}
@@ -60,7 +62,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               <button
                 onClick={() => setChartType('distribution')}
                 className={`px-3 py-1 text-sm rounded ${
-                  chartType === 'distribution'
+                  (chartType as string) === 'distribution'
                     ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
                     : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300'
                 }`}
@@ -124,7 +126,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               <button
                 onClick={() => setChartType('bar')}
                 className={`px-3 py-1 text-sm rounded ${
-                  chartType === 'bar'
+                  (chartType as string) === 'bar'
                     ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
                     : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300'
                 }`}
@@ -134,7 +136,7 @@ export const MetricChart: React.FC<MetricChartProps> = ({
               <button
                 onClick={() => setChartType('distribution')}
                 className={`px-3 py-1 text-sm rounded ${
-                  chartType === 'distribution'
+                  (chartType as string) === 'distribution'
                     ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
                     : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300'
                 }`}

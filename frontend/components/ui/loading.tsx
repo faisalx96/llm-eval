@@ -74,7 +74,7 @@ export interface SkeletonProps {
   lines?: number;
 }
 
-const Skeleton: React.FC<SkeletonProps> = ({
+const LoadingSkeleton: React.FC<SkeletonProps> = ({
   className,
   variant = 'text',
   width,
@@ -174,7 +174,7 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
           <div className="border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 p-4">
             <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
               {Array.from({ length: columns }).map((_, index) => (
-                <Skeleton key={index} height="1.25rem" width="80%" />
+                <LoadingSkeleton key={index} height="1.25rem" width="80%" />
               ))}
             </div>
           </div>
@@ -184,7 +184,7 @@ const TableSkeleton: React.FC<TableSkeletonProps> = ({
             <div key={rowIndex} className="p-4">
               <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
                 {Array.from({ length: columns }).map((_, colIndex) => (
-                  <Skeleton 
+                  <LoadingSkeleton 
                     key={colIndex} 
                     height="1rem" 
                     width={colIndex === 0 ? '90%' : Math.random() > 0.5 ? '70%' : '85%'} 
@@ -219,14 +219,14 @@ const CardSkeleton: React.FC<CardSkeletonProps> = ({
     <div className={cn('rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-6', className)}>
       {showHeader && (
         <div className="mb-4">
-          <Skeleton height="1.5rem" width="60%" className="mb-2" />
-          {headerLines > 1 && <Skeleton height="1rem" width="40%" />}
+          <LoadingSkeleton height="1.5rem" width="60%" className="mb-2" />
+          {headerLines > 1 && <LoadingSkeleton height="1rem" width="40%" />}
         </div>
       )}
       
       <div className="space-y-3">
         {Array.from({ length: bodyLines }).map((_, index) => (
-          <Skeleton 
+          <LoadingSkeleton 
             key={index} 
             height="1rem" 
             width={index === bodyLines - 1 ? '75%' : '100%'} 
@@ -237,8 +237,8 @@ const CardSkeleton: React.FC<CardSkeletonProps> = ({
       {showFooter && (
         <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <div className="flex gap-3">
-            <Skeleton height="2rem" width="5rem" variant="rectangular" />
-            <Skeleton height="2rem" width="5rem" variant="rectangular" />
+            <LoadingSkeleton height="2rem" width="5rem" variant="rectangular" />
+            <LoadingSkeleton height="2rem" width="5rem" variant="rectangular" />
           </div>
         </div>
       )}
@@ -252,7 +252,6 @@ export { Spinner as Loading };
 export {
   Spinner,
   LoadingOverlay,
-  Skeleton,
   TableSkeleton,
   CardSkeleton,
 };

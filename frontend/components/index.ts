@@ -13,6 +13,11 @@ export * from './ui/run-items-table';
 export * from './ui/metric-chart';
 export * from './ui/skeleton';
 export * from './ui/error-boundary';
+export * from './ui/metric-diff';
+export * from './ui/run-selector';
+export * from './ui/comparison-chart';
+export * from './ui/item-level-comparison';
+export * from './ui/compare-button';
 
 // Layout Components
 export * from './layout/container';

@@ -1,458 +1,435 @@
-# 🚀 LLM-Eval Deployment Guide
+# 🚀 LLM-Eval Production Deployment Guide
 
 ## Overview
-This guide covers deploying LLM-Eval in various environments, from local development to production Kubernetes clusters.
+This comprehensive guide covers deploying LLM-Eval in production environments using Docker and Kubernetes, with security best practices, monitoring, and automated deployment scripts.
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
-- [Local Development](#local-development)
+- [Quick Start](#quick-start)
 - [Docker Deployment](#docker-deployment)
-- [Production Deployment](#production-deployment)
 - [Kubernetes Deployment](#kubernetes-deployment)
 - [Configuration](#configuration)
-- [Monitoring](#monitoring)
+- [Security](#security)
+- [Monitoring & Logging](#monitoring--logging)
+- [Backup & Recovery](#backup--recovery)
 - [Troubleshooting](#troubleshooting)
+- [Automated Scripts](#automated-scripts)
 
 ---
 
 ## Prerequisites
 
 ### System Requirements
-- **Python**: 3.8+ (3.10 recommended)
-- **Node.js**: 18+ (for frontend)
-- **Database**: SQLite (dev) or PostgreSQL 13+ (production)
-- **Memory**: 4GB minimum, 8GB recommended
-- **Storage**: 10GB minimum for database and logs
+- **Docker**: 20.10+ with Docker Compose v2
+- **Kubernetes**: 1.24+ (for K8s deployment)
+- **CPU**: 4 cores minimum, 8 cores recommended
+- **Memory**: 8GB minimum, 16GB recommended
+- **Storage**: 50GB minimum for production
+- **Network**: HTTPS/TLS certificates for production
+
+### Required Tools
+```bash
+# Docker deployment
+docker --version          # 20.10+
+docker-compose --version  # v2.0+
+
+# Kubernetes deployment
+kubectl version           # 1.24+
+helm version             # 3.0+ (optional)
+
+# Utilities
+curl, git, openssl
+```
 
 ### Required Credentials
 ```bash
-# Langfuse (Required)
-LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_PUBLIC_KEY=your_public_key
+# Core Services (Required)
+LANGFUSE_SECRET_KEY=sk-lf-your-secret-key-here
+LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key-here
 LANGFUSE_HOST=https://cloud.langfuse.com
 
-# Database (Production only)
-DATABASE_URL=postgresql://user:pass@host:5432/llm_eval
+# Database & Cache
+POSTGRES_PASSWORD=your-secure-db-password
+REDIS_PASSWORD=your-secure-redis-password
+SECRET_KEY=your-secure-app-secret-min-32-chars
 
-# Optional Services
-REDIS_URL=redis://localhost:6379
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
+# Production URLs
+CORS_ORIGINS=https://your-domain.com
+NEXT_PUBLIC_API_URL=https://api.your-domain.com
+
+# Optional Monitoring
+SENTRY_DSN=https://xxx@sentry.io/xxx
 ```
 
----
+## Quick Start
 
-## Local Development
-
-### Quick Start
+### Automated Deployment (Recommended)
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-org/llm-eval.git
+git clone https://github.com/faisalx96/llm-eval.git
 cd llm-eval
 
-# 2. Install Python dependencies
-pip install -e .
-pip install -e ".[dev]"
-
-# 3. Install frontend dependencies
-cd frontend
-npm install
-cd ..
-
-# 4. Set environment variables
+# 2. Setup environment
 cp .env.example .env
 # Edit .env with your credentials
 
-# 5. Start services
-# Terminal 1: API Server
-python -m llm_eval.api.main
+# 3. Deploy with Docker (Development)
+./scripts/deploy.sh docker dev
 
-# Terminal 2: Frontend
-cd frontend && npm run dev
+# 4. Deploy with Docker (Production)
+./scripts/deploy.sh docker prod
 
-# Visit http://localhost:3000
+# 5. Deploy with Kubernetes (Production)
+./scripts/deploy.sh k8s prod
+
+# 6. Run health checks
+./scripts/health_check.sh docker  # or k8s
+
+# Visit https://your-domain.com
 ```
 
-### Development Configuration
-```python
-# config/development.py
-DEBUG = True
-DATABASE_URL = "sqlite:///llm_eval_runs.db"
-CORS_ORIGINS = ["http://localhost:3000"]
-LOG_LEVEL = "DEBUG"
-```
+### Manual Setup (Development)
+```bash
+# Local development without Docker
+pip install -e .
+pip install -e ".[dev]"
+cd frontend && npm install && cd ..
 
----
+# Start services
+python -m llm_eval.api.main &  # API on :8000
+cd frontend && npm run dev &   # Frontend on :3000
+```
 
 ## Docker Deployment
 
-### Single Container Setup
+### Architecture Overview
+The Docker deployment includes:
+- **API Server**: FastAPI backend with Gunicorn
+- **Frontend**: Next.js application with standalone output
+- **PostgreSQL**: Production database with performance tuning
+- **Redis**: Cache and session storage
+- **NGINX**: Reverse proxy and load balancer (production)
+- **Monitoring**: Prometheus, Grafana, Loki (optional)
+
+### Multi-Stage Dockerfile (Backend)
 ```dockerfile
-# Dockerfile
-FROM python:3.10-slim
-
+# Multi-stage build for optimized production image
+FROM python:3.11-slim as builder
+# Build dependencies and application
+RUN apt-get update && apt-get install -y build-essential curl git
 WORKDIR /app
+COPY requirements.txt setup.py ./
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY . .
-
-# Install package
-RUN pip install -e .
-
-# Expose ports
+FROM python:3.11-slim as production
+# Production runtime with security hardening
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN groupadd -r llmeval && useradd -r -g llmeval -u 1000 llmeval
+WORKDIR /app
+COPY --from=builder /root/.local /home/llmeval/.local
+COPY --chown=llmeval:llmeval . .
+USER llmeval
 EXPOSE 8000
-
-# Run API server
-CMD ["uvicorn", "llm_eval.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s CMD curl -f http://localhost:8000/api/health
+CMD ["gunicorn", "llm_eval.api.main:app", "--workers", "4", "--bind", "0.0.0.0:8000"]
 ```
 
-### Docker Compose (Recommended)
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:13
-    environment:
-      POSTGRES_DB: llm_eval
-      POSTGRES_USER: llm_eval
-      POSTGRES_PASSWORD: secure_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  api:
-    build: 
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://llm_eval:secure_password@postgres:5432/llm_eval
-      REDIS_URL: redis://redis:6379
-      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
-      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
-      LANGFUSE_HOST: ${LANGFUSE_HOST}
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./logs:/app/logs
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    environment:
-      NEXT_PUBLIC_API_URL: http://api:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - api
-      - frontend
-
-volumes:
-  postgres_data:
-```
-
-### Build and Run
+### Development Setup
 ```bash
-# Build containers
-docker-compose build
-
-# Start services
+# Start development environment
 docker-compose up -d
 
 # View logs
 docker-compose logs -f
 
-# Stop services
-docker-compose down
+# Access services:
+# - Frontend: http://localhost:3000
+# - API: http://localhost:8000
+# - API Docs: http://localhost:8000/api/docs
+# - PgAdmin: http://localhost:5050 (with --profile tools)
 ```
 
----
+### Production Setup
+```bash
+# Production deployment with monitoring
+export POSTGRES_PASSWORD="your-secure-password"
+export REDIS_PASSWORD="your-redis-password"
+export SECRET_KEY="your-secret-key-min-32-chars"
+export LANGFUSE_SECRET_KEY="sk-lf-your-key"
+export LANGFUSE_PUBLIC_KEY="pk-lf-your-key"
 
-## Production Deployment
+# Deploy production stack
+docker-compose -f docker-compose.production.yml up -d
 
-### Production Dockerfile
-```dockerfile
-# Dockerfile.prod
-FROM python:3.10-slim as builder
+# Deploy with monitoring
+docker-compose -f docker-compose.production.yml --profile monitoring up -d
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-FROM python:3.10-slim
-
-WORKDIR /app
-
-# Copy dependencies from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
-
-# Copy application
-COPY . .
-RUN pip install --no-deps -e .
-
-# Security: Run as non-root user
-RUN useradd -m -u 1000 llmeval && chown -R llmeval:llmeval /app
-USER llmeval
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/api/health/ || exit 1
-
-EXPOSE 8000
-
-# Production server with workers
-CMD ["gunicorn", "llm_eval.api.main:app", \
-     "-w", "4", \
-     "-k", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+# SSL/TLS certificates (Let's Encrypt)
+docker run --rm -v $(pwd)/ssl:/etc/letsencrypt certbot/certbot \
+  certonly --standalone -d your-domain.com
 ```
+
+### Docker Compose Files
+
+**Development** (`docker-compose.yml`):
+- SQLite/PostgreSQL database
+- Hot reload for development
+- Debug logging enabled
+- Development tools (PgAdmin, Redis Commander)
+
+**Production** (`docker-compose.production.yml`):
+- PostgreSQL with performance tuning
+- Redis with persistence
+- Multi-worker Gunicorn
+- NGINX reverse proxy
+- Security hardening
+- Resource limits
+- Health checks
+- Monitoring stack (optional)
 
 ### Environment Configuration
+
+**Development (.env)**:
 ```bash
-# .env.production
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-API_WORKERS=4
-API_RELOAD=false
+# Core settings
+LANGFUSE_SECRET_KEY=sk-lf-dev-key
+LANGFUSE_PUBLIC_KEY=pk-lf-dev-key
+SECRET_KEY=dev-secret-key-min-32-chars
 
 # Database
-DATABASE_URL=postgresql://user:pass@db.example.com:5432/llm_eval
-DATABASE_POOL_SIZE=20
-DATABASE_MAX_OVERFLOW=40
+POSTGRES_PASSWORD=dev_password_123
+REDIS_PASSWORD=dev_redis_123
 
-# Redis Cache
-REDIS_URL=redis://redis.example.com:6379/0
-REDIS_MAX_CONNECTIONS=50
+# URLs
+CORS_ORIGINS=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-# Security
-SECRET_KEY=your-secret-key-min-32-chars
-ALLOWED_HOSTS=api.example.com,www.example.com
-CORS_ORIGINS=https://app.example.com
+**Production (.env.production)**:
+```bash
+# Core settings (use strong values)
+LANGFUSE_SECRET_KEY=sk-lf-prod-key
+LANGFUSE_PUBLIC_KEY=pk-lf-prod-key
+SECRET_KEY=prod-secret-key-min-32-chars-very-secure
+
+# Database
+POSTGRES_PASSWORD=very-secure-db-password
+REDIS_PASSWORD=very-secure-redis-password
+
+# Production URLs
+CORS_ORIGINS=https://your-domain.com,https://api.your-domain.com
+NEXT_PUBLIC_API_URL=https://api.your-domain.com
+TRUSTED_HOSTS=your-domain.com,api.your-domain.com
 
 # Monitoring
 SENTRY_DSN=https://xxx@sentry.io/xxx
-LOG_LEVEL=INFO
-
-# Rate Limiting
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_PER_MINUTE=100
+GRAFANA_PASSWORD=admin-password
 ```
 
-### NGINX Configuration
-```nginx
-# nginx.conf
-upstream api {
-    server api:8000;
-}
-
-upstream frontend {
-    server frontend:3000;
-}
-
-server {
-    listen 80;
-    server_name example.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name example.com;
-
-    ssl_certificate /etc/nginx/ssl/cert.pem;
-    ssl_certificate_key /etc/nginx/ssl/key.pem;
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # API routes
-    location /api {
-        proxy_pass http://api;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # Frontend routes
-    location / {
-        proxy_pass http://frontend;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
----
+### Security Best Practices
+- Non-root containers
+- Multi-stage builds for minimal images
+- Secrets management via Docker secrets
+- Network isolation
+- Resource limits
+- Health checks
+- Read-only file systems where possible
 
 ## Kubernetes Deployment
 
-### Namespace and ConfigMap
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: llm-eval
+### Architecture Overview
+The Kubernetes deployment provides:
+- **High Availability**: Multiple replicas with anti-affinity
+- **Auto-scaling**: HPA and VPA for dynamic scaling
+- **Service Mesh**: Ingress with SSL termination
+- **Storage**: Persistent volumes for data
+- **Monitoring**: Prometheus and Grafana integration
+- **Security**: RBAC, network policies, secrets management
 
----
-# k8s/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: llm-eval-config
-  namespace: llm-eval
-data:
-  API_HOST: "0.0.0.0"
-  API_PORT: "8000"
-  LOG_LEVEL: "INFO"
-  CORS_ORIGINS: "https://llm-eval.example.com"
+### Cluster Requirements
+```bash
+# Minimum cluster specifications
+# - 3 worker nodes (2 CPU, 4GB RAM each)
+# - LoadBalancer service support
+# - Persistent volume provisioner
+# - Ingress controller (NGINX recommended)
+# - cert-manager (for SSL certificates)
 ```
 
-### Secrets
-```yaml
-# k8s/secrets.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: llm-eval-secrets
-  namespace: llm-eval
-type: Opaque
-stringData:
-  DATABASE_URL: "postgresql://user:pass@postgres:5432/llm_eval"
-  LANGFUSE_SECRET_KEY: "your-secret-key"
-  LANGFUSE_PUBLIC_KEY: "your-public-key"
-  SECRET_KEY: "your-app-secret-key"
+### Prerequisites Setup
+```bash
+# 1. Install required tools
+kubectl version --client
+helm version
+
+# 2. Install NGINX Ingress Controller
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  --set controller.replicaCount=2
+
+# 3. Install cert-manager (for SSL)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+# 4. Install metrics-server (for HPA)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-### API Deployment
+### Secrets Management
+```bash
+# Create secrets directory
+mkdir -p secrets
+
+# Generate secrets
+echo "your-secure-postgres-password" > secrets/postgres_password.txt
+echo "your-secure-app-secret-32-chars-min" > secrets/secret_key.txt
+echo "sk-lf-your-langfuse-secret-key" > secrets/langfuse_secret_key.txt
+
+# Create Kubernetes secrets
+kubectl create secret generic llm-eval-secrets \
+  --from-file=POSTGRES_PASSWORD=secrets/postgres_password.txt \
+  --from-file=SECRET_KEY=secrets/secret_key.txt \
+  --from-file=LANGFUSE_SECRET_KEY=secrets/langfuse_secret_key.txt \
+  --namespace=llm-eval
+
+# SSL certificates (Let's Encrypt)
+kubectl create secret tls llm-eval-tls \
+  --cert=ssl/cert.pem \
+  --key=ssl/key.pem \
+  --namespace=llm-eval
+```
+
+### Deployment Steps
+```bash
+# 1. Apply namespace and RBAC
+kubectl apply -f k8s/namespace.yaml
+
+# 2. Apply configuration
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secrets.yaml  # Update with your values first
+
+# 3. Deploy database and cache
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redis.yaml
+
+# Wait for database to be ready
+kubectl wait --for=condition=ready pod -l app=postgres -n llm-eval --timeout=300s
+
+# 4. Deploy application services
+kubectl apply -f k8s/api.yaml
+kubectl apply -f k8s/frontend.yaml
+
+# Wait for deployments
+kubectl wait --for=condition=available deployment/llm-eval-api -n llm-eval --timeout=300s
+
+# 5. Deploy networking
+kubectl apply -f k8s/ingress.yaml
+kubectl apply -f k8s/hpa.yaml
+```
+
+### Resource Management
 ```yaml
-# k8s/api-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
+# Production resource specifications
+API Resources:
+  requests: { cpu: 500m, memory: 1Gi }
+  limits: { cpu: 2, memory: 4Gi }
+  replicas: 3-10 (auto-scaling)
+
+Frontend Resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 500m, memory: 1Gi }
+  replicas: 2-6 (auto-scaling)
+
+PostgreSQL Resources:
+  requests: { cpu: 250m, memory: 512Mi }
+  limits: { cpu: 1, memory: 2Gi }
+  storage: 20Gi SSD
+
+Redis Resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 500m, memory: 768Mi }
+  storage: 2Gi SSD
+```
+
+### High Availability Features
+```yaml
+# Anti-affinity for pod distribution
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app: llm-eval-api
+        topologyKey: kubernetes.io/hostname
+
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
 metadata:
-  name: llm-eval-api
-  namespace: llm-eval
+  name: llm-eval-api-pdb
 spec:
-  replicas: 3
+  minAvailable: 1
   selector:
     matchLabels:
       app: llm-eval-api
-  template:
-    metadata:
-      labels:
-        app: llm-eval-api
-    spec:
-      containers:
-      - name: api
-        image: llm-eval:latest
-        ports:
-        - containerPort: 8000
-        envFrom:
-        - configMapRef:
-            name: llm-eval-config
-        - secretRef:
-            name: llm-eval-secrets
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "2Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /api/health/
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /api/health/
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
+
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-eval-api-hpa
+spec:
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        averageUtilization: 70
 ```
 
-### Service and Ingress
+### SSL/TLS and Ingress
 ```yaml
-# k8s/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: llm-eval-api
-  namespace: llm-eval
-spec:
-  selector:
-    app: llm-eval-api
-  ports:
-  - port: 80
-    targetPort: 8000
-  type: ClusterIP
-
----
-# k8s/ingress.yaml
+# Ingress with SSL termination and WebSocket support
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: llm-eval-ingress
-  namespace: llm-eval
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    nginx.ingress.kubernetes.io/websocket-services: llm-eval-api
+    # SSL
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # WebSocket support
+    nginx.ingress.kubernetes.io/websocket-services: "llm-eval-api"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/server-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Strict-Transport-Security "max-age=31536000" always;
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
 spec:
   tls:
-  - hosts:
-    - api.llm-eval.example.com
+  - hosts: ["llm-eval.example.com", "api.llm-eval.example.com"]
     secretName: llm-eval-tls
   rules:
-  - host: api.llm-eval.example.com
+  - host: llm-eval.example.com
     http:
       paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service: { name: llm-eval-api, port: { number: 80 } }
       - path: /
         pathType: Prefix
         backend:
-          service:
-            name: llm-eval-api
-            port:
-              number: 80
+          service: { name: llm-eval-frontend, port: { number: 80 } }
 ```
 
 ### Horizontal Pod Autoscaler
@@ -506,6 +483,211 @@ kubectl logs -f deployment/llm-eval-api -n llm-eval
 
 # Scale manually
 kubectl scale deployment llm-eval-api --replicas=5 -n llm-eval
+```
+
+---
+
+## Automated Scripts
+
+### Deployment Script
+Comprehensive deployment automation:
+
+```bash
+# Usage: ./scripts/deploy.sh [docker|k8s] [dev|staging|prod]
+
+# Features:
+# - Prerequisite checking
+# - Environment validation  
+# - Image building (Docker)
+# - Service deployment
+# - Health verification
+# - Rollback on failure
+
+# Examples:
+./scripts/deploy.sh docker dev       # Local development
+./scripts/deploy.sh docker prod      # Docker production
+./scripts/deploy.sh k8s staging      # Kubernetes staging
+./scripts/deploy.sh k8s prod         # Kubernetes production
+```
+
+### Health Check Script
+Post-deployment validation:
+
+```bash
+# Usage: ./scripts/health_check.sh [docker|k8s] [api_url] [frontend_url]
+
+# Checks:
+# - API health endpoint
+# - Frontend accessibility
+# - Database connectivity
+# - Redis connectivity
+# - WebSocket functionality
+# - Performance baseline
+# - Resource usage
+
+# Examples:
+./scripts/health_check.sh docker
+./scripts/health_check.sh k8s https://api.example.com https://example.com
+```
+
+### Rollback Script
+Quick recovery from failed deployments:
+
+```bash
+# Usage: ./scripts/rollback.sh [docker|k8s] [backup_tag]
+
+# Features:
+# - Automatic backup before rollback
+# - Tag-specific rollback
+# - Database restoration
+# - Health verification
+# - Rollback verification
+
+# Examples:
+./scripts/rollback.sh docker          # Rollback to previous
+./scripts/rollback.sh k8s 0.2.5       # Rollback to specific version
+./scripts/rollback.sh list             # List available backups
+```
+
+---
+
+## Security
+
+### Container Security
+```bash
+# Security best practices implemented:
+# - Non-root containers
+# - Read-only root filesystems
+# - Minimal base images (Alpine/distroless)
+# - Security context constraints
+# - Network policies
+# - Resource limits
+# - Health checks
+
+# Vulnerability scanning
+docker scan llm-eval:latest
+
+# Security audit
+kubectl auth can-i --list --as=system:serviceaccount:llm-eval:llm-eval-api
+```
+
+### Secrets Management
+```bash
+# Kubernetes secrets (recommended)
+kubectl create secret generic llm-eval-secrets \
+  --from-literal=DATABASE_URL="postgresql://.." \
+  --from-literal=SECRET_KEY=".." \
+  --namespace=llm-eval
+
+# External secret management (production)
+# - AWS Secrets Manager
+# - Azure Key Vault
+# - HashiCorp Vault
+# - External Secrets Operator
+```
+
+### Network Security
+```yaml
+# Network policies for traffic isolation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-eval-network-policy
+  namespace: llm-eval
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: llm-eval
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS only
+```
+
+---
+
+## Monitoring & Logging
+
+### Prometheus Metrics
+```yaml
+# Application metrics exposed
+# - API request rates and latencies
+# - Database connection pool usage
+# - Redis cache hit/miss rates
+# - WebSocket connection counts
+# - Custom business metrics
+
+# Prometheus configuration
+scrape_configs:
+- job_name: 'llm-eval-api'
+  kubernetes_sd_configs:
+  - role: pod
+  relabel_configs:
+  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+    action: keep
+    regex: true
+```
+
+### Grafana Dashboards
+```bash
+# Pre-built dashboards for:
+# - Application overview
+# - Database performance
+# - API performance
+# - Infrastructure metrics
+# - Business metrics (evaluation runs, success rates)
+
+# Import dashboard
+grafana-cli --config /etc/grafana/grafana.ini admin import-dashboard dashboard.json
+```
+
+### Log Management
+```yaml
+# Centralized logging with Loki
+# - Structured JSON logs
+# - Log correlation by request ID
+# - Error aggregation and alerting
+# - Log retention policies
+
+# Promtail configuration for log collection
+server:
+  http_listen_port: 9080
+positions:
+  filename: /tmp/positions.yaml
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+scrape_configs:
+- job_name: kubernetes-pods
+  kubernetes_sd_configs:
+  - role: pod
+```
+
+### Alerting
+```yaml
+# Critical alerts
+# - API response time > 2s
+# - Error rate > 5%
+# - Database connections > 90%
+# - Pod crash loops
+# - Disk usage > 80%
+
+# AlertManager configuration
+groups:
+- name: llm-eval-alerts
+  rules:
+  - alert: APIHighLatency
+    expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+    labels:
+      severity: warning
+    annotations:
+      summary: "High API latency detected"
 ```
 
 ---
@@ -794,5 +976,47 @@ For deployment issues:
 ---
 
 **Last Updated:** January 2025  
-**Version:** 0.2.5  
+**Version:** 0.3.0  
 **Status:** Production Ready
+
+---
+
+## Quick Reference
+
+### Essential Commands
+
+**Docker Development:**
+```bash
+./scripts/deploy.sh docker dev
+./scripts/health_check.sh docker
+docker-compose logs -f
+```
+
+**Docker Production:**
+```bash
+./scripts/deploy.sh docker prod
+./scripts/health_check.sh docker
+./scripts/rollback.sh docker
+```
+
+**Kubernetes Production:**
+```bash
+./scripts/deploy.sh k8s prod
+./scripts/health_check.sh k8s
+kubectl get pods -n llm-eval
+kubectl logs -f deployment/llm-eval-api -n llm-eval
+```
+
+### Service URLs
+- **API**: `https://api.your-domain.com`
+- **Frontend**: `https://your-domain.com`
+- **API Docs**: `https://api.your-domain.com/api/docs`
+- **Health Check**: `https://api.your-domain.com/api/health`
+
+### Support Resources
+- **Repository**: https://github.com/faisalx96/llm-eval
+- **Documentation**: /docs/
+- **Issue Tracker**: GitHub Issues
+- **Deployment Logs**: `./logs/deploy_*.log`
+
+For additional support, run health checks and review logs before opening issues.

@@ -92,12 +92,12 @@ async def websocket_run_specific(websocket: WebSocket, run_id: str = Path(...)):
     async with managed_websocket_connection(websocket) as (connection_id, manager):
         logger.info(f"Client connected to run-specific WebSocket: {connection_id} -> {run_id}")
         
-        # Verify run exists
+        # Verify run exists with proper session management
         db_manager = get_database_manager()
         
-        with db_manager.get_session() as session:
-            run_repo = RunRepository(session)
-            try:
+        try:
+            with db_manager.get_session() as session:
+                run_repo = RunRepository(session)
                 run = run_repo.get_run(run_id)
                 if not run:
                     await websocket.send_text(json.dumps({
@@ -106,23 +106,27 @@ async def websocket_run_specific(websocket: WebSocket, run_id: str = Path(...)):
                         "timestamp": datetime.now().isoformat()
                     }))
                     return
-            except Exception as e:
-                logger.error(f"Error checking run {run_id}: {e}")
-                await websocket.send_text(json.dumps({
-                    "error": "Failed to verify run",
-                    "message": str(e),
-                    "timestamp": datetime.now().isoformat()
-                }))
-                return
+                    
+                # Store run status for later use (avoid keeping session open)
+                run_status = run.get('status', 'unknown') if isinstance(run, dict) else getattr(run, 'status', 'unknown')
+                
+        except Exception as e:
+            logger.error(f"Error checking run {run_id}: {e}")
+            await websocket.send_text(json.dumps({
+                "error": "Failed to verify run",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }))
+            return
         
         # Subscribe to run updates
         await manager.subscribe_to_run(connection_id, run_id)
         
-        # Send initial run status
+        # Send initial run status using stored value
         await websocket.send_text(json.dumps({
             "event_type": "connected",
             "run_id": run_id,
-            "run_status": run.get('status', 'unknown') if isinstance(run, dict) else getattr(run, 'status', 'unknown'),
+            "run_status": run_status,
             "connection_id": connection_id,
             "timestamp": datetime.now().isoformat()
         }))
@@ -179,19 +183,24 @@ async def websocket_run_progress(websocket: WebSocket, run_id: str = Path(...)):
     async with managed_websocket_connection(websocket) as (connection_id, manager):
         logger.info(f"Client connected to run progress: {connection_id} -> {run_id}")
         
-        # Verify run exists
+        # Verify run exists with proper session management
         db_manager = get_database_manager()
-        run_repo = RunRepository(db_manager)
         
         try:
-            run = await run_repo.get_run(run_id)
-            if not run:
-                await websocket.send_text(json.dumps({
-                    "error": "Run not found",
-                    "run_id": run_id,
-                    "timestamp": datetime.now().isoformat()
-                }))
-                return
+            with db_manager.get_session() as session:
+                run_repo = RunRepository(session)
+                run = run_repo.get_run(run_id)
+                if not run:
+                    await websocket.send_text(json.dumps({
+                        "error": "Run not found",
+                        "run_id": run_id,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                    return
+                    
+                # Store run status for later use (avoid keeping session open)
+                run_status_progress = getattr(run, 'status', 'unknown')
+                
         except Exception as e:
             logger.error(f"Error checking run {run_id}: {e}")
             await websocket.send_text(json.dumps({
@@ -204,11 +213,11 @@ async def websocket_run_progress(websocket: WebSocket, run_id: str = Path(...)):
         # Subscribe to run updates
         await manager.subscribe_to_run(connection_id, run_id)
         
-        # Send initial run status
+        # Send initial run status using stored value
         await websocket.send_text(json.dumps({
             "event_type": "connected",
             "run_id": run_id,
-            "run_status": run.status,
+            "run_status": run_status_progress,
             "connection_id": connection_id,
             "timestamp": datetime.now().isoformat()
         }))
@@ -346,30 +355,35 @@ async def handle_client_message(
         logger.debug(f"Received pong from {connection_id}")
         
     elif message_type == "get_current_status":
-        # Client requesting current run status
+        # Client requesting current run status with proper session management
         try:
             db_manager = get_database_manager()
+            
             with db_manager.get_session() as session:
                 run_repo = RunRepository(session)
                 run = run_repo.get_run(run_id)
-            
-            if run:
-                await manager.send_personal_message(connection_id, {
-                    "event_type": "current_status",
-                    "run_id": run_id,
-                    "data": {
+                
+                if run:
+                    # Extract data while session is active
+                    status_data = {
                         "status": run.get('status', 'unknown') if isinstance(run, dict) else getattr(run, 'status', 'unknown'),
                         "progress": run.get('progress', {}) if isinstance(run, dict) else getattr(run, 'progress', {}),
                         "updated_at": datetime.now().isoformat()
-                    },
-                    "timestamp": datetime.now().isoformat()
-                })
-            else:
-                await manager.send_personal_message(connection_id, {
-                    "error": "Run not found",
-                    "run_id": run_id,
-                    "timestamp": datetime.now().isoformat()
-                })
+                    }
+                    
+                    # Send message after session is closed
+                    await manager.send_personal_message(connection_id, {
+                        "event_type": "current_status",
+                        "run_id": run_id,
+                        "data": status_data,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                else:
+                    await manager.send_personal_message(connection_id, {
+                        "error": "Run not found",
+                        "run_id": run_id,
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
         except Exception as e:
             logger.error(f"Error getting current status for {run_id}: {e}")
@@ -403,14 +417,16 @@ async def handle_status_client_message(
         logger.debug(f"Received pong from {connection_id}")
         
     elif message_type == "get_run_statistics":
-        # Client requesting current run statistics
+        # Client requesting current run statistics with proper session management
         try:
             db_manager = get_database_manager()
+            
             with db_manager.get_session() as session:
                 run_repo = RunRepository(session)
-                # Get basic stats
+                # Get basic stats while session is active
                 total_runs = run_repo.count_runs()
             
+            # Prepare stats data after session is closed
             stats = {
                 "total_runs": total_runs,
                 "timestamp": datetime.now().isoformat()

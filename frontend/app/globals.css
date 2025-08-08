@@ -155,3 +155,28 @@ body {
     background: var(--color-neutral-500);
   }
 }
+
+/* Mobile comparison enhancements */
+@media (max-width: 768px) {
+  /* Improve table scrolling on mobile */
+  .mobile-scroll-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Better touch targets for mobile */
+  .mobile-touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Compact spacing on mobile */
+  .mobile-compact {
+    padding: 0.75rem;
+  }
+  
+  /* Stack comparison cards vertically on mobile */
+  .mobile-stack {
+    flex-direction: column;
+  }
+}

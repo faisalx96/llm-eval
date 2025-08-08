@@ -97,3 +97,41 @@ export interface RunItem {
   created_at: string;
   processed_at?: string;
 }
+
+export interface RunComparison {
+  run1: EvaluationRun & { metrics: RunMetrics };
+  run2: EvaluationRun & { metrics: RunMetrics };
+  comparison: {
+    metrics: {
+      [metricName: string]: {
+        run1_score: number;
+        run2_score: number;
+        difference: number;
+        percentage_change: number;
+        improvement_direction: 'better' | 'worse' | 'neutral';
+      };
+    };
+    overall_performance: {
+      winner: 'run1' | 'run2' | 'tie';
+      significant_improvements: number;
+      significant_regressions: number;
+    };
+    statistical_analysis: {
+      [metricName: string]: {
+        p_value?: number;
+        confidence_interval?: [number, number];
+        is_significant: boolean;
+        effect_size?: number;
+      };
+    };
+  };
+  item_level_comparison: Array<{
+    item_id: string;
+    run1_scores: Record<string, number>;
+    run2_scores: Record<string, number>;
+    differences: Record<string, number>;
+    input_data: Record<string, any>;
+    run1_status: 'success' | 'failed' | 'pending';
+    run2_status: 'success' | 'failed' | 'pending';
+  }>;
+}

@@ -1,0 +1,216 @@
+version: '3.8'
+
+# LLM-Eval Local Development Environment
+# Provides all services needed for local development and testing
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: llm-eval-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: llm_eval
+      POSTGRES_USER: llm_eval
+      POSTGRES_PASSWORD: dev_password_123
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - llm-eval-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llm_eval -d llm_eval"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: llm-eval-redis
+    restart: unless-stopped
+    command: redis-server --requirepass dev_redis_123 --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - llm-eval-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse HEAD)}
+        VERSION: ${VERSION:-0.3.0}
+    container_name: llm-eval-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Application settings
+      NODE_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG
+      
+      # Database configuration
+      DATABASE_URL: postgresql://llm_eval:dev_password_123@postgres:5432/llm_eval
+      DATABASE_POOL_SIZE: 10
+      DATABASE_MAX_OVERFLOW: 20
+      
+      # Redis configuration
+      REDIS_URL: redis://:dev_redis_123@redis:6379/0
+      REDIS_MAX_CONNECTIONS: 20
+      
+      # Security (development only - use strong values in production)
+      SECRET_KEY: dev-secret-key-min-32-characters-long
+      
+      # CORS settings for development
+      CORS_ORIGINS: >
+        http://localhost:3000,
+        http://localhost:3001,
+        http://127.0.0.1:3000,
+        http://127.0.0.1:3001,
+        http://frontend:3000
+      
+      # Langfuse configuration (provide your own keys)
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-your-secret-key-here}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-your-public-key-here}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      
+      # Development features
+      RATE_LIMIT_ENABLED: "false"
+      API_RELOAD: "true"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - llm-eval-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse HEAD)}
+        VERSION: ${VERSION:-0.3.0}
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NODE_ENV: development
+    container_name: llm-eval-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - llm-eval-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NGINX Reverse Proxy (optional for local development)
+  nginx:
+    image: nginx:alpine
+    container_name: llm-eval-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - llm-eval-network
+    profiles:
+      - nginx  # Enable with: docker-compose --profile nginx up
+
+  # Development tools
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: llm-eval-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@llm-eval.dev
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - llm-eval-network
+    profiles:
+      - tools  # Enable with: docker-compose --profile tools up
+
+  # Redis Commander (Redis GUI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: llm-eval-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: local:redis:6379:0:dev_redis_123
+      HTTP_USER: admin
+      HTTP_PASSWORD: admin123
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - llm-eval-network
+    profiles:
+      - tools  # Enable with: docker-compose --profile tools up
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  llm-eval-network:
+    driver: bridge
+    name: llm-eval-network

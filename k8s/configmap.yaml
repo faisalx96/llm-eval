@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-eval-api-config
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: api
+data:
+  # Application settings
+  NODE_ENV: "production"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  LOG_LEVEL: "INFO"
+  
+  # Database settings
+  DATABASE_POOL_SIZE: "20"
+  DATABASE_MAX_OVERFLOW: "40"
+  DATABASE_POOL_RECYCLE: "3600"
+  
+  # Redis settings
+  REDIS_MAX_CONNECTIONS: "50"
+  
+  # Performance settings
+  GUNICORN_WORKERS: "4"
+  GUNICORN_WORKER_CONNECTIONS: "1000"
+  GUNICORN_MAX_REQUESTS: "1000"
+  GUNICORN_MAX_REQUESTS_JITTER: "50"
+  
+  # Security settings
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_PER_MINUTE: "1000"
+  
+  # Langfuse settings
+  LANGFUSE_HOST: "https://cloud.langfuse.com"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-eval-frontend-config
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: frontend
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+  NEXT_PUBLIC_API_URL: "https://api.llm-eval.example.com"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: database
+data:
+  POSTGRES_DB: "llm_eval"
+  POSTGRES_USER: "llm_eval"
+  # Performance tuning
+  postgres.conf: |
+    # Memory settings
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    work_mem = 4MB
+    
+    # Checkpoint settings
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    
+    # Query planner settings
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    
+    # Connection settings
+    max_connections = 100
+    
+    # Logging
+    log_min_duration_statement = 1000
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: llm-eval
+  labels:
+    app.kubernetes.io/name: llm-eval
+    app.kubernetes.io/component: cache
+data:
+  redis.conf: |
+    # Memory settings
+    maxmemory 512mb
+    maxmemory-policy allkeys-lru
+    
+    # Persistence settings
+    save 900 1
+    save 300 10
+    save 60 10000
+    appendonly yes
+    appendfsync everysec
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    
+    # Performance settings
+    tcp-keepalive 300
+    timeout 0
+    tcp-backlog 511

@@ -19,7 +19,7 @@ import {
 import { Loading } from '@/components/ui/loading';
 import { Container } from '@/components/layout/container';
 import { useRuns, useWebSocket } from '@/hooks';
-import { EvaluationRun, RunStatus } from '@/types';
+import { EvaluationRun, RunStatus, FilterOptions } from '@/types';
 
 const Dashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,10 +50,10 @@ const Dashboard: React.FC = () => {
 
   // Update runs when WebSocket receives updates (with throttling)
   React.useEffect(() => {
-    if (lastMessage?.event_type === 'run_update' || 
-        lastMessage?.event_type === 'status_update' ||
-        lastMessage?.event_type === 'run_completed' ||
-        lastMessage?.event_type === 'run_failed') {
+    if (lastMessage?.type === 'run_update' || 
+        lastMessage?.type === 'progress' ||
+        lastMessage?.type === 'completion' ||
+        lastMessage?.type === 'error') {
       
       // Throttle WebSocket-triggered refetches
       const timeoutId = setTimeout(() => {
@@ -62,13 +62,13 @@ const Dashboard: React.FC = () => {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [lastMessage?.event_type, lastMessage?.timestamp]); // More specific dependencies
+  }, [lastMessage?.type, lastMessage?.timestamp]); // More specific dependencies
 
   // Handle search with proper debouncing
   React.useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (searchTerm !== filters.search) {
-        setFilters(prev => ({ ...prev, search: searchTerm, offset: 0 }));
+        setFilters({ ...filters, search: searchTerm, offset: 0 });
         setCurrentPage(1);
       }
     }, 500); // Increased debounce delay
@@ -80,32 +80,30 @@ const Dashboard: React.FC = () => {
   const handleStatusFilterChange = React.useCallback((status: RunStatus | 'all') => {
     if (status !== statusFilter) {
       setStatusFilter(status);
-      setFilters(prev => ({ 
-        ...prev, 
+      setFilters({ 
+        ...filters, 
         status: status !== 'all' ? status : undefined, 
         offset: 0 
-      }));
+      });
       setCurrentPage(1);
     }
   }, [statusFilter, setFilters]);
 
   // Handle sorting
-  const handleSort = React.useCallback((sortBy: string) => {
-    setFilters(prev => {
-      const newOrder = prev.sortBy === sortBy && prev.sortOrder === 'asc' ? 'desc' : 'asc';
-      return { ...prev, sortBy, sortOrder: newOrder };
-    });
-  }, [setFilters]);
+  const handleSort = React.useCallback((sortBy: 'created_at' | 'updated_at' | 'name' | 'status' | 'duration_seconds') => {
+    const newOrder = filters.sortBy === sortBy && filters.sortOrder === 'asc' ? 'desc' : 'asc';
+    setFilters({ ...filters, sortBy, sortOrder: newOrder });
+  }, [filters, setFilters]);
 
   // Handle pagination
   const handlePageChange = React.useCallback((direction: 'next' | 'prev') => {
     const newPage = direction === 'next' ? currentPage + 1 : currentPage - 1;
     setCurrentPage(newPage);
-    setFilters(prev => ({ 
-      ...prev, 
+    setFilters({ 
+      ...filters, 
       offset: (newPage - 1) * itemsPerPage 
-    }));
-  }, [currentPage, itemsPerPage, setFilters]);
+    });
+  }, [currentPage, itemsPerPage, filters, setFilters]);
 
   // Calculate stats from runs
   const stats = useMemo(() => {
