@@ -31,7 +31,7 @@ const Tabs: React.FC<TabsProps> = ({
   className,
 }) => {
   const [internalActiveTab, setInternalActiveTab] = React.useState(
-    defaultTab || items[0]?.id || ''
+    defaultTab || items?.[0]?.id || ''
   );
 
   const activeTab = controlledActiveTab ?? internalActiveTab;
@@ -44,7 +44,7 @@ const Tabs: React.FC<TabsProps> = ({
     onTabChange?.(tabId);
   };
 
-  const activeTabItem = items.find(item => item.id === activeTab);
+  const activeTabItem = items?.find(item => item.id === activeTab);
 
   const getTabListClasses = () => {
     const baseClasses = 'flex border-b border-neutral-200 dark:border-neutral-700';
@@ -113,7 +113,7 @@ const Tabs: React.FC<TabsProps> = ({
         role="tablist"
         aria-orientation="horizontal"
       >
-        {items.map((item) => {
+        {items?.map((item) => {
           const isActive = item.id === activeTab;
 
           return (

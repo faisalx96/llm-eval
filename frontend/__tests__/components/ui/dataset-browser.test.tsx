@@ -3,8 +3,13 @@ import { DatasetBrowser } from '@/components/ui/dataset-browser';
 import { useDatasets } from '@/hooks/useDatasets';
 
 // Mock the hook
-jest.mock('@/hooks/useDatasets');
+jest.mock('@/hooks/useDatasets', () => ({
+  useDatasets: jest.fn(),
+  useDatasetItems: jest.fn(),
+}));
+
 const mockUseDatasets = useDatasets as jest.MockedFunction<typeof useDatasets>;
+const mockUseDatasetItems = jest.fn();
 
 // Mock data
 const mockDatasets = [
@@ -38,6 +43,14 @@ describe('DatasetBrowser', () => {
         hasPrev: false,
       },
       refetch: jest.fn(),
+    });
+
+    // Mock useDatasetItems
+    require('@/hooks/useDatasets').useDatasetItems = mockUseDatasetItems;
+    mockUseDatasetItems.mockReturnValue({
+      items: [],
+      loading: false,
+      error: null,
     });
   });
 

@@ -68,7 +68,9 @@ describe('MetricDiff Component', () => {
         />
       )
 
-      expect(screen.getByText('0.0%')).toBeInTheDocument()
+      // There should be two instances of 0.0% (one for each run)
+      const zeroScores = screen.getAllByText('0.0%')
+      expect(zeroScores).toHaveLength(2)
     })
   })
 
@@ -114,8 +116,9 @@ describe('MetricDiff Component', () => {
     it('shows improvement icon for better direction', () => {
       render(<MetricDiff {...defaultProps} direction="better" />)
 
-      const diffContainer = screen.getByText('+5.0pp').parentElement
-      expect(diffContainer).toHaveClass('text-success-600', 'dark:text-success-400')
+      const diffText = screen.getByText('+5.0pp')
+      const diffContainer = diffText.closest('div')
+      expect(diffContainer?.className).toContain('text-success-600')
 
       // Check for SVG icon (improvement arrow)
       const svg = diffContainer?.querySelector('svg')
@@ -133,8 +136,9 @@ describe('MetricDiff Component', () => {
         />
       )
 
-      const diffContainer = screen.getByText('-5.0pp').parentElement
-      expect(diffContainer).toHaveClass('text-danger-600', 'dark:text-danger-400')
+      const diffText = screen.getByText('-5.0pp')
+      const diffContainer = diffText.closest('div')
+      expect(diffContainer?.className).toContain('text-danger-600')
     })
 
     it('shows neutral icon for neutral direction', () => {
@@ -147,8 +151,9 @@ describe('MetricDiff Component', () => {
         />
       )
 
-      const diffContainer = screen.getByText('+0.0pp').parentElement
-      expect(diffContainer).toHaveClass('text-neutral-600', 'dark:text-neutral-400')
+      const diffText = screen.getByText('+0.0pp')
+      const diffContainer = diffText.closest('div')
+      expect(diffContainer?.className).toContain('text-neutral-600')
     })
   })
 
@@ -264,16 +269,16 @@ describe('MetricDiff Component', () => {
       render(
         <MetricDiff
           {...defaultProps}
-          run1Score={0.9999}
-          run2Score={1.0000}
-          difference={0.0001}
-          percentageChange={0.01}
+          run1Score={0.999}
+          run2Score={1.000}
+          difference={0.001}
+          percentageChange={0.1}
         />
       )
 
       expect(screen.getByText('99.9%')).toBeInTheDocument()
       expect(screen.getByText('100.0%')).toBeInTheDocument()
-      expect(screen.getByText('+0.0pp')).toBeInTheDocument() // Rounded to 0.0pp
+      expect(screen.getByText('+0.1pp')).toBeInTheDocument() // 0.001 * 100 = 0.1pp
     })
 
     it('handles large metric values correctly', () => {

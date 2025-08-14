@@ -117,7 +117,8 @@ export function MetricSelector({
     return (
       <div className={cn('space-y-6', className)}>
         <div className="text-center py-12">
-          <Loading size="lg" text="Loading metrics..." />
+          <Loading size="lg" />
+          <p className="mt-4 text-neutral-600 dark:text-neutral-400">Loading metrics...</p>
         </div>
       </div>
     );
@@ -227,13 +228,14 @@ export function MetricSelector({
         />
 
         <Tabs
-          value={selectedCategory}
-          onValueChange={(value) => setSelectedCategory(value as MetricCategory | 'all')}
-          tabs={categoryTabs.map(tab => ({
-            value: tab.id,
+          items={categoryTabs.map(tab => ({
+            id: tab.id,
             label: `${tab.label} (${tab.count})`,
-            disabled: tab.count === 0
+            disabled: tab.count === 0,
+            content: <div />
           }))}
+          activeTab={selectedCategory}
+          onTabChange={(tabId) => setSelectedCategory(tabId as MetricCategory | 'all')}
         />
       </div>
 

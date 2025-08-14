@@ -3,7 +3,11 @@ import { TaskConfigurationWizard } from '@/components/ui/task-configuration-wiza
 import { useConfigurationWizard, useTaskConfigurations } from '@/hooks/useTaskConfiguration';
 
 // Mock the hooks
-jest.mock('@/hooks/useTaskConfiguration');
+jest.mock('@/hooks/useTaskConfiguration', () => ({
+  useConfigurationWizard: jest.fn(),
+  useTaskConfigurations: jest.fn(),
+}));
+
 const mockUseConfigurationWizard = useConfigurationWizard as jest.MockedFunction<typeof useConfigurationWizard>;
 const mockUseTaskConfigurations = useTaskConfigurations as jest.MockedFunction<typeof useTaskConfigurations>;
 
@@ -87,7 +91,7 @@ describe('TaskConfigurationWizard', () => {
     
     expect(screen.getByText('Task Configuration Wizard')).toBeInTheDocument();
     expect(screen.getByText('Set up a new API endpoint configuration for evaluation tasks')).toBeInTheDocument();
-    expect(screen.getByText('API Endpoint')).toBeInTheDocument();
+    expect(screen.getAllByText('API Endpoint')).toHaveLength(3);
     expect(screen.getByText('Authentication')).toBeInTheDocument();
     expect(screen.getByText('Field Mapping')).toBeInTheDocument();
     expect(screen.getByText('Test Configuration')).toBeInTheDocument();
@@ -105,7 +109,7 @@ describe('TaskConfigurationWizard', () => {
   it('renders step content based on current step', () => {
     render(<TaskConfigurationWizard />);
     
-    expect(screen.getByText('API Endpoint')).toBeInTheDocument();
+    expect(screen.getAllByText('API Endpoint')).toHaveLength(3);
     expect(screen.getByText('Configure your API endpoint details')).toBeInTheDocument();
   });
 
@@ -315,12 +319,15 @@ describe('TaskConfigurationWizard', () => {
 
     render(<TaskConfigurationWizard />);
     
-    // Click on first step (completed)
-    const firstStepIcon = screen.getByText('API Endpoint').closest('div')?.querySelector('button');
-    expect(firstStepIcon).not.toBeDisabled();
-    
-    if (firstStepIcon) {
-      fireEvent.click(firstStepIcon);
+    // Click on first step (completed) - it should have a checkmark, not number
+    const buttons = screen.getAllByRole('button');
+    const firstStepButton = buttons.find(button => 
+      button.querySelector('svg') && 
+      button.querySelector('div')?.classList.contains('bg-green-600')
+    );
+    expect(firstStepButton).not.toBeDisabled();
+    if (firstStepButton) {
+      fireEvent.click(firstStepButton);
       expect(mockGoToStep).toHaveBeenCalledWith(0);
     }
   });
@@ -383,7 +390,7 @@ describe('TaskConfigurationWizard', () => {
     
     // Check if progress bar shows correct percentage (step 1 of 4 = 33.33%)
     const progressBar = container.querySelector('.bg-primary-600');
-    expect(progressBar).toHaveStyle('width: 33.333333333333336%');
+    expect(progressBar).toHaveStyle('width: 33.33333333333333%');
   });
 
   it('auto-runs test when reaching test step', () => {

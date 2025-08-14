@@ -124,7 +124,8 @@ export function TemplateMarketplace({
     return (
       <div className={cn('space-y-6', className)}>
         <div className="text-center py-12">
-          <Loading size="lg" text="Loading templates..." />
+          <Loading size="lg" />
+          <p className="mt-4 text-neutral-600 dark:text-neutral-400">Loading templates...</p>
         </div>
       </div>
     );
@@ -346,13 +347,14 @@ export function TemplateMarketplace({
         </div>
 
         <Tabs
-          value={selectedCategory}
-          onValueChange={setSelectedCategory}
-          tabs={categoryTabs.map(tab => ({
-            value: tab.value,
+          items={categoryTabs.map(tab => ({
+            id: tab.value,
             label: `${tab.label} (${tab.count})`,
-            disabled: tab.count === 0
+            disabled: tab.count === 0,
+            content: <div />
           }))}
+          activeTab={selectedCategory}
+          onTabChange={setSelectedCategory}
         />
       </div>
 

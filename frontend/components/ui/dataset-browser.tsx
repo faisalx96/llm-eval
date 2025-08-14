@@ -120,8 +120,9 @@ export function DatasetBrowser({
 
       {/* Loading State */}
       {loading && datasets.length === 0 && (
-        <div className="flex items-center justify-center py-12">
-          <Loading size="lg" text="Loading datasets..." />
+        <div className="text-center py-12">
+          <Loading size="lg" />
+          <p className="mt-4 text-neutral-600 dark:text-neutral-400">Loading datasets...</p>
         </div>
       )}
 

@@ -3,7 +3,11 @@ import { TemplateMarketplace } from '@/components/ui/template-marketplace';
 import { useTemplates, useTemplateRecommendations } from '@/hooks/useTemplates';
 
 // Mock the hooks
-jest.mock('@/hooks/useTemplates');
+jest.mock('@/hooks/useTemplates', () => ({
+  useTemplates: jest.fn(),
+  useTemplateRecommendations: jest.fn(),
+}));
+
 const mockUseTemplates = useTemplates as jest.MockedFunction<typeof useTemplates>;
 const mockUseTemplateRecommendations = useTemplateRecommendations as jest.MockedFunction<typeof useTemplateRecommendations>;
 
@@ -162,7 +166,7 @@ describe('TemplateMarketplace', () => {
     fireEvent.click(recommendationsButton);
     
     expect(screen.getByText('AI Template Recommendations')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Describe your evaluation task/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/e\.g\., I want to evaluate a chatbot that answers customer support questions about our product/)).toBeInTheDocument();
   });
 
   it('calls onSelectTemplate when template is selected', () => {
@@ -244,7 +248,7 @@ describe('TemplateMarketplace', () => {
     fireEvent.click(recommendationsButton);
     
     // Enter description
-    const textarea = screen.getByPlaceholderText(/Describe your evaluation task/);
+    const textarea = screen.getByPlaceholderText(/e\.g\., I want to evaluate a chatbot that answers customer support questions about our product/);
     fireEvent.change(textarea, { 
       target: { value: 'I want to evaluate a chatbot for customer support' } 
     });

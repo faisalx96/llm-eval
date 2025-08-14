@@ -2,9 +2,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MetricSelector } from '@/components/ui/metric-selector';
 import { useMetrics } from '@/hooks/useMetrics';
 
-// Mock the hook
-jest.mock('@/hooks/useMetrics');
+// Mock the hooks
+jest.mock('@/hooks/useMetrics', () => ({
+  useMetrics: jest.fn(),
+  useMetricSelector: jest.fn(),
+  useMetricCompatibility: jest.fn(),
+}));
+
 const mockUseMetrics = useMetrics as jest.MockedFunction<typeof useMetrics>;
+const mockUseMetricSelector = jest.fn();
+const mockUseMetricCompatibility = jest.fn();
 
 // Mock data
 const mockMetrics = [
@@ -49,6 +56,31 @@ describe('MetricSelector', () => {
       loading: false,
       error: null,
       refetch: jest.fn(),
+    });
+
+    // Mock useMetricSelector
+    require('@/hooks/useMetrics').useMetricSelector = mockUseMetricSelector;
+    mockUseMetricSelector.mockReturnValue({
+      selectedMetrics: [],
+      isSelected: jest.fn().mockReturnValue(false),
+      toggleSelection: jest.fn(),
+      clearSelection: jest.fn(),
+      setSelectedMetrics: jest.fn(),
+      addMetric: jest.fn(),
+      removeMetric: jest.fn(),
+      getMetricSelection: jest.fn(),
+      isMetricSelected: jest.fn().mockReturnValue(false),
+    });
+
+    // Mock useMetricCompatibility
+    require('@/hooks/useMetrics').useMetricCompatibility = mockUseMetricCompatibility;
+    mockUseMetricCompatibility.mockReturnValue({
+      compatibility: {
+        compatible: true,
+        issues: [],
+      },
+      loading: false,
+      error: null,
     });
   });
 
@@ -150,6 +182,19 @@ describe('MetricSelector', () => {
     const initialSelections = [
       { metric_id: 'exact_match' }
     ];
+
+    // Mock the selector to return selected metrics
+    mockUseMetricSelector.mockReturnValue({
+      selectedMetrics: [{ metric_id: 'exact_match', parameters: {} }],
+      isSelected: jest.fn().mockReturnValue(true),
+      toggleSelection: jest.fn(),
+      clearSelection: jest.fn(),
+      setSelectedMetrics: jest.fn(),
+      addMetric: jest.fn(),
+      removeMetric: jest.fn(),
+      getMetricSelection: jest.fn().mockReturnValue({ metric_id: 'exact_match', parameters: {} }),
+      isMetricSelected: jest.fn().mockReturnValue(true),
+    });
     
     render(
       <MetricSelector 
@@ -166,6 +211,21 @@ describe('MetricSelector', () => {
       { metric_id: 'exact_match' }
     ];
     
+    const mockClearSelection = jest.fn();
+    
+    // Mock the selector to return selected metrics
+    mockUseMetricSelector.mockReturnValue({
+      selectedMetrics: [{ metric_id: 'exact_match', parameters: {} }],
+      isSelected: jest.fn().mockReturnValue(true),
+      toggleSelection: jest.fn(),
+      clearSelection: mockClearSelection,
+      setSelectedMetrics: jest.fn(),
+      addMetric: jest.fn(),
+      removeMetric: jest.fn(),
+      getMetricSelection: jest.fn().mockReturnValue({ metric_id: 'exact_match', parameters: {} }),
+      isMetricSelected: jest.fn().mockReturnValue(true),
+    });
+    
     render(
       <MetricSelector 
         initialSelections={initialSelections}
@@ -176,7 +236,7 @@ describe('MetricSelector', () => {
     const clearAllButton = screen.getByText('Clear All');
     fireEvent.click(clearAllButton);
     
-    // Would verify all selections are cleared
+    expect(mockClearSelection).toHaveBeenCalled();
   });
 
   it('shows category description when category is selected', () => {

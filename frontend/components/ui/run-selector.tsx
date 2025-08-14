@@ -4,8 +4,8 @@ import React, { useState, useMemo } from 'react';
 import { Input } from './input';
 import { Badge } from './badge';
 import { SkeletonBox } from './skeleton';
-import { useRuns } from '../../hooks';
-import { EvaluationRun } from '../../types';
+import { useRuns } from '@/hooks';
+import { EvaluationRun } from '@/types';
 
 interface RunSelectorProps {
   selectedRunId?: string;

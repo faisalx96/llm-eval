@@ -9,7 +9,7 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jsdom',
-  moduleNameMapping: {
+  moduleNameMapper: {
     // Handle module aliases
     '^@/(.*)$': '<rootDir>/$1',
   },
@@ -30,7 +30,8 @@ const customJestConfig = {
   ],
   testPathIgnorePatterns: [
     '<rootDir>/.next/',
-    '<rootDir>/node_modules/'
+    '<rootDir>/node_modules/',
+    '<rootDir>/__tests__/utils/'
   ],
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': ['babel-jest', { presets: ['next/babel'] }]
