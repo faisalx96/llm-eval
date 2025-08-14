@@ -455,6 +455,256 @@ class RunComparison(Base):
         )
 
 
+class EvaluationConfig(Base):
+    """Evaluation configuration templates for UI-driven evaluation.
+
+    Stores reusable evaluation configurations with versioning support.
+    """
+
+    __tablename__ = "evaluation_configs"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Configuration identification
+    name = Column(String(255), nullable=False, doc="User-friendly configuration name")
+    description = Column(Text, nullable=True, doc="Optional configuration description")
+    config_key = Column(String(255), nullable=False, doc="Unique configuration identifier")
+    
+    # Versioning
+    version = Column(Integer, nullable=False, default=1, doc="Configuration version number")
+    is_current_version = Column(Boolean, nullable=False, default=True, doc="Is this the current/active version")
+    parent_config_id = Column(UUID(as_uuid=True), ForeignKey("evaluation_configs.id"), nullable=True, doc="Parent configuration if this is a version")
+
+    # Configuration state
+    status = Column(
+        String(20),
+        nullable=False,
+        default="draft",
+        doc="Configuration status: draft, published, archived"
+    )
+
+    # Core evaluation configuration
+    task_type = Column(String(50), nullable=False, doc="Type of evaluation task")
+    template_name = Column(String(100), nullable=True, doc="Base template used")
+    
+    # Task configuration
+    task_config = Column(JSON, nullable=False, doc="Complete task configuration")
+    dataset_config = Column(JSON, nullable=False, doc="Dataset configuration and filters")
+    metrics_config = Column(JSON, nullable=False, doc="Metrics configuration with parameters")
+    
+    # Advanced settings
+    execution_config = Column(JSON, nullable=True, doc="Execution parameters (batch size, parallel, etc.)")
+    langfuse_config = Column(JSON, nullable=True, doc="Langfuse connection and project settings")
+    
+    # Metadata
+    tags = Column(JSON, nullable=True, doc="User-defined tags for organization")
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+    created_by = Column(String(255), nullable=True, doc="User who created the configuration")
+    project_id = Column(String(255), nullable=True, doc="Project/workspace identifier")
+
+    # Usage tracking
+    usage_count = Column(Integer, nullable=False, default=0, doc="Number of times this config was used")
+    last_used_at = Column(DateTime, nullable=True, doc="When this config was last used")
+
+    # Relationships
+    child_versions = relationship(
+        "EvaluationConfig", 
+        backref="parent_config", 
+        remote_side=[id],
+        cascade="all, delete-orphan",
+        single_parent=True
+    )
+
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint("config_key", "version", name="unique_config_version"),
+        CheckConstraint(
+            'status IN ("draft", "published", "archived")',
+            name="valid_config_status",
+        ),
+        CheckConstraint("version >= 1", name="positive_version"),
+        CheckConstraint("usage_count >= 0", name="non_negative_usage"),
+        # Indexes for performance
+        Index("idx_configs_key", "config_key"),
+        Index("idx_configs_status", "status"),
+        Index("idx_configs_task_type", "task_type"),
+        Index("idx_configs_template", "template_name"),
+        Index("idx_configs_created_by", "created_by"),
+        Index("idx_configs_project_id", "project_id"),
+        Index("idx_configs_created_at", "created_at"),
+        Index("idx_configs_updated_at", "updated_at"),
+        Index("idx_configs_usage", "usage_count"),
+        Index("idx_configs_tags", "tags"),  # GIN index for JSON queries
+        # Composite indexes for common queries
+        Index("idx_configs_key_version", "config_key", "version"),
+        Index("idx_configs_key_current", "config_key", "is_current_version"),
+        Index("idx_configs_project_status", "project_id", "status"),
+        Index("idx_configs_created_by_updated", "created_by", "updated_at"),
+    )
+
+    def __repr__(self):
+        return f"<EvaluationConfig(id={self.id}, name='{self.name}', version={self.version}, status='{self.status}')>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary format."""
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "description": self.description,
+            "config_key": self.config_key,
+            "version": self.version,
+            "is_current_version": self.is_current_version,
+            "parent_config_id": str(self.parent_config_id) if self.parent_config_id else None,
+            "status": self.status,
+            "task_type": self.task_type,
+            "template_name": self.template_name,
+            "task_config": self.task_config,
+            "dataset_config": self.dataset_config,
+            "metrics_config": self.metrics_config,
+            "execution_config": self.execution_config,
+            "langfuse_config": self.langfuse_config,
+            "tags": self.tags,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_by": self.created_by,
+            "project_id": self.project_id,
+            "usage_count": self.usage_count,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+        }
+
+
+class TaskExecution(Base):
+    """Task execution tracking for async evaluation runs.
+
+    Tracks the execution state of evaluation tasks with queue management.
+    """
+
+    __tablename__ = "task_executions"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Execution identification
+    execution_key = Column(String(255), nullable=False, doc="Unique execution identifier")
+    task_name = Column(String(255), nullable=False, doc="Human-readable task name")
+    
+    # Associated configuration and run
+    config_id = Column(UUID(as_uuid=True), ForeignKey("evaluation_configs.id"), nullable=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("evaluation_runs.id"), nullable=True)
+    
+    # Execution state
+    status = Column(
+        String(20),
+        nullable=False,
+        default="queued",
+        doc="Execution status: queued, running, paused, completed, failed, cancelled"
+    )
+    
+    # Queue information
+    queue_position = Column(Integer, nullable=True, doc="Position in execution queue")
+    priority = Column(Integer, nullable=False, default=0, doc="Execution priority (higher = more urgent)")
+    
+    # Execution progress
+    progress_percentage = Column(Float, nullable=False, default=0.0, doc="Completion percentage (0-100)")
+    current_step = Column(String(255), nullable=True, doc="Current execution step description")
+    total_steps = Column(Integer, nullable=True, doc="Total number of execution steps")
+    completed_steps = Column(Integer, nullable=False, default=0, doc="Number of completed steps")
+    
+    # Timing information
+    queued_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime, nullable=True, doc="When execution actually started")
+    paused_at = Column(DateTime, nullable=True, doc="When execution was paused")
+    completed_at = Column(DateTime, nullable=True, doc="When execution finished")
+    estimated_completion = Column(DateTime, nullable=True, doc="Estimated completion time")
+    
+    # Error handling
+    error_message = Column(Text, nullable=True, doc="Error message if execution failed")
+    error_type = Column(String(100), nullable=True, doc="Type/category of error")
+    retry_count = Column(Integer, nullable=False, default=0, doc="Number of retry attempts")
+    max_retries = Column(Integer, nullable=False, default=3, doc="Maximum retry attempts allowed")
+    
+    # Resources and performance
+    resource_usage = Column(JSON, nullable=True, doc="Resource usage metrics (CPU, memory, etc.)")
+    performance_metrics = Column(JSON, nullable=True, doc="Performance tracking data")
+    
+    # User context
+    created_by = Column(String(255), nullable=True, doc="User who initiated the execution")
+    project_id = Column(String(255), nullable=True, doc="Project/workspace identifier")
+
+    # Relationships
+    config = relationship("EvaluationConfig", backref="executions")
+    run = relationship("EvaluationRun", backref="executions")
+
+    # Constraints
+    __table_args__ = (
+        CheckConstraint(
+            'status IN ("queued", "running", "paused", "completed", "failed", "cancelled")',
+            name="valid_execution_status",
+        ),
+        CheckConstraint("progress_percentage >= 0.0 AND progress_percentage <= 100.0", name="valid_progress"),
+        CheckConstraint("priority >= 0", name="non_negative_priority"),
+        CheckConstraint("total_steps >= 0", name="non_negative_total_steps"),
+        CheckConstraint("completed_steps >= 0", name="non_negative_completed_steps"),
+        CheckConstraint("retry_count >= 0", name="non_negative_retry_count"),
+        CheckConstraint("max_retries >= 0", name="non_negative_max_retries"),
+        # Indexes for performance
+        Index("idx_executions_key", "execution_key"),
+        Index("idx_executions_status", "status"),
+        Index("idx_executions_config_id", "config_id"),
+        Index("idx_executions_run_id", "run_id"),
+        Index("idx_executions_queued_at", "queued_at"),
+        Index("idx_executions_priority", "priority"),
+        Index("idx_executions_progress", "progress_percentage"),
+        Index("idx_executions_created_by", "created_by"),
+        Index("idx_executions_project_id", "project_id"),
+        # Composite indexes for queue management
+        Index("idx_executions_queue", "status", "priority", "queued_at"),
+        Index("idx_executions_project_status", "project_id", "status"),
+        Index("idx_executions_user_status", "created_by", "status"),
+        Index("idx_executions_config_status", "config_id", "status"),
+    )
+
+    def __repr__(self):
+        return f"<TaskExecution(id={self.id}, execution_key='{self.execution_key}', status='{self.status}', progress={self.progress_percentage}%)>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert task execution to dictionary format."""
+        return {
+            "id": str(self.id),
+            "execution_key": self.execution_key,
+            "task_name": self.task_name,
+            "config_id": str(self.config_id) if self.config_id else None,
+            "run_id": str(self.run_id) if self.run_id else None,
+            "status": self.status,
+            "queue_position": self.queue_position,
+            "priority": self.priority,
+            "progress_percentage": self.progress_percentage,
+            "current_step": self.current_step,
+            "total_steps": self.total_steps,
+            "completed_steps": self.completed_steps,
+            "queued_at": self.queued_at.isoformat() if self.queued_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "paused_at": self.paused_at.isoformat() if self.paused_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "estimated_completion": self.estimated_completion.isoformat() if self.estimated_completion else None,
+            "error_message": self.error_message,
+            "error_type": self.error_type,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "resource_usage": self.resource_usage,
+            "performance_metrics": self.performance_metrics,
+            "created_by": self.created_by,
+            "project_id": self.project_id,
+        }
+
+
 class Project(Base):
     """Project/workspace organization for runs.
 

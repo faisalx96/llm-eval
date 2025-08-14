@@ -17,8 +17,9 @@ from fastapi.responses import JSONResponse
 
 from ..storage.database import get_database_manager, reset_database_manager
 from ..utils.errors import LLMEvalError
+from ..core.task_engine import start_task_engine, stop_task_engine
 from . import websockets
-from .endpoints import comparisons, health, runs
+from .endpoints import comparisons, evaluations, health, runs, templates
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,26 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
 
+    # Start task execution engine
+    try:
+        await start_task_engine()
+        logger.info("Task execution engine started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start task execution engine: {e}")
+        # Don't fail startup if task engine fails - log and continue
+
     yield
 
     # Shutdown
     logger.info("Shutting down LLM-Eval API server...")
+    
+    # Stop task execution engine
+    try:
+        await stop_task_engine()
+        logger.info("Task execution engine stopped successfully")
+    except Exception as e:
+        logger.error(f"Error stopping task execution engine: {e}")
+    
     reset_database_manager()
 
 
@@ -83,7 +100,7 @@ def create_app() -> FastAPI:
 
     # Security middleware
     app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "*.localhost"]
+        TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "*.localhost", "testserver"]
     )
 
     # Include API routers
@@ -91,6 +108,14 @@ def create_app() -> FastAPI:
 
     app.include_router(
         comparisons.router, prefix="/api/comparisons", tags=["comparisons"]
+    )
+    
+    app.include_router(
+        evaluations.router, prefix="/api/evaluations", tags=["evaluations"]
+    )
+    
+    app.include_router(
+        templates.router, prefix="/api/templates", tags=["templates"]
     )
 
     app.include_router(health.router, prefix="/api/health", tags=["health"])

@@ -32,7 +32,8 @@
       "Bash(npx next build:*)",
       "Bash(/mnt/c/Users/Faisal/Projects/Evaluation/.venv39/Scripts/python.exe -c \"\nimport subprocess\nimport sys\nimport os\nos.chdir(''/mnt/c/Users/Faisal/Projects/Evaluation'')\nresult = subprocess.run([sys.executable, ''-m'', ''llm_eval.api.main''], \n                       capture_output=True, text=True, timeout=5)\nprint(''STDOUT:'')\nprint(result.stdout)\nprint(''STDERR:'')  \nprint(result.stderr)\nprint(''Return code:'', result.returncode)\n\")",
       "Bash(sed:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "Bash(PYTHONIOENCODING=utf-8 .venv39/Scripts/python.exe test_sprint3_api.py)"
     ],
     "deny": []
   }

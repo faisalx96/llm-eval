@@ -18,6 +18,13 @@ export * from './ui/run-selector';
 export * from './ui/comparison-chart';
 export * from './ui/item-level-comparison';
 export * from './ui/compare-button';
+export * from './ui/dataset-browser';
+export * from './ui/dataset-preview-modal';
+export * from './ui/metric-card';
+export * from './ui/metric-selector';
+export * from './ui/task-configuration-wizard';
+export * from './ui/template-card';
+export * from './ui/template-marketplace';
 
 // Layout Components
 export * from './layout/container';

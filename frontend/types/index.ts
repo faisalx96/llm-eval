@@ -135,3 +135,143 @@ export interface RunComparison {
     run2_status: 'success' | 'failed' | 'pending';
   }>;
 }
+
+// Dataset types for Langfuse integration
+export interface Dataset {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at?: string;
+  item_count: number;
+  last_used?: string;
+  metadata?: Record<string, any>;
+  project_id?: string;
+}
+
+export interface DatasetItem {
+  id: string;
+  dataset_id: string;
+  input: Record<string, any>;
+  expected_output?: Record<string, any>;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+// Metrics catalog types
+export type MetricCategory = 'accuracy' | 'semantic' | 'safety' | 'performance' | 'custom';
+
+export interface MetricInfo {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: MetricCategory;
+  requirements: string[];
+  parameters?: Record<string, any>;
+  compatible_tasks: string[];
+  examples?: {
+    input: any;
+    output: any;
+    score: number;
+    explanation: string;
+  }[];
+  is_custom: boolean;
+}
+
+export interface MetricSelection {
+  metric_id: string;
+  parameters?: Record<string, any>;
+  weight?: number;
+}
+
+// Template types
+export interface EvaluationTemplate {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  category: 'qa' | 'summarization' | 'classification' | 'general' | 'custom';
+  use_cases: string[];
+  metrics: string[];
+  required_fields: string[];
+  optional_fields: string[];
+  popularity_score: number;
+  created_at: string;
+  updated_at?: string;
+  author?: string;
+  tags: string[];
+  sample_config?: Record<string, any>;
+}
+
+export interface TemplateRecommendation {
+  template: EvaluationTemplate;
+  confidence: number;
+  reasons: string[];
+  matching_keywords: string[];
+}
+
+// Task configuration types
+export interface EndpointConfig {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH';
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+
+export interface AuthConfig {
+  type: 'none' | 'bearer' | 'api_key' | 'oauth';
+  credentials?: {
+    token?: string;
+    key?: string;
+    secret?: string;
+    header_name?: string;
+  };
+}
+
+export interface RequestMapping {
+  input_field: string;
+  input_transformation?: string;
+  additional_fields?: Record<string, any>;
+}
+
+export interface ResponseMapping {
+  output_field: string;
+  output_transformation?: string;
+  error_field?: string;
+}
+
+export interface TaskConfiguration {
+  id?: string;
+  name: string;
+  description?: string;
+  endpoint: EndpointConfig;
+  auth: AuthConfig;
+  request_mapping: RequestMapping;
+  response_mapping: ResponseMapping;
+  test_input?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Configuration wizard state
+export interface WizardStep {
+  id: string;
+  title: string;
+  description: string;
+  is_completed: boolean;
+  is_current: boolean;
+  validation_errors?: string[];
+}
+
+export interface ConfigurationWizardState {
+  current_step: number;
+  steps: WizardStep[];
+  configuration: Partial<TaskConfiguration>;
+  test_results?: {
+    success: boolean;
+    response?: any;
+    error?: string;
+    response_time?: number;
+  };
+}

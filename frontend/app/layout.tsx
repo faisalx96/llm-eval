@@ -51,8 +51,8 @@ export default function RootLayout({
     {
       id: 'new-run',
       label: 'New Evaluation',
-      href: '/runs/new',
-      active: pathname === '/runs/new',
+      href: '/evaluation/new',
+      active: pathname === '/evaluation/new',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -76,6 +76,17 @@ export default function RootLayout({
       href: '',
       active: false,
       icon: <div className="w-full h-px bg-neutral-200 dark:bg-neutral-700 my-2" />,
+    },
+    {
+      id: 'datasets',
+      label: 'Datasets',
+      href: '/datasets',
+      active: pathname === '/datasets',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+        </svg>
+      ),
     },
     {
       id: 'templates',
