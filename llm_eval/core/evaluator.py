@@ -189,10 +189,13 @@ class Evaluator:
         html_url = getattr(result, 'html_url', None)
         result.print_summary(html_url)
         
-        # If HTML server is running, keep it alive
+        # If HTML server is running, keep it alive unless disabled
         if html_url and show_table:
-            console.print(f"\n[dim]Press Enter to stop the web server and exit...[/dim]")
-            input()
+            import os
+            no_prompt = os.environ.get("LLM_EVAL_NO_PROMPT", "").lower() in ("1", "true", "yes")
+            if keep_server_alive and not no_prompt:
+                console.print(f"\n[dim]Press Enter to stop the web server and exit...[/dim]")
+                input()
         
         return result
     
@@ -261,7 +264,7 @@ class Evaluator:
             
             # Write initial HTML
             html_content = self._generate_html_table(item_statuses, items)
-            html_file.write_text(html_content)
+            html_file.write_text(html_content, encoding='utf-8')
             
             # Start HTTP server
             http_port, http_server = self._start_http_server(eval_dir)
@@ -335,7 +338,7 @@ class Evaluator:
                         while True:
                             try:
                                 html_content = self._generate_html_table(item_statuses, items)
-                                html_file.write_text(html_content)
+                                html_file.write_text(html_content, encoding='utf-8')
                             except Exception:
                                 pass  # Ignore errors in HTML update
                             await asyncio.sleep(2)  # Update every 2 seconds
@@ -366,7 +369,7 @@ class Evaluator:
                     
                     # Final HTML update
                     html_content = self._generate_html_table(item_statuses, items)
-                    html_file.write_text(html_content)
+                    html_file.write_text(html_content, encoding='utf-8')
                     
                     # Process results
                     for idx, eval_result in enumerate(eval_results):

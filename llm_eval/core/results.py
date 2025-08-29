@@ -310,8 +310,8 @@ class EvaluationResult:
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
-        with open(filepath, 'w') as f:
-            json.dump(self.to_dict(), f, indent=2, default=str)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, indent=2, default=str, ensure_ascii=False)
         
         console.print(f"[blue]📁 Results saved to:[/blue] {filepath}")
         return str(filepath)
@@ -368,7 +368,7 @@ class EvaluationResult:
         
         # Write CSV
         if rows:
-            with open(filepath, 'w', newline='') as f:
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=rows[0].keys())
                 writer.writeheader()
                 writer.writerows(rows)

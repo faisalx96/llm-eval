@@ -141,8 +141,8 @@ Examples:
         # Save detailed results if requested
         if args.output:
             output_path = Path(args.output)
-            with open(output_path, 'w') as f:
-                json.dump(results.to_dict(), f, indent=2, default=str)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(results.to_dict(), f, indent=2, default=str, ensure_ascii=False)
             console.print(f"Detailed results saved to {output_path}")
         
         # Exit with error code if success rate is too low
