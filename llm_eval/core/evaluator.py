@@ -5,6 +5,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Union
 from datetime import datetime
 import time
+import subprocess
 from pathlib import Path
 
 from langfuse import Langfuse
@@ -18,7 +19,8 @@ from .dataset import LangfuseDataset
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
-from ..utils.frontend import generate_html_table, cleanup_old_html_files, start_http_server, build_json_payload
+from ..utils.frontend import cleanup_old_html_files
+from ..server.app import UIServer
 import json
 
 
@@ -80,6 +82,52 @@ class Evaluator:
         self.timeout = self.config.get('timeout', 30.0)
         self.run_name = self.config.get('run_name', f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         self.run_metadata = self.config.get('run_metadata', {})
+
+    def _build_run_info(self, result: Optional[EvaluationResult] = None) -> Dict[str, Any]:
+        """Assemble run-level metadata for the frontend."""
+        # Version
+        version = None
+        try:
+            from .. import __version__ as _v
+            version = _v
+        except Exception:
+            try:
+                import importlib.metadata as _im
+                version = _im.version("llm-eval")
+            except Exception:
+                version = None
+
+        # Git SHA (best-effort)
+        git_sha = None
+        try:
+            sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL)
+            git_sha = sha.decode().strip()
+        except Exception:
+            git_sha = None
+
+        run_block: Dict[str, Any] = {
+            "dataset_name": self.dataset_name,
+            "run_name": self.run_name,
+            "config": {
+                "max_concurrency": self.max_concurrency,
+                "timeout": self.timeout,
+                "run_metadata": self.run_metadata,
+            },
+            "version": version,
+            "git_sha": git_sha,
+            "cli_invocation": self.config.get("cli_invocation"),
+            "metric_names": list(self.metrics.keys()),
+        }
+
+        if result is not None:
+            try:
+                run_block["started_at"] = result.start_time.isoformat() if result.start_time else None
+                run_block["ended_at"] = result.end_time.isoformat() if result.end_time else None
+                run_block["total_items"] = result.total_items
+            except Exception:
+                pass
+
+        return run_block
     
     def _init_langfuse(self) -> Langfuse:
         """Initialize Langfuse client with error handling."""
@@ -180,14 +228,17 @@ class Evaluator:
         html_url = getattr(result, 'html_url', None)
         result.print_summary(html_url)
         
-        # If HTML server is running, keep it alive unless disabled
+        # Keep the web UI open until the user confirms, unless disabled
         if html_url and show_table:
             import os
             no_prompt = os.environ.get("LLM_EVAL_NO_PROMPT", "").lower() in ("1", "true", "yes")
             if keep_server_alive and not no_prompt:
-                console.print(f"\n[dim]Press Enter to stop the web server and exit...[/dim]")
-                input()
-        
+                console.print("\n[dim]Press Enter to close the web UI and exit...[/dim]")
+                try:
+                    input()
+                except EOFError:
+                    pass
+
         return result
     
     
@@ -233,46 +284,25 @@ class Evaluator:
                 'end_time': None
             }
         
-        # HTML file setup for table view
-        html_file = None
+        # Web UI setup
         html_url = None
-        http_server = None
-        http_port = None
-        eval_dir = None
-        
+        ui_server = None
         if show_table:
-            # Create a directory for HTML files in user's home directory
-            base_dir = Path.home() / '.llm_eval' / 'results'
-            base_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Clean up old HTML files (older than 1 hour)
-            cleanup_old_html_files(base_dir, max_age_hours=1)
-            
-            # Create a subdirectory for this evaluation
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            eval_dir = base_dir / f"{self.dataset_name}_{timestamp}"
-            eval_dir.mkdir(parents=True, exist_ok=True)
-            html_file = eval_dir / 'index.html'
-            data_file = eval_dir / 'data.json'
-            
-            # Write initial HTML
-            html_content = generate_html_table(
-                item_statuses,
-                items,
-                self.dataset_name,
-                self.run_name,
-                self.metrics.keys(),
-            )
-            html_file.write_text(html_content, encoding='utf-8')
-            # Write initial JSON (empty shell)
+            desired_port = 0
             try:
-                data_file.write_text('{"rows":[],"stats":{},"metrics_accuracy":{},"last_updated":""}', encoding='utf-8')
+                desired_port = int(self.config.get('ui_port', 0))
             except Exception:
-                pass
-            
-            # Start HTTP server
-            http_port, http_server = start_http_server(eval_dir)
-            html_url = f"http://localhost:{http_port}/"
+                desired_port = 0
+            ui_server = UIServer(host="127.0.0.1", port=desired_port)
+            host, port = ui_server.start()
+            html_url = f"http://{host}:{port}/"
+            run_info = self._build_run_info(result)
+            ui_server.run_state.set_run_info({
+                "dataset_name": self.dataset_name,
+                "run_name": self.run_name,
+                "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                **({} if run_info is None else run_info),
+            })
         
         # Progress tracking with live display
         if show_progress:
@@ -337,24 +367,63 @@ class Evaluator:
                 
                 # Start live display with summary panel
                 with Live(generate_display(), console=console, refresh_per_second=10) as live:
-                    # Create a function to update HTML
+                    # Create a function to push snapshots to the UI server
                     async def update_html():
                         while True:
                             try:
-                                html_content = generate_html_table(
-                                    item_statuses,
-                                    items,
-                                    self.dataset_name,
-                                    self.run_name,
-                                    self.metrics.keys(),
-                                )
-                                html_file.write_text(html_content, encoding='utf-8')
-                                # Also write JSON payload for frontend polling
-                                try:
-                                    data_json = build_json_payload(item_statuses, items, self.metrics.keys())
-                                    data_file.write_text(data_json, encoding='utf-8')
-                                except Exception:
-                                    pass
+                                from datetime import datetime as dt
+                                total_items = len(items)
+                                completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
+                                in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
+                                failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
+                                pending = total_items - completed - in_progress - failed
+                                success_rate = (completed / total_items * 100) if total_items > 0 else 0
+                                rows = []
+                                for idx in range(len(items)):
+                                    s = item_statuses[idx]
+                                    tval = str(s['time'])
+                                    if any(tag in tval for tag in ('[red]','[yellow]','[dim]')):
+                                        tval = tval.replace('[red]','').replace('[/red]','').replace('[yellow]','').replace('[/yellow]','').replace('[dim]','').replace('[/dim]','')
+                                    oval = str(s['output'])
+                                    if oval == '[dim]pending[/dim]':
+                                        oval = 'pending'
+                                    oval = oval.replace('[red]','').replace('[/red]','').replace('[yellow]','').replace('[/yellow]','').replace('[dim]','').replace('[/dim]','')
+                                    mvals = []
+                                    for m in self.metrics.keys():
+                                        mv = str(s['metrics'][m])
+                                        if mv == '[dim]pending[/dim]': mv = 'pending'
+                                        elif mv == '[yellow]computing...[/yellow]': mv = 'computing...'
+                                        elif mv == '[red]error[/red]': mv = 'error'
+                                        elif mv == '[red]N/A[/red]': mv = 'N/A'
+                                        mvals.append(mv)
+                                    rows.append({
+                                        'index': idx,
+                                        'status': s['status'],
+                                        'input': str(s['input']),
+                                        'input_full': str(s['input']),
+                                        'output': oval,
+                                        'output_full': str(s['output']),
+                                        'expected': str(s['expected']),
+                                        'expected_full': str(s['expected']),
+                                        'metric_values': mvals,
+                                        'time': tval,
+                                        'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
+                                    })
+                                snap = {
+                                    'rows': rows,
+                                    'stats': {
+                                        'total': total_items,
+                                        'completed': completed,
+                                        'in_progress': in_progress,
+                                        'failed': failed,
+                                        'pending': pending,
+                                        'success_rate': success_rate,
+                                    },
+                                    'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                }
+                                if ui_server is not None:
+                                    ui_server.run_state.set_snapshot(snap)
+                                    ui_server.broadcast_snapshot()
                             except Exception:
                                 pass  # Ignore errors in HTML update
                             await asyncio.sleep(2)  # Update every 2 seconds
@@ -383,18 +452,10 @@ class Evaluator:
                     except asyncio.CancelledError:
                         pass
                     
-                    # Final HTML update
-                    html_content = generate_html_table(
-                        item_statuses,
-                        items,
-                        self.dataset_name,
-                        self.run_name,
-                        self.metrics.keys(),
-                    )
-                    html_file.write_text(html_content, encoding='utf-8')
+                    # Final broadcast
                     try:
-                        data_json = build_json_payload(item_statuses, items, self.metrics.keys())
-                        data_file.write_text(data_json, encoding='utf-8')
+                        if ui_server is not None:
+                            ui_server.broadcast_snapshot()
                     except Exception:
                         pass
                     
@@ -449,11 +510,9 @@ class Evaluator:
         # Mark evaluation as finished
         result.finish()
         
-        # Store HTML URL and file path if available
+        # Store UI URL if available
         if html_url:
             result.html_url = html_url
-            if html_file:
-                result.html_file = str(html_file)
         
         # Auto-save if requested
         if auto_save:

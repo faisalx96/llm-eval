@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LLM Eval UI</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header" role="banner">
+      <h1>LLM Evaluation Results</h1>
+      <div id="run-meta" class="sub"></div>
+      <div id="stats" class="stats-grid"></div>
+    </header>
+    <h2 class="section-title" id="overview-title">Overview</h2>
+    <section class="panels" aria-labelledby="overview-title">
+      <div class="panel">
+        <h3>Latency</h3>
+        <div class="kv"><span>Mean</span><strong id="lat-mean">—</strong></div>
+        <div class="kv"><span>P50</span><strong id="lat-p50">—</strong></div>
+        <div class="kv"><span>P90</span><strong id="lat-p90">—</strong></div>
+        <div class="kv"><span>P99</span><strong id="lat-p99">—</strong></div>
+      </div>
+      <div class="panel">
+        <h3>Errors</h3>
+        <div class="kv"><span>Timeout</span><strong id="err-timeout">0</strong></div>
+        <div class="kv"><span>Runtime</span><strong id="err-runtime">0</strong></div>
+        <div class="kv"><span>Unknown</span><strong id="err-unknown">0</strong></div>
+        <div class="kv"><span>Metric</span><strong id="err-metric">0</strong></div>
+      </div>
+    </section>
+    <h2 class="section-title" id="results-title">Results</h2>
+    <section class="table-wrap" aria-labelledby="results-title">
+      <h3 class="section-subtitle">Filters</h3>
+      <div class="controls" id="toolbar" role="region" aria-label="Filters and search">
+        <input id="q" type="search" placeholder="Search input/output/expected" />
+        <select id="status" title="Filter status">
+          <option value="all">All</option>
+          <option value="completed">Completed</option>
+          <option value="in_progress">In Progress</option>
+          <option value="error">Failed</option>
+          <option value="pending">Pending</option>
+        </select>
+        <select id="sort" title="Sort">
+          <option value="index">Index</option>
+          <option value="time-asc">Time ↑</option>
+          <option value="time-desc">Time ↓</option>
+        </select>
+        <select id="page-size" title="Rows per page">
+          <option>25</option>
+          <option selected>50</option>
+          <option>100</option>
+          <option>200</option>
+        </select>
+        <div class="dropdown" id="col-dropdown">
+          <button class="dropdown-toggle" id="col-menu-btn" aria-expanded="false" aria-haspopup="true">Columns ▾</button>
+          <div class="dropdown-menu" id="col-menu" role="menu" aria-label="Columns"></div>
+        </div>
+      </div>
+      <table role="table" aria-describedby="results-title">
+        <caption class="sr-only">Evaluation Results</caption>
+        <thead id="thead"></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="pager" role="navigation" aria-label="Pagination">
+        <button id="prev">Prev</button>
+        <span id="pageinfo"></span>
+        <button id="next">Next</button>
+      </div>
+    </section>
+
+    <!-- Row details drawer -->
+    <div id="drawer-overlay" class="drawer-overlay" hidden>
+      <div class="drawer" role="dialog" aria-modal="true">
+        <div class="drawer-header">
+          <div id="drawer-title">Row Details</div>
+          <button id="drawer-close" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer-controls">
+          <label><input type="checkbox" id="diff-toggle" /> Show Diff (Output vs Expected)</label>
+        </div>
+        <div class="drawer-section">
+          <div class="label">Input</div>
+          <pre id="drawer-input" class="pre"></pre>
+        </div>
+        <div class="drawer-section">
+          <div class="label">Output</div>
+          <pre id="drawer-output" class="pre"></pre>
+        </div>
+        <div class="drawer-section">
+          <div class="label">Expected</div>
+          <pre id="drawer-expected" class="pre"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+  
+</html>

@@ -14,13 +14,13 @@ def exact_match(output: Any, expected: Any) -> float:
         1.0 if exact match, 0.0 otherwise
     """
     if output is None or expected is None:
-        return 0.0
+        return False
     
     # Convert to strings for comparison
     output_str = str(output).strip()
     expected_str = str(expected).strip()
     
-    return 1.0 if output_str == expected_str else 0.0
+    return True if output_str == expected_str else False
 
 
 def contains_expected(output: Any, expected: Any) -> float:

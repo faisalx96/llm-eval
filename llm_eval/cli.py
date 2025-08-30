@@ -6,6 +6,7 @@ import sys
 import importlib.util
 from pathlib import Path
 from typing import Dict, Any
+import shlex
 
 from rich.console import Console
 from .core.evaluator import Evaluator
@@ -80,6 +81,22 @@ Examples:
         help="JSON configuration string for the evaluator"
     )
     parser.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="Disable starting the local web UI"
+    )
+    parser.add_argument(
+        "--ui-port",
+        type=int,
+        default=0,
+        help="Port for the local web UI (0 for auto)"
+    )
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open the browser automatically"
+    )
+    parser.add_argument(
         "--output",
         help="File to save detailed results (JSON format)"
     )
@@ -112,6 +129,18 @@ Examples:
             except json.JSONDecodeError as e:
                 console.print(f"[red]Error parsing config JSON: {e}[/red]")
                 sys.exit(1)
+        # Record CLI invocation for frontend run overview
+        try:
+            argv_str = ' '.join(shlex.quote(a) for a in sys.argv[1:])
+            config['cli_invocation'] = f"llm-eval {argv_str}".strip()
+        except Exception:
+            pass
+
+        # UI preferences
+        try:
+            config['ui_port'] = int(args.ui_port)
+        except Exception:
+            config['ui_port'] = 0
         
         # Create evaluator
         console.print(f"Setting up evaluation for dataset '{args.dataset}'")
@@ -125,7 +154,8 @@ Examples:
         # Run evaluation
         console.print("Starting evaluation...")
         show_progress = not args.no_progress and not args.quiet
-        results = evaluator.run(show_progress=show_progress)
+        show_table = not args.no_ui
+        results = evaluator.run(show_progress=show_progress, show_table=show_table)
         
         # Show results
         if args.quiet:
@@ -145,6 +175,15 @@ Examples:
                 json.dump(results.to_dict(), f, indent=2, default=str, ensure_ascii=False)
             console.print(f"Detailed results saved to {output_path}")
         
+        # Print UI URL and optionally open browser
+        try:
+            if getattr(results, 'html_url', None) and not args.no_open and not args.quiet:
+                console.print(f"\n[blue]UI:[/blue] {results.html_url}")
+                import webbrowser
+                webbrowser.open(results.html_url)
+        except Exception:
+            pass
+
         # Exit with error code if success rate is too low
         if results.success_rate < 0.5:
             console.print("[yellow]Warning: Success rate below 50%[/yellow]")

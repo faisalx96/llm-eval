@@ -13,6 +13,12 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/faisalx96/llm-eval",
     packages=find_packages(),
+    include_package_data=True,
+    package_data={
+        "llm_eval": [
+            "_static/ui/*",
+        ],
+    },
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

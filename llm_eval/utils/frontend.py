@@ -10,7 +10,7 @@ core evaluator logic. It provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple, Optional
 from datetime import datetime, timedelta
 import html as html_lib
 import json
@@ -188,8 +188,16 @@ def _build_metric_cards_html(metrics_acc: Dict[str, float]) -> List[str]:
     return metric_cards
 
 
-def build_json_payload(item_statuses: Dict[int, Dict], items: List[Any], metric_names: Iterable[str]) -> str:
-    """Serialize a compact JSON snapshot consumed by the frontend."""
+def build_json_payload(
+    item_statuses: Dict[int, Dict],
+    items: List[Any],
+    metric_names: Iterable[str],
+    run_info: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Serialize a compact JSON snapshot consumed by the frontend.
+
+    Includes per-row details and optional run-level metadata.
+    """
     from datetime import datetime as dt
     summary = _compute_summary(item_statuses, items)
     metrics_acc = _compute_metrics_accuracy(item_statuses, items, metric_names)
@@ -241,19 +249,41 @@ def build_json_payload(item_statuses: Dict[int, Dict], items: List[Any], metric_
             elif mv == '[red]N/A[/red]':
                 mv = 'N/A'
             normalized_metric_values.append(mv)
+
+        # Compute richer metadata
+        started_at = None
+        ended_at = None
+        try:
+            if s.get('start_time') is not None:
+                started_at = dt.fromtimestamp(float(s['start_time'])).isoformat()
+            if s.get('end_time') is not None:
+                ended_at = dt.fromtimestamp(float(s['end_time'])).isoformat()
+        except Exception:
+            pass
+
+        input_full_raw = str(s['input'])
+        output_full_raw = str(s['output'])
+        expected_full_raw = str(s['expected'])
+
         rows.append({
+            'index': idx,
             'status': s['status'],
             'status_icon': status_icon,
-            'input': html_lib.escape(str(s['input'])),
-            'input_full': html_lib.escape(str(s['input'])),
+            'input': html_lib.escape(input_full_raw),
+            'input_full': html_lib.escape(input_full_raw),
             'output': html_lib.escape(output_val),
-            'output_full': html_lib.escape(str(s['output'])),
+            'output_full': html_lib.escape(output_full_raw),
             'output_class': output_class,
-            'expected': html_lib.escape(str(s['expected'])),
-            'expected_full': html_lib.escape(str(s['expected'])),
+            'expected': html_lib.escape(expected_full_raw),
+            'expected_full': html_lib.escape(expected_full_raw),
             'metric_values': normalized_metric_values,
             'time': time_val.replace('[red]', '').replace('[/red]', '').replace('[yellow]', '').replace('[/yellow]', '').replace('[dim]', '').replace('[/dim]', ''),
             'time_class': time_class,
+            'started_at': started_at,
+            'ended_at': ended_at,
+            'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
+            'input_len': len(input_full_raw) if input_full_raw is not None else 0,
+            'output_len': len(output_full_raw) if output_full_raw is not None else 0,
         })
 
     payload = {
@@ -262,6 +292,13 @@ def build_json_payload(item_statuses: Dict[int, Dict], items: List[Any], metric_
         'rows': rows,
         'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
+    if run_info is not None:
+        try:
+            run_block = dict(run_info)
+            run_block['metrics'] = list(metric_names)
+            payload['run'] = run_block
+        except Exception:
+            payload['run'] = {'metrics': list(metric_names)}
     try:
         return json.dumps(payload, ensure_ascii=False)
     except Exception:
@@ -273,6 +310,7 @@ def generate_html_table(
     dataset_name: str,
     run_name: str,
     metric_names: Iterable[str],
+    run_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a modern HTML page for live evaluation results."""
     summary = _compute_summary(item_statuses, items)
@@ -282,6 +320,15 @@ def generate_html_table(
 
     # Headers
     metric_headers = "".join([f'<th>{name}</th>' for name in metric_names])
+
+    # Run info for header controls
+    ri = run_info or {}
+    # version/sha may be present but are no longer shown in header
+    v = html_lib.escape(str(ri.get('version', ''))) if ri.get('version') else ''
+    sha = html_lib.escape(str(ri.get('git_sha', ''))) if ri.get('git_sha') else ''
+    mc = html_lib.escape(str(ri.get('config', {}).get('max_concurrency', '')))
+    to = html_lib.escape(str(ri.get('config', {}).get('timeout', '')))
+    cli = html_lib.escape(str(ri.get('cli_invocation', ''))) if ri.get('cli_invocation') else ''
 
     # Build script separately to avoid escaping braces in f-string
     script_block = '''
@@ -376,6 +423,282 @@ def generate_html_table(
         const REFRESH_INTERVAL_MS = 2000;
         const liveIndicator = document.getElementById('live-indicator');
         const liveText = document.getElementById('live-text');
+        // Controls and pagination state
+        const searchBox = document.getElementById('search-box');
+        const statusFilter = document.getElementById('status-filter');
+        const sortSelect = document.getElementById('sort-select');
+        const pageSizeSel = document.getElementById('page-size');
+        const prevBtn = document.getElementById('prev-page');
+        const nextBtn = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
+        const showingInfo = document.getElementById('showing-info');
+        let currentPage = 1;
+
+        function quantile(arr, q) {
+            if (!arr || !arr.length) return 0;
+            const sorted = arr.slice().sort((a,b) => a-b);
+            const pos = (sorted.length - 1) * q;
+            const base = Math.floor(pos);
+            const rest = pos - base;
+            if (sorted[base+1] !== undefined) return sorted[base] + rest * (sorted[base+1] - sorted[base]);
+            return sorted[base];
+        }
+
+        function classifyError(row) {
+            const status = (row.status || '').toLowerCase();
+            if (status !== 'error') return null;
+            const out = (row.output_full || '').toLowerCase();
+            if (out.includes('timeout')) return 'timeout';
+            if (out.includes('error:')) return 'runtime_error';
+            return 'unknown_error';
+        }
+
+        function hasMetricError(row) {
+            const vals = row.metric_values || [];
+            return vals.some(v => {
+                const t = String(v || '').toLowerCase();
+                return t === 'error' || t === 'n/a';
+            });
+        }
+
+        function applyFiltersAndSort(rows) {
+            const q = (searchBox && searchBox.value || '').toLowerCase();
+            const statusVal = (statusFilter && statusFilter.value) || 'all';
+            const sortVal = (sortSelect && sortSelect.value) || 'index';
+            let r = rows.slice();
+            if (q) {
+                r = r.filter(row => {
+                    const a = (row.input_full || '').toLowerCase();
+                    const b = (row.output_full || '').toLowerCase();
+                    const c = (row.expected_full || '').toLowerCase();
+                    return a.includes(q) || b.includes(q) || c.includes(q);
+                });
+            }
+            if (statusVal !== 'all') r = r.filter(row => (row.status || '') === statusVal);
+            if (sortVal === 'time-asc') r.sort((a,b) => (Number(a.latency_ms)||0) - (Number(b.latency_ms)||0));
+            else if (sortVal === 'time-desc') r.sort((a,b) => (Number(b.latency_ms)||0) - (Number(a.latency_ms)||0));
+            else r.sort((a,b) => (Number(a.index)||0) - (Number(b.index)||0));
+            return r;
+        }
+
+        function renderTable(rows) {
+            const tbody = document.querySelector('tbody');
+            if (!tbody) return;
+            const pageSize = Number(pageSizeSel && pageSizeSel.value) || 50;
+            const total = rows.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const end = Math.min(start + pageSize, total);
+            const pageRows = rows.slice(start, end);
+            tbody.innerHTML = pageRows.map((row) => {
+                const metricCells = (row.metric_values || []).map(v => {
+                    const text = String(v ?? '').trim().toLowerCase();
+                    let cls = '';
+                    if (text === 'running...' || text === 'computing...') cls = 'metric-computing';
+                    else if (text === 'pending') cls = 'metric-pending';
+                    else if (text === 'error' || text === 'n/a') cls = 'metric-error';
+                    return '<td class="' + cls + '">' + (v ?? '') + '</td>';
+                }).join('');
+                return (
+                    '<tr class="' + ((row.status === 'in_progress') ? 'in-progress' : (row.status || '')) + '">' +
+                    '<td class="status-cell"><span class="status-icon">' + (row.status_icon || '') + '</span></td>' +
+                    '<td class="index-cell">' + ((Number(row.index) || 0) + 1) + '</td>' +
+                    '<td class="content-cell" title="' + (row.input_full || '') + '">' + (row.input || '') + '</td>' +
+                    '<td class="content-cell ' + (row.output_class || '') + '" title="' + (row.output_full || '') + '">' + (row.output || '') + '</td>' +
+                    '<td class="content-cell" title="' + (row.expected_full || '') + '">' + (row.expected || '') + '</td>' +
+                    metricCells +
+                    '<td class="time-cell ' + (row.time_class || '') + '">' + (row.time || '') + '</td>' +
+                    '</tr>'
+                );
+            }).join('');
+            if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${Math.max(1, Math.ceil(total / pageSize))}`;
+            if (showingInfo) showingInfo.textContent = total ? `${start + 1}–${end} of ${total}` : '0–0 of 0';
+            if (prevBtn) prevBtn.disabled = currentPage <= 1;
+            if (nextBtn) nextBtn.disabled = currentPage >= Math.max(1, Math.ceil(total / pageSize));
+            bindRowClicks();
+            styleComputingCells();
+        }
+
+        function renderLatencyAndErrors(rows) {
+            const completed = rows.filter(r => (r.status||'') === 'completed' && Number(r.latency_ms));
+            const latencies = completed.map(r => Number(r.latency_ms) || 0);
+            const p50 = Math.round(quantile(latencies, 0.5));
+            const p90 = Math.round(quantile(latencies, 0.9));
+            const p99 = Math.round(quantile(latencies, 0.99));
+            const mean = Math.round(latencies.reduce((a,b)=>a+b,0) / Math.max(1, latencies.length));
+            const slowest = completed.slice().sort((a,b) => (Number(b.latency_ms)||0) - (Number(a.latency_ms)||0)).slice(0, 10);
+            const p50El = document.getElementById('lat-p50');
+            const p90El = document.getElementById('lat-p90');
+            const p99El = document.getElementById('lat-p99');
+            const meanEl = document.getElementById('lat-mean');
+            const slowList = document.getElementById('slow-list');
+            if (p50El) p50El.textContent = p50 ? `${p50} ms` : '—';
+            if (p90El) p90El.textContent = p90 ? `${p90} ms` : '—';
+            if (p99El) p99El.textContent = p99 ? `${p99} ms` : '—';
+            if (meanEl) meanEl.textContent = mean ? `${mean} ms` : '—';
+            if (slowList) slowList.innerHTML = slowest.map(r => `<li>#${(Number(r.index)||0)+1} — ${r.time || ''}</li>`).join('');
+
+            const errors = rows.filter(r => (r.status||'') === 'error');
+            const metricErrCount = rows.filter(r => hasMetricError(r)).length;
+            const timeoutCount = errors.filter(r => classifyError(r) === 'timeout').length;
+            const runtimeCount = errors.filter(r => classifyError(r) === 'runtime_error').length;
+            const unknownCount = errors.length - timeoutCount - runtimeCount;
+            const errTimeoutEl = document.getElementById('err-timeout');
+            const errRuntimeEl = document.getElementById('err-runtime');
+            const errUnknownEl = document.getElementById('err-unknown');
+            const errMetricEl = document.getElementById('err-metric');
+            if (errTimeoutEl) errTimeoutEl.textContent = String(timeoutCount);
+            if (errRuntimeEl) errRuntimeEl.textContent = String(runtimeCount);
+            if (errUnknownEl) errUnknownEl.textContent = String(Math.max(0, unknownCount));
+            if (errMetricEl) errMetricEl.textContent = String(metricErrCount);
+        }
+        // Controls for filtering/sorting/pagination and copy
+        const searchBox = document.getElementById('search-box');
+        const statusFilter = document.getElementById('status-filter');
+        const sortSelect = document.getElementById('sort-select');
+        const pageSizeSel = document.getElementById('page-size');
+        const prevBtn = document.getElementById('prev-page');
+        const nextBtn = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
+        const showingInfo = document.getElementById('showing-info');
+        const copyCliBtn = document.getElementById('copy-cli');
+        const cliTextEl = document.getElementById('run-cli-text');
+
+        let currentPage = 1;
+
+        function quantile(arr, q) {
+            if (!arr || !arr.length) return 0;
+            const sorted = arr.slice().sort((a,b) => a-b);
+            const pos = (sorted.length - 1) * q;
+            const base = Math.floor(pos);
+            const rest = pos - base;
+            if (sorted[base+1] !== undefined) return sorted[base] + rest * (sorted[base+1] - sorted[base]);
+            return sorted[base];
+        }
+
+        function classifyError(row) {
+            const status = (row.status || '').toLowerCase();
+            if (status !== 'error') return null;
+            const out = (row.output_full || '').toLowerCase();
+            if (out.includes('timeout')) return 'timeout';
+            if (out.includes('error:')) return 'runtime_error';
+            return 'unknown_error';
+        }
+
+        function hasMetricError(row) {
+            const vals = row.metric_values || [];
+            return vals.some(v => {
+                const t = String(v || '').toLowerCase();
+                return t === 'error' || t === 'n/a';
+            });
+        }
+
+        function applyFiltersAndSort(rows) {
+            const q = (searchBox && searchBox.value || '').toLowerCase();
+            const statusVal = (statusFilter && statusFilter.value) || 'all';
+            const sortVal = (sortSelect && sortSelect.value) || 'index';
+            let r = rows.slice();
+            if (q) {
+                r = r.filter(row => {
+                    const a = (row.input_full || '').toLowerCase();
+                    const b = (row.output_full || '').toLowerCase();
+                    const c = (row.expected_full || '').toLowerCase();
+                    return a.includes(q) || b.includes(q) || c.includes(q);
+                });
+            }
+            if (statusVal !== 'all') {
+                r = r.filter(row => (row.status || '') === statusVal);
+            }
+            if (sortVal === 'time-asc') {
+                r.sort((a,b) => (Number(a.latency_ms)||0) - (Number(b.latency_ms)||0));
+            } else if (sortVal === 'time-desc') {
+                r.sort((a,b) => (Number(b.latency_ms)||0) - (Number(a.latency_ms)||0));
+            } else {
+                r.sort((a,b) => (Number(a.index)||0) - (Number(b.index)||0));
+            }
+            return r;
+        }
+
+        function renderTable(rows) {
+            const tbody = document.querySelector('tbody');
+            if (!tbody) return;
+            const pageSize = Number(pageSizeSel && pageSizeSel.value) || 50;
+            const total = rows.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * pageSize;
+            const end = Math.min(start + pageSize, total);
+            const pageRows = rows.slice(start, end);
+
+            tbody.innerHTML = pageRows.map((row) => {
+                const metricCells = (row.metric_values || []).map(v => {
+                    const text = String(v ?? '').trim().toLowerCase();
+                    let cls = '';
+                    if (text === 'running...' || text === 'computing...') cls = 'metric-computing';
+                    else if (text === 'pending') cls = 'metric-pending';
+                    else if (text === 'error' || text === 'n/a') cls = 'metric-error';
+                    return '<td class="' + cls + '">' + (v ?? '') + '</td>';
+                }).join('');
+                return (
+                    '<tr class="' + ((row.status === 'in_progress') ? 'in-progress' : (row.status || '')) + '">' +
+                    '<td class="status-cell"><span class="status-icon">' + (row.status_icon || '') + '</span></td>' +
+                    '<td class="index-cell">' + ((Number(row.index) || 0) + 1) + '</td>' +
+                    '<td class="content-cell" title="' + (row.input_full || '') + '">' + (row.input || '') + '</td>' +
+                    '<td class="content-cell ' + (row.output_class || '') + '" title="' + (row.output_full || '') + '">' + (row.output || '') + '</td>' +
+                    '<td class="content-cell" title="' + (row.expected_full || '') + '">' + (row.expected || '') + '</td>' +
+                    metricCells +
+                    '<td class="time-cell ' + (row.time_class || '') + '">' + (row.time || '') + '</td>' +
+                    '</tr>'
+                );
+            }).join('');
+            if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${Math.max(1, Math.ceil(total / pageSize))}`;
+            if (showingInfo) showingInfo.textContent = total ? `${start + 1}–${end} of ${total}` : '0–0 of 0';
+            if (prevBtn) prevBtn.disabled = currentPage <= 1;
+            if (nextBtn) nextBtn.disabled = currentPage >= Math.max(1, Math.ceil(total / pageSize));
+            bindRowClicks();
+            styleComputingCells();
+        }
+
+        function renderLatencyAndErrors(rows) {
+            const completed = rows.filter(r => (r.status||'') === 'completed' && Number(r.latency_ms));
+            const latencies = completed.map(r => Number(r.latency_ms) || 0);
+            const p50 = Math.round(quantile(latencies, 0.5));
+            const p90 = Math.round(quantile(latencies, 0.9));
+            const p99 = Math.round(quantile(latencies, 0.99));
+            const mean = Math.round(latencies.reduce((a,b)=>a+b,0) / Math.max(1, latencies.length));
+            const slowest = completed.slice().sort((a,b) => (Number(b.latency_ms)||0) - (Number(a.latency_ms)||0)).slice(0, 10);
+
+            const p50El = document.getElementById('lat-p50');
+            const p90El = document.getElementById('lat-p90');
+            const p99El = document.getElementById('lat-p99');
+            const meanEl = document.getElementById('lat-mean');
+            const slowList = document.getElementById('slow-list');
+            if (p50El) p50El.textContent = p50 ? `${p50} ms` : '—';
+            if (p90El) p90El.textContent = p90 ? `${p90} ms` : '—';
+            if (p99El) p99El.textContent = p99 ? `${p99} ms` : '—';
+            if (meanEl) meanEl.textContent = mean ? `${mean} ms` : '—';
+            if (slowList) slowList.innerHTML = slowest.map(r => `<li>#${(Number(r.index)||0)+1} — ${r.time || ''}</li>`).join('');
+
+            const errors = rows.filter(r => (r.status||'') === 'error');
+            const metricErrCount = rows.filter(r => hasMetricError(r)).length;
+            const timeoutCount = errors.filter(r => classifyError(r) === 'timeout').length;
+            const runtimeCount = errors.filter(r => classifyError(r) === 'runtime_error').length;
+            const unknownCount = errors.length - timeoutCount - runtimeCount;
+            const errTimeoutEl = document.getElementById('err-timeout');
+            const errRuntimeEl = document.getElementById('err-runtime');
+            const errUnknownEl = document.getElementById('err-unknown');
+            const errMetricEl = document.getElementById('err-metric');
+            if (errTimeoutEl) errTimeoutEl.textContent = String(timeoutCount);
+            if (errRuntimeEl) errRuntimeEl.textContent = String(runtimeCount);
+            if (errUnknownEl) errUnknownEl.textContent = String(Math.max(0, unknownCount));
+            if (errMetricEl) errMetricEl.textContent = String(metricErrCount);
+        }
+        const searchBox = document.getElementById('search-box');
+        const statusFilter = document.getElementById('status-filter');
+        const sortSelect = document.getElementById('sort-select');
+        const copyCliBtn = document.getElementById('copy-cli');
+        const cliTextEl = document.getElementById('run-cli-text');
 
         function refreshFromHTML() {
             const u = new URL(window.location.href);
@@ -453,39 +776,25 @@ def generate_html_table(
                     if (updatedEl && data.last_updated) {
                         updatedEl.textContent = 'Last updated: ' + data.last_updated;
                     }
+                    // Update run overview
+                    const run = data.run || {};
+                    const rVersion = document.getElementById('run-version');
+                    const rSha = document.getElementById('run-git-sha');
+                    const rConc = document.getElementById('run-concurrency');
+                    const rTimeout = document.getElementById('run-timeout');
+                    const rCli = document.getElementById('run-cli-text');
+                    if (rVersion && run.version) rVersion.textContent = String(run.version);
+                    if (rSha && run.git_sha) rSha.textContent = String(run.git_sha);
+                    if (rConc && run.config && (run.config.max_concurrency !== undefined)) rConc.textContent = String(run.config.max_concurrency);
+                    if (rTimeout && run.config && (run.config.timeout !== undefined)) rTimeout.textContent = String(run.config.timeout);
+                    if (rCli && run.cli_invocation) rCli.textContent = String(run.cli_invocation);
 
                     // Update table if modal closed
                     const modalOpen = overlay && overlay.style.display === 'flex';
                     if (!modalOpen && Array.isArray(data.rows)) {
-                        const tbody = document.querySelector('tbody');
-                        if (tbody) {
-                            tbody.innerHTML = data.rows.map((row, idx) => {
-                                const metricCells = (row.metric_values || []).map(v => {
-                                    const text = String(v ?? '').trim().toLowerCase();
-                                    let cls = '';
-                                    if (text === 'running...' || text === 'computing...') {
-                                        cls = 'metric-computing';
-                                    } else if (text === 'pending') {
-                                        cls = 'metric-pending';
-                                    } else if (text === 'error' || text === 'n/a') {
-                                        cls = 'metric-error';
-                                    }
-                                    return '<td class="' + cls + '">' + (v ?? '') + '</td>';
-                                }).join('');
-                                return (
-                                    '<tr class="' + ((row.status === 'in_progress') ? 'in-progress' : (row.status || '')) + '">' +
-                                    '<td class="status-cell"><span class="status-icon">' + (row.status_icon || '') + '</span></td>' +
-                                    '<td class="index-cell">' + (idx + 1) + '</td>' +
-                                    '<td class="content-cell" title="' + (row.input_full || '') + '">' + (row.input || '') + '</td>' +
-                                    '<td class="content-cell ' + (row.output_class || '') + '" title="' + (row.output_full || '') + '">' + (row.output || '') + '</td>' +
-                                    '<td class="content-cell" title="' + (row.expected_full || '') + '">' + (row.expected || '') + '</td>' +
-                                    metricCells +
-                                    '<td class="time-cell ' + (row.time_class || '') + '">' + (row.time || '') + '</td>' +
-                                    '</tr>'
-                                );
-                            }).join('');
-                            bindRowClicks();
-                        }
+                        const filtered = applyFiltersAndSort(data.rows);
+                        renderTable(filtered);
+                        renderLatencyAndErrors(filtered);
                     }
                     bindRowClicks();
                 })
@@ -512,6 +821,13 @@ def generate_html_table(
 
         // Kick off immediate refresh and then at interval
         refreshPartial();
+        // Wire controls
+        if (searchBox) searchBox.addEventListener('input', () => { currentPage = 1; refreshPartial(); });
+        if (statusFilter) statusFilter.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (sortSelect) sortSelect.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (pageSizeSel) pageSizeSel.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (prevBtn) prevBtn.addEventListener('click', () => { currentPage = Math.max(1, currentPage - 1); refreshPartial(); });
+        if (nextBtn) nextBtn.addEventListener('click', () => { currentPage = currentPage + 1; refreshPartial(); });
         // Use document visibility to avoid unnecessary work in background tabs
         let refreshTimer = setInterval(refreshPartial, REFRESH_INTERVAL_MS);
         document.addEventListener('visibilitychange', function() {
@@ -710,39 +1026,21 @@ def generate_html_table(
                         updatedEl.textContent = 'Last updated: ' + data.last_updated;
                     }
 
+                    // Update concurrency/timeout (run overview)
+                    try {
+                        const run = data.run || {};
+                        const rConc = document.getElementById('run-concurrency');
+                        const rTimeout = document.getElementById('run-timeout');
+                        if (rConc && run.config && (run.config.max_concurrency !== undefined)) rConc.textContent = String(run.config.max_concurrency);
+                        if (rTimeout && run.config && (run.config.timeout !== undefined)) rTimeout.textContent = String(run.config.timeout);
+                    } catch (_) {}
+
                     // Update table if modal closed
                     const modalOpen = overlay && overlay.style.display === 'flex';
                     if (!modalOpen && Array.isArray(data.rows)) {
-                        const tbody = document.querySelector('tbody');
-                        if (tbody) {
-                            tbody.innerHTML = data.rows.map((row, idx) => {
-                                const metricCells = (row.metric_values || []).map(v => {
-                                    const text = String(v ?? '').trim().toLowerCase();
-                                    let cls = '';
-                                    if (text === 'running...' || text === 'computing...') {
-                                        cls = 'metric-computing';
-                                    } else if (text === 'pending') {
-                                        cls = 'metric-pending';
-                                    } else if (text === 'error' || text === 'n/a') {
-                                        cls = 'metric-error';
-                                    }
-                                    return '<td class="' + cls + '">' + (v ?? '') + '</td>';
-                                }).join('');
-                                return (
-                                    '<tr class="' + ((row.status === 'in_progress') ? 'in-progress' : (row.status || '')) + '">' +
-                                    '<td class="status-cell"><span class="status-icon">' + (row.status_icon || '') + '</span></td>' +
-                                    '<td class="index-cell">' + (idx + 1) + '</td>' +
-                                    '<td class="content-cell" title="' + (row.input_full || '') + '">' + (row.input || '') + '</td>' +
-                                    '<td class="content-cell ' + (row.output_class || '') + '" title="' + (row.output_full || '') + '">' + (row.output || '') + '</td>' +
-                                    '<td class="content-cell" title="' + (row.expected_full || '') + '">' + (row.expected || '') + '</td>' +
-                                    metricCells +
-                                    '<td class="time-cell ' + (row.time_class || '') + '">' + (row.time || '') + '</td>' +
-                                    '</tr>'
-                                );
-                            }).join('');
-                            bindRowClicks();
-                            styleComputingCells();
-                        }
+                        const filtered = applyFiltersAndSort(data.rows);
+                        renderTable(filtered);
+                        renderLatencyAndErrors(filtered);
                     }
                     bindRowClicks();
                 })
@@ -769,6 +1067,20 @@ def generate_html_table(
 
         // Kick off immediate refresh and then at interval
         refreshPartial();
+        // Copy run command handler and control events
+        if (copyCliBtn && cliTextEl) {
+            copyCliBtn.addEventListener('click', () => {
+                const text = cliTextEl.textContent || '';
+                if (text && navigator.clipboard) navigator.clipboard.writeText(text).catch(()=>{});
+            });
+        }
+        if (searchBox) searchBox.addEventListener('input', () => { currentPage = 1; refreshPartial(); });
+        if (statusFilter) statusFilter.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (sortSelect) sortSelect.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (pageSizeSel) pageSizeSel.addEventListener('change', () => { currentPage = 1; refreshPartial(); });
+        if (prevBtn) prevBtn.addEventListener('click', () => { currentPage = Math.max(1, currentPage - 1); refreshPartial(); });
+        if (nextBtn) nextBtn.addEventListener('click', () => { currentPage = currentPage + 1; refreshPartial(); });
+
         // Use document visibility to avoid unnecessary work in background tabs
         let refreshTimer = setInterval(refreshPartial, REFRESH_INTERVAL_MS);
         document.addEventListener('visibilitychange', function() {
@@ -870,6 +1182,36 @@ def generate_html_table(
         .stat-card.failed .value {{ color: #f87171; }}
         .stat-card.pending .value {{ color: #60a5fa; }}
         .stat-card.success-rate .value {{ color: #a78bfa; }}
+
+        .panel {{
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }}
+        .panel h2 {{ font-size: 1.1rem; margin-bottom: 8px; }}
+        .panel .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }}
+        .kv {{ background:#1f2937; border:1px solid #374151; border-radius:8px; padding:10px; text-align:center; }}
+        .kv .label {{ color:#9ca3af; font-size:0.8rem; text-transform:uppercase; }}
+        .kv .value {{ font-size:1.3rem; font-weight:600; }}
+        .list {{ list-style:none; padding-left: 18px; margin-top:6px; color:#d1d5db; }}
+        .list li {{ margin: 2px 0; }}
+
+        .panel {{
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }}
+        .panel h2 {{ font-size: 1.1rem; margin-bottom: 8px; }}
+        .panel .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }}
+        .kv {{ background:#1f2937; border:1px solid #374151; border-radius:8px; padding:10px; text-align:center; }}
+        .kv .label {{ color:#9ca3af; font-size:0.8rem; text-transform:uppercase; }}
+        .kv .value {{ font-size:1.3rem; font-weight:600; }}
+        .list {{ list-style:none; padding-left: 18px; margin-top:6px; color:#d1d5db; }}
+        .list li {{ margin: 2px 0; }}
         
         .table-wrapper {{
             background: #1a1a1a;
@@ -1209,6 +1551,27 @@ def generate_html_table(
                 Dataset: <strong>{dataset_name}</strong> | 
                 Run: <strong>{run_name}</strong>
             </div>
+            <div class="run-overview" style="margin-top:6px; color:#9ca3af; font-size:0.9rem;">
+                <span>Concurrency: <strong id="run-concurrency">{mc}</strong></span>
+                <span style="margin:0 8px;">│</span>
+                <span>Timeout: <strong id="run-timeout">{to}</strong>s</span>
+            </div>
+            <div class="controls" style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input id="search-box" type="search" placeholder="Search input/output/expected…" style="flex:1; min-width:240px; padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb;" />
+                <select id="status-filter" title="Filter status" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb;">
+                    <option value="all">All</option>
+                    <option value="completed">Completed</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="error">Failed</option>
+                    <option value="pending">Pending</option>
+                </select>
+                <select id="sort-select" title="Sort" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb;">
+                    <option value="index">Index</option>
+                    <option value="time-asc">Time ↑</option>
+                    <option value="time-desc">Time ↓</option>
+                </select>
+                <a id="download-json" href="data.json" download style="text-decoration:none; padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; color:#e5e7eb;">Download JSON</a>
+            </div>
         </div>
         
         <div class="stats-grid">
@@ -1239,6 +1602,54 @@ def generate_html_table(
                 {''.join(metric_cards)}
             </div>
         </div>
+
+        <div class="panel" id="latency-panel">
+            <h2>Latency</h2>
+            <div class="grid">
+                <div class="kv"><div class="label">Mean</div><div class="value" id="lat-mean">—</div></div>
+                <div class="kv"><div class="label">P50</div><div class="value" id="lat-p50">—</div></div>
+                <div class="kv"><div class="label">P90</div><div class="value" id="lat-p90">—</div></div>
+                <div class="kv"><div class="label">P99</div><div class="value" id="lat-p99">—</div></div>
+            </div>
+            <div style="margin-top:10px;">
+                <div class="label" style="color:#9ca3af; font-size:0.85rem;">Top 10 slowest</div>
+                <ul class="list" id="slow-list"></ul>
+            </div>
+        </div>
+
+        <div class="panel" id="errors-panel">
+            <h2>Errors</h2>
+            <div class="grid">
+                <div class="kv"><div class="label">Timeout</div><div class="value" id="err-timeout">0</div></div>
+                <div class="kv"><div class="label">Runtime</div><div class="value" id="err-runtime">0</div></div>
+                <div class="kv"><div class="label">Unknown</div><div class="value" id="err-unknown">0</div></div>
+                <div class="kv"><div class="label">Metric Errors</div><div class="value" id="err-metric">0</div></div>
+            </div>
+        </div>
+
+        <div class="panel" id="latency-panel">
+            <h2>Latency</h2>
+            <div class="grid">
+                <div class="kv"><div class="label">Mean</div><div class="value" id="lat-mean">—</div></div>
+                <div class="kv"><div class="label">P50</div><div class="value" id="lat-p50">—</div></div>
+                <div class="kv"><div class="label">P90</div><div class="value" id="lat-p90">—</div></div>
+                <div class="kv"><div class="label">P99</div><div class="value" id="lat-p99">—</div></div>
+            </div>
+            <div style="margin-top:10px;">
+                <div class="label" style="color:#9ca3af; font-size:0.85rem;">Top 10 slowest</div>
+                <ul class="list" id="slow-list"></ul>
+            </div>
+        </div>
+
+        <div class="panel" id="errors-panel">
+            <h2>Errors</h2>
+            <div class="grid">
+                <div class="kv"><div class="label">Timeout</div><div class="value" id="err-timeout">0</div></div>
+                <div class="kv"><div class="label">Runtime</div><div class="value" id="err-runtime">0</div></div>
+                <div class="kv"><div class="label">Unknown</div><div class="value" id="err-unknown">0</div></div>
+                <div class="kv"><div class="label">Metric Errors</div><div class="value" id="err-metric">0</div></div>
+            </div>
+        </div>
         
         <div class="table-wrapper">
             <table>
@@ -1257,6 +1668,40 @@ def generate_html_table(
                     {"".join(table_rows)}
                 </tbody>
             </table>
+        </div>
+        <div class="panel" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
+            <div>
+                <label for="page-size" style="color:#9ca3af; margin-right:6px;">Rows per page</label>
+                <select id="page-size" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb;">
+                    <option>25</option>
+                    <option selected>50</option>
+                    <option>100</option>
+                    <option>200</option>
+                </select>
+                <span style="margin-left:10px; color:#9ca3af;">Showing <strong id="showing-info">—</strong></span>
+            </div>
+            <div>
+                <button id="prev-page" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb; cursor:pointer;">Prev</button>
+                <span style="margin:0 8px; color:#9ca3af;" id="page-info">Page 1</span>
+                <button id="next-page" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb; cursor:pointer;">Next</button>
+            </div>
+        </div>
+        <div class="panel" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
+            <div>
+                <label for="page-size" style="color:#9ca3af; margin-right:6px;">Rows per page</label>
+                <select id="page-size" style="padding:6px 8px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb;">
+                    <option>25</option>
+                    <option selected>50</option>
+                    <option>100</option>
+                    <option>200</option>
+                </select>
+                <span style="margin-left:10px; color:#9ca3af;">Showing <strong id="showing-info">—</strong></span>
+            </div>
+            <div>
+                <button id="prev-page" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb; cursor:pointer;">Prev</button>
+                <span style="margin:0 8px; color:#9ca3af;" id="page-info">Page 1</span>
+                <button id="next-page" style="padding:6px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#0f172a; color:#e5e7eb; cursor:pointer;">Next</button>
+            </div>
         </div>
         
         <div class="last-updated">
@@ -1331,5 +1776,3 @@ def start_http_server(directory: Path) -> Tuple[int, socketserver.TCPServer]:
     server_thread.start()
 
     return port, httpd
-
-
