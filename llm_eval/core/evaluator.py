@@ -18,7 +18,8 @@ from .dataset import LangfuseDataset
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
-from ..utils.frontend import generate_html_table, cleanup_old_html_files, start_http_server
+from ..utils.frontend import generate_html_table, cleanup_old_html_files, start_http_server, build_json_payload
+import json
 
 
 console = Console()
@@ -189,6 +190,7 @@ class Evaluator:
         
         return result
     
+    
     async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
         """
         Run the evaluation asynchronously.
@@ -251,6 +253,7 @@ class Evaluator:
             eval_dir = base_dir / f"{self.dataset_name}_{timestamp}"
             eval_dir.mkdir(parents=True, exist_ok=True)
             html_file = eval_dir / 'index.html'
+            data_file = eval_dir / 'data.json'
             
             # Write initial HTML
             html_content = generate_html_table(
@@ -261,6 +264,11 @@ class Evaluator:
                 self.metrics.keys(),
             )
             html_file.write_text(html_content, encoding='utf-8')
+            # Write initial JSON (empty shell)
+            try:
+                data_file.write_text('{"rows":[],"stats":{},"metrics_accuracy":{},"last_updated":""}', encoding='utf-8')
+            except Exception:
+                pass
             
             # Start HTTP server
             http_port, http_server = start_http_server(eval_dir)
@@ -341,6 +349,12 @@ class Evaluator:
                                     self.metrics.keys(),
                                 )
                                 html_file.write_text(html_content, encoding='utf-8')
+                                # Also write JSON payload for frontend polling
+                                try:
+                                    data_json = build_json_payload(item_statuses, items, self.metrics.keys())
+                                    data_file.write_text(data_json, encoding='utf-8')
+                                except Exception:
+                                    pass
                             except Exception:
                                 pass  # Ignore errors in HTML update
                             await asyncio.sleep(2)  # Update every 2 seconds
@@ -378,6 +392,11 @@ class Evaluator:
                         self.metrics.keys(),
                     )
                     html_file.write_text(html_content, encoding='utf-8')
+                    try:
+                        data_json = build_json_payload(item_statuses, items, self.metrics.keys())
+                        data_file.write_text(data_json, encoding='utf-8')
+                    except Exception:
+                        pass
                     
                     # Process results
                     for idx, eval_result in enumerate(eval_results):
