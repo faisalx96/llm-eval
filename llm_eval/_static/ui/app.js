@@ -19,7 +19,6 @@
   function applyFilters() {
     const q = (el('q').value || '').toLowerCase();
     const status = el('status').value;
-    const sort = el('sort').value;
     let rows = Array.isArray(state.snapshot.rows) ? state.snapshot.rows.slice() : [];
     if (q) {
       rows = rows.filter(r =>
@@ -31,12 +30,8 @@
     if (status !== 'all') {
       rows = rows.filter(r => (r.status || '') === status);
     }
-    if (state.sortKey && state.sortKey !== 'index') {
+    if (state.sortKey) {
       rows.sort((a,b) => compareByKey(a,b,state.sortKey,state.sortDir));
-    } else if (sort === 'time-asc') {
-      rows.sort((a,b) => (a.latency_ms||0) - (b.latency_ms||0));
-    } else if (sort === 'time-desc') {
-      rows.sort((a,b) => (b.latency_ms||0) - (a.latency_ms||0));
     } else {
       rows.sort((a,b) => (a.index||0) - (b.index||0));
     }
@@ -127,14 +122,20 @@
     const thead = el('thead');
     const cols = state.columns.filter(c => c.visible);
     thead.innerHTML = `<tr>
-      ${cols.map(c => `<th data-key="${c.key}" class="${c.key!=='index'?'sortable':''} ${state.sortKey===c.key?('sorted-'+state.sortDir):''}" title="Click to sort. Drag to reorder. Drag edge to resize." style="${c.width?`width:${c.width}px;min-width:${c.width}px;`:''}">${c.title}<span class="col-hint">↕</span><span class="col-resizer" data-key="${c.key}"></span></th>`).join('')}
+      ${cols.map(c => {
+        const canDrag = c.key !== 'index';
+        const sortable = true; // all columns sortable, including index
+        const sortedCls = (state.sortKey===c.key) ? ('sorted-'+state.sortDir) : '';
+        const dragHandle = canDrag ? `<span class=\"col-drag\" data-key=\"${c.key}\" draggable=\"true\">⋮⋮</span>` : '';
+        const tooltip = canDrag ? 'Click to sort. Drag handle to reorder. Drag edge to resize.' : 'Click to sort. Index cannot be moved.';
+        return `<th data-key=\"${c.key}\" class=\"${sortable?'sortable':''} ${sortedCls}\" title=\"${tooltip}\" style=\"${c.width?`width:${c.width}px;min-width:${c.width}px;`:''}\">${dragHandle}${c.title}<span class=\"col-resizer\" data-key=\"${c.key}\"></span></th>`;
+      }).join('')}
     </tr>`;
     // Sorting
     cols.forEach(c => {
-      if (c.key === 'index') return;
       const th = thead.querySelector(`th[data-key="${c.key}"]`);
       th && th.addEventListener('click', (e) => {
-        if (e.target && e.target.classList.contains('col-resizer')) return;
+        if (e.target && (e.target.classList.contains('col-resizer') || e.target.classList.contains('col-drag'))) return;
         if (state.sortKey === c.key) state.sortDir = (state.sortDir === 'asc') ? 'desc' : 'asc';
         else { state.sortKey = c.key; state.sortDir = 'asc'; }
         renderAll();
@@ -161,18 +162,19 @@
         ev.preventDefault(); ev.stopPropagation();
       });
     });
-    // Drag-and-drop reorder
-    thead.querySelectorAll('th').forEach(th => {
-      const key = th.getAttribute('data-key');
+    // Drag-and-drop reorder via handle
+    thead.querySelectorAll('.col-drag').forEach(handle => {
+      const key = handle.getAttribute('data-key');
       if (key === 'index') return;
-      th.setAttribute('draggable', 'true');
-      th.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', key); });
+      handle.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', key); });
+    });
+    thead.querySelectorAll('th').forEach(th => {
       th.addEventListener('dragover', (e) => { e.preventDefault(); });
       th.addEventListener('drop', (e) => {
         e.preventDefault();
+        const toKey = th.getAttribute('data-key');
         const fromKey = e.dataTransfer.getData('text/plain');
-        const toKey = key;
-        if (!fromKey || fromKey===toKey) return;
+        if (!fromKey || fromKey===toKey || toKey==='index') return;
         const full = state.columns.slice();
         const fromIdx = full.findIndex(c=>c.key===fromKey);
         const toIdx = full.findIndex(c=>c.key===toKey);
@@ -181,6 +183,7 @@
         full.splice(toIdx,0,moved);
         state.columns = full;
         buildHeader();
+        buildColumnMenu();
         renderTable();
       });
     });
@@ -253,31 +256,41 @@
       return `<tr data-raw-index="${r.index||0}">${tds}</tr>`;
     }).join('');
     el('rows').innerHTML = html;
+    // Empty state
+    const es = document.getElementById('empty-state');
+    if (es) es.style.display = rows.length ? 'none' : 'block';
 
-    // Bind row click for drawer
-    el('rows').querySelectorAll('tr').forEach(tr => {
-      tr.addEventListener('click', () => {
+    // Delegated row click for drawer (robust across re-renders)
+    const rowsEl = el('rows');
+    if (!rowsEl._delegatedClick) {
+      rowsEl.addEventListener('click', (ev) => {
+        const tr = ev.target.closest('tr');
+        if (!tr) return;
         const rawIdx = Number(tr.getAttribute('data-raw-index'))||0;
-        const row = (state.snapshot.rows||[]).find(rr => Number(rr.index)===rawIdx);
+        let row = (state.rowByIndex && state.rowByIndex.get(rawIdx)) || null;
+        if (!row) { row = (state.snapshot.rows||[]).find(rr => Number(rr.index)===rawIdx) || null; }
         if (row) openDrawer(row);
       });
-    });
+      rowsEl._delegatedClick = true;
+    }
   }
 
   function renderAll() {
     applyFilters();
     renderMeta();
     renderPanels();
+    buildHeader();
     renderTable();
   }
 
   // Controls
   el('q').addEventListener('input', () => { state.page = 1; renderAll(); });
   el('status').addEventListener('change', () => { state.page = 1; renderAll(); });
-  el('sort').addEventListener('change', () => { state.page = 1; renderAll(); });
+  // Removed order dropdown; sorting is header-driven
   el('page-size').addEventListener('change', () => { state.pageSize = Number(el('page-size').value)||50; state.page = 1; renderAll(); });
   el('prev').addEventListener('click', () => { state.page = Math.max(1, state.page-1); renderTable(); });
   el('next').addEventListener('click', () => { state.page = state.page+1; renderTable(); });
+  // Using Material header style by default (B)
   function buildColumnMenu(){
     const menu = el('col-menu');
     if (!menu) return;
@@ -310,10 +323,24 @@
   const overlay = el('drawer-overlay');
   const btnClose = el('drawer-close');
   const diffToggle = el('diff-toggle');
+  function stripMarkup(text){
+    try {
+      return String(text||'').replace(/\[(?:\/)?(?:dim|red|yellow)\]/g, '');
+    } catch { return String(text||''); }
+  }
+  function classifyMetric(raw){
+    const t = String(raw||'').trim().toLowerCase();
+    if (t === '✓' || t === 'true' || t === 'yes' || t === '1' || t === '1.0') return 'metric-yes';
+    if (t === '✗' || t === 'false' || t === 'no' || t === '0' || t === '0.0') return 'metric-no';
+    if (t === 'n/a' || t === 'pending' || t === 'error' || t === 'computing...') return 'metric-na';
+    const n = Number(raw);
+    if (!Number.isNaN(n)) { if (Math.abs(n-1)<1e-9) return 'metric-yes'; if (Math.abs(n)<1e-9) return 'metric-no'; }
+    return '';
+  }
   function diffWords(a, b) {
     try {
-      const wa = String(a||'').split(/(\s+)/);
-      const wb = String(b||'').split(/(\s+)/);
+      const wa = stripMarkup(a).split(/(\s+)/);
+      const wb = stripMarkup(b).split(/(\s+)/);
       const n = Math.max(wa.length, wb.length);
       let outA = '', outB = '';
       for (let i=0;i<n;i++) {
@@ -328,25 +355,76 @@
     qs('#drawer-title').textContent = `Row ${(Number(row.index)||0)+1}`;
     const $in = el('drawer-input'), $out = el('drawer-output'), $exp = el('drawer-expected');
     const setRaw = () => {
-      $in.textContent = row.input_full || row.input || '';
+      $in.textContent = stripMarkup(row.input_full || row.input || '');
       $out.classList.remove('diff');
       $exp.classList.remove('diff');
-      $out.textContent = row.output_full || row.output || '';
-      $exp.textContent = row.expected_full || row.expected || '';
+      $out.textContent = stripMarkup(row.output_full || row.output || '');
+      $exp.textContent = stripMarkup(row.expected_full || row.expected || '');
     };
     const setDiff = () => {
       const d = diffWords(row.output_full || row.output || '', row.expected_full || row.expected || '');
-      $in.textContent = row.input_full || row.input || '';
+      $in.textContent = stripMarkup(row.input_full || row.input || '');
       $out.innerHTML = d.a; $out.classList.add('diff');
       $exp.innerHTML = d.b; $exp.classList.add('diff');
     };
     const apply = () => diffToggle.checked ? setDiff() : setRaw();
     diffToggle.onchange = apply;
     apply();
+    // Trace info
+    const $trace = el('drawer-trace');
+    const $btnLF = el('drawer-open-langfuse');
+    const tid = row.trace_id || '';
+    let turl = row.trace_url || '';
+    if (!turl && tid) {
+      const host = (state.langfuseHost || 'https://cloud.langfuse.com').replace(/\/$/, '');
+      const pid = state.langfuseProjectId || '';
+      if (pid) turl = `${host}/project/${pid}/traces/${tid}`;
+    }
+    if ($trace){
+      if (turl) {
+        $trace.innerHTML = `<a href="${turl}" target="_blank" rel="noopener">${tid || '(open trace)'}</a>`;
+      } else if (tid) {
+        $trace.textContent = tid;
+      } else {
+        $trace.innerHTML = '<span class="muted">N/A</span>';
+      }
+    }
+    if ($btnLF){
+      if (turl) { $btnLF.href = turl; $btnLF.style.display = 'inline-block'; }
+      else if (state.langfuseHost && state.langfuseProjectId) {
+        const host = String(state.langfuseHost).replace(/\/$/, '');
+        $btnLF.href = `${host}/project/${state.langfuseProjectId}/traces`;
+        $btnLF.style.display = 'inline-block';
+      } else { $btnLF.style.display = 'none'; }
+    }
+    // Time
+    const $time = el('drawer-time');
+    if ($time) {
+      const ms = Number(row.latency_ms)||0;
+      $time.textContent = ms ? humanDuration(ms) : stripMarkup(row.time || '');
+    }
+    // Metrics list
+    const names = state.metricNames || [];
+    const vals = row.metric_values || [];
+    const $ml = el('drawer-metrics');
+    if ($ml){
+      const items = names.map((n, i) => {
+        const v = vals[i];
+        const cls = classifyMetric(v);
+        const txt = (v==null||v==='') ? '—' : String(v);
+        return `<div class="metric-row"><span class="name">${n}</span><span class="value ${cls}">${txt}</span></div>`;
+      }).join('');
+      $ml.innerHTML = items || '<div class="muted">No metrics</div>';
+    }
     overlay.classList.add('show');
     overlay.hidden = false;
+    try { document.body.classList.add('no-scroll'); } catch {}
   }
-  function closeDrawer(){ overlay.classList.remove('show'); overlay.hidden = true; }
+  function closeDrawer(){
+    overlay.classList.remove('show');
+    overlay.hidden = true;
+    try { document.body.classList.remove('no-scroll'); } catch {}
+  }
   btnClose.addEventListener('click', closeDrawer);
   overlay.addEventListener('click', (e)=>{ if (e.target === overlay) closeDrawer(); });
 
@@ -354,10 +432,17 @@
   fetch('api/run').then(r=>r.json()).then(run => {
     state.run = run;
     state.metricNames = run.metric_names || [];
+    state.langfuseHost = run.langfuse_host || 'https://cloud.langfuse.com';
+    state.langfuseProjectId = run.langfuse_project_id || '';
     try {
       const ds = run.dataset_name || 'Dataset';
       const rn = run.run_name || 'Run';
       document.title = `LLM Eval – ${ds} / ${rn}`;
+    } catch {}
+    // Apply Material header style (B) by default
+    try {
+      document.body.setAttribute('data-header-style', 'b');
+      try { localStorage.setItem('headerStyle', 'b'); } catch {}
     } catch {}
     initColumns();
     renderMeta();
@@ -365,6 +450,12 @@
     buildColumnMenu();
   }).catch(()=>{});
   fetch('api/snapshot').then(r=>r.json()).then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); }).catch(()=>{});
+  // Build initial row map if available
+  try {
+    const map = new Map();
+    (state.snapshot.rows||[]).forEach(r => map.set(Number(r.index)||0, r));
+    state.rowByIndex = map;
+  } catch {}
 
   // Live updates via SSE
   try {
@@ -373,6 +464,12 @@
       try {
         const data = JSON.parse(evt.data || '{}');
         state.snapshot = data;
+        // Rebuild fast row index map for robust clicks
+        try {
+          const map = new Map();
+          (state.snapshot.rows||[]).forEach(r => map.set(Number(r.index)||0, r));
+          state.rowByIndex = map;
+        } catch {}
         // Ensure header/columns exist if events arrive early
         if (!state.columns || state.columns.length === 0) {
           initColumns();

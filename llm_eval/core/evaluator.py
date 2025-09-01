@@ -117,6 +117,8 @@ class Evaluator:
             "git_sha": git_sha,
             "cli_invocation": self.config.get("cli_invocation"),
             "metric_names": list(self.metrics.keys()),
+            "langfuse_host": getattr(self, 'langfuse_host', None),
+            "langfuse_project_id": getattr(self, 'langfuse_project_id', None),
         }
 
         if result is not None:
@@ -167,6 +169,19 @@ class Evaluator:
                 secret_key=secret_key,
                 host=host
             )
+            # Expose host for frontend links (default to cloud)
+            try:
+                self.langfuse_host = host or 'https://cloud.langfuse.com'
+            except Exception:
+                self.langfuse_host = 'https://cloud.langfuse.com'
+            # Optional project id for deep-links
+            try:
+                self.langfuse_project_id = (
+                    self.config.get('langfuse_project_id')
+                    or os.getenv('LANGFUSE_PROJECT_ID')
+                )
+            except Exception:
+                self.langfuse_project_id = None
             return client
         except Exception as e:
             if "401" in str(e) or "unauthorized" in str(e).lower():
@@ -408,6 +423,8 @@ class Evaluator:
                                         'metric_values': mvals,
                                         'time': tval,
                                         'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
+                                        'trace_id': s.get('trace_id'),
+                                        'trace_url': s.get('trace_url'),
                                     })
                                 snap = {
                                     'rows': rows,
@@ -536,6 +553,18 @@ class Evaluator:
                     run_name=self.run_name,
                     run_metadata={**self.run_metadata, "item_index": index}
                 ) as trace:
+                    # Capture Langfuse trace identifiers if available
+                    try:
+                        item_statuses[index]['trace_id'] = getattr(trace, 'id', None) or getattr(trace, 'trace_id', None)
+                    except Exception:
+                        item_statuses[index]['trace_id'] = None
+                    try:
+                        url = getattr(trace, 'url', None)
+                        if not url and hasattr(trace, 'get_url'):
+                            url = trace.get_url()
+                        item_statuses[index]['trace_url'] = url
+                    except Exception:
+                        item_statuses[index]['trace_url'] = None
                     # Execute task
                     output = await self.task_adapter.arun(item.input, trace)
                     

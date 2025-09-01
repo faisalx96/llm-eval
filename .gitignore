@@ -78,3 +78,6 @@ dmypy.json
 # Guides
 CLAUDE.md
 AIR_GAPPED_GUIDE.md
+
+# Agents
+AGENTS.md
