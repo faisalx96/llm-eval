@@ -15,6 +15,17 @@
     const s = Math.round(ms/1000);
     return `${s}s`;
   };
+  // Human-readable h/m/s formatter for durations
+  const humanDuration = (ms) => {
+    if (!ms || ms < 1) return '—';
+    const total = Math.round(ms/1000);
+    const h = Math.floor(total/3600);
+    const m = Math.floor((total%3600)/60);
+    const s = total % 60;
+    if (h) return `${h}h ${m}m ${s}s`;
+    if (m) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
 
   function applyFilters() {
     const q = (el('q').value || '').toLowerCase();
@@ -87,7 +98,7 @@
         <div class="stat-icon info">◯</div>
         <div class="stat-content"><div class="stat-label">Pending</div><div class="stat-value">${s.pending ?? '—'}</div></div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card completion">
         <div class="stat-icon ok">%</div>
         <div class="stat-content">
           <div class="stat-label">Completion</div>

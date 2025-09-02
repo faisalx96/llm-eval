@@ -22,6 +22,7 @@ from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
 from ..utils.frontend import cleanup_old_html_files
 from ..server.app import UIServer
 import json
+ 
 
 
 console = Console()
@@ -82,6 +83,49 @@ class Evaluator:
         self.timeout = self.config.get('timeout', 30.0)
         self.run_name = self.config.get('run_name', f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
         self.run_metadata = self.config.get('run_metadata', {})
+
+
+    def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
+        """Extract Langfuse trace_id and URL using SDK-documented methods.
+
+        Prefers callable accessors (e.g., trace.trace_id()) and then attributes.
+        """
+        meta: Dict[str, Any] = {"trace_id": None, "trace_url": None}
+        # trace_id: prefer method, then attribute fallbacks
+        try:
+            if hasattr(trace, 'trace_id'):
+                ti = getattr(trace, 'trace_id')
+                meta["trace_id"] = str(ti() if callable(ti) else ti)
+        except Exception:
+            meta["trace_id"] = None
+        if not meta["trace_id"]:
+            for name in ("id", "traceId", "observation_id"):
+                try:
+                    if hasattr(trace, name):
+                        val = getattr(trace, name)
+                        if val:
+                            meta["trace_id"] = str(val)
+                            break
+                except Exception:
+                    continue
+        # URL: try common getters, then attribute
+        url = None
+        for getter in ("get_trace_url", "get_url"):
+            if hasattr(trace, getter):
+                try:
+                    url = getattr(trace, getter)()
+                    if url:
+                        break
+                except Exception:
+                    url = None
+        if not url and hasattr(trace, 'url'):
+            try:
+                url = trace.url
+            except Exception:
+                url = None
+        if url:
+            meta["trace_url"] = str(url)
+        return meta
 
     def _build_run_info(self, result: Optional[EvaluationResult] = None) -> Dict[str, Any]:
         """Assemble run-level metadata for the frontend."""
@@ -242,6 +286,7 @@ class Evaluator:
         console.print()  # Add spacing after evaluation panel
         html_url = getattr(result, 'html_url', None)
         result.print_summary(html_url)
+        
         
         # Keep the web UI open until the user confirms, unless disabled
         if html_url and show_table:
@@ -674,6 +719,13 @@ class Evaluator:
                     run_name=self.run_name,
                     run_metadata={**self.run_metadata, "item_index": index}
                 ) as trace:
+                    # Capture initial trace meta (best-effort)
+                    try:
+                        meta = self._extract_trace_meta(trace)
+                        item_statuses[index]['trace_id'] = meta.get('trace_id')
+                        item_statuses[index]['trace_url'] = meta.get('trace_url')
+                    except Exception:
+                        pass
                     # Execute task
                     output = await self.task_adapter.arun(item.input, trace)
                     
