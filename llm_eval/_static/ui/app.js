@@ -15,6 +15,7 @@
     const s = Math.round(ms/1000);
     return `${s}s`;
   };
+  // (No global preferences; keep UI minimal)
   // Human-readable h/m/s formatter for durations
   const humanDuration = (ms) => {
     if (!ms || ms < 1) return '—';
@@ -295,6 +296,7 @@
   }
 
   // Controls
+  // Filters
   el('q').addEventListener('input', () => { state.page = 1; renderAll(); });
   el('status').addEventListener('change', () => { state.page = 1; renderAll(); });
   // Removed order dropdown; sorting is header-driven
@@ -314,6 +316,7 @@
         const key = cb.getAttribute('data-key');
         const col = state.columns.find(x=>x.key===key); if (!col) return;
         col.visible = cb.checked || !!col.fixed;
+        saveColumnsState();
         buildHeader(); renderTable();
       });
     });
@@ -381,6 +384,26 @@
     const apply = () => diffToggle.checked ? setDiff() : setRaw();
     diffToggle.onchange = apply;
     apply();
+    // Copy helpers
+    function copyText(txt){
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt); return true; } } catch {}
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true;
+      } catch { return false; }
+    }
+    function wireCopy(id, getter){
+      const b = el(id); if (!b) return;
+      b.onclick = () => {
+        const ok = copyText(getter());
+        const prev = b.textContent; b.textContent = ok? 'Copied' : 'Copy failed';
+        setTimeout(()=>{ b.textContent = prev; }, 1000);
+      };
+    }
+    wireCopy('copy-input', () => stripMarkup(row.input_full || row.input || ''));
+    wireCopy('copy-output', () => stripMarkup(row.output_full || row.output || ''));
+    wireCopy('copy-expected', () => stripMarkup(row.expected_full || row.expected || ''));
     // Trace info
     const $trace = el('drawer-trace');
     const $btnLF = el('drawer-open-langfuse');
@@ -439,6 +462,47 @@
   btnClose.addEventListener('click', closeDrawer);
   overlay.addEventListener('click', (e)=>{ if (e.target === overlay) closeDrawer(); });
 
+  // Header tools: export only
+  const expBtn = el('export-btn');
+  if (expBtn) expBtn.addEventListener('click', exportCSV);
+
+  function csvEscape(v){
+    const s = (v==null) ? '' : String(v);
+    if (s.includes('"') || s.includes(',') || s.includes('\n')) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  }
+  function exportCSV(){
+    try {
+      const cols = state.columns.filter(c=>c.visible);
+      const header = cols.map(c => c.key.startsWith('metric:') ? c.key.slice(7) : c.title);
+      const rows = state.filtered.slice();
+      const lines = [header.map(csvEscape).join(',')];
+      rows.forEach(r => {
+        const cells = cols.map(c => {
+          if (c.key==='index') return (Number(r.index)||0)+1;
+          if (c.key==='status') return r.status||'';
+          if (c.key==='input') return r.input_full || r.input || '';
+          if (c.key==='output') return r.output_full || r.output || '';
+          if (c.key==='expected') return r.expected_full || r.expected || '';
+          if (c.key==='time') return r.time || (r.latency_ms!=null? `${r.latency_ms}ms` : '');
+          if (c.key.startsWith('metric:')) { const name=c.key.slice(7); const i=(state.metricNames||[]).indexOf(name); return (r.metric_values||[])[i] ?? ''; }
+          return '';
+        });
+        lines.push(cells.map(csvEscape).join(','));
+      });
+      const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const ds = (state.run && state.run.dataset_name) || 'dataset';
+      const rn = (state.run && state.run.run_name) || 'run';
+      a.download = `llm-eval_${ds}_${rn}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+    } catch (e) { console.error('CSV export failed', e); }
+  }
+
+  // (No global keyboard shortcuts; keep UI simple)
+
   // Bootstrap
   fetch('api/run').then(r=>r.json()).then(run => {
     state.run = run;
@@ -450,11 +514,8 @@
       const rn = run.run_name || 'Run';
       document.title = `LLM Eval – ${ds} / ${rn}`;
     } catch {}
-    // Apply Material header style (B) by default
-    try {
-      document.body.setAttribute('data-header-style', 'b');
-      try { localStorage.setItem('headerStyle', 'b'); } catch {}
-    } catch {}
+    // Apply default header style (B)
+    try { document.body.setAttribute('data-header-style', 'b'); } catch {}
     initColumns();
     renderMeta();
     buildHeader();

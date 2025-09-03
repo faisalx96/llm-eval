@@ -9,7 +9,12 @@
 <body>
   <div class="container">
     <header class="header" role="banner">
-      <h1>LLM Evaluation Results</h1>
+      <div class="header-row">
+        <h1>LLM Evaluation Results</h1>
+        <div class="header-tools" role="group" aria-label="Actions">
+          <button id="export-btn" class="btn" title="Export current view to CSV">Export CSV</button>
+        </div>
+      </div>
       <div id="run-meta" class="sub"></div>
       <div id="stats" class="stats-grid"></div>
     </header>
