@@ -514,9 +514,59 @@ class Evaluator:
                     except asyncio.CancelledError:
                         pass
                     
-                    # Final broadcast
+                    # Final snapshot (ensure no stale in_progress remains)
                     try:
                         if ui_server is not None:
+                            from datetime import datetime as dt
+                            total_items = len(items)
+                            completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
+                            in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
+                            failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
+                            pending = total_items - completed - in_progress - failed
+                            success_rate = (completed / total_items * 100) if total_items > 0 else 0
+
+                            rows = []
+                            for idx in range(total_items):
+                                s = item_statuses[idx]
+                                # Render output and time values (strip Rich markup best-effort)
+                                def _strip(v: Any) -> str:
+                                    try:
+                                        return str(v).replace('[dim]', '').replace('[/dim]', '')
+                                    except Exception:
+                                        return str(v)
+                                oval = _strip(s.get('output', ''))
+                                tval = _strip(s.get('time', ''))
+                                mvals = []
+                                for name in self.metrics.keys():
+                                    mvals.append(_strip(s['metrics'].get(name, '')))
+                                rows.append({
+                                    'index': idx,
+                                    'status': s['status'],
+                                    'input': str(s['input']),
+                                    'input_full': str(s['input']),
+                                    'output': oval,
+                                    'output_full': str(s.get('output', '')),
+                                    'expected': str(s['expected']),
+                                    'expected_full': str(s['expected']),
+                                    'metric_values': mvals,
+                                    'time': tval,
+                                    'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
+                                    'trace_id': s.get('trace_id'),
+                                    'trace_url': s.get('trace_url'),
+                                })
+                            snap = {
+                                'rows': rows,
+                                'stats': {
+                                    'total': total_items,
+                                    'completed': completed,
+                                    'in_progress': in_progress,
+                                    'failed': failed,
+                                    'pending': pending,
+                                    'success_rate': success_rate,
+                                },
+                                'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            }
+                            ui_server.run_state.set_snapshot(snap)
                             ui_server.broadcast_snapshot()
                     except Exception:
                         pass

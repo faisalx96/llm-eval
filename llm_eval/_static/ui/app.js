@@ -30,7 +30,7 @@
 
   function applyFilters() {
     const q = (el('q').value || '').toLowerCase();
-    const status = el('status').value;
+    const status = state.filterStatus || (el('status') ? el('status').value : 'all');
     let rows = Array.isArray(state.snapshot.rows) ? state.snapshot.rows.slice() : [];
     if (q) {
       rows = rows.filter(r =>
@@ -111,6 +111,55 @@
       </div>
     `;
     el('stats').innerHTML = statHTML;
+  }
+
+  function renderQuickBar(){
+    const container = el('quickbar');
+    if (!container) return;
+    const fmtShort = (ms) => {
+      if (!ms || ms < 1) return '—';
+      if (ms < 1000) return `${ms|0}<span class="unit">ms</span>`;
+      const s = Math.round(ms/1000);
+      return `${s}<span class="unit">s</span>`;
+    };
+    const rows = state.filtered || [];
+    const completed = rows.filter(r => (r.status||'')==='completed' && r.latency_ms);
+    const lats = completed.map(r => r.latency_ms||0).sort((a,b)=>a-b);
+    const q = (p) => {
+      if (!lats.length) return 0;
+      const pos = (lats.length - 1) * p; const base = Math.floor(pos); const rest = pos - base;
+      return lats[base+1] !== undefined ? (lats[base] + rest*(lats[base+1]-lats[base])) : lats[base];
+    };
+    const mean = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length) : 0;
+    const errors = rows.filter(r => (r.status||'')==='error');
+    const classify = (r) => {
+      const t = (r.output_full||'').toLowerCase();
+      if (t.includes('timeout')) return 'timeout';
+      if (t.includes('error:')) return 'runtime';
+      return 'unknown';
+    };
+    const errTimeout = errors.filter(r=>classify(r)==='timeout').length;
+    const errRuntime = errors.filter(r=>classify(r)==='runtime').length;
+    const errUnknown = errors.filter(r=>classify(r)==='unknown').length;
+    const metricErr = rows.filter(r => (r.metric_values||[]).some(v => String(v||'').toLowerCase() === 'error' || String(v||'').toLowerCase() === 'n/a')).length;
+
+    container.innerHTML = `
+      <div class="qb-group">
+        <span class="qb-title">⏱ Latency</span>
+        <span class="qb-item"><span class="lbl">Mean</span><span class="val">${fmtShort(mean)}</span></span>
+        <span class="qb-item"><span class="lbl">P50</span><span class="val">${fmtShort(q(0.5))}</span></span>
+        <span class="qb-item"><span class="lbl">P90</span><span class="val">${fmtShort(q(0.9))}</span></span>
+        <span class="qb-item"><span class="lbl">P99</span><span class="val">${fmtShort(q(0.99))}</span></span>
+      </div>
+      <span class="qb-sep"></span>
+      <div class="qb-group">
+        <span class="qb-title">⚠ Errors</span>
+        <span class="qb-badge err">Timeout <b>${errTimeout}</b></span>
+        <span class="qb-badge warn">Runtime <b>${errRuntime}</b></span>
+        <span class="qb-badge neutral">Unknown <b>${errUnknown}</b></span>
+        <span class="qb-badge info">Metric <b>${metricErr}</b></span>
+      </div>
+    `;
   }
 
   // Column state and header
@@ -291,6 +340,7 @@
     applyFilters();
     renderMeta();
     renderPanels();
+    renderQuickBar();
     buildHeader();
     renderTable();
   }
@@ -298,9 +348,9 @@
   // Controls
   // Filters
   el('q').addEventListener('input', () => { state.page = 1; renderAll(); });
-  el('status').addEventListener('change', () => { state.page = 1; renderAll(); });
+  if (el('status')) el('status').addEventListener('change', () => { state.filterStatus = el('status').value || 'all'; state.page = 1; renderAll(); });
   // Removed order dropdown; sorting is header-driven
-  el('page-size').addEventListener('change', () => { state.pageSize = Number(el('page-size').value)||50; state.page = 1; renderAll(); });
+  if (el('page-size')) el('page-size').addEventListener('change', () => { state.pageSize = Number(el('page-size').value)||50; state.page = 1; renderAll(); });
   el('prev').addEventListener('click', () => { state.page = Math.max(1, state.page-1); renderTable(); });
   el('next').addEventListener('click', () => { state.page = state.page+1; renderTable(); });
   // Using Material header style by default (B)
@@ -316,20 +366,34 @@
         const key = cb.getAttribute('data-key');
         const col = state.columns.find(x=>x.key===key); if (!col) return;
         col.visible = cb.checked || !!col.fixed;
-        saveColumnsState();
         buildHeader(); renderTable();
       });
     });
     const dd = el('col-dropdown');
     const btn = el('col-menu-btn');
     if (btn && dd){
-      btn.addEventListener('click', () => {
-        const open = dd.classList.toggle('open');
-        btn.setAttribute('aria-expanded', open? 'true':'false');
-      });
-      document.addEventListener('click', (e)=>{
-        if (!dd.contains(e.target)) dd.classList.remove('open');
-      });
+      if (!btn._wired) {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          closeAllDropdowns(dd);
+          const open = dd.classList.toggle('open');
+          btn.setAttribute('aria-expanded', open? 'true':'false');
+        });
+        btn._wired = true;
+      }
+      if (!state._docDropdownWired) {
+        document.addEventListener('click', (e)=>{
+          const within = e.target && e.target.closest ? e.target.closest('.dropdown') : null;
+          document.querySelectorAll('.dropdown.open').forEach(openDd => {
+            if (openDd !== within) {
+              openDd.classList.remove('open');
+              const b = openDd.querySelector('.dropdown-toggle');
+              if (b) b.setAttribute('aria-expanded', 'false');
+            }
+          });
+        });
+        state._docDropdownWired = true;
+      }
     }
   }
 
@@ -397,13 +461,23 @@
       const b = el(id); if (!b) return;
       b.onclick = () => {
         const ok = copyText(getter());
-        const prev = b.textContent; b.textContent = ok? 'Copied' : 'Copy failed';
-        setTimeout(()=>{ b.textContent = prev; }, 1000);
+        const prev = b.textContent; b.textContent = ok? '✓' : '!';
+        setTimeout(()=>{ b.textContent = prev; }, 900);
       };
     }
     wireCopy('copy-input', () => stripMarkup(row.input_full || row.input || ''));
     wireCopy('copy-output', () => stripMarkup(row.output_full || row.output || ''));
     wireCopy('copy-expected', () => stripMarkup(row.expected_full || row.expected || ''));
+    wireCopy('copy-trace', () => {
+      const tid = row.trace_id || '';
+      let turl = row.trace_url || '';
+      if (!turl && tid) {
+        const host = (state.langfuseHost || 'https://cloud.langfuse.com').replace(/\/$/, '');
+        const pid = state.langfuseProjectId || '';
+        if (pid) turl = `${host}/project/${pid}/traces/${tid}`;
+      }
+      return turl || tid || '';
+    });
     // Trace info
     const $trace = el('drawer-trace');
     const $btnLF = el('drawer-open-langfuse');
@@ -471,6 +545,64 @@
     if (s.includes('"') || s.includes(',') || s.includes('\n')) return `"${s.replace(/"/g,'""')}"`;
     return s;
   }
+
+  // Toolbar simple dropdowns (Status, Rows)
+  function closeAllDropdowns(except){
+    try {
+      document.querySelectorAll('.dropdown.open').forEach(dd => {
+        if (except && dd === except) return;
+        dd.classList.remove('open');
+        const btn = dd.querySelector('.dropdown-toggle');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      });
+    } catch {}
+  }
+  function wireSimpleMenu(btnId, menuId, items, onSelect){
+    const btn = el(btnId); const menu = el(menuId);
+    if (!btn || !menu) return;
+    menu.innerHTML = items.map(it => `<label><input type="radio" name="${menuId}" value="${it.value}"> ${it.label}</label>`).join('');
+    const openCls = () => btn.parentElement && btn.parentElement.classList.toggle('open');
+    btn.addEventListener('click', (ev) => { ev.stopPropagation(); closeAllDropdowns(btn.parentElement); openCls(); btn.setAttribute('aria-expanded', btn.parentElement.classList.contains('open') ? 'true':'false'); });
+    document.addEventListener('click', (e)=>{ if (!btn.parentElement.contains(e.target)) { btn.parentElement.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); } });
+    menu.querySelectorAll('input[type=radio]').forEach(r => {
+      r.addEventListener('change', () => { onSelect(r.value, r); btn.parentElement.classList.remove('open'); });
+    });
+  }
+
+  function initToolbarMenus(){
+    // Status
+    const statusItems = [
+      {value:'all', label:'All'},
+      {value:'completed', label:'Completed'},
+      {value:'in_progress', label:'In Progress'},
+      {value:'error', label:'Failed'},
+      {value:'pending', label:'Pending'},
+    ];
+    wireSimpleMenu('status-menu-btn','status-menu', statusItems, (val) => {
+      state.filterStatus = val || 'all';
+      const s = el('status'); if (s) s.value = state.filterStatus;
+      const btn = el('status-menu-btn'); if (btn) btn.textContent = `${statusItems.find(i=>i.value===val).label} ▾`;
+      state.page = 1; renderAll();
+    });
+    // set initial status button label
+    try {
+      const cur = state.filterStatus || (el('status') ? el('status').value : 'all');
+      const btn = el('status-menu-btn'); if (btn) btn.textContent = `${statusItems.find(i=>i.value===cur).label} ▾`;
+    } catch {}
+    // Rows
+    const rowItems = ['25','50','100','200'].map(v => ({value:v, label:v}));
+    wireSimpleMenu('rows-menu-btn','rows-menu', rowItems, (val) => {
+      state.pageSize = Number(val)||50;
+      const s = el('page-size'); if (s) s.value = String(state.pageSize);
+      const btn = el('rows-menu-btn'); if (btn) btn.textContent = `${state.pageSize} ▾`;
+      state.page = 1; renderAll();
+    });
+    // set initial rows button label
+    try {
+      const cur = el('page-size') ? el('page-size').value : '50';
+      const btn = el('rows-menu-btn'); if (btn) btn.textContent = `${cur} ▾`;
+    } catch {}
+  }
   function exportCSV(){
     try {
       const cols = state.columns.filter(c=>c.visible);
@@ -518,8 +650,10 @@
     try { document.body.setAttribute('data-header-style', 'b'); } catch {}
     initColumns();
     renderMeta();
+    renderQuickBar();
     buildHeader();
     buildColumnMenu();
+    initToolbarMenus();
   }).catch(()=>{});
   fetch('api/snapshot').then(r=>r.json()).then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); }).catch(()=>{});
   // Build initial row map if available
@@ -553,6 +687,19 @@
         console.error('SSE snapshot render error', e);
       }
     });
-    es.addEventListener('done', () => { /* no-op */ });
+    es.addEventListener('done', () => {
+      // On server finish, fetch a final snapshot to avoid stale in-progress
+      if (state._finalFetched) return;
+      state._finalFetched = true;
+      fetch('api/snapshot')
+        .then(r=>r.json())
+        .then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); })
+        .catch(()=>{});
+    });
+    es.onerror = () => {
+      if (state._finalFetched) return;
+      state._finalFetched = true;
+      fetch('api/snapshot').then(r=>r.json()).then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); }).catch(()=>{});
+    };
   } catch (e) {}
 })();
