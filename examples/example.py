@@ -46,12 +46,12 @@ def main():
         dataset="saudi-qa-verification-v1",
         metrics=[
             # "answer_relevancy", # DeepEval metric
-            response_length_check,  # Custom metric
+            # response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ]
     )
     
-    results_mixed = evaluator_mixed.run(show_table=True)
+    results_mixed = evaluator_mixed.run()
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ console = Console()
 class EvaluationResult:
     """Container for evaluation results with analysis capabilities."""
     
-    def __init__(self, dataset_name: str, run_name: str, metrics: List[str]):
+    def __init__(self, dataset_name: str, run_name: str, metrics: List[str], run_metadata: Optional[Dict[str, Any]] = None, run_config: Optional[Dict[str, Any]] = None):
         """
         Initialize results container.
         
@@ -29,6 +29,8 @@ class EvaluationResult:
         self.dataset_name = dataset_name
         self.run_name = run_name
         self.metrics = metrics
+        self.run_metadata = run_metadata or {}
+        self.run_config = run_config or {}
         self.start_time = datetime.now()
         self.end_time = None
         
@@ -79,12 +81,17 @@ class EvaluationResult:
         for result in self.results.values():
             if 'scores' in result and metric_name in result['scores']:
                 score = result['scores'][metric_name]
+                if isinstance(score, dict):
+                    if 'error' in score:
+                        errors += 1
+                        continue
+                    if 'score' in score and isinstance(score['score'], (int, float)):
+                        scores.append(float(score['score']))
+                        continue
                 if isinstance(score, (int, float)):
                     scores.append(float(score))
                 elif isinstance(score, bool):
                     scores.append(1.0 if score else 0.0)
-                elif isinstance(score, dict) and 'error' in score:
-                    errors += 1
         
         if not scores:
             return {
@@ -333,43 +340,104 @@ class EvaluationResult:
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         
-        # Prepare rows for CSV
-        rows = []
-        for item_id, result in self.results.items():
-            row = {
-                'item_id': item_id,
-                'output': str(result.get('output', ''))[:100],  # Truncate long outputs
-                'success': result.get('success', False),
-                'time': result.get('time', 0.0)
-            }
-            
-            # Add metric scores
-            if 'scores' in result:
-                for metric_name, score in result['scores'].items():
-                    if isinstance(score, dict) and 'error' in score:
-                        row[f'metric_{metric_name}'] = 'ERROR'
-                        row[f'metric_{metric_name}_error'] = score['error']
+        # Build metric metadata field list across results for consistent columns
+        def flatten_meta(md: Dict[str, Any]) -> Dict[str, Any]:
+            flat: Dict[str, Any] = {}
+            try:
+                for k, v in (md or {}).items():
+                    if isinstance(v, dict):
+                        for k2, v2 in v.items():
+                            flat[f"{k}_{k2}"] = v2
                     else:
-                        row[f'metric_{metric_name}'] = score
-            
+                        flat[str(k)] = v
+            except Exception:
+                pass
+            return flat
+
+        meta_fields: Dict[str, List[str]] = {m: [] for m in self.metrics}
+        for result in self.results.values():
+            scores = result.get('scores', {})
+            for m in self.metrics:
+                sc = scores.get(m)
+                if isinstance(sc, dict):
+                    md = sc.get('metadata') if 'metadata' in sc else {}
+                    fl = flatten_meta(md if isinstance(md, dict) else {})
+                    for key in fl.keys():
+                        if key not in meta_fields[m]:
+                            meta_fields[m].append(key)
+
+        # Prepare header
+        base_fields = [
+            'dataset_name', 'run_name', 'run_metadata', 'run_config',
+            'trace_id', 'item_id', 'input', 'output', 'expected_output', 'time'
+        ]
+        metric_fields: List[str] = []
+        for m in self.metrics:
+            metric_fields.append(f'{m}_score')
+            for k in meta_fields[m]:
+                metric_fields.append(f'{m}_{k}')
+        header = base_fields + metric_fields
+
+        # Prepare row formatter helpers
+        def main_score(val: Any) -> Any:
+            if isinstance(val, dict):
+                if 'error' in val:
+                    return 'ERROR'
+                if 'score' in val:
+                    return val.get('score')
+            return val
+
+        # Assemble rows
+        rows: List[Dict[str, Any]] = []
+        for item_id, result in self.results.items():
+            row: Dict[str, Any] = {
+                'dataset_name': self.dataset_name,
+                'run_name': self.run_name,
+                'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
+                'run_config': json.dumps(self.run_config, ensure_ascii=False),
+                'trace_id': result.get('trace_id', ''),
+                'item_id': item_id,
+                'input': result.get('input', ''),
+                'output': result.get('output', ''),
+                'expected_output': result.get('expected', ''),
+                'time': result.get('time', 0.0),
+            }
+            scores = result.get('scores', {})
+            for m in self.metrics:
+                val = main_score(scores.get(m))
+                row[f'{m}_score'] = val
+                md: Dict[str, Any] = {}
+                sc = scores.get(m)
+                if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
+                    md = flatten_meta(sc['metadata'])
+                for k in meta_fields[m]:
+                    row[f'{m}_{k}'] = md.get(k, '')
             rows.append(row)
-        
-        # Add failed items
+
+        # Add failed items as rows too
         for item_id, error in self.errors.items():
             row = {
+                'dataset_name': self.dataset_name,
+                'run_name': self.run_name,
+                'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
+                'run_config': json.dumps(self.run_config, ensure_ascii=False),
+                'trace_id': '',
                 'item_id': item_id,
-                'output': f'ERROR: {error[:100]}',
-                'success': False,
-                'time': 0.0
+                'input': '',
+                'output': f'ERROR: {error}',
+                'expected_output': '',
+                'time': 0.0,
             }
-            for metric in self.metrics:
-                row[f'metric_{metric}'] = 'N/A'
+            for m in self.metrics:
+                row[f'{m}_score'] = 'N/A'
+                for k in meta_fields[m]:
+                    row[f'{m}_{k}'] = ''
             rows.append(row)
-        
+
         # Write CSV
         if rows:
             with open(filepath, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+                writer = csv.DictWriter(f, fieldnames=header)
                 writer.writeheader()
                 writer.writerows(rows)
         

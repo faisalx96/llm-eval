@@ -76,16 +76,23 @@ class UIServer:
         self.static_dir = self._resolve_static_dir()
 
     def _resolve_static_dir(self) -> str:
-        # Prefer package resources
+        # Environment override first (useful in dev)
+        env_dir = os.getenv('LLM_EVAL_STATIC_DIR')
+        if env_dir and os.path.isdir(env_dir):
+            return env_dir
+        # Prefer local filesystem next (so changes in repo take effect in dev)
+        here = os.path.dirname(os.path.dirname(__file__))
+        fallback = os.path.join(here, '_static', 'ui')
+        if os.path.isdir(fallback):
+            return fallback
+        # Finally fall back to installed package resources
         if pkg_files is not None:
             try:
                 p = pkg_files('llm_eval').joinpath('_static/ui')
                 return str(p)
             except Exception:
                 pass
-        # Fallback to relative path
-        here = os.path.dirname(os.path.dirname(__file__))
-        fallback = os.path.join(here, '_static', 'ui')
+        # Last resort: return computed fallback (may not exist)
         return fallback
 
     def start(self) -> Tuple[str, int]:

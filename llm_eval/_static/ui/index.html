@@ -23,10 +23,10 @@
     <section class="panels" aria-labelledby="overview-title">
       <div class="panel">
         <h3>Latency</h3>
-        <div class="kv"><span>Mean</span><strong id="lat-mean">—</strong></div>
         <div class="kv"><span>P50</span><strong id="lat-p50">—</strong></div>
         <div class="kv"><span>P90</span><strong id="lat-p90">—</strong></div>
         <div class="kv"><span>P99</span><strong id="lat-p99">—</strong></div>
+        <div class="kv"><span>Min</span><strong id="lat-min">—</strong><span style="opacity:.6;margin:0 6px;">|</span><span>Max</span><strong id="lat-max">—</strong></div>
       </div>
       <div class="panel">
         <h3>Errors</h3>
@@ -34,6 +34,10 @@
         <div class="kv"><span>Runtime</span><strong id="err-runtime">0</strong></div>
         <div class="kv"><span>Unknown</span><strong id="err-unknown">0</strong></div>
         <div class="kv"><span>Metric</span><strong id="err-metric">0</strong></div>
+      </div>
+      <div class="panel" id="metrics-panel">
+        <h3>Metrics</h3>
+        <div id="metric-charts" class="metrics-charts"></div>
       </div>
     </section>
     <h2 class="section-title" id="results-title">Results</h2>

@@ -224,6 +224,18 @@ body[data-theme="light"] .metric-row { background:#f5f7fb; }
 /* Keep copy icon clean in light mode (no background/border) */
 body[data-theme="light"] .copy-btn { background: transparent; }
 
+/* Overview metrics charts */
+.metrics-charts { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.metric-chart { background: #0c1220; border:1px solid var(--soft); border-radius:10px; padding:10px; }
+.metric-chart-header { display:flex; align-items:center; justify-content: space-between; margin-bottom: 6px; }
+.metric-chart .name { color: var(--muted); font-size: 0.9rem; }
+.metric-chart .val { font-weight: 700; }
+.metric-chart .val .unit { color: var(--muted); font-weight: 500; margin-left: 2px; }
+.metric-chart svg { width: 100%; height: 48px; display:block; }
+.metric-chart path.spark { stroke: var(--brand); stroke-width: 2; fill: none; }
+.metric-chart rect.bg { fill: rgba(255,255,255,0.03); }
+body[data-theme="light"] .metric-chart { background:#f5f7fb; }
+
 /* Badges refinement in light mode */
 body[data-theme="light"] .badge.completed { background: rgba(34,197,94,0.14); color: var(--ok); border-color: rgba(34,197,94,0.25); }
 body[data-theme="light"] .badge.error { background: rgba(220,38,38,0.12); color: var(--err); border-color: rgba(220,38,38,0.2); }
@@ -353,7 +365,7 @@ tbody tr:hover { transform: translateY(-0.5px); }
 .quickbar .qb-title { text-transform: uppercase; letter-spacing: .6px; font-size: 0.72rem; color: var(--muted); margin-right: 4px; }
 .quickbar .qb-item { display:inline-flex; align-items: baseline; gap: 6px; border:1px solid var(--soft); background: rgba(255,255,255,0.03); border-radius: 999px; padding: 4px 8px; }
 .quickbar .qb-item .lbl { color: var(--muted); font-size: 0.78rem; }
-.quickbar .qb-item .val { font-weight: 700; font-size: 0.9rem; line-height: 1; }
+.quickbar .qb-item .val { font-weight: 500; font-size: 0.8rem; line-height: 1; }
 .quickbar .qb-item .val .unit { font-weight: 600; font-size: 0.78em; color: var(--muted); margin-left: 2px; }
 .quickbar .qb-badge { display:inline-flex; align-items:center; gap:6px; border-radius: 999px; padding: 3px 8px; font-weight: 600; font-size: 0.85rem; border:1px solid transparent; }
 .quickbar .qb-badge b { font-weight: 700; font-size: 0.95em; }

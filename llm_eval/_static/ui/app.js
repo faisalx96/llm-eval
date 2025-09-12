@@ -15,6 +15,49 @@
     const s = Math.round(ms/1000);
     return `${s}s`;
   };
+
+  // Best-effort metric name discovery from a snapshot
+  function deriveMetricNamesFromSnapshot(snap){
+    try {
+      if (Array.isArray(snap && snap.metric_names) && snap.metric_names.length){
+        return snap.metric_names.slice();
+      }
+      const rows = (snap && snap.rows) || [];
+      if (!rows.length) return null;
+      // Prefer a row that actually has metric_meta keys
+      let r0 = null;
+      for (let i=0;i<rows.length;i++){
+        const rr = rows[i]||{};
+        if (rr.metric_meta && Object.keys(rr.metric_meta||{}).length){ r0 = rr; break; }
+      }
+      if (!r0) r0 = rows[0] || null;
+      if (!r0) return null;
+      const meta = r0.metric_meta || {};
+      const metaNames = Object.keys(meta||{});
+      if (metaNames && metaNames.length) return metaNames;
+      const mvals = Array.isArray(r0.metric_values) ? r0.metric_values : [];
+      if (mvals.length) return Array.from({length: mvals.length}, (_,i)=> `metric_${i+1}`);
+      return null;
+    } catch { return null; }
+  }
+
+  // Merge any newly discovered names into state.metricNames and refresh columns
+  function syncMetricNamesFromSnapshot(snap){
+    try {
+      const found = deriveMetricNamesFromSnapshot(snap) || [];
+      const have = Array.isArray(state.metricNames) ? state.metricNames.slice() : [];
+      const set = new Set(have);
+      let changed = false;
+      for (const n of found){ if (!set.has(n)) { have.push(n); set.add(n); changed = true; } }
+      if (changed){
+        state.metricNames = have;
+        initColumns();
+        buildHeader();
+        buildColumnMenu();
+        renderMetricCharts();
+      }
+    } catch {}
+  }
   // (No global preferences; keep UI minimal)
   // Human-readable h/m/s formatter for durations
   const humanDuration = (ms) => {
@@ -55,10 +98,19 @@
     const isMetric = key.startsWith('metric:');
     let av, bv;
     if (isMetric){
-      const name = key.slice(7);
-      const idx = (state.metricNames||[]).indexOf(name);
-      av = (a.metric_values||[])[idx];
-      bv = (b.metric_values||[])[idx];
+      const parts = key.split(':');
+      const name = parts[1];
+      if (parts.length === 2){
+        const idx = (state.metricNames||[]).indexOf(name);
+        av = (a.metric_values||[])[idx];
+        bv = (b.metric_values||[])[idx];
+      } else {
+        const field = parts.slice(2).join(':');
+        const ma = (a.metric_meta && a.metric_meta[name]) || {};
+        const mb = (b.metric_meta && b.metric_meta[name]) || {};
+        av = ma[field];
+        bv = mb[field];
+      }
       const na = Number(av); const nb = Number(bv);
       if (!Number.isNaN(na) && !Number.isNaN(nb)) { av = na; bv = nb; }
       else { av = String(av||''); bv = String(bv||''); }
@@ -72,12 +124,14 @@
 
   function renderMeta() {
     const m = state.run || {};
+    const prevTimer = (() => { try { const n = document.getElementById('run-timer'); return n && n.textContent ? n.textContent : '—'; } catch { return '—'; } })();
     el('run-meta').innerHTML = `
       <span class="chips">
         <span class="chip"><span class="label">Dataset</span>${m.dataset_name||'—'}</span>
         <span class="chip"><span class="label">Run</span>${m.run_name||'—'}</span>
         <span class="chip"><span class="label">Concurrency</span>${(m.config&&m.config.max_concurrency)||'—'}</span>
         <span class="chip"><span class="label">Timeout</span>${(m.config&&m.config.timeout)||'—'}s</span>
+        <span class="chip"><span class="label">Elapsed</span><span id="run-timer">${prevTimer}</span></span>
       </span>
     `;
     const s = state.snapshot.stats || {};
@@ -122,15 +176,16 @@
       const s = Math.round(ms/1000);
       return `${s}<span class="unit">s</span>`;
     };
-    const rows = state.filtered || [];
-    const completed = rows.filter(r => (r.status||'')==='completed' && r.latency_ms);
+    const rows = (state.snapshot && state.snapshot.rows) || [];
+    const completed = rows.filter(r => (r.status||'')==='completed' && r.latency_ms!=null);
     const lats = completed.map(r => r.latency_ms||0).sort((a,b)=>a-b);
+    const min = lats.length ? lats[0] : 0;
+    const max = lats.length ? lats[lats.length-1] : 0;
     const q = (p) => {
       if (!lats.length) return 0;
       const pos = (lats.length - 1) * p; const base = Math.floor(pos); const rest = pos - base;
       return lats[base+1] !== undefined ? (lats[base] + rest*(lats[base+1]-lats[base])) : lats[base];
     };
-    const mean = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length) : 0;
     const errors = rows.filter(r => (r.status||'')==='error');
     const classify = (r) => {
       const t = (r.output_full||'').toLowerCase();
@@ -146,10 +201,11 @@
     container.innerHTML = `
       <div class="qb-group">
         <span class="qb-title">⏱ Latency</span>
-        <span class="qb-item"><span class="lbl">Mean</span><span class="val">${fmtShort(mean)}</span></span>
+        <span class="qb-item"><span class="lbl">Min</span><span class="val">${fmtShort(min)}</span></span>
         <span class="qb-item"><span class="lbl">P50</span><span class="val">${fmtShort(q(0.5))}</span></span>
         <span class="qb-item"><span class="lbl">P90</span><span class="val">${fmtShort(q(0.9))}</span></span>
         <span class="qb-item"><span class="lbl">P99</span><span class="val">${fmtShort(q(0.99))}</span></span>
+        <span class="qb-item"><span class="lbl">Max</span><span class="val">${fmtShort(max)}</span></span>
       </div>
       <span class="qb-sep"></span>
       <div class="qb-group">
@@ -167,7 +223,7 @@
   state.sortKey = 'index';
   state.sortDir = 'asc';
   function initColumns() {
-    const metrics = (state.metricNames || []).map((name, i) => ({ key: `metric:${name}`, title: name, visible: true, metricIndex: i }));
+    const metrics = (state.metricNames || []).map((name, i) => ({ key: `metric:${name}`, title: `${name}_score`, visible: true, metricIndex: i }));
     const base = [
       { key:'index', title:'#', visible:true, fixed:true, width:64 },
       { key:'status', title:'Status', visible:true },
@@ -178,9 +234,52 @@
       { key:'time', title:'Time', visible:true },
     ];
     state.columns = base;
+    ensureMetricSubColumns();
+  }
+  function ensureMetricSubColumns(){
+    try {
+      const sub = collectMetricSubFields();
+      if (!sub) return;
+      const existing = new Set(state.columns.map(c => c.key));
+      const newCols = [];
+      state.columns.forEach(c => {
+        newCols.push(c);
+        if (c.key.startsWith('metric:') && c.key.split(':').length===2){
+          const name = c.key.split(':')[1];
+          const fields = sub[name] || [];
+          fields.forEach(f => {
+            const k = `metric:${name}:${f}`;
+            if (!existing.has(k)){
+              newCols.push({ key: k, title: `${name}_${f}`, visible: true });
+              existing.add(k);
+            }
+          });
+        }
+      });
+      state.columns = newCols;
+    } catch {}
+  }
+  function collectMetricSubFields(){
+    const out = {};
+    try {
+      const rows = (state.snapshot && state.snapshot.rows) || [];
+      const names = state.metricNames || [];
+      names.forEach(n => out[n] = new Set());
+      rows.forEach(r => {
+        const mm = r.metric_meta || {};
+        Object.keys(mm||{}).forEach(name => {
+          const obj = mm[name] || {};
+          Object.keys(obj).forEach(field => out[name] && out[name].add(field));
+        });
+      });
+      const res = {};
+      Object.keys(out).forEach(name => { res[name] = Array.from(out[name]||[]); });
+      return res;
+    } catch { return null; }
   }
   function buildHeader() {
     const thead = el('thead');
+    ensureMetricSubColumns();
     const cols = state.columns.filter(c => c.visible);
     thead.innerHTML = `<tr>
       ${cols.map(c => {
@@ -251,9 +350,11 @@
   }
 
   function renderPanels() {
-    const rows = state.filtered;
-    const completed = rows.filter(r => (r.status||'')==='completed' && r.latency_ms);
+    const rows = (state.snapshot && state.snapshot.rows) || [];
+    const completed = rows.filter(r => (r.status||'')==='completed' && r.latency_ms != null);
     const lats = completed.map(r => r.latency_ms||0).sort((a,b)=>a-b);
+    const min = lats.length ? lats[0] : 0;
+    const max = lats.length ? lats[lats.length-1] : 0;
     const q = (p) => {
       if (!lats.length) return 0;
       const pos = (lats.length - 1) * p;
@@ -261,11 +362,11 @@
       const rest = pos - base;
       return lats[base+1] !== undefined ? (lats[base] + rest*(lats[base+1]-lats[base])) : lats[base];
     };
-    const mean = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length) : 0;
-    el('lat-mean').textContent = fmtTime(mean);
-    el('lat-p50').textContent = fmtTime(q(0.5));
-    el('lat-p90').textContent = fmtTime(q(0.9));
-    el('lat-p99').textContent = fmtTime(q(0.99));
+    const minEl = el('lat-min'); if (minEl) minEl.textContent = fmtTime(min);
+    const maxEl = el('lat-max'); if (maxEl) maxEl.textContent = fmtTime(max);
+    const p50El = el('lat-p50'); if (p50El) p50El.textContent = fmtTime(q(0.5));
+    const p90El = el('lat-p90'); if (p90El) p90El.textContent = fmtTime(q(0.9));
+    const p99El = el('lat-p99'); if (p99El) p99El.textContent = fmtTime(q(0.99));
 
     const errors = rows.filter(r => (r.status||'')==='error');
     const classify = (r) => {
@@ -304,6 +405,18 @@
         else { const n = Number(raw); if (!Number.isNaN(n)) { if (Math.abs(n-1)<1e-9) cls='metric-yes'; else if (Math.abs(n)<1e-9) cls='metric-no'; } }
         return `<td class="${cls}">${raw}</td>`;
       }
+      function tdMetricField(name, field){
+        const mm = (r.metric_meta && r.metric_meta[name]) || {};
+        const v = mm[field];
+        const raw = (v ?? '').toString();
+        const t = raw.trim().toLowerCase();
+        let cls = '';
+        if (t === '✓' || t === 'true' || t === 'yes' || t === '1' || t === '1.0') cls = 'metric-yes';
+        else if (t === '✗' || t === 'false' || t === 'no' || t === '0' || t === '0.0') cls = 'metric-no';
+        else if (t === 'n/a' || t === 'pending' || t === 'error' || t === 'computing...') cls = 'metric-na';
+        else { const n = Number(raw); if (!Number.isNaN(n)) { if (Math.abs(n-1)<1e-9) cls='metric-yes'; else if (Math.abs(n)<1e-9) cls='metric-no'; } }
+        return `<td class="${cls}">${raw}</td>`;
+      }
       const tds = visible.map(c => {
         if (c.key==='index') return `<td>${(r.index||0)+1}</td>`;
         if (c.key==='status') return `<td><span class="badge ${st}">${st.replace('_',' ')}</span></td>`;
@@ -311,7 +424,13 @@
         if (c.key==='output') return `<td class="ellipsis" title="${r.output_full||''}">${r.output||''}</td>`;
         if (c.key==='expected') return `<td class="ellipsis" title="${r.expected_full||''}">${r.expected||''}</td>`;
         if (c.key==='time') return `<td>${r.time||''}</td>`;
-        if (c.key.startsWith('metric:')) { const name=c.key.slice(7); const idx=(state.metricNames||[]).indexOf(name); return tdMetricByIndex(idx); }
+        if (c.key.startsWith('metric:')) {
+          const parts = c.key.split(':');
+          const name = parts[1];
+          if (parts.length===2){ const idx=(state.metricNames||[]).indexOf(name); return tdMetricByIndex(idx); }
+          const field = parts.slice(2).join(':');
+          return tdMetricField(name, field);
+        }
         return `<td></td>`;
       }).join('');
       return `<tr data-raw-index="${r.index||0}">${tds}</tr>`;
@@ -341,20 +460,24 @@
     renderMeta();
     renderPanels();
     renderQuickBar();
+    renderMetricCharts();
     buildHeader();
+    buildColumnMenu();
     renderTable();
   }
 
   // Controls
   // Filters
-  el('q').addEventListener('input', () => { state.page = 1; renderAll(); });
-  if (el('status')) el('status').addEventListener('change', () => { state.filterStatus = el('status').value || 'all'; state.page = 1; renderAll(); });
+  const qEl = el('q'); if (qEl) qEl.addEventListener('input', () => { state.page = 1; renderAll(); });
+  const statusSel = el('status'); if (statusSel) statusSel.addEventListener('change', () => { state.filterStatus = statusSel.value || 'all'; state.page = 1; renderAll(); });
   // Removed order dropdown; sorting is header-driven
-  if (el('page-size')) el('page-size').addEventListener('change', () => { state.pageSize = Number(el('page-size').value)||50; state.page = 1; renderAll(); });
-  el('prev').addEventListener('click', () => { state.page = Math.max(1, state.page-1); renderTable(); });
-  el('next').addEventListener('click', () => { state.page = state.page+1; renderTable(); });
+  const pageSizeSel = el('page-size'); if (pageSizeSel) pageSizeSel.addEventListener('change', () => { state.pageSize = Number(pageSizeSel.value)||50; state.page = 1; renderAll(); });
+  const prevBtn = el('prev'); if (prevBtn) prevBtn.addEventListener('click', () => { state.page = Math.max(1, state.page-1); renderTable(); });
+  const nextBtn = el('next'); if (nextBtn) nextBtn.addEventListener('click', () => { state.page = state.page+1; renderTable(); });
   // Using Material header style by default (B)
   function buildColumnMenu(){
+    // Ensure dynamic metric sub-columns are present before building menu
+    ensureMetricSubColumns();
     const menu = el('col-menu');
     if (!menu) return;
     const cols = state.columns.slice();
@@ -514,13 +637,22 @@
     // Metrics list
     const names = state.metricNames || [];
     const vals = row.metric_values || [];
+    const meta = row.metric_meta || {};
     const $ml = el('drawer-metrics');
     if ($ml){
       const items = names.map((n, i) => {
         const v = vals[i];
         const cls = classifyMetric(v);
         const txt = (v==null||v==='') ? '—' : String(v);
-        return `<div class="metric-row"><span class="name">${n}</span><span class="value ${cls}">${txt}</span></div>`;
+        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span></div>`;
+        const extrasObj = meta[n] || {};
+        const extras = Object.keys(extrasObj).map(k => {
+          const vv = extrasObj[k];
+          const c = classifyMetric(vv);
+          const t = (vv==null||vv==='') ? '—' : String(vv);
+          return `<div class="metric-row"><span class="name">${n}_${k}</span><span class="value ${c}">${t}</span></div>`;
+        }).join('');
+        return header + extras;
       }).join('');
       $ml.innerHTML = items || '<div class="muted">No metrics</div>';
     }
@@ -606,7 +738,12 @@
   function exportCSV(){
     try {
       const cols = state.columns.filter(c=>c.visible);
-      const header = cols.map(c => c.key.startsWith('metric:') ? c.key.slice(7) : c.title);
+      const header = cols.map(c => {
+        if (!c.key.startsWith('metric:')) return c.title;
+        const parts = c.key.split(':');
+        if (parts.length===2) return c.title || `${parts[1]}_score`;
+        return `${parts[1]}_${parts.slice(2).join(':')}`;
+      });
       const rows = state.filtered.slice();
       const lines = [header.map(csvEscape).join(',')];
       rows.forEach(r => {
@@ -617,7 +754,14 @@
           if (c.key==='output') return r.output_full || r.output || '';
           if (c.key==='expected') return r.expected_full || r.expected || '';
           if (c.key==='time') return r.time || (r.latency_ms!=null? `${r.latency_ms}ms` : '');
-          if (c.key.startsWith('metric:')) { const name=c.key.slice(7); const i=(state.metricNames||[]).indexOf(name); return (r.metric_values||[])[i] ?? ''; }
+          if (c.key.startsWith('metric:')) {
+            const parts = c.key.split(':');
+            const name = parts[1];
+            if (parts.length===2){ const i=(state.metricNames||[]).indexOf(name); return (r.metric_values||[])[i] ?? ''; }
+            const field = parts.slice(2).join(':');
+            const mm = (r.metric_meta && r.metric_meta[name]) || {};
+            return mm[field] ?? '';
+          }
           return '';
         });
         lines.push(cells.map(csvEscape).join(','));
@@ -641,6 +785,12 @@
     state.metricNames = run.metric_names || [];
     state.langfuseHost = run.langfuse_host || 'https://cloud.langfuse.com';
     state.langfuseProjectId = run.langfuse_project_id || '';
+    // Setup run start for timer
+    try {
+      const s = run.started_at || run.start_time || null;
+      state.runStartMs = s ? Date.parse(s) : Date.now();
+      state.runEndMs = null;
+    } catch { state.runStartMs = Date.now(); state.runEndMs = null; }
     try {
       const ds = run.dataset_name || 'Dataset';
       const rn = run.run_name || 'Run';
@@ -650,12 +800,30 @@
     try { document.body.setAttribute('data-header-style', 'b'); } catch {}
     initColumns();
     renderMeta();
+    startRunTimer();
     renderQuickBar();
+    renderMetricCharts();
     buildHeader();
     buildColumnMenu();
     initToolbarMenus();
+    // After run info is ready (metric names set), fetch initial snapshot
+    return fetch('api/snapshot')
+      .then(r=>r.json())
+      .then(snap => {
+        state.snapshot = snap || { rows:[], stats:{} };
+        // If metric names missing or incomplete, infer from snapshot
+        syncMetricNamesFromSnapshot(state.snapshot);
+        updateMetricSeriesFromSnapshot(state.snapshot);
+        renderAll();
+        // If any snapshot arrived before run finished loading, apply it now
+        if (state._pendingSnapshot){
+          updateMetricSeriesFromSnapshot(state._pendingSnapshot);
+          renderAll();
+          state._pendingSnapshot = null;
+        }
+      })
+      .catch(()=>{});
   }).catch(()=>{});
-  fetch('api/snapshot').then(r=>r.json()).then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); }).catch(()=>{});
   // Build initial row map if available
   try {
     const map = new Map();
@@ -669,7 +837,14 @@
     es.addEventListener('snapshot', (evt) => {
       try {
         const data = JSON.parse(evt.data || '{}');
+        // If metric names not ready yet, hold onto this snapshot
+        syncMetricNamesFromSnapshot(data);
+        if (!state.metricNames || state.metricNames.length===0){
+          state._pendingSnapshot = data;
+        }
         state.snapshot = data;
+        updateMetricSeriesFromSnapshot(data);
+        renderMetricCharts();
         // Rebuild fast row index map for robust clicks
         try {
           const map = new Map();
@@ -691,9 +866,11 @@
       // On server finish, fetch a final snapshot to avoid stale in-progress
       if (state._finalFetched) return;
       state._finalFetched = true;
+      // stop timer at end
+      try { state.runEndMs = Date.now(); stopRunTimer(); } catch {}
       fetch('api/snapshot')
         .then(r=>r.json())
-        .then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); })
+        .then(snap => { state.snapshot = snap || { rows:[], stats:{} }; updateMetricSeriesFromSnapshot(state.snapshot); renderAll(); })
         .catch(()=>{});
     });
     es.onerror = () => {
@@ -702,4 +879,117 @@
       fetch('api/snapshot').then(r=>r.json()).then(snap => { state.snapshot = snap || { rows:[], stats:{} }; renderAll(); }).catch(()=>{});
     };
   } catch (e) {}
+
+  // Run timer helpers
+  function updateTimerOnce(){
+    const span = document.getElementById('run-timer');
+    if (!span) return;
+    const start = Number(state.runStartMs||0);
+    const end = Number(state.runEndMs||0);
+    const now = end && end>start ? end : Date.now();
+    const elapsed = Math.max(0, now - start);
+    span.textContent = humanDuration(elapsed);
+  }
+  function startRunTimer(){
+    if (state._timerId) clearInterval(state._timerId);
+    updateTimerOnce();
+    state._timerId = setInterval(() => {
+      // stop automatically if finished
+      try {
+        const st = (state.snapshot && state.snapshot.stats) || {};
+        const done = st && typeof st.total==='number' && (st.pending||0)===0 && (st.in_progress||0)===0;
+        if (done) { state.runEndMs = state.runEndMs || Date.now(); stopRunTimer(); }
+      } catch {}
+      updateTimerOnce();
+    }, 1000);
+  }
+  function stopRunTimer(){ if (state._timerId) { clearInterval(state._timerId); state._timerId = null; } }
+
+  // Metric charts logic
+  state.metricSeries = {}; // name -> number[]
+  function toNumber(val){
+    if (val == null) return null;
+    const raw = String(val).trim();
+    const t = raw.toLowerCase();
+    if (t==='✓' || t==='true' || t==='yes') return 1;
+    if (t==='✗' || t==='false' || t==='no') return 0;
+    if (t==='n/a' || t==='pending' || t==='computing...' || t==='error') return null;
+    // Strip percent sign
+    const pct = /^(\d+(?:\.\d+)?)%$/.exec(raw);
+    if (pct) return Number(pct[1]) / 100;
+    const n = Number(raw);
+    if (!Number.isNaN(n)) return n;
+    return null;
+  }
+  function updateMetricSeriesFromSnapshot(snap){
+    try {
+      const names = state.metricNames || [];
+      if (!names.length) return;
+      const rows = (snap && snap.rows) || [];
+      // Compute average score for each metric across all rows
+      names.forEach((name, i) => {
+        let sum = 0, cnt = 0;
+        for (const r of rows){
+          const v = (r.metric_values||[])[i];
+          const n = toNumber(v);
+          if (n == null) continue;
+          sum += n; cnt++;
+        }
+        const val = cnt ? (sum / cnt) : 0;
+        if (!state.metricSeries[name]) state.metricSeries[name] = [];
+        const arr = state.metricSeries[name];
+        arr.push(val);
+        if (arr.length > 120) arr.shift();
+      });
+    } catch {}
+  }
+  function fmtMetricVal(v){
+    if (v==null || Number.isNaN(v)) return '—';
+    if (v>=0 && v<=1) return `${Math.round(v*100)}%`;
+    const n = Number(v);
+    if (Math.abs(n) >= 100) return n.toFixed(0);
+    if (Math.abs(n) >= 10) return n.toFixed(1);
+    return n.toFixed(2);
+  }
+  function renderMetricCharts(){
+    const wrap = document.getElementById('metric-charts');
+    if (!wrap) return;
+    const names = state.metricNames || [];
+    if (!names.length){ wrap.innerHTML = '<div class="muted">No metrics</div>'; return; }
+    const items = names.map(name => {
+      const series = (state.metricSeries && state.metricSeries[name]) || [];
+      const {svg, lastVal} = sparklineSVG(series, 220, 48);
+      return `<div class="metric-chart"><div class="metric-chart-header"><span class="name">${name}</span><span class="val">${fmtMetricVal(lastVal)}</span></div>${svg}</div>`;
+    }).join('');
+    wrap.innerHTML = items;
+  }
+  function sparklineSVG(series, width, height){
+    const w = Math.max(220, width|0), h = Math.max(32, height|0);
+    const data = series.slice(-60); // last 60 points
+    const lastVal = data.length ? data[data.length-1] : null;
+    if (data.length < 2){
+      const y = h/2;
+      const d = `M 0 ${y.toFixed(2)} L ${w} ${y.toFixed(2)}`;
+      const svg = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect class="bg" x="0" y="0" width="${w}" height="${h}" /><path class="spark" d="${d}"/></svg>`;
+      return { svg, lastVal };
+    }
+    let min = Infinity, max = -Infinity;
+    data.forEach(v => { if (v==null) return; if (v<min) min=v; if (v>max) max=v; });
+    if (!isFinite(min) || !isFinite(max) || min===max){ min = (min===max && isFinite(min)) ? min-1 : 0; max = (min===max && isFinite(min)) ? max+1 : 1; }
+    const n = data.length;
+    const dx = w/(n-1);
+    const ys = (v) => {
+      if (v==null) return h/2;
+      const t = (v - min) / (max - min);
+      return (1 - t) * (h-6) + 3; // padding 3px
+    };
+    let d = '';
+    for (let i=0;i<n;i++){
+      const x = i*dx;
+      const y = ys(data[i]);
+      d += (i===0? 'M':' L') + x.toFixed(2) + ' ' + y.toFixed(2);
+    }
+    const svg = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><rect class="bg" x="0" y="0" width="${w}" height="${h}" /><path class="spark" d="${d}"/></svg>`;
+    return { svg, lastVal };
+  }
 })();

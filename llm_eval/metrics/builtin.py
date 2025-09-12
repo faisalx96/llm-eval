@@ -19,8 +19,8 @@ def exact_match(output: Any, expected: Any) -> float:
     # Convert to strings for comparison
     output_str = str(output).strip()
     expected_str = str(expected).strip()
-    
-    return True if output_str == expected_str else False
+    score = True if output_str == expected_str else False
+    return {"score": score, "metadata": {"contains": contains_expected(output, expected)}}
 
 
 def contains_expected(output: Any, expected: Any) -> float:

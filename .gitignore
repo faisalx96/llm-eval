@@ -69,6 +69,7 @@ Thumbs.db
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # mypy
 .mypy_cache/
@@ -81,3 +82,7 @@ AIR_GAPPED_GUIDE.md
 
 # Agents
 AGENTS.md
+
+# Results
+*.json
+*.csv

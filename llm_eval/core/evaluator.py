@@ -250,7 +250,7 @@ class Evaluator:
                 raise ValueError(f"Metric must be string or callable, got {type(metric)}")
         return prepared
     
-    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json", keep_server_alive: bool = True) -> EvaluationResult:
+    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = True, save_format: str = "csv", keep_server_alive: bool = True) -> EvaluationResult:
         """
         Run the evaluation synchronously.
         
@@ -302,7 +302,7 @@ class Evaluator:
         return result
     
     
-    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "json") -> EvaluationResult:
+    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "csv") -> EvaluationResult:
         """
         Run the evaluation asynchronously.
         
@@ -318,7 +318,9 @@ class Evaluator:
         result = EvaluationResult(
             dataset_name=self.dataset_name,
             run_name=self.run_name,
-            metrics=list(self.metrics.keys())
+            metrics=list(self.metrics.keys()),
+            run_metadata=self.run_metadata,
+            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout}
         )
         
         items = self.dataset.get_items()
@@ -338,6 +340,7 @@ class Evaluator:
                 'output': '[dim]pending[/dim]',
                 'expected': expected_text,
                 'metrics': {metric: '[dim]pending[/dim]' for metric in self.metrics.keys()},
+                'metric_meta': {metric: {} for metric in self.metrics.keys()},
                 'status': 'pending',
                 'time': '[dim]pending[/dim]',
                 'start_time': None,
@@ -449,6 +452,7 @@ class Evaluator:
                                         oval = 'pending'
                                     oval = oval.replace('[red]','').replace('[/red]','').replace('[yellow]','').replace('[/yellow]','').replace('[dim]','').replace('[/dim]','')
                                     mvals = []
+                                    meta_block = {}
                                     for m in self.metrics.keys():
                                         mv = str(s['metrics'][m])
                                         if mv == '[dim]pending[/dim]': mv = 'pending'
@@ -456,6 +460,11 @@ class Evaluator:
                                         elif mv == '[red]error[/red]': mv = 'error'
                                         elif mv == '[red]N/A[/red]': mv = 'N/A'
                                         mvals.append(mv)
+                                        # attach per-metric metadata (flattened)
+                                        try:
+                                            meta_block[m] = {k: str(v) for k, v in (s.get('metric_meta', {}).get(m, {}) or {}).items()}
+                                        except Exception:
+                                            meta_block[m] = {}
                                     rows.append({
                                         'index': idx,
                                         'status': s['status'],
@@ -466,6 +475,7 @@ class Evaluator:
                                         'expected': str(s['expected']),
                                         'expected_full': str(s['expected']),
                                         'metric_values': mvals,
+                                        'metric_meta': meta_block,
                                         'time': tval,
                                         'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
                                         'trace_id': s.get('trace_id'),
@@ -482,6 +492,7 @@ class Evaluator:
                                         'success_rate': success_rate,
                                     },
                                     'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                    'metric_names': list(self.metrics.keys()),
                                 }
                                 if ui_server is not None:
                                     ui_server.run_state.set_snapshot(snap)
@@ -537,8 +548,13 @@ class Evaluator:
                                 oval = _strip(s.get('output', ''))
                                 tval = _strip(s.get('time', ''))
                                 mvals = []
+                                meta_block = {}
                                 for name in self.metrics.keys():
                                     mvals.append(_strip(s['metrics'].get(name, '')))
+                                    try:
+                                        meta_block[name] = {k: str(v) for k, v in (s.get('metric_meta', {}).get(name, {}) or {}).items()}
+                                    except Exception:
+                                        meta_block[name] = {}
                                 rows.append({
                                     'index': idx,
                                     'status': s['status'],
@@ -549,6 +565,7 @@ class Evaluator:
                                     'expected': str(s['expected']),
                                     'expected_full': str(s['expected']),
                                     'metric_values': mvals,
+                                    'metric_meta': meta_block,
                                     'time': tval,
                                     'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
                                     'trace_id': s.get('trace_id'),
@@ -565,6 +582,7 @@ class Evaluator:
                                     'success_rate': success_rate,
                                 },
                                 'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                'metric_names': list(self.metrics.keys()),
                             }
                             ui_server.run_state.set_snapshot(snap)
                             ui_server.broadcast_snapshot()
@@ -626,11 +644,10 @@ class Evaluator:
         if html_url:
             result.html_url = html_url
         
-        # Auto-save if requested
+        # Auto-save if requested (message printed by save_* methods)
         if auto_save:
             try:
-                saved_path = result.save(format=save_format)
-                console.print(f"[blue]📁 Auto-saved results to: {saved_path}[/blue]")
+                result.save(format=save_format)
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
         
@@ -650,16 +667,9 @@ class Evaluator:
                 ) as trace:
                     # Capture Langfuse trace identifiers if available
                     try:
-                        item_statuses[index]['trace_id'] = getattr(trace, 'id', None) or getattr(trace, 'trace_id', None)
+                        meta = self._extract_trace_meta(trace)
                     except Exception:
-                        item_statuses[index]['trace_id'] = None
-                    try:
-                        url = getattr(trace, 'url', None)
-                        if not url and hasattr(trace, 'get_url'):
-                            url = trace.get_url()
-                        item_statuses[index]['trace_url'] = url
-                    except Exception:
-                        item_statuses[index]['trace_url'] = None
+                        meta = {"trace_id": None, "trace_url": None}
                     # Execute task
                     output = await self.task_adapter.arun(item.input, trace)
                     
@@ -675,12 +685,20 @@ class Evaluator:
                             )
                             scores[metric_name] = score
                             
-                            # Log score to Langfuse
-                            trace.score_trace(
-                                name=metric_name,
-                                value=score if isinstance(score, (int, float, bool)) else str(score),
-                                data_type=self._get_score_type(score)
-                            )
+                            # Log score to Langfuse (prefer main score)
+                            try:
+                                log_val = None
+                                if isinstance(score, dict) and 'score' in score:
+                                    log_val = score.get('score')
+                                else:
+                                    log_val = score
+                                trace.score_trace(
+                                    name=metric_name,
+                                    value=log_val if isinstance(log_val, (int, float, bool)) else str(log_val),
+                                    data_type=self._get_score_type(log_val)
+                                )
+                            except Exception:
+                                pass
                             
                             # Update progress after each metric
                             if progress and task_progress is not None:
@@ -696,6 +714,11 @@ class Evaluator:
                         "output": output,
                         "scores": scores,
                         "success": True
+                        ,
+                        "input": item.input,
+                        "expected": getattr(item, 'expected_output', None),
+                        "trace_id": meta.get('trace_id'),
+                        "trace_url": meta.get('trace_url')
                     }
                     
             except asyncio.TimeoutError:
@@ -798,21 +821,58 @@ class Evaluator:
                                 item.input
                             )
                             scores[metric_name] = score
-                            
-                            # Update metric value in status
-                            if isinstance(score, bool):
-                                item_statuses[index]['metrics'][metric_name] = '✓' if score else '✗'
-                            elif isinstance(score, (int, float)):
-                                item_statuses[index]['metrics'][metric_name] = f"{int(score)}"
+
+                            # Normalize {'score': x, 'metadata': {...}} shape
+                            def _flatten_meta(md):
+                                flat = {}
+                                try:
+                                    for k, v in (md or {}).items():
+                                        if isinstance(v, dict):
+                                            for k2, v2 in v.items():
+                                                flat[f"{k}_{k2}"] = v2
+                                        else:
+                                            flat[str(k)] = v
+                                except Exception:
+                                    pass
+                                return flat
+
+                            main_val = score
+                            meta_map = {}
+                            if isinstance(score, dict):
+                                main_val = score.get('score', None)
+                                meta_map = _flatten_meta(score.get('metadata', {}))
+
+                            # Update metric value in status using the main score
+                            if isinstance(main_val, bool):
+                                item_statuses[index]['metrics'][metric_name] = '✓' if main_val else '✗'
+                            elif isinstance(main_val, (int, float)):
+                                item_statuses[index]['metrics'][metric_name] = f"{int(main_val)}"
+                            elif main_val is not None:
+                                item_statuses[index]['metrics'][metric_name] = str(main_val)[:50]
                             else:
-                                item_statuses[index]['metrics'][metric_name] = str(score)[:20]
-                            
-                            # Log score to Langfuse
-                            trace.score_trace(
-                                name=metric_name,
-                                value=score if isinstance(score, (int, float, bool)) else str(score),
-                                data_type=self._get_score_type(score)
-                            )
+                                item_statuses[index]['metrics'][metric_name] = str(score)[:50]
+
+                            # Save metadata fields for UI
+                            try:
+                                item_statuses[index].setdefault('metric_meta', {})
+                                item_statuses[index]['metric_meta'].setdefault(metric_name, {})
+                                for k, v in meta_map.items():
+                                    item_statuses[index]['metric_meta'][metric_name][k] = v
+                            except Exception:
+                                pass
+
+                            # Log score to Langfuse (use main score if available)
+                            try:
+                                log_val = main_val if isinstance(main_val, (int, float, bool)) else (
+                                    score if isinstance(score, (int, float, bool)) else str(main_val if main_val is not None else score)
+                                )
+                                trace.score_trace(
+                                    name=metric_name,
+                                    value=log_val,
+                                    data_type=self._get_score_type(log_val)
+                                )
+                            except Exception:
+                                pass
                             
                             # Update progress
                             if progress and task_progress is not None:
@@ -840,7 +900,11 @@ class Evaluator:
                         "output": output,
                         "scores": scores,
                         "success": True,
-                        "time": elapsed
+                        "time": elapsed,
+                        "input": item.input,
+                        "expected": getattr(item, 'expected_output', None),
+                        "trace_id": item_statuses[index].get('trace_id'),
+                        "trace_url": item_statuses[index].get('trace_url')
                     }
                     
             except asyncio.TimeoutError:
@@ -883,6 +947,11 @@ class Evaluator:
                     run_name=self.run_name,
                     run_metadata={**self.run_metadata, "item_index": index}
                 ) as trace:
+                    # Capture trace meta if available
+                    try:
+                        meta = self._extract_trace_meta(trace)
+                    except Exception:
+                        meta = {"trace_id": None, "trace_url": None}
                     # Execute task
                     output = await self.task_adapter.arun(item.input, trace)
                     
@@ -923,7 +992,11 @@ class Evaluator:
                         "output": output,
                         "scores": scores,
                         "success": True,
-                        "time": elapsed
+                        "time": elapsed,
+                        "input": item.input,
+                        "expected": getattr(item, 'expected_output', None),
+                        "trace_id": meta.get('trace_id'),
+                        "trace_url": meta.get('trace_url')
                     }
                     
             except asyncio.TimeoutError:
