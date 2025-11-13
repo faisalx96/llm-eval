@@ -4,6 +4,8 @@ Example showing automatic DeepEval metrics discovery and usage.
 
 import random
 import time
+from typing import Optional
+
 from dotenv import load_dotenv
 from llm_eval import Evaluator, list_available_metrics
 
@@ -11,20 +13,21 @@ from llm_eval import Evaluator, list_available_metrics
 load_dotenv()
 
 
-def ai_assistant(question: str) -> str:
+def ai_assistant(question: str, model: Optional[str] = None) -> str:
     """A simple AI assistant for demonstration."""
     question_lower = question['question'].lower()
-    delay = random.randint(5, 20)  # random integer between 1 and 5
+    delay = random.randint(3, 10)  # random integer between 1 and 5
     time.sleep(delay)
+    prefix = f"[{model}]" if model else "[default-model]"
 
     if "capital of france" in question_lower:
-        return "Paris is the capital and largest city of France."
+        return f"{prefix} Paris is the capital and largest city of France."
     elif "python" in question_lower:
-        return "Python is a high-level, interpreted programming language known for its simplicity and readability."
+        return f"{prefix} Python is a high-level, interpreted programming language known for its simplicity and readability."
     elif "hello" in question_lower or "hi" in question_lower:
-        return "Hello! I'm an AI assistant. How can I help you today?"
+        return f"{prefix} Hello! I'm an AI assistant. How can I help you today?"
     else:
-        return "I'm not sure about that specific question, but I'd be happy to help with other topics."
+        return f"{prefix} I'm not sure about that specific question, but I'd be happy to help with other topics."
 
 
 def main():    
@@ -40,7 +43,6 @@ def main():
         else:
             return 1.0  # Just right
     
-    print("🎯 Mixing Built-in metrics with custom metrics...")
     evaluator_mixed = Evaluator(
         task=ai_assistant,
         dataset="saudi-qa-verification-v1",
@@ -48,10 +50,16 @@ def main():
             # "answer_relevancy", # DeepEval metric
             # response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
-        ]
+        ],
+        model=["gpt-4o-mini", "llama-3.1"]
     )
     
     results_mixed = evaluator_mixed.run()
+    # if isinstance(results_mixed, list):
+    #     for res in results_mixed:
+    #         res.print_summary()
+    # else:
+    #     results_mixed.print_summary()
 
 
 if __name__ == "__main__":

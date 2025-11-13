@@ -32,6 +32,7 @@ results.save_csv("my_results.csv")    # For Excel analysis
 - ⚡ **Async Support** - Evaluate hundreds of examples in parallel
 - 🛡️ **Production Ready** - Comprehensive error handling and recovery
 - 📺 **Live Progress Display** - Real-time status updates showing inputs, outputs, and metrics
+- 🧮 **Multi-Model Dashboard** - Evaluate multiple models in parallel with per-run KPIs
 - ⏱️ **Performance Tracking** - Detailed timing statistics for each evaluation
 - 💾 **Export Results** - Save as JSON or CSV for further analysis
 - 🔄 **Auto-save** - Automatically save results after evaluation
@@ -59,6 +60,60 @@ pip install llm-eval[langchain]
 - Langfuse account (free tier available)
 - Your evaluation datasets stored in Langfuse
 - OpenAI API key (for DeepEval metrics)
+
+## Multi-Model Runs & TUI Dashboard
+
+Evaluate several models or configurations simultaneously with the new Rich-powered dashboard:
+
+```json
+[
+  {
+    "name": "gpt-4o-mini",
+    "task_file": "examples/agent.py",
+    "task_function": "chat",
+    "dataset": "qa-set",
+    "metrics": ["exact_match", "fuzzy_match"],
+    "config": {
+      "max_concurrency": 5,
+      "run_metadata": {"model": "gpt-4o-mini"}
+    }
+  },
+  {
+    "name": "llama-3.1",
+    "task_file": "examples/agent.py",
+    "task_function": "chat",
+    "dataset": "qa-set",
+    "metrics": "exact_match,fuzzy_match",
+    "metadata": {"model": "llama-3.1"},
+    "output": "eval_results/llama.json"
+  }
+]
+```
+
+Run them all in parallel:
+
+```bash
+llm-eval --runs-config runs.json
+```
+
+Each run gets its own progress bar, KPIs (success rate, throughput, latency), and live metric averages in the TUI.
+Configs may be JSON or YAML, and relative paths are resolved relative to the config file. Optional `metadata` blocks merge into each run's `run_metadata`, and `output` lets you persist run-specific JSON/CSV results automatically.
+
+Prefer scripting? Call it directly from Python:
+
+```python
+from llm_eval import Evaluator
+
+results = Evaluator.run_parallel(
+    [
+        {"name": "gpt-4o-mini", "task": my_fn, "dataset": "qa-set", "metrics": ["exact_match"]},
+        {"name": "llama-3.1", "task": my_other_fn, "dataset": "qa-set", "metrics": ["exact_match"]},
+    ],
+    show_tui=True,
+)
+```
+
+For simple scripts you can also pass `model` (string or comma-separated list) directly to `Evaluator(...)`. Your task function can optionally accept a `model` or `model_name` keyword argument; llm-eval injects it automatically so you can dispatch to the right backend without custom glue.
 
 ## License
 

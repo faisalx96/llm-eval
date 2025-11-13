@@ -1,15 +1,19 @@
 """Command-line interface for llm-eval."""
 
 import argparse
+import copy
 import json
 import sys
 import importlib.util
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional, Union
 import shlex
+import asyncio
 
 from rich.console import Console
 from .core.evaluator import Evaluator
+from .core.multi_runner import MultiModelRunner
+from .core.run_spec import RunSpec
 
 
 console = Console()
@@ -28,6 +32,106 @@ def load_function_from_file(file_path: str, function_name: str):
         raise ValueError(f"Function '{function_name}' not found in {file_path}")
     
     return getattr(module, function_name)
+
+
+def _load_runs_file(config_path: Path) -> Any:
+    text = config_path.read_text(encoding="utf-8")
+    suffix = config_path.suffix.lower()
+    if suffix in {".yaml", ".yml"}:
+        try:
+            import yaml  # type: ignore
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise ValueError("PyYAML is required to load YAML run configs") from exc
+        return yaml.safe_load(text)
+    return json.loads(text)
+
+
+def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
+    """Parse a JSON/YAML config file into RunSpec objects."""
+    data = _load_runs_file(config_path)
+    if not isinstance(data, list):
+        raise ValueError("Multi-run config must be a list of run definitions")
+
+    specs: List[RunSpec] = []
+    seen_names: Dict[str, int] = {}
+    base_dir = config_path.parent
+
+    for idx, entry in enumerate(data, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Run #{idx} must be an object")
+        try:
+            task_file = Path(entry["task_file"])
+            task_function = entry["task_function"]
+            dataset = entry["dataset"]
+            metrics_value = entry["metrics"]
+        except KeyError as exc:
+            raise ValueError(f"Run #{idx} is missing required field: {exc}") from exc
+
+        resolved_task_file = task_file if task_file.is_absolute() else (base_dir / task_file).resolve()
+        task_callable = load_function_from_file(str(resolved_task_file), task_function)
+
+        if isinstance(metrics_value, str):
+            metrics = [m.strip() for m in metrics_value.split(",") if m.strip()]
+        elif isinstance(metrics_value, list):
+            metrics = [str(m).strip() for m in metrics_value if str(m).strip()]
+        else:
+            raise ValueError(f"Run #{idx} metrics must be a list or comma-separated string")
+
+        config_template = dict(entry.get("config") or {})
+        metadata_template = dict(entry.get("metadata") or {})
+
+        model_values = entry.get("models")
+        if model_values is None:
+            model_values = entry.get("model")
+        model_list = Evaluator._normalize_models(model_values) if model_values is not None else []
+        if not model_list:
+            model_list = [None]
+
+        output_path = entry.get("output")
+        resolved_output_template = None
+        if output_path:
+            out_path = Path(output_path)
+            resolved_output_template = out_path if out_path.is_absolute() else (base_dir / out_path)
+
+        for model_name in model_list:
+            config = copy.deepcopy(config_template) if config_template else {}
+            config.pop("models", None)
+            metadata = dict(metadata_template)
+            if model_name:
+                metadata.setdefault("model", model_name)
+                config["model"] = model_name
+            if metadata:
+                merged_meta = {**metadata, **dict(config.get("run_metadata") or {})}
+                config["run_metadata"] = merged_meta
+
+            base_name = entry.get("name") or config.get("run_name") or f"run-{idx}"
+            final_name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(str(model_name)) else base_name
+            if final_name in seen_names:
+                seen_names[final_name] += 1
+                final_name = f"{final_name}-{seen_names[final_name]}"
+            else:
+                seen_names[final_name] = 1
+
+            config.setdefault("run_name", final_name)
+
+            resolved_output = resolved_output_template
+            if resolved_output_template and model_name:
+                resolved_output = resolved_output_template.with_stem(f"{resolved_output_template.stem}-{model_name}")
+
+            specs.append(
+                RunSpec(
+                    name=final_name,
+                    task=task_callable,
+                    dataset=dataset,
+                    metrics=metrics,
+                    task_file=str(resolved_task_file),
+                    task_function=task_function,
+                    config=config,
+                    output_path=resolved_output,
+                )
+            )
+
+    return specs
 
 
 def main():
@@ -56,23 +160,27 @@ Examples:
     # Required arguments
     parser.add_argument(
         "--task-file",
-        required=True,
+        required=False,
         help="Python file containing the task function"
     )
     parser.add_argument(
         "--task-function", 
-        required=True,
+        required=False,
         help="Name of the function to evaluate"
     )
     parser.add_argument(
         "--dataset",
-        required=True, 
+        required=False, 
         help="Name of the Langfuse dataset"
     )
     parser.add_argument(
         "--metrics",
-        required=True,
+        required=False,
         help="Comma-separated list of metrics (e.g., 'exact_match,fuzzy_match')"
+    )
+    parser.add_argument(
+        "--model",
+        help="Model name or comma-separated list of models to evaluate"
     )
     
     # Optional arguments
@@ -110,10 +218,78 @@ Examples:
         action="store_true", 
         help="Disable progress bar"
     )
+    parser.add_argument(
+        "--runs-config",
+        help="Path to JSON/YAML file describing multiple runs to execute in parallel"
+    )
     
     args = parser.parse_args()
-    
+    is_multi_run = bool(args.runs_config)
+    if is_multi_run and args.model:
+        console.print("[yellow]⚠️  Ignoring --model because --runs-config is provided.[/yellow]")
+
+    model_arg: Optional[Union[str, List[str]]] = None
+    if args.model:
+        parsed = Evaluator._normalize_models(args.model)
+        if parsed:
+            model_arg = parsed if len(parsed) > 1 else parsed[0]
+
+    if is_multi_run:
+        config_path = Path(args.runs_config).expanduser()
+        if not config_path.exists():
+            console.print(f"[red]Runs config not found: {config_path}[/red]")
+            sys.exit(1)
+        try:
+            run_specs = load_multi_run_specs(config_path)
+        except Exception as exc:
+            console.print(f"[red]Failed to load runs config: {exc}[/red]")
+            sys.exit(1)
+        if not run_specs:
+            console.print("[red]Runs config is empty[/red]")
+            sys.exit(1)
+
+        show_tui = not args.quiet and not args.no_progress and not args.no_ui
+        runner = MultiModelRunner(run_specs, console=console)
+        try:
+            results = asyncio.run(
+                runner.arun(
+                    show_tui=show_tui,
+                    auto_save=True,
+                    save_format="csv",
+                )
+            )
+        except RuntimeError as exc:
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(1)
+
+        runner.print_summary(results)
+
+        for spec, result in zip(run_specs, results):
+            if spec.output_path:
+                output_path = spec.output_path
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                suffix = output_path.suffix.lower()
+                format_hint = "json"
+                if suffix == ".csv":
+                    format_hint = "csv"
+                saved_path = result.save(format=format_hint, filepath=str(output_path))
+                console.print(f"[green]Saved {spec.run_name} results to {saved_path}[/green]")
+
+        sys.exit(0)
+
     try:
+        missing = {}
+        if not is_multi_run:
+            missing = {
+                "--task-file": args.task_file,
+                "--task-function": args.task_function,
+                "--dataset": args.dataset,
+                "--metrics": args.metrics,
+            }
+            missing_flags = [flag for flag, value in missing.items() if not value]
+            if missing_flags:
+                parser.error(f"Missing required arguments: {', '.join(missing_flags)}")
+
         # Load the task function
         console.print(f"Loading task function '{args.task_function}' from {args.task_file}")
         task_function = load_function_from_file(args.task_file, args.task_function)
@@ -148,45 +324,53 @@ Examples:
             task=task_function,
             dataset=args.dataset,
             metrics=metrics,
-            config=config
+            config=config,
+            model=model_arg,
         )
         
         # Run evaluation
         console.print("Starting evaluation...")
         show_progress = not args.no_progress and not args.quiet
         show_table = not args.no_ui
-        results = evaluator.run(show_progress=show_progress, show_table=show_table)
+        raw_results = evaluator.run(show_progress=show_progress, show_table=show_table)
+        run_results = raw_results if isinstance(raw_results, list) else [raw_results]
         
         # Show results
         if args.quiet:
-            # Just print key metrics
-            console.print(f"Success Rate: {results.success_rate:.1%}")
-            for metric in metrics:
-                stats = results.get_metric_stats(metric)
-                console.print(f"{metric}: {stats['mean']:.3f}")
+            for res in run_results:
+                console.print(f"{res.run_name} Success Rate: {res.success_rate:.1%}")
+                for metric in metrics:
+                    stats = res.get_metric_stats(metric)
+                    console.print(f"{res.run_name} {metric}: {stats['mean']:.3f}")
         else:
-            # Full summary
-            results.print_summary()
+            for res in run_results:
+                res.print_summary()
         
         # Save detailed results if requested
         if args.output:
-            output_path = Path(args.output)
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(results.to_dict(), f, indent=2, default=str, ensure_ascii=False)
-            console.print(f"Detailed results saved to {output_path}")
+            if len(run_results) > 1:
+                console.print("[yellow]⚠️  --output supports only single-model runs. Use --runs-config or per-run outputs.[/yellow]")
+            else:
+                output_path = Path(args.output)
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(run_results[0].to_dict(), f, indent=2, default=str, ensure_ascii=False)
+                console.print(f"Detailed results saved to {output_path}")
         
-        # Print UI URL and optionally open browser
+        # Print UI URL and optionally open browser (single run only)
+        primary_result = run_results[0]
         try:
-            if getattr(results, 'html_url', None) and not args.no_open and not args.quiet:
-                console.print(f"\n[blue]UI:[/blue] {results.html_url}")
+            if getattr(primary_result, 'html_url', None) and not args.no_open and not args.quiet:
+                console.print(f"\n[blue]UI:[/blue] {primary_result.html_url}")
                 import webbrowser
-                webbrowser.open(results.html_url)
+                webbrowser.open(primary_result.html_url)
         except Exception:
             pass
 
         # Exit with error code if success rate is too low
-        if results.success_rate < 0.5:
-            console.print("[yellow]Warning: Success rate below 50%[/yellow]")
+        low_success = [res for res in run_results if res.success_rate < 0.5]
+        if low_success:
+            names = ", ".join(res.run_name for res in low_success)
+            console.print(f"[yellow]Warning: Success rate below 50% for runs: {names}[/yellow]")
             sys.exit(2)
             
     except KeyboardInterrupt:

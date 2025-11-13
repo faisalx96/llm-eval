@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Callable
+from typing import Any, Optional, Callable, Dict
 from langfuse import Langfuse
 
 
@@ -15,31 +15,52 @@ class TaskAdapter(ABC):
         self.client = client
     
     @abstractmethod
-    async def arun(self, input_data: Any, trace: Any) -> Any:
+    async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run the task asynchronously with tracing."""
         pass
     
-    def run(self, input_data: Any, trace: Any) -> Any:
+    def run(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run the task synchronously."""
-        return asyncio.run(self.arun(input_data, trace))
+        return asyncio.run(self.arun(input_data, trace, model_name=model_name))
 
 
 class FunctionAdapter(TaskAdapter):
     """Adapter for regular Python functions."""
+
+    def __init__(self, task: Any, client: Langfuse):
+        super().__init__(task, client)
+        self._is_async = inspect.iscoroutinefunction(self.task)
+        sig = inspect.signature(self.task)
+        self._model_param: Optional[str] = None
+        self._accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        for name, param in sig.parameters.items():
+            if name in ("model", "model_name"):
+                self._model_param = name
+                break
     
-    async def arun(self, input_data: Any, trace: Any) -> Any:
+    def _build_call_kwargs(self, model_name: Optional[str]) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {}
+        if model_name is None:
+            return kwargs
+        if self._model_param:
+            kwargs[self._model_param] = model_name
+        elif self._accepts_kwargs:
+            kwargs["model"] = model_name
+        return kwargs
+
+    async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run function with proper tracing."""
         # Update trace with input
         trace.update(input=input_data)
-        
+        call_kwargs = self._build_call_kwargs(model_name)
+        loop = asyncio.get_event_loop()
         try:
             # Check if function is async
-            if inspect.iscoroutinefunction(self.task):
-                output = await self.task(input_data)
+            if self._is_async:
+                output = await self.task(input_data, **call_kwargs)
             else:
                 # Run sync function in thread pool to avoid blocking
-                loop = asyncio.get_event_loop()
-                output = await loop.run_in_executor(None, self.task, input_data)
+                output = await loop.run_in_executor(None, lambda: self.task(input_data, **call_kwargs))
             
             # Update trace with output
             trace.update(output=output)
@@ -53,7 +74,7 @@ class FunctionAdapter(TaskAdapter):
 class LangChainAdapter(TaskAdapter):
     """Adapter for LangChain chains and agents."""
     
-    async def arun(self, input_data: Any, trace: Any) -> Any:
+    async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run LangChain component with Langfuse callback."""
         # Update trace with input
         trace.update(input=input_data)
@@ -61,13 +82,17 @@ class LangChainAdapter(TaskAdapter):
         try:
             # Prepare input
             if isinstance(input_data, dict):
-                chain_input = input_data
+                chain_input = dict(input_data)
             else:
                 # Try to determine input key
                 if hasattr(self.task, 'input_keys') and self.task.input_keys:
                     chain_input = {self.task.input_keys[0]: input_data}
                 else:
                     chain_input = {"input": input_data}
+
+            if model_name:
+                chain_input.setdefault("model", model_name)
+                chain_input.setdefault("model_name", model_name)
             
             # Run chain/agent
             if hasattr(self.task, 'ainvoke'):
@@ -107,18 +132,23 @@ class LangChainAdapter(TaskAdapter):
 class OpenAIAdapter(TaskAdapter):
     """Adapter for OpenAI client calls."""
     
-    async def arun(self, input_data: Any, trace: Any) -> Any:
+    async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run OpenAI API call with tracing."""
         # Update trace with input
         trace.update(input=input_data)
+
+        payload = input_data
+        if model_name and isinstance(input_data, dict):
+            payload = dict(input_data)
+            payload.setdefault("model", model_name)
         
         try:
             # Assume task is a configured completion function
             if inspect.iscoroutinefunction(self.task):
-                output = await self.task(input_data)
+                output = await self.task(payload)
             else:
                 loop = asyncio.get_event_loop()
-                output = await loop.run_in_executor(None, self.task, input_data)
+                output = await loop.run_in_executor(None, self.task, payload)
             
             # Update trace with output
             trace.update(output=output)
