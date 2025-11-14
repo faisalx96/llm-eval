@@ -3,7 +3,6 @@
 This module separates presentation and server responsibilities away from the
 core evaluator logic. It provides:
 - generate_html_table: render a live results HTML page
-- cleanup_old_html_files: prune previous result folders
 - start_http_server: serve a directory over HTTP on a random local port
 """
 
@@ -11,11 +10,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import html as html_lib
 import json
 import http.server
-import shutil
 import socketserver
 import threading
 
@@ -1736,23 +1734,6 @@ def generate_html_table(
 </html>'''
 
     return html_content
-
-
-def cleanup_old_html_files(base_dir: Path, max_age_hours: int = 1) -> None:
-    """Remove result subdirectories older than a threshold.
-
-    Errors are swallowed intentionally to keep the UI resilient.
-    """
-    now = datetime.now()
-    cutoff_time = now - timedelta(hours=max_age_hours)
-    try:
-        for item in base_dir.iterdir():
-            if item.is_dir():
-                mtime = datetime.fromtimestamp(item.stat().st_mtime)
-                if mtime < cutoff_time:
-                    shutil.rmtree(item)
-    except Exception:
-        pass
 
 
 def start_http_server(directory: Path) -> Tuple[int, socketserver.TCPServer]:

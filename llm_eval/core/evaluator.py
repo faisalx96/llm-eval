@@ -8,20 +8,23 @@ import time
 import subprocess
 from pathlib import Path
 import copy
+from contextlib import nullcontext
 
 from langfuse import Langfuse
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 from rich.console import Console
 from rich.live import Live
-from rich.panel import Panel
 
 from .results import EvaluationResult
 from .dataset import LangfuseDataset
-from .observers import EvaluationObserver, NullEvaluationObserver
+from .observers import (
+    EvaluationObserver,
+    NullEvaluationObserver,
+    CompositeEvaluationObserver,
+)
+from .dashboard import RunDashboard
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
-from ..utils.frontend import cleanup_old_html_files
 from ..server.app import UIServer
 import json
  
@@ -100,7 +103,8 @@ class Evaluator:
             self.run_metadata.setdefault('model', self.model_name)
             self.config['model'] = self.model_name
         self.config['run_metadata'] = self.run_metadata
-        self.observer = observer or NullEvaluationObserver()
+        base_observer = observer or NullEvaluationObserver()
+        self.observer = CompositeEvaluationObserver([base_observer])
 
 
     def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
@@ -293,6 +297,15 @@ class Evaluator:
                 raise ValueError(f"Metric must be string or callable, got {type(metric)}")
         return prepared
 
+    def _attach_observer(self, observer: Optional[EvaluationObserver]) -> None:
+        """Attach an additional observer (e.g., dashboards)."""
+        if observer is None:
+            return
+        if isinstance(self.observer, CompositeEvaluationObserver):
+            self.observer.add_observer(observer)
+        else:
+            self.observer = CompositeEvaluationObserver([self.observer, observer])
+
     def _notify_observer(self, method: str, **payload: Any) -> None:
         """Best-effort observer notification."""
         try:
@@ -363,13 +376,13 @@ class Evaluator:
     async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "csv") -> EvaluationResult:
         """
         Run the evaluation asynchronously.
-        
+    
         Args:
             show_progress: Whether to show progress bar
             show_table: Whether to show live per-item status table
             auto_save: Whether to automatically save results after evaluation
             save_format: Format for auto-save ("json" or "csv")
-            
+        
         Returns:
             EvaluationResult object with scores and statistics
         """
@@ -380,21 +393,20 @@ class Evaluator:
             run_metadata=self.run_metadata,
             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout}
         )
-        
+    
         items = self.dataset.get_items()
         if not items:
             console.print("[yellow]Warning: Dataset is empty[/yellow]")
             return result
-        
+    
         run_info = self._build_run_info(result)
 
         # Initialize status tracking for each item
         item_statuses = {}
         for idx, item in enumerate(items):
-            # More generous truncation - let Rich handle the ellipsis
             input_text = str(item.input)
             expected_text = str(getattr(item, 'expected_output', 'N/A'))
-            
+        
             item_statuses[idx] = {
                 'input': input_text,
                 'output': '[dim]pending[/dim]',
@@ -406,7 +418,7 @@ class Evaluator:
                 'start_time': None,
                 'end_time': None
             }
-        
+    
         # Web UI setup
         html_url = None
         ui_server = None
@@ -427,283 +439,256 @@ class Evaluator:
                 **({} if run_info is None else run_info),
             })
 
+        dashboard = None
+        live_context = nullcontext()
+        if show_progress:
+            dashboard_runs = [
+                {
+                    "run_id": self.run_name,
+                    "display_name": self.run_name,
+                    "dataset": self.dataset_name,
+                    "model": self.model_name,
+                    "config": {
+                        "max_concurrency": self.max_concurrency,
+                        "timeout": self.timeout,
+                        "run_metadata": self.run_metadata,
+                    },
+                }
+            ]
+            dashboard = RunDashboard(dashboard_runs, enabled=True, console=console)
+            self._attach_observer(dashboard.create_observer(self.run_name))
+            live_context = Live(dashboard.render(), console=console, refresh_per_second=6)
+
         self._notify_observer(
             "on_run_start",
             run_info=run_info or {},
             total_items=len(items),
             metrics=list(self.metrics.keys()),
         )
-        
-        # Progress tracking with live display
-        if show_progress:
-            # Progress bar
-            progress = Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}", style="cyan"),
-                TextColumn("│", style="dim"),  # Separator
-                BarColumn(bar_width=40),
-                TextColumn("│", style="dim"),  # Separator
-                TaskProgressColumn(),
-                TextColumn("│", style="dim"),  # Separator
-                TimeElapsedColumn(),
-                expand=False
-            )
-            
-            # Calculate total work: items * metrics per item
-            total_work = len(items) * len(self.metrics)
-            task_progress = progress.add_task(f"Evaluating {len(items)} items with {len(self.metrics)} metrics", total=total_work)
-            
-            if show_table:
-                
-                def generate_display():
-                    # Calculate summary statistics
+
+        async def run_with_table():
+            async def update_html():
+                while True:
+                    try:
+                        from datetime import datetime as dt
+
+                        total_items = len(items)
+                        completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
+                        in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
+                        failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
+                        pending = total_items - completed - in_progress - failed
+                        success_rate = (completed / total_items * 100) if total_items > 0 else 0
+                        rows = []
+                        for idx in range(len(items)):
+                            s = item_statuses[idx]
+                            tval = str(s['time'])
+                            if any(tag in tval for tag in ('[red]', '[yellow]', '[dim]')):
+                                tval = (
+                                    tval.replace('[red]', '')
+                                    .replace('[/red]', '')
+                                    .replace('[yellow]', '')
+                                    .replace('[/yellow]', '')
+                                    .replace('[dim]', '')
+                                    .replace('[/dim]', '')
+                                )
+                            oval = str(s['output'])
+                            if oval == '[dim]pending[/dim]':
+                                oval = 'pending'
+                            oval = (
+                                oval.replace('[red]', '')
+                                .replace('[/red]', '')
+                                .replace('[yellow]', '')
+                                .replace('[/yellow]', '')
+                                .replace('[dim]', '')
+                                .replace('[/dim]', '')
+                            )
+                            mvals = []
+                            meta_block = {}
+                            for m in self.metrics.keys():
+                                mv = str(s['metrics'][m])
+                                if mv == '[dim]pending[/dim]':
+                                    mv = 'pending'
+                                elif mv == '[yellow]computing...[/yellow]':
+                                    mv = 'computing...'
+                                elif mv == '[red]error[/red]':
+                                    mv = 'error'
+                                elif mv == '[red]N/A[/red]':
+                                    mv = 'N/A'
+                                mvals.append(mv)
+                                try:
+                                    meta_block[m] = {
+                                        k: str(v)
+                                        for k, v in (s.get('metric_meta', {}).get(m, {}) or {}).items()
+                                    }
+                                except Exception:
+                                    meta_block[m] = {}
+                            rows.append({
+                                'index': idx,
+                                'status': s['status'],
+                                'input': str(s['input']),
+                                'input_full': str(s['input']),
+                                'output': oval,
+                                'output_full': str(s['output']),
+                                'expected': str(s['expected']),
+                                'expected_full': str(s['expected']),
+                                'metric_values': mvals,
+                                'metric_meta': meta_block,
+                                'time': tval,
+                                'latency_ms': int(
+                                    ((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000
+                                )
+                                if s.get('end_time') and s.get('start_time')
+                                else None,
+                                'trace_id': s.get('trace_id'),
+                                'trace_url': s.get('trace_url'),
+                            })
+                        snap = {
+                            'rows': rows,
+                            'stats': {
+                                'total': total_items,
+                                'completed': completed,
+                                'in_progress': in_progress,
+                                'failed': failed,
+                                'pending': pending,
+                                'success_rate': success_rate,
+                            },
+                            'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            'metric_names': list(self.metrics.keys()),
+                        }
+                        if ui_server is not None:
+                            ui_server.run_state.set_snapshot(snap)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(2)
+
+            html_update_task = asyncio.create_task(update_html())
+
+            semaphore = asyncio.Semaphore(self.max_concurrency)
+            tasks = []
+
+            for idx, item in enumerate(items):
+                task = self._evaluate_item_with_status(
+                    item, idx, semaphore, item_statuses
+                )
+                tasks.append(task)
+
+            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            html_update_task.cancel()
+            try:
+                await html_update_task
+            except asyncio.CancelledError:
+                pass
+
+            # Final snapshot
+            try:
+                if ui_server is not None:
+                    from datetime import datetime as dt
                     total_items = len(items)
                     completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
                     in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
                     failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
                     pending = total_items - completed - in_progress - failed
                     success_rate = (completed / total_items * 100) if total_items > 0 else 0
-                    
-                    # Create summary content with progress bar at the top
-                    from rich.console import Group
-                    
-                    summary_text = f"""
-[green]✓ Completed:[/green] {completed}/{total_items}
-[yellow]⟳ In Progress:[/yellow] {in_progress}
-[red]✗ Failed:[/red] {failed}
-[blue]◯ Pending:[/blue] {pending}
 
-[bold magenta]Success Rate:[/bold magenta] {success_rate:.0f}%
+                    rows = []
+                    for idx in range(total_items):
+                        s = item_statuses[idx]
 
-🌐 [bold cyan]View detailed results in your browser:[/bold cyan]
-👉 [bold blue underline]{html_url}[/bold blue underline]"""
-                    
-                    # Combine progress bar and summary text
-                    content = Group(
-                        progress,
-                        summary_text
-                    )
-                    
-                    panel = Panel(
-                        content, 
-                        title="[bold cyan][yellow]⚡[/yellow] Evaluation Progress[/bold cyan]",
-                        expand=False, 
-                        border_style="cyan", 
-                        padding=(1, 2),
-                        width=100
-                    )
-                    
-                    return panel
-                
-                # Start live display with summary panel
-                with Live(generate_display(), console=console, refresh_per_second=10) as live:
-                    # Create a function to push snapshots to the UI server
-                    async def update_html():
-                        while True:
+                        def _strip(v: Any) -> str:
                             try:
-                                from datetime import datetime as dt
-                                total_items = len(items)
-                                completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
-                                in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
-                                failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
-                                pending = total_items - completed - in_progress - failed
-                                success_rate = (completed / total_items * 100) if total_items > 0 else 0
-                                rows = []
-                                for idx in range(len(items)):
-                                    s = item_statuses[idx]
-                                    tval = str(s['time'])
-                                    if any(tag in tval for tag in ('[red]','[yellow]','[dim]')):
-                                        tval = tval.replace('[red]','').replace('[/red]','').replace('[yellow]','').replace('[/yellow]','').replace('[dim]','').replace('[/dim]','')
-                                    oval = str(s['output'])
-                                    if oval == '[dim]pending[/dim]':
-                                        oval = 'pending'
-                                    oval = oval.replace('[red]','').replace('[/red]','').replace('[yellow]','').replace('[/yellow]','').replace('[dim]','').replace('[/dim]','')
-                                    mvals = []
-                                    meta_block = {}
-                                    for m in self.metrics.keys():
-                                        mv = str(s['metrics'][m])
-                                        if mv == '[dim]pending[/dim]': mv = 'pending'
-                                        elif mv == '[yellow]computing...[/yellow]': mv = 'computing...'
-                                        elif mv == '[red]error[/red]': mv = 'error'
-                                        elif mv == '[red]N/A[/red]': mv = 'N/A'
-                                        mvals.append(mv)
-                                        # attach per-metric metadata (flattened)
-                                        try:
-                                            meta_block[m] = {k: str(v) for k, v in (s.get('metric_meta', {}).get(m, {}) or {}).items()}
-                                        except Exception:
-                                            meta_block[m] = {}
-                                    rows.append({
-                                        'index': idx,
-                                        'status': s['status'],
-                                        'input': str(s['input']),
-                                        'input_full': str(s['input']),
-                                        'output': oval,
-                                        'output_full': str(s['output']),
-                                        'expected': str(s['expected']),
-                                        'expected_full': str(s['expected']),
-                                        'metric_values': mvals,
-                                        'metric_meta': meta_block,
-                                        'time': tval,
-                                        'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
-                                        'trace_id': s.get('trace_id'),
-                                        'trace_url': s.get('trace_url'),
-                                    })
-                                snap = {
-                                    'rows': rows,
-                                    'stats': {
-                                        'total': total_items,
-                                        'completed': completed,
-                                        'in_progress': in_progress,
-                                        'failed': failed,
-                                        'pending': pending,
-                                        'success_rate': success_rate,
-                                    },
-                                    'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                    'metric_names': list(self.metrics.keys()),
-                                }
-                                if ui_server is not None:
-                                    ui_server.run_state.set_snapshot(snap)
-                                    ui_server.broadcast_snapshot()
+                                return (
+                                    str(v)
+                                    .replace('[dim]', '')
+                                    .replace('[/dim]', '')
+                                    .replace('[yellow]', '')
+                                    .replace('[/yellow]', '')
+                                    .replace('[red]', '')
+                                    .replace('[/red]', '')
+                                )
                             except Exception:
-                                pass  # Ignore errors in HTML update
-                            await asyncio.sleep(2)  # Update every 2 seconds
-                    
-                    # Start HTML update task
-                    html_update_task = asyncio.create_task(update_html())
-                    
-                    # Run evaluations
-                    semaphore = asyncio.Semaphore(self.max_concurrency)
-                    tasks = []
-                    
-                    for idx, item in enumerate(items):
-                        task = self._evaluate_item_with_status(
-                            item, idx, semaphore, progress, task_progress, 
-                            item_statuses, live, generate_display
-                        )
-                        tasks.append(task)
-                    
-                    # Gather results
-                    eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # Cancel HTML update task
-                    html_update_task.cancel()
-                    try:
-                        await html_update_task
-                    except asyncio.CancelledError:
-                        pass
-                    
-                    # Final snapshot (ensure no stale in_progress remains)
-                    try:
-                        if ui_server is not None:
-                            from datetime import datetime as dt
-                            total_items = len(items)
-                            completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
-                            in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
-                            failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
-                            pending = total_items - completed - in_progress - failed
-                            success_rate = (completed / total_items * 100) if total_items > 0 else 0
+                                return str(v)
 
-                            rows = []
-                            for idx in range(total_items):
-                                s = item_statuses[idx]
-                                # Render output and time values (strip Rich markup best-effort)
-                                def _strip(v: Any) -> str:
-                                    try:
-                                        return str(v).replace('[dim]', '').replace('[/dim]', '')
-                                    except Exception:
-                                        return str(v)
-                                oval = _strip(s.get('output', ''))
-                                tval = _strip(s.get('time', ''))
-                                mvals = []
-                                meta_block = {}
-                                for name in self.metrics.keys():
-                                    mvals.append(_strip(s['metrics'].get(name, '')))
-                                    try:
-                                        meta_block[name] = {k: str(v) for k, v in (s.get('metric_meta', {}).get(name, {}) or {}).items()}
-                                    except Exception:
-                                        meta_block[name] = {}
-                                rows.append({
-                                    'index': idx,
-                                    'status': s['status'],
-                                    'input': str(s['input']),
-                                    'input_full': str(s['input']),
-                                    'output': oval,
-                                    'output_full': str(s.get('output', '')),
-                                    'expected': str(s['expected']),
-                                    'expected_full': str(s['expected']),
-                                    'metric_values': mvals,
-                                    'metric_meta': meta_block,
-                                    'time': tval,
-                                    'latency_ms': int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000) if s.get('end_time') and s.get('start_time') else None,
-                                    'trace_id': s.get('trace_id'),
-                                    'trace_url': s.get('trace_url'),
-                                })
-                            snap = {
-                                'rows': rows,
-                                'stats': {
-                                    'total': total_items,
-                                    'completed': completed,
-                                    'in_progress': in_progress,
-                                    'failed': failed,
-                                    'pending': pending,
-                                    'success_rate': success_rate,
-                                },
-                                'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
-                                'metric_names': list(self.metrics.keys()),
-                            }
-                            ui_server.run_state.set_snapshot(snap)
-                            ui_server.broadcast_snapshot()
-                    except Exception:
-                        pass
-                    
-                    # Process results
-                    for idx, eval_result in enumerate(eval_results):
-                        if isinstance(eval_result, Exception):
-                            result.add_error(f"item_{idx}", str(eval_result))
-                        else:
-                            result.add_result(f"item_{idx}", eval_result)
-            else:
-                # Start live display with progress bar only
-                with Live(progress, console=console, refresh_per_second=10) as live:
-                    # Run evaluations
-                    semaphore = asyncio.Semaphore(self.max_concurrency)
-                    tasks = []
-                    
-                    for idx, item in enumerate(items):
-                        task = self._evaluate_item_with_progress_only(
-                            item, idx, semaphore, progress, task_progress
-                        )
-                        tasks.append(task)
-                    
-                    # Gather results
-                    eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # Process results
-                    for idx, eval_result in enumerate(eval_results):
-                        if isinstance(eval_result, Exception):
-                            result.add_error(f"item_{idx}", str(eval_result))
-                        else:
-                            result.add_result(f"item_{idx}", eval_result)
-            
-        else:
-            # Run without progress display
-            semaphore = asyncio.Semaphore(self.max_concurrency)
-            tasks = []
-            
-            for idx, item in enumerate(items):
-                task = self._evaluate_item(item, idx, semaphore, None, None)
-                tasks.append(task)
-            
-            # Gather results
-            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
+                        oval = _strip(s.get('output', ''))
+                        tval = _strip(s.get('time', ''))
+                        mvals = []
+                        meta_block = {}
+                        for name in self.metrics.keys():
+                            mvals.append(_strip(s['metrics'].get(name, '')))
+                            try:
+                                meta_block[name] = {
+                                    k: str(v)
+                                    for k, v in (s.get('metric_meta', {}).get(name, {}) or {}).items()
+                                }
+                            except Exception:
+                                meta_block[name] = {}
+                        rows.append({
+                            'index': idx,
+                            'status': s['status'],
+                            'input': str(s['input']),
+                            'input_full': str(s['input']),
+                            'output': oval,
+                            'output_full': str(s.get('output', '')),
+                            'expected': str(s['expected']),
+                            'expected_full': str(s['expected']),
+                            'metric_values': mvals,
+                            'metric_meta': meta_block,
+                            'time': tval,
+                            'latency_ms': int(
+                                ((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000
+                            )
+                            if s.get('end_time') and s.get('start_time')
+                            else None,
+                            'trace_id': s.get('trace_id'),
+                            'trace_url': s.get('trace_url'),
+                        })
+                    snap = {
+                        'rows': rows,
+                        'stats': {
+                            'total': total_items,
+                            'completed': completed,
+                            'in_progress': in_progress,
+                            'failed': failed,
+                            'pending': pending,
+                            'success_rate': success_rate,
+                        },
+                        'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'metric_names': list(self.metrics.keys()),
+                    }
+                    ui_server.run_state.set_snapshot(snap)
+            except Exception:
+                pass
+
             for idx, eval_result in enumerate(eval_results):
                 if isinstance(eval_result, Exception):
                     result.add_error(f"item_{idx}", str(eval_result))
                 else:
                     result.add_result(f"item_{idx}", eval_result)
-        
+
+        async def run_without_table():
+            semaphore = asyncio.Semaphore(self.max_concurrency)
+            tasks = []
+
+            for idx, item in enumerate(items):
+                task = self._evaluate_item(item, idx, semaphore)
+                tasks.append(task)
+
+            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for idx, eval_result in enumerate(eval_results):
+                if isinstance(eval_result, Exception):
+                    result.add_error(f"item_{idx}", str(eval_result))
+                else:
+                    result.add_result(f"item_{idx}", eval_result)
+
+        with live_context as live:
+            if dashboard and live:
+                dashboard.bind(live)
+
+            if show_table:
+                await run_with_table()
+            else:
+                await run_without_table()
         # Mark evaluation as finished
         result.finish()
         self._notify_observer(
@@ -892,7 +877,7 @@ class Evaluator:
 
         return results
     
-    async def _evaluate_item(self, item: Any, index: int, semaphore: asyncio.Semaphore, progress=None, task_progress=None) -> Dict[str, Any]:
+    async def _evaluate_item(self, item: Any, index: int, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
         """Evaluate a single dataset item."""
         async with semaphore:
             try:
@@ -954,16 +939,8 @@ class Evaluator:
                                 )
                             except Exception:
                                 pass
-                            
-                            # Update progress after each metric
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
-                                
                         except Exception as e:
                             scores[metric_name] = {"error": str(e)}
-                            # Still advance progress even on error
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
                     
                     elapsed = time.time() - start_time
                     result_payload = {
@@ -1075,11 +1052,7 @@ class Evaluator:
         item: Any, 
         index: int, 
         semaphore: asyncio.Semaphore, 
-        progress, 
-        task_progress,
         item_statuses: Dict[int, Dict],
-        live,
-        generate_display: Callable
     ) -> Dict[str, Any]:
         """Evaluate a single dataset item with live status updates."""
         async with semaphore:
@@ -1089,7 +1062,6 @@ class Evaluator:
                 item_statuses[index]['start_time'] = start_time
                 item_statuses[index]['status'] = 'in_progress'
                 item_statuses[index]['time'] = '[yellow]running...[/yellow]'
-                live.update(generate_display())
                 self._notify_observer(
                     "on_item_start",
                     item_index=index,
@@ -1116,7 +1088,6 @@ class Evaluator:
                     
                     # Update output in status
                     item_statuses[index]['output'] = str(output)
-                    live.update(generate_display())
                     
                     # Compute metrics
                     scores = {}
@@ -1124,7 +1095,6 @@ class Evaluator:
                         try:
                             # Update metric status to computing
                             item_statuses[index]['metrics'][metric_name] = '[yellow]computing...[/yellow]'
-                            live.update(generate_display())
                             
                             score = await self._compute_metric(
                                 metric_func, 
@@ -1196,19 +1166,9 @@ class Evaluator:
                             except Exception:
                                 pass
                             
-                            # Update progress
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
-                            
-                            live.update(generate_display())
-                                
                         except Exception as e:
                             scores[metric_name] = {"error": str(e)}
                             item_statuses[index]['metrics'][metric_name] = '[red]error[/red]'
-                            # Still advance progress even on error
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
-                            live.update(generate_display())
                     
                     # Update status to completed with timing
                     end_time = time.time()
@@ -1216,7 +1176,6 @@ class Evaluator:
                     item_statuses[index]['status'] = 'completed'
                     elapsed = end_time - start_time
                     item_statuses[index]['time'] = f"{int(elapsed)}s"
-                    live.update(generate_display())
                     
                     result_payload = {
                         "output": output,
@@ -1244,7 +1203,6 @@ class Evaluator:
                 item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
                 for metric_name in self.metrics.keys():
                     item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
-                live.update(generate_display())
                 self._notify_observer(
                     "on_item_error",
                     item_index=index,
@@ -1259,7 +1217,6 @@ class Evaluator:
                 item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
                 for metric_name in self.metrics.keys():
                     item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
-                live.update(generate_display())
                 self._notify_observer(
                     "on_item_error",
                     item_index=index,
@@ -1267,112 +1224,3 @@ class Evaluator:
                 )
                 raise RuntimeError(f"Task execution failed: {e}")
     
-    async def _evaluate_item_with_progress_only(
-        self, 
-        item: Any, 
-        index: int, 
-        semaphore: asyncio.Semaphore, 
-        progress, 
-        task_progress
-    ) -> Dict[str, Any]:
-        """Evaluate a single dataset item with progress bar only (no table)."""
-        async with semaphore:
-            try:
-                # Start timing
-                start_time = time.time()
-                self._notify_observer(
-                    "on_item_start",
-                    item_index=index,
-                    payload={
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                    },
-                )
-                
-                # Run task with Langfuse tracing
-                with item.run(
-                    run_name=self.run_name,
-                    run_metadata={**self.run_metadata, "item_index": index}
-                ) as trace:
-                    # Capture trace meta if available
-                    try:
-                        meta = self._extract_trace_meta(trace)
-                    except Exception:
-                        meta = {"trace_id": None, "trace_url": None}
-                    # Execute task
-                    output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
-                    
-                    # Compute metrics
-                    scores = {}
-                    for metric_name, metric_func in self.metrics.items():
-                        try:
-                            score = await self._compute_metric(
-                                metric_func, 
-                                output, 
-                                getattr(item, 'expected_output', None),
-                                item.input
-                            )
-                            scores[metric_name] = score
-                            self._notify_observer(
-                                "on_metric_result",
-                                item_index=index,
-                                metric_name=metric_name,
-                                score=score,
-                                metadata={
-                                    "input": item.input,
-                                    "expected": getattr(item, 'expected_output', None),
-                                },
-                            )
-                            
-                            # Log score to Langfuse
-                            trace.score_trace(
-                                name=metric_name,
-                                value=score if isinstance(score, (int, float, bool)) else str(score),
-                                data_type=self._get_score_type(score)
-                            )
-                            
-                            # Update progress after each metric
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
-                                
-                        except Exception as e:
-                            scores[metric_name] = {"error": str(e)}
-                            # Still advance progress even on error
-                            if progress and task_progress is not None:
-                                progress.update(task_progress, advance=1)
-                    
-                    # Calculate elapsed time
-                    end_time = time.time()
-                    elapsed = end_time - start_time
-                    
-                    result_payload = {
-                        "output": output,
-                        "scores": scores,
-                        "success": True,
-                        "time": elapsed,
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                        "trace_id": meta.get('trace_id'),
-                        "trace_url": meta.get('trace_url')
-                    }
-                    self._notify_observer(
-                        "on_item_complete",
-                        item_index=index,
-                        result=result_payload,
-                    )
-                    return result_payload
-                    
-            except asyncio.TimeoutError:
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=f"timeout after {self.timeout}s",
-                )
-                raise TimeoutError(f"Evaluation timed out after {self.timeout}s")
-            except Exception as e:
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=str(e),
-                )
-                raise RuntimeError(f"Task execution failed: {e}")
