@@ -1,14 +1,21 @@
 """Evaluation results container and analysis."""
 
-from typing import Any, Dict, List, Optional
-from datetime import datetime
-import statistics
-import json
 import csv
+import json
+import os
+import statistics
+from datetime import datetime
 from pathlib import Path
-from rich.console import Console
-from rich.table import Table
+from typing import Any, Dict, List, Optional, Sequence
+
+from rich import box
+from rich.align import Align
+from rich.columns import Columns
+from rich.console import Console, Group
 from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
 
 
 console = Console()
@@ -33,6 +40,8 @@ class EvaluationResult:
         self.run_config = run_config or {}
         self.start_time = datetime.now()
         self.end_time = None
+        self.last_saved_path: Optional[str] = None
+        self._save_notice_consumed = False
         
         # Results storage
         self.results = {}  # item_id -> result dict
@@ -166,109 +175,22 @@ class EvaluationResult:
         
         return "\n".join(lines)
     
-    def _format_duration(self, seconds: float) -> str:
-        """Format duration in a human-readable way."""
-        seconds = int(seconds)
-        if seconds < 60:
-            return f"{seconds}s"
-        elif seconds < 3600:
-            minutes = seconds // 60
-            secs = seconds % 60
-            if secs > 0:
-                return f"{minutes}m {secs}s"
-            return f"{minutes}m"
-        else:
-            hours = seconds // 3600
-            remaining = seconds % 3600
-            minutes = remaining // 60
-            if minutes > 0:
-                return f"{hours}h {minutes}m"
-            return f"{hours}h"
+    def consume_saved_notice(self, include_run_name: bool = False) -> Optional[str]:
+        """Return a formatted saved-results notice once per save."""
+        if not self.last_saved_path or self._save_notice_consumed:
+            return None
+        self._save_notice_consumed = True
+        if include_run_name and self.run_name:
+            return f"{self.run_name}: {self.last_saved_path}"
+        return self.last_saved_path
     
-    def print_summary(self, html_url: Optional[str] = None):
-        """Print a rich formatted summary to console."""
-        from rich.console import Group
-        from rich.rule import Rule
-        from rich.align import Align
-        
-        # Get timing statistics
-        timing_stats = self.get_timing_stats()
-        
-        # Create the metrics table
-        from rich.box import ROUNDED
-        table = Table(box=ROUNDED, show_header=True, header_style="bold", expand=True)
-        table.add_column("Metric", style="cyan", width=30)
-        table.add_column("Mean", justify="right", style="green", width=10)
-        table.add_column("Std Dev", justify="right", width=10)
-        table.add_column("Min", justify="right", width=10)
-        table.add_column("Max", justify="right", width=10)
-        table.add_column("Success", justify="right", style="yellow", width=10)
-        
-        for metric in self.metrics:
-            stats = self.get_metric_stats(metric)
-            table.add_row(
-                metric,
-                f"{stats['mean']:.0f}",
-                f"{stats['std']:.0f}",
-                f"{stats['min']:.0f}",
-                f"{stats['max']:.0f}",
-                f"{int(stats['success_rate'] * 100)}%"
-            )
-        
-        # Build content sections
-        header_line = f"[bold]Dataset:[/bold] {self.dataset_name} │ [bold]{self.run_name}[/bold]"
-        
-        # Create timing statistics section
-        from rich.columns import Columns
-        from rich.text import Text
-        
-        timing_items = [
-            Text.from_markup(f"[bold cyan]⏱  Total:[/bold cyan] {self._format_duration(self.duration)}"),
-            Text.from_markup(f"[bold green]➜ Average:[/bold green] {self._format_duration(timing_stats['mean'])}"),
-            Text.from_markup(f"[bold yellow]~  Std Dev:[/bold yellow] {self._format_duration(timing_stats['std'])}"),
-            Text.from_markup(f"[bold blue]⬇  Min:[/bold blue] {self._format_duration(timing_stats['min'])}"),
-            Text.from_markup(f"[bold red]⬆  Max:[/bold red] {self._format_duration(timing_stats['max'])}"),
-        ]
-        
-        timing_info = Columns(timing_items, equal=True, expand=True)
-        
-        # Create content group
-        content_parts = [
-            header_line,
-            Rule(style="dim"),
-            "",
-            Align.center("[bold]Timing Statistics[/bold]"),
-            "",
-            timing_info,
-            "",
-            Rule(style="dim"),
-            "",
-            Align.center("[bold]Metric Performance[/bold]"),
-            "",
-            table,
-        ]
-        
-        # Don't add HTML URL to the display
-        
-        # Add error summary if there are errors
-        if self.errors:
-            content_parts.extend([
-                "",
-                Rule(style="dim"),
-                "",
-                f"[red]⚠️  Errors:[/red] {len(self.errors)} items failed"
-            ])
-        
-        # Create the final panel
-        panel = Panel(
-            Group(*content_parts),
-            title="[bold cyan]✨ Evaluation Results[/bold cyan]",
-            expand=False,
-            border_style="cyan",
-            padding=(1, 3),
-            width=100
-        )
-        
+    
+    def print_summary(self, html_url: Optional[str] = None, *, force: bool = False):
+        """Print a consolidated summary that matches the multi-run view."""
+        if not force and not summary_display_enabled():
+            return
+        panel = render_results_summary([self])
+        console.print()
         console.print(panel)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -320,7 +242,6 @@ class EvaluationResult:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.to_dict(), f, indent=2, default=str, ensure_ascii=False)
         
-        console.print(f"[blue]📁 Results saved to:[/blue] {filepath}")
         return str(filepath)
     
     def save_csv(self, filepath: Optional[str] = None) -> str:
@@ -441,7 +362,6 @@ class EvaluationResult:
                 writer.writeheader()
                 writer.writerows(rows)
         
-        console.print(f"[blue]📁 Results saved to:[/blue] {filepath}")
         return str(filepath)
     
     def save(self, format: str = "json", filepath: Optional[str] = None) -> str:
@@ -455,9 +375,197 @@ class EvaluationResult:
         Returns:
             Path to the saved file
         """
+        saved_path: Optional[str] = None
         if format.lower() == "json":
-            return self.save_json(filepath)
+            saved_path = self.save_json(filepath)
         elif format.lower() == "csv":
-            return self.save_csv(filepath)
+            saved_path = self.save_csv(filepath)
         else:
             raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")
+        self.last_saved_path = saved_path
+        self._save_notice_consumed = False
+        return saved_path
+
+
+def render_results_summary(
+    results: Sequence[EvaluationResult],
+    title: Optional[str] = None,
+) -> Panel:
+    """Render a shared Rich panel for one or many EvaluationResult objects."""
+    run_count = len(results)
+    default_title = "[bold cyan]Multi-Run Summary[/bold cyan]" if run_count > 1 else "[bold cyan]Run Summary[/bold cyan]"
+    panel_title = title or default_title
+
+    # Overview stats
+    total_items = sum(r.total_items for r in results)
+    total_success = sum(len(r.results) for r in results)
+    overview_ratio = (total_success / total_items * 100.0) if total_items else 0.0
+
+    header_text = Text(f"{run_count} run{'s' if run_count != 1 else ''} • {total_items} items • {overview_ratio:.1f}% success")
+    header_text.stylize("dim")
+
+    summary_table = _build_run_summary_table(results)
+    metric_section = _build_metric_section(results)
+    error_panel = _build_error_panel(results)
+
+    content: List[Any] = [
+        Align.center(Text(panel_title.replace("[bold cyan]", "").replace("[/bold cyan]", ""), style="bold cyan")),
+        Align.center(header_text),
+        Rule(style="dim"),
+        summary_table,
+    ]
+
+    if metric_section is not None:
+        content.extend(
+            [
+                Rule(style="dim"),
+                Align.center(Text("Metric Performance", style="bold")),
+                metric_section,
+            ]
+        )
+
+    if error_panel is not None:
+        content.extend([Rule(style="dim"), error_panel])
+
+    return Panel(
+        Group(*content),
+        title=panel_title,
+        border_style="cyan",
+        padding=(1, 2),
+        expand=True,
+    )
+
+
+def _build_run_summary_table(results: Sequence[EvaluationResult]) -> Table:
+    table = Table(
+        box=box.SIMPLE_HEAD,
+        expand=True,
+        show_lines=False,
+        padding=(0, 1),
+        header_style="bold",
+    )
+    table.add_column("Run", style="cyan", overflow="fold", ratio=2)
+    table.add_column("Dataset", overflow="fold", ratio=2)
+    table.add_column("Items", justify="right", width=8)
+    table.add_column("Success", justify="right", width=10)
+    table.add_column("Avg Latency", justify="right", width=12)
+    table.add_column("Duration", justify="right", width=12)
+    table.add_column("Errors", justify="right", width=8)
+
+    if not results:
+        table.add_row("-", "-", "-", "-", "-", "-", "-")
+        return table
+
+    for result in results:
+        timing_stats = result.get_timing_stats()
+        avg_latency = timing_stats.get("mean") or 0.0
+        run_label = _label_with_model(result.run_name, result.run_metadata or {})
+        dataset_label = Text(result.dataset_name)
+        table.add_row(
+            run_label,
+            dataset_label,
+            str(result.total_items),
+            f"{result.success_rate * 100:.1f}%",
+            f"{avg_latency:.2f}s",
+            _human_duration(result.duration),
+            str(len(result.errors)),
+        )
+    return table
+
+
+def _build_metric_section(results: Sequence[EvaluationResult]):
+    if not results:
+        return None
+
+    metric_panels = []
+    for result in results:
+        metric_table = Table(
+            box=box.SIMPLE,
+            show_header=True,
+            expand=True,
+            header_style="bold",
+            padding=(0, 1),
+        )
+        metric_table.add_column("Metric", style="cyan", ratio=2)
+        metric_table.add_column("Mean", justify="right", width=10)
+        metric_table.add_column("Std", justify="right", width=10)
+        metric_table.add_column("Min", justify="right", width=10)
+        metric_table.add_column("Max", justify="right", width=10)
+        metric_table.add_column("Success", justify="right", width=10)
+
+        if not result.metrics:
+            metric_table.add_row("-", "-", "-", "-", "-", "-")
+        else:
+            for metric in result.metrics:
+                stats = result.get_metric_stats(metric)
+                metric_table.add_row(
+                    metric,
+                    f"{stats['mean']:.3f}",
+                    f"{stats['std']:.3f}",
+                    f"{stats['min']:.3f}",
+                    f"{stats['max']:.3f}",
+                    f"{stats['success_rate'] * 100:.1f}%",
+                )
+
+        panel_title = f"{result.run_name} Metrics" if len(results) > 1 else "Metric Details"
+        metric_panels.append(
+            Panel(
+                metric_table,
+                title=panel_title,
+                border_style="cyan",
+                padding=(0, 1),
+            )
+        )
+
+    if len(metric_panels) == 1:
+        return metric_panels[0]
+    return Columns(metric_panels, expand=True, equal=False)
+
+
+def _build_error_panel(results: Sequence[EvaluationResult]) -> Optional[Panel]:
+    error_lines: List[str] = []
+    for result in results:
+        if not result.errors:
+            continue
+        error_lines.append(f"{result.run_name}: {len(result.errors)} failures")
+        for item_id, message in list(result.errors.items())[:3]:
+            error_lines.append(f"  • {item_id}: {message[:120]}")
+        if len(result.errors) > 3:
+            error_lines.append("  • ...")
+
+    if not error_lines:
+        return None
+
+    return Panel(
+        "\n".join(error_lines),
+        title="[bold red]Errors[/bold red]",
+        border_style="red",
+        padding=(0, 1),
+    )
+
+
+def _human_duration(seconds: Optional[float]) -> str:
+    if seconds is None:
+        return "--"
+    total_seconds = max(0, int(seconds))
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    minutes, sec = divmod(total_seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {sec:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
+def _label_with_model(name: str, metadata: Dict[str, Any]) -> Text:
+    label = Text(name, style="bold")
+    model = metadata.get("model")
+    if model:
+        label.append(f"\n{model}", style="dim")
+    return label
+
+
+def summary_display_enabled() -> bool:
+    """Return True when summaries should render (opt-in via env flag)."""
+    value = os.environ.get("LLM_EVAL_SHOW_SUMMARY", "")
+    return value.lower() in {"1", "true", "yes", "on"}

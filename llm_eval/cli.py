@@ -263,6 +263,7 @@ Examples:
             sys.exit(1)
 
         runner.print_summary(results)
+        runner.print_saved_paths(results)
 
         for spec, result in zip(run_specs, results):
             if spec.output_path:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+import math
 from typing import Any, Dict, List, Optional, Sequence
 
 from rich import box
@@ -42,6 +43,7 @@ class RunVisualState:
     end_time: Optional[float] = None
     latency_total: float = 0.0
     latency_count: int = 0
+    latency_samples: List[float] = field(default_factory=list)
     status: str = "pending"
     last_error: Optional[str] = None
 
@@ -158,6 +160,7 @@ class RunDashboard:
         state.in_progress = max(0, state.in_progress - 1)
         state.latency_total += elapsed
         state.latency_count += 1
+        state.latency_samples.append(elapsed)
         if state.completed >= state.total_items and state.failed == 0:
             state.status = "completed"
             state.end_time = time.time()
@@ -249,18 +252,27 @@ class RunDashboard:
             pulse=state.total_items == 0 and state.status == "running",
         )
         percent = state.percent_complete()
-        spinner = Spinner("dots", style="cyan") if state.status == "running" else Text("  ")
+        spinner_component: Text | Spinner
+        if state.status == "running":
+            spinner_component = Spinner("dots", style="cyan")
+        elif state.status == "error":
+            spinner_component = Text("!", style="red bold")
+        else:
+            spinner_component = Text("✓", style="green")
         completion_text = Text(f"{state.completed}/{state.total_items or '—'}   {percent:.0f}% complete")
-        progress_row = Columns(
+        bar_and_text = Columns(
             [
-                Align(spinner, align="center", width=3),
                 bar,
                 Align(completion_text, align="left"),
             ],
-            expand=True,
+            expand=False,
             equal=False,
             padding=(0, 1),
         )
+        progress_row = Table.grid(padding=(0, 0))
+        progress_row.add_column(width=3, justify="center")
+        progress_row.add_column()
+        progress_row.add_row(spinner_component, bar_and_text)
 
         stats = Text()
         stats.append(Text("Success: ", style="green"))
@@ -277,11 +289,22 @@ class RunDashboard:
         stats.append(Text(str(pending)))
 
         status_info = Text()
-        elapsed_display = _format_duration((state.end_time or time.time()) - state.start_time) if state.start_time else "--:--"
-        status_info.append(Text("Elapsed: ", style="dim"))
-        status_info.append(Text(elapsed_display))
-        status_info.append(Text("   Latency: ", style="dim"))
-        status_info.append(Text(f"{state.avg_latency():.2f} s", style=self._status_color(state.status)))
+        duration_display = _format_duration((state.end_time or time.time()) - state.start_time) if state.start_time else "--:--"
+        status_info.append(Text("Duration: ", style="dim"))
+        status_info.append(Text(duration_display))
+        percentiles = _latency_percentiles(state.latency_samples)
+        if percentiles:
+            status_info.append(Text("   Latency ", style="dim"))
+            status_info.append(
+                Text(
+                    (
+                        f"P50: {_format_latency_value(percentiles['p50'])}  "
+                        f"P90: {_format_latency_value(percentiles['p90'])}  "
+                        f"P99: {_format_latency_value(percentiles['p99'])}"
+                    ),
+                    style=self._status_color(state.status),
+                )
+            )
         if state.last_error:
             status_info.append("\n")
             status_info.append(Text(_strip_markup(state.last_error)[:80], style="red"))
@@ -393,3 +416,42 @@ def _format_duration(duration: float) -> str:
     hours, remainder = divmod(total_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+
+
+def _latency_percentiles(samples: Sequence[float]) -> Dict[str, float]:
+    if not samples:
+        return {}
+    values = sorted(samples)
+    return {
+        "p50": _percentile(values, 50.0),
+        "p90": _percentile(values, 90.0),
+        "p99": _percentile(values, 99.0),
+    }
+
+
+def _percentile(values: Sequence[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return float(values[0])
+    k = (len(values) - 1) * (percentile / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return float(values[int(k)])
+    d0 = values[f] * (c - k)
+    d1 = values[c] * (k - f)
+    return float(d0 + d1)
+
+
+def _format_latency_value(value: float) -> str:
+    if value < 1.0:
+        return f"{value * 1000:.0f}ms"
+    if value < 10.0:
+        return f"{value:.1f}s"
+    return f"{value:.0f}s"
+
+
+def console_supports_live(console: Console) -> bool:
+    """Return True when live updates should be rendered for this console."""
+    return bool(getattr(console, "is_terminal", False))

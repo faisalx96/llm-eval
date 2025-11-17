@@ -21,7 +21,7 @@ from .observers import (
     NullEvaluationObserver,
     CompositeEvaluationObserver,
 )
-from .dashboard import RunDashboard
+from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
@@ -353,23 +353,12 @@ class Evaluator:
         # Run the async evaluation
         result = asyncio.run(self.arun(show_progress, show_table, auto_save, save_format))
         
-        # Always print summary
-        console.print()  # Add spacing after evaluation panel
+        # Always print summary (silently no-op when disabled)
         html_url = getattr(result, 'html_url', None)
         result.print_summary(html_url)
+        _announce_saved_results([result], include_run_name=False)
         
         
-        # Keep the web UI open until the user confirms, unless disabled
-        if html_url and show_table:
-            import os
-            no_prompt = os.environ.get("LLM_EVAL_NO_PROMPT", "").lower() in ("1", "true", "yes")
-            if keep_server_alive and not no_prompt:
-                console.print("\n[dim]Press Enter to close the web UI and exit...[/dim]")
-                try:
-                    input()
-                except EOFError:
-                    pass
-
         return result
     
     
@@ -441,7 +430,9 @@ class Evaluator:
 
         dashboard = None
         live_context = nullcontext()
-        if show_progress:
+        final_panel = None
+        live_progress = show_progress and console_supports_live(console)
+        if live_progress:
             dashboard_runs = [
                 {
                     "run_id": self.run_name,
@@ -457,7 +448,14 @@ class Evaluator:
             ]
             dashboard = RunDashboard(dashboard_runs, enabled=True, console=console)
             self._attach_observer(dashboard.create_observer(self.run_name))
-            live_context = Live(dashboard.render(), console=console, refresh_per_second=6)
+            live_context = Live(
+                dashboard.render(),
+                console=console,
+                refresh_per_second=6,
+                screen=True,
+                transient=True,
+                vertical_overflow="crop",
+            )
 
         self._notify_observer(
             "on_run_start",
@@ -689,6 +687,11 @@ class Evaluator:
                 await run_with_table()
             else:
                 await run_without_table()
+            if live_progress and dashboard:
+                final_panel = dashboard.render()
+
+        if live_progress and final_panel is not None:
+            console.print(final_panel)
         # Mark evaluation as finished
         result.finish()
         self._notify_observer(
@@ -862,6 +865,8 @@ class Evaluator:
         if print_summary:
             runner.print_summary(results)
 
+        runner.print_saved_paths(results)
+
         for spec, result in zip(specs, results):
             if spec.output_path:
                 target_path = Path(spec.output_path)
@@ -876,7 +881,7 @@ class Evaluator:
                 console.print(f"[green]Saved {spec.run_name} results to {saved_path}[/green]")
 
         return results
-    
+
     async def _evaluate_item(self, item: Any, index: int, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
         """Evaluate a single dataset item."""
         async with semaphore:
@@ -974,7 +979,7 @@ class Evaluator:
                     error=str(e),
                 )
                 raise RuntimeError(f"Task execution failed: {e}")
-    
+
     async def _compute_metric(self, metric: Callable, output: Any, expected: Any, input_data: Any = None) -> Any:
         """Compute a metric, handling both sync and async functions."""
         import inspect
@@ -1223,4 +1228,21 @@ class Evaluator:
                     error=str(e),
                 )
                 raise RuntimeError(f"Task execution failed: {e}")
-    
+
+
+def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:
+    messages: List[str] = []
+    for res in results:
+        notice = res.consume_saved_notice(include_run_name=include_run_name)
+        if notice:
+            messages.append(notice)
+    if not messages:
+        return
+    if include_run_name:
+        console.print("[blue]📁 Results saved:[/blue]")
+        for entry in messages:
+            console.print(f"  - {entry}")
+    else:
+        for entry in messages:
+            console.print(f"[blue]📁 Results saved to:[/blue] {entry}")
+

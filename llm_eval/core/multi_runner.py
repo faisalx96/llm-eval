@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from rich.console import Console
 from rich.live import Live
 
-from .dashboard import RunDashboard
+from .dashboard import RunDashboard, console_supports_live
 from .evaluator import Evaluator
-from .results import EvaluationResult
+from .results import EvaluationResult, render_results_summary, summary_display_enabled
 from .run_spec import RunSpec
 
 
@@ -40,7 +40,8 @@ class MultiModelRunner:
                 }
             )
 
-        dashboard = RunDashboard(dashboard_configs, enabled=show_tui, console=self.console)
+        live_enabled = show_tui and console_supports_live(self.console)
+        dashboard = RunDashboard(dashboard_configs, enabled=live_enabled, console=self.console)
 
         async def _run_spec(spec: RunSpec):
             observer = dashboard.create_observer(spec.run_name)
@@ -67,12 +68,24 @@ class MultiModelRunner:
 
         tasks = [asyncio.create_task(_run_spec(spec)) for spec in self.specs]
 
-        if show_tui:
-            with Live(dashboard.render(), console=self.console, refresh_per_second=6) as live:
+        final_panel = None
+        if live_enabled:
+            with Live(
+                dashboard.render(),
+                console=self.console,
+                refresh_per_second=6,
+                screen=True,
+                transient=True,
+                vertical_overflow="crop",
+            ) as live:
                 dashboard.bind(live)
                 results = await asyncio.gather(*tasks, return_exceptions=True)
+                final_panel = dashboard.render()
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        if live_enabled and final_panel is not None:
+            self.console.print(final_panel)
 
         errors: List[Tuple[RunSpec, Exception]] = []
         final_results: List[EvaluationResult] = []
@@ -88,27 +101,21 @@ class MultiModelRunner:
 
         return final_results
 
-    def print_summary(self, results: Sequence[EvaluationResult]) -> None:
-        """Render a compact summary table for all runs."""
-        from rich.table import Table
+    def print_summary(self, results: Sequence[EvaluationResult], *, force: bool = False) -> None:
+        """Render a shared summary panel that works for single or multi runs."""
+        if not force and not summary_display_enabled():
+            return
+        panel = render_results_summary(results, title="[bold cyan]Multi-Run Summary[/bold cyan]")
+        self.console.print(panel)
 
-        table = Table(title="Multi-Run Summary", header_style="bold")
-        table.add_column("Run")
-        table.add_column("Dataset")
-        table.add_column("Success Rate", justify="right")
-        table.add_column("Metrics", justify="left")
-
-        for spec, result in zip(self.specs, results):
-            metric_lines = []
-            for metric in result.metrics:
-                stats = result.get_metric_stats(metric)
-                metric_lines.append(f"{metric}: {stats['mean']:.3f}")
-            metric_cell = "\n".join(metric_lines) if metric_lines else "-"
-            table.add_row(
-                spec.run_name,
-                spec.dataset,
-                f"{result.success_rate:.1%}",
-                metric_cell,
-            )
-
-        self.console.print(table)
+    def print_saved_paths(self, results: Sequence[EvaluationResult]) -> None:
+        notices = []
+        for result in results:
+            notice = result.consume_saved_notice(include_run_name=True)
+            if notice:
+                notices.append(notice)
+        if not notices:
+            return
+        self.console.print("[blue]📁 Results saved:[/blue]")
+        for entry in notices:
+            self.console.print(f"  - {entry}")

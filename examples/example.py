@@ -48,7 +48,7 @@ def main():
         dataset="saudi-qa-verification-v1",
         metrics=[
             # "answer_relevancy", # DeepEval metric
-            # response_length_check,  # Custom metric
+            response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ],
         model=["gpt-4o-mini", "llama-3.1"]
