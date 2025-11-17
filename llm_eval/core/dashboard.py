@@ -8,10 +8,12 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from rich import box
 from rich.align import Align
+from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
+from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
@@ -202,22 +204,22 @@ class RunDashboard:
             padding=(0, 1),
         )
         table.add_column("Run", ratio=2, overflow="fold")
-        table.add_column("Progress", ratio=3)
-        table.add_column("Status", ratio=2)
+        table.add_column("Progress", ratio=5)
         table.add_column("Metrics", ratio=3, overflow="fold")
 
         if not self.states:
-            table.add_row("No runs", "-", "-", "-")
+            table.add_row("No runs", "-", "-")
         else:
-            for run_id in self.order:
+            for idx, run_id in enumerate(self.order):
                 state = self.states[run_id]
                 table.add_row(
                     self._render_run_label(state),
                     self._render_progress(state),
-                    self._render_status(state),
                     self._render_metrics(state),
                     style=self._row_style(state),
                 )
+                if idx < len(self.order) - 1:
+                    table.add_row("", "", "")
 
         return Panel(
             table,
@@ -243,32 +245,48 @@ class RunDashboard:
         bar = ProgressBar(
             total=total,
             completed=completed,
-            width=None,
+            width=40,
             pulse=state.total_items == 0 and state.status == "running",
         )
         percent = state.percent_complete()
-        text = Text()
-        text.append(f"{state.completed}/{state.total_items or '—'} ({percent:.0f}%)")
-        text.append("\nIn progress: ")
-        text.append(str(state.in_progress))
-        return Group(bar, text)
+        spinner = Spinner("dots", style="cyan") if state.status == "running" else Text("  ")
+        completion_text = Text(f"{state.completed}/{state.total_items or '—'}   {percent:.0f}% complete")
+        progress_row = Columns(
+            [
+                Align(spinner, align="center", width=3),
+                bar,
+                Align(completion_text, align="left"),
+            ],
+            expand=True,
+            equal=False,
+            padding=(0, 1),
+        )
 
-    def _render_status(self, state: RunVisualState) -> Text:
-        color = self._status_color(state.status)
-        success = f"{state.success_rate()*100:.1f}%"
-        latency = f"{state.avg_latency():.2f} s"
-        txt = Text()
-        txt.append(Text(state.status.upper(), style=color))
-        txt.append("\nSuccess: ")
-        txt.append(success)
-        txt.append("\nLatency: ")
-        txt.append(latency)
-        txt.append("\nFailed: ")
-        txt.append(str(state.failed))
+        stats = Text()
+        stats.append(Text("Success: ", style="green"))
+        stats.append(Text(str(state.completed)))
+        stats.append(Text("  |  ", style="dim"))
+        stats.append(Text("In progress: ", style="yellow"))
+        stats.append(Text(str(state.in_progress)))
+        stats.append(Text("  |  ", style="dim"))
+        stats.append(Text("Failed: ", style="red"))
+        stats.append(Text(str(state.failed)))
+        pending = max(state.total_items - state.completed - state.in_progress - state.failed, 0)
+        stats.append(Text("  |  ", style="dim"))
+        stats.append(Text("Pending: ", style="cyan"))
+        stats.append(Text(str(pending)))
+
+        status_info = Text()
+        elapsed_display = _format_duration((state.end_time or time.time()) - state.start_time) if state.start_time else "--:--"
+        status_info.append(Text("Elapsed: ", style="dim"))
+        status_info.append(Text(elapsed_display))
+        status_info.append(Text("   Latency: ", style="dim"))
+        status_info.append(Text(f"{state.avg_latency():.2f} s", style=self._status_color(state.status)))
         if state.last_error:
-            txt.append("\n")
-            txt.append(Text(_strip_markup(state.last_error)[:80], style="red"))
-        return txt
+            status_info.append("\n")
+            status_info.append(Text(_strip_markup(state.last_error)[:80], style="red"))
+
+        return Group(progress_row, stats, status_info)
 
     def _render_metrics(self, state: RunVisualState) -> Text:
         if not state.metrics:
@@ -368,3 +386,10 @@ def _strip_markup(value: Optional[str]) -> str:
         return Text.from_markup(value).plain
     except Exception:
         return value.replace("[", "").replace("]", "")
+
+
+def _format_duration(duration: float) -> str:
+    total_seconds = max(0, int(duration))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
