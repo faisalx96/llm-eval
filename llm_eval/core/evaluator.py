@@ -16,6 +16,7 @@ from rich.live import Live
 
 from .results import EvaluationResult
 from .dataset import LangfuseDataset
+from .progress import ProgressTracker
 from .observers import (
     EvaluationObserver,
     NullEvaluationObserver,
@@ -390,23 +391,8 @@ class Evaluator:
     
         run_info = self._build_run_info(result)
 
-        # Initialize status tracking for each item
-        item_statuses = {}
-        for idx, item in enumerate(items):
-            input_text = str(item.input)
-            expected_text = str(getattr(item, 'expected_output', 'N/A'))
-        
-            item_statuses[idx] = {
-                'input': input_text,
-                'output': '[dim]pending[/dim]',
-                'expected': expected_text,
-                'metrics': {metric: '[dim]pending[/dim]' for metric in self.metrics.keys()},
-                'metric_meta': {metric: {} for metric in self.metrics.keys()},
-                'status': 'pending',
-                'time': '[dim]pending[/dim]',
-                'start_time': None,
-                'end_time': None
-            }
+        # Initialize progress tracker
+        tracker = ProgressTracker(items, list(self.metrics.keys()))
     
         # Web UI setup
         html_url = None
@@ -464,109 +450,62 @@ class Evaluator:
             metrics=list(self.metrics.keys()),
         )
 
-        async def run_with_table():
-            async def update_html():
-                while True:
-                    try:
-                        from datetime import datetime as dt
+        async def update_html():
+            while True:
+                try:
+                    snap = tracker.get_snapshot()
+                    if ui_server is not None:
+                        ui_server.run_state.set_snapshot(snap)
+                except Exception:
+                    pass
+                await asyncio.sleep(2)
 
-                        total_items = len(items)
-                        completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
-                        in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
-                        failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
-                        pending = total_items - completed - in_progress - failed
-                        success_rate = (completed / total_items * 100) if total_items > 0 else 0
-                        rows = []
-                        for idx in range(len(items)):
-                            s = item_statuses[idx]
-                            tval = str(s['time'])
-                            if any(tag in tval for tag in ('[red]', '[yellow]', '[dim]')):
-                                tval = (
-                                    tval.replace('[red]', '')
-                                    .replace('[/red]', '')
-                                    .replace('[yellow]', '')
-                                    .replace('[/yellow]', '')
-                                    .replace('[dim]', '')
-                                    .replace('[/dim]', '')
-                                )
-                            oval = str(s['output'])
-                            if oval == '[dim]pending[/dim]':
-                                oval = 'pending'
-                            oval = (
-                                oval.replace('[red]', '')
-                                .replace('[/red]', '')
-                                .replace('[yellow]', '')
-                                .replace('[/yellow]', '')
-                                .replace('[dim]', '')
-                                .replace('[/dim]', '')
-                            )
-                            mvals = []
-                            meta_block = {}
-                            for m in self.metrics.keys():
-                                mv = str(s['metrics'][m])
-                                if mv == '[dim]pending[/dim]':
-                                    mv = 'pending'
-                                elif mv == '[yellow]computing...[/yellow]':
-                                    mv = 'computing...'
-                                elif mv == '[red]error[/red]':
-                                    mv = 'error'
-                                elif mv == '[red]N/A[/red]':
-                                    mv = 'N/A'
-                                mvals.append(mv)
-                                try:
-                                    meta_block[m] = {
-                                        k: str(v)
-                                        for k, v in (s.get('metric_meta', {}).get(m, {}) or {}).items()
-                                    }
-                                except Exception:
-                                    meta_block[m] = {}
-                            rows.append({
-                                'index': idx,
-                                'status': s['status'],
-                                'input': str(s['input']),
-                                'input_full': str(s['input']),
-                                'output': oval,
-                                'output_full': str(s['output']),
-                                'expected': str(s['expected']),
-                                'expected_full': str(s['expected']),
-                                'metric_values': mvals,
-                                'metric_meta': meta_block,
-                                'time': tval,
-                                'latency_ms': int(
-                                    ((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000
-                                )
-                                if s.get('end_time') and s.get('start_time')
-                                else None,
-                                'trace_id': s.get('trace_id'),
-                                'trace_url': s.get('trace_url'),
-                            })
-                        snap = {
-                            'rows': rows,
-                            'stats': {
-                                'total': total_items,
-                                'completed': completed,
-                                'in_progress': in_progress,
-                                'failed': failed,
-                                'pending': pending,
-                                'success_rate': success_rate,
-                            },
-                            'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            'metric_names': list(self.metrics.keys()),
-                        }
-                        if ui_server is not None:
-                            ui_server.run_state.set_snapshot(snap)
-                    except Exception:
-                        pass
-                    await asyncio.sleep(2)
+        html_update_task = asyncio.create_task(update_html())
 
+        semaphore = asyncio.Semaphore(self.max_concurrency)
+        tasks = []
+
+        for idx, item in enumerate(items):
+            task = self._evaluate_item(
+                item, idx, semaphore, tracker
+            )
+            tasks.append(task)
+
+        eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        html_update_task.cancel()
+        try:
+            await html_update_task
+        except asyncio.CancelledError:
+            pass
+
+        # Final snapshot
+        try:
+            if ui_server is not None:
+                snap = tracker.get_snapshot()
+                ui_server.run_state.set_snapshot(snap)
+        except Exception:
+            pass
+
+        for idx, eval_result in enumerate(eval_results):
+            if isinstance(eval_result, Exception):
+                result.add_error(f"item_{idx}", str(eval_result))
+            else:
+                result.add_result(f"item_{idx}", eval_result)
+
+        with live_context as live:
+            if dashboard and live:
+                dashboard.bind(live)
+
+            # Inline run_with_table logic
             html_update_task = asyncio.create_task(update_html())
 
             semaphore = asyncio.Semaphore(self.max_concurrency)
             tasks = []
 
             for idx, item in enumerate(items):
-                task = self._evaluate_item_with_status(
-                    item, idx, semaphore, item_statuses
+                task = self._evaluate_item(
+                    item, idx, semaphore, tracker
                 )
                 tasks.append(task)
 
@@ -581,78 +520,7 @@ class Evaluator:
             # Final snapshot
             try:
                 if ui_server is not None:
-                    from datetime import datetime as dt
-                    total_items = len(items)
-                    completed = sum(1 for s in item_statuses.values() if s['status'] == 'completed')
-                    in_progress = sum(1 for s in item_statuses.values() if s['status'] == 'in_progress')
-                    failed = sum(1 for s in item_statuses.values() if s['status'] == 'error')
-                    pending = total_items - completed - in_progress - failed
-                    success_rate = (completed / total_items * 100) if total_items > 0 else 0
-
-                    rows = []
-                    for idx in range(total_items):
-                        s = item_statuses[idx]
-
-                        def _strip(v: Any) -> str:
-                            try:
-                                return (
-                                    str(v)
-                                    .replace('[dim]', '')
-                                    .replace('[/dim]', '')
-                                    .replace('[yellow]', '')
-                                    .replace('[/yellow]', '')
-                                    .replace('[red]', '')
-                                    .replace('[/red]', '')
-                                )
-                            except Exception:
-                                return str(v)
-
-                        oval = _strip(s.get('output', ''))
-                        tval = _strip(s.get('time', ''))
-                        mvals = []
-                        meta_block = {}
-                        for name in self.metrics.keys():
-                            mvals.append(_strip(s['metrics'].get(name, '')))
-                            try:
-                                meta_block[name] = {
-                                    k: str(v)
-                                    for k, v in (s.get('metric_meta', {}).get(name, {}) or {}).items()
-                                }
-                            except Exception:
-                                meta_block[name] = {}
-                        rows.append({
-                            'index': idx,
-                            'status': s['status'],
-                            'input': str(s['input']),
-                            'input_full': str(s['input']),
-                            'output': oval,
-                            'output_full': str(s.get('output', '')),
-                            'expected': str(s['expected']),
-                            'expected_full': str(s['expected']),
-                            'metric_values': mvals,
-                            'metric_meta': meta_block,
-                            'time': tval,
-                            'latency_ms': int(
-                                ((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000
-                            )
-                            if s.get('end_time') and s.get('start_time')
-                            else None,
-                            'trace_id': s.get('trace_id'),
-                            'trace_url': s.get('trace_url'),
-                        })
-                    snap = {
-                        'rows': rows,
-                        'stats': {
-                            'total': total_items,
-                            'completed': completed,
-                            'in_progress': in_progress,
-                            'failed': failed,
-                            'pending': pending,
-                            'success_rate': success_rate,
-                        },
-                        'last_updated': dt.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'metric_names': list(self.metrics.keys()),
-                    }
+                    snap = tracker.get_snapshot()
                     ui_server.run_state.set_snapshot(snap)
             except Exception:
                 pass
@@ -662,31 +530,7 @@ class Evaluator:
                     result.add_error(f"item_{idx}", str(eval_result))
                 else:
                     result.add_result(f"item_{idx}", eval_result)
-
-        async def run_without_table():
-            semaphore = asyncio.Semaphore(self.max_concurrency)
-            tasks = []
-
-            for idx, item in enumerate(items):
-                task = self._evaluate_item(item, idx, semaphore)
-                tasks.append(task)
-
-            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for idx, eval_result in enumerate(eval_results):
-                if isinstance(eval_result, Exception):
-                    result.add_error(f"item_{idx}", str(eval_result))
-                else:
-                    result.add_result(f"item_{idx}", eval_result)
-
-        with live_context as live:
-            if dashboard and live:
-                dashboard.bind(live)
-
-            if show_table:
-                await run_with_table()
-            else:
-                await run_without_table()
+            
             if live_progress and dashboard:
                 final_panel = dashboard.render()
 
@@ -742,117 +586,19 @@ class Evaluator:
             raise ValueError("runs must contain at least one configuration")
 
         from .multi_runner import MultiModelRunner
-        from .run_spec import RunSpec
 
-        specs: List[RunSpec] = []
+        # Delegate to MultiModelRunner
+        runner = MultiModelRunner.from_runs(runs, console=console)
 
-        def _expand_models(def_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
-            models_value = def_dict.get("models")
-            if models_value is None:
-                return [def_dict]
-            model_list = Evaluator._normalize_models(models_value)
-            if not model_list:
-                return [def_dict]
-            expanded = []
-            for model_name in model_list:
-                clone = dict(def_dict)
-                clone.pop("models", None)
-                clone["model"] = model_name
-                expanded.append(clone)
-            return expanded
-
-        for idx, definition in enumerate(runs, start=1):
-            if isinstance(definition, RunSpec):
-                specs.append(definition)
-                continue
-            if not isinstance(definition, dict):
-                raise ValueError(f"Run #{idx} must be a dict or RunSpec")
-
-            expanded_defs = _expand_models(definition)
-
-            for model_variant in expanded_defs:
-                current_idx = len(specs) + 1
-
-                if "task" not in model_variant or not callable(model_variant["task"]):
-                    raise ValueError(f"Run #{idx} missing callable 'task'")
-                if "dataset" not in model_variant:
-                    raise ValueError(f"Run #{idx} missing 'dataset'")
-                if "metrics" not in model_variant:
-                    raise ValueError(f"Run #{idx} missing 'metrics'")
-
-                task_callable = model_variant["task"]
-                dataset = model_variant["dataset"]
-                metrics_value = model_variant["metrics"]
-
-                if isinstance(metrics_value, str):
-                    metrics = [m.strip() for m in metrics_value.split(",") if m.strip()]
-                elif isinstance(metrics_value, (list, tuple, set)):
-                    metrics = []
-                    for metric in metrics_value:
-                        if isinstance(metric, str):
-                            metric_name = metric.strip()
-                            if metric_name:
-                                metrics.append(metric_name)
-                        elif callable(metric):
-                            metrics.append(metric)
-                        else:
-                            raise ValueError(f"Run #{idx} metric entries must be str or callable")
-                else:
-                    raise ValueError(f"Run #{idx} metrics must be string or list")
-
-                if not metrics:
-                    raise ValueError(f"Run #{idx} has no metrics")
-
-                config = dict(model_variant.get("config") or {})
-                config.pop("models", None)
-                metadata = dict(model_variant.get("metadata") or {})
-                model_name = model_variant.get("model")
-                if model_name:
-                    metadata.setdefault("model", model_name)
-                    config["model"] = model_name
-                if metadata:
-                    merged_meta = {**metadata, **dict(config.get("run_metadata") or {})}
-                    config["run_metadata"] = merged_meta
-
-                base_name = model_variant.get("name") or config.get("run_name") or f"run-{current_idx}"
-                name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(model_name) else base_name
-                config.setdefault("run_name", name)
-
-                task_file = model_variant.get("task_file") or getattr(task_callable, "__module__", "<python-callable>")
-                task_function = model_variant.get("task_function") or getattr(task_callable, "__name__", "<callable>")
-
-                output_value = model_variant.get("output")
-                output_path = None
-                if output_value:
-                    output_path = Path(output_value).expanduser()
-
-                specs.append(
-                    RunSpec(
-                        name=name,
-                        task=task_callable,
-                        dataset=dataset,
-                        metrics=metrics,
-                        task_file=str(task_file),
-                        task_function=str(task_function),
-                        config=config,
-                        output_path=output_path,
-                    )
-                )
-
-        if not specs:
-            raise ValueError("No valid run configurations provided")
-
+        # Ensure async loop is ready
         try:
             asyncio.get_running_loop()
             import nest_asyncio  # type: ignore
-
             nest_asyncio.apply()
         except RuntimeError:
             pass
         except ImportError:
             pass
-
-        runner = MultiModelRunner(specs, console=console)
 
         results = asyncio.run(
             runner.arun(
@@ -866,8 +612,9 @@ class Evaluator:
             runner.print_summary(results)
 
         runner.print_saved_paths(results)
-
-        for spec, result in zip(specs, results):
+        
+        # Handle per-run saving (legacy support for run_parallel doing the saving)
+        for spec, result in zip(runner.specs, results):
             if spec.output_path:
                 target_path = Path(spec.output_path)
                 target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -882,103 +629,7 @@ class Evaluator:
 
         return results
 
-    async def _evaluate_item(self, item: Any, index: int, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
-        """Evaluate a single dataset item."""
-        async with semaphore:
-            try:
-                start_time = time.time()
-                self._notify_observer(
-                    "on_item_start",
-                    item_index=index,
-                    payload={
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                    },
-                )
-                # Run task with Langfuse tracing
-                with item.run(
-                    run_name=self.run_name,
-                    run_metadata={**self.run_metadata, "item_index": index}
-                ) as trace:
-                    # Capture Langfuse trace identifiers if available
-                    try:
-                        meta = self._extract_trace_meta(trace)
-                    except Exception:
-                        meta = {"trace_id": None, "trace_url": None}
-                    # Execute task
-                    output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
-                    
-                    # Compute metrics
-                    scores = {}
-                    for metric_name, metric_func in self.metrics.items():
-                        try:
-                            score = await self._compute_metric(
-                                metric_func, 
-                                output, 
-                                getattr(item, 'expected_output', None),
-                                item.input
-                            )
-                            scores[metric_name] = score
-                            self._notify_observer(
-                                "on_metric_result",
-                                item_index=index,
-                                metric_name=metric_name,
-                                score=score,
-                                metadata={
-                                    "input": item.input,
-                                    "expected": getattr(item, 'expected_output', None),
-                                },
-                            )
-                            
-                            # Log score to Langfuse (prefer main score)
-                            try:
-                                log_val = None
-                                if isinstance(score, dict) and 'score' in score:
-                                    log_val = score.get('score')
-                                else:
-                                    log_val = score
-                                trace.score_trace(
-                                    name=metric_name,
-                                    value=log_val if isinstance(log_val, (int, float, bool)) else str(log_val),
-                                    data_type=self._get_score_type(log_val)
-                                )
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            scores[metric_name] = {"error": str(e)}
-                    
-                    elapsed = time.time() - start_time
-                    result_payload = {
-                        "output": output,
-                        "scores": scores,
-                        "success": True,
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                        "trace_id": meta.get('trace_id'),
-                        "trace_url": meta.get('trace_url'),
-                        "time": elapsed,
-                    }
-                    self._notify_observer(
-                        "on_item_complete",
-                        item_index=index,
-                        result=result_payload,
-                    )
-                    return result_payload
-                    
-            except asyncio.TimeoutError:
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=f"timeout after {self.timeout}s",
-                )
-                raise TimeoutError(f"Evaluation timed out after {self.timeout}s")
-            except Exception as e:
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=str(e),
-                )
-                raise RuntimeError(f"Task execution failed: {e}")
+
 
     async def _compute_metric(self, metric: Callable, output: Any, expected: Any, input_data: Any = None) -> Any:
         """Compute a metric, handling both sync and async functions."""
@@ -1052,21 +703,19 @@ class Evaluator:
             print_summary=True,
         )
     
-    async def _evaluate_item_with_status(
+    async def _evaluate_item(
         self, 
         item: Any, 
         index: int, 
         semaphore: asyncio.Semaphore, 
-        item_statuses: Dict[int, Dict],
+        tracker: ProgressTracker,
     ) -> Dict[str, Any]:
         """Evaluate a single dataset item with live status updates."""
         async with semaphore:
             try:
                 # Start timing and update status to in_progress
-                start_time = time.time()
-                item_statuses[index]['start_time'] = start_time
-                item_statuses[index]['status'] = 'in_progress'
-                item_statuses[index]['time'] = '[yellow]running...[/yellow]'
+                tracker.start_item(index)
+                
                 self._notify_observer(
                     "on_item_start",
                     item_index=index,
@@ -1084,22 +733,21 @@ class Evaluator:
                     # Capture initial trace meta (best-effort)
                     try:
                         meta = self._extract_trace_meta(trace)
-                        item_statuses[index]['trace_id'] = meta.get('trace_id')
-                        item_statuses[index]['trace_url'] = meta.get('trace_url')
+                        tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
                     except Exception:
                         pass
                     # Execute task
                     output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
                     
                     # Update output in status
-                    item_statuses[index]['output'] = str(output)
+                    tracker.update_output(index, output)
                     
                     # Compute metrics
                     scores = {}
                     for metric_name, metric_func in self.metrics.items():
                         try:
                             # Update metric status to computing
-                            item_statuses[index]['metrics'][metric_name] = '[yellow]computing...[/yellow]'
+                            tracker.set_metric_computing(index, metric_name)
                             
                             score = await self._compute_metric(
                                 metric_func, 
@@ -1140,23 +788,7 @@ class Evaluator:
                                 meta_map = _flatten_meta(score.get('metadata', {}))
 
                             # Update metric value in status using the main score
-                            if isinstance(main_val, bool):
-                                item_statuses[index]['metrics'][metric_name] = '✓' if main_val else '✗'
-                            elif isinstance(main_val, (int, float)):
-                                item_statuses[index]['metrics'][metric_name] = f"{int(main_val)}"
-                            elif main_val is not None:
-                                item_statuses[index]['metrics'][metric_name] = str(main_val)[:50]
-                            else:
-                                item_statuses[index]['metrics'][metric_name] = str(score)[:50]
-
-                            # Save metadata fields for UI
-                            try:
-                                item_statuses[index].setdefault('metric_meta', {})
-                                item_statuses[index]['metric_meta'].setdefault(metric_name, {})
-                                for k, v in meta_map.items():
-                                    item_statuses[index]['metric_meta'][metric_name][k] = v
-                            except Exception:
-                                pass
+                            tracker.update_metric(index, metric_name, main_val, meta_map)
 
                             # Log score to Langfuse (use main score if available)
                             try:
@@ -1173,24 +805,20 @@ class Evaluator:
                             
                         except Exception as e:
                             scores[metric_name] = {"error": str(e)}
-                            item_statuses[index]['metrics'][metric_name] = '[red]error[/red]'
+                            tracker.set_metric_error(index, metric_name)
                     
                     # Update status to completed with timing
-                    end_time = time.time()
-                    item_statuses[index]['end_time'] = end_time
-                    item_statuses[index]['status'] = 'completed'
-                    elapsed = end_time - start_time
-                    item_statuses[index]['time'] = f"{int(elapsed)}s"
+                    tracker.complete_item(index)
                     
                     result_payload = {
                         "output": output,
                         "scores": scores,
                         "success": True,
-                        "time": elapsed,
+                        "time": tracker.item_statuses[index].get('end_time', 0) - tracker.item_statuses[index].get('start_time', 0),
                         "input": item.input,
                         "expected": getattr(item, 'expected_output', None),
-                        "trace_id": item_statuses[index].get('trace_id'),
-                        "trace_url": item_statuses[index].get('trace_url')
+                        "trace_id": tracker.item_statuses[index].get('trace_id'),
+                        "trace_url": tracker.item_statuses[index].get('trace_url')
                     }
 
                     self._notify_observer(
@@ -1201,13 +829,7 @@ class Evaluator:
                     return result_payload
                     
             except asyncio.TimeoutError:
-                end_time = time.time()
-                item_statuses[index]['end_time'] = end_time
-                item_statuses[index]['status'] = 'error'
-                item_statuses[index]['output'] = '[red]timeout[/red]'
-                item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
-                for metric_name in self.metrics.keys():
-                    item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
+                tracker.fail_item_timeout(index, self.timeout)
                 self._notify_observer(
                     "on_item_error",
                     item_index=index,
@@ -1215,13 +837,7 @@ class Evaluator:
                 )
                 raise TimeoutError(f"Evaluation timed out after {self.timeout}s")
             except Exception as e:
-                end_time = time.time()
-                item_statuses[index]['end_time'] = end_time
-                item_statuses[index]['status'] = 'error'
-                item_statuses[index]['output'] = f'[red]error: {str(e)[:30]}[/red]'
-                item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
-                for metric_name in self.metrics.keys():
-                    item_statuses[index]['metrics'][metric_name] = '[red]N/A[/red]'
+                tracker.fail_item(index, str(e))
                 self._notify_observer(
                     "on_item_error",
                     item_index=index,

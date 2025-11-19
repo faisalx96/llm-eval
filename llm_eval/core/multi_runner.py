@@ -12,6 +12,8 @@ from .dashboard import RunDashboard, console_supports_live
 from .evaluator import Evaluator
 from .results import EvaluationResult, render_results_summary, summary_display_enabled
 from .run_spec import RunSpec
+from pathlib import Path
+
 
 
 class MultiModelRunner:
@@ -20,6 +22,113 @@ class MultiModelRunner:
     def __init__(self, specs: Sequence[RunSpec], console: Optional[Console] = None) -> None:
         self.specs = list(specs)
         self.console = console or Console()
+
+    @classmethod
+    def from_runs(cls, runs: Sequence[Any], console: Optional[Console] = None) -> "MultiModelRunner":
+        """Create a runner from a list of run definitions (dicts or RunSpecs)."""
+        if not runs:
+            raise ValueError("runs must contain at least one configuration")
+
+        specs: List[RunSpec] = []
+
+        def _expand_models(def_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+            models_value = def_dict.get("models")
+            if models_value is None:
+                return [def_dict]
+            # Use Evaluator's normalize logic
+            model_list = Evaluator._normalize_models(models_value)
+            if not model_list:
+                return [def_dict]
+            expanded = []
+            for model_name in model_list:
+                clone = dict(def_dict)
+                clone.pop("models", None)
+                clone["model"] = model_name
+                expanded.append(clone)
+            return expanded
+
+        for idx, definition in enumerate(runs, start=1):
+            if isinstance(definition, RunSpec):
+                specs.append(definition)
+                continue
+            if not isinstance(definition, dict):
+                raise ValueError(f"Run #{idx} must be a dict or RunSpec")
+
+            expanded_defs = _expand_models(definition)
+
+            for model_variant in expanded_defs:
+                current_idx = len(specs) + 1
+
+                if "task" not in model_variant or not callable(model_variant["task"]):
+                    raise ValueError(f"Run #{idx} missing callable 'task'")
+                if "dataset" not in model_variant:
+                    raise ValueError(f"Run #{idx} missing 'dataset'")
+                if "metrics" not in model_variant:
+                    raise ValueError(f"Run #{idx} missing 'metrics'")
+
+                task_callable = model_variant["task"]
+                dataset = model_variant["dataset"]
+                metrics_value = model_variant["metrics"]
+
+                if isinstance(metrics_value, str):
+                    metrics = [m.strip() for m in metrics_value.split(",") if m.strip()]
+                elif isinstance(metrics_value, (list, tuple, set)):
+                    metrics = []
+                    for metric in metrics_value:
+                        if isinstance(metric, str):
+                            metric_name = metric.strip()
+                            if metric_name:
+                                metrics.append(metric_name)
+                        elif callable(metric):
+                            metrics.append(metric)
+                        else:
+                            raise ValueError(f"Run #{idx} metric entries must be str or callable")
+                else:
+                    raise ValueError(f"Run #{idx} metrics must be string or list")
+
+                if not metrics:
+                    raise ValueError(f"Run #{idx} has no metrics")
+
+                config = dict(model_variant.get("config") or {})
+                config.pop("models", None)
+                metadata = dict(model_variant.get("metadata") or {})
+                model_name = model_variant.get("model")
+                if model_name:
+                    metadata.setdefault("model", model_name)
+                    config["model"] = model_name
+                if metadata:
+                    merged_meta = {**metadata, **dict(config.get("run_metadata") or {})}
+                    config["run_metadata"] = merged_meta
+
+                base_name = model_variant.get("name") or config.get("run_name") or f"run-{current_idx}"
+                name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(str(model_name)) else base_name
+                config.setdefault("run_name", name)
+
+                task_file = model_variant.get("task_file") or getattr(task_callable, "__module__", "<python-callable>")
+                task_function = model_variant.get("task_function") or getattr(task_callable, "__name__", "<callable>")
+
+                output_value = model_variant.get("output")
+                output_path = None
+                if output_value:
+                    output_path = Path(output_value).expanduser()
+
+                specs.append(
+                    RunSpec(
+                        name=name,
+                        task=task_callable,
+                        dataset=dataset,
+                        metrics=metrics,
+                        task_file=str(task_file),
+                        task_function=str(task_function),
+                        config=config,
+                        output_path=output_path,
+                    )
+                )
+
+        if not specs:
+            raise ValueError("No valid run configurations provided")
+            
+        return cls(specs, console=console)
 
     async def arun(
         self,
