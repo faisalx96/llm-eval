@@ -1,12 +1,22 @@
 # LLM-Eval User Guide
 
-Welcome to LLM-Eval! This guide will help you evaluate your LLM applications in just a few minutes.
+Welcome to LLM-Eval! This guide provides comprehensive instructions for evaluating your LLM applications using Python scripts, the Command Line Interface (CLI), or complex multi-model configurations.
 
-## What is LLM-Eval?
+## Table of Contents
 
-LLM-Eval is a simple framework that helps you test and measure how well your AI applications are performing. Think of it as automated testing for your AI - you provide test cases, and we'll tell you how well your AI handles them.
+1. [Getting Started](#getting-started)
+2. [Three Ways to Run](#three-ways-to-run)
+    - [Option 1: Python API](#option-1-python-api)
+    - [Option 2: Command Line Interface (CLI)](#option-2-command-line-interface-cli)
+    - [Option 3: Multi-Model Configuration](#option-3-multi-model-configuration)
+3. [Defining Your Task](#defining-your-task)
+4. [Metrics](#metrics)
+5. [Understanding Results](#understanding-results)
+6. [Advanced Configuration](#advanced-configuration)
 
-## Getting Started in 5 Minutes
+---
+
+## Getting Started
 
 ### 1. Installation
 
@@ -14,404 +24,231 @@ LLM-Eval is a simple framework that helps you test and measure how well your AI 
 pip install llm-eval
 ```
 
-### 2. Set Up Langfuse Credentials
+### 2. Prerequisites
 
-LLM-Eval uses Langfuse to store your test data and results. You'll need to configure your Langfuse credentials:
-
-1. Get your API keys from your Langfuse instance (Settings → API Keys)
-2. Set them as environment variables:
+LLM-Eval uses **Langfuse** for dataset management. You need:
+1.  A Langfuse account (cloud or self-hosted).
+2.  API Keys set as environment variables:
 
 ```bash
-export LANGFUSE_PUBLIC_KEY="your-public-key"
-export LANGFUSE_SECRET_KEY="your-secret-key"
-export LANGFUSE_HOST="your-langfuse-host-url"
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_HOST="https://cloud.langfuse.com"  # or your self-hosted URL
 ```
 
-### 3. Create Your First Dataset
+### 3. Prepare a Dataset
 
-In Langfuse, create a dataset with test cases:
+Create a dataset in Langfuse named `qa-test-set` (or any name you prefer) with items containing:
+- `input`: The prompt or question.
+- `expected_output`: The correct answer (optional, but needed for correctness metrics).
 
-1. Go to Datasets → New Dataset
-2. Name it "my-test-dataset"
-3. Add some test items with questions and expected answers
+---
 
-Example dataset item:
-```json
-{
-  "input": "What is the capital of France?",
-  "expected_output": "Paris"
-}
-```
+## Three Ways to Run
 
-### 4. Evaluate Your Function
+### Option 1: Python API
+
+Best for **notebooks**, **debugging**, and **custom workflows**.
 
 ```python
 from llm_eval import Evaluator
 
-# Your AI function to test
-def my_ai_assistant(question):
-    # Your AI logic here
-    return "Paris"  # Example response
+# 1. Define your task (the function to test)
+def my_llm_task(input_text):
+    # Call your LLM here (e.g., OpenAI, Anthropic, local model)
+    return "Paris" 
 
-# Create and run evaluation
+# 2. Run evaluation
 evaluator = Evaluator(
-    task=my_ai_assistant,
-    dataset="my-test-dataset",
-    metrics=["exact_match"]
+    task=my_llm_task,
+    dataset="qa-test-set",
+    metrics=["exact_match", "faithfulness"]
 )
 
-results = evaluator.run()
-results.print_summary()
+results = evaluator.run(auto_save=True)
+print(results.summary())
 ```
 
-That's it! You'll see how well your AI performed on the test cases.
+### Option 2: Command Line Interface (CLI)
 
-## Understanding Metrics
+Best for **CI/CD pipelines** and **quick checks**.
 
-Metrics tell you how to measure success. Here are the built-in options:
+You can evaluate a function directly from your terminal without writing a runner script.
 
-### Basic Metrics
-
-- **exact_match**: Checks if the output exactly matches what you expected (100% or 0%)
-- **contains**: Checks if the expected answer appears somewhere in the output
-- **fuzzy_match**: Measures how similar the output is to expected (0% to 100%)
-
-### Example: Choosing the Right Metric
-
-```python
-# For yes/no questions, use exact_match
-evaluator = Evaluator(task=my_bot, dataset="yes-no-questions", 
-                     metrics=["exact_match"])
-
-# For longer responses, use contains or fuzzy_match
-evaluator = Evaluator(task=my_bot, dataset="explanation-questions",
-                     metrics=["contains", "fuzzy_match"])
-
-# Use multiple metrics to get different perspectives
-evaluator = Evaluator(task=my_bot, dataset="mixed-questions",
-                     metrics=["exact_match", "contains", "fuzzy_match"])
+**Syntax:**
+```bash
+llm-eval --task-file <FILE> --task-function <FUNCTION_NAME> --dataset <DATASET> --metrics <METRICS>
 ```
 
-## Working with Different AI Tools
+**Example:**
+Assuming you have a file `agent.py`:
+```python
+# agent.py
+def chat(input_text):
+    return "I am a bot."
+```
 
-### OpenAI
+Run:
+```bash
+llm-eval --task-file agent.py --task-function chat \
+         --dataset qa-test-set \
+         --metrics exact_match,contains
+```
+
+**Common Flags:**
+- `--model`: Tag the run with a model name (e.g., `--model gpt-4`).
+- `--output`: Save results to a specific JSON file (e.g., `--output results.json`).
+- `--no-ui`: Disable the local web dashboard.
+- `--quiet`: Show only the final summary.
+
+### Option 3: Multi-Model Configuration
+
+Best for **benchmarking** and **comparing models** (e.g., GPT-4 vs Llama 3).
+
+Define your experiments in a JSON or YAML file (e.g., `experiments.json`):
+
+```json
+[
+  {
+    "name": "gpt-4-run",
+    "task_file": "agent.py",
+    "task_function": "chat_gpt4",
+    "dataset": "qa-test-set",
+    "metrics": "exact_match,faithfulness",
+    "metadata": { "model": "gpt-4" }
+  },
+  {
+    "name": "llama-3-run",
+    "task_file": "agent.py",
+    "task_function": "chat_llama",
+    "dataset": "qa-test-set",
+    "metrics": "exact_match,faithfulness",
+    "metadata": { "model": "llama-3" }
+  }
+]
+```
+
+**Run all experiments in parallel:**
+```bash
+llm-eval --runs-config experiments.json
+```
+
+This will launch a **Rich TUI dashboard** showing progress bars and live metrics for all runs simultaneously.
+
+---
+
+## Defining Your Task
+
+Your task function is the unit being tested. It must accept the input from your dataset and return a string.
+
+### Basic Contract
+```python
+def my_task(input_data):
+    # input_data is the 'input' field from your Langfuse dataset item
+    # It can be a string, dict, or any JSON-serializable object
+    return "Model response string"
+```
+
+### Async Support
+LLM-Eval runs natively on `asyncio`. If your task is async, it will be awaited automatically.
 
 ```python
-import openai
-
-def my_openai_bot(question):
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": question}]
-    )
+async def my_async_task(input_text):
+    response = await openai.ChatCompletion.acreate(...)
     return response.choices[0].message.content
-
-evaluator = Evaluator(
-    task=my_openai_bot,
-    dataset="my-test-dataset",
-    metrics=["fuzzy_match"]
-)
 ```
 
-### LangChain
+### Accessing Full Dataset Item
+If you need more than just the `input` field (e.g., metadata), accept a second argument named `item`:
 
 ```python
-from langchain.chains import LLMChain
-from langchain.llms import OpenAI
-
-# Create your chain
-chain = LLMChain(llm=OpenAI(), prompt=my_prompt)
-
-# Evaluate it directly!
-evaluator = Evaluator(
-    task=chain,
-    dataset="my-test-dataset", 
-    metrics=["contains"]
-)
+def task_with_context(input_text, item):
+    # item is the LangfuseDatasetItem object
+    user_id = item.metadata.get("user_id")
+    return f"Processed for {user_id}"
 ```
 
-## Custom Metrics
+---
 
-Need something specific? Create your own metric:
+## Metrics
+
+Metrics determine "goodness". You can use built-in strings or custom functions.
+
+### Built-in Metrics
+- **`exact_match`**: String equality (1.0 or 0.0).
+- **`contains`**: Checks if expected output is a substring of actual output.
+- **`fuzzy_match`**: Levenshtein distance similarity (0.0 to 1.0).
+
+### Custom Metrics
+A metric is a simple function:
 
 ```python
-def keyword_count(output, expected):
-    """Count how many expected keywords appear in output."""
-    keywords = expected.split(",")  # Expect comma-separated keywords
-    found = sum(1 for kw in keywords if kw.lower() in output.lower())
-    return found / len(keywords)
-
-evaluator = Evaluator(
-    task=my_bot,
-    dataset="keyword-dataset",
-    metrics=["exact_match", keyword_count]
-)
+def my_custom_metric(output, expected):
+    # Return a float between 0.0 and 1.0
+    # Or return a dict: {"score": 0.8, "reason": "Good grammar"}
+    return 1.0 if "success" in output else 0.0
 ```
 
-## Live Progress Display
-
-When running evaluations, you'll see a real-time status table showing:
-
-```
-Evaluation Status
-┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━┓
-┃ Input                  ┃ Output               ┃ Expected             ┃ exact_match  ┃ fuzzy    ┃ Time  ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━┩
-│ What is the capital... │ Paris                │ Paris                │ ✓            │ 1.000    │ 2.34s │
-│ Explain Python prog... │ Python is a high...  │ Python is a progr... │ ✗            │ 0.756    │ 3.12s │
-│ Calculate 15 + 27      │ running...           │ 42                   │ pending      │ pending  │ ...   │
-└────────────────────────┴──────────────────────┴──────────────────────┴──────────────┴──────────┴───────┘
+Pass it to the evaluator:
+```python
+evaluator = Evaluator(..., metrics=[my_custom_metric])
 ```
 
-The display updates in real-time as each evaluation completes, showing:
-- **Input/Output/Expected**: Truncated to 50 characters for readability
-- **Metric columns**: Live updates as each metric is computed
-- **Time**: Execution time for each item
-- **Color coding**: Green (completed), Yellow (in progress), Red (errors)
+---
 
 ## Understanding Results
 
-After running evaluation, you'll see a comprehensive summary:
-
+### Console Output
+After a run, you get a summary table:
 ```
-Overview
-Dataset: my-test-dataset
-Total Items: 50
-Success Rate: 96.0%
-Total Duration: 125.3s
-Average Item Time: 2.51s ± 0.34s
-Time Range: [1.23s, 4.56s]
-
-Evaluation Results: experiment-42
-┏━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━┓
-┃ Metric      ┃  Mean ┃ Std Dev ┃   Min ┃   Max ┃ Success ┃
-┡━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━┩
-│ exact_match │ 0.720 │   0.449 │ 0.000 │ 1.000 │  100.0% │
-│ fuzzy_match │ 0.865 │   0.123 │ 0.450 │ 1.000 │  100.0% │
-└─────────────┴───────┴─────────┴───────┴───────┴─────────┘
+Evaluation Results: gpt-4-run
+┏━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
+┃ Metric      ┃  Mean ┃ Std Dev ┃ Success ┃
+┡━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
+│ exact_match │ 0.850 │   0.120 │  100%   │
+└─────────────┴───────┴─────────┴───────┘
 ```
 
-### What the numbers mean:
-- **Success Rate**: Percentage of test cases that ran without errors
-- **Total Duration**: Time to complete all evaluations
-- **Average Item Time**: Mean execution time per item with standard deviation
-- **Time Range**: Fastest and slowest item execution times
-- **Mean**: Average score across all test cases
-- **Std Dev**: Standard deviation showing score consistency
-- **Min/Max**: Lowest and highest scores achieved
+### Saved Files
+Results are auto-saved (if enabled) to `eval_results_<dataset>_<timestamp>.json` (or `.csv`).
 
-## Saving and Exporting Results
+- **CSV**: Great for Excel/Sheets. Columns: `input`, `output`, `expected`, `metric_score`, `latency`.
+- **JSON**: Full fidelity, including full prompts and metadata.
 
-LLM-Eval provides multiple ways to save your evaluation results for further analysis:
-
-### Auto-save During Evaluation
-
-Enable automatic saving when running evaluations:
-
-```python
-# Auto-save as JSON (default)
-results = evaluator.run(auto_save=True)
-
-# Auto-save as CSV for spreadsheet analysis
-results = evaluator.run(auto_save=True, save_format="csv")
-```
-
-Files are saved with timestamps: `eval_results_datasetname_20240115_143022.json`
-
-### Manual Save Options
-
-Save results after evaluation completes:
-
-```python
-# Save as JSON with all details
-results.save_json("my_results.json")
-
-# Save as CSV for Excel/Google Sheets
-results.save_csv("analysis/results.csv") 
-
-# Use generic save method
-results.save(format="json", filepath="custom_path.json")
-```
-
-### Export Formats
-
-**JSON Format** includes:
-- Complete evaluation metadata
-- All metric scores per item
-- Execution times
-- Full outputs and errors
-- Statistical summaries
-
-**CSV Format** includes:
-- Item IDs and truncated outputs
-- Success status
-- Individual metric scores as columns
-- Execution times
-- Perfect for pivot tables and charts
-
-### Example: Analysis Workflow
-
-```python
-# Run evaluation with auto-save
-results = evaluator.run(auto_save=True, save_format="csv")
-
-# Also save JSON for complete record
-results.save_json("detailed_results.json")
-
-# Access results programmatically
-stats = results.get_timing_stats()
-print(f"Average time per item: {stats['mean']:.2f}s")
-
-# Get specific metric performance
-accuracy = results.get_metric_stats("exact_match")
-print(f"Accuracy: {accuracy['mean']:.1%}")
-```
-
-## Tips for Success
-
-### 1. Start Small
-Begin with 10-20 test cases to get a feel for how your AI performs.
-
-### 2. Use Representative Examples
-Your test cases should cover typical use cases and edge cases.
-
-### 3. Iterate Quickly
-```python
-# Test → Improve → Test again
-results1 = evaluator.run()
-# Make improvements to your AI
-results2 = evaluator.run()
-# Compare results
-```
-
-### 4. Mix Metrics
-Different metrics reveal different insights:
-```python
-metrics=["exact_match", "fuzzy_match", "contains"]
-```
-
-### 5. Track Progress Over Time
-Use descriptive run names:
-```python
-config={"run_name": "v2-with-context-improvement"}
-```
-
-## Common Patterns
-
-### Testing a Chatbot
-```python
-def chatbot(message):
-    # Your chatbot logic
-    return response
-
-evaluator = Evaluator(
-    task=chatbot,
-    dataset="chatbot-conversations",
-    metrics=["fuzzy_match", "contains"]
-)
-```
-
-### Testing a Classifier
-```python
-def classify_sentiment(text):
-    # Returns "positive", "negative", or "neutral"
-    return classification
-
-evaluator = Evaluator(
-    task=classify_sentiment,
-    dataset="sentiment-test-cases",
-    metrics=["exact_match"]  # Classification needs exact matches
-)
-```
-
-### Testing a Summarizer
-```python
-def summarize(text):
-    # Returns summary
-    return summary
-
-# Custom metric for summaries
-def summary_quality(output, expected):
-    # Check if key points are covered
-    key_points = expected.split("|")  # Pipe-separated key points
-    covered = sum(1 for point in key_points if point in output)
-    return covered / len(key_points)
-
-evaluator = Evaluator(
-    task=summarize,
-    dataset="summarization-tests",
-    metrics=["fuzzy_match", summary_quality]
-)
-```
-
-## Troubleshooting
-
-### "Dataset not found"
-- Check the dataset name matches exactly (case-sensitive)
-- Ensure you're connected to the right Langfuse project
-- Verify the dataset exists in Langfuse dashboard
-
-### "Invalid credentials"
-- Double-check your API keys
-- Ensure environment variables are set correctly
-- Try refreshing your API keys in Langfuse
-
-### Evaluation is slow
-- Reduce concurrency: `config={"max_concurrency": 5}`
-- Add timeout: `config={"timeout": 10.0}`
-- Use fewer test cases for quick iterations
-
-### Metrics returning 0
-- Check if expected_output is set in your dataset
-- Verify output format matches what metrics expect
-- Use print statements to debug
+---
 
 ## Advanced Configuration
 
+### Concurrency & Timeouts
+Control execution speed and limits via the `config` dictionary:
+
 ```python
 evaluator = Evaluator(
-    task=my_ai,
-    dataset="comprehensive-tests",
-    metrics=["exact_match", "fuzzy_match", custom_metric],
+    ...,
     config={
-        # Performance settings
-        "max_concurrency": 10,     # Parallel evaluations
-        "timeout": 30.0,           # Seconds per test
-        
-        # Tracking settings  
-        "run_name": "experiment-42",
-        "run_metadata": {
-            "model": "gpt-4",
-            "temperature": 0.7,
-            "version": "2.1.0"
-        },
-        
-        # Langfuse settings (if not using env vars)
-        "langfuse_public_key": "pk-...",
-        "langfuse_secret_key": "sk-...",
-        "langfuse_host": "https://cloud.langfuse.com"
+        "max_concurrency": 5,  # Limit parallel requests (default: 10)
+        "timeout": 60.0,       # Seconds per item (default: 30)
+        "run_name": "nightly-build-v1"
     }
-)
-
-# Run with export options
-results = evaluator.run(
-    show_progress=True,      # Show live status display
-    auto_save=True,          # Auto-save results
-    save_format="json"       # Format: "json" or "csv"
 )
 ```
 
-## Next Steps
+### Parallel Execution in Python
+You can also run multi-model evaluations programmatically:
 
-1. **Create more comprehensive datasets** - Cover edge cases and failure modes
-2. **Build custom metrics** - Measure what matters for your use case
-3. **Automate evaluation** - Run evaluations in CI/CD pipelines
-4. **Track improvements** - Use Langfuse dashboard to visualize progress
+```python
+from llm_eval import Evaluator
 
-## Getting Help
+results = Evaluator.run_parallel([
+    {"name": "model-a", "task": task_a, "dataset": "ds", "metrics": ["exact_match"]},
+    {"name": "model-b", "task": task_b, "dataset": "ds", "metrics": ["exact_match"]},
+])
+```
 
-- Check the examples folder for more use cases
-- View API documentation for detailed reference
-- Contact your system administrator for technical issues
+---
 
-Happy evaluating! 🚀
+## Troubleshooting
+
+- **"Dataset not found"**: Check your Langfuse project and dataset name.
+- **"Missing credentials"**: Ensure `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set.
+- **Rate Limits**: If your LLM provider errors out, reduce `max_concurrency` in config.
