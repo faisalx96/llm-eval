@@ -16,7 +16,7 @@ from rich.live import Live
 
 from .results import EvaluationResult
 from .dataset import LangfuseDataset
-from .progress import ProgressTracker
+from .progress import ProgressTracker, ProgressObserver
 from .observers import (
     EvaluationObserver,
     NullEvaluationObserver,
@@ -28,82 +28,81 @@ from ..metrics.registry import get_metric
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
 from ..server.app import UIServer
 import json
+import logging
+
+logger = logging.getLogger(__name__)
  
 
 
 console = Console()
 
 
+from .config import EvaluatorConfig
+
 class Evaluator:
     """
     Simple evaluator for LLM tasks using Langfuse datasets.
-    
-    Example:
-        evaluator = Evaluator(
-            task=my_llm_function,
-            dataset="qa-test-set",
-            metrics=["exact_match", "response_time"]
-        )
-        results = evaluator.run()
     """
     
     def __init__(
         self,
         task: Any,
-        dataset: str, 
+        dataset: Union[str, LangfuseDataset], 
         metrics: List[Union[str, Callable]],
-        config: Optional[Dict[str, Any]] = None,
+        config: Optional[Union[Dict[str, Any], EvaluatorConfig]] = None,
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
+        langfuse_client: Optional[Langfuse] = None,
     ):
         """
         Initialize the evaluator.
-        
-        Args:
-            task: The LLM task to evaluate (function, chain, agent, etc.)
-            dataset: Name of the Langfuse dataset to use
-            metrics: List of metric names or callable functions
-            config: Optional configuration dict with keys:
-                - langfuse_public_key: Override env variable
-                - langfuse_secret_key: Override env variable
-                - langfuse_host: Override env variable
-                - max_concurrency: Max parallel evaluations (default: 10)
-                - timeout: Timeout per evaluation in seconds (default: 30)
-                - run_name: Name for this evaluation run
-                - run_metadata: Metadata to attach to the run
         """
-        self.config: Dict[str, Any] = dict(config or {})
+        # Parse config
+        if isinstance(config, EvaluatorConfig):
+            self.config = config
+        else:
+            self.config = EvaluatorConfig(**(config or {}))
+            
+        # Override model if provided explicitly
+        if model is not None:
+            if isinstance(model, str):
+                self.config.model = model
+                self.config.models = [model]
+            else:
+                self.config.models = list(model)
+                self.config.model = model[0] if model else None
+
         self.task = task
-        self.dataset_name = dataset
         self._raw_metrics = list(metrics)
         self.metrics = self._prepare_metrics(metrics)
         
         # Initialize Langfuse client
-        self.client = self._init_langfuse()
+        self.client = langfuse_client or self._init_langfuse()
         
         # Load and validate dataset
-        self.dataset = LangfuseDataset(self.client, dataset)
+        if isinstance(dataset, str):
+            self.dataset_name = dataset
+            self.dataset = LangfuseDataset(self.client, dataset)
+        else:
+            self.dataset = dataset
+            self.dataset_name = getattr(dataset, "dataset_name", "unknown")
         
         # Prepare task adapter
         self.task_adapter = auto_detect_task(task, self.client)
         
-        # Configuration
-        self.max_concurrency = self.config.get('max_concurrency', 10)
-        self.timeout = self.config.get('timeout', 30.0)
-        self.run_name = self.config.get('run_name', f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
-        self.run_metadata = dict(self.config.get('run_metadata', {}) or {})
-        self.models = self._normalize_models(
-            model
-            if model is not None
-            else self.config.get('models', self.config.get('model'))
-        )
-        if not self.models and 'model' in self.run_metadata:
-            self.models = self._normalize_models(self.run_metadata.get('model'))
-        self.model_name = self.models[0] if self.models else None
+        # Configuration shortcuts
+        self.max_concurrency = self.config.max_concurrency
+        self.timeout = self.config.timeout
+        self.run_name = self.config.run_name
+        self.run_metadata = self.config.run_metadata
+        
+        # Model handling
+        self.models = self.config.models or []
+        self.model_name = self.config.model
+        
         if self.model_name:
             self.run_metadata.setdefault('model', self.model_name)
-            self.config['model'] = self.model_name
-        self.config['run_metadata'] = self.run_metadata
+            
         base_observer = observer or NullEvaluationObserver()
         self.observer = CompositeEvaluationObserver([base_observer])
 
@@ -129,7 +128,8 @@ class Evaluator:
                         if val:
                             meta["trace_id"] = str(val)
                             break
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to extract trace_id from {name}: {e}")
                     continue
         # URL: try common getters, then attribute
         url = None
@@ -139,7 +139,8 @@ class Evaluator:
                     url = getattr(trace, getter)()
                     if url:
                         break
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to get URL via {getter}: {e}")
                     url = None
         if not url and hasattr(trace, 'url'):
             try:
@@ -183,7 +184,7 @@ class Evaluator:
             "model": self.model_name,
             "version": version,
             "git_sha": git_sha,
-            "cli_invocation": self.config.get("cli_invocation"),
+            "cli_invocation": self.config.cli_invocation,
             "metric_names": list(self.metrics.keys()),
             "langfuse_host": getattr(self, 'langfuse_host', None),
             "langfuse_project_id": getattr(self, 'langfuse_project_id', None),
@@ -207,12 +208,13 @@ class Evaluator:
                 from dotenv import load_dotenv
                 load_dotenv()
             except ImportError:
+                logger.warning("python-dotenv not installed, skipping .env loading")
                 pass  # dotenv not installed, skip
         
         # Get credentials from config or environment
-        public_key = self.config.get('langfuse_public_key') or os.getenv('LANGFUSE_PUBLIC_KEY')
-        secret_key = self.config.get('langfuse_secret_key') or os.getenv('LANGFUSE_SECRET_KEY')
-        host = self.config.get('langfuse_host') or os.getenv('LANGFUSE_HOST')
+        public_key = self.config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
+        secret_key = self.config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
+        host = self.config.langfuse_host or os.getenv('LANGFUSE_HOST')
         
         # Validate required credentials
         if not public_key:
@@ -245,7 +247,7 @@ class Evaluator:
             # Optional project id for deep-links
             try:
                 self.langfuse_project_id = (
-                    self.config.get('langfuse_project_id')
+                    self.config.langfuse_project_id
                     or os.getenv('LANGFUSE_PROJECT_ID')
                 )
             except Exception:
@@ -261,29 +263,7 @@ class Evaluator:
                 )
             raise LangfuseConnectionError(f"Failed to connect to Langfuse: {e}")
     
-    @staticmethod
-    def _normalize_models(model_spec: Optional[Union[str, Sequence[str]]]) -> List[str]:
-        """Normalize model input into a list of unique model names."""
-        if model_spec is None:
-            return []
-        models: List[str] = []
-        if isinstance(model_spec, str):
-            candidates = [m.strip() for m in model_spec.split(",")]
-        else:
-            candidates = []
-            for item in model_spec:
-                if isinstance(item, str):
-                    candidates.append(item.strip())
-                elif item is None:
-                    continue
-                else:
-                    raise ValueError("Model entries must be strings")
-        for name in candidates:
-            if not name:
-                continue
-            if name not in models:
-                models.append(name)
-        return models
+
 
     def _prepare_metrics(self, metrics: List[Union[str, Callable]]) -> Dict[str, Callable]:
         """Convert metric list to dict of callables."""
@@ -316,7 +296,8 @@ class Evaluator:
         if callable(callback):
             try:
                 callback(run_id=self.run_name, **payload)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Observer callback {method} failed: {e}")
                 pass
     
     def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = True, save_format: str = "csv", keep_server_alive: bool = True) -> Union[EvaluationResult, List[EvaluationResult]]:
@@ -400,7 +381,7 @@ class Evaluator:
         if show_table:
             desired_port = 0
             try:
-                desired_port = int(self.config.get('ui_port', 0))
+                desired_port = int(self.config.ui_port)
             except Exception:
                 desired_port = 0
             ui_server = UIServer(host="127.0.0.1", port=desired_port)
@@ -456,42 +437,12 @@ class Evaluator:
                     snap = tracker.get_snapshot()
                     if ui_server is not None:
                         ui_server.run_state.set_snapshot(snap)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to update UI snapshot: {e}")
                     pass
                 await asyncio.sleep(2)
 
-        html_update_task = asyncio.create_task(update_html())
 
-        semaphore = asyncio.Semaphore(self.max_concurrency)
-        tasks = []
-
-        for idx, item in enumerate(items):
-            task = self._evaluate_item(
-                item, idx, semaphore, tracker
-            )
-            tasks.append(task)
-
-        eval_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        html_update_task.cancel()
-        try:
-            await html_update_task
-        except asyncio.CancelledError:
-            pass
-
-        # Final snapshot
-        try:
-            if ui_server is not None:
-                snap = tracker.get_snapshot()
-                ui_server.run_state.set_snapshot(snap)
-        except Exception:
-            pass
-
-        for idx, eval_result in enumerate(eval_results):
-            if isinstance(eval_result, Exception):
-                result.add_error(f"item_{idx}", str(eval_result))
-            else:
-                result.add_result(f"item_{idx}", eval_result)
 
         with live_context as live:
             if dashboard and live:
@@ -503,11 +454,12 @@ class Evaluator:
             semaphore = asyncio.Semaphore(self.max_concurrency)
             tasks = []
 
+            async def _bounded_evaluate(idx, item):
+                async with semaphore:
+                    return await self._evaluate_item(idx, item, tracker)
+
             for idx, item in enumerate(items):
-                task = self._evaluate_item(
-                    item, idx, semaphore, tracker
-                )
-                tasks.append(task)
+                tasks.append(_bounded_evaluate(idx, item))
 
             eval_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -555,7 +507,7 @@ class Evaluator:
         # Auto-save if requested (message printed by save_* methods)
         if auto_save:
             try:
-                result.save(format=save_format)
+                result.save(format=save_format, output_dir=self.config.output_dir)
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
         
@@ -675,15 +627,21 @@ class Evaluator:
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = self.run_name
+        
+        # Create base config dict from Pydantic model
+        base_config_dict = self.config.model_dump(exclude={'models', 'model', 'run_name', 'run_metadata'})
+        
         for idx, model_name in enumerate(self.models, start=1):
-            run_config = copy.deepcopy(self.config)
-            run_config.pop('models', None)
+            run_config = copy.deepcopy(base_config_dict)
             run_config['model'] = model_name
-            run_metadata = dict(run_config.get('run_metadata') or {})
+            
+            run_metadata = dict(self.run_metadata or {})
             run_metadata['model'] = model_name
             run_config['run_metadata'] = run_metadata
-            run_name = run_config.get('run_name') or f"{base_name}-{model_name or idx}"
+            
+            run_name = f"{base_name}-{model_name or idx}"
             run_config['run_name'] = run_name
+            
             runs.append(
                 {
                     "name": run_name,
@@ -703,147 +661,147 @@ class Evaluator:
             print_summary=True,
         )
     
-    async def _evaluate_item(
-        self, 
-        item: Any, 
-        index: int, 
-        semaphore: asyncio.Semaphore, 
-        tracker: ProgressTracker,
-    ) -> Dict[str, Any]:
-        """Evaluate a single dataset item with live status updates."""
-        async with semaphore:
-            try:
-                # Start timing and update status to in_progress
-                tracker.start_item(index)
+    async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
+        """
+        Evaluate a single item, updating the progress tracker.
+        """
+        try:
+            # Start item
+            tracker.start_item(index)
+            
+            self._notify_observer(
+                "on_item_start",
+                item_index=index,
+                payload={
+                    "input": item.input,
+                    "expected": getattr(item, 'expected_output', None),
+                },
+            )
+            
+            # Run task with Langfuse tracing
+            with item.run(
+                run_name=self.run_name,
+                run_metadata={**self.run_metadata, "item_index": index}
+            ) as trace:
+                # Capture initial trace meta (best-effort)
+                try:
+                    meta = self._extract_trace_meta(trace)
+                    tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
+                except Exception:
+                    pass
+                # Execute task
+                output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
                 
-                self._notify_observer(
-                    "on_item_start",
-                    item_index=index,
-                    payload={
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                    },
-                )
+                # Update output in status
+                tracker.update_output(index, output)
                 
-                # Run task with Langfuse tracing
-                with item.run(
-                    run_name=self.run_name,
-                    run_metadata={**self.run_metadata, "item_index": index}
-                ) as trace:
-                    # Capture initial trace meta (best-effort)
+                # Compute metrics in parallel
+                scores = {}
+                
+                async def _run_single_metric(m_name: str, m_func: Callable):
                     try:
-                        meta = self._extract_trace_meta(trace)
-                        tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
-                    except Exception:
-                        pass
-                    # Execute task
-                    output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
-                    
-                    # Update output in status
-                    tracker.update_output(index, output)
-                    
-                    # Compute metrics
-                    scores = {}
-                    for metric_name, metric_func in self.metrics.items():
-                        try:
-                            # Update metric status to computing
-                            tracker.set_metric_computing(index, metric_name)
-                            
-                            score = await self._compute_metric(
-                                metric_func, 
-                                output, 
-                                getattr(item, 'expected_output', None),
-                                item.input
-                            )
-                            scores[metric_name] = score
-                            self._notify_observer(
-                                "on_metric_result",
-                                item_index=index,
-                                metric_name=metric_name,
-                                score=score,
-                                metadata={
-                                    "input": item.input,
-                                    "expected": getattr(item, 'expected_output', None),
-                                },
-                            )
+                        # Update metric status to computing
+                        tracker.set_metric_computing(index, m_name)
+                        
+                        score = await self._compute_metric(
+                            m_func, 
+                            output, 
+                            getattr(item, 'expected_output', None),
+                            item.input
+                        )
+                        
+                        self._notify_observer(
+                            "on_metric_result",
+                            item_index=index,
+                            metric_name=m_name,
+                            score=score,
+                            metadata={
+                                "input": item.input,
+                                "expected": getattr(item, 'expected_output', None),
+                            },
+                        )
 
-                            # Normalize {'score': x, 'metadata': {...}} shape
-                            def _flatten_meta(md):
-                                flat = {}
-                                try:
-                                    for k, v in (md or {}).items():
-                                        if isinstance(v, dict):
-                                            for k2, v2 in v.items():
-                                                flat[f"{k}_{k2}"] = v2
-                                        else:
-                                            flat[str(k)] = v
-                                except Exception:
-                                    pass
-                                return flat
-
-                            main_val = score
-                            meta_map = {}
-                            if isinstance(score, dict):
-                                main_val = score.get('score', None)
-                                meta_map = _flatten_meta(score.get('metadata', {}))
-
-                            # Update metric value in status using the main score
-                            tracker.update_metric(index, metric_name, main_val, meta_map)
-
-                            # Log score to Langfuse (use main score if available)
+                        # Normalize {'score': x, 'metadata': {...}} shape
+                        def _flatten_meta(md):
+                            flat = {}
                             try:
-                                log_val = main_val if isinstance(main_val, (int, float, bool)) else (
-                                    score if isinstance(score, (int, float, bool)) else str(main_val if main_val is not None else score)
-                                )
-                                trace.score_trace(
-                                    name=metric_name,
-                                    value=log_val,
-                                    data_type=self._get_score_type(log_val)
+                                for k, v in (md or {}).items():
+                                    if isinstance(v, dict):
+                                        for k2, v2 in v.items():
+                                            flat[f"{k}_{k2}"] = v2
+                                    else:
+                                        flat[str(k)] = v
+                            except Exception:
+                                pass
+                            return flat
+
+                        main_val = score
+                        meta_map = {}
+                        if isinstance(score, dict):
+                            main_val = score.get('score', None)
+                            meta_map = _flatten_meta(score.get('metadata', {}))
+
+                        # Update metric value in status using the main score
+                        tracker.update_metric(index, m_name, main_val, meta_map)
+
+                        # Log score to Langfuse (use main score if available)
+                        if trace:
+                            try:
+                                trace.score(
+                                    name=m_name,
+                                    value=main_val if isinstance(main_val, (int, float)) else 0,
+                                    comment=str(score) if not isinstance(main_val, (int, float)) else None
                                 )
                             except Exception:
                                 pass
-                            
-                        except Exception as e:
-                            scores[metric_name] = {"error": str(e)}
-                            tracker.set_metric_error(index, metric_name)
-                    
-                    # Update status to completed with timing
-                    tracker.complete_item(index)
-                    
-                    result_payload = {
+                        
+                        return m_name, score
+                    except Exception as e:
+                        # Assuming 'logger' is defined elsewhere or needs to be imported
+                        # For now, just using console.print as a placeholder if logger is not available
+                        # If logger is available, replace with logger.error
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Metric {m_name} failed: {e}")
+                        tracker.set_metric_error(index, m_name)
+                        return m_name, None
+
+                # Launch all metrics
+                metric_tasks = [
+                    _run_single_metric(name, func) 
+                    for name, func in self.metrics.items()
+                ]
+                
+                if metric_tasks:
+                    results = await asyncio.gather(*metric_tasks)
+                    scores = {k: v for k, v in results if v is not None}
+                
+                # Update status to completed with timing
+                tracker.complete_item(index)
+                
+                self._notify_observer(
+                    "on_item_complete",
+                    item_index=index,
+                    result={
                         "output": output,
                         "scores": scores,
-                        "success": True,
-                        "time": tracker.item_statuses[index].get('end_time', 0) - tracker.item_statuses[index].get('start_time', 0),
-                        "input": item.input,
-                        "expected": getattr(item, 'expected_output', None),
-                        "trace_id": tracker.item_statuses[index].get('trace_id'),
-                        "trace_url": tracker.item_statuses[index].get('trace_url')
-                    }
+                    },
+                )
+                
+                return {
+                    "input": item.input,
+                    "output": output,
+                    "expected": getattr(item, 'expected_output', None),
+                    "scores": scores,
+                    "trace_id": meta.get('trace_id'),
+                    "trace_url": meta.get('trace_url'),
+                    "success": True,
+                }
 
-                    self._notify_observer(
-                        "on_item_complete",
-                        item_index=index,
-                        result=result_payload,
-                    )
-                    return result_payload
-                    
-            except asyncio.TimeoutError:
-                tracker.fail_item_timeout(index, self.timeout)
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=f"timeout after {self.timeout}s",
-                )
-                raise TimeoutError(f"Evaluation timed out after {self.timeout}s")
-            except Exception as e:
-                tracker.fail_item(index, str(e))
-                self._notify_observer(
-                    "on_item_error",
-                    item_index=index,
-                    error=str(e),
-                )
-                raise RuntimeError(f"Task execution failed: {e}")
+        except Exception as e:
+            tracker.fail_item(index, str(e))
+            self._notify_observer("on_item_error", item_index=index, error=str(e))
+            return Exception(str(e))
 
 
 def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:

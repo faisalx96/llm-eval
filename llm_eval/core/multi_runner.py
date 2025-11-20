@@ -11,10 +11,7 @@ from rich.live import Live
 from .dashboard import RunDashboard, console_supports_live
 from .evaluator import Evaluator
 from .results import EvaluationResult, render_results_summary, summary_display_enabled
-from .run_spec import RunSpec
-from pathlib import Path
-
-
+from .config import RunSpec, EvaluatorConfig
 
 class MultiModelRunner:
     """Coordinate multiple Evaluator instances in parallel."""
@@ -35,12 +32,14 @@ class MultiModelRunner:
             models_value = def_dict.get("models")
             if models_value is None:
                 return [def_dict]
-            # Use Evaluator's normalize logic
-            model_list = Evaluator._normalize_models(models_value)
-            if not model_list:
+            
+            # Use Pydantic validator logic via Config
+            normalized = EvaluatorConfig.normalize_models(models_value)
+            if not normalized:
                 return [def_dict]
+                
             expanded = []
-            for model_name in model_list:
+            for model_name in normalized:
                 clone = dict(def_dict)
                 clone.pop("models", None)
                 clone["model"] = model_name
@@ -58,72 +57,43 @@ class MultiModelRunner:
 
             for model_variant in expanded_defs:
                 current_idx = len(specs) + 1
-
-                if "task" not in model_variant or not callable(model_variant["task"]):
-                    raise ValueError(f"Run #{idx} missing callable 'task'")
-                if "dataset" not in model_variant:
-                    raise ValueError(f"Run #{idx} missing 'dataset'")
-                if "metrics" not in model_variant:
-                    raise ValueError(f"Run #{idx} missing 'metrics'")
-
-                task_callable = model_variant["task"]
-                dataset = model_variant["dataset"]
-                metrics_value = model_variant["metrics"]
-
-                if isinstance(metrics_value, str):
-                    metrics = [m.strip() for m in metrics_value.split(",") if m.strip()]
-                elif isinstance(metrics_value, (list, tuple, set)):
-                    metrics = []
-                    for metric in metrics_value:
-                        if isinstance(metric, str):
-                            metric_name = metric.strip()
-                            if metric_name:
-                                metrics.append(metric_name)
-                        elif callable(metric):
-                            metrics.append(metric)
-                        else:
-                            raise ValueError(f"Run #{idx} metric entries must be str or callable")
-                else:
-                    raise ValueError(f"Run #{idx} metrics must be string or list")
-
-                if not metrics:
-                    raise ValueError(f"Run #{idx} has no metrics")
-
-                config = dict(model_variant.get("config") or {})
-                config.pop("models", None)
+                
+                # Prepare config for Pydantic
+                raw_config = dict(model_variant.get("config") or {})
+                raw_config.pop("models", None)
+                
+                # Merge metadata
                 metadata = dict(model_variant.get("metadata") or {})
                 model_name = model_variant.get("model")
                 if model_name:
                     metadata.setdefault("model", model_name)
-                    config["model"] = model_name
+                    raw_config["model"] = model_name
+                
                 if metadata:
-                    merged_meta = {**metadata, **dict(config.get("run_metadata") or {})}
-                    config["run_metadata"] = merged_meta
-
-                base_name = model_variant.get("name") or config.get("run_name") or f"run-{current_idx}"
+                    merged_meta = {**metadata, **dict(raw_config.get("run_metadata") or {})}
+                    raw_config["run_metadata"] = merged_meta
+                
+                # Determine run name
+                base_name = model_variant.get("name") or raw_config.get("run_name") or f"run-{current_idx}"
                 name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(str(model_name)) else base_name
-                config.setdefault("run_name", name)
+                raw_config["run_name"] = name
 
-                task_file = model_variant.get("task_file") or getattr(task_callable, "__module__", "<python-callable>")
-                task_function = model_variant.get("task_function") or getattr(task_callable, "__name__", "<callable>")
-
-                output_value = model_variant.get("output")
-                output_path = None
-                if output_value:
-                    output_path = Path(output_value).expanduser()
-
-                specs.append(
-                    RunSpec(
+                # Create RunSpec using Pydantic
+                try:
+                    spec = RunSpec(
                         name=name,
-                        task=task_callable,
-                        dataset=dataset,
-                        metrics=metrics,
-                        task_file=str(task_file),
-                        task_function=str(task_function),
-                        config=config,
-                        output_path=output_path,
+                        task=model_variant.get("task"),
+                        dataset=model_variant.get("dataset"),
+                        metrics=model_variant.get("metrics"),
+                        config=EvaluatorConfig(**raw_config),
+                        metadata=metadata,
+                        output_path=model_variant.get("output"),
+                        task_file=str(model_variant.get("task_file") or getattr(model_variant.get("task"), "__module__", "<python-callable>")),
+                        task_function=str(model_variant.get("task_function") or getattr(model_variant.get("task"), "__name__", "<callable>"))
                     )
-                )
+                    specs.append(spec)
+                except Exception as e:
+                    raise ValueError(f"Run #{idx} invalid: {e}")
 
         if not specs:
             raise ValueError("No valid run configurations provided")
@@ -138,14 +108,14 @@ class MultiModelRunner:
     ) -> List[EvaluationResult]:
         dashboard_configs: List[Dict[str, Any]] = []
         for spec in self.specs:
-            model_name = spec.config.get("model") or (spec.config.get("run_metadata") or {}).get("model")
+            model_name = spec.config.model or spec.config.run_metadata.get("model")
             dashboard_configs.append(
                 {
-                    "run_id": spec.run_name,
+                    "run_id": spec.name,
                     "display_name": spec.name,
                     "dataset": spec.dataset,
                     "model": model_name,
-                    "config": spec.config,
+                    "config": spec.config.model_dump(),
                 }
             )
 
@@ -153,15 +123,14 @@ class MultiModelRunner:
         dashboard = RunDashboard(dashboard_configs, enabled=live_enabled, console=self.console)
 
         async def _run_spec(spec: RunSpec):
-            observer = dashboard.create_observer(spec.run_name)
-            model_option = spec.config.get("model") or spec.config.get("models")
+            observer = dashboard.create_observer(spec.name)
+            # Pass config object directly
             evaluator = Evaluator(
                 task=spec.task,
                 dataset=spec.dataset,
                 metrics=spec.metrics,
                 config=spec.config,
                 observer=observer,
-                model=model_option,
             )
             try:
                 result = await evaluator.arun(
@@ -172,7 +141,7 @@ class MultiModelRunner:
                 )
                 return result
             except Exception as exc:
-                dashboard.mark_run_exception(spec.run_name, str(exc))
+                dashboard.mark_run_exception(spec.name, str(exc))
                 raise
 
         tasks = [asyncio.create_task(_run_spec(spec)) for spec in self.specs]
@@ -205,7 +174,7 @@ class MultiModelRunner:
                 final_results.append(result)
 
         if errors:
-            summary = ", ".join(f"{spec.run_name}: {err}" for spec, err in errors)
+            summary = ", ".join(f"{spec.name}: {err}" for spec, err in errors)
             raise RuntimeError(f"One or more runs failed: {summary}")
 
         return final_results

@@ -2,9 +2,34 @@
 
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-class ProgressTracker:
+@runtime_checkable
+class ProgressObserver(Protocol):
+    """Protocol for observing progress of evaluation items."""
+    
+    def start_item(self, index: int) -> None: ...
+    
+    def update_trace_info(self, index: int, trace_id: Optional[str], trace_url: Optional[str]) -> None: ...
+    
+    def update_output(self, index: int, output: Any) -> None: ...
+    
+    def set_metric_computing(self, index: int, metric: str) -> None: ...
+    
+    def update_metric(self, index: int, metric: str, value: Any, metadata: Optional[Dict[str, Any]] = None) -> None: ...
+    
+    def set_metric_error(self, index: int, metric: str) -> None: ...
+    
+    def complete_item(self, index: int) -> None: ...
+    
+    def fail_item(self, index: int, error: str) -> None: ...
+    
+    def fail_item_timeout(self, index: int, timeout: float) -> None: ...
+    
+    def get_snapshot(self) -> Dict[str, Any]: ...
+
+
+class ProgressTracker(ProgressObserver):
     """Tracks the progress and state of evaluation items for the UI."""
 
     def __init__(self, items: List[Any], metrics: List[str]):

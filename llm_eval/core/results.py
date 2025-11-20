@@ -222,19 +222,21 @@ class EvaluationResult:
         """Get list of successful item IDs."""
         return list(self.results.keys())
     
-    def save_json(self, filepath: Optional[str] = None) -> str:
+    def save_json(self, filepath: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Save results to JSON file.
         
         Args:
             filepath: Optional custom filepath. If not provided, generates one.
+            output_dir: Directory to save to if filepath is not provided.
             
         Returns:
             Path to the saved file
         """
         if filepath is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filepath = f"eval_results_{self.dataset_name}_{timestamp}.json"
+            filename = f"eval_results_{self.dataset_name}_{timestamp}.json"
+            filepath = os.path.join(output_dir, filename)
         
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -244,19 +246,21 @@ class EvaluationResult:
         
         return str(filepath)
     
-    def save_csv(self, filepath: Optional[str] = None) -> str:
+    def save_csv(self, filepath: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Save results to CSV file for spreadsheet analysis.
         
         Args:
             filepath: Optional custom filepath. If not provided, generates one.
+            output_dir: Directory to save to if filepath is not provided.
             
         Returns:
             Path to the saved file
         """
         if filepath is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filepath = f"eval_results_{self.dataset_name}_{timestamp}.csv"
+            filename = f"eval_results_{self.dataset_name}_{timestamp}.csv"
+            filepath = os.path.join(output_dir, filename)
         
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -364,22 +368,23 @@ class EvaluationResult:
         
         return str(filepath)
     
-    def save(self, format: str = "json", filepath: Optional[str] = None) -> str:
+    def save(self, format: str = "json", filepath: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Save results in specified format.
         
         Args:
             format: Export format - "json" or "csv"
             filepath: Optional custom filepath
+            output_dir: Directory to save to if filepath is not provided.
             
         Returns:
             Path to the saved file
         """
         saved_path: Optional[str] = None
         if format.lower() == "json":
-            saved_path = self.save_json(filepath)
+            saved_path = self.save_json(filepath, output_dir=output_dir)
         elif format.lower() == "csv":
-            saved_path = self.save_csv(filepath)
+            saved_path = self.save_csv(filepath, output_dir=output_dir)
         else:
             raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")
         self.last_saved_path = saved_path
