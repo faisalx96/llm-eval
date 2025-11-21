@@ -6,14 +6,14 @@ import json
 import sys
 import importlib.util
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Optional, Union
 import shlex
 import asyncio
 
 from rich.console import Console
 from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner
-from .core.run_spec import RunSpec
+from .core.config import RunSpec
 
 
 console = Console()
@@ -53,7 +53,6 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
         raise ValueError("Multi-run config must be a list of run definitions")
 
     specs: List[RunSpec] = []
-    seen_names: Dict[str, int] = {}
     base_dir = config_path.parent
 
     for idx, entry in enumerate(data, start=1):
@@ -104,15 +103,9 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
                 merged_meta = {**metadata, **dict(config.get("run_metadata") or {})}
                 config["run_metadata"] = merged_meta
 
-            base_name = entry.get("name") or config.get("run_name") or f"run-{idx}"
-            final_name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(str(model_name)) else base_name
-            if final_name in seen_names:
-                seen_names[final_name] += 1
-                final_name = f"{final_name}-{seen_names[final_name]}"
-            else:
-                seen_names[final_name] = 1
-
-            config.setdefault("run_name", final_name)
+            base_name = entry.get("name") or config.get("run_name") or task_function
+            run_id, display = Evaluator.build_run_identifiers(base_name, model_name)
+            config["run_name"] = run_id
 
             resolved_output = resolved_output_template
             if resolved_output_template and model_name:
@@ -120,7 +113,8 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
 
             specs.append(
                 RunSpec(
-                    name=final_name,
+                    name=run_id,
+                    display_name=display,
                     task=task_callable,
                     dataset=dataset,
                     metrics=metrics,
@@ -306,6 +300,8 @@ Examples:
             except json.JSONDecodeError as e:
                 console.print(f"[red]Error parsing config JSON: {e}[/red]")
                 sys.exit(1)
+        if "run_name" not in config:
+            config["run_name"] = args.task_function
         # Record CLI invocation for frontend run overview
         try:
             argv_str = ' '.join(shlex.quote(a) for a in sys.argv[1:])

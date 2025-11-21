@@ -61,6 +61,10 @@ class MultiModelRunner:
                 # Prepare config for Pydantic
                 raw_config = dict(model_variant.get("config") or {})
                 raw_config.pop("models", None)
+                task_display = str(
+                    model_variant.get("task_function")
+                    or getattr(model_variant.get("task"), "__name__", "task")
+                )
                 
                 # Merge metadata
                 metadata = dict(model_variant.get("metadata") or {})
@@ -74,14 +78,15 @@ class MultiModelRunner:
                     raw_config["run_metadata"] = merged_meta
                 
                 # Determine run name
-                base_name = model_variant.get("name") or raw_config.get("run_name") or f"run-{current_idx}"
-                name = f"{base_name}-{model_name}" if model_name and not base_name.endswith(str(model_name)) else base_name
+                base_name = model_variant.get("name") or raw_config.get("run_name") or task_display
+                name, display = Evaluator.build_run_identifiers(base_name, model_name)
                 raw_config["run_name"] = name
 
                 # Create RunSpec using Pydantic
                 try:
                     spec = RunSpec(
                         name=name,
+                        display_name=display,
                         task=model_variant.get("task"),
                         dataset=model_variant.get("dataset"),
                         metrics=model_variant.get("metrics"),
@@ -109,10 +114,11 @@ class MultiModelRunner:
         dashboard_configs: List[Dict[str, Any]] = []
         for spec in self.specs:
             model_name = spec.config.model or spec.config.run_metadata.get("model")
+            display_text = spec.display_name or spec.name
             dashboard_configs.append(
                 {
                     "run_id": spec.name,
-                    "display_name": spec.name,
+                    "display_name": display_text,
                     "dataset": spec.dataset,
                     "model": model_name,
                     "config": spec.config.model_dump(),
@@ -148,17 +154,30 @@ class MultiModelRunner:
 
         final_panel = None
         if live_enabled:
-            with Live(
-                dashboard.render(),
-                console=self.console,
-                refresh_per_second=12,
-                screen=True,
-                transient=True,
-                vertical_overflow="crop",
-            ) as live:
-                dashboard.bind(live)
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                final_panel = dashboard.render()
+            dashboard_bound = False
+            try:
+                with Live(
+                    dashboard.render(),
+                    console=self.console,
+                    refresh_per_second=12,
+                    screen=True,
+                    transient=True,
+                    vertical_overflow="crop",
+                ) as live:
+                    dashboard.bind(live)
+                    dashboard_bound = True
+                    try:
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                    except KeyboardInterrupt:
+                        for task in tasks:
+                            task.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                        raise
+                    finally:
+                        final_panel = dashboard.render()
+            finally:
+                if dashboard_bound:
+                    dashboard.shutdown()
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 

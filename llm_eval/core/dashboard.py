@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
+import threading
+import re
 
 from rich import box
 from rich.align import Align
@@ -47,6 +49,7 @@ class RunVisualState:
     latency_count: int = 0
     latency_samples: List[float] = field(default_factory=list)
     status: str = "pending"
+    last_update: Optional[float] = None
     last_error: Optional[str] = None
 
     def success_rate(self) -> float:
@@ -65,12 +68,16 @@ class RunVisualState:
         duration = (self.end_time or time.time()) - self.start_time
         if duration <= 0:
             return 0.0
-        return self.completed / duration
+        processed = self.completed + self.failed
+        return processed / duration
 
     def percent_complete(self) -> float:
         if not self.total_items:
             return 0.0
-        return (self.completed / self.total_items) * 100
+        return ((self.completed + self.failed) / self.total_items) * 100
+
+    def touch(self) -> None:
+        self.last_update = time.time()
 
 
 class RunDashboard:
@@ -89,12 +96,16 @@ class RunDashboard:
         self.order: List[str] = []
         self.live: Optional[Live] = None
         self.start_time = time.time()
+        self._auto_refresh_stop: Optional[threading.Event] = None
+        self._auto_refresh_thread: Optional[threading.Thread] = None
 
         for entry in runs:
             run_id = entry.get("run_id")
             if not run_id:
                 continue
-            display_name = entry.get("display_name") or run_id
+            raw_display = entry.get("display_name") or run_id
+            base = _strip_run_suffix_local(raw_display) or raw_display
+            display_name = base if base.endswith("_task") else f"{base}_task"
             dataset = entry.get("dataset")
             model_name = entry.get("model")
             config = entry.get("config") or {}
@@ -109,6 +120,7 @@ class RunDashboard:
 
     def bind(self, live: Live) -> None:
         self.live = live
+        self._start_auto_refresh()
         self.refresh(force=True)
 
     def create_observer(self, run_id: str) -> EvaluationObserver:
@@ -131,6 +143,7 @@ class RunDashboard:
         state.metric_counts = {m: 0 for m in metrics}
         state.start_time = time.time()
         state.status = "running"
+        state.touch()
         self.refresh()
 
     def record_item_start(self, run_id: str) -> None:
@@ -138,6 +151,7 @@ class RunDashboard:
         if not state:
             return
         state.in_progress += 1
+        state.touch()
         self.refresh()
 
     def record_metric(self, run_id: str, metric_name: str, score: Any) -> None:
@@ -153,6 +167,7 @@ class RunDashboard:
             state.metric_totals[metric_name] = state.metric_totals.get(metric_name, 0.0) + normalized
             state.metric_counts[metric_name] = state.metric_counts.get(metric_name, 0) + 1
         state.metric_last[metric_name] = _format_score(score)
+        state.touch()
         self.refresh()
 
     def record_item_complete(self, run_id: str, elapsed: float) -> None:
@@ -167,6 +182,7 @@ class RunDashboard:
         if state.completed >= state.total_items and state.failed == 0:
             state.status = "completed"
             state.end_time = time.time()
+        state.touch()
         self.refresh()
 
     def record_item_error(self, run_id: str, message: str) -> None:
@@ -176,7 +192,9 @@ class RunDashboard:
         state.failed += 1
         state.in_progress = max(0, state.in_progress - 1)
         state.last_error = message
-        state.status = "error"
+        if state.status == "pending":
+            state.status = "running"
+        state.touch()
         self.refresh()
 
     def mark_run_complete(self, run_id: str) -> None:
@@ -186,6 +204,7 @@ class RunDashboard:
         if state.status != "error":
             state.status = "completed"
         state.end_time = time.time()
+        state.touch()
         self.refresh()
 
     def mark_run_exception(self, run_id: str, error: str) -> None:
@@ -195,12 +214,21 @@ class RunDashboard:
         state.status = "error"
         state.last_error = error
         state.end_time = time.time()
+        state.touch()
         self.refresh(force=True)
 
     def refresh(self, force: bool = False) -> None:
         if not self.enabled or not self.live:
             return
         self.live.update(self.render(), refresh=force)
+
+    def shutdown(self) -> None:
+        if self._auto_refresh_stop:
+            self._auto_refresh_stop.set()
+        if self._auto_refresh_thread:
+            self._auto_refresh_thread.join(timeout=1.0)
+        self._auto_refresh_stop = None
+        self._auto_refresh_thread = None
 
     def render(self) -> Layout:
         layout = Layout()
@@ -256,10 +284,10 @@ class RunDashboard:
             padding=(1, 2),  # More breathing room
             header_style="bold dim white",
         )
-        table.add_column("Model / Dataset", ratio=2)
-        table.add_column("Status", width=10, justify="center")
-        table.add_column("Progress", ratio=3)
-        table.add_column("Latency", ratio=2)
+        table.add_column("Model / Dataset", ratio=2.5)
+        table.add_column("Status", ratio=1.5)
+        table.add_column("Progress", ratio=3.5)
+        table.add_column("Latency", ratio=3)
         table.add_column("Metrics", ratio=3)
 
         if not self.states:
@@ -275,10 +303,12 @@ class RunDashboard:
                 self._render_metrics_compact(state),
             )
             
-        # Align(..., vertical="top") prevents the panel from stretching to fill vertical space
-        return Align(
-            Panel(table, box=box.ROUNDED, title="Active Evaluations", border_style="blue"),
-            vertical="top"
+        return Panel(
+            table,
+            box=box.ROUNDED,
+            title="Active Evaluations",
+            border_style="blue",
+            expand=True,
         )
 
     def _render_footer(self) -> RenderableType:
@@ -302,36 +332,95 @@ class RunDashboard:
         return info
 
     def _render_progress_bar(self, state: RunVisualState) -> RenderableType:
-        total = max(state.total_items, 1)
-        completed = min(state.completed, total)
-        percent = state.percent_complete()
-        
+        processed = state.completed + state.failed
+        total_items = state.total_items or max(processed, 1)
+        pulse = state.total_items == 0 and state.status == "running"
+
         bar = ProgressBar(
-            total=total,
-            completed=completed,
-            width=None, # Auto width
-            pulse=state.total_items == 0 and state.status == "running",
+            total=total_items,
+            completed=min(processed, total_items),
+            width=32,
+            pulse=pulse,
             complete_style="green",
             finished_style="green",
         )
-        
-        # Use a grid to place text to the right of the bar
-        grid = Table.grid(expand=True, padding=(0, 1))
-        grid.add_column(ratio=3)
-        grid.add_column(ratio=1, justify="right")
-        
-        text = Text(f"{state.completed}/{state.total_items} ", style="white")
-        text.append(f"({percent:.0f}%)", style="cyan")
-        
-        grid.add_row(bar, text)
-        return grid
+
+        bar_row = Table.grid(expand=True, padding=(0, 0))
+        bar_row.add_column(ratio=1)
+        bar_row.add_row(bar)
+
+        chips_line = self._render_progress_chips(state)
+        stats_line = self._render_progress_stats(state)
+
+        return Group(bar_row, chips_line, stats_line)
+
+    def _render_progress_chips(self, state: RunVisualState) -> Text:
+        pending_val = "—"
+        if state.total_items:
+            pending_val = str(max(state.total_items - (state.completed + state.failed + state.in_progress), 0))
+
+        chips = Text()
+        chips.append("✔ ", style="green")
+        chips.append(str(state.completed), style="white")
+        chips.append("    ", style="dim")
+        chips.append("× ", style="red")
+        chips.append(str(state.failed), style="white")
+        chips.append("    ", style="dim")
+        chips.append("↻ ", style="yellow")
+        chips.append(str(state.in_progress), style="white")
+        chips.append("    ", style="dim")
+        chips.append("◦ ", style="cyan")
+        chips.append(pending_val, style="white" if state.total_items else "dim")
+        return chips
+
+    def _render_progress_stats(self, state: RunVisualState) -> Text:
+        now = time.time()
+        elapsed = 0.0
+        if state.start_time:
+            elapsed = max(0.0, (state.end_time or now) - state.start_time)
+
+        throughput = state.throughput()
+        eta_text = None
+        if throughput > 0 and state.total_items:
+            remaining = max(0, state.total_items - (state.completed + state.failed))
+            eta_seconds = remaining / throughput if throughput > 0 else 0.0
+            eta_text = _format_duration(eta_seconds)
+
+        parts: List[Text] = []
+        parts.append(Text(f"Elapsed {_format_duration(elapsed)}", style="dim"))
+
+        if eta_text:
+            parts.append(Text(f"ETA {eta_text}", style="cyan"))
+
+        if throughput > 0:
+            parts.append(Text(f"{throughput:.2f}/s", style="white"))
+
+        if not parts:
+            return Text("-", style="dim")
+
+        combined = Text()
+        for idx, part in enumerate(parts):
+            if idx:
+                combined.append(" • ", style="dim")
+            combined.append_text(part)
+        return combined
 
     def _render_latency(self, state: RunVisualState) -> RenderableType:
         if not state.latency_samples:
             return Text("-", style="dim")
         
         # Sparkline
-        data = state.latency_samples[-20:]
+        data = state.latency_samples[-50:]
+        spark_width = 24
+        if len(data) > spark_width:
+            step = len(data) / spark_width
+            sampled = []
+            idx = 0.0
+            for _ in range(spark_width):
+                sampled.append(data[int(idx)])
+                idx += step
+            data = sampled
+
         sparkline = Text("", style="yellow")
         if data:
             min_val = min(data)
@@ -341,12 +430,11 @@ class RunDashboard:
             result = ""
             for val in data:
                 if range_val == 0:
-                    # If variance is 0 but value > 0, show a middle block
-                    # If value is 0, show empty
                     index = 4 if val > 0 else 0
                 else:
                     index = int((val - min_val) / range_val * (len(chars) - 1))
                 result += chars[index]
+            result = result.ljust(spark_width)
             sparkline = Text(result, style="yellow")
 
         # Numeric Stats
@@ -373,7 +461,7 @@ class RunDashboard:
             if state.metric_counts.get(metric):
                 avg_val = state.metric_totals.get(metric, 0.0) / max(1, state.metric_counts[metric])
             
-            text.append(f"{metric}: ", style="dim")
+            text.append(f"{metric}: ", style="bold white")
             text.append(f"{avg_val:.2f}", style="white")
             
         if len(state.metrics) > 3:
@@ -383,13 +471,27 @@ class RunDashboard:
 
     def _render_status_icon(self, state: RunVisualState) -> RenderableType:
         if state.status == "running":
-            return Spinner("dots", style="cyan", text="Running")
+            status_display: RenderableType = Spinner("dots", style="cyan", text="Running")
         elif state.status == "error":
-            return Text("❌ Error", style="red bold")
+            status_display = Text("❌ Error", style="red bold")
         elif state.status == "completed":
-            return Text("✅ Done", style="green bold")
+            status_display = Text("✅ Done", style="green bold")
         else:
-            return Text("⏳ Pending", style="dim")
+            status_display = Text("⏳ Pending", style="dim")
+
+        processed = state.completed + state.failed
+        total_display = state.total_items if state.total_items else "—"
+        counts = Text()
+        counts.append(f"{processed}/{total_display}", style="white")
+        if state.total_items:
+            counts.append(" • ", style="dim")
+            counts.append(f"{state.percent_complete():.0f}%", style="cyan")
+
+        grid = Table.grid(padding=(0, 0))
+        grid.add_column(justify="center", no_wrap=True)
+        grid.add_row(status_display)
+        grid.add_row(counts)
+        return grid
 
     def _row_style(self, state: RunVisualState) -> str:
         return self._status_color(state.status)
@@ -402,6 +504,22 @@ class RunDashboard:
             "completed": "green",
             "error": "red",
         }.get(status, "cyan")
+
+    def _start_auto_refresh(self) -> None:
+        if not self.enabled or self._auto_refresh_thread:
+            return
+        self._auto_refresh_stop = threading.Event()
+
+        def _ticker() -> None:
+            while self.enabled and not self._auto_refresh_stop.is_set():
+                try:
+                    self.refresh(force=True)
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
+        self._auto_refresh_thread = threading.Thread(target=_ticker, daemon=True)
+        self._auto_refresh_thread.start()
 
 
 class _DashboardObserver(EvaluationObserver):
@@ -497,6 +615,7 @@ def _format_duration(duration: float) -> str:
     return f"{hours:d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
 
 
+
 def _latency_percentiles(samples: Sequence[float]) -> Dict[str, float]:
     if not samples:
         return {}
@@ -526,11 +645,21 @@ def _percentile(values: Sequence[float], percentile: float) -> float:
 def _format_latency_value(value: float) -> str:
     if value < 1.0:
         return f"{value * 1000:.0f}ms"
-    if value < 10.0:
-        return f"{value:.1f}s"
-    return f"{value:.0f}s"
+    return f"{round(value):.0f}s"
+
 
 
 def console_supports_live(console: Console) -> bool:
     """Return True when live updates should be rendered for this console."""
     return bool(getattr(console, "is_terminal", False))
+
+
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-\d{8}-\d{6}(?:-.+)?$")
+
+
+def _strip_run_suffix_local(name: str) -> str:
+    """Strip timestamp/model suffix to recover the base name."""
+    match = _RUN_ID_RE.match(name or "")
+    if not match:
+        return name
+    return match.group("base")

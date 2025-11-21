@@ -2,13 +2,14 @@
 
 import asyncio
 import os
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from datetime import datetime
 import time
 import subprocess
 from pathlib import Path
 import copy
 from contextlib import nullcontext
+import re
 
 from langfuse import Langfuse
 from rich.console import Console
@@ -57,11 +58,13 @@ class Evaluator:
         """
         Initialize the evaluator.
         """
+
         # Parse config
         if isinstance(config, EvaluatorConfig):
             self.config = config
         else:
             self.config = EvaluatorConfig(**(config or {}))
+        self._task_name = _derive_task_name(task)
             
         # Override model if provided explicitly
         if model is not None:
@@ -93,7 +96,17 @@ class Evaluator:
         # Configuration shortcuts
         self.max_concurrency = self.config.max_concurrency
         self.timeout = self.config.timeout
-        self.run_name = self.config.run_name
+        base_name_raw = (self.config.run_name or "").strip()
+        base_name_stripped, has_suffix = _strip_run_suffix(base_name_raw)
+        base_name = base_name_stripped or self._task_name
+        if has_suffix:
+            self.run_name = base_name_raw
+            self.display_name = f"{base_name}_task"
+        else:
+            self.run_name, self.display_name = self.build_run_identifiers(
+                base_name=base_name,
+                model_name=self.config.model,
+            )
         self.run_metadata = self.config.run_metadata
         
         # Model handling
@@ -102,9 +115,25 @@ class Evaluator:
         
         if self.model_name:
             self.run_metadata.setdefault('model', self.model_name)
+
+        # Display name for UI: prefer run_name, but keep a readable task hint
+        self.display_name = self.config.run_name
+        if self._task_name and self._task_name not in (self.display_name or ""):
+            self.display_name = f"{self.display_name} [{self._task_name}]"
             
         base_observer = observer or NullEvaluationObserver()
         self.observer = CompositeEvaluationObserver([base_observer])
+
+
+    @staticmethod
+    def build_run_identifiers(base_name: str, model_name: Optional[str]) -> Tuple[str, str]:
+        """Return (run_id_with_suffixes, display_name_for_tui)."""
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_id = f"{base_name}-{timestamp}"
+        if model_name:
+            run_id = f"{run_id}-{model_name}"
+        display = f"{base_name}_task"
+        return run_id, display
 
 
     def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
@@ -403,7 +432,7 @@ class Evaluator:
             dashboard_runs = [
                 {
                     "run_id": self.run_name,
-                    "display_name": self.run_name,
+                    "display_name": self.display_name,
                     "dataset": self.dataset_name,
                     "model": self.model_name,
                     "config": {
@@ -461,7 +490,18 @@ class Evaluator:
             for idx, item in enumerate(items):
                 tasks.append(_bounded_evaluate(idx, item))
 
-            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+            except KeyboardInterrupt:
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                html_update_task.cancel()
+                try:
+                    await html_update_task
+                except asyncio.CancelledError:
+                    pass
+                raise
 
             html_update_task.cancel()
             try:
@@ -488,6 +528,8 @@ class Evaluator:
 
         if live_progress and final_panel is not None:
             console.print(final_panel)
+        if live_progress and dashboard:
+            dashboard.shutdown()
         # Mark evaluation as finished
         result.finish()
         self._notify_observer(
@@ -626,7 +668,7 @@ class Evaluator:
     def _run_multi_model(self, show_progress: bool, auto_save: bool, save_format: str):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
-        base_name = self.run_name
+        base_name = (self.config.run_name or "").strip() or self._task_name
         
         # Create base config dict from Pydantic model
         base_config_dict = self.config.model_dump(exclude={'models', 'model', 'run_name', 'run_metadata'})
@@ -639,12 +681,13 @@ class Evaluator:
             run_metadata['model'] = model_name
             run_config['run_metadata'] = run_metadata
             
-            run_name = f"{base_name}-{model_name or idx}"
+            run_name, display_name = self.build_run_identifiers(base_name, model_name)
             run_config['run_name'] = run_name
             
             runs.append(
                 {
                     "name": run_name,
+                    "display_name": display_name,
                     "task": self.task,
                     "dataset": self.dataset_name,
                     "metrics": self._raw_metrics,
@@ -820,3 +863,30 @@ def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_
         for entry in messages:
             console.print(f"[blue]📁 Results saved to:[/blue] {entry}")
 
+
+def _derive_task_name(task: Any) -> str:
+    """Pick a readable name for a task callable/object."""
+    for attr in ("__qualname__", "__name__"):
+        name = getattr(task, attr, None)
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return "task"
+
+
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{8}-\d{6})(?:-.+)?$")
+
+
+def _strip_run_suffix(name: str) -> Tuple[str, bool]:
+    """If name already has timestamp/model suffix, return base and flag."""
+    m = _RUN_ID_RE.match(name)
+    if not m:
+        return name, False
+    return m.group("base"), True
+
+
+class _RunWithModel:
+    """Small helper to wrap model runs with shared dataset."""
+
+    def __init__(self, evaluator: "Evaluator", model: str):
+        self.evaluator = evaluator
+        self.model = model

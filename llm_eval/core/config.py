@@ -6,7 +6,7 @@ class EvaluatorConfig(BaseModel):
     """Configuration for a single evaluation run."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    run_name: str = Field(default_factory=lambda: f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    run_name: Optional[str] = None
     max_concurrency: int = Field(default=10, ge=1)
     timeout: float = Field(default=30.0, gt=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -44,6 +44,7 @@ class RunSpec(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
+    display_name: Optional[str] = None
     task: Any
     dataset: str
     metrics: List[Union[str, Callable]]
