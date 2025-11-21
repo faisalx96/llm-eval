@@ -5,12 +5,14 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 import math
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from rich import box
 from rich.align import Align
 from rich.columns import Columns
-from rich.console import Console, Group
+from rich.console import Console, Group, RenderableType
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
@@ -86,6 +88,7 @@ class RunDashboard:
         self.states: Dict[str, RunVisualState] = {}
         self.order: List[str] = []
         self.live: Optional[Live] = None
+        self.start_time = time.time()
 
         for entry in runs:
             run_id = entry.get("run_id")
@@ -199,132 +202,194 @@ class RunDashboard:
             return
         self.live.update(self.render(), refresh=force)
 
-    def render(self) -> Panel:
+    def render(self) -> Layout:
+        layout = Layout()
+        layout.split(
+            Layout(name="header", size=3),
+            Layout(name="main"),
+            Layout(name="footer", size=1),
+        )
+        
+        layout["header"].update(self._render_header())
+        layout["main"].update(self._render_main())
+        layout["footer"].update(self._render_footer())
+        
+        return layout
+
+    def _render_header(self) -> RenderableType:
+        # Calculate global stats
+        total_runs = len(self.states)
+        total_items = sum(s.total_items for s in self.states.values())
+        total_completed = sum(s.completed for s in self.states.values())
+        total_failed = sum(s.failed for s in self.states.values())
+        total_in_progress = sum(s.in_progress for s in self.states.values())
+        
+        # Global throughput
+        elapsed_total = time.time() - self.start_time
+        global_throughput = total_completed / elapsed_total if elapsed_total > 0 else 0.0
+        
+        # Global success rate
+        global_success = (total_completed / (total_completed + total_failed) * 100) if (total_completed + total_failed) > 0 else 0.0
+
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="left", ratio=1)
+        grid.add_column(justify="right", ratio=1)
+        
+        title = Text("⚡ LLM-Eval", style="bold magenta")
+        
+        stats = Text()
+        stats.append(f"Time: {_format_duration(elapsed_total)}  ", style="bold white")
+        stats.append(f"Runs: {total_runs}  ", style="bold white")
+        stats.append(f"Items: {total_completed}/{total_items}  ", style="dim white")
+        stats.append(f"Rate: {global_throughput:.1f} it/s  ", style="cyan")
+        stats.append(f"Success: {global_success:.0f}%", style="green" if global_success > 90 else "yellow")
+        
+        grid.add_row(title, stats)
+        
+        return Panel(grid, style="white", box=box.ROUNDED, padding=(0, 1))
+
+    def _render_main(self) -> RenderableType:
         table = Table(
-            box=box.SIMPLE_HEAD,
+            box=box.SIMPLE,
             expand=True,
             show_lines=False,
-            padding=(0, 1),
+            padding=(1, 2),  # More breathing room
+            header_style="bold dim white",
         )
-        table.add_column("Run", ratio=2, overflow="fold")
-        table.add_column("Progress", ratio=5)
-        table.add_column("Metrics", ratio=3, overflow="fold")
+        table.add_column("Model / Dataset", ratio=2)
+        table.add_column("Status", width=10, justify="center")
+        table.add_column("Progress", ratio=3)
+        table.add_column("Latency", ratio=2)
+        table.add_column("Metrics", ratio=3)
 
         if not self.states:
-            table.add_row("No runs", "-", "-")
-        else:
-            for idx, run_id in enumerate(self.order):
-                state = self.states[run_id]
-                table.add_row(
-                    self._render_run_label(state),
-                    self._render_progress(state),
-                    self._render_metrics(state),
-                    style=self._row_style(state),
-                )
-                if idx < len(self.order) - 1:
-                    table.add_row("", "", "")
-
-        return Panel(
-            table,
-            title="Multi-Run Progress" if len(self.states) > 1 else "Run Progress",
-            border_style="cyan",
-            padding=(0, 1),
-            expand=True,
+            return Panel(Align.center("[dim]No runs configured[/dim]"), box=box.ROUNDED)
+            
+        for run_id in self.order:
+            state = self.states[run_id]
+            table.add_row(
+                self._render_run_info(state),
+                self._render_status_icon(state),
+                self._render_progress_bar(state),
+                self._render_latency(state),
+                self._render_metrics_compact(state),
+            )
+            
+        # Align(..., vertical="top") prevents the panel from stretching to fill vertical space
+        return Align(
+            Panel(table, box=box.ROUNDED, title="Active Evaluations", border_style="blue"),
+            vertical="top"
         )
 
-    def _render_run_label(self, state: RunVisualState) -> Text:
-        label = Text(state.display_name, style="bold white")
-        if state.model_name:
-            label.append("\nModel: ", style="cyan")
-            label.append(state.model_name, style="cyan")
-        if state.dataset:
-            label.append("\nDataset: ", style="dim")
-            label.append(state.dataset, style="dim")
-        return label
+    def _render_footer(self) -> RenderableType:
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="left")
+        grid.add_column(justify="right")
+        
+        grid.add_row(
+            Text("Press Ctrl+C to stop", style="dim"),
+            Text(f"v0.1.0 • {datetime.now().strftime('%H:%M:%S')}", style="dim"),
+        )
+        return grid
 
-    def _render_progress(self, state: RunVisualState) -> Group:
+    def _render_run_info(self, state: RunVisualState) -> Text:
+        info = Text()
+        info.append(state.display_name, style="bold white")
+        if state.model_name:
+            info.append(f"\n{state.model_name}", style="cyan")
+        if state.dataset:
+            info.append(f"\n{state.dataset}", style="dim")
+        return info
+
+    def _render_progress_bar(self, state: RunVisualState) -> RenderableType:
         total = max(state.total_items, 1)
         completed = min(state.completed, total)
+        percent = state.percent_complete()
+        
         bar = ProgressBar(
             total=total,
             completed=completed,
-            width=40,
+            width=None, # Auto width
             pulse=state.total_items == 0 and state.status == "running",
+            complete_style="green",
+            finished_style="green",
         )
-        percent = state.percent_complete()
-        spinner_component: Text | Spinner
-        if state.status == "running":
-            spinner_component = Spinner("dots", style="cyan")
-        elif state.status == "error":
-            spinner_component = Text("!", style="red bold")
-        else:
-            spinner_component = Text("✓", style="green")
-        completion_text = Text(f"{state.completed}/{state.total_items or '—'}   {percent:.0f}% complete")
-        bar_and_text = Columns(
-            [
-                bar,
-                Align(completion_text, align="left"),
-            ],
-            expand=False,
-            equal=False,
-            padding=(0, 1),
-        )
-        progress_row = Table.grid(padding=(0, 0))
-        progress_row.add_column(width=3, justify="center")
-        progress_row.add_column()
-        progress_row.add_row(spinner_component, bar_and_text)
+        
+        # Use a grid to place text to the right of the bar
+        grid = Table.grid(expand=True, padding=(0, 1))
+        grid.add_column(ratio=3)
+        grid.add_column(ratio=1, justify="right")
+        
+        text = Text(f"{state.completed}/{state.total_items} ", style="white")
+        text.append(f"({percent:.0f}%)", style="cyan")
+        
+        grid.add_row(bar, text)
+        return grid
 
-        stats = Text()
-        stats.append(Text("Success: ", style="green"))
-        stats.append(Text(str(state.completed)))
-        stats.append(Text("  |  ", style="dim"))
-        stats.append(Text("In progress: ", style="yellow"))
-        stats.append(Text(str(state.in_progress)))
-        stats.append(Text("  |  ", style="dim"))
-        stats.append(Text("Failed: ", style="red"))
-        stats.append(Text(str(state.failed)))
-        pending = max(state.total_items - state.completed - state.in_progress - state.failed, 0)
-        stats.append(Text("  |  ", style="dim"))
-        stats.append(Text("Pending: ", style="cyan"))
-        stats.append(Text(str(pending)))
+    def _render_latency(self, state: RunVisualState) -> RenderableType:
+        if not state.latency_samples:
+            return Text("-", style="dim")
+        
+        # Sparkline
+        data = state.latency_samples[-20:]
+        sparkline = Text("", style="yellow")
+        if data:
+            min_val = min(data)
+            max_val = max(data)
+            range_val = max_val - min_val
+            chars = "  ▂▃▄▅▆▇█"
+            result = ""
+            for val in data:
+                if range_val == 0:
+                    # If variance is 0 but value > 0, show a middle block
+                    # If value is 0, show empty
+                    index = 4 if val > 0 else 0
+                else:
+                    index = int((val - min_val) / range_val * (len(chars) - 1))
+                result += chars[index]
+            sparkline = Text(result, style="yellow")
 
-        status_info = Text()
-        duration_display = _format_duration((state.end_time or time.time()) - state.start_time) if state.start_time else "--:--"
-        status_info.append(Text("Duration: ", style="dim"))
-        status_info.append(Text(duration_display))
+        # Numeric Stats
         percentiles = _latency_percentiles(state.latency_samples)
-        if percentiles:
-            status_info.append(Text("   Latency ", style="dim"))
-            status_info.append(
-                Text(
-                    (
-                        f"P50: {_format_latency_value(percentiles['p50'])}  "
-                        f"P90: {_format_latency_value(percentiles['p90'])}  "
-                        f"P99: {_format_latency_value(percentiles['p99'])}"
-                    ),
-                    style=self._status_color(state.status),
-                )
-            )
-        if state.last_error:
-            status_info.append("\n")
-            status_info.append(Text(_strip_markup(state.last_error)[:80], style="red"))
+        p50 = _format_latency_value(percentiles.get("p50", 0))
+        p90 = _format_latency_value(percentiles.get("p90", 0))
+        p99 = _format_latency_value(percentiles.get("p99", 0))
+        
+        stats = Text(f"P50: {p50}  P90: {p90}  P99: {p99}", style="dim")
+        
+        # Add a newline for better spacing
+        return Group(sparkline, Text(""), stats)
 
-        return Group(progress_row, stats, status_info)
-
-    def _render_metrics(self, state: RunVisualState) -> Text:
+    def _render_metrics_compact(self, state: RunVisualState) -> Text:
         if not state.metrics:
-            return Text("No metrics yet", style="dim")
-        lines: List[str] = []
-        for metric in state.metrics:
-            if metric not in state.metric_counts:
-                state.metric_counts[metric] = 0
-            avg = "-"
+            return Text("-", style="dim")
+            
+        text = Text()
+        for i, metric in enumerate(state.metrics[:3]): # Show max 3 metrics
+            if i > 0:
+                text.append("\n")
+            
+            avg_val = 0.0
             if state.metric_counts.get(metric):
                 avg_val = state.metric_totals.get(metric, 0.0) / max(1, state.metric_counts[metric])
-                avg = f"{avg_val:.3f}"
-                last = _strip_markup(state.metric_last.get(metric, "pending"))
-                lines.append(f"{metric}: {avg} (last {last})")
-        return Text("\n".join(lines))
+            
+            text.append(f"{metric}: ", style="dim")
+            text.append(f"{avg_val:.2f}", style="white")
+            
+        if len(state.metrics) > 3:
+            text.append(f"\n+ {len(state.metrics)-3} more", style="dim italic")
+            
+        return text
+
+    def _render_status_icon(self, state: RunVisualState) -> RenderableType:
+        if state.status == "running":
+            return Spinner("dots", style="cyan", text="Running")
+        elif state.status == "error":
+            return Text("❌ Error", style="red bold")
+        elif state.status == "completed":
+            return Text("✅ Done", style="green bold")
+        else:
+            return Text("⏳ Pending", style="dim")
 
     def _row_style(self, state: RunVisualState) -> str:
         return self._status_color(state.status)
@@ -345,6 +410,7 @@ class _DashboardObserver(EvaluationObserver):
     def __init__(self, dashboard: RunDashboard, run_id: str) -> None:
         self.dashboard = dashboard
         self.run_id = run_id
+        self._item_starts: Dict[int, float] = {}
 
     def on_run_start(self, **kwargs: Any) -> None:
         self.dashboard.initialize_run(
@@ -355,6 +421,9 @@ class _DashboardObserver(EvaluationObserver):
         )
 
     def on_item_start(self, **kwargs: Any) -> None:
+        item_index = kwargs.get("item_index")
+        if item_index is not None:
+            self._item_starts[item_index] = time.time()
         self.dashboard.record_item_start(self.run_id)
 
     def on_metric_result(self, **kwargs: Any) -> None:
@@ -365,8 +434,18 @@ class _DashboardObserver(EvaluationObserver):
         self.dashboard.record_metric(self.run_id, metric_name, score)
 
     def on_item_complete(self, **kwargs: Any) -> None:
-        result = kwargs.get("result") or {}
-        elapsed = float(result.get("time") or 0.0)
+        item_index = kwargs.get("item_index")
+        elapsed = 0.0
+        if item_index is not None:
+            start = self._item_starts.pop(item_index, None)
+            if start:
+                elapsed = time.time() - start
+        
+        # Fallback if time provided in result (unlikely based on investigation)
+        if elapsed == 0.0:
+            result = kwargs.get("result") or {}
+            elapsed = float(result.get("time") or 0.0)
+            
         self.dashboard.record_item_complete(self.run_id, elapsed)
 
     def on_item_error(self, **kwargs: Any) -> None:

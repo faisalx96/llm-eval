@@ -151,7 +151,7 @@ class MultiModelRunner:
             with Live(
                 dashboard.render(),
                 console=self.console,
-                refresh_per_second=6,
+                refresh_per_second=12,
                 screen=True,
                 transient=True,
                 vertical_overflow="crop",
