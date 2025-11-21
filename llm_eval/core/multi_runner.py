@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rich.console import Console
 from rich.live import Live
+from rich.table import Table
 
 from .dashboard import RunDashboard, console_supports_live
 from .evaluator import Evaluator
@@ -206,13 +207,22 @@ class MultiModelRunner:
         self.console.print(panel)
 
     def print_saved_paths(self, results: Sequence[EvaluationResult]) -> None:
-        notices = []
+        table = Table(box=None, show_header=False, padding=(0, 0))
+        table.add_column("Saved to", style="dim")
+
+        rows_added = 0
         for result in results:
+            if isinstance(result, Exception):
+                continue
             notice = result.consume_saved_notice(include_run_name=True)
-            if notice:
-                notices.append(notice)
-        if not notices:
+            if not notice:
+                continue
+            path = notice.split(":", 1)[-1] if ":" in notice else notice
+            table.add_row(path.strip())
+            rows_added += 1
+
+        if rows_added == 0:
             return
-        self.console.print("[blue]📁 Results saved:[/blue]")
-        for entry in notices:
-            self.console.print(f"  - {entry}")
+
+        self.console.print("[blue]📁 Results saved[/blue]")
+        self.console.print(table)

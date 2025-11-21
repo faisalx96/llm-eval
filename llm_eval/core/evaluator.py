@@ -14,6 +14,7 @@ import re
 from langfuse import Langfuse
 from rich.console import Console
 from rich.live import Live
+from rich.table import Table
 
 from .results import EvaluationResult
 from .dataset import LangfuseDataset
@@ -848,20 +849,25 @@ class Evaluator:
 
 
 def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:
-    messages: List[str] = []
+    table = Table(box=None, show_header=False, padding=(0, 0))
+    table.add_column("Saved to", style="dim")
+
+    rows_added = 0
     for res in results:
+        if isinstance(res, Exception):
+            continue
         notice = res.consume_saved_notice(include_run_name=include_run_name)
-        if notice:
-            messages.append(notice)
-    if not messages:
+        if not notice:
+            continue
+        path = notice.split(":", 1)[-1] if ":" in notice else notice
+        table.add_row(path.strip())
+        rows_added += 1
+
+    if rows_added == 0:
         return
-    if include_run_name:
-        console.print("[blue]📁 Results saved:[/blue]")
-        for entry in messages:
-            console.print(f"  - {entry}")
-    else:
-        for entry in messages:
-            console.print(f"[blue]📁 Results saved to:[/blue] {entry}")
+
+    console.print("[blue]📁 Results saved[/blue]")
+    console.print(table)
 
 
 def _derive_task_name(task: Any) -> str:

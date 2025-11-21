@@ -7,6 +7,7 @@ import statistics
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+import re
 
 from rich import box
 from rich.align import Align
@@ -234,9 +235,7 @@ class EvaluationResult:
             Path to the saved file
         """
         if filepath is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"eval_results_{self.dataset_name}_{timestamp}.json"
-            filepath = os.path.join(output_dir, filename)
+            filepath = self._default_save_path("json", output_dir)
         
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -258,9 +257,7 @@ class EvaluationResult:
             Path to the saved file
         """
         if filepath is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"eval_results_{self.dataset_name}_{timestamp}.csv"
-            filepath = os.path.join(output_dir, filename)
+            filepath = self._default_save_path("csv", output_dir)
         
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -367,6 +364,35 @@ class EvaluationResult:
                 writer.writerows(rows)
         
         return str(filepath)
+
+    def _default_save_path(self, extension: str, output_dir: str) -> str:
+        """Create default save path with hierarchy: eval_results/task/model/date/filename."""
+        ts = _extract_run_timestamp(self.run_name) or datetime.now()
+        timestamp_str = ts.strftime("%Y%m%d_%H%M%S")
+        date_dir = ts.strftime("%Y-%m-%d")
+
+        model_name = (
+            (self.run_metadata.get("model") if isinstance(self.run_metadata, dict) else None)
+            or (self.run_config.get("model") if isinstance(self.run_config, dict) else None)
+            or "nomodel"
+        )
+        task_name = _task_from_run(self.run_name, model_name) or "task"
+
+        task_safe = _sanitize_path_component(task_name)
+        model_safe = _sanitize_path_component(str(model_name))
+        filename = f"{self.dataset_name}_{timestamp_str}.{extension}"
+
+        base_dir = Path(output_dir)
+        root = base_dir.parent
+
+        return str(
+            root
+            / "eval_results"
+            / task_safe
+            / model_safe
+            / date_dir
+            / filename
+        )
     
     def save(self, format: str = "json", filepath: Optional[str] = None, output_dir: str = ".") -> str:
         """
@@ -574,3 +600,50 @@ def summary_display_enabled() -> bool:
     """Return True when summaries should render (opt-in via env flag)."""
     value = os.environ.get("LLM_EVAL_SHOW_SUMMARY", "")
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{8}-\d{6})(?:-(?P<model>.+))?$")
+
+
+def _strip_run_suffix(name: str) -> str:
+    """Strip timestamp/model suffix to recover base run name."""
+    if not name:
+        return ""
+    match = _RUN_ID_RE.match(name)
+    if not match:
+        return name
+    return match.group("base")
+
+
+def _task_from_run(run_name: str, model_name: Optional[str]) -> str:
+    """Derive task name by removing timestamp/model suffixes."""
+    base = run_name or ""
+    m = _RUN_ID_RE.match(base)
+    if m:
+        base = m.group("base")
+        model_in_id = m.group("model")
+        if model_in_id and base.endswith(f"-{model_in_id}"):
+            base = base[: -len(model_in_id) - 1]
+    if model_name and base.endswith(f"-{model_name}"):
+        base = base[: -len(model_name) - 1]
+    base = re.sub(r"-\d{8}-\d{6}$", "", base)
+    return base.rstrip("-")
+
+
+def _extract_run_timestamp(run_name: str) -> Optional[datetime]:
+    match = _RUN_ID_RE.match(run_name or "")
+    if not match:
+        return None
+    ts_str = match.group("ts")
+    try:
+        return datetime.strptime(ts_str, "%Y%m%d-%H%M%S")
+    except Exception:
+        return None
+
+
+def _sanitize_path_component(value: str) -> str:
+    """Basic filesystem-safe component."""
+    if not value:
+        return "unknown"
+    cleaned = value.replace(os.sep, "_").replace("\\", "_")
+    return cleaned.strip() or "unknown"
