@@ -129,6 +129,28 @@ class Evaluator:
     @staticmethod
     def build_run_identifiers(base_name: str, model_name: Optional[str]) -> Tuple[str, str]:
         """Return (run_id_with_suffixes, display_name_for_tui)."""
+        # Check if base_name already has a timestamp to avoid double-stamping
+        # Matches YYYYMMDD-HHMMSS pattern
+        import re
+        timestamp_pattern = r"-\d{8}-\d{6}"
+        
+        if re.search(timestamp_pattern, base_name):
+            # Already has timestamp, use as is (ensure model suffix if needed?)
+            # If the caller passed a full run ID, we trust it.
+            run_id = base_name
+            # If model_name is provided but not in run_id, we might want to append it,
+            # but usually if it has a timestamp it's a fully formed ID.
+            # For the specific case of MultiModelRunner receiving a full ID from Evaluator,
+            # the ID already contains the model name.
+            
+            # Try to extract a cleaner display name
+            display = base_name
+            # Remove timestamp for display
+            display = re.sub(timestamp_pattern, "", display)
+            if not display.endswith("_task"):
+                 display = f"{display}_task"
+            return run_id, display
+
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_id = f"{base_name}-{timestamp}"
         if model_name:
@@ -449,7 +471,7 @@ class Evaluator:
                 dashboard.render(),
                 console=console,
                 refresh_per_second=6,
-                screen=True,
+                screen=False,
                 transient=True,
                 vertical_overflow="crop",
             )

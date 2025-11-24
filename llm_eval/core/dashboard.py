@@ -230,19 +230,12 @@ class RunDashboard:
         self._auto_refresh_stop = None
         self._auto_refresh_thread = None
 
-    def render(self) -> Layout:
-        layout = Layout()
-        layout.split(
-            Layout(name="header", size=3),
-            Layout(name="main"),
-            Layout(name="footer", size=1),
+    def render(self) -> RenderableType:
+        return Group(
+            self._render_header(),
+            self._render_main(),
+            self._render_footer(),
         )
-        
-        layout["header"].update(self._render_header())
-        layout["main"].update(self._render_main())
-        layout["footer"].update(self._render_footer())
-        
-        return layout
 
     def _render_header(self) -> RenderableType:
         # Calculate global stats
@@ -303,12 +296,15 @@ class RunDashboard:
                 self._render_metrics_compact(state),
             )
             
-        return Panel(
-            table,
-            box=box.ROUNDED,
-            title="Active Evaluations",
-            border_style="blue",
-            expand=True,
+        return Align(
+            Panel(
+                table,
+                box=box.ROUNDED,
+                title="Active Evaluations",
+                border_style="blue",
+                expand=False,
+            ),
+            vertical="top",
         )
 
     def _render_footer(self) -> RenderableType:
