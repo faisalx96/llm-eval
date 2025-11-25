@@ -46,7 +46,7 @@ class RunSpec(BaseModel):
     name: str
     display_name: Optional[str] = None
     task: Any
-    dataset: str
+    dataset: Union[str, Any]
     metrics: List[Union[str, Callable]]
     config: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     metadata: Dict[str, Any] = Field(default_factory=dict)

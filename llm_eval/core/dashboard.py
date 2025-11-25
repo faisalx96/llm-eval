@@ -89,9 +89,11 @@ class RunDashboard:
         *,
         enabled: bool = True,
         console: Optional[Console] = None,
+        max_visible_runs: int = 12,
     ) -> None:
         self.console = console or Console()
         self.enabled = enabled
+        self.max_visible_runs = max_visible_runs
         self.states: Dict[str, RunVisualState] = {}
         self.order: List[str] = []
         self.live: Optional[Live] = None
@@ -103,9 +105,7 @@ class RunDashboard:
             run_id = entry.get("run_id")
             if not run_id:
                 continue
-            raw_display = entry.get("display_name") or run_id
-            base = _strip_run_suffix_local(raw_display) or raw_display
-            display_name = base if base.endswith("_task") else f"{base}_task"
+            display_name = entry.get("display_name") or run_id
             dataset = entry.get("dataset")
             model_name = entry.get("model")
             config = entry.get("config") or {}
@@ -285,8 +285,30 @@ class RunDashboard:
 
         if not self.states:
             return Panel(Align.center("[dim]No runs configured[/dim]"), box=box.ROUNDED)
-            
-        for run_id in self.order:
+
+        # Sort runs by priority: Running > Pending > Error > Completed
+        # We want to keep active things at the top
+        def _sort_key(rid: str) -> tuple:
+            s = self.states[rid]
+            # Priority (lower is better)
+            if s.status == "running":
+                prio = 0
+            elif s.status == "pending":
+                prio = 1
+            elif s.status == "error":
+                prio = 2
+            else:  # completed
+                prio = 3
+            # Secondary sort: start time (newest first) or original order
+            return (prio, -1 * (s.start_time or 0))
+
+        sorted_runs = sorted(self.order, key=_sort_key)
+        
+        # Slice to max visible
+        visible_runs = sorted_runs[:self.max_visible_runs]
+        hidden_count = len(sorted_runs) - len(visible_runs)
+
+        for run_id in visible_runs:
             state = self.states[run_id]
             table.add_row(
                 self._render_run_info(state),
@@ -295,16 +317,36 @@ class RunDashboard:
                 self._render_latency(state),
                 self._render_metrics_compact(state),
             )
+        
+        if hidden_count > 0:
+            # Add summary row
+            hidden_states = [self.states[rid] for rid in sorted_runs[self.max_visible_runs:]]
+            h_completed = sum(1 for s in hidden_states if s.status == "completed")
+            h_running = sum(1 for s in hidden_states if s.status == "running")
+            h_pending = sum(1 for s in hidden_states if s.status == "pending")
+            h_failed = sum(1 for s in hidden_states if s.status == "error")
             
-        return Align(
-            Panel(
-                table,
-                box=box.ROUNDED,
-                title="Active Evaluations",
-                border_style="blue",
-                expand=False,
-            ),
-            vertical="top",
+            summary = []
+            if h_running: summary.append(f"{h_running} running")
+            if h_pending: summary.append(f"{h_pending} pending")
+            if h_completed: summary.append(f"{h_completed} done")
+            if h_failed: summary.append(f"{h_failed} failed")
+            
+            summary_text = f"+ {hidden_count} more runs ({', '.join(summary)})"
+            table.add_row(
+                Text(summary_text, style="dim italic"),
+                Text(""),
+                Text(""),
+                Text(""),
+                Text(""),
+            )
+            
+        return Panel(
+            table,
+            box=box.ROUNDED,
+            title="Active Evaluations",
+            border_style="blue",
+            expand=True,
         )
 
     def _render_footer(self) -> RenderableType:

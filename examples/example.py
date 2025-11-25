@@ -16,8 +16,8 @@ load_dotenv()
 def ai_assistant(question: str, model: Optional[str] = None) -> str:
     """A simple AI assistant for demonstration."""
     question_lower = question['question'].lower()
-    delay = random.randint(3, 10)  # random integer between 1 and 5
-    time.sleep(delay)
+    # delay = random.randint(3, 10)  # random integer between 1 and 5
+    time.sleep(1)
     prefix = f"[{model}]" if model else "[default-model]"
 
     if "capital of france" in question_lower:
@@ -52,7 +52,7 @@ def main():
             "exact_match"          # Simple comparison
         ],
         model=["gpt-4o-mini", "llama-3.1"],
-        # config={"run_name": "ai_assistant"}
+        # config={"run_name": "saudi qa"}
     )
     
     results_mixed = evaluator_mixed.run()

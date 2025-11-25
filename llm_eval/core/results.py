@@ -368,7 +368,7 @@ class EvaluationResult:
     def _default_save_path(self, extension: str, output_dir: str) -> str:
         """Create default save path with hierarchy: eval_results/task/model/date/filename."""
         ts = _extract_run_timestamp(self.run_name) or datetime.now()
-        timestamp_str = ts.strftime("%Y%m%d_%H%M%S")
+        timestamp_str = ts.strftime("%y%m%d-%H%M")
         date_dir = ts.strftime("%Y-%m-%d")
 
         model_name = (
@@ -380,7 +380,9 @@ class EvaluationResult:
 
         task_safe = _sanitize_path_component(task_name)
         model_safe = _sanitize_path_component(str(model_name))
-        filename = f"{self.dataset_name}_{timestamp_str}.{extension}"
+        
+        # Format: [base]-[dataset]-[model]-[timestamp].csv
+        filename = f"{task_safe}-{self.dataset_name}-{model_safe}-{timestamp_str}.{extension}"
 
         base_dir = Path(output_dir)
         root = base_dir.parent
@@ -602,7 +604,7 @@ def summary_display_enabled() -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
-_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{8}-\d{6})(?:-(?P<model>.+))?$")
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<model>.+)-(?P<ts>\d{6}-\d{4})$")
 
 
 def _strip_run_suffix(name: str) -> str:
@@ -618,25 +620,24 @@ def _strip_run_suffix(name: str) -> str:
 def _task_from_run(run_name: str, model_name: Optional[str]) -> str:
     """Derive task name by removing timestamp/model suffixes."""
     base = run_name or ""
-    m = _RUN_ID_RE.match(base)
-    if m:
-        base = m.group("base")
-        model_in_id = m.group("model")
-        if model_in_id and base.endswith(f"-{model_in_id}"):
-            base = base[: -len(model_in_id) - 1]
+    
+    # 1. Strip timestamp (YYMMDD-HHMM)
+    base = re.sub(r"-\d{6}-\d{4}$", "", base)
+    
+    # 2. Strip model if known
     if model_name and base.endswith(f"-{model_name}"):
         base = base[: -len(model_name) - 1]
-    base = re.sub(r"-\d{8}-\d{6}$", "", base)
-    return base.rstrip("-")
+        
+    return base
 
 
 def _extract_run_timestamp(run_name: str) -> Optional[datetime]:
-    match = _RUN_ID_RE.match(run_name or "")
+    match = re.search(r"-(?P<ts>\d{6}-\d{4})$", run_name or "")
     if not match:
         return None
     ts_str = match.group("ts")
     try:
-        return datetime.strptime(ts_str, "%Y%m%d-%H%M%S")
+        return datetime.strptime(ts_str, "%y%m%d-%H%M")
     except Exception:
         return None
 

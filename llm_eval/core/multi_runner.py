@@ -79,8 +79,19 @@ class MultiModelRunner:
                     raw_config["run_metadata"] = merged_meta
                 
                 # Determine run name
+                user_provided_name = bool(model_variant.get("name") or raw_config.get("run_name"))
                 base_name = model_variant.get("name") or raw_config.get("run_name") or task_display
-                name, display = Evaluator.build_run_identifiers(base_name, model_name)
+                
+                if model_variant.get("display_name"):
+                    # If display_name is already provided (e.g. by Evaluator), use it
+                    # But we still need to ensure unique run_name if not provided
+                    name, _ = Evaluator.build_run_identifiers(base_name, model_name, add_suffix=not user_provided_name)
+                    display = model_variant.get("display_name")
+                    # If the provided name was just the base name, we might want to use the generated unique name
+                    if not model_variant.get("name"):
+                         pass # name is already set above
+                else:
+                    name, display = Evaluator.build_run_identifiers(base_name, model_name, add_suffix=not user_provided_name)
                 raw_config["run_name"] = name
 
                 # Create RunSpec using Pydantic
@@ -112,15 +123,68 @@ class MultiModelRunner:
         auto_save: bool = True,
         save_format: str = "csv",
     ) -> List[EvaluationResult]:
+        # 1. Pre-load unique datasets to avoid redundant downloads
+        from .dataset import LangfuseDataset
+        from langfuse import Langfuse
+        import os
+
+        # Identify unique dataset names that haven't been loaded yet
+        unique_dataset_names = set()
+        for spec in self.specs:
+            if isinstance(spec.dataset, str):
+                unique_dataset_names.add(spec.dataset)
+        
+        dataset_cache: Dict[str, LangfuseDataset] = {}
+        
+        if unique_dataset_names:
+            # Initialize a temporary client for downloading
+            # We use the config from the first spec that has credentials, or env vars
+            # This is a best-effort to find credentials
+            first_config = self.specs[0].config
+            public_key = first_config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
+            secret_key = first_config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
+            host = first_config.langfuse_host or os.getenv('LANGFUSE_HOST') or 'https://cloud.langfuse.com'
+            
+            # Use the timeout from the first config as a reasonable default
+            timeout = first_config.timeout
+            
+            if public_key and secret_key:
+                try:
+                    client = Langfuse(
+                        public_key=public_key,
+                        secret_key=secret_key,
+                        host=host,
+                        timeout=timeout
+                    )
+                    
+                    self.console.print(f"[dim]Pre-loading {len(unique_dataset_names)} unique datasets...[/dim]")
+                    for name in unique_dataset_names:
+                        try:
+                            dataset_cache[name] = LangfuseDataset(client, name)
+                        except Exception as e:
+                            self.console.print(f"[yellow]Warning: Failed to pre-load dataset '{name}': {e}[/yellow]")
+                except Exception as e:
+                    self.console.print(f"[yellow]Warning: Failed to initialize Langfuse client for pre-loading: {e}[/yellow]")
+
         dashboard_configs: List[Dict[str, Any]] = []
         for spec in self.specs:
+            # Inject pre-loaded dataset if available
+            if isinstance(spec.dataset, str) and spec.dataset in dataset_cache:
+                spec.dataset = dataset_cache[spec.dataset]
+
             model_name = spec.config.model or spec.config.run_metadata.get("model")
             display_text = spec.display_name or spec.name
+            
+            # Handle dataset name for display
+            ds_name = spec.dataset
+            if hasattr(spec.dataset, 'name'):
+                ds_name = spec.dataset.name
+                
             dashboard_configs.append(
                 {
                     "run_id": spec.name,
                     "display_name": display_text,
-                    "dataset": spec.dataset,
+                    "dataset": ds_name,
                     "model": model_name,
                     "config": spec.config.model_dump(),
                 }

@@ -89,7 +89,7 @@ class Evaluator:
             self.dataset = LangfuseDataset(self.client, dataset)
         else:
             self.dataset = dataset
-            self.dataset_name = getattr(dataset, "dataset_name", "unknown")
+            self.dataset_name = getattr(dataset, "dataset_name", getattr(dataset, "name", "unknown"))
         
         # Prepare task adapter
         self.task_adapter = auto_detect_task(task, self.client)
@@ -104,9 +104,13 @@ class Evaluator:
             self.run_name = base_name_raw
             self.display_name = f"{base_name}_task"
         else:
+            # Only add suffix if the name wasn't explicitly provided by user
+            # We assume if it came from config.run_name, it's user provided
+            user_provided_name = bool(self.config.run_name)
             self.run_name, self.display_name = self.build_run_identifiers(
                 base_name=base_name,
                 model_name=self.config.model,
+                add_suffix=not user_provided_name
             )
         self.run_metadata = self.config.run_metadata
         
@@ -127,12 +131,14 @@ class Evaluator:
 
 
     @staticmethod
-    def build_run_identifiers(base_name: str, model_name: Optional[str]) -> Tuple[str, str]:
+    def build_run_identifiers(base_name: str, model_name: Optional[str], add_suffix: bool = False) -> Tuple[str, str]:
         """Return (run_id_with_suffixes, display_name_for_tui)."""
         # Check if base_name already has a timestamp to avoid double-stamping
         # Matches YYYYMMDD-HHMMSS pattern
         import re
-        timestamp_pattern = r"-\d{8}-\d{6}"
+        # Matches YYMMDD-HHMM pattern
+        import re
+        timestamp_pattern = r"-\d{6}-\d{4}"
         
         if re.search(timestamp_pattern, base_name):
             # Already has timestamp, use as is (ensure model suffix if needed?)
@@ -140,22 +146,25 @@ class Evaluator:
             run_id = base_name
             # If model_name is provided but not in run_id, we might want to append it,
             # but usually if it has a timestamp it's a fully formed ID.
-            # For the specific case of MultiModelRunner receiving a full ID from Evaluator,
-            # the ID already contains the model name.
             
             # Try to extract a cleaner display name
             display = base_name
             # Remove timestamp for display
             display = re.sub(timestamp_pattern, "", display)
-            if not display.endswith("_task"):
+            if add_suffix and not display.endswith("_task"):
                  display = f"{display}_task"
             return run_id, display
 
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        run_id = f"{base_name}-{timestamp}"
+        timestamp = datetime.now().strftime("%y%m%d-%H%M")
+        run_id = base_name
         if model_name:
             run_id = f"{run_id}-{model_name}"
-        display = f"{base_name}_task"
+        run_id = f"{run_id}-{timestamp}"
+        
+        if add_suffix and not base_name.endswith("_task"):
+            display = f"{base_name}_task"
+        else:
+            display = base_name
         return run_id, display
 
 
@@ -289,7 +298,8 @@ class Evaluator:
             client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
-                host=host
+                host=host,
+                timeout=self.config.timeout
             )
             # Expose host for frontend links (default to cloud)
             try:
