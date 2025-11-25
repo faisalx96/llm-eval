@@ -209,6 +209,7 @@ class MultiModelRunner:
                     show_table=False,
                     auto_save=auto_save,
                     save_format=save_format,
+                    enable_server=True,
                 )
                 return result
             except Exception as exc:

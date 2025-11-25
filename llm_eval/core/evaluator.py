@@ -406,7 +406,7 @@ class Evaluator:
         return result
     
     
-    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "csv") -> EvaluationResult:
+    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "csv", enable_server: bool = False) -> EvaluationResult:
         """
         Run the evaluation asynchronously.
     
@@ -415,6 +415,7 @@ class Evaluator:
             show_table: Whether to show live per-item status table
             auto_save: Whether to automatically save results after evaluation
             save_format: Format for auto-save ("json" or "csv")
+            enable_server: Whether to start the Web UI server (even if show_table is False)
         
         Returns:
             EvaluationResult object with scores and statistics
@@ -440,7 +441,7 @@ class Evaluator:
         # Web UI setup
         html_url = None
         ui_server = None
-        if show_table:
+        if show_table or enable_server:
             desired_port = 0
             try:
                 desired_port = int(self.config.ui_port)

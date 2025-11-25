@@ -369,6 +369,10 @@ class RunDashboard:
             info.append(f"\n{state.model_name}", style="cyan")
         if state.dataset:
             info.append(f"\n{state.dataset}", style="dim")
+        
+        html_url = state.run_info.get("html_url")
+        if html_url:
+            info.append(f"\n↗ Open Web UI", style=f"blue underline link {html_url}")
         return info
 
     def _render_progress_bar(self, state: RunVisualState) -> RenderableType:
