@@ -15,7 +15,7 @@ load_dotenv()
 
 def ai_assistant(question: str, model: Optional[str] = None) -> str:
     """A simple AI assistant for demonstration."""
-    question_lower = question['question'].lower()
+    question_lower = question.lower()
     # delay = random.randint(3, 10)  # random integer between 1 and 5
     time.sleep(1)
     prefix = f"[{model}]" if model else "[default-model]"

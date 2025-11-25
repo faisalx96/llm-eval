@@ -25,42 +25,113 @@ class TaskAdapter(ABC):
 
 
 class FunctionAdapter(TaskAdapter):
-    """Adapter for regular Python functions."""
+    """Adapter for regular Python functions with smart argument resolution."""
 
     def __init__(self, task: Any, client: Langfuse):
         super().__init__(task, client)
         self._is_async = inspect.iscoroutinefunction(self.task)
-        sig = inspect.signature(self.task)
+        self.sig = inspect.signature(self.task)
+        
+        # Analyze parameters
         self._model_param: Optional[str] = None
-        self._accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
-        for name, param in sig.parameters.items():
+        self._params = {}
+        self._accepts_kwargs = False
+        
+        for name, param in self.sig.parameters.items():
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                self._accepts_kwargs = True
+                continue
+            
             if name in ("model", "model_name"):
                 self._model_param = name
-                break
-    
-    def _build_call_kwargs(self, model_name: Optional[str]) -> Dict[str, Any]:
+            else:
+                self._params[name] = param
+
+    def _resolve_args(self, input_data: Any, model_name: Optional[str]) -> Tuple[Tuple, Dict[str, Any]]:
+        """
+        Resolve arguments for the function call based on input data and signature.
+        Returns (args, kwargs).
+        """
         kwargs: Dict[str, Any] = {}
-        if model_name is None:
-            return kwargs
+        args: List[Any] = []
+        
+        # 1. Handle Model Argument
         if self._model_param:
             kwargs[self._model_param] = model_name
-        elif self._accepts_kwargs:
+        elif self._accepts_kwargs and model_name:
             kwargs["model"] = model_name
-        return kwargs
+
+        # 2. Handle Input Data
+        # Case A: Input is a dictionary
+        if isinstance(input_data, dict):
+            # Check if we should unpack:
+            # - If any parameter name matches a key in input_data
+            # - OR if we have multiple parameters (excluding model)
+            # - OR if we have NO parameters (maybe just **kwargs)
+            
+            matches_key = any(param in input_data for param in self._params)
+            has_multiple_params = len(self._params) > 1
+            
+            if matches_key or has_multiple_params or self._accepts_kwargs:
+                # Strategy: Unpack dictionary
+                # Pass matched keys as kwargs
+                for key, value in input_data.items():
+                    if key in self._params or self._accepts_kwargs:
+                        kwargs[key] = value
+                
+                # Check for missing required parameters
+                # If we have a single param that didn't match, and it has no default, 
+                # maybe it was meant to receive the whole dict? 
+                # (Only if we didn't match ANY keys and have exactly one param)
+                if not matches_key and len(self._params) == 1:
+                    param_name = next(iter(self._params))
+                    # If we haven't filled it yet
+                    if param_name not in kwargs:
+                         # Fallback: Pass entire dict to this single parameter
+                         kwargs[param_name] = input_data
+            else:
+                # Single parameter, no key match, no kwargs support -> Pass whole dict
+                if len(self._params) == 1:
+                    param_name = next(iter(self._params))
+                    kwargs[param_name] = input_data
+                elif len(self._params) == 0:
+                    # No params, maybe just side effects? 
+                    pass
+        
+        # Case B: Input is not a dictionary (str, int, etc.)
+        else:
+            # If we have exactly one parameter, pass it there
+            if len(self._params) == 1:
+                param_name = next(iter(self._params))
+                kwargs[param_name] = input_data
+            # If we have multiple, we can't really guess, but maybe the first one?
+            # Let's stick to positional for the first param if it's not a dict
+            elif len(self._params) > 1:
+                # This is ambiguous. Let's try passing as first positional arg
+                # But our _params dict is unordered in older python? No, ordered in 3.7+
+                # We'll just append to args
+                args.append(input_data)
+            else:
+                # No params
+                pass
+
+        return tuple(args), kwargs
 
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run function with proper tracing."""
         # Update trace with input
         trace.update(input=input_data)
-        call_kwargs = self._build_call_kwargs(model_name)
+        
+        args, kwargs = self._resolve_args(input_data, model_name)
+        
         loop = asyncio.get_event_loop()
         try:
             # Check if function is async
             if self._is_async:
-                output = await self.task(input_data, **call_kwargs)
+                output = await self.task(*args, **kwargs)
             else:
                 # Run sync function in thread pool to avoid blocking
-                output = await loop.run_in_executor(None, lambda: self.task(input_data, **call_kwargs))
+                output = await loop.run_in_executor(None, lambda: self.task(*args, **kwargs))
             
             # Update trace with output
             trace.update(output=output)
