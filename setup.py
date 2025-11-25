@@ -1,11 +1,19 @@
 from setuptools import setup, find_packages
+import re
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+with open("llm_eval/__init__.py", "r", encoding="utf-8") as f:
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
+    if version_match:
+        version = version_match.group(1)
+    else:
+        raise RuntimeError("Unable to find version string in llm_eval/__init__.py")
+
 setup(
     name="llm-eval",
-    version="0.2.2",
+    version=version,
     author="Faisal Bin Hussein",
     author_email="faisalx96@yahoo.com",
     description="Simple, automated LLM evaluation framework built on Langfuse",

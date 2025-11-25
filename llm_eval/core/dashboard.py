@@ -22,6 +22,8 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
+from llm_eval import __version__
+
 from .observers import EvaluationObserver
 
 
@@ -277,9 +279,9 @@ class RunDashboard:
             padding=(1, 2),  # More breathing room
             header_style="bold dim white",
         )
-        table.add_column("Model / Dataset", ratio=2.5)
-        table.add_column("Status", ratio=1.5)
-        table.add_column("Progress", ratio=3.5)
+        table.add_column("Model / Dataset", ratio=3)
+        table.add_column("Status", ratio=2)
+        table.add_column("Progress", ratio=4)
         table.add_column("Latency", ratio=3)
         table.add_column("Metrics", ratio=3)
 
@@ -356,7 +358,7 @@ class RunDashboard:
         
         grid.add_row(
             Text("Press Ctrl+C to stop", style="dim"),
-            Text(f"v0.1.0 • {datetime.now().strftime('%H:%M:%S')}", style="dim"),
+            Text(f"v{__version__} • {datetime.now().strftime('%H:%M:%S')}", style="dim"),
         )
         return grid
 
@@ -377,7 +379,7 @@ class RunDashboard:
         bar = ProgressBar(
             total=total_items,
             completed=min(processed, total_items),
-            width=32,
+            width=36,
             pulse=pulse,
             complete_style="green",
             finished_style="green",
