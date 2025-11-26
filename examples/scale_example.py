@@ -56,7 +56,8 @@ def main():
     results = Evaluator.run_parallel(
         runs=runs_config,
         show_tui=True,
-        auto_save=True
+        auto_save=True,
+        keep_server_alive=True  # Keep Web UI running after evaluation completes
     )
 
     print("All evaluations complete!")

@@ -131,41 +131,53 @@ class Evaluator:
         self.observer = CompositeEvaluationObserver([base_observer])
 
 
+    # Class-level counter for ensuring unique run IDs within the same process
+    _run_id_counter: Dict[str, int] = {}
+
     @staticmethod
     def build_run_identifiers(base_name: str, model_name: Optional[str], add_suffix: bool = False) -> Tuple[str, str]:
-        """Return (run_id_with_suffixes, display_name_for_tui)."""
-        # Check if base_name already has a timestamp to avoid double-stamping
-        # Matches YYYYMMDD-HHMMSS pattern
-        import re
+        """Return (run_id_with_suffixes, display_name_for_tui).
+
+        Ensures unique run IDs even when the same model is used multiple times
+        by appending a counter when duplicates are detected.
+
+        - run_id: Used for Langfuse logging, must be unique
+        - display_name: Used for TUI, keeps original naming convention
+        """
         # Matches YYMMDD-HHMM pattern
-        import re
         timestamp_pattern = r"-\d{6}-\d{4}"
-        
+
         if re.search(timestamp_pattern, base_name):
-            # Already has timestamp, use as is (ensure model suffix if needed?)
-            # If the caller passed a full run ID, we trust it.
+            # Already has timestamp, use as is
             run_id = base_name
-            # If model_name is provided but not in run_id, we might want to append it,
-            # but usually if it has a timestamp it's a fully formed ID.
-            
-            # Try to extract a cleaner display name
             display = base_name
-            # Remove timestamp for display
             display = re.sub(timestamp_pattern, "", display)
             if add_suffix and not display.endswith("_task"):
                  display = f"{display}_task"
             return run_id, display
 
         timestamp = datetime.now().strftime("%y%m%d-%H%M")
-        run_id = base_name
+        base_run_id = base_name
         if model_name:
-            run_id = f"{run_id}-{model_name}"
-        run_id = f"{run_id}-{timestamp}"
-        
+            base_run_id = f"{base_run_id}-{model_name}"
+        base_run_id = f"{base_run_id}-{timestamp}"
+
+        # Ensure uniqueness by checking if this run_id was already used
+        # and appending a counter if needed (starts from 1 for first duplicate)
+        if base_run_id in Evaluator._run_id_counter:
+            Evaluator._run_id_counter[base_run_id] += 1
+            counter = Evaluator._run_id_counter[base_run_id]
+            run_id = f"{base_run_id}-{counter}"
+        else:
+            Evaluator._run_id_counter[base_run_id] = 0
+            run_id = base_run_id
+
+        # Display name: Keep original convention (no counter suffix)
         if add_suffix and not base_name.endswith("_task"):
             display = f"{base_name}_task"
         else:
             display = base_name
+
         return run_id, display
 
 

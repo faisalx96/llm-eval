@@ -380,9 +380,14 @@ class EvaluationResult:
 
         task_safe = _sanitize_path_component(task_name)
         model_safe = _sanitize_path_component(str(model_name))
-        
-        # Format: [base]-[dataset]-[model]-[timestamp].csv
-        filename = f"{task_safe}-{self.dataset_name}-{model_safe}-{timestamp_str}.{extension}"
+
+        # Extract counter suffix if present after timestamp (e.g., -YYMMDD-HHMM-1)
+        # Must follow the timestamp pattern to avoid matching the timestamp itself
+        counter_match = re.search(r"-\d{6}-\d{4}-(\d+)$", self.run_name or "")
+        counter_suffix = f"-{counter_match.group(1)}" if counter_match else ""
+
+        # Format: [base]-[dataset]-[model]-[timestamp][-counter].csv
+        filename = f"{task_safe}-{self.dataset_name}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
 
         base_dir = Path(output_dir)
         root = base_dir.parent
@@ -618,21 +623,33 @@ def _strip_run_suffix(name: str) -> str:
 
 
 def _task_from_run(run_name: str, model_name: Optional[str]) -> str:
-    """Derive task name by removing timestamp/model suffixes."""
+    """Derive task name by removing counter/timestamp/model suffixes.
+
+    Run name format: {task}-{model}-{YYMMDD-HHMM}[-{counter}]
+    Example: ai_assistant-gpt-4o-mini-251126-1712-3
+    Should return: ai_assistant
+    """
     base = run_name or ""
-    
-    # 1. Strip timestamp (YYMMDD-HHMM)
-    base = re.sub(r"-\d{6}-\d{4}$", "", base)
-    
+
+    # 1. Strip timestamp with optional counter suffix in one pass
+    # Pattern: -YYMMDD-HHMM or -YYMMDD-HHMM-N (where N is counter)
+    base = re.sub(r"-\d{6}-\d{4}(?:-\d+)?$", "", base)
+
     # 2. Strip model if known
     if model_name and base.endswith(f"-{model_name}"):
         base = base[: -len(model_name) - 1]
-        
+
     return base
 
 
 def _extract_run_timestamp(run_name: str) -> Optional[datetime]:
-    match = re.search(r"-(?P<ts>\d{6}-\d{4})$", run_name or "")
+    """Extract timestamp from run name, accounting for optional counter suffix.
+
+    Run name format: {task}-{model}-{YYMMDD-HHMM}[-{counter}]
+    """
+    name = run_name or ""
+    # Match timestamp with optional counter suffix
+    match = re.search(r"-(?P<ts>\d{6}-\d{4})(?:-\d+)?$", name)
     if not match:
         return None
     ts_str = match.group("ts")

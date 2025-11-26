@@ -122,6 +122,7 @@ class MultiModelRunner:
         show_tui: bool = True,
         auto_save: bool = True,
         save_format: str = "csv",
+        keep_server_alive: bool = False,
     ) -> List[EvaluationResult]:
         # 1. Pre-load unique datasets to avoid redundant downloads
         from .dataset import LangfuseDataset

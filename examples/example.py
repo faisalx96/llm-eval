@@ -51,7 +51,7 @@ def main():
             response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ],
-        model=["gpt-4o-mini", "llama-3.1"],
+        model=["gpt-4o-mini"] * 3 #, "llama-3.1"],
         # config={"run_name": "saudi qa"}
     )
     
