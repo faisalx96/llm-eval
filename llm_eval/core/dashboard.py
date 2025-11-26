@@ -85,6 +85,10 @@ class RunVisualState:
 class RunDashboard:
     """Unified Rich dashboard for single or multi-run execution."""
 
+    # PERF: Minimum interval between refreshes (in seconds)
+    # Prevents excessive UI updates that block the event loop
+    REFRESH_DEBOUNCE_INTERVAL = 0.1  # 100ms minimum between refreshes
+
     def __init__(
         self,
         runs: Sequence[Dict[str, Any]],
@@ -102,6 +106,7 @@ class RunDashboard:
         self.start_time = time.time()
         self._auto_refresh_stop: Optional[threading.Event] = None
         self._auto_refresh_thread: Optional[threading.Thread] = None
+        self._last_refresh_time: float = 0.0  # PERF: Track last refresh for debouncing
 
         for entry in runs:
             run_id = entry.get("run_id")
@@ -222,6 +227,14 @@ class RunDashboard:
     def refresh(self, force: bool = False) -> None:
         if not self.enabled or not self.live:
             return
+
+        # PERF: Debounce refreshes to avoid excessive UI updates
+        # Only refresh if forced OR enough time has passed since last refresh
+        now = time.time()
+        if not force and (now - self._last_refresh_time) < self.REFRESH_DEBOUNCE_INTERVAL:
+            return  # Skip this refresh, too soon
+
+        self._last_refresh_time = now
         self.live.update(self.render(), refresh=force)
 
     def shutdown(self) -> None:
@@ -560,10 +573,12 @@ class RunDashboard:
         def _ticker() -> None:
             while self.enabled and not self._auto_refresh_stop.is_set():
                 try:
+                    # PERF: Use force=True to bypass debounce for periodic updates
+                    # but sleep longer to reduce overall refresh frequency
                     self.refresh(force=True)
                 except Exception:
                     pass
-                time.sleep(0.5)
+                time.sleep(0.25)  # PERF: Reduced from 0.5s - 4 refreshes/sec max
 
         self._auto_refresh_thread = threading.Thread(target=_ticker, daemon=True)
         self._auto_refresh_thread.start()

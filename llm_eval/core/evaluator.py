@@ -1,6 +1,7 @@
 """Main Evaluator class for LLM evaluation."""
 
 import asyncio
+import inspect
 import os
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from datetime import datetime
@@ -752,10 +753,12 @@ class Evaluator:
         """
         Evaluate a single item, updating the progress tracker.
         """
+        meta = {"trace_id": None, "trace_url": None}  # Initialize before try block
+
         try:
             # Start item
             tracker.start_item(index)
-            
+
             self._notify_observer(
                 "on_item_start",
                 item_index=index,
@@ -764,75 +767,65 @@ class Evaluator:
                     "expected": getattr(item, 'expected_output', None),
                 },
             )
-            
-            # Run task with Langfuse tracing
-            with item.run(
-                run_name=self.run_name,
-                run_metadata={**self.run_metadata, "item_index": index}
-            ) as trace:
-                # Capture initial trace meta (best-effort)
-                try:
-                    meta = self._extract_trace_meta(trace)
-                    tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
-                except Exception:
-                    pass
-                # Execute task
-                output = await self.task_adapter.arun(item.input, trace, model_name=self.model_name)
-                
-                # Update output in status
-                tracker.update_output(index, output)
-                
-                # Compute metrics in parallel
-                scores = {}
-                
-                async def _run_single_metric(m_name: str, m_func: Callable):
+
+            # PERF: Run the entire Langfuse-traced block in a thread pool
+            # This avoids blocking the event loop with Langfuse's sync HTTP calls
+            # and keeps __enter__/__exit__ in the same thread (required by OpenTelemetry)
+            def _run_with_trace():
+                """Execute task and collect scores within Langfuse trace context."""
+                nonlocal meta
+                with item.run(
+                    run_name=self.run_name,
+                    run_metadata={**self.run_metadata, "item_index": index}
+                ) as trace:
+                    # Capture trace meta
                     try:
-                        # Update metric status to computing
-                        tracker.set_metric_computing(index, m_name)
-                        
-                        score = await self._compute_metric(
-                            m_func, 
-                            output, 
-                            getattr(item, 'expected_output', None),
-                            item.input
+                        meta = self._extract_trace_meta(trace)
+                    except Exception:
+                        pass
+
+                    # Execute task synchronously (we're in a thread)
+                    # Create a new event loop for this thread to run async code
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        output = loop.run_until_complete(
+                            self.task_adapter.arun(item.input, trace, model_name=self.model_name)
                         )
-                        
-                        self._notify_observer(
-                            "on_metric_result",
-                            item_index=index,
-                            metric_name=m_name,
-                            score=score,
-                            metadata={
-                                "input": item.input,
-                                "expected": getattr(item, 'expected_output', None),
-                            },
-                        )
+                    finally:
+                        loop.close()
 
-                        # Normalize {'score': x, 'metadata': {...}} shape
-                        def _flatten_meta(md):
-                            flat = {}
-                            try:
-                                for k, v in (md or {}).items():
-                                    if isinstance(v, dict):
-                                        for k2, v2 in v.items():
-                                            flat[f"{k}_{k2}"] = v2
-                                    else:
-                                        flat[str(k)] = v
-                            except Exception:
-                                pass
-                            return flat
+                    # Compute metrics synchronously
+                    scores = {}
+                    for m_name, m_func in self.metrics.items():
+                        try:
+                            # Compute metric
+                            if asyncio.iscoroutinefunction(m_func):
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                try:
+                                    score = loop.run_until_complete(
+                                        self._compute_metric(
+                                            m_func, output,
+                                            getattr(item, 'expected_output', None),
+                                            item.input
+                                        )
+                                    )
+                                finally:
+                                    loop.close()
+                            else:
+                                score = self._compute_metric_sync(
+                                    m_func, output,
+                                    getattr(item, 'expected_output', None),
+                                    item.input
+                                )
 
-                        main_val = score
-                        meta_map = {}
-                        if isinstance(score, dict):
-                            main_val = score.get('score', None)
-                            meta_map = _flatten_meta(score.get('metadata', {}))
+                            # Extract main score value
+                            main_val = score
+                            if isinstance(score, dict):
+                                main_val = score.get('score', score)
 
-                        # Update metric value in status using the main score
-                        tracker.update_metric(index, m_name, main_val, meta_map)
-
-                        # Log score to Langfuse (use main score if available)
-                        if trace:
+                            # Log to Langfuse
                             try:
                                 trace.score(
                                     name=m_name,
@@ -841,54 +834,97 @@ class Evaluator:
                                 )
                             except Exception:
                                 pass
-                        
-                        return m_name, score
-                    except Exception as e:
-                        # Assuming 'logger' is defined elsewhere or needs to be imported
-                        # For now, just using console.print as a placeholder if logger is not available
-                        # If logger is available, replace with logger.error
-                        import logging
-                        logger = logging.getLogger(__name__)
-                        logger.error(f"Metric {m_name} failed: {e}")
-                        tracker.set_metric_error(index, m_name)
-                        return m_name, None
 
-                # Launch all metrics
-                metric_tasks = [
-                    _run_single_metric(name, func) 
-                    for name, func in self.metrics.items()
-                ]
-                
-                if metric_tasks:
-                    results = await asyncio.gather(*metric_tasks)
-                    scores = {k: v for k, v in results if v is not None}
-                
-                # Update status to completed with timing
-                tracker.complete_item(index)
-                
-                self._notify_observer(
-                    "on_item_complete",
-                    item_index=index,
-                    result={
-                        "output": output,
-                        "scores": scores,
-                    },
-                )
-                
-                return {
-                    "input": item.input,
+                            scores[m_name] = score
+                        except Exception as e:
+                            logger.error(f"Metric {m_name} failed: {e}")
+                            scores[m_name] = None
+
+                    return output, scores
+
+            # Run in thread pool to avoid blocking event loop
+            output, scores = await asyncio.to_thread(_run_with_trace)
+
+            # Update tracker with results (back in async context)
+            tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
+            tracker.update_output(index, output)
+
+            for m_name, score in scores.items():
+                if score is not None:
+                    # Normalize score for display
+                    main_val = score
+                    meta_map = {}
+                    if isinstance(score, dict):
+                        main_val = score.get('score', None)
+                        md = score.get('metadata', {})
+                        if isinstance(md, dict):
+                            for k, v in md.items():
+                                if isinstance(v, dict):
+                                    for k2, v2 in v.items():
+                                        meta_map[f"{k}_{k2}"] = v2
+                                else:
+                                    meta_map[str(k)] = v
+                    tracker.update_metric(index, m_name, main_val, meta_map)
+
+                    self._notify_observer(
+                        "on_metric_result",
+                        item_index=index,
+                        metric_name=m_name,
+                        score=score,
+                        metadata={
+                            "input": item.input,
+                            "expected": getattr(item, 'expected_output', None),
+                        },
+                    )
+                else:
+                    tracker.set_metric_error(index, m_name)
+
+            # Filter out None scores
+            scores = {k: v for k, v in scores.items() if v is not None}
+
+            # Update status to completed with timing
+            tracker.complete_item(index)
+
+            self._notify_observer(
+                "on_item_complete",
+                item_index=index,
+                result={
                     "output": output,
-                    "expected": getattr(item, 'expected_output', None),
                     "scores": scores,
-                    "trace_id": meta.get('trace_id'),
-                    "trace_url": meta.get('trace_url'),
-                    "success": True,
-                }
+                },
+            )
+
+            return {
+                "input": item.input,
+                "output": output,
+                "expected": getattr(item, 'expected_output', None),
+                "scores": scores,
+                "trace_id": meta.get('trace_id'),
+                "trace_url": meta.get('trace_url'),
+                "success": True,
+            }
 
         except Exception as e:
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             return Exception(str(e))
+
+    def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:
+        """Synchronous version of metric computation for thread pool execution."""
+        try:
+            sig = inspect.signature(metric_func)
+            params = list(sig.parameters.keys())
+
+            if len(params) >= 3:
+                return metric_func(output, expected, input_data)
+            elif len(params) == 2:
+                return metric_func(output, expected)
+            elif len(params) == 1:
+                return metric_func(output)
+            else:
+                return metric_func()
+        except Exception as e:
+            return {"score": 0, "error": str(e)}
 
 
 def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:

@@ -6,15 +6,15 @@ def response_length_check(output, expected):
     return 1.0 if len(str(output)) > 0 else 0.0
 
 # 1. Define your tasks (or import them)
-async def task_1(input_text: str, trace: Any = None, model_name: str = "gpt-4o-mini") -> str:
+async def task_1(question: str, trace: Any = None, model_name: str = "gpt-4o-mini") -> str:
     """Simulate Task 1"""
     await asyncio.sleep(0.5)
-    return f"Task 1 result for {input_text} using {model_name}"
+    return f"Task 1 result for {question} using {model_name}"
 
-async def task_2(input_text: str, trace: Any = None, model_name: str = "gpt-4o-mini") -> str:
+async def task_2(question: str, trace: Any = None, model_name: str = "gpt-4o-mini") -> str:
     """Simulate Task 2"""
     await asyncio.sleep(2)
-    return f"Task 2 result for {input_text} using {model_name}"
+    return f"Task 2 result for {question} using {model_name}"
 
 # ... define other tasks ...
 
