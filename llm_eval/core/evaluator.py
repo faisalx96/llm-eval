@@ -392,7 +392,7 @@ class Evaluator:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
         if len(self.models) > 1:
-            return self._run_multi_model(show_progress, auto_save, save_format)
+            return self._run_multi_model(show_progress, auto_save, save_format, keep_server_alive)
 
         # Run the async evaluation
         result = asyncio.run(self.arun(show_progress, show_table, auto_save, save_format))
@@ -599,6 +599,7 @@ class Evaluator:
         auto_save: bool = False,
         save_format: str = "csv",
         print_summary: bool = True,
+        keep_server_alive: bool = False,
     ) -> List[EvaluationResult]:
         """
         Evaluate multiple tasks concurrently from Python code.
@@ -655,6 +656,14 @@ class Evaluator:
                 saved_path = result.save(format=fmt, filepath=str(target_path))
                 console.print(f"[green]Saved {spec.run_name} results to {saved_path}[/green]")
 
+        if keep_server_alive:
+            console.print("\n[dim]Server is running. Press Ctrl+C to exit.[/dim]")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+
         return results
 
 
@@ -699,7 +708,7 @@ class Evaluator:
     
     # Frontend concerns moved to llm_eval.utils.frontend
 
-    def _run_multi_model(self, show_progress: bool, auto_save: bool, save_format: str):
+    def _run_multi_model(self, show_progress: bool, auto_save: bool, save_format: str, keep_server_alive: bool = False):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = (self.config.run_name or "").strip() or self._task_name
@@ -736,6 +745,7 @@ class Evaluator:
             auto_save=auto_save,
             save_format=save_format,
             print_summary=True,
+            keep_server_alive=keep_server_alive,
         )
     
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
@@ -899,7 +909,7 @@ def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_
     if rows_added == 0:
         return
 
-    console.print("[blue]📁 Results saved[/blue]")
+    console.print("\n[blue]📁 Results saved[/blue]")
     console.print(table)
 
 

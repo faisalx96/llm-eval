@@ -356,8 +356,11 @@ class RunDashboard:
         grid.add_column(justify="left")
         grid.add_column(justify="right")
         
+        all_done = all(s.status in ("completed", "error") for s in self.states.values())
+        msg = "" if all_done else "Press Ctrl+C to stop"
+        
         grid.add_row(
-            Text("Press Ctrl+C to stop", style="dim"),
+            Text(msg, style="dim"),
             Text(f"v{__version__} • {datetime.now().strftime('%H:%M:%S')}", style="dim"),
         )
         return grid
