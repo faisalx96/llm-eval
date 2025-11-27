@@ -763,12 +763,18 @@ class Evaluator:
     
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
         """
-        Evaluate a single item, updating the progress tracker.
+        Evaluate a single item using fully async Langfuse operations.
+
+        This implementation avoids blocking the event loop by:
+        1. Using start_span() which queues trace creation (non-blocking)
+        2. Running the task purely async
+        3. Using async_api for dataset run item linking
+        4. Deferring score uploads to background tasks
         """
-        meta = {"trace_id": None, "trace_url": None}  # Initialize before try block
+        meta = {"trace_id": None, "trace_url": None}
+        span = None
 
         try:
-            # Start item
             tracker.start_item(index)
 
             self._notify_observer(
@@ -780,90 +786,105 @@ class Evaluator:
                 },
             )
 
-            # PERF: Run the entire Langfuse-traced block in a thread pool
-            # This avoids blocking the event loop with Langfuse's sync HTTP calls
-            # and keeps __enter__/__exit__ in the same thread (required by OpenTelemetry)
-            def _run_with_trace():
-                """Execute task and collect scores within Langfuse trace context."""
-                nonlocal meta
-                with item.run(
-                    run_name=self.run_name,
-                    run_metadata={**self.run_metadata, "item_index": index}
-                ) as trace:
-                    # Capture trace meta
+            # Create span/trace using non-blocking API (queues internally)
+            span = self.client.start_span(
+                name=f"eval-{self.run_name}-item-{index}",
+                input=item.input,
+                metadata={
+                    **self.run_metadata,
+                    "item_index": index,
+                    "dataset_item_id": getattr(item, 'id', None),
+                    "run_name": self.run_name,
+                },
+            )
+
+            # Extract trace metadata
+            try:
+                meta = self._extract_trace_meta(span)
+            except Exception:
+                pass
+
+            # Execute task - purely async, no thread pool needed
+            output = await self.task_adapter.arun(item.input, span, model_name=self.model_name)
+
+            # Update span with output
+            try:
+                span.update(output=output)
+            except Exception:
+                pass
+
+            # Compute metrics - async where possible
+            scores = {}
+            score_tasks = []  # Collect async score uploads
+
+            for m_name, m_func in self.metrics.items():
+                try:
+                    # Compute metric (async or sync)
+                    if asyncio.iscoroutinefunction(m_func):
+                        score = await self._compute_metric(
+                            m_func, output,
+                            getattr(item, 'expected_output', None),
+                            item.input
+                        )
+                    else:
+                        # Run sync metrics in thread pool to avoid blocking
+                        score = await asyncio.to_thread(
+                            self._compute_metric_sync,
+                            m_func, output,
+                            getattr(item, 'expected_output', None),
+                            item.input
+                        )
+
+                    # Extract main score value
+                    main_val = score
+                    if isinstance(score, dict):
+                        main_val = score.get('score', score)
+
+                    # Queue score upload (non-blocking, uses internal queue)
                     try:
-                        meta = self._extract_trace_meta(trace)
+                        span.score(
+                            name=m_name,
+                            value=main_val if isinstance(main_val, (int, float)) else 0,
+                            comment=str(score) if not isinstance(main_val, (int, float)) else None
+                        )
                     except Exception:
                         pass
 
-                    # Execute task synchronously (we're in a thread)
-                    # Create a new event loop for this thread to run async code
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        output = loop.run_until_complete(
-                            self.task_adapter.arun(item.input, trace, model_name=self.model_name)
+                    scores[m_name] = score
+                except Exception as e:
+                    logger.error(f"Metric {m_name} failed: {e}")
+                    scores[m_name] = {"score": 0, "error": str(e)}
+
+            # End the span (queues finalization, non-blocking)
+            try:
+                span.end()
+            except Exception:
+                pass
+
+            # Link to dataset run item using async API
+            dataset_item_id = getattr(item, 'id', None)
+            trace_id = meta.get('trace_id')
+            if dataset_item_id and trace_id:
+                try:
+                    from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
+                    await self.client.async_api.dataset_run_items.create(
+                        request=CreateDatasetRunItemRequest(
+                            runName=self.run_name,
+                            runDescription=None,
+                            metadata=self.run_metadata,
+                            datasetItemId=dataset_item_id,
+                            traceId=trace_id,
                         )
-                    finally:
-                        loop.close()
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to link dataset run item: {e}")
 
-                    # Compute metrics synchronously
-                    scores = {}
-                    for m_name, m_func in self.metrics.items():
-                        try:
-                            # Compute metric
-                            if asyncio.iscoroutinefunction(m_func):
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                                try:
-                                    score = loop.run_until_complete(
-                                        self._compute_metric(
-                                            m_func, output,
-                                            getattr(item, 'expected_output', None),
-                                            item.input
-                                        )
-                                    )
-                                finally:
-                                    loop.close()
-                            else:
-                                score = self._compute_metric_sync(
-                                    m_func, output,
-                                    getattr(item, 'expected_output', None),
-                                    item.input
-                                )
-
-                            # Extract main score value
-                            main_val = score
-                            if isinstance(score, dict):
-                                main_val = score.get('score', score)
-
-                            # Log to Langfuse
-                            try:
-                                trace.score(
-                                    name=m_name,
-                                    value=main_val if isinstance(main_val, (int, float)) else 0,
-                                    comment=str(score) if not isinstance(main_val, (int, float)) else None
-                                )
-                            except Exception:
-                                pass
-
-                            scores[m_name] = score
-                        except Exception as e:
-                            logger.error(f"Metric {m_name} failed: {e}")
-                            scores[m_name] = None
-
-                    return output, scores
-
-            # Run in thread pool to avoid blocking event loop
-            output, scores = await asyncio.to_thread(_run_with_trace)
-
-            # Update tracker with results (back in async context)
+            # Update tracker with results
             tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
             tracker.update_output(index, output)
 
             for m_name, score in scores.items():
                 if score is not None:
-                    # Normalize score for display
                     main_val = score
                     meta_map = {}
                     if isinstance(score, dict):
@@ -894,7 +915,6 @@ class Evaluator:
             # Filter out None scores
             scores = {k: v for k, v in scores.items() if v is not None}
 
-            # Update status to completed with timing
             tracker.complete_item(index)
 
             self._notify_observer(
@@ -917,6 +937,13 @@ class Evaluator:
             }
 
         except Exception as e:
+            # End span on error
+            if span:
+                try:
+                    span.update(level="ERROR", status_message=str(e))
+                    span.end()
+                except Exception:
+                    pass
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             return Exception(str(e))
