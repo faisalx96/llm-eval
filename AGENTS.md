@@ -9,8 +9,9 @@ This guide explains how to develop, test, and contribute to `llm-eval`.
   - `adapters/`: task adapters (functions, LangChain/OpenAI)
   - `utils/`: errors and HTML/HTTP frontend helpers
   - `cli.py`: `llm-eval` entry point
-- `docs/`: user guides and references
+- `docs/`: user guides (`USER_GUIDE.md`, `METRICS_GUIDE.md`)
 - `examples/`: runnable examples and notebooks
+- `internal/`: developer docs (error handling, requirements)
 - Generated: `build/`, `llm_eval.egg-info/` (do not edit)
 
 ## Build, Test, and Development Commands

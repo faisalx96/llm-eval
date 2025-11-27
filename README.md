@@ -1,65 +1,132 @@
-# LLM-Eval: Simple LLM Evaluation Framework
+# LLM-Eval
+
+[![PyPI version](https://badge.fury.io/py/llm-eval.svg)](https://badge.fury.io/py/llm-eval)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Evaluate your LLM applications with just 3 lines of code.**
 
-Built on [Langfuse](https://langfuse.com) for seamless integration with your existing observability stack, `llm-eval` is a developer-friendly framework for testing, benchmarking, and validating Large Language Models.
+A fast, async evaluation framework built on [Langfuse](https://langfuse.com) for testing and benchmarking LLM applications.
 
-## 🚀 Key Features
+## 🚀 Features
 
-- **Simple API**: Get started in minutes with a clean, Pythonic interface.
-- **Async & Fast**: Evaluate hundreds of examples in parallel using `asyncio`.
-- **Multi-Model Support**: Compare models (e.g., GPT-4 vs Llama 3) side-by-side.
-- **Rich Dashboard**: Real-time terminal UI (TUI) showing progress, metrics, and latency.
-- **Framework Agnostic**: Works with LangChain, OpenAI, Anthropic, or any Python function.
-- **Auto-Save**: Automatically persist results to JSON or CSV for analysis.
+- **Simple API** - Get started in minutes with a clean, Pythonic interface
+- **Async & Parallel** - Evaluate hundreds of items concurrently with 90%+ efficiency
+- **Multi-Model Support** - Compare GPT-4, Claude, Llama side-by-side in one run
+- **Real-Time Dashboard** - Terminal UI + Web UI showing live progress and metrics
+- **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
+- **Auto-Save** - Automatically persist results to CSV/JSON
 
 ## ⚡ Quick Start
 
 ### 1. Install
+
 ```bash
 pip install llm-eval
 ```
 
-### 2. Run Evaluation
+### 2. Set up Langfuse
+
+Create a `.env` file with your [Langfuse](https://langfuse.com) credentials:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-...
+LANGFUSE_SECRET_KEY=sk-...
+LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
+```
+
+### 3. Run Evaluation
+
 ```python
 from llm_eval import Evaluator
 
-# 1. Define your task
-def my_llm_function(input_text):
-    return "Model response"
+# Define your LLM task
+def my_llm_task(input_data):
+    # Your LLM call here
+    return "response"
 
-# 2. Run evaluation
+# Run evaluation
 evaluator = Evaluator(
-    task=my_llm_function,
-    dataset="my-langfuse-dataset",
-    metrics=["exact_match", "faithfulness"]
+    task=my_llm_task,
+    dataset="my-langfuse-dataset",  # Dataset name in Langfuse
+    metrics=["exact_match", "contains_expected"],
 )
 
 results = evaluator.run()
-print(results.summary())
 ```
 
-## 📖 Three Ways to Run
+## 🔄 Multi-Model Comparison
 
-`llm-eval` supports three main execution modes to fit your workflow:
+Compare multiple models in parallel:
 
-1.  **[Python API](docs/USER_GUIDE.md#option-1-python-api)**: Ideal for notebooks, debugging, and custom scripts.
-2.  **[Command Line (CLI)](docs/USER_GUIDE.md#option-2-command-line-interface-cli)**: Perfect for CI/CD pipelines and quick checks.
-    ```bash
-    llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
-    ```
-3.  **[Multi-Model Config](docs/USER_GUIDE.md#option-3-multi-model-configuration)**: Best for benchmarking multiple models in parallel.
-    ```bash
-    llm-eval --runs-config experiments.json
-    ```
+```python
+from llm_eval import Evaluator
+
+async def my_task(question, trace=None, model_name="gpt-4"):
+    # Use model_name to route to different models
+    return call_llm(model_name, question)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match"],
+    model=["gpt-4", "gpt-3.5-turbo", "claude-3-sonnet"],  # Compare 3 models
+)
+
+results = evaluator.run()  # Runs all models in parallel
+```
+
+Or use `run_parallel` for different tasks:
+
+```python
+results = Evaluator.run_parallel(
+    runs=[
+        {"name": "QA Task", "task": qa_task, "dataset": "qa-set", "metrics": ["exact_match"], "models": ["gpt-4", "claude-3"]},
+        {"name": "Summary Task", "task": summarize, "dataset": "docs", "metrics": ["contains_expected"], "models": ["gpt-4"]},
+    ],
+    show_tui=True,
+    auto_save=True,
+)
+```
+
+## 💻 Command Line Interface
+
+```bash
+# Single evaluation
+llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+
+# Multi-model from config
+llm-eval --runs-config experiments.json
+```
+
+## 📊 Built-in Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `exact_match` | Exact string match between output and expected |
+| `contains_expected` | Check if output contains expected text |
+| `fuzzy_match` | Similarity score using sequence matching |
+
+Custom metrics are simple functions:
+
+```python
+def my_metric(output, expected):
+    score = evaluate_somehow(output, expected)
+    return {"score": score, "metadata": {"details": "..."}}
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=[my_metric, "exact_match"],  # Mix custom and built-in
+)
+```
 
 ## 📚 Documentation
 
-- **[User Guide](docs/USER_GUIDE.md)**: Comprehensive guide on installation, usage, and configuration.
-- **[Metrics Guide](docs/METRICS_GUIDE.md)**: Details on all available metrics and how to create custom ones.
-- **[Langfuse Guide](docs/LANGFUSE_GUIDE.md)**: Advanced integration details.
-- **[Examples](examples/)**: Jupyter notebooks and example scripts.
+- [User Guide](docs/USER_GUIDE.md) - Complete guide for installation, tasks, metrics, and configuration
+- [Metrics Guide](docs/METRICS_GUIDE.md) - Comprehensive metric store with 40+ metrics by use case
+- [Examples](examples/) - Jupyter notebooks and scripts
 
-## License
+## 📄 License
 
 MIT
