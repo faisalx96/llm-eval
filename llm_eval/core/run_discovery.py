@@ -23,6 +23,7 @@ class RunInfo:
     total_items: int
     success_count: int
     error_count: int
+    metric_averages: Dict[str, float] = field(default_factory=dict)
 
     @property
     def success_rate(self) -> float:
@@ -39,6 +40,7 @@ class RunInfo:
             "timestamp": self.timestamp.isoformat(),
             "file_path": self.file_path,
             "metrics": self.metrics,
+            "metric_averages": self.metric_averages,
             "total_items": self.total_items,
             "success_count": self.success_count,
             "error_count": self.error_count,
@@ -157,14 +159,35 @@ class RunDiscovery:
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-                # Count successes vs errors
+                # Count successes vs errors and calculate metric averages
                 error_count = 0
+                metric_sums: Dict[str, float] = {m: 0.0 for m in metrics}
+                metric_counts: Dict[str, int] = {m: 0 for m in metrics}
+
                 for row in rows:
                     output = row.get("output", "")
                     if output.startswith("ERROR:") or "ERROR" in str(row.get(f"{metrics[0]}_score", "")) if metrics else False:
                         error_count += 1
 
+                    # Accumulate metric scores
+                    for m in metrics:
+                        score_str = row.get(f"{m}_score", "")
+                        try:
+                            score = float(score_str)
+                            metric_sums[m] += score
+                            metric_counts[m] += 1
+                        except (ValueError, TypeError):
+                            pass
+
                 success_count = total_items - error_count
+
+                # Calculate metric averages
+                metric_averages = {}
+                for m in metrics:
+                    if metric_counts[m] > 0:
+                        metric_averages[m] = metric_sums[m] / metric_counts[m]
+                    else:
+                        metric_averages[m] = 0.0
 
                 # Parse timestamp from run_name
                 timestamp = self._extract_timestamp(run_name)
@@ -180,6 +203,7 @@ class RunDiscovery:
                     total_items=total_items,
                     success_count=success_count,
                     error_count=error_count,
+                    metric_averages=metric_averages,
                 )
         except Exception:
             return None

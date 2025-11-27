@@ -3,41 +3,220 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM-Eval Dashboard</title>
+  <title>LLM-Eval • Analytics</title>
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
-  <header>
-    <div class="header-left">
-      <h1>LLM-Eval Dashboard</h1>
-      <span class="subtitle">Historical Evaluation Runs</span>
+  <!-- Top Stats Bar -->
+  <header class="stats-bar">
+    <div class="logo">
+      <span class="logo-icon">◈</span>
+      <span class="logo-text">LLM-EVAL</span>
     </div>
-    <div class="header-right">
-      <input type="text" id="search" placeholder="Search runs..." />
-      <select id="sort">
-        <option value="date-desc">Newest first</option>
-        <option value="date-asc">Oldest first</option>
-        <option value="task-asc">Task A-Z</option>
-        <option value="success-desc">Success rate</option>
-      </select>
+    <div class="stat-cells">
+      <div class="stat-cell">
+        <span class="stat-label">RUNS</span>
+        <span class="stat-value" id="total-runs">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">TASKS</span>
+        <span class="stat-value" id="total-tasks">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">MODELS</span>
+        <span class="stat-value" id="total-models">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">AVG SUCCESS</span>
+        <span class="stat-value" id="avg-success">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">ITEMS EVAL'D</span>
+        <span class="stat-value" id="total-items">—</span>
+      </div>
+      <div class="stat-cell trend">
+        <span class="stat-label">7-DAY TREND</span>
+        <div class="trend-chart" id="weekly-trend"></div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span id="last-updated">—</span>
+      <span class="kbd">?</span> help
     </div>
   </header>
 
-  <main>
-    <div id="loading" class="loading">Loading runs...</div>
-    <div id="empty" class="empty" style="display:none;">
-      <div class="empty-icon">📊</div>
-      <h2>No evaluation runs found</h2>
-      <p>Run some evaluations to see them here.</p>
-      <code>llm-eval --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match</code>
+  <!-- Command Bar -->
+  <div class="command-bar">
+    <div class="search-box">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search" placeholder="Filter: task, model, dataset, or run ID..." />
+      <span class="kbd">/</span>
     </div>
-    <div id="runs-container"></div>
+    <div class="quick-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="today">Today</button>
+      <button class="filter-btn" data-filter="week">7d</button>
+      <button class="filter-btn" data-filter="high">≥90%</button>
+      <button class="filter-btn" data-filter="low">&lt;70%</button>
+      <button class="filter-btn" data-filter="errors">Errors</button>
+    </div>
+    <div class="view-toggle">
+      <button class="view-toggle-btn active" data-view="charts">
+        <span class="view-icon">◩</span>
+        <span class="view-label">Charts</span>
+      </button>
+      <button class="view-toggle-btn" data-view="table">
+        <span class="view-icon">▤</span>
+        <span class="view-label">Runs</span>
+      </button>
+    </div>
+    <div class="sort-control">
+      <select id="sort">
+        <option value="date-desc">↓ Recent</option>
+        <option value="date-asc">↑ Oldest</option>
+        <option value="success-desc">↓ Success%</option>
+        <option value="success-asc">↑ Success%</option>
+        <option value="items-desc">↓ Items</option>
+        <option value="task-asc">A→Z Task</option>
+        <option value="model-asc">A→Z Model</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Comparison Panel (hidden by default) -->
+  <div class="compare-panel" id="compare-panel" style="display: none;">
+    <div class="compare-header">
+      <span>⊕ COMPARING <span id="compare-count">0</span> RUNS</span>
+      <div class="compare-actions">
+        <button id="compare-view" class="action-btn">View Comparison</button>
+        <button id="compare-clear" class="action-btn secondary">Clear</button>
+      </div>
+    </div>
+    <div class="compare-chips" id="compare-chips"></div>
+  </div>
+
+  <!-- Main Content -->
+  <main>
+    <div id="loading" class="loading">
+      <div class="loading-spinner"></div>
+      <span>Scanning eval_results/...</span>
+    </div>
+    
+    <div id="empty" class="empty" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon">∅</div>
+        <h2>No evaluation runs found</h2>
+        <p>Run an evaluation to populate this dashboard.</p>
+        <code>llm-eval --task-file my_task.py --task-function my_func \
+  --dataset my-dataset --metrics exact_match</code>
+      </div>
+    </div>
+
+    <!-- Charts View (Default) -->
+    <div id="charts-view" class="charts-container" style="display:none;">
+      <div class="charts-header">
+        <div class="charts-title-row">
+          <h2>Metrics by Task & Dataset</h2>
+          <span class="charts-subtitle">Showing average metric scores across all items in matching runs</span>
+        </div>
+        <div class="charts-legend" id="charts-legend"></div>
+      </div>
+      <div class="charts-grid" id="charts-grid"></div>
+    </div>
+
+    <!-- Table View -->
+    <div id="table-view" class="table-container" style="display:none;">
+      <table class="runs-table">
+        <thead>
+          <tr>
+            <th class="col-select"><input type="checkbox" id="select-all" title="Select all"/></th>
+            <th class="col-status">ST</th>
+            <th class="col-run sortable" data-sort="run">RUN ID</th>
+            <th class="col-task sortable" data-sort="task">TASK</th>
+            <th class="col-model sortable" data-sort="model">MODEL</th>
+            <th class="col-dataset">DATASET</th>
+            <th class="col-items sortable" data-sort="items">ITEMS</th>
+            <th class="col-success sortable" data-sort="success">SUCCESS</th>
+            <th class="col-bar">DISTRIBUTION</th>
+            <th class="col-metrics">METRICS</th>
+            <th class="col-time sortable" data-sort="time">TIME</th>
+            <th class="col-actions"></th>
+          </tr>
+        </thead>
+        <tbody id="runs-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Grid View -->
+    <div id="grid-view" class="grid-container" style="display:none;"></div>
+
+    <!-- Timeline View -->
+    <div id="timeline-view" class="timeline-container" style="display:none;"></div>
+
+    <!-- Aggregation Panel -->
+    <div class="agg-panel" id="agg-panel" style="display:none;">
+      <div class="agg-section">
+        <h3>Model Performance</h3>
+        <div class="agg-chart" id="model-perf-chart"></div>
+      </div>
+      <div class="agg-section">
+        <h3>Task Coverage</h3>
+        <div class="agg-chart" id="task-coverage-chart"></div>
+      </div>
+      <div class="agg-section">
+        <h3>Metric Distributions</h3>
+        <div class="agg-chart" id="metric-dist-chart"></div>
+      </div>
+    </div>
   </main>
 
-  <footer>
-    <span>Auto-closes after inactivity • </span>
-    <span id="last-updated">Last updated: --</span>
+  <!-- Status Bar -->
+  <footer class="status-bar">
+    <div class="status-left">
+      <span id="status-filter">Showing all runs</span>
+      <span class="sep">|</span>
+      <span id="status-selected">0 selected</span>
+    </div>
+    <div class="status-right">
+      <span class="status-hint"><span class="kbd">j</span>/<span class="kbd">k</span> navigate</span>
+      <span class="status-hint"><span class="kbd">x</span> select</span>
+      <span class="status-hint"><span class="kbd">c</span> compare</span>
+      <span class="status-hint"><span class="kbd">Enter</span> open</span>
+    </div>
   </footer>
+
+  <!-- Help Modal -->
+  <div class="modal" id="help-modal" style="display:none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Keyboard Shortcuts</h2>
+        <button class="modal-close" onclick="document.getElementById('help-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcut-group">
+          <h4>Navigation</h4>
+          <div class="shortcut"><span class="kbd">j</span> / <span class="kbd">↓</span> Next row</div>
+          <div class="shortcut"><span class="kbd">k</span> / <span class="kbd">↑</span> Previous row</div>
+          <div class="shortcut"><span class="kbd">g</span> First row</div>
+          <div class="shortcut"><span class="kbd">G</span> Last row</div>
+          <div class="shortcut"><span class="kbd">Enter</span> Open run details</div>
+        </div>
+        <div class="shortcut-group">
+          <h4>Selection & Comparison</h4>
+          <div class="shortcut"><span class="kbd">x</span> Toggle select row</div>
+          <div class="shortcut"><span class="kbd">c</span> Compare selected</div>
+          <div class="shortcut"><span class="kbd">Esc</span> Clear selection</div>
+        </div>
+        <div class="shortcut-group">
+          <h4>Filters & Views</h4>
+          <div class="shortcut"><span class="kbd">/</span> Focus search</div>
+          <div class="shortcut"><span class="kbd">1-6</span> Quick filters</div>
+          <div class="shortcut"><span class="kbd">h</span> Charts (dashboard)</div>
+          <div class="shortcut"><span class="kbd">t</span> Runs (list)</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/dashboard.js"></script>
 </body>
