@@ -15,19 +15,27 @@
     flatRuns: [],
     filteredRuns: [],
     searchQuery: '',
-    sortKey: 'date-desc',
+    sortKey: 'time-desc',
     quickFilter: 'all',
+    filterTask: '',
+    filterModels: new Set(),  // Multi-select for models
+    filterDataset: '',
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
     chartData: null,  // Aggregated data for charts
+    allMetrics: [],   // All unique metric names across runs
+    allModels: [],    // All unique model names
   };
 
-  // Chart color palette
+  // Chart color palette - extended for more models
   const CHART_COLORS = [
-    '#00d4aa', '#00a8ff', '#a855f7', '#f472b6', 
-    '#fbbf24', '#60a5fa', '#34d399', '#fb923c'
+    '#00d4aa', '#00a8ff', '#a855f7', '#f472b6',
+    '#fbbf24', '#60a5fa', '#34d399', '#fb923c',
+    '#e879f9', '#22d3ee', '#facc15', '#f87171',
+    '#4ade80', '#818cf8', '#fb7185', '#a3e635',
+    '#2dd4bf', '#c084fc', '#fcd34d', '#6ee7b7'
   ];
 
   // ═══════════════════════════════════════════════════
@@ -89,26 +97,37 @@
     return d >= cutoff;
   }
 
+  function truncateText(text, maxLen = 200) {
+    if (!text || text.length <= maxLen) return text;
+    return text.substring(0, maxLen) + '...';
+  }
+
   // ═══════════════════════════════════════════════════
   // DATA PROCESSING
   // ═══════════════════════════════════════════════════
 
   function flattenRuns(data) {
     const runs = [];
-    if (!data || !data.tasks) return runs;
+    const metricsSet = new Set();
+    if (!data || !data.tasks) return { runs, metrics: [] };
     for (const [taskName, models] of Object.entries(data.tasks)) {
       for (const [modelName, runList] of Object.entries(models)) {
         for (const run of runList) {
+          // Collect all unique metrics
+          if (run.metrics) {
+            run.metrics.forEach(m => metricsSet.add(m));
+          }
+          // Model name is already stripped of provider in backend
           runs.push({
             ...run,
             task_name: taskName,
-            model_name: modelName,
+            model_name: run.model_name || modelName,
             _date: new Date(run.timestamp),
           });
         }
       }
     }
-    return runs;
+    return { runs, metrics: Array.from(metricsSet).sort() };
   }
 
   function computeAggregations(runs) {
@@ -275,11 +294,12 @@
           r.run_id.toLowerCase().includes(q) ||
           r.task_name.toLowerCase().includes(q) ||
           r.model_name.toLowerCase().includes(q) ||
+          r.display_model.toLowerCase().includes(q) ||
           r.dataset_name.toLowerCase().includes(q)
       );
     }
 
-    // Quick filter
+    // Quick filter (only time-based filters now)
     switch (state.quickFilter) {
       case 'today':
         runs = runs.filter(r => isToday(r.timestamp));
@@ -287,22 +307,33 @@
       case 'week':
         runs = runs.filter(r => isWithinDays(r.timestamp, 7));
         break;
-      case 'high':
-        runs = runs.filter(r => r.success_rate >= 0.9);
-        break;
-      case 'low':
-        runs = runs.filter(r => r.success_rate < 0.7);
-        break;
-      case 'errors':
-        runs = runs.filter(r => r.error_count > 0);
-        break;
+    }
+
+    // Dropdown filters
+    if (state.filterTask) {
+      runs = runs.filter(r => r.task_name === state.filterTask);
+    }
+    if (state.filterModels.size > 0) {
+      runs = runs.filter(r => state.filterModels.has(r.model_name));
+    }
+    if (state.filterDataset) {
+      runs = runs.filter(r => r.dataset_name === state.filterDataset);
     }
 
     // Sort
+    sortRuns(runs);
+
+    state.filteredRuns = runs;
+    return runs;
+  }
+
+  function sortRuns(runs) {
     switch (state.sortKey) {
+      case 'time-desc':
       case 'date-desc':
         runs.sort((a, b) => b._date - a._date);
         break;
+      case 'time-asc':
       case 'date-asc':
         runs.sort((a, b) => a._date - b._date);
         break;
@@ -315,16 +346,53 @@
       case 'items-desc':
         runs.sort((a, b) => b.total_items - a.total_items);
         break;
+      case 'items-asc':
+        runs.sort((a, b) => a.total_items - b.total_items);
+        break;
       case 'task-asc':
         runs.sort((a, b) => a.task_name.localeCompare(b.task_name));
+        break;
+      case 'task-desc':
+        runs.sort((a, b) => b.task_name.localeCompare(a.task_name));
         break;
       case 'model-asc':
         runs.sort((a, b) => a.model_name.localeCompare(b.model_name));
         break;
+      case 'model-desc':
+        runs.sort((a, b) => b.model_name.localeCompare(a.model_name));
+        break;
+      case 'dataset-asc':
+        runs.sort((a, b) => a.dataset_name.localeCompare(b.dataset_name));
+        break;
+      case 'dataset-desc':
+        runs.sort((a, b) => b.dataset_name.localeCompare(a.dataset_name));
+        break;
+      case 'status-asc':
+        runs.sort((a, b) => a.error_count - b.error_count);
+        break;
+      case 'status-desc':
+        runs.sort((a, b) => b.error_count - a.error_count);
+        break;
+      case 'run-asc':
+        runs.sort((a, b) => a.run_id.localeCompare(b.run_id));
+        break;
+      case 'run-desc':
+        runs.sort((a, b) => b.run_id.localeCompare(a.run_id));
+        break;
+      default:
+        // Handle metric column sorting (e.g., "metric-exact_match-desc")
+        if (state.sortKey.startsWith('metric-')) {
+          const parts = state.sortKey.split('-');
+          const metricName = parts.slice(1, -1).join('-');
+          const direction = parts[parts.length - 1];
+          runs.sort((a, b) => {
+            const aVal = a.metric_averages?.[metricName] ?? -1;
+            const bVal = b.metric_averages?.[metricName] ?? -1;
+            return direction === 'desc' ? bVal - aVal : aVal - bVal;
+          });
+        }
+        break;
     }
-
-    state.filteredRuns = runs;
-    return runs;
   }
 
   // ═══════════════════════════════════════════════════
@@ -385,14 +453,34 @@
       return;
     }
 
-    // Render legend (models)
+    // Render legend (models) - interactive toggle
     const legendEl = el('charts-legend');
-    legendEl.innerHTML = chartData.models.slice(0, 8).map((model, idx) => `
-      <div class="legend-item">
-        <span class="legend-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
-        <span>${model}</span>
-      </div>
-    `).join('');
+    legendEl.innerHTML = state.allModels.map((model, idx) => {
+      const isActive = state.filterModels.size === 0 || state.filterModels.has(model);
+      return `
+        <div class="legend-item ${isActive ? '' : 'inactive'}" data-model="${model}">
+          <span class="legend-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
+          <span>${model}</span>
+        </div>
+      `;
+    }).join('');
+
+    // Wire legend click events
+    legendEl.querySelectorAll('.legend-item').forEach(item => {
+      const model = item.dataset.model;
+
+      // Single click - toggle this model
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleModelFilter(model);
+      });
+
+      // Double click - select only this model
+      item.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        selectOnlyModel(model);
+      });
+    });
 
     // Render chart cards - one per task+dataset, showing metrics
     const gridEl = el('charts-grid');
@@ -486,14 +574,86 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
+  function updateTableHeader() {
+    // Update the table header to include dynamic metric columns
+    const headerRow = el('table-header-row');
+    if (!headerRow) return;
+
+    // Find the TIME column (insert metric columns before it)
+    const timeHeader = headerRow.querySelector('.col-time');
+    if (!timeHeader) return;
+
+    // Remove any existing dynamic metric columns
+    headerRow.querySelectorAll('.col-metric-dynamic').forEach(col => col.remove());
+
+    // Insert metric columns before TIME column (limit to 4 metrics)
+    const metricsToShow = state.allMetrics.slice(0, 4);
+    metricsToShow.forEach(metric => {
+      const th = document.createElement('th');
+      th.className = 'col-metric-dynamic sortable';
+      th.dataset.sort = `metric-${metric}`;
+      th.textContent = metric.toUpperCase();
+      th.title = `Sort by ${metric}`;
+      headerRow.insertBefore(th, timeHeader);
+    });
+
+    // Wire up sorting for all sortable columns
+    headerRow.querySelectorAll('.sortable').forEach(th => {
+      th.onclick = () => handleColumnSort(th.dataset.sort);
+    });
+  }
+
+  function handleColumnSort(sortField) {
+    // Determine current direction and toggle
+    const currentKey = state.sortKey;
+    let newKey;
+
+    if (currentKey.startsWith(sortField + '-') || currentKey.startsWith('metric-' + sortField + '-')) {
+      // Toggle direction
+      const direction = currentKey.endsWith('-asc') ? 'desc' : 'asc';
+      newKey = sortField.startsWith('metric-') ? `${sortField}-${direction}` : `${sortField}-${direction}`;
+    } else {
+      // Default to descending for numeric/time, ascending for text
+      const numericFields = ['success', 'items', 'status', 'time', 'date'];
+      const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-');
+      newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
+    }
+
+    state.sortKey = newKey;
+    updateSortIndicators();
+    render();
+  }
+
+  function updateSortIndicators() {
+    const headerRow = el('table-header-row');
+    if (!headerRow) return;
+
+    headerRow.querySelectorAll('.sortable').forEach(th => {
+      th.classList.remove('sorted', 'asc');
+      const sortField = th.dataset.sort;
+      if (state.sortKey.startsWith(sortField + '-') ||
+          (sortField.startsWith('metric-') && state.sortKey.startsWith(sortField))) {
+        th.classList.add('sorted');
+        if (state.sortKey.endsWith('-asc')) {
+          th.classList.add('asc');
+        }
+      }
+    });
+  }
+
   function renderTableView() {
     const runs = state.filteredRuns;
     const tbody = el('runs-tbody');
+    const metricsToShow = state.allMetrics.slice(0, 4);
+
+    // Update header with dynamic metric columns
+    updateTableHeader();
 
     if (runs.length === 0) {
+      const colCount = 9 + metricsToShow.length; // base columns + metrics
       tbody.innerHTML = `
         <tr>
-          <td colspan="12" style="text-align:center;padding:2rem;color:var(--text-muted);">
+          <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
             No runs match current filters
           </td>
         </tr>
@@ -508,33 +668,40 @@
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
-      const successPct = run.success_rate * 100;
-      const errorPct = (run.error_count / (run.total_items || 1)) * 100;
-
-      const metricsHtml = (run.metrics || []).slice(0, 3).map(m =>
-        `<span class="metric-pill"><span class="name">${m}</span></span>`
-      ).join('');
+      // Generate metric columns
+      const metricCells = metricsToShow.map(metric => {
+        const value = run.metric_averages?.[metric];
+        if (value === undefined || value === null) {
+          return `<td class="col-metric-value"><span class="metric-na">—</span></td>`;
+        }
+        const pct = (value * 100).toFixed(1);
+        const metricClass = getSuccessClass(value);
+        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${pct}%</span></td>`;
+      }).join('');
 
       return `
-        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}" 
+        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}">
-          <td class="col-select">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} />
+          <td class="col-select" onclick="event.stopPropagation()">
+            <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
           </td>
           <td class="col-status">
             <span class="status-dot ${statusClass}" title="${run.error_count} errors"></span>
           </td>
           <td class="col-run">
-            <span class="run-id" title="${run.run_id}">${run.run_id}</span>
+            <span class="run-id" title="${run.run_id}">${truncateText(run.run_id, 40)}</span>
           </td>
           <td class="col-task">
-            <span class="tag task" title="${run.task_name}">${run.task_name}</span>
+            <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
           </td>
           <td class="col-model">
-            <span class="tag model" title="${run.model_name}">${run.model_name}</span>
+            <span class="tag model" title="${run.model_name}">
+              <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(run.model_name) % CHART_COLORS.length]}"></span>
+              ${truncateText(run.model_name, 30)}
+            </span>
           </td>
           <td class="col-dataset">
-            <span class="tag" title="${run.dataset_name}">${run.dataset_name}</span>
+            <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
           </td>
           <td class="col-items">
             <span class="items-count">${run.total_items}</span>
@@ -542,15 +709,7 @@
           <td class="col-success">
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
           </td>
-          <td class="col-bar">
-            <div class="dist-bar">
-              <div class="segment success" style="width:${successPct}%"></div>
-              <div class="segment error" style="width:${errorPct}%"></div>
-            </div>
-          </td>
-          <td class="col-metrics">
-            <div class="metric-pills">${metricsHtml}</div>
-          </td>
+          ${metricCells}
           <td class="col-time">
             <span class="timestamp">
               <span class="date">${dt.date}</span>
@@ -564,15 +723,23 @@
       `;
     }).join('');
 
+    // Update sort indicators
+    updateSortIndicators();
+
     // Wire events
     tbody.querySelectorAll('tr[data-idx]').forEach(tr => {
       const idx = parseInt(tr.dataset.idx);
       const filePath = decodeURIComponent(tr.dataset.file);
 
-      tr.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-        e.stopPropagation();
-        toggleSelect(filePath);
-      });
+      const checkbox = tr.querySelector('.row-checkbox');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+        });
+        checkbox.addEventListener('change', (e) => {
+          toggleSelect(filePath);
+        });
+      }
 
       tr.querySelector('.run-id').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -702,63 +869,6 @@
   }
 
   // ═══════════════════════════════════════════════════
-  // RENDERING: AGGREGATION PANEL
-  // ═══════════════════════════════════════════════════
-
-  function renderAggPanel() {
-    const agg = state.aggregations;
-    if (!agg) return;
-
-    // Model performance chart
-    const modelChart = el('model-perf-chart');
-    const models = Object.entries(agg.byModel)
-      .sort((a, b) => b[1].avgSuccess - a[1].avgSuccess)
-      .slice(0, 6);
-
-    modelChart.innerHTML = `<div class="agg-bar-chart">${models.map(([name, data]) => {
-      const pct = data.avgSuccess * 100;
-      const color = getSuccessClass(data.avgSuccess);
-      const colorVar = color === 'high' ? 'var(--chart-1)' : color === 'mid' ? 'var(--chart-5)' : 'var(--error)';
-      return `
-        <div class="agg-bar-row">
-          <span class="agg-bar-label" title="${name}">${name}</span>
-          <div class="agg-bar-track">
-            <div class="agg-bar-fill" style="width:${pct}%;background:${colorVar}"></div>
-          </div>
-          <span class="agg-bar-value">${pct.toFixed(1)}%</span>
-      </div>
-    `;
-    }).join('')}</div>`;
-
-    // Task coverage chart
-    const taskChart = el('task-coverage-chart');
-    const tasks = Object.entries(agg.byTask)
-      .sort((a, b) => b[1].runs - a[1].runs)
-      .slice(0, 6);
-    const maxTaskRuns = Math.max(...tasks.map(([, d]) => d.runs), 1);
-
-    taskChart.innerHTML = `<div class="agg-bar-chart">${tasks.map(([name, data], i) => {
-      const pct = (data.runs / maxTaskRuns) * 100;
-      const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--accent-secondary)'];
-      return `
-        <div class="agg-bar-row">
-          <span class="agg-bar-label" title="${name}">${name}</span>
-          <div class="agg-bar-track">
-            <div class="agg-bar-fill" style="width:${pct}%;background:${colors[i % colors.length]}"></div>
-          </div>
-          <span class="agg-bar-value">${data.runs} runs</span>
-        </div>
-      `;
-    }).join('')}</div>`;
-
-    // Metric distribution (placeholder - would need actual metric data)
-    const metricChart = el('metric-dist-chart');
-    metricChart.innerHTML = `<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:2rem;">
-      Metric distributions available in run details
-    </div>`;
-  }
-
-  // ═══════════════════════════════════════════════════
   // RENDERING: STATUS & COMPARE
   // ═══════════════════════════════════════════════════
 
@@ -819,7 +929,6 @@
     const tableView = el('table-view');
     const gridView = el('grid-view');
     const timelineView = el('timeline-view');
-    const aggPanel = el('agg-panel');
 
     if (!state.runs) {
       loading.style.display = 'flex';
@@ -828,7 +937,6 @@
       tableView.style.display = 'none';
       gridView.style.display = 'none';
       timelineView.style.display = 'none';
-      aggPanel.style.display = 'none';
       return;
     }
 
@@ -842,7 +950,6 @@
       tableView.style.display = 'none';
       gridView.style.display = 'none';
       timelineView.style.display = 'none';
-      aggPanel.style.display = 'none';
       return;
     }
 
@@ -853,9 +960,6 @@
     tableView.style.display = state.currentView === 'table' ? 'block' : 'none';
     gridView.style.display = 'none';  // Hidden - using simplified toggle
     timelineView.style.display = 'none';  // Hidden - using simplified toggle
-
-    // Show agg panel only in table view
-    aggPanel.style.display = state.currentView === 'table' ? 'grid' : 'none';
 
     // Recompute chart data based on filtered runs
     state.chartData = computeChartData(state.filteredRuns);
@@ -879,9 +983,6 @@
     renderStatsBar();
     renderStatusBar();
     renderComparePanel();
-    if (state.currentView === 'table') {
-      renderAggPanel();
-    }
   }
 
   // ═══════════════════════════════════════════════════
@@ -895,6 +996,47 @@
       state.selectedRuns.add(filePath);
     }
     render();
+  }
+
+  function toggleModelFilter(model) {
+    if (state.filterModels.size === 0) {
+      // Currently showing all - select all except this one (deselect this one)
+      state.allModels.forEach(m => {
+        if (m !== model) state.filterModels.add(m);
+      });
+    } else if (state.filterModels.has(model)) {
+      // This model is selected - deselect it
+      state.filterModels.delete(model);
+      // If none left, show all
+      if (state.filterModels.size === 0) {
+        // Already empty, will show all
+      }
+    } else {
+      // This model is not selected - select it
+      state.filterModels.add(model);
+    }
+    updateModelFilterButton();
+    render();
+  }
+
+  function selectOnlyModel(model) {
+    state.filterModels.clear();
+    state.filterModels.add(model);
+    updateModelFilterButton();
+    render();
+  }
+
+  function updateModelFilterButton() {
+    const btn = el('filter-model-btn');
+    if (!btn) return;
+
+    if (state.filterModels.size === 0) {
+      btn.textContent = 'All Models';
+    } else if (state.filterModels.size === 1) {
+      btn.textContent = [...state.filterModels][0];
+    } else {
+      btn.textContent = `${state.filterModels.size} Models`;
+    }
   }
 
   function selectAll() {
@@ -964,9 +1106,14 @@
       const response = await fetch('/api/runs');
       const data = await response.json();
       state.runs = data;
-      state.flatRuns = flattenRuns(data);
+      const { runs, metrics } = flattenRuns(data);
+      state.flatRuns = runs;
+      state.allMetrics = metrics;
       state.aggregations = computeAggregations(state.flatRuns);
       state.chartData = computeChartData(state.flatRuns);
+
+      // Populate filter dropdowns
+      populateFilterDropdowns();
 
       el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -977,6 +1124,69 @@
         <span style="color:var(--error);">Failed to load runs</span>
         <span>Is the server running?</span>
       `;
+    }
+  }
+
+  function populateFilterDropdowns() {
+    const tasks = [...new Set(state.flatRuns.map(r => r.task_name))].sort();
+    const models = [...new Set(state.flatRuns.map(r => r.model_name))].sort();
+    const datasets = [...new Set(state.flatRuns.map(r => r.dataset_name))].sort();
+
+    state.allModels = models;
+
+    const taskSelect = el('filter-task');
+    const datasetSelect = el('filter-dataset');
+
+    if (taskSelect) {
+      taskSelect.innerHTML = '<option value="">All Tasks</option>' +
+        tasks.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+    if (datasetSelect) {
+      datasetSelect.innerHTML = '<option value="">All Datasets</option>' +
+        datasets.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+
+    // Populate model multi-select dropdown
+    const modelDropdown = el('filter-model-dropdown');
+    if (modelDropdown) {
+      modelDropdown.innerHTML = `
+        <div class="multi-select-option" data-value="">
+          <input type="checkbox" ${state.filterModels.size === 0 ? 'checked' : ''} />
+          <span>All Models</span>
+        </div>
+        ${models.map((m, idx) => `
+          <div class="multi-select-option" data-value="${m}">
+            <span class="model-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
+            <input type="checkbox" ${state.filterModels.size === 0 || state.filterModels.has(m) ? 'checked' : ''} />
+            <span>${m}</span>
+          </div>
+        `).join('')}
+      `;
+
+      // Wire dropdown events
+      modelDropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+        opt.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const value = opt.dataset.value;
+          if (value === '') {
+            // "All Models" clicked - clear filter
+            state.filterModels.clear();
+          } else {
+            if (state.filterModels.size === 0) {
+              // Currently all selected, now select only this one
+              state.filterModels.add(value);
+            } else if (state.filterModels.has(value)) {
+              state.filterModels.delete(value);
+              // If all deselected, show all
+            } else {
+              state.filterModels.add(value);
+            }
+          }
+          updateModelFilterButton();
+          populateFilterDropdowns(); // Refresh checkboxes
+          render();
+        });
+      });
     }
   }
 
@@ -997,9 +1207,32 @@
     render();
   }, 150));
 
-  // Sort
-  el('sort').addEventListener('change', (e) => {
-    state.sortKey = e.target.value;
+  // Filter dropdowns
+  el('filter-task')?.addEventListener('change', (e) => {
+    state.filterTask = e.target.value;
+    state.focusedIndex = -1;
+    render();
+  });
+
+  // Model multi-select dropdown toggle
+  el('filter-model-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dropdown = el('filter-model-dropdown');
+    dropdown.classList.toggle('open');
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const wrapper = el('model-filter-wrapper');
+    const dropdown = el('filter-model-dropdown');
+    if (wrapper && dropdown && !wrapper.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  el('filter-dataset')?.addEventListener('change', (e) => {
+    state.filterDataset = e.target.value;
+    state.focusedIndex = -1;
     render();
   });
 
@@ -1093,10 +1326,7 @@
       case '1':
       case '2':
       case '3':
-      case '4':
-      case '5':
-      case '6':
-        const filters = ['all', 'today', 'week', 'high', 'low', 'errors'];
+        const filters = ['all', 'today', 'week'];
         const idx = parseInt(e.key) - 1;
         if (idx >= 0 && idx < filters.length) {
           e.preventDefault();

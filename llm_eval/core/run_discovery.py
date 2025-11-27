@@ -63,6 +63,14 @@ class RunIndex:
         return result
 
 
+def strip_model_provider(model_name: str) -> str:
+    """Strip provider prefix from model name (e.g., 'qwen/qwen3-coder' -> 'qwen3-coder')."""
+    if not model_name:
+        return model_name
+    parts = model_name.split("/")
+    return parts[-1] if len(parts) > 1 else model_name
+
+
 class RunDiscovery:
     """Scan results directory and build index of historical runs."""
 
@@ -150,12 +158,12 @@ class RunDiscovery:
                 run_name = first_row.get("run_name", "")
                 dataset_name = first_row.get("dataset_name", "unknown")
 
-                # Try to get model from run_metadata JSON
-                actual_model = model_name
+                # Try to get model from run_metadata JSON and strip provider prefix
+                actual_model = strip_model_provider(model_name)
                 try:
                     metadata = json.loads(first_row.get("run_metadata", "{}"))
                     if "model" in metadata:
-                        actual_model = metadata["model"]
+                        actual_model = strip_model_provider(metadata["model"])
                 except (json.JSONDecodeError, TypeError):
                     pass
 
