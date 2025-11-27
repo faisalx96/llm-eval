@@ -128,8 +128,53 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
     return specs
 
 
+def run_dashboard_command(args: List[str]) -> None:
+    """Run the dashboard subcommand."""
+    from .server.dashboard_server import run_dashboard
+
+    parser = argparse.ArgumentParser(
+        prog="llm-eval dashboard",
+        description="Open a web UI showing all historical evaluation runs",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port for dashboard server (default: 8080)",
+    )
+    parser.add_argument(
+        "--results-dir",
+        default="eval_results",
+        help="Directory containing evaluation results (default: eval_results)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=300,
+        help="Auto-close after N seconds of inactivity (default: 300)",
+    )
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open browser automatically",
+    )
+
+    parsed = parser.parse_args(args)
+    run_dashboard(
+        port=parsed.port,
+        results_dir=parsed.results_dir,
+        timeout=parsed.timeout,
+        auto_open=not parsed.no_open,
+    )
+
+
 def main():
     """Main CLI entry point."""
+    # Check for dashboard subcommand first
+    if len(sys.argv) > 1 and sys.argv[1] == "dashboard":
+        run_dashboard_command(sys.argv[2:])
+        return
+
     parser = argparse.ArgumentParser(
         description="Evaluate LLM tasks using Langfuse datasets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -138,16 +183,19 @@ Examples:
   # Evaluate a function from a Python file
   llm-eval --task-file my_bot.py --task-function ask_question \\
            --dataset qa-test-set --metrics exact_match,fuzzy_match
-  
+
   # Use custom configuration
   llm-eval --task-file bot.py --task-function chat \\
            --dataset conversations --metrics contains \\
            --config '{"max_concurrency": 5, "timeout": 10}'
-           
+
   # Save results to file
   llm-eval --task-file agent.py --task-function run \\
            --dataset test-cases --metrics exact_match \\
            --output results.json
+
+  # Open dashboard to view historical runs
+  llm-eval dashboard
         """
     )
     

@@ -1,10 +1,15 @@
 (() => {
+  // Detect if we're in dashboard mode (viewing historical run)
+  const isDashboardMode = window.location.pathname.startsWith('/run/');
+  const dashboardRunFile = isDashboardMode ? sessionStorage.getItem('dashboardRunFile') : null;
+
   const state = {
     run: {},
     snapshot: { rows: [], stats: {} },
     filtered: [],
     pageSize: 50,
     page: 1,
+    isDashboardMode,
   };
 
   const el = (id) => document.getElementById(id);
@@ -780,50 +785,113 @@
   // (No global keyboard shortcuts; keep UI simple)
 
   // Bootstrap
-  fetch('api/run').then(r=>r.json()).then(run => {
-    state.run = run;
-    state.metricNames = run.metric_names || [];
-    state.langfuseHost = run.langfuse_host || 'https://cloud.langfuse.com';
-    state.langfuseProjectId = run.langfuse_project_id || '';
-    // Setup run start for timer
-    try {
-      const s = run.started_at || run.start_time || null;
-      state.runStartMs = s ? Date.parse(s) : Date.now();
-      state.runEndMs = null;
-    } catch { state.runStartMs = Date.now(); state.runEndMs = null; }
-    try {
-      const ds = run.dataset_name || 'Dataset';
-      const rn = run.run_name || 'Run';
-      document.title = `LLM Eval – ${ds} / ${rn}`;
-    } catch {}
-    // Apply default header style (B)
-    try { document.body.setAttribute('data-header-style', 'b'); } catch {}
-    initColumns();
-    renderMeta();
-    startRunTimer();
-    renderQuickBar();
-    renderMetricCharts();
-    buildHeader();
-    buildColumnMenu();
-    initToolbarMenus();
-    // After run info is ready (metric names set), fetch initial snapshot
-    return fetch('api/snapshot')
-      .then(r=>r.json())
-      .then(snap => {
-        state.snapshot = snap || { rows:[], stats:{} };
-        // If metric names missing or incomplete, infer from snapshot
-        syncMetricNamesFromSnapshot(state.snapshot);
-        updateMetricSeriesFromSnapshot(state.snapshot);
-        renderAll();
-        // If any snapshot arrived before run finished loading, apply it now
-        if (state._pendingSnapshot){
-          updateMetricSeriesFromSnapshot(state._pendingSnapshot);
+  function bootstrapLive() {
+    // Live mode: fetch from regular API
+    fetch('api/run').then(r=>r.json()).then(run => {
+      state.run = run;
+      state.metricNames = run.metric_names || [];
+      state.langfuseHost = run.langfuse_host || 'https://cloud.langfuse.com';
+      state.langfuseProjectId = run.langfuse_project_id || '';
+      // Setup run start for timer
+      try {
+        const s = run.started_at || run.start_time || null;
+        state.runStartMs = s ? Date.parse(s) : Date.now();
+        state.runEndMs = null;
+      } catch { state.runStartMs = Date.now(); state.runEndMs = null; }
+      try {
+        const ds = run.dataset_name || 'Dataset';
+        const rn = run.run_name || 'Run';
+        document.title = `LLM Eval – ${ds} / ${rn}`;
+      } catch {}
+      // Apply default header style (B)
+      try { document.body.setAttribute('data-header-style', 'b'); } catch {}
+      initColumns();
+      renderMeta();
+      startRunTimer();
+      renderQuickBar();
+      renderMetricCharts();
+      buildHeader();
+      buildColumnMenu();
+      initToolbarMenus();
+      // After run info is ready (metric names set), fetch initial snapshot
+      return fetch('api/snapshot')
+        .then(r=>r.json())
+        .then(snap => {
+          state.snapshot = snap || { rows:[], stats:{} };
+          // If metric names missing or incomplete, infer from snapshot
+          syncMetricNamesFromSnapshot(state.snapshot);
+          updateMetricSeriesFromSnapshot(state.snapshot);
           renderAll();
-          state._pendingSnapshot = null;
+          // If any snapshot arrived before run finished loading, apply it now
+          if (state._pendingSnapshot){
+            updateMetricSeriesFromSnapshot(state._pendingSnapshot);
+            renderAll();
+            state._pendingSnapshot = null;
+          }
+        })
+        .catch(()=>{});
+    }).catch(()=>{});
+  }
+
+  function bootstrapDashboard(filePath) {
+    // Dashboard mode: fetch historical run data from dashboard API
+    fetch('/api/runs/' + encodeURIComponent(filePath))
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          console.error('Failed to load run:', data.error);
+          return;
         }
+        const run = data.run || {};
+        const snap = data.snapshot || { rows: [], stats: {} };
+
+        state.run = run;
+        state.snapshot = snap;
+        state.metricNames = run.metric_names || snap.metric_names || [];
+        state.langfuseHost = run.langfuse_host || '';
+        state.langfuseProjectId = run.langfuse_project_id || '';
+
+        // Mark as finished (historical data)
+        state.runStartMs = Date.now();
+        state.runEndMs = Date.now();
+
+        try {
+          const ds = run.dataset_name || 'Dataset';
+          const rn = run.run_name || 'Run';
+          document.title = `LLM Eval – ${ds} / ${rn} (Historical)`;
+        } catch {}
+
+        try { document.body.setAttribute('data-header-style', 'b'); } catch {}
+
+        initColumns();
+        renderMeta();
+        renderQuickBar();
+        renderMetricCharts();
+        buildHeader();
+        buildColumnMenu();
+        initToolbarMenus();
+        syncMetricNamesFromSnapshot(snap);
+        updateMetricSeriesFromSnapshot(snap);
+        renderAll();
+
+        // Build row index map
+        try {
+          const map = new Map();
+          (snap.rows || []).forEach(r => map.set(Number(r.index) || 0, r));
+          state.rowByIndex = map;
+        } catch {}
       })
-      .catch(()=>{});
-  }).catch(()=>{});
+      .catch(err => {
+        console.error('Failed to fetch run data:', err);
+      });
+  }
+
+  // Choose bootstrap mode
+  if (isDashboardMode && dashboardRunFile) {
+    bootstrapDashboard(dashboardRunFile);
+  } else {
+    bootstrapLive();
+  }
   // Build initial row map if available
   try {
     const map = new Map();
@@ -831,8 +899,8 @@
     state.rowByIndex = map;
   } catch {}
 
-  // Live updates via SSE
-  try {
+  // Live updates via SSE (skip in dashboard mode)
+  if (!isDashboardMode) try {
     const es = new EventSource('api/rows/stream');
     es.addEventListener('snapshot', (evt) => {
       try {

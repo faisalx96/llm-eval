@@ -5,6 +5,7 @@ streams live evaluation snapshots over Server-Sent Events (SSE).
 """
 
 from .app import UIServer
+from .dashboard_server import DashboardServer, run_dashboard
 
-__all__ = ["UIServer"]
+__all__ = ["UIServer", "DashboardServer", "run_dashboard"]
 

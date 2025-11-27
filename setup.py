@@ -25,6 +25,7 @@ setup(
     package_data={
         "llm_eval": [
             "_static/ui/*",
+            "_static/dashboard/*",
         ],
     },
     classifiers=[

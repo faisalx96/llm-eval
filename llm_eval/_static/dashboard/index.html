@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM-Eval Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>LLM-Eval Dashboard</h1>
+      <span class="subtitle">Historical Evaluation Runs</span>
+    </div>
+    <div class="header-right">
+      <input type="text" id="search" placeholder="Search runs..." />
+      <select id="sort">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="task-asc">Task A-Z</option>
+        <option value="success-desc">Success rate</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+    <div id="loading" class="loading">Loading runs...</div>
+    <div id="empty" class="empty" style="display:none;">
+      <div class="empty-icon">📊</div>
+      <h2>No evaluation runs found</h2>
+      <p>Run some evaluations to see them here.</p>
+      <code>llm-eval --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match</code>
+    </div>
+    <div id="runs-container"></div>
+  </main>
+
+  <footer>
+    <span>Auto-closes after inactivity • </span>
+    <span id="last-updated">Last updated: --</span>
+  </footer>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
