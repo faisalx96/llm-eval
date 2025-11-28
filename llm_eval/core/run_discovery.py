@@ -24,6 +24,7 @@ class RunInfo:
     success_count: int
     error_count: int
     metric_averages: Dict[str, float] = field(default_factory=dict)
+    avg_latency_ms: float = 0.0
 
     @property
     def success_rate(self) -> float:
@@ -45,6 +46,7 @@ class RunInfo:
             "success_count": self.success_count,
             "error_count": self.error_count,
             "success_rate": self.success_rate,
+            "avg_latency_ms": self.avg_latency_ms,
         }
 
 
@@ -171,6 +173,8 @@ class RunDiscovery:
                 error_count = 0
                 metric_sums: Dict[str, float] = {m: 0.0 for m in metrics}
                 metric_counts: Dict[str, int] = {m: 0 for m in metrics}
+                latency_sum = 0.0
+                latency_count = 0
 
                 for row in rows:
                     output = row.get("output", "")
@@ -187,6 +191,15 @@ class RunDiscovery:
                         except (ValueError, TypeError):
                             pass
 
+                    # Accumulate latency (time column is in seconds)
+                    time_str = row.get("time", "")
+                    try:
+                        latency_sec = float(time_str)
+                        latency_sum += latency_sec * 1000  # Convert to ms
+                        latency_count += 1
+                    except (ValueError, TypeError):
+                        pass
+
                 success_count = total_items - error_count
 
                 # Calculate metric averages
@@ -196,6 +209,9 @@ class RunDiscovery:
                         metric_averages[m] = metric_sums[m] / metric_counts[m]
                     else:
                         metric_averages[m] = 0.0
+
+                # Calculate average latency
+                avg_latency_ms = latency_sum / latency_count if latency_count > 0 else 0.0
 
                 # Parse timestamp from run_name
                 timestamp = self._extract_timestamp(run_name)
@@ -212,6 +228,7 @@ class RunDiscovery:
                     success_count=success_count,
                     error_count=error_count,
                     metric_averages=metric_averages,
+                    avg_latency_ms=avg_latency_ms,
                 )
         except Exception:
             return None

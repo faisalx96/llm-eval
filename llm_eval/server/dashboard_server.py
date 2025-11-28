@@ -163,6 +163,39 @@ class DashboardServer:
                     self.wfile.write(b'{"error": "UI not found"}')
                     return
 
+                # Serve comparison page
+                if path == "/compare":
+                    if self._serve_file(server.dashboard_static_dir, "compare.html"):
+                        return
+                    self._set_headers(HTTPStatus.NOT_FOUND)
+                    self.wfile.write(b'{"error": "Compare page not found"}')
+                    return
+
+                # API: Get multiple runs for comparison
+                if path == "/api/compare":
+                    query = parse_qs(parsed.query)
+                    files = query.get("files", [])
+                    if not files:
+                        self._set_headers(HTTPStatus.BAD_REQUEST)
+                        self.wfile.write(b'{"error": "No files specified"}')
+                        return
+                    # files is a list, could be comma-separated or multiple params
+                    all_files = []
+                    for f in files:
+                        all_files.extend(f.split(","))
+                    runs_data = []
+                    for file_path in all_files:
+                        file_path = unquote(file_path.strip())
+                        if file_path:
+                            data = server.discovery.get_run_data(file_path)
+                            if not data.get("error"):
+                                runs_data.append(data)
+                    self._set_headers(HTTPStatus.OK)
+                    self.wfile.write(
+                        json.dumps({"runs": runs_data}, ensure_ascii=False).encode("utf-8")
+                    )
+                    return
+
                 # Serve evaluation UI static files (CSS, JS)
                 if path.startswith("/ui/"):
                     rel_path = path[4:]  # Remove '/ui/'
@@ -206,6 +239,62 @@ class DashboardServer:
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(b'{"ok": true}')
                     return
+
+                # Delete run endpoint
+                if path == "/api/runs/delete":
+                    try:
+                        content_length = int(self.headers.get("Content-Length", 0))
+                        body = self.rfile.read(content_length)
+                        data = json.loads(body.decode("utf-8"))
+                        file_path = data.get("file_path", "")
+
+                        if not file_path:
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(b'{"error": "No file_path provided"}')
+                            return
+
+                        # Security: Ensure path is within results directory
+                        abs_path = os.path.abspath(file_path)
+                        results_abs = os.path.abspath(server.discovery.results_dir)
+                        if not abs_path.startswith(results_abs):
+                            self._set_headers(HTTPStatus.FORBIDDEN)
+                            self.wfile.write(b'{"error": "Access denied"}')
+                            return
+
+                        if not os.path.exists(abs_path):
+                            self._set_headers(HTTPStatus.NOT_FOUND)
+                            self.wfile.write(b'{"error": "File not found"}')
+                            return
+
+                        # Delete the file
+                        os.remove(abs_path)
+
+                        # Try to clean up empty parent directories
+                        try:
+                            parent = os.path.dirname(abs_path)
+                            while parent and parent != results_abs:
+                                if os.path.isdir(parent) and not os.listdir(parent):
+                                    os.rmdir(parent)
+                                    parent = os.path.dirname(parent)
+                                else:
+                                    break
+                        except Exception:
+                            pass  # Ignore cleanup errors
+
+                        # Force refresh the cache
+                        server.discovery.scan(force_refresh=True)
+
+                        self._set_headers(HTTPStatus.OK)
+                        self.wfile.write(b'{"ok": true}')
+                        return
+                    except json.JSONDecodeError:
+                        self._set_headers(HTTPStatus.BAD_REQUEST)
+                        self.wfile.write(b'{"error": "Invalid JSON"}')
+                        return
+                    except Exception as e:
+                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
+                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+                        return
 
                 self._set_headers(HTTPStatus.NOT_FOUND)
                 self.wfile.write(b'{}')

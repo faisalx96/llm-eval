@@ -1,7 +1,21 @@
 (() => {
   // Detect if we're in dashboard mode (viewing historical run)
   const isDashboardMode = window.location.pathname.startsWith('/run/');
-  const dashboardRunFile = isDashboardMode ? sessionStorage.getItem('dashboardRunFile') : null;
+  // Extract file path from URL (preferred) or fallback to sessionStorage
+  const getDashboardRunFile = () => {
+    if (!isDashboardMode) return null;
+    // Try to extract from URL first: /run/{encodedFilePath}
+    const urlPath = window.location.pathname;
+    if (urlPath.startsWith('/run/')) {
+      const encodedPath = urlPath.slice(5); // Remove '/run/'
+      if (encodedPath) {
+        return decodeURIComponent(encodedPath);
+      }
+    }
+    // Fallback to sessionStorage
+    return sessionStorage.getItem('dashboardRunFile');
+  };
+  const dashboardRunFile = getDashboardRunFile();
 
   const state = {
     run: {},

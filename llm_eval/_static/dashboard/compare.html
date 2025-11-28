@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM-Eval • Compare Runs</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <style>
+    /* Compare-specific styles */
+    .compare-container {
+      padding: var(--space-lg);
+      overflow-y: auto;
+      height: calc(100vh - 100px);
+    }
+
+    .compare-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-lg);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .compare-title {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .compare-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .back-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-size: var(--font-sm);
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Summary cards grid */
+    .compare-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--space-md);
+      margin-bottom: var(--space-xl);
+    }
+
+    .run-summary-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+    }
+
+    .run-summary-card .run-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .run-color-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .run-summary-card .run-name {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      color: var(--text-primary);
+      word-break: break-all;
+    }
+
+    .run-summary-card .run-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .run-summary-card .stats-row {
+      display: flex;
+      justify-content: space-between;
+      padding: var(--space-xs) 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .run-summary-card .stats-row:last-child {
+      border-bottom: none;
+    }
+
+    .run-summary-card .stat-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .run-summary-card .stat-val {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+    }
+
+    .run-summary-card .stat-val.high { color: var(--success); }
+    .run-summary-card .stat-val.mid { color: var(--warning); }
+    .run-summary-card .stat-val.low { color: var(--error); }
+
+    /* Comparison Stats Section */
+    .comparison-stats {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-xl);
+    }
+
+    .comparison-stats h3 {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .stat-box {
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      padding: var(--space-md);
+    }
+
+    .stat-box .stat-title {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: var(--space-xs);
+    }
+
+    .stat-box .stat-main {
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .stat-box .stat-main.positive { color: var(--success); }
+    .stat-box .stat-main.negative { color: var(--error); }
+    .stat-box .stat-main.neutral { color: var(--text-secondary); }
+
+    .stat-box .stat-detail {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Win/Loss bars */
+    .win-loss-bar {
+      display: flex;
+      height: 24px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: var(--space-sm);
+    }
+
+    .win-loss-bar .segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      color: var(--bg-void);
+      transition: flex 0.3s;
+    }
+
+    .win-loss-bar .segment.win-a { background: var(--chart-1); }
+    .win-loss-bar .segment.win-b { background: var(--chart-2); }
+    .win-loss-bar .segment.tie { background: var(--text-muted); }
+
+    /* Quick Insights */
+    .quick-insights {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-xl);
+    }
+
+    .quick-insights h3 {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+    }
+
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .insight-card {
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      padding: var(--space-md);
+      border-left: 3px solid var(--border-default);
+    }
+
+    .insight-card.positive { border-left-color: var(--success); }
+    .insight-card.negative { border-left-color: var(--error); }
+    .insight-card.info { border-left-color: var(--info); }
+    .insight-card.warning { border-left-color: var(--warning); }
+
+    .insight-card .insight-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+
+    .insight-card .insight-icon {
+      font-size: var(--font-md);
+    }
+
+    .insight-card .insight-title {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .insight-card .insight-body {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+    }
+
+    .insight-card .insight-body strong {
+      color: var(--text-primary);
+    }
+
+    /* Error breakdown */
+    .error-breakdown {
+      display: flex;
+      gap: var(--space-md);
+      margin-top: var(--space-sm);
+    }
+
+    .error-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    .error-item .count {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* Metrics comparison table */
+    .metrics-comparison {
+      margin-bottom: var(--space-xl);
+    }
+
+    .metrics-comparison h3 {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+    }
+
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-surface);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .metrics-table th,
+    .metrics-table td {
+      padding: var(--space-sm) var(--space-md);
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .metrics-table thead th {
+      background: var(--bg-elevated);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .metrics-table tbody td {
+      font-size: var(--font-sm);
+    }
+
+    .metrics-table .metric-name {
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    .metrics-table .metric-val {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .metrics-table .metric-val.high { color: var(--success); }
+    .metrics-table .metric-val.mid { color: var(--warning); }
+    .metrics-table .metric-val.low { color: var(--error); }
+
+    .metrics-table .metric-val.best {
+      background: var(--success-dim);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .metrics-table .diff {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    .metrics-table .diff.positive {
+      color: var(--success);
+    }
+
+    .metrics-table .diff.negative {
+      color: var(--error);
+    }
+
+    /* Side-by-side items view */
+    .items-comparison {
+      margin-bottom: var(--space-xl);
+    }
+
+    .items-comparison h3 {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+    }
+
+    .items-filter {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .filter-count {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .filter-count .count-num {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    .items-grid {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .item-comparison-row {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-md);
+    }
+
+    .item-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .item-index {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .item-input-row,
+    .item-expected-row {
+      background: var(--bg-elevated);
+      padding: var(--space-sm);
+      border-radius: 4px;
+    }
+
+    .item-input-row .input-label,
+    .item-expected-row .expected-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .item-input-row .input-text,
+    .item-expected-row .expected-text {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .item-expected-row {
+      background: var(--success-dim);
+      border-left: 3px solid var(--success);
+    }
+
+    .item-expected-row .expected-label {
+      color: var(--success);
+    }
+
+    .item-outputs-row {
+      display: grid;
+      grid-template-columns: repeat(var(--run-count, 2), 1fr);
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+
+    .item-run-output {
+      border-left: 3px solid var(--border-default);
+      padding-left: var(--space-sm);
+      background: var(--bg-elevated);
+      border-radius: 0 4px 4px 0;
+      padding: var(--space-sm);
+    }
+
+    .item-run-output .output-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-xs);
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .item-run-output .run-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .item-run-output .output-badges {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .item-run-output .metric-badge,
+    .item-run-output .latency-badge {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+    }
+
+    .item-run-output .metric-badge.high { background: var(--success-dim); color: var(--success); }
+    .item-run-output .metric-badge.mid { background: var(--warning-dim); color: var(--warning); }
+    .item-run-output .metric-badge.low { background: var(--error-dim); color: var(--error); }
+
+    .item-run-output .latency-badge {
+      color: var(--text-muted);
+    }
+
+    .item-run-output .output-text {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+
+    .pagination button {
+      padding: var(--space-xs) var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .pagination button:hover:not(:disabled) {
+      background: var(--bg-hover);
+    }
+
+    .pagination button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pagination .page-info {
+      display: flex;
+      align-items: center;
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+    }
+
+    /* Empty/loading states */
+    .compare-loading,
+    .compare-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      color: var(--text-muted);
+    }
+
+    .compare-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border-default);
+      border-top-color: var(--accent-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: var(--space-md);
+    }
+  </style>
+</head>
+<body>
+  <!-- Minimal header -->
+  <header class="stats-bar">
+    <div class="logo">
+      <span class="logo-icon">◈</span>
+      <span class="logo-text">LLM-EVAL</span>
+    </div>
+    <div class="stat-cells">
+      <div class="stat-cell">
+        <span class="stat-label">COMPARING</span>
+        <span class="stat-value" id="run-count">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">TOTAL ITEMS</span>
+        <span class="stat-value" id="total-items">—</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-label">METRICS</span>
+        <span class="stat-value" id="metric-count">—</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="compare-container">
+    <div class="compare-loading" id="loading">
+      <div class="spinner"></div>
+      <span>Loading comparison data...</span>
+    </div>
+
+    <div class="compare-empty" id="empty" style="display: none;">
+      <div style="font-size: 48px; margin-bottom: var(--space-md);">∅</div>
+      <h2>No runs to compare</h2>
+      <p>Select at least 2 runs from the dashboard to compare.</p>
+      <a href="/" class="back-link">← Back to Dashboard</a>
+    </div>
+
+    <div id="compare-content" style="display: none;">
+      <div class="compare-header-bar">
+        <div>
+          <div class="compare-title">Run Comparison</div>
+          <div class="compare-subtitle" id="compare-subtitle">Comparing evaluation runs</div>
+        </div>
+        <a href="/" class="back-link">← Back to Dashboard</a>
+      </div>
+
+      <!-- Run summaries -->
+      <div class="compare-summary" id="run-summaries"></div>
+
+      <!-- Comparison Statistics -->
+      <div class="comparison-stats" id="comparison-stats">
+        <h3>📊 Head-to-Head Statistics</h3>
+        <div class="stats-grid" id="stats-grid"></div>
+      </div>
+
+      <!-- Quick Insights -->
+      <div class="quick-insights" id="quick-insights">
+        <h3>💡 Quick Insights</h3>
+        <div class="insights-grid" id="insights-grid"></div>
+      </div>
+
+      <!-- Metrics comparison -->
+      <div class="metrics-comparison">
+        <h3>Metric Averages</h3>
+        <table class="metrics-table" id="metrics-table">
+          <thead id="metrics-thead"></thead>
+          <tbody id="metrics-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Side-by-side items -->
+      <div class="items-comparison">
+        <h3>Item-by-Item Comparison</h3>
+        <div class="items-filter">
+          <select id="item-filter" class="filter-select">
+            <option value="all">All Items</option>
+            <option value="different">Different Outputs</option>
+            <option value="errors">With Errors</option>
+            <option value="all_correct">All Runs Correct</option>
+            <option value="all_wrong">All Runs Wrong</option>
+          </select>
+          <select id="run-winner-filter" class="filter-select">
+            <option value="any">Any Winner</option>
+          </select>
+          <span class="filter-count" id="filter-count"></span>
+        </div>
+        <div class="items-grid" id="items-grid"></div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const COLORS = [
+        '#00d4aa', '#00a8ff', '#a855f7', '#f472b6',
+        '#fbbf24', '#60a5fa', '#34d399', '#fb923c'
+      ];
+
+      const state = {
+        runs: [],
+        allMetrics: [],
+        itemFilter: 'all',
+        winnerFilter: 'any',
+        page: 1,
+        pageSize: 20,
+        comparisonStats: null,
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      function getSuccessClass(rate) {
+        if (rate >= 0.9) return 'high';
+        if (rate >= 0.7) return 'mid';
+        return 'low';
+      }
+
+      function formatPercent(val) {
+        if (val === null || val === undefined) return '—';
+        return (val * 100).toFixed(1) + '%';
+      }
+
+      function formatLatency(ms) {
+        if (!ms || ms < 1) return '—';
+        if (ms < 1000) return `${Math.round(ms)}ms`;
+        return `${(ms / 1000).toFixed(1)}s`;
+      }
+
+      async function loadComparisonData() {
+        // Get selected files from sessionStorage
+        const filesJson = sessionStorage.getItem('compareRuns');
+        if (!filesJson) {
+          showEmpty();
+          return;
+        }
+
+        let files;
+        try {
+          files = JSON.parse(filesJson);
+        } catch {
+          showEmpty();
+          return;
+        }
+
+        if (!Array.isArray(files) || files.length < 2) {
+          showEmpty();
+          return;
+        }
+
+        // Fetch comparison data from API
+        const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
+        try {
+          const response = await fetch('/api/compare?' + params);
+          const data = await response.json();
+
+          if (!data.runs || data.runs.length < 2) {
+            showEmpty();
+            return;
+          }
+
+          state.runs = data.runs;
+          processRuns();
+          render();
+        } catch (err) {
+          console.error('Failed to load comparison:', err);
+          showEmpty();
+        }
+      }
+
+      function processRuns() {
+        // Collect all unique metrics
+        const metricsSet = new Set();
+        for (const run of state.runs) {
+          const snap = run.snapshot || {};
+          const names = snap.metric_names || run.run?.metric_names || [];
+          names.forEach(m => metricsSet.add(m));
+        }
+        state.allMetrics = Array.from(metricsSet).sort();
+
+        // Update header stats
+        el('run-count').textContent = state.runs.length;
+        el('metric-count').textContent = state.allMetrics.length;
+
+        // Calculate total items (use max across runs)
+        const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+        el('total-items').textContent = maxItems;
+
+        // Calculate comparison statistics
+        state.comparisonStats = calculateComparisonStats();
+
+        // Populate winner filter dropdown
+        populateWinnerFilter();
+      }
+
+      function calculateComparisonStats() {
+        const stats = {
+          wins: new Array(state.runs.length).fill(0),
+          ties: 0,
+          totalCompared: 0,
+          avgScores: [],
+          avgLatencies: [],
+          scoreDelta: 0,
+          latencyDelta: 0,
+          agreementRate: 0,
+          allCorrect: 0,
+          allWrong: 0,
+          errorCounts: [],
+          errorTypes: [],
+          biggestWins: [],
+          itemWinners: [], // For each item, which run won
+        };
+
+        const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+
+        // Calculate per-run stats
+        for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
+          const run = state.runs[runIdx];
+          const snap = run.snapshot || {};
+          const rows = snap.rows || [];
+          const metricNames = snap.metric_names || run.run?.metric_names || [];
+
+          let scoreSum = 0, scoreCount = 0, latSum = 0, latCount = 0;
+          let timeoutErrors = 0, runtimeErrors = 0, otherErrors = 0;
+
+          for (const row of rows) {
+            // Score (first metric)
+            if (metricNames.length > 0) {
+              const v = (row.metric_values || [])[0];
+              const n = parseFloat(v);
+              if (!isNaN(n)) { scoreSum += n; scoreCount++; }
+            }
+            // Latency
+            if (row.latency_ms && row.status === 'completed') {
+              latSum += row.latency_ms;
+              latCount++;
+            }
+            // Errors
+            if (row.status === 'error') {
+              const output = (row.output_full || row.output || '').toLowerCase();
+              if (output.includes('timeout')) timeoutErrors++;
+              else if (output.includes('error')) runtimeErrors++;
+              else otherErrors++;
+            }
+          }
+
+          stats.avgScores.push(scoreCount > 0 ? scoreSum / scoreCount : 0);
+          stats.avgLatencies.push(latCount > 0 ? latSum / latCount : 0);
+          stats.errorCounts.push(timeoutErrors + runtimeErrors + otherErrors);
+          stats.errorTypes.push({ timeout: timeoutErrors, runtime: runtimeErrors, other: otherErrors });
+        }
+
+        // Compare items head-to-head
+        let agreements = 0;
+        for (let i = 0; i < maxItems; i++) {
+          const scores = state.runs.map((run, runIdx) => {
+            const snap = run.snapshot || {};
+            const rows = snap.rows || [];
+            const row = rows.find(r => r.index === i);
+            if (!row) return null;
+            const metricNames = snap.metric_names || run.run?.metric_names || [];
+            if (metricNames.length === 0) return null;
+            const v = (row.metric_values || [])[0];
+            const n = parseFloat(v);
+            return isNaN(n) ? null : n;
+          });
+
+          const validScores = scores.filter(s => s !== null);
+          if (validScores.length < 2) {
+            stats.itemWinners.push(null);
+            continue;
+          }
+
+          stats.totalCompared++;
+
+          const maxScore = Math.max(...validScores);
+          const minScore = Math.min(...validScores);
+          const winners = scores.map((s, idx) => s === maxScore ? idx : -1).filter(x => x >= 0);
+
+          // Check if ALL scores are the same (true tie)
+          if (maxScore === minScore) {
+            stats.ties++;
+            stats.itemWinners.push('tie');
+            agreements++;
+          } else if (winners.length === 1) {
+            // Clear winner - only one run has the max score
+            stats.wins[winners[0]]++;
+            stats.itemWinners.push(winners[0]);
+            // Track biggest wins
+            const diff = maxScore - minScore;
+            stats.biggestWins.push({ index: i, winner: winners[0], diff, scores });
+          } else {
+            // Multiple runs tied for the win, but not all runs
+            // This is still a "win" for those who tied at the top
+            // We'll count it as wins for all who had max score
+            for (const winnerIdx of winners) {
+              stats.wins[winnerIdx]++;
+            }
+            stats.itemWinners.push(winners); // Store array of winners
+          }
+
+          // All correct / all wrong
+          if (validScores.every(s => s >= 0.99)) stats.allCorrect++;
+          if (validScores.every(s => s < 0.01)) stats.allWrong++;
+
+          // Agreement (outputs match concept - using score similarity)
+          const scoreRange = maxScore - minScore;
+          if (scoreRange < 0.1) agreements++;
+        }
+
+        stats.agreementRate = stats.totalCompared > 0 ? agreements / stats.totalCompared : 0;
+
+        // Score and latency deltas (comparing first two runs)
+        if (state.runs.length >= 2) {
+          stats.scoreDelta = stats.avgScores[0] - stats.avgScores[1];
+          stats.latencyDelta = stats.avgLatencies[0] - stats.avgLatencies[1];
+        }
+
+        // Sort biggest wins
+        stats.biggestWins.sort((a, b) => b.diff - a.diff);
+        stats.biggestWins = stats.biggestWins.slice(0, 5);
+
+        return stats;
+      }
+
+      function populateWinnerFilter() {
+        const select = el('run-winner-filter');
+        if (!select) return;
+
+        let options = '<option value="any">Any Winner</option>';
+        options += '<option value="tie">Ties Only</option>';
+
+        state.runs.forEach((run, idx) => {
+          const info = run.run || {};
+          const name = info.run_name || `Run ${idx + 1}`;
+          options += `<option value="win_${idx}">${name} Won</option>`;
+        });
+
+        select.innerHTML = options;
+      }
+
+      function showEmpty() {
+        el('loading').style.display = 'none';
+        el('empty').style.display = 'flex';
+        el('compare-content').style.display = 'none';
+      }
+
+      function render() {
+        el('loading').style.display = 'none';
+        el('empty').style.display = 'none';
+        el('compare-content').style.display = 'block';
+
+        renderSummaries();
+        renderComparisonStats();
+        renderQuickInsights();
+        renderMetricsTable();
+        renderItems();
+      }
+
+      function renderComparisonStats() {
+        const container = el('stats-grid');
+        if (!container || !state.comparisonStats) return;
+
+        const stats = state.comparisonStats;
+        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+
+        // Build win/loss bar
+        const total = stats.totalCompared || 1;
+        const winBarSegments = state.runs.map((_, idx) => {
+          const pct = (stats.wins[idx] / total * 100).toFixed(1);
+          return `<div class="segment win-${idx === 0 ? 'a' : 'b'}" style="flex: ${stats.wins[idx]}">${stats.wins[idx] > 0 ? stats.wins[idx] : ''}</div>`;
+        }).join('');
+        const tieSegment = `<div class="segment tie" style="flex: ${stats.ties}">${stats.ties > 0 ? stats.ties : ''}</div>`;
+
+        // Score delta display
+        const scoreDeltaClass = stats.scoreDelta > 0.01 ? 'positive' : stats.scoreDelta < -0.01 ? 'negative' : 'neutral';
+        const scoreDeltaSign = stats.scoreDelta > 0 ? '+' : '';
+        const scoreDeltaText = `${scoreDeltaSign}${(stats.scoreDelta * 100).toFixed(1)}%`;
+
+        // Latency delta display (negative is better - faster)
+        const latDeltaClass = stats.latencyDelta < -100 ? 'positive' : stats.latencyDelta > 100 ? 'negative' : 'neutral';
+        const latDeltaText = stats.latencyDelta < 0
+          ? `${formatLatency(Math.abs(stats.latencyDelta))} faster`
+          : stats.latencyDelta > 0
+            ? `${formatLatency(stats.latencyDelta)} slower`
+            : 'Same';
+
+        container.innerHTML = `
+          <div class="stat-box" style="grid-column: span 2;">
+            <div class="stat-title">Win / Loss / Tie</div>
+            <div class="stat-main">${runNames[0]}: ${stats.wins[0]} | ${runNames[1] || 'Run 2'}: ${stats.wins[1] || 0} | Ties: ${stats.ties}</div>
+            <div class="win-loss-bar">
+              ${winBarSegments}
+              ${tieSegment}
+            </div>
+            <div class="stat-detail">${stats.totalCompared} items compared</div>
+          </div>
+
+          <div class="stat-box">
+            <div class="stat-title">Score Delta (${runNames[0]} vs ${runNames[1] || 'Run 2'})</div>
+            <div class="stat-main ${scoreDeltaClass}">${scoreDeltaText}</div>
+            <div class="stat-detail">${runNames[0]}: ${formatPercent(stats.avgScores[0])} avg</div>
+          </div>
+
+          <div class="stat-box">
+            <div class="stat-title">Latency Delta</div>
+            <div class="stat-main ${latDeltaClass}">${latDeltaText}</div>
+            <div class="stat-detail">${runNames[0]}: ${formatLatency(stats.avgLatencies[0])} avg</div>
+          </div>
+
+          <div class="stat-box">
+            <div class="stat-title">Agreement Rate</div>
+            <div class="stat-main">${formatPercent(stats.agreementRate)}</div>
+            <div class="stat-detail">Items where runs scored similarly</div>
+          </div>
+
+          <div class="stat-box">
+            <div class="stat-title">All Correct</div>
+            <div class="stat-main positive">${stats.allCorrect}</div>
+            <div class="stat-detail">Both runs scored 100%</div>
+          </div>
+
+          <div class="stat-box">
+            <div class="stat-title">All Wrong</div>
+            <div class="stat-main negative">${stats.allWrong}</div>
+            <div class="stat-detail">Both runs scored 0%</div>
+          </div>
+        `;
+      }
+
+      function renderQuickInsights() {
+        const container = el('insights-grid');
+        if (!container || !state.comparisonStats) return;
+
+        const stats = state.comparisonStats;
+        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+        const insights = [];
+
+        // Determine overall winner
+        const maxWins = Math.max(...stats.wins);
+        const overallWinners = stats.wins.map((w, i) => w === maxWins ? i : -1).filter(x => x >= 0);
+
+        if (overallWinners.length === 1 && maxWins > stats.ties) {
+          const winnerIdx = overallWinners[0];
+          const winPct = ((stats.wins[winnerIdx] / stats.totalCompared) * 100).toFixed(0);
+          insights.push({
+            type: 'positive',
+            icon: '🏆',
+            title: `${runNames[winnerIdx]} Wins Overall`,
+            body: `Won <strong>${stats.wins[winnerIdx]}</strong> out of ${stats.totalCompared} comparisons (${winPct}%)`
+          });
+        } else if (stats.ties > maxWins) {
+          insights.push({
+            type: 'info',
+            icon: '🤝',
+            title: 'Runs Perform Similarly',
+            body: `<strong>${stats.ties}</strong> ties out of ${stats.totalCompared} comparisons`
+          });
+        }
+
+        // Score comparison
+        if (Math.abs(stats.scoreDelta) > 0.05) {
+          const better = stats.scoreDelta > 0 ? 0 : 1;
+          const worse = stats.scoreDelta > 0 ? 1 : 0;
+          insights.push({
+            type: 'info',
+            icon: '📈',
+            title: `${runNames[better]} Scores Higher`,
+            body: `Average score is <strong>${formatPercent(Math.abs(stats.scoreDelta))}</strong> higher than ${runNames[worse]}`
+          });
+        }
+
+        // Latency comparison
+        if (Math.abs(stats.latencyDelta) > 500) {
+          const faster = stats.latencyDelta < 0 ? 0 : 1;
+          const slower = stats.latencyDelta < 0 ? 1 : 0;
+          insights.push({
+            type: 'positive',
+            icon: '⚡',
+            title: `${runNames[faster]} is Faster`,
+            body: `<strong>${formatLatency(Math.abs(stats.latencyDelta))}</strong> faster on average than ${runNames[slower]}`
+          });
+        }
+
+        // Error analysis
+        const totalErrors = stats.errorCounts.reduce((a, b) => a + b, 0);
+        if (totalErrors > 0) {
+          const errorDetails = state.runs.map((_, idx) => {
+            const et = stats.errorTypes[idx];
+            return `${runNames[idx]}: ${stats.errorCounts[idx]} errors`;
+          }).join(', ');
+
+          // Find which run has more errors
+          const minErrors = Math.min(...stats.errorCounts);
+          const maxErrors = Math.max(...stats.errorCounts);
+          if (maxErrors > minErrors) {
+            const moreErrorsIdx = stats.errorCounts.indexOf(maxErrors);
+            const lessErrorsIdx = stats.errorCounts.indexOf(minErrors);
+            insights.push({
+              type: 'warning',
+              icon: '⚠️',
+              title: `${runNames[moreErrorsIdx]} Has More Errors`,
+              body: `<strong>${maxErrors}</strong> errors vs <strong>${minErrors}</strong> in ${runNames[lessErrorsIdx]}`
+            });
+          }
+
+          // Error type breakdown for first run with errors
+          const errorRunIdx = stats.errorCounts.findIndex(c => c > 0);
+          if (errorRunIdx >= 0) {
+            const et = stats.errorTypes[errorRunIdx];
+            const breakdown = [];
+            if (et.timeout > 0) breakdown.push(`${et.timeout} timeouts`);
+            if (et.runtime > 0) breakdown.push(`${et.runtime} runtime`);
+            if (et.other > 0) breakdown.push(`${et.other} other`);
+            if (breakdown.length > 0) {
+              insights.push({
+                type: 'negative',
+                icon: '🔴',
+                title: 'Error Breakdown',
+                body: breakdown.join(', ')
+              });
+            }
+          }
+        }
+
+        // Biggest wins
+        if (stats.biggestWins.length > 0) {
+          const topWin = stats.biggestWins[0];
+          insights.push({
+            type: 'info',
+            icon: '🎯',
+            title: 'Biggest Score Difference',
+            body: `Item #${topWin.index + 1}: ${runNames[topWin.winner]} won by <strong>${formatPercent(topWin.diff)}</strong>`
+          });
+        }
+
+        // High agreement
+        if (stats.agreementRate > 0.8) {
+          insights.push({
+            type: 'info',
+            icon: '✅',
+            title: 'High Agreement',
+            body: `Runs agree on <strong>${formatPercent(stats.agreementRate)}</strong> of items`
+          });
+        } else if (stats.agreementRate < 0.5) {
+          insights.push({
+            type: 'warning',
+            icon: '🔀',
+            title: 'Low Agreement',
+            body: `Runs only agree on <strong>${formatPercent(stats.agreementRate)}</strong> of items - significant differences`
+          });
+        }
+
+        // Render insights
+        if (insights.length === 0) {
+          container.innerHTML = '<div style="color: var(--text-muted);">No significant insights detected</div>';
+          return;
+        }
+
+        container.innerHTML = insights.map(ins => `
+          <div class="insight-card ${ins.type}">
+            <div class="insight-header">
+              <span class="insight-icon">${ins.icon}</span>
+              <span class="insight-title">${ins.title}</span>
+            </div>
+            <div class="insight-body">${ins.body}</div>
+          </div>
+        `).join('');
+      }
+
+      function renderSummaries() {
+        const container = el('run-summaries');
+        container.innerHTML = state.runs.map((run, idx) => {
+          const info = run.run || {};
+          const snap = run.snapshot || {};
+          const stats = snap.stats || {};
+          const color = COLORS[idx % COLORS.length];
+          const successRate = (stats.completed || 0) / (stats.total || 1);
+          const successClass = getSuccessClass(successRate);
+
+          return `
+            <div class="run-summary-card">
+              <div class="run-header">
+                <div class="run-color-dot" style="background: ${color}"></div>
+                <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}</div>
+              </div>
+              <div class="run-meta">
+                <span class="tag task">${info.dataset_name || '—'}</span>
+              </div>
+              <div class="stats-row">
+                <span class="stat-label">Total Items</span>
+                <span class="stat-val">${stats.total || 0}</span>
+              </div>
+              <div class="stats-row">
+                <span class="stat-label">Completed</span>
+                <span class="stat-val">${stats.completed || 0}</span>
+              </div>
+              <div class="stats-row">
+                <span class="stat-label">Failed</span>
+                <span class="stat-val ${stats.failed > 0 ? 'low' : ''}">${stats.failed || 0}</span>
+              </div>
+              <div class="stats-row">
+                <span class="stat-label">Success Rate</span>
+                <span class="stat-val ${successClass}">${formatPercent(successRate)}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderMetricsTable() {
+        const thead = el('metrics-thead');
+        const tbody = el('metrics-tbody');
+
+        // Header row
+        thead.innerHTML = `
+          <tr>
+            <th>Metric</th>
+            ${state.runs.map((run, idx) => {
+              const info = run.run || {};
+              const color = COLORS[idx % COLORS.length];
+              return `<th><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px;"></span>${info.run_name || 'Run ' + (idx + 1)}</th>`;
+            }).join('')}
+          </tr>
+        `;
+
+        // Calculate metric averages and latency for each run
+        const runMetricAvgs = state.runs.map(run => {
+          const snap = run.snapshot || {};
+          const rows = snap.rows || [];
+          const metricNames = snap.metric_names || run.run?.metric_names || [];
+          const avgs = {};
+
+          for (const metric of state.allMetrics) {
+            const idx = metricNames.indexOf(metric);
+            if (idx === -1) {
+              avgs[metric] = null;
+              continue;
+            }
+
+            let sum = 0, count = 0;
+            for (const row of rows) {
+              const vals = row.metric_values || [];
+              const v = vals[idx];
+              const n = parseFloat(v);
+              if (!isNaN(n)) {
+                sum += n;
+                count++;
+              }
+            }
+            avgs[metric] = count > 0 ? sum / count : null;
+          }
+          return avgs;
+        });
+
+        // Calculate average latency for each run
+        const runLatencyAvgs = state.runs.map(run => {
+          const snap = run.snapshot || {};
+          const rows = snap.rows || [];
+          let sum = 0, count = 0;
+          for (const row of rows) {
+            if (row.latency_ms && row.status === 'completed') {
+              sum += row.latency_ms;
+              count++;
+            }
+          }
+          return count > 0 ? sum / count : null;
+        });
+
+        // Find best (lowest) latency
+        const bestLatency = Math.min(...runLatencyAvgs.filter(v => v !== null));
+
+        // Find best value for each metric
+        const bestValues = {};
+        for (const metric of state.allMetrics) {
+          let best = -Infinity;
+          for (const avgs of runMetricAvgs) {
+            if (avgs[metric] !== null && avgs[metric] > best) {
+              best = avgs[metric];
+            }
+          }
+          bestValues[metric] = best > -Infinity ? best : null;
+        }
+
+        // Render rows - metrics first, then latency
+        const metricRows = state.allMetrics.map(metric => {
+          const cells = runMetricAvgs.map(avgs => {
+            const val = avgs[metric];
+            if (val === null) return '<td class="metric-val">—</td>';
+            const isBest = val === bestValues[metric] && state.runs.length > 1;
+            const cls = getSuccessClass(val);
+            return `<td class="metric-val ${cls} ${isBest ? 'best' : ''}">${formatPercent(val)}</td>`;
+          }).join('');
+
+          return `
+            <tr>
+              <td class="metric-name">${metric}</td>
+              ${cells}
+            </tr>
+          `;
+        }).join('');
+
+        // Latency row
+        const latencyCells = runLatencyAvgs.map(val => {
+          if (val === null) return '<td class="metric-val">—</td>';
+          const isBest = val === bestLatency && state.runs.length > 1;
+          return `<td class="metric-val ${isBest ? 'best' : ''}" style="${isBest ? 'background: var(--success-dim);' : ''}">${formatLatency(val)}</td>`;
+        }).join('');
+
+        const latencyRow = `
+          <tr>
+            <td class="metric-name">Avg Latency</td>
+            ${latencyCells}
+          </tr>
+        `;
+
+        tbody.innerHTML = metricRows + latencyRow;
+      }
+
+      function getFilteredItems() {
+        // Build aligned item list across runs
+        const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+        const items = [];
+        const stats = state.comparisonStats;
+
+        for (let i = 0; i < maxItems; i++) {
+          const rowData = state.runs.map(run => {
+            const rows = run.snapshot?.rows || [];
+            return rows.find(r => r.index === i) || null;
+          });
+
+          // Get scores for this item
+          const scores = rowData.map((row, runIdx) => {
+            if (!row) return null;
+            const run = state.runs[runIdx];
+            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+            if (metricNames.length === 0) return null;
+            const v = (row.metric_values || [])[0];
+            const n = parseFloat(v);
+            return isNaN(n) ? null : n;
+          });
+          const validScores = scores.filter(s => s !== null);
+
+          // Apply item filter
+          if (state.itemFilter === 'different') {
+            const outputs = rowData.map(r => r?.output_full || r?.output || '').filter(o => o);
+            const uniqueOutputs = new Set(outputs);
+            if (uniqueOutputs.size <= 1) continue;
+          } else if (state.itemFilter === 'errors') {
+            const hasError = rowData.some(r => r?.status === 'error');
+            if (!hasError) continue;
+          } else if (state.itemFilter === 'all_correct') {
+            if (validScores.length < 2 || !validScores.every(s => s >= 0.99)) continue;
+          } else if (state.itemFilter === 'all_wrong') {
+            if (validScores.length < 2 || !validScores.every(s => s < 0.01)) continue;
+          }
+
+          // Apply winner filter
+          if (state.winnerFilter !== 'any' && stats) {
+            const winner = stats.itemWinners[i];
+            if (state.winnerFilter === 'tie') {
+              // Only show true ties (all runs same score)
+              if (winner !== 'tie') continue;
+            } else if (state.winnerFilter.startsWith('win_')) {
+              const winnerIdx = parseInt(state.winnerFilter.replace('win_', ''), 10);
+              // Check if this run won (could be sole winner or part of a tie for first)
+              if (Array.isArray(winner)) {
+                if (!winner.includes(winnerIdx)) continue;
+              } else {
+                if (winner !== winnerIdx) continue;
+              }
+            }
+          }
+
+          items.push({ index: i, rowData });
+        }
+
+        return items;
+      }
+
+      function renderItems(scrollToTop = false) {
+        const container = el('items-grid');
+        const paginationEl = el('pagination');
+        const filterCountEl = el('filter-count');
+        const items = getFilteredItems();
+
+        // Update filter count display
+        filterCountEl.innerHTML = `<span class="count-num">${items.length}</span> items`;
+
+        // Set CSS variable for grid columns
+        container.style.setProperty('--run-count', state.runs.length);
+
+        // Pagination
+        const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+        if (state.page > totalPages) state.page = totalPages;
+        const start = (state.page - 1) * state.pageSize;
+        const pageItems = items.slice(start, start + state.pageSize);
+
+        if (items.length === 0) {
+          container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
+          paginationEl.innerHTML = '';
+          return;
+        }
+
+        container.innerHTML = pageItems.map(({ index, rowData }) => {
+          // Get input and expected from any available row
+          const inputRow = rowData.find(r => r);
+          const input = inputRow?.input_full || inputRow?.input || '—';
+          const expected = inputRow?.expected_full || inputRow?.expected || '';
+
+          const outputCells = rowData.map((row, runIdx) => {
+            const color = COLORS[runIdx % COLORS.length];
+            const runInfo = state.runs[runIdx]?.run || {};
+
+            if (!row) {
+              return `
+                <div class="item-run-output" style="border-left-color: ${color}">
+                  <div class="output-header">
+                    <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
+                  </div>
+                  <div class="output-text" style="color:var(--text-muted);font-style:italic;">No data</div>
+                </div>
+              `;
+            }
+
+            const output = row.output_full || row.output || '—';
+            const status = row.status || 'pending';
+            const latencyMs = row.latency_ms;
+
+            // Get first metric value for badge
+            const metricVals = row.metric_values || [];
+            let metricBadge = '';
+            if (metricVals.length > 0) {
+              const v = parseFloat(metricVals[0]);
+              if (!isNaN(v)) {
+                const cls = getSuccessClass(v);
+                metricBadge = `<span class="metric-badge ${cls}">${formatPercent(v)}</span>`;
+              }
+            }
+
+            // Latency badge
+            const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
+
+            return `
+              <div class="item-run-output" style="border-left-color: ${color}">
+                <div class="output-header">
+                  <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
+                  <span class="output-badges">${metricBadge}${latencyBadge}</span>
+                </div>
+                <div class="output-text ${status === 'error' ? 'low' : ''}">${escapeHtml(output)}</div>
+              </div>
+            `;
+          }).join('');
+
+          // Only show expected row if there's expected output
+          const expectedRow = expected ? `
+              <div class="item-expected-row">
+                <div class="expected-label">Expected Output</div>
+                <div class="expected-text">${escapeHtml(expected)}</div>
+              </div>
+          ` : '';
+
+          return `
+            <div class="item-comparison-row">
+              <div class="item-header">
+                <span class="item-index">#${index + 1}</span>
+              </div>
+              <div class="item-input-row">
+                <div class="input-label">Input</div>
+                <div class="input-text">${escapeHtml(input)}</div>
+              </div>
+              ${expectedRow}
+              <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
+                ${outputCells}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Pagination controls
+        paginationEl.innerHTML = `
+          <button id="prev-page" ${state.page <= 1 ? 'disabled' : ''}>← Prev</button>
+          <span class="page-info">Page ${state.page} of ${totalPages}</span>
+          <button id="next-page" ${state.page >= totalPages ? 'disabled' : ''}>Next →</button>
+        `;
+
+        el('prev-page').onclick = () => { state.page--; renderItems(true); };
+        el('next-page').onclick = () => { state.page++; renderItems(true); };
+
+        // Scroll to top of items grid if requested
+        if (scrollToTop) {
+          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+      }
+
+      // Event listeners
+      el('item-filter').addEventListener('change', (e) => {
+        state.itemFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('run-winner-filter').addEventListener('change', (e) => {
+        state.winnerFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      // Initialize
+      loadComparisonData();
+    })();
+  </script>
+</body>
+</html>

@@ -84,6 +84,13 @@
     return n.toString();
   }
 
+  function formatLatency(ms) {
+    if (ms >= 1000) {
+      return (ms / 1000).toFixed(1) + 's';
+    }
+    return Math.round(ms) + 'ms';
+  }
+
   function isToday(isoStr) {
     const d = new Date(isoStr);
     const now = new Date();
@@ -225,6 +232,8 @@
           latestTimestamp: null,
           metricSums: {},
           metricCounts: {},
+          latencySum: 0,
+          latencyCount: 0,
         };
       }
 
@@ -244,6 +253,12 @@
         }
       }
 
+      // Accumulate latency
+      if (run.avg_latency_ms) {
+        combos[key].models[model].latencySum += run.avg_latency_ms;
+        combos[key].models[model].latencyCount++;
+      }
+
       // Track latest run
       const ts = new Date(run.timestamp);
       if (!combos[key].models[model].latestTimestamp || ts > combos[key].models[model].latestTimestamp) {
@@ -251,7 +266,7 @@
       }
     }
 
-    // Calculate metric averages per model
+    // Calculate metric averages and avg latency per model
     for (const key of Object.keys(combos)) {
       combos[key].metrics = Array.from(combos[key].metrics);
       for (const model of Object.keys(combos[key].models)) {
@@ -261,6 +276,7 @@
           const count = m.metricCounts[metric] || 1;
           m.metricAverages[metric] = sum / count;
         }
+        m.avgLatencyMs = m.latencyCount > 0 ? m.latencySum / m.latencyCount : 0;
       }
     }
 
@@ -378,6 +394,12 @@
         break;
       case 'run-desc':
         runs.sort((a, b) => b.run_id.localeCompare(a.run_id));
+        break;
+      case 'latency-desc':
+        runs.sort((a, b) => (b.avg_latency_ms || 0) - (a.avg_latency_ms || 0));
+        break;
+      case 'latency-asc':
+        runs.sort((a, b) => (a.avg_latency_ms || 0) - (b.avg_latency_ms || 0));
         break;
       default:
         // Handle metric column sorting (e.g., "metric-exact_match-desc")
@@ -513,18 +535,20 @@
             model,
             score: data.metricAverages?.[metric] ?? 0,
             runs: data.runs,
+            latency: data.avgLatencyMs || 0,
           }))
           .filter(m => m.score > 0 || m.runs > 0)
           .sort((a, b) => b.score - a.score);
 
         if (modelScores.length === 0) return '';
 
-        const barsHtml = modelScores.map(({ model, score, runs }) => {
+        const barsHtml = modelScores.map(({ model, score, runs, latency }) => {
           const pct = score * 100;
           const successClass = getSuccessClass(score);
-          const modelIdx = chartData.modelIndex[model] % 8;
+          const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
           const barWidth = Math.max(pct, 2);
           const runsLabel = runs === 1 ? '1 run' : `${runs} runs`;
+          const latencyStr = latency > 0 ? formatLatency(latency) : '—';
 
           return `
             <div class="chart-bar-row">
@@ -532,11 +556,11 @@
               <div class="chart-bar-container">
                 <div class="chart-bar-track">
                   <div class="chart-bar-fill animated" data-model-idx="${modelIdx}" style="width:${barWidth}%">
-                    ${pct > 20 ? `<span class="chart-bar-inner-value">${pct.toFixed(1)}%</span>` : ''}
+                    <span class="chart-bar-pct">${pct.toFixed(1)}%</span>
                   </div>
                 </div>
-                <span class="chart-bar-value ${successClass}">${pct.toFixed(1)}%</span>
-                <span class="chart-bar-runs" title="Averaged from ${runsLabel}">${runs}×</span>
+                <span class="chart-bar-latency" title="Avg latency">${latencyStr}</span>
+                <span class="chart-bar-runs" title="${runsLabel}">×${runs}</span>
               </div>
             </div>
           `;
@@ -579,14 +603,14 @@
     const headerRow = el('table-header-row');
     if (!headerRow) return;
 
-    // Find the TIME column (insert metric columns before it)
-    const timeHeader = headerRow.querySelector('.col-time');
-    if (!timeHeader) return;
+    // Find the LATENCY column (insert metric columns before it)
+    const latencyHeader = headerRow.querySelector('.col-latency');
+    if (!latencyHeader) return;
 
     // Remove any existing dynamic metric columns
     headerRow.querySelectorAll('.col-metric-dynamic').forEach(col => col.remove());
 
-    // Insert metric columns before TIME column (limit to 4 metrics)
+    // Insert metric columns before LATENCY column (limit to 4 metrics)
     const metricsToShow = state.allMetrics.slice(0, 4);
     metricsToShow.forEach(metric => {
       const th = document.createElement('th');
@@ -594,7 +618,7 @@
       th.dataset.sort = `metric-${metric}`;
       th.textContent = metric.toUpperCase();
       th.title = `Sort by ${metric}`;
-      headerRow.insertBefore(th, timeHeader);
+      headerRow.insertBefore(th, latencyHeader);
     });
 
     // Wire up sorting for all sortable columns
@@ -614,7 +638,7 @@
       newKey = sortField.startsWith('metric-') ? `${sortField}-${direction}` : `${sortField}-${direction}`;
     } else {
       // Default to descending for numeric/time, ascending for text
-      const numericFields = ['success', 'items', 'status', 'time', 'date'];
+      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency'];
       const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-');
       newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
     }
@@ -710,6 +734,9 @@
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
           </td>
           ${metricCells}
+          <td class="col-latency">
+            <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
+          </td>
           <td class="col-time">
             <span class="timestamp">
               <span class="date">${dt.date}</span>
@@ -717,7 +744,12 @@
             </span>
           </td>
           <td class="col-actions">
-            <a href="#" class="action-link open-run" title="Open">→</a>
+            <a href="#" class="action-link delete-run" title="Delete">
+              <svg class="icon-trash" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </a>
           </td>
         </tr>
       `;
@@ -730,6 +762,7 @@
     tbody.querySelectorAll('tr[data-idx]').forEach(tr => {
       const idx = parseInt(tr.dataset.idx);
       const filePath = decodeURIComponent(tr.dataset.file);
+      const run = runs[idx];
 
       const checkbox = tr.querySelector('.row-checkbox');
       if (checkbox) {
@@ -746,9 +779,10 @@
         openRun(filePath);
       });
 
-      tr.querySelector('.open-run').addEventListener('click', (e) => {
+      tr.querySelector('.delete-run').addEventListener('click', (e) => {
         e.preventDefault();
-        openRun(filePath);
+        e.stopPropagation();
+        confirmDeleteRun(filePath, run.run_id);
       });
 
       tr.addEventListener('click', () => {
@@ -1000,22 +1034,27 @@
 
   function toggleModelFilter(model) {
     if (state.filterModels.size === 0) {
-      // Currently showing all - select all except this one (deselect this one)
+      // Currently showing all - clicking a model should hide it (select all others)
       state.allModels.forEach(m => {
         if (m !== model) state.filterModels.add(m);
       });
     } else if (state.filterModels.has(model)) {
-      // This model is selected - deselect it
+      // This model is in the whitelist - remove it (hide it)
       state.filterModels.delete(model);
-      // If none left, show all
+      // If none left, that means nothing would show - revert to show all
       if (state.filterModels.size === 0) {
-        // Already empty, will show all
+        // Empty means show all, which is fine
       }
     } else {
-      // This model is not selected - select it
+      // This model is not in whitelist - add it (show it)
       state.filterModels.add(model);
+      // If all models are now selected, clear to "show all" state
+      if (state.filterModels.size === state.allModels.length) {
+        state.filterModels.clear();
+      }
     }
     updateModelFilterButton();
+    populateFilterDropdowns(); // Keep dropdown in sync
     render();
   }
 
@@ -1023,6 +1062,7 @@
     state.filterModels.clear();
     state.filterModels.add(model);
     updateModelFilterButton();
+    populateFilterDropdowns(); // Keep dropdown in sync
     render();
   }
 
@@ -1032,6 +1072,8 @@
 
     if (state.filterModels.size === 0) {
       btn.textContent = 'All Models';
+    } else if (state.filterModels.has('__none__')) {
+      btn.textContent = 'No Models';
     } else if (state.filterModels.size === 1) {
       btn.textContent = [...state.filterModels][0];
     } else {
@@ -1067,6 +1109,103 @@
     const files = Array.from(state.selectedRuns);
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     window.location.href = '/compare';
+  }
+
+  function confirmDeleteRun(filePath, runId) {
+    const modal = el('delete-modal');
+    const runNameEl = el('delete-run-name');
+    const confirmBtn = el('confirm-delete-btn');
+
+    runNameEl.textContent = runId;
+    modal.style.display = 'flex';
+
+    // Remove old listener and add new one
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    newConfirmBtn.addEventListener('click', async () => {
+      newConfirmBtn.disabled = true;
+      newConfirmBtn.textContent = 'Deleting...';
+
+      try {
+        const response = await fetch('/api/runs/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_path: filePath })
+        });
+
+        if (response.ok) {
+          modal.style.display = 'none';
+          // Remove from selection if selected
+          state.selectedRuns.delete(filePath);
+          // Refresh data
+          await fetchRuns();
+        } else {
+          const data = await response.json();
+          alert('Failed to delete: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Failed to delete: ' + err.message);
+      } finally {
+        newConfirmBtn.disabled = false;
+        newConfirmBtn.textContent = 'Delete';
+      }
+    });
+  }
+
+  function confirmDeleteSelected() {
+    const count = state.selectedRuns.size;
+    if (count === 0) return;
+
+    const modal = el('delete-modal');
+    const runNameEl = el('delete-run-name');
+    const confirmBtn = el('confirm-delete-btn');
+
+    runNameEl.textContent = `${count} run${count > 1 ? 's' : ''} selected`;
+    modal.style.display = 'flex';
+
+    // Remove old listener and add new one
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    newConfirmBtn.addEventListener('click', async () => {
+      newConfirmBtn.disabled = true;
+      newConfirmBtn.textContent = 'Deleting...';
+
+      const filePaths = Array.from(state.selectedRuns);
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const filePath of filePaths) {
+        try {
+          const response = await fetch('/api/runs/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_path: filePath })
+          });
+
+          if (response.ok) {
+            successCount++;
+            state.selectedRuns.delete(filePath);
+          } else {
+            errorCount++;
+          }
+        } catch (err) {
+          errorCount++;
+        }
+      }
+
+      modal.style.display = 'none';
+      newConfirmBtn.disabled = false;
+      newConfirmBtn.textContent = 'Delete';
+
+      // Refresh data
+      await fetchRuns();
+
+      if (errorCount > 0) {
+        alert(`Deleted ${successCount} run(s). Failed to delete ${errorCount} run(s).`);
+      }
+    });
   }
 
   function moveFocus(delta) {
@@ -1149,19 +1288,42 @@
     // Populate model multi-select dropdown
     const modelDropdown = el('filter-model-dropdown');
     if (modelDropdown) {
+      const isShowingAll = state.filterModels.size === 0;
+      const isShowingNone = state.filterModels.has('__none__');
+      const searchValue = modelDropdown.querySelector('.model-search-input')?.value || '';
+
       modelDropdown.innerHTML = `
+        <div class="model-search-box">
+          <input type="text" class="model-search-input" placeholder="Search models..." value="${searchValue}" />
+        </div>
         <div class="multi-select-option" data-value="">
-          <input type="checkbox" ${state.filterModels.size === 0 ? 'checked' : ''} />
+          <span class="model-color" style="background:transparent"></span>
+          <input type="checkbox" ${isShowingAll ? 'checked' : ''} />
           <span>All Models</span>
         </div>
         ${models.map((m, idx) => `
-          <div class="multi-select-option" data-value="${m}">
+          <div class="multi-select-option" data-value="${m}" style="${searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? 'display:none' : ''}">
             <span class="model-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
-            <input type="checkbox" ${state.filterModels.size === 0 || state.filterModels.has(m) ? 'checked' : ''} />
+            <input type="checkbox" ${isShowingNone ? '' : (isShowingAll || state.filterModels.has(m) ? 'checked' : '')} />
             <span>${m}</span>
           </div>
         `).join('')}
       `;
+
+      // Wire search input
+      const searchInput = modelDropdown.querySelector('.model-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const query = e.target.value.toLowerCase();
+          modelDropdown.querySelectorAll('.multi-select-option[data-value]').forEach(opt => {
+            const value = opt.dataset.value;
+            if (value === '') return; // Skip "All Models"
+            opt.style.display = value.toLowerCase().includes(query) ? '' : 'none';
+          });
+        });
+        searchInput.addEventListener('click', (e) => e.stopPropagation());
+        searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+      }
 
       // Wire dropdown events
       modelDropdown.querySelectorAll('.multi-select-option').forEach(opt => {
@@ -1169,17 +1331,49 @@
           e.stopPropagation();
           const value = opt.dataset.value;
           if (value === '') {
-            // "All Models" clicked - clear filter
-            state.filterModels.clear();
-          } else {
+            // "All Models" clicked - toggle between all and none
             if (state.filterModels.size === 0) {
-              // Currently all selected, now select only this one
+              // Already showing all - select none (add a dummy to make filter non-empty but match nothing)
+              state.filterModels.add('__none__');
+            } else if (state.filterModels.has('__none__')) {
+              // Currently showing none - show all
+              state.filterModels.clear();
+            } else {
+              // Some are filtered, clear to show all
+              state.filterModels.clear();
+            }
+          } else {
+            // Individual model clicked - simple toggle
+            const wasShowingNone = state.filterModels.has('__none__');
+            // Clear the __none__ sentinel if present
+            state.filterModels.delete('__none__');
+
+            if (wasShowingNone) {
+              // Was showing none, now select just this one model
               state.filterModels.add(value);
             } else if (state.filterModels.has(value)) {
+              // This model is selected - deselect it
               state.filterModels.delete(value);
-              // If all deselected, show all
+              // If none left after removing, show all
+              if (state.filterModels.size === 0) {
+                // Empty = show all, which is fine
+              }
             } else {
-              state.filterModels.add(value);
+              // If currently showing all (size === 0), we need to select all EXCEPT this one
+              // to effectively "deselect" this model
+              if (state.filterModels.size === 0) {
+                // Add all models except the clicked one
+                models.forEach(m => {
+                  if (m !== value) state.filterModels.add(m);
+                });
+              } else {
+                // Normal case: add this model to selection
+                state.filterModels.add(value);
+              }
+            }
+            // If all models are now selected, clear to "show all" state
+            if (state.filterModels.size === models.length) {
+              state.filterModels.clear();
             }
           }
           updateModelFilterButton();
@@ -1262,6 +1456,7 @@
 
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);
+  el('delete-selected')?.addEventListener('click', confirmDeleteSelected);
   el('compare-clear')?.addEventListener('click', clearSelection);
 
   // Keyboard navigation

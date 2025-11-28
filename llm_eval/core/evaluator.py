@@ -773,6 +773,7 @@ class Evaluator:
         """
         meta = {"trace_id": None, "trace_url": None}
         span = None
+        item_start_time = time.time()
 
         try:
             tracker.start_item(index)
@@ -805,7 +806,9 @@ class Evaluator:
                 pass
 
             # Execute task - purely async, no thread pool needed
+            task_start_time = time.time()
             output = await self.task_adapter.arun(item.input, span, model_name=self.model_name)
+            task_elapsed_time = time.time() - task_start_time
 
             # Update span with output
             try:
@@ -933,6 +936,7 @@ class Evaluator:
                 "scores": scores,
                 "trace_id": meta.get('trace_id'),
                 "trace_url": meta.get('trace_url'),
+                "time": task_elapsed_time,
                 "success": True,
             }
 
