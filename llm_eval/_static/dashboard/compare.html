@@ -136,14 +136,27 @@
     }
 
     .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      display: flex;
+      flex-direction: column;
       gap: var(--space-md);
+    }
+
+    .stats-row {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
     }
 
     .stat-box {
       background: var(--bg-elevated);
       border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .stat-box.wide {
+      flex: 100%;
       padding: var(--space-md);
     }
 
@@ -152,14 +165,18 @@
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: var(--space-xs);
+      margin-bottom: 2px;
     }
 
     .stat-box .stat-main {
       font-family: var(--font-mono);
-      font-size: var(--font-lg);
+      font-size: var(--font-md);
       font-weight: 600;
       color: var(--text-primary);
+    }
+
+    .stat-box.wide .stat-main {
+      font-size: var(--font-lg);
     }
 
     .stat-box .stat-main.positive { color: var(--success); }
@@ -169,16 +186,17 @@
     .stat-box .stat-detail {
       font-size: var(--font-xs);
       color: var(--text-muted);
-      margin-top: 4px;
+      margin-top: 2px;
     }
 
     /* Win/Loss bars */
     .win-loss-bar {
       display: flex;
-      height: 24px;
+      height: 28px;
       border-radius: 4px;
       overflow: hidden;
       margin-top: var(--space-sm);
+      gap: 2px;
     }
 
     .win-loss-bar .segment {
@@ -187,92 +205,103 @@
       justify-content: center;
       font-size: var(--font-xs);
       font-weight: 600;
-      color: var(--bg-void);
+      color: #fff;
       transition: flex 0.3s;
+      min-width: 0;
+      padding: 0 4px;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     }
 
-    .win-loss-bar .segment.win-a { background: var(--chart-1); }
-    .win-loss-bar .segment.win-b { background: var(--chart-2); }
-    .win-loss-bar .segment.tie { background: var(--text-muted); }
-
-    /* Quick Insights */
-    .quick-insights {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-lg);
-      margin-bottom: var(--space-xl);
+    .win-loss-bar .segment.tie {
+      background: var(--text-muted);
     }
 
-    .quick-insights h3 {
-      font-size: var(--font-md);
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: var(--space-md);
-    }
-
-    .insights-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: var(--space-md);
-    }
-
-    .insight-card {
-      background: var(--bg-elevated);
-      border-radius: 6px;
-      padding: var(--space-md);
-      border-left: 3px solid var(--border-default);
-    }
-
-    .insight-card.positive { border-left-color: var(--success); }
-    .insight-card.negative { border-left-color: var(--error); }
-    .insight-card.info { border-left-color: var(--info); }
-    .insight-card.warning { border-left-color: var(--warning); }
-
-    .insight-card .insight-header {
+    .win-loss-legend {
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: var(--space-sm);
-      margin-bottom: var(--space-xs);
-    }
-
-    .insight-card .insight-icon {
-      font-size: var(--font-md);
-    }
-
-    .insight-card .insight-title {
-      font-size: var(--font-sm);
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .insight-card .insight-body {
-      font-size: var(--font-sm);
-      color: var(--text-secondary);
-    }
-
-    .insight-card .insight-body strong {
-      color: var(--text-primary);
-    }
-
-    /* Error breakdown */
-    .error-breakdown {
-      display: flex;
-      gap: var(--space-md);
       margin-top: var(--space-sm);
     }
 
-    .error-item {
+    .win-loss-legend .legend-item {
       display: flex;
       align-items: center;
-      gap: var(--space-xs);
+      gap: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+    }
+
+    .win-loss-legend .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    .win-loss-legend .legend-count {
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* Distribution bar */
+    .distribution-bar {
+      display: flex;
+      height: 32px;
+      border-radius: 4px;
+      overflow: hidden;
+      gap: 2px;
+      margin-top: var(--space-sm);
+    }
+
+    .dist-segment {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 2px 4px;
+      color: #fff;
+      font-size: var(--font-xs);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+
+    .dist-segment .dist-label {
+      font-weight: 700;
+      font-size: var(--font-sm);
+    }
+
+    .dist-segment .dist-count {
+      font-size: 10px;
+      opacity: 0.9;
+    }
+
+    .dist-segment.dist-zero {
+      background: var(--error);
+    }
+
+    .dist-segment.dist-all {
+      background: var(--success);
+    }
+
+    .dist-segment.dist-partial {
+      background: var(--warning);
+    }
+
+    .distribution-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
       font-size: var(--font-xs);
       color: var(--text-muted);
     }
 
-    .error-item .count {
-      font-family: var(--font-mono);
-      font-weight: 600;
+    .dist-legend-item {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .dist-legend-item strong {
+      color: var(--text-secondary);
     }
 
     /* Metrics comparison table */
@@ -609,15 +638,10 @@
 
       <!-- Comparison Statistics -->
       <div class="comparison-stats" id="comparison-stats">
-        <h3>📊 Head-to-Head Statistics</h3>
+        <h3>Comparison Overview</h3>
         <div class="stats-grid" id="stats-grid"></div>
       </div>
 
-      <!-- Quick Insights -->
-      <div class="quick-insights" id="quick-insights">
-        <h3>💡 Quick Insights</h3>
-        <div class="insights-grid" id="insights-grid"></div>
-      </div>
 
       <!-- Metrics comparison -->
       <div class="metrics-comparison">
@@ -636,8 +660,8 @@
             <option value="all">All Items</option>
             <option value="different">Different Outputs</option>
             <option value="errors">With Errors</option>
-            <option value="all_correct">All Runs Correct</option>
-            <option value="all_wrong">All Runs Wrong</option>
+            <option value="all_correct">All Runs 100%</option>
+            <option value="all_wrong">No Run 100%</option>
           </select>
           <select id="run-winner-filter" class="filter-select">
             <option value="any">Any Winner</option>
@@ -686,6 +710,20 @@
         if (!ms || ms < 1) return '—';
         if (ms < 1000) return `${Math.round(ms)}ms`;
         return `${(ms / 1000).toFixed(1)}s`;
+      }
+
+      function buildDistributionBar(stats) {
+        return stats.correctDistribution.map((count, idx) => {
+          if (count === 0) return '';
+          const pct = (count / stats.totalCompared * 100).toFixed(0);
+          const isZero = idx === 0;
+          const isAll = idx === state.runs.length;
+          const colorClass = isZero ? 'dist-zero' : isAll ? 'dist-all' : 'dist-partial';
+          return `<div class="dist-segment ${colorClass}" style="flex: ${count}" title="${idx}/${state.runs.length} correct: ${count} items (${pct}%)">
+            <span class="dist-label">${idx}</span>
+            <span class="dist-count">${count}</span>
+          </div>`;
+        }).join('');
       }
 
       async function loadComparisonData() {
@@ -766,6 +804,11 @@
           agreementRate: 0,
           allCorrect: 0,
           allWrong: 0,
+          passAtK: 0, // Items where at least one run scored 100%
+          maxAtK: 0, // Sum of max scores across all items (best possible if you pick best run per item)
+          correctDistribution: [], // How many items had 0, 1, 2, ... N runs correct
+          overallAvgScore: 0,
+          overallAvgLatency: 0,
           errorCounts: [],
           errorTypes: [],
           biggestWins: [],
@@ -773,6 +816,9 @@
         };
 
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+
+        // Initialize correct distribution array (index = number of runs correct, value = count)
+        stats.correctDistribution = new Array(state.runs.length + 1).fill(0);
 
         // Calculate per-run stats
         for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
@@ -827,8 +873,24 @@
           });
 
           const validScores = scores.filter(s => s !== null);
+
+          // Max@K: track the best score for this item across all runs
+          if (validScores.length > 0) {
+            stats.maxAtK += Math.max(...validScores);
+          }
+
+          // Count distribution for ALL items (even those with missing data)
+          const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
+          stats.correctDistribution[numCorrect]++;
+
+          // For head-to-head comparison, need at least 2 valid scores
           if (validScores.length < 2) {
             stats.itemWinners.push(null);
+            // Still count pass@k for items with any data
+            if (numCorrect > 0) stats.passAtK++;
+            if (scores.every(s => s === null || s < 0.0001)) stats.allWrong++;
+            if (numCorrect === scores.filter(s => s !== null).length && numCorrect > 0) stats.allCorrect++;
+            stats.totalCompared++;
             continue;
           }
 
@@ -842,34 +904,42 @@
           if (maxScore === minScore) {
             stats.ties++;
             stats.itemWinners.push('tie');
-            agreements++;
           } else if (winners.length === 1) {
-            // Clear winner - only one run has the max score
+            // Clear winner - only one run has the HIGHEST score (beat all others)
             stats.wins[winners[0]]++;
             stats.itemWinners.push(winners[0]);
             // Track biggest wins
             const diff = maxScore - minScore;
             stats.biggestWins.push({ index: i, winner: winners[0], diff, scores });
           } else {
-            // Multiple runs tied for the win, but not all runs
-            // This is still a "win" for those who tied at the top
-            // We'll count it as wins for all who had max score
-            for (const winnerIdx of winners) {
-              stats.wins[winnerIdx]++;
-            }
-            stats.itemWinners.push(winners); // Store array of winners
+            // Multiple runs tied for the highest score, but didn't beat everyone
+            // This counts as a tie (no clear winner)
+            stats.ties++;
+            stats.itemWinners.push('tie');
           }
 
-          // All correct / all wrong
-          if (validScores.every(s => s >= 0.99)) stats.allCorrect++;
-          if (validScores.every(s => s < 0.01)) stats.allWrong++;
+          // All correct / all wrong / pass@k (at least one run got 100%)
+          // Note: numCorrect was already calculated above
+          if (numCorrect === state.runs.length) stats.allCorrect++;
+          if (validScores.every(s => s < 0.0001)) stats.allWrong++;
+          if (numCorrect > 0) stats.passAtK++;
 
-          // Agreement (outputs match concept - using score similarity)
+          // Agreement (runs scored similarly - within 10% of each other)
           const scoreRange = maxScore - minScore;
           if (scoreRange < 0.1) agreements++;
         }
 
         stats.agreementRate = stats.totalCompared > 0 ? agreements / stats.totalCompared : 0;
+
+        // Calculate overall averages across all runs
+        const validScoresAll = stats.avgScores.filter(s => s > 0);
+        const validLatenciesAll = stats.avgLatencies.filter(l => l > 0);
+        stats.overallAvgScore = validScoresAll.length > 0
+          ? validScoresAll.reduce((a, b) => a + b, 0) / validScoresAll.length
+          : 0;
+        stats.overallAvgLatency = validLatenciesAll.length > 0
+          ? validLatenciesAll.reduce((a, b) => a + b, 0) / validLatenciesAll.length
+          : 0;
 
         // Score and latency deltas (comparing first two runs)
         if (state.runs.length >= 2) {
@@ -913,7 +983,6 @@
 
         renderSummaries();
         renderComparisonStats();
-        renderQuickInsights();
         renderMetricsTable();
         renderItems();
       }
@@ -925,208 +994,76 @@
         const stats = state.comparisonStats;
         const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
 
-        // Build win/loss bar
+        // Build win/loss bar with proper colors
         const total = stats.totalCompared || 1;
         const winBarSegments = state.runs.map((_, idx) => {
-          const pct = (stats.wins[idx] / total * 100).toFixed(1);
-          return `<div class="segment win-${idx === 0 ? 'a' : 'b'}" style="flex: ${stats.wins[idx]}">${stats.wins[idx] > 0 ? stats.wins[idx] : ''}</div>`;
+          const color = COLORS[idx % COLORS.length];
+          const count = stats.wins[idx];
+          if (count === 0) return '';
+          return `<div class="segment" style="flex: ${count}; background: ${color}">${count}</div>`;
         }).join('');
-        const tieSegment = `<div class="segment tie" style="flex: ${stats.ties}">${stats.ties > 0 ? stats.ties : ''}</div>`;
+        const tieSegment = stats.ties > 0
+          ? `<div class="segment tie" style="flex: ${stats.ties}">${stats.ties}</div>`
+          : '';
 
-        // Score delta display
-        const scoreDeltaClass = stats.scoreDelta > 0.01 ? 'positive' : stats.scoreDelta < -0.01 ? 'negative' : 'neutral';
-        const scoreDeltaSign = stats.scoreDelta > 0 ? '+' : '';
-        const scoreDeltaText = `${scoreDeltaSign}${(stats.scoreDelta * 100).toFixed(1)}%`;
-
-        // Latency delta display (negative is better - faster)
-        const latDeltaClass = stats.latencyDelta < -100 ? 'positive' : stats.latencyDelta > 100 ? 'negative' : 'neutral';
-        const latDeltaText = stats.latencyDelta < 0
-          ? `${formatLatency(Math.abs(stats.latencyDelta))} faster`
-          : stats.latencyDelta > 0
-            ? `${formatLatency(stats.latencyDelta)} slower`
-            : 'Same';
+        // Build legend
+        const legendItems = state.runs.map((_, idx) => {
+          const color = COLORS[idx % COLORS.length];
+          return `<div class="legend-item">
+            <div class="legend-dot" style="background: ${color}"></div>
+            <span>${runNames[idx]}:</span>
+            <span class="legend-count">${stats.wins[idx]}</span>
+          </div>`;
+        }).join('');
+        const tieLegend = `<div class="legend-item">
+          <div class="legend-dot" style="background: var(--text-muted)"></div>
+          <span>Ties:</span>
+          <span class="legend-count">${stats.ties}</span>
+        </div>`;
 
         container.innerHTML = `
-          <div class="stat-box" style="grid-column: span 2;">
-            <div class="stat-title">Win / Loss / Tie</div>
-            <div class="stat-main">${runNames[0]}: ${stats.wins[0]} | ${runNames[1] || 'Run 2'}: ${stats.wins[1] || 0} | Ties: ${stats.ties}</div>
+          <div class="stat-box wide">
+            <div class="stat-title">Winner Breakdown</div>
             <div class="win-loss-bar">
               ${winBarSegments}
               ${tieSegment}
             </div>
+            <div class="win-loss-legend">
+              ${legendItems}
+              ${tieLegend}
+            </div>
             <div class="stat-detail">${stats.totalCompared} items compared</div>
           </div>
 
-          <div class="stat-box">
-            <div class="stat-title">Score Delta (${runNames[0]} vs ${runNames[1] || 'Run 2'})</div>
-            <div class="stat-main ${scoreDeltaClass}">${scoreDeltaText}</div>
-            <div class="stat-detail">${runNames[0]}: ${formatPercent(stats.avgScores[0])} avg</div>
+          <div class="stats-row">
+            <div class="stat-box">
+              <div class="stat-title">Pass@${state.runs.length}</div>
+              <div class="stat-main positive">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Max@${state.runs.length}</div>
+              <div class="stat-main positive">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Avg Score</div>
+              <div class="stat-main">${formatPercent(stats.overallAvgScore)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Avg Latency</div>
+              <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
+            </div>
           </div>
 
-          <div class="stat-box">
-            <div class="stat-title">Latency Delta</div>
-            <div class="stat-main ${latDeltaClass}">${latDeltaText}</div>
-            <div class="stat-detail">${runNames[0]}: ${formatLatency(stats.avgLatencies[0])} avg</div>
-          </div>
-
-          <div class="stat-box">
-            <div class="stat-title">Agreement Rate</div>
-            <div class="stat-main">${formatPercent(stats.agreementRate)}</div>
-            <div class="stat-detail">Items where runs scored similarly</div>
-          </div>
-
-          <div class="stat-box">
-            <div class="stat-title">All Correct</div>
-            <div class="stat-main positive">${stats.allCorrect}</div>
-            <div class="stat-detail">Both runs scored 100%</div>
-          </div>
-
-          <div class="stat-box">
-            <div class="stat-title">All Wrong</div>
-            <div class="stat-main negative">${stats.allWrong}</div>
-            <div class="stat-detail">Both runs scored 0%</div>
+          <div class="stat-box wide">
+            <div class="stat-title">Correct Distribution (how many runs got each item right)</div>
+            <div class="distribution-bar">
+              ${buildDistributionBar(stats)}
+            </div>
           </div>
         `;
-      }
-
-      function renderQuickInsights() {
-        const container = el('insights-grid');
-        if (!container || !state.comparisonStats) return;
-
-        const stats = state.comparisonStats;
-        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
-        const insights = [];
-
-        // Determine overall winner
-        const maxWins = Math.max(...stats.wins);
-        const overallWinners = stats.wins.map((w, i) => w === maxWins ? i : -1).filter(x => x >= 0);
-
-        if (overallWinners.length === 1 && maxWins > stats.ties) {
-          const winnerIdx = overallWinners[0];
-          const winPct = ((stats.wins[winnerIdx] / stats.totalCompared) * 100).toFixed(0);
-          insights.push({
-            type: 'positive',
-            icon: '🏆',
-            title: `${runNames[winnerIdx]} Wins Overall`,
-            body: `Won <strong>${stats.wins[winnerIdx]}</strong> out of ${stats.totalCompared} comparisons (${winPct}%)`
-          });
-        } else if (stats.ties > maxWins) {
-          insights.push({
-            type: 'info',
-            icon: '🤝',
-            title: 'Runs Perform Similarly',
-            body: `<strong>${stats.ties}</strong> ties out of ${stats.totalCompared} comparisons`
-          });
-        }
-
-        // Score comparison
-        if (Math.abs(stats.scoreDelta) > 0.05) {
-          const better = stats.scoreDelta > 0 ? 0 : 1;
-          const worse = stats.scoreDelta > 0 ? 1 : 0;
-          insights.push({
-            type: 'info',
-            icon: '📈',
-            title: `${runNames[better]} Scores Higher`,
-            body: `Average score is <strong>${formatPercent(Math.abs(stats.scoreDelta))}</strong> higher than ${runNames[worse]}`
-          });
-        }
-
-        // Latency comparison
-        if (Math.abs(stats.latencyDelta) > 500) {
-          const faster = stats.latencyDelta < 0 ? 0 : 1;
-          const slower = stats.latencyDelta < 0 ? 1 : 0;
-          insights.push({
-            type: 'positive',
-            icon: '⚡',
-            title: `${runNames[faster]} is Faster`,
-            body: `<strong>${formatLatency(Math.abs(stats.latencyDelta))}</strong> faster on average than ${runNames[slower]}`
-          });
-        }
-
-        // Error analysis
-        const totalErrors = stats.errorCounts.reduce((a, b) => a + b, 0);
-        if (totalErrors > 0) {
-          const errorDetails = state.runs.map((_, idx) => {
-            const et = stats.errorTypes[idx];
-            return `${runNames[idx]}: ${stats.errorCounts[idx]} errors`;
-          }).join(', ');
-
-          // Find which run has more errors
-          const minErrors = Math.min(...stats.errorCounts);
-          const maxErrors = Math.max(...stats.errorCounts);
-          if (maxErrors > minErrors) {
-            const moreErrorsIdx = stats.errorCounts.indexOf(maxErrors);
-            const lessErrorsIdx = stats.errorCounts.indexOf(minErrors);
-            insights.push({
-              type: 'warning',
-              icon: '⚠️',
-              title: `${runNames[moreErrorsIdx]} Has More Errors`,
-              body: `<strong>${maxErrors}</strong> errors vs <strong>${minErrors}</strong> in ${runNames[lessErrorsIdx]}`
-            });
-          }
-
-          // Error type breakdown for first run with errors
-          const errorRunIdx = stats.errorCounts.findIndex(c => c > 0);
-          if (errorRunIdx >= 0) {
-            const et = stats.errorTypes[errorRunIdx];
-            const breakdown = [];
-            if (et.timeout > 0) breakdown.push(`${et.timeout} timeouts`);
-            if (et.runtime > 0) breakdown.push(`${et.runtime} runtime`);
-            if (et.other > 0) breakdown.push(`${et.other} other`);
-            if (breakdown.length > 0) {
-              insights.push({
-                type: 'negative',
-                icon: '🔴',
-                title: 'Error Breakdown',
-                body: breakdown.join(', ')
-              });
-            }
-          }
-        }
-
-        // Biggest wins
-        if (stats.biggestWins.length > 0) {
-          const topWin = stats.biggestWins[0];
-          insights.push({
-            type: 'info',
-            icon: '🎯',
-            title: 'Biggest Score Difference',
-            body: `Item #${topWin.index + 1}: ${runNames[topWin.winner]} won by <strong>${formatPercent(topWin.diff)}</strong>`
-          });
-        }
-
-        // High agreement
-        if (stats.agreementRate > 0.8) {
-          insights.push({
-            type: 'info',
-            icon: '✅',
-            title: 'High Agreement',
-            body: `Runs agree on <strong>${formatPercent(stats.agreementRate)}</strong> of items`
-          });
-        } else if (stats.agreementRate < 0.5) {
-          insights.push({
-            type: 'warning',
-            icon: '🔀',
-            title: 'Low Agreement',
-            body: `Runs only agree on <strong>${formatPercent(stats.agreementRate)}</strong> of items - significant differences`
-          });
-        }
-
-        // Render insights
-        if (insights.length === 0) {
-          container.innerHTML = '<div style="color: var(--text-muted);">No significant insights detected</div>';
-          return;
-        }
-
-        container.innerHTML = insights.map(ins => `
-          <div class="insight-card ${ins.type}">
-            <div class="insight-header">
-              <span class="insight-icon">${ins.icon}</span>
-              <span class="insight-title">${ins.title}</span>
-            </div>
-            <div class="insight-body">${ins.body}</div>
-          </div>
-        `).join('');
       }
 
       function renderSummaries() {
@@ -1311,25 +1248,23 @@
             const hasError = rowData.some(r => r?.status === 'error');
             if (!hasError) continue;
           } else if (state.itemFilter === 'all_correct') {
-            if (validScores.length < 2 || !validScores.every(s => s >= 0.99)) continue;
+            // All runs got 100% (matches distribution "all correct")
+            if (validScores.length < 2 || !validScores.every(s => s >= 0.9999)) continue;
           } else if (state.itemFilter === 'all_wrong') {
-            if (validScores.length < 2 || !validScores.every(s => s < 0.01)) continue;
+            // No run got 100% (matches distribution "0 correct")
+            if (validScores.length < 2 || validScores.some(s => s >= 0.9999)) continue;
           }
 
           // Apply winner filter
           if (state.winnerFilter !== 'any' && stats) {
             const winner = stats.itemWinners[i];
             if (state.winnerFilter === 'tie') {
-              // Only show true ties (all runs same score)
+              // Only show ties (all runs same score OR multiple tied for highest)
               if (winner !== 'tie') continue;
             } else if (state.winnerFilter.startsWith('win_')) {
               const winnerIdx = parseInt(state.winnerFilter.replace('win_', ''), 10);
-              // Check if this run won (could be sole winner or part of a tie for first)
-              if (Array.isArray(winner)) {
-                if (!winner.includes(winnerIdx)) continue;
-              } else {
-                if (winner !== winnerIdx) continue;
-              }
+              // Only show items where this run was the SOLE winner (beat all others)
+              if (winner !== winnerIdx) continue;
             }
           }
 
