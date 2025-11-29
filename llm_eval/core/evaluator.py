@@ -958,10 +958,29 @@ class Evaluator:
             # End span on error
             if span:
                 try:
-                    span.update(level="ERROR", status_message=str(e))
+                    span.update(output={"error": str(e)}, level="ERROR", status_message=str(e))
                     span.end()
                 except Exception:
                     pass
+
+                # Link to dataset run item even on error so it shows in Langfuse
+                dataset_item_id = getattr(item, 'id', None)
+                trace_id = meta.get('trace_id')
+                if dataset_item_id and trace_id:
+                    try:
+                        from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
+                        await self.client.async_api.dataset_run_items.create(
+                            request=CreateDatasetRunItemRequest(
+                                runName=self.run_name,
+                                runDescription=None,
+                                metadata={**self.run_metadata, "error": str(e)},
+                                datasetItemId=dataset_item_id,
+                                traceId=trace_id,
+                            )
+                        )
+                    except Exception:
+                        pass
+
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             return Exception(str(e))
