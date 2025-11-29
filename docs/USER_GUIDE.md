@@ -97,7 +97,13 @@ The evaluator looks at your function signature and passes arguments intelligentl
 | `def task(input_data)` | `task(input_data=input_data)` |
 | `def task(x)` | `task(x=input_data)` |
 | `def task(q, context)` | `task(q=input["q"], context=input["context"])` if input is dict |
-| `def task(**kwargs)` | `task(**input_data)` if input is dict |
+| `def task(q, model_name)` | `task(q=input_data, model_name="gpt-4")` |
+| `def task(q, trace_id)` | `task(q=input_data, trace_id="abc-123...")` |
+| `def task(**kwargs)` | `task(**input_data, model="gpt-4", trace_id="...")` if input is dict |
+
+**Special parameters** automatically populated by the evaluator:
+- `model` or `model_name`: The current model being evaluated
+- `trace_id`: The Langfuse trace ID for the current item
 
 ### Basic Task (Any Parameter Name Works)
 
@@ -148,6 +154,30 @@ def my_task(question, model_name="gpt-4"):
 ```
 
 The evaluator detects `model_name` or `model` parameters and passes the model automatically.
+
+### Task with Trace ID (For Observability)
+
+If you need the Langfuse trace ID for logging or debugging, add a `trace_id` parameter:
+
+```python
+def my_task(question, trace_id=None):
+    """
+    Args:
+        question: The input
+        trace_id: Langfuse trace ID (passed automatically by Evaluator)
+    """
+    # Use trace_id for custom logging, linking to external systems, etc.
+    print(f"Processing with trace: {trace_id}")
+
+    # You can also pass it to sub-systems for tracing
+    result = call_llm(question, metadata={"trace_id": trace_id})
+    return result
+```
+
+The evaluator automatically detects the `trace_id` parameter and passes the current Langfuse trace ID. This is useful for:
+- Linking evaluation results to external logging systems
+- Debugging specific items in Langfuse
+- Correlating traces across services
 
 ### Async Task (Recommended for LLM Calls)
 
@@ -694,17 +724,25 @@ eval_results/
             └── my_task-qa-dataset-gpt-4-240115-1430.csv
 ```
 
-### CSV Columns
+### CSV/Excel Columns
 
 | Column | Description |
 |--------|-------------|
 | `item_id` | Unique identifier for the dataset item |
 | `input` | The input sent to your task |
+| `item_metadata` | Metadata from the dataset item (JSON) |
 | `output` | What your task returned |
 | `expected_output` | The expected answer from dataset |
 | `{metric}_score` | Score for each metric (e.g., `exact_match_score`) |
 | `time` | Latency in seconds |
 | `trace_id` | Langfuse trace ID for debugging |
+
+### Export Formats
+
+Results can be saved in three formats:
+- **CSV** (default): Standard comma-separated values
+- **JSON**: Full structured data with all metadata
+- **XLSX**: Excel spreadsheet
 
 ### Programmatic Access
 
@@ -765,25 +803,26 @@ evaluator = Evaluator(
 
 ```python
 results = evaluator.run(
-    show_progress=True,   # Show TUI dashboard (default: True)
-    show_table=True,      # Show live table (default: True)
-    auto_save=True,       # Save to CSV (default: True)
-    save_format="csv",    # "csv" or "json" (default: "csv")
+    show_tui=True,        # Show terminal UI dashboard (default: True)
+    auto_save=True,       # Save results automatically (default: True)
+    save_format="csv",    # "csv", "json", or "xlsx" (default: "csv")
 )
 ```
+
+> **Note**: The Web UI is always available at the URL printed at startup.
 
 ### run_parallel() Options
 
 ```python
 results = Evaluator.run_parallel(
     runs=[...],
-    show_tui=True,         # Show multi-run dashboard
-    auto_save=True,        # Save each run's results
-    save_format="csv",     # Output format
-    print_summary=True,    # Print summary table at end
-    keep_server_alive=True, # Keep Web UI running after completion
+    show_tui=True,          # Show terminal UI dashboard (default: True)
+    auto_save=True,         # Save each run's results
+    save_format="csv",      # "csv", "json", or "xlsx"
 )
 ```
+
+> **Note**: The Web UI is always available at the URL printed at startup.
 
 ---
 

@@ -1161,13 +1161,14 @@ main {
 }
 
 /* Metric columns */
-.col-metric-dynamic {
+.col-metric-dynamic,
+.runs-table th.col-metric-dynamic {
   min-width: 80px;
-  text-align: right;
+  text-align: center;
 }
 
 .col-metric-value {
-  text-align: right;
+  text-align: center;
   min-width: 70px;
 }
 

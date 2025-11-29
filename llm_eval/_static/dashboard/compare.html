@@ -69,6 +69,22 @@
       margin-bottom: var(--space-md);
     }
 
+    .run-summary-card .remove-run {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: var(--font-sm);
+    }
+
+    .run-summary-card .remove-run:hover {
+      background: var(--error-dim);
+      color: var(--error);
+    }
+
     .run-color-dot {
       width: 12px;
       height: 12px;
@@ -329,6 +345,11 @@
       padding: var(--space-sm) var(--space-md);
       text-align: left;
       border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .metrics-table th:not(:first-child),
+    .metrics-table td:not(:first-child) {
+      text-align: center;
     }
 
     .metrics-table thead th {
@@ -636,13 +657,6 @@
       <!-- Run summaries -->
       <div class="compare-summary" id="run-summaries"></div>
 
-      <!-- Comparison Statistics -->
-      <div class="comparison-stats" id="comparison-stats">
-        <h3>Comparison Overview</h3>
-        <div class="stats-grid" id="stats-grid"></div>
-      </div>
-
-
       <!-- Metrics comparison -->
       <div class="metrics-comparison">
         <h3>Metric Averages</h3>
@@ -650,6 +664,12 @@
           <thead id="metrics-thead"></thead>
           <tbody id="metrics-tbody"></tbody>
         </table>
+      </div>
+
+      <!-- Comparison Statistics -->
+      <div class="comparison-stats" id="comparison-stats">
+        <h3>Comparison Overview</h3>
+        <div class="stats-grid" id="stats-grid"></div>
       </div>
 
       <!-- Side-by-side items -->
@@ -662,6 +682,8 @@
             <option value="errors">With Errors</option>
             <option value="all_correct">All Runs 100%</option>
             <option value="all_wrong">No Run 100%</option>
+            <option value="rarely_solved">Rarely Solved (≤25%)</option>
+            <option value="unique_solve">Uniquely Solved (1 run only)</option>
           </select>
           <select id="run-winner-filter" class="filter-select">
             <option value="any">Any Winner</option>
@@ -967,7 +989,41 @@
           options += `<option value="win_${idx}">${name} Won</option>`;
         });
 
+        // Add "Only X Solved" options for unique insights
+        options += '<optgroup label="Uniquely Solved By">';
+        state.runs.forEach((run, idx) => {
+          const info = run.run || {};
+          const name = info.run_name || `Run ${idx + 1}`;
+          options += `<option value="only_${idx}">Only ${name}</option>`;
+        });
+        options += '</optgroup>';
+
         select.innerHTML = options;
+      }
+
+      function removeRun(idx) {
+        if (state.runs.length <= 2) return;
+
+        // Remove from state
+        state.runs.splice(idx, 1);
+
+        // Update sessionStorage so it persists
+        const filesJson = sessionStorage.getItem('compareRuns');
+        if (filesJson) {
+          try {
+            const files = JSON.parse(filesJson);
+            files.splice(idx, 1);
+            sessionStorage.setItem('compareRuns', JSON.stringify(files));
+          } catch {}
+        }
+
+        // Reset filters that might reference removed run
+        state.winnerFilter = 'any';
+        state.page = 1;
+
+        // Reprocess and re-render
+        processRuns();
+        render();
       }
 
       function showEmpty() {
@@ -1022,19 +1078,6 @@
         </div>`;
 
         container.innerHTML = `
-          <div class="stat-box wide">
-            <div class="stat-title">Winner Breakdown</div>
-            <div class="win-loss-bar">
-              ${winBarSegments}
-              ${tieSegment}
-            </div>
-            <div class="win-loss-legend">
-              ${legendItems}
-              ${tieLegend}
-            </div>
-            <div class="stat-detail">${stats.totalCompared} items compared</div>
-          </div>
-
           <div class="stats-row">
             <div class="stat-box">
               <div class="stat-title">Pass@${state.runs.length}</div>
@@ -1058,6 +1101,19 @@
           </div>
 
           <div class="stat-box wide">
+            <div class="stat-title">Winner Breakdown</div>
+            <div class="win-loss-bar">
+              ${winBarSegments}
+              ${tieSegment}
+            </div>
+            <div class="win-loss-legend">
+              ${legendItems}
+              ${tieLegend}
+            </div>
+            <div class="stat-detail">${stats.totalCompared} items compared</div>
+          </div>
+
+          <div class="stat-box wide">
             <div class="stat-title">Correct Distribution (how many runs got each item right)</div>
             <div class="distribution-bar">
               ${buildDistributionBar(stats)}
@@ -1076,11 +1132,13 @@
           const successRate = (stats.completed || 0) / (stats.total || 1);
           const successClass = getSuccessClass(successRate);
 
+          const canRemove = state.runs.length > 2;
           return `
             <div class="run-summary-card">
               <div class="run-header">
                 <div class="run-color-dot" style="background: ${color}"></div>
                 <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}</div>
+                ${canRemove ? `<button class="remove-run" data-idx="${idx}" title="Remove from comparison">✕</button>` : ''}
               </div>
               <div class="run-meta">
                 <span class="tag task">${info.dataset_name || '—'}</span>
@@ -1104,6 +1162,14 @@
             </div>
           `;
         }).join('');
+
+        // Add click handlers for remove buttons
+        container.querySelectorAll('.remove-run').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx, 10);
+            removeRun(idx);
+          });
+        });
       }
 
       function renderMetricsTable() {
@@ -1253,6 +1319,15 @@
           } else if (state.itemFilter === 'all_wrong') {
             // No run got 100% (matches distribution "0 correct")
             if (validScores.length < 2 || validScores.some(s => s >= 0.9999)) continue;
+          } else if (state.itemFilter === 'rarely_solved') {
+            // 25% or fewer runs got 100%
+            const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
+            const threshold = Math.max(1, Math.floor(state.runs.length * 0.25));
+            if (numCorrect === 0 || numCorrect > threshold) continue;
+          } else if (state.itemFilter === 'unique_solve') {
+            // Exactly 1 run got 100%
+            const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
+            if (numCorrect !== 1) continue;
           }
 
           // Apply winner filter
@@ -1265,6 +1340,11 @@
               const winnerIdx = parseInt(state.winnerFilter.replace('win_', ''), 10);
               // Only show items where this run was the SOLE winner (beat all others)
               if (winner !== winnerIdx) continue;
+            } else if (state.winnerFilter.startsWith('only_')) {
+              // Only show items where ONLY this run got 100%
+              const runIdx = parseInt(state.winnerFilter.replace('only_', ''), 10);
+              const correctRuns = scores.map((s, idx) => s !== null && s >= 0.9999 ? idx : -1).filter(x => x >= 0);
+              if (correctRuns.length !== 1 || correctRuns[0] !== runIdx) continue;
             }
           }
 

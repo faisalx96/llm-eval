@@ -45,13 +45,23 @@ class EvaluationResult:
         self._save_notice_consumed = False
         
         # Results storage
+        self.inputs = {}  # item_id -> input data
+        self.metadatas = {}  # item_id -> metadata dict
         self.results = {}  # item_id -> result dict
         self.errors = {}   # item_id -> error message
-        
+
+    def add_input(self, item_id: str, task_input: Any):
+        """Add input data for an item."""
+        self.inputs[item_id] = task_input
+
+    def add_metadata(self, item_id: str, metadata: Dict[str, Any]):
+        """Add metadata for an item."""
+        self.metadatas[item_id] = metadata
+
     def add_result(self, item_id: str, result: Dict[str, Any]):
         """Add a successful evaluation result."""
         self.results[item_id] = result
-    
+
     def add_error(self, item_id: str, error: str):
         """Add an evaluation error."""
         self.errors[item_id] = error
@@ -211,6 +221,8 @@ class EvaluationResult:
             'success_rate': self.success_rate,
             'metrics': self.metrics,
             'metric_stats': metric_stats,
+            'inputs': self.inputs,
+            'metadatas': self.metadatas,
             'results': self.results,
             'errors': self.errors
         }
@@ -291,7 +303,7 @@ class EvaluationResult:
         # Prepare header
         base_fields = [
             'dataset_name', 'run_name', 'run_metadata', 'run_config',
-            'trace_id', 'item_id', 'input', 'output', 'expected_output', 'time'
+            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time'
         ]
         metric_fields: List[str] = []
         for m in self.metrics:
@@ -312,6 +324,11 @@ class EvaluationResult:
         # Assemble rows
         rows: List[Dict[str, Any]] = []
         for item_id, result in self.results.items():
+            # Get item metadata
+            item_metadata = self.metadatas.get(item_id, '')
+            if isinstance(item_metadata, dict):
+                item_metadata = json.dumps(item_metadata, ensure_ascii=False)
+
             row: Dict[str, Any] = {
                 'dataset_name': self.dataset_name,
                 'run_name': self.run_name,
@@ -320,6 +337,7 @@ class EvaluationResult:
                 'trace_id': result.get('trace_id', ''),
                 'item_id': item_id,
                 'input': result.get('input', ''),
+                'item_metadata': str(item_metadata),
                 'output': result.get('output', ''),
                 'expected_output': result.get('expected', ''),
                 'time': result.get('time', 0.0),
@@ -338,6 +356,15 @@ class EvaluationResult:
 
         # Add failed items as rows too
         for item_id, error in self.errors.items():
+            # Get input and metadata for failed items
+            task_input = self.inputs.get(item_id, '')
+            if isinstance(task_input, dict):
+                task_input = json.dumps(task_input, ensure_ascii=False)
+
+            item_metadata = self.metadatas.get(item_id, '')
+            if isinstance(item_metadata, dict):
+                item_metadata = json.dumps(item_metadata, ensure_ascii=False)
+
             row = {
                 'dataset_name': self.dataset_name,
                 'run_name': self.run_name,
@@ -345,7 +372,8 @@ class EvaluationResult:
                 'run_config': json.dumps(self.run_config, ensure_ascii=False),
                 'trace_id': '',
                 'item_id': item_id,
-                'input': '',
+                'input': str(task_input),
+                'item_metadata': str(item_metadata),
                 'output': f'ERROR: {error}',
                 'expected_output': '',
                 'time': 0.0,
@@ -362,7 +390,161 @@ class EvaluationResult:
                 writer = csv.DictWriter(f, fieldnames=header)
                 writer.writeheader()
                 writer.writerows(rows)
-        
+
+        return str(filepath)
+
+    def save_excel(self, filepath: Optional[str] = None, output_dir: str = ".") -> str:
+        """
+        Save results to xlsx file for spreadsheet analysis.
+
+        Args:
+            filepath: Optional custom filepath. If not provided, generates one.
+            output_dir: Directory to save to if filepath is not provided.
+
+        Returns:
+            Path to the saved file
+        """
+        try:
+            import openpyxl
+        except ImportError:
+            raise ImportError(
+                "openpyxl is required for Excel export. Install it with: pip install openpyxl"
+            )
+
+        if filepath is None:
+            filepath = self._default_save_path("xlsx", output_dir)
+
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # Build metric metadata field list across results for consistent columns
+        def flatten_meta(md: Dict[str, Any]) -> Dict[str, Any]:
+            flat: Dict[str, Any] = {}
+            try:
+                for k, v in (md or {}).items():
+                    if isinstance(v, dict):
+                        for k2, v2 in v.items():
+                            flat[f"{k}_{k2}"] = v2
+                    else:
+                        flat[str(k)] = v
+            except Exception:
+                pass
+            return flat
+
+        meta_fields: Dict[str, List[str]] = {m: [] for m in self.metrics}
+        for result in self.results.values():
+            scores = result.get('scores', {})
+            for m in self.metrics:
+                sc = scores.get(m)
+                if isinstance(sc, dict):
+                    md = sc.get('metadata') if 'metadata' in sc else {}
+                    fl = flatten_meta(md if isinstance(md, dict) else {})
+                    for key in fl.keys():
+                        if key not in meta_fields[m]:
+                            meta_fields[m].append(key)
+
+        # Prepare header (same as CSV)
+        base_fields = [
+            'dataset_name', 'run_name', 'run_metadata', 'run_config',
+            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time'
+        ]
+        metric_fields: List[str] = []
+        for m in self.metrics:
+            metric_fields.append(f'{m}_score')
+            for k in meta_fields[m]:
+                metric_fields.append(f'{m}_{k}')
+        header = base_fields + metric_fields
+
+        # Prepare row formatter helpers
+        def main_score(val: Any) -> Any:
+            if isinstance(val, dict):
+                if 'error' in val:
+                    return 'ERROR'
+                if 'score' in val:
+                    return val.get('score')
+            return val
+
+        # Assemble rows (same logic as CSV)
+        rows: List[Dict[str, Any]] = []
+        for item_id, result in self.results.items():
+            item_metadata = self.metadatas.get(item_id, '')
+            if isinstance(item_metadata, dict):
+                item_metadata = json.dumps(item_metadata, ensure_ascii=False)
+
+            row: Dict[str, Any] = {
+                'dataset_name': self.dataset_name,
+                'run_name': self.run_name,
+                'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
+                'run_config': json.dumps(self.run_config, ensure_ascii=False),
+                'trace_id': result.get('trace_id', ''),
+                'item_id': item_id,
+                'input': result.get('input', ''),
+                'item_metadata': str(item_metadata),
+                'output': result.get('output', ''),
+                'expected_output': result.get('expected', ''),
+                'time': result.get('time', 0.0),
+            }
+            scores = result.get('scores', {})
+            for m in self.metrics:
+                val = main_score(scores.get(m))
+                row[f'{m}_score'] = val
+                md: Dict[str, Any] = {}
+                sc = scores.get(m)
+                if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
+                    md = flatten_meta(sc['metadata'])
+                for k in meta_fields[m]:
+                    row[f'{m}_{k}'] = md.get(k, '')
+            rows.append(row)
+
+        # Add failed items as rows too
+        for item_id, error in self.errors.items():
+            task_input = self.inputs.get(item_id, '')
+            if isinstance(task_input, dict):
+                task_input = json.dumps(task_input, ensure_ascii=False)
+
+            item_metadata = self.metadatas.get(item_id, '')
+            if isinstance(item_metadata, dict):
+                item_metadata = json.dumps(item_metadata, ensure_ascii=False)
+
+            row = {
+                'dataset_name': self.dataset_name,
+                'run_name': self.run_name,
+                'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
+                'run_config': json.dumps(self.run_config, ensure_ascii=False),
+                'trace_id': '',
+                'item_id': item_id,
+                'input': str(task_input),
+                'item_metadata': str(item_metadata),
+                'output': f'ERROR: {error}',
+                'expected_output': '',
+                'time': 0.0,
+            }
+            for m in self.metrics:
+                row[f'{m}_score'] = 'N/A'
+                for k in meta_fields[m]:
+                    row[f'{m}_{k}'] = ''
+            rows.append(row)
+
+        # Write Excel using openpyxl directly
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Results"
+
+        # Write header
+        for col_idx, field in enumerate(header, start=1):
+            ws.cell(row=1, column=col_idx, value=field)
+
+        # Write data rows
+        for row_idx, row_data in enumerate(rows, start=2):
+            for col_idx, field in enumerate(header, start=1):
+                value = row_data.get(field, '')
+                # Convert non-string types to string for complex objects
+                if isinstance(value, (dict, list)):
+                    value = json.dumps(value, ensure_ascii=False)
+                ws.cell(row=row_idx, column=col_idx, value=value)
+
+        wb.save(filepath)
+
         return str(filepath)
 
     def _default_save_path(self, extension: str, output_dir: str) -> str:
@@ -404,12 +586,12 @@ class EvaluationResult:
     def save(self, format: str = "json", filepath: Optional[str] = None, output_dir: str = ".") -> str:
         """
         Save results in specified format.
-        
+
         Args:
-            format: Export format - "json" or "csv"
+            format: Export format - "json", "csv", or "xlsx"
             filepath: Optional custom filepath
             output_dir: Directory to save to if filepath is not provided.
-            
+
         Returns:
             Path to the saved file
         """
@@ -418,8 +600,10 @@ class EvaluationResult:
             saved_path = self.save_json(filepath, output_dir=output_dir)
         elif format.lower() == "csv":
             saved_path = self.save_csv(filepath, output_dir=output_dir)
+        elif format.lower() == "xlsx":
+            saved_path = self.save_excel(filepath, output_dir=output_dir)
         else:
-            raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")
+            raise ValueError(f"Unsupported format: {format}. Use 'json', 'csv', or 'xlsx'.")
         self.last_saved_path = saved_path
         self._save_notice_consumed = False
         return saved_path

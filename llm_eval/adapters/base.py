@@ -34,34 +34,43 @@ class FunctionAdapter(TaskAdapter):
         
         # Analyze parameters
         self._model_param: Optional[str] = None
+        self._trace_id_param: Optional[str] = None
         self._params = {}
         self._accepts_kwargs = False
-        
+
         for name, param in self.sig.parameters.items():
             if param.kind == inspect.Parameter.VAR_KEYWORD:
                 self._accepts_kwargs = True
                 continue
-            
+
             if name in ("model", "model_name"):
                 self._model_param = name
+            elif name == "trace_id":
+                self._trace_id_param = name
             else:
                 self._params[name] = param
 
-    def _resolve_args(self, input_data: Any, model_name: Optional[str]) -> Tuple[Tuple, Dict[str, Any]]:
+    def _resolve_args(self, input_data: Any, model_name: Optional[str], trace_id: Optional[str] = None) -> Tuple[Tuple, Dict[str, Any]]:
         """
         Resolve arguments for the function call based on input data and signature.
         Returns (args, kwargs).
         """
         kwargs: Dict[str, Any] = {}
         args: List[Any] = []
-        
+
         # 1. Handle Model Argument
         if self._model_param:
             kwargs[self._model_param] = model_name
         elif self._accepts_kwargs and model_name:
             kwargs["model"] = model_name
 
-        # 2. Handle Input Data
+        # 2. Handle trace_id Argument
+        if self._trace_id_param:
+            kwargs[self._trace_id_param] = trace_id
+        elif self._accepts_kwargs and trace_id:
+            kwargs["trace_id"] = trace_id
+
+        # 3. Handle Input Data
         # Case A: Input is a dictionary
         if isinstance(input_data, dict):
             # Check if we should unpack:
@@ -121,9 +130,21 @@ class FunctionAdapter(TaskAdapter):
         """Run function with proper tracing."""
         # Update trace with input
         trace.update(input=input_data)
-        
-        args, kwargs = self._resolve_args(input_data, model_name)
-        
+
+        # Extract trace_id from trace object if user's function needs it
+        trace_id: Optional[str] = None
+        if self._trace_id_param or self._accepts_kwargs:
+            try:
+                if hasattr(trace, 'trace_id'):
+                    ti = getattr(trace, 'trace_id')
+                    trace_id = str(ti() if callable(ti) else ti)
+                elif hasattr(trace, 'id'):
+                    trace_id = str(getattr(trace, 'id'))
+            except Exception:
+                pass
+
+        args, kwargs = self._resolve_args(input_data, model_name, trace_id)
+
         loop = asyncio.get_event_loop()
         try:
             # Check if function is async
@@ -132,7 +153,7 @@ class FunctionAdapter(TaskAdapter):
             else:
                 # Run sync function in thread pool to avoid blocking
                 output = await loop.run_in_executor(None, lambda: self.task(*args, **kwargs))
-            
+
             # Update trace with output
             trace.update(output=output)
             return output

@@ -46,6 +46,7 @@ setup(
         "aiohttp>=3.8.0",  # For async HTTP
         "python-dotenv>=0.19.0",  # For environment variables
         "nest_asyncio>=1.5.0",  # For Jupyter notebook compatibility
+        "openpyxl>=3.0.0",  # For Excel export
     ],
     extras_require={
         "dev": [

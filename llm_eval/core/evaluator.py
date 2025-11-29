@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import os
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from datetime import datetime
 import time
@@ -375,18 +376,20 @@ class Evaluator:
                 logger.error(f"Observer callback {method} failed: {e}")
                 pass
     
-    def run(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = True, save_format: str = "csv", keep_server_alive: bool = True) -> Union[EvaluationResult, List[EvaluationResult]]:
+    def run(self, show_tui: bool = True, auto_save: bool = True, save_format: str = "csv") -> Union[EvaluationResult, List[EvaluationResult]]:
         """
         Run the evaluation synchronously.
-        
+
         Args:
-            show_progress: Whether to show progress bar
-            show_table: Whether to show live per-item status table
-            auto_save: Whether to automatically save results after evaluation
-            save_format: Format for auto-save ("json" or "csv")
-            
+            show_tui: Whether to show the terminal UI dashboard (default: True)
+            auto_save: Whether to automatically save results after evaluation (default: True)
+            save_format: Format for auto-save - "csv", "json", or "xlsx" (default: "csv")
+
         Returns:
             EvaluationResult object with scores and statistics
+
+        Note:
+            The Web UI is always available at the URL printed at startup.
         """
         # Check if we're already in an event loop (e.g., Jupyter notebook)
         try:
@@ -397,18 +400,18 @@ class Evaluator:
         except RuntimeError:
             # No event loop running, which is fine
             pass
-        
+
         # Fix Windows event loop issues
         import sys
         if sys.platform == 'win32':
             # Use SelectorEventLoop on Windows to avoid ProactorEventLoop issues
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        
+
         if len(self.models) > 1:
-            return self._run_multi_model(show_progress, auto_save, save_format, keep_server_alive)
+            return self._run_multi_model(show_tui, auto_save, save_format)
 
         # Run the async evaluation
-        result = asyncio.run(self.arun(show_progress, show_table, auto_save, save_format))
+        result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
         
         # Always print summary (silently no-op when disabled)
         html_url = getattr(result, 'html_url', None)
@@ -419,19 +422,20 @@ class Evaluator:
         return result
     
     
-    async def arun(self, show_progress: bool = True, show_table: bool = True, auto_save: bool = False, save_format: str = "csv", enable_server: bool = False) -> EvaluationResult:
+    async def arun(self, show_tui: bool = True, auto_save: bool = False, save_format: str = "csv") -> EvaluationResult:
         """
         Run the evaluation asynchronously.
-    
+
         Args:
-            show_progress: Whether to show progress bar
-            show_table: Whether to show live per-item status table
-            auto_save: Whether to automatically save results after evaluation
-            save_format: Format for auto-save ("json" or "csv")
-            enable_server: Whether to start the Web UI server (even if show_table is False)
-        
+            show_tui: Whether to show the terminal UI dashboard (default: True)
+            auto_save: Whether to automatically save results after evaluation (default: False)
+            save_format: Format for auto-save - "csv", "json", or "xlsx" (default: "csv")
+
         Returns:
             EvaluationResult object with scores and statistics
+
+        Note:
+            The Web UI is always available at the URL printed at startup.
         """
         result = EvaluationResult(
             dataset_name=self.dataset_name,
@@ -451,31 +455,30 @@ class Evaluator:
         # Initialize progress tracker
         tracker = ProgressTracker(items, list(self.metrics.keys()))
     
-        # Web UI setup
+        # Web UI setup - always start the server
         html_url = None
         ui_server = None
-        if show_table or enable_server:
+        desired_port = 0
+        try:
+            desired_port = int(self.config.ui_port)
+        except Exception:
             desired_port = 0
-            try:
-                desired_port = int(self.config.ui_port)
-            except Exception:
-                desired_port = 0
-            ui_server = UIServer(host="127.0.0.1", port=desired_port)
-            host, port = ui_server.start()
-            html_url = f"http://{host}:{port}/"
-            run_info = {**(run_info or {}), "html_url": html_url}
-            ui_server.run_state.set_run_info({
-                "dataset_name": self.dataset_name,
-                "run_name": self.run_name,
-                "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
-                **({} if run_info is None else run_info),
-            })
+        ui_server = UIServer(host="127.0.0.1", port=desired_port)
+        host, port = ui_server.start()
+        html_url = f"http://{host}:{port}/"
+        run_info = {**(run_info or {}), "html_url": html_url}
+        ui_server.run_state.set_run_info({
+            "dataset_name": self.dataset_name,
+            "run_name": self.run_name,
+            "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+            **({} if run_info is None else run_info),
+        })
 
         dashboard = None
         live_context = nullcontext()
         final_panel = None
-        live_progress = show_progress and console_supports_live(console)
-        if live_progress:
+        live_tui = show_tui and console_supports_live(console)
+        if live_tui:
             dashboard_runs = [
                 {
                     "run_id": self.run_name,
@@ -535,6 +538,8 @@ class Evaluator:
                     return await self._evaluate_item(idx, item, tracker)
 
             for idx, item in enumerate(items):
+                result.add_input(f"item_{idx}", item.input)
+                result.add_metadata(f"item_{idx}", getattr(item, 'metadata', {}))
                 tasks.append(_bounded_evaluate(idx, item))
 
             try:
@@ -570,12 +575,12 @@ class Evaluator:
                 else:
                     result.add_result(f"item_{idx}", eval_result)
             
-            if live_progress and dashboard:
+            if live_tui and dashboard:
                 final_panel = dashboard.render()
 
-        if live_progress and final_panel is not None:
+        if live_tui and final_panel is not None:
             console.print(final_panel)
-        if live_progress and dashboard:
+        if live_tui and dashboard:
             dashboard.shutdown()
         # Mark evaluation as finished
         result.finish()
@@ -611,18 +616,18 @@ class Evaluator:
         show_tui: bool = True,
         auto_save: bool = False,
         save_format: str = "csv",
-        print_summary: bool = True,
-        keep_server_alive: bool = False,
     ) -> List[EvaluationResult]:
         """
         Evaluate multiple tasks concurrently from Python code.
 
         Args:
             runs: Sequence of dicts or RunSpec instances describing each run.
-            show_tui: Whether to render the multi-run Rich dashboard.
+            show_tui: Whether to show the terminal UI dashboard (default: True)
             auto_save: Forwarded to each evaluator (per-run auto-save).
-            save_format: Default save format when auto-saving or explicit outputs.
-            print_summary: When True, print a summary table after completion.
+            save_format: Format for auto-save - "csv", "json", or "xlsx" (default: "csv")
+
+        Note:
+            The Web UI is always available at the URL printed at startup.
         """
         if not runs:
             raise ValueError("runs must contain at least one configuration")
@@ -650,11 +655,9 @@ class Evaluator:
             )
         )
 
-        if print_summary:
-            runner.print_summary(results)
-
+        runner.print_summary(results)
         runner.print_saved_paths(results)
-        
+
         # Handle per-run saving (legacy support for run_parallel doing the saving)
         for spec, result in zip(runner.specs, results):
             if spec.output_path:
@@ -668,14 +671,6 @@ class Evaluator:
                     fmt = "csv"
                 saved_path = result.save(format=fmt, filepath=str(target_path))
                 console.print(f"[green]Saved {spec.run_name} results to {saved_path}[/green]")
-
-        if keep_server_alive:
-            console.print("\n[dim]Server is running. Press Ctrl+C to exit.[/dim]")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
 
         return results
 
@@ -721,7 +716,7 @@ class Evaluator:
     
     # Frontend concerns moved to llm_eval.utils.frontend
 
-    def _run_multi_model(self, show_progress: bool, auto_save: bool, save_format: str, keep_server_alive: bool = False):
+    def _run_multi_model(self, show_tui: bool, auto_save: bool, save_format: str):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = (self.config.run_name or "").strip() or self._task_name
@@ -754,11 +749,9 @@ class Evaluator:
 
         return self.run_parallel(
             runs,
-            show_tui=show_progress,
+            show_tui=show_tui,
             auto_save=auto_save,
             save_format=save_format,
-            print_summary=True,
-            keep_server_alive=keep_server_alive,
         )
     
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
@@ -788,6 +781,7 @@ class Evaluator:
             )
 
             # Create span/trace using non-blocking API (queues internally)
+            item_metadata = getattr(item, 'metadata', {})
             span = self.client.start_span(
                 name=f"eval-{self.run_name}-item-{index}",
                 input=item.input,
@@ -796,6 +790,7 @@ class Evaluator:
                     "item_index": index,
                     "dataset_item_id": getattr(item, 'id', None),
                     "run_name": self.run_name,
+                    "item_metadata": item_metadata,
                 },
             )
 
@@ -818,15 +813,23 @@ class Evaluator:
 
             # Compute metrics - async where possible
             scores = {}
-            score_tasks = []  # Collect async score uploads
+            expected_output = getattr(item, 'expected_output', None)
+
+            # Create parent span for all metrics evaluation
+            eval_metrics_span = span.start_span(name="eval_metrics")
 
             for m_name, m_func in self.metrics.items():
+                # Create child span for this metric
+                metric_span = eval_metrics_span.start_span(
+                    name=f"metric_{m_name}",
+                    input={"output": output, "expected": expected_output}
+                )
                 try:
                     # Compute metric (async or sync)
                     if asyncio.iscoroutinefunction(m_func):
                         score = await self._compute_metric(
                             m_func, output,
-                            getattr(item, 'expected_output', None),
+                            expected_output,
                             item.input
                         )
                     else:
@@ -834,7 +837,7 @@ class Evaluator:
                         score = await asyncio.to_thread(
                             self._compute_metric_sync,
                             m_func, output,
-                            getattr(item, 'expected_output', None),
+                            expected_output,
                             item.input
                         )
 
@@ -842,6 +845,10 @@ class Evaluator:
                     main_val = score
                     if isinstance(score, dict):
                         main_val = score.get('score', score)
+
+                    # Update metric span with result
+                    metric_span.update(output=score)
+                    metric_span.end()
 
                     # Queue score upload (non-blocking, uses internal queue)
                     try:
@@ -856,7 +863,14 @@ class Evaluator:
                     scores[m_name] = score
                 except Exception as e:
                     logger.error(f"Metric {m_name} failed: {e}")
-                    scores[m_name] = {"score": 0, "error": str(e)}
+                    error_tb = traceback.format_exc()
+                    scores[m_name] = {"score": 0, "error": error_tb}
+                    # Update metric span with error
+                    metric_span.update(output={"error": error_tb}, level="ERROR")
+                    metric_span.end()
+
+            # End the eval_metrics parent span
+            eval_metrics_span.end()
 
             # End the span (queues finalization, non-blocking)
             try:

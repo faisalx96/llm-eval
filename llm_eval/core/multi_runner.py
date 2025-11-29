@@ -122,7 +122,6 @@ class MultiModelRunner:
         show_tui: bool = True,
         auto_save: bool = True,
         save_format: str = "csv",
-        keep_server_alive: bool = False,
     ) -> List[EvaluationResult]:
         # 1. Pre-load unique datasets to avoid redundant downloads
         from .dataset import LangfuseDataset
@@ -206,11 +205,9 @@ class MultiModelRunner:
             )
             try:
                 result = await evaluator.arun(
-                    show_progress=False,
-                    show_table=False,
+                    show_tui=False,
                     auto_save=auto_save,
                     save_format=save_format,
-                    enable_server=True,
                 )
                 return result
             except Exception as exc:
