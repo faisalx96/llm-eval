@@ -13,9 +13,9 @@ A fast, async evaluation framework built on [Langfuse](https://langfuse.com) for
 - **Simple API** - Get started in minutes with a clean, Pythonic interface
 - **Async & Parallel** - Evaluate hundreds of items concurrently with 90%+ efficiency
 - **Multi-Model Support** - Compare GPT-4, Claude, Llama side-by-side in one run
-- **Real-Time Dashboard** - Terminal UI + Web UI showing live progress and metrics
+- **Real-Time Dashboard** - Terminal UI + Web UI with live progress, historical runs, model comparison, and charts
 - **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
-- **Auto-Save** - Automatically persist results to CSV/JSON
+- **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
 
 ## ⚡ Quick Start
 
@@ -99,7 +99,44 @@ llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics ex
 llm-eval --runs-config experiments.json
 ```
 
-## 📊 Built-in Metrics
+## 📊 Dashboard
+
+LLM-Eval provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
+
+### Terminal UI
+
+Track multiple parallel evaluations with real-time progress, latency histograms, and metrics:
+
+![Terminal UI](docs/images/tui-progress.png)
+
+### Web Dashboard
+
+#### Live Evaluation UI (Per-Run)
+
+A web interface is automatically launched for each evaluation run. Click the **"Open Web UI"** link printed at startup to monitor live progress:
+
+![Dashboard Live](docs/images/dashboard-live.png)
+
+#### Historical Dashboard
+
+Browse all past runs with the CLI command:
+
+```bash
+llm-eval dashboard
+```
+
+![Dashboard Runs](docs/images/dashboard-runs.png)
+
+**Features:**
+- Filter by task, model, dataset, or time range
+- Compare multiple runs side-by-side
+- View charts and metrics visualizations
+
+![Dashboard Compare](docs/images/dashboard-compare.png)
+
+![Dashboard Charts](docs/images/dashbaord-charts.png)
+
+## 📈 Built-in Metrics
 
 | Metric | Description |
 |--------|-------------|

@@ -12,9 +12,10 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 6. [Running Your First Evaluation](#6-running-your-first-evaluation)
 7. [Multi-Model Comparison](#7-multi-model-comparison)
 8. [Command Line Interface](#8-command-line-interface)
-9. [Understanding Results](#9-understanding-results)
-10. [Configuration Options](#10-configuration-options)
-11. [Common Errors & Solutions](#11-common-errors--solutions)
+9. [Dashboard & Web UI](#9-dashboard--web-ui)
+10. [Understanding Results](#10-understanding-results)
+11. [Configuration Options](#11-configuration-options)
+12. [Common Errors & Solutions](#12-common-errors--solutions)
 
 ---
 
@@ -710,7 +711,139 @@ llm-eval --runs-config experiments.json
 
 ---
 
-## 9. Understanding Results
+## 9. Dashboard & Web UI
+
+LLM-Eval provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
+
+### Terminal UI (TUI)
+
+When you run an evaluation, the TUI shows real-time progress in your terminal:
+
+![Terminal UI](images/tui-progress.png)
+
+**Features:**
+- Multiple parallel evaluation tracking
+- Progress bars with completion percentage
+- Live latency histograms (P50, P90, P99)
+- Real-time metric scores
+- ETA estimation
+- Items per second throughput
+
+Control the TUI with the `show_tui` parameter:
+
+```python
+results = evaluator.run(
+    show_tui=True,   # Show terminal dashboard (default)
+    auto_save=True,
+)
+```
+
+### Web Dashboard
+
+There are two ways to access the Web UI:
+
+#### 1. Live Evaluation UI (Per-Run)
+
+When you start an evaluation, a **live Web UI** is automatically launched for that run. You'll see a clickable link in the terminal output:
+
+```
+🌐 Open Web UI: http://127.0.0.1:8000/
+```
+
+Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard in your browser. This shows real-time progress for the current evaluation.
+
+![Dashboard Live](images/dashboard-live.png)
+
+**Features:**
+- Real-time progress tracking
+- Status indicators (completed, in progress, pending, failed)
+- Live metric scores
+- Latency statistics (min, P50, P90, P99, max)
+- Error breakdown by type
+- Search and filter results
+- Export to CSV
+
+#### 2. Historical Dashboard (CLI Command)
+
+To browse **all past evaluation runs**, use the dashboard CLI command:
+
+```bash
+llm-eval dashboard
+```
+
+This opens a web dashboard where you can view, filter, compare, and analyze all your historical runs.
+
+#### Historical Runs View
+
+Browse all past evaluation runs with powerful filtering:
+
+![Dashboard Runs](images/dashboard-runs.png)
+
+**Features:**
+- Filter by task, model, dataset, or time range
+- Sort by any column (accuracy, latency, time)
+- View run statistics at a glance
+- Select multiple runs for comparison
+- 7-day trend visualization
+
+#### Run Comparison
+
+Compare multiple runs side-by-side to identify the best model:
+
+![Dashboard Compare](images/dashboard-compare.png)
+
+**How to compare:**
+1. In the Historical Runs view, check the boxes next to runs you want to compare
+2. Click the "Compare Selected" button
+3. View the comparison dashboard
+
+**Comparison Features:**
+- Side-by-side run statistics
+- Metric averages comparison with bar charts
+- Pass@N metrics (how many runs got each item correct)
+- Winner breakdown showing which model won most items
+- Correct distribution (how many runs solved each item)
+
+#### Item-by-Item Comparison
+
+Drill down into individual items across runs:
+
+![Dashboard Compare Items](images/dashboard-compare-items.png)
+
+**Features:**
+- View each input with expected output
+- See each model's response side-by-side
+- Color-coded scores (green for high, red for low)
+- Filter by winner or correctness
+- Identify items that only specific models solved
+
+#### Charts View
+
+Visualize model performance across all runs:
+
+![Dashboard Charts](images/dashbaord-charts.png)
+
+**Features:**
+- Bar chart comparison of accuracy by model
+- Grouped by task and dataset
+- Filter by time range, task, model, or dataset
+- Quickly identify top-performing models
+
+### Dashboard Data Storage
+
+The dashboard reads results from `eval_results/` directory. Both CSV and XLSX formats are supported.
+
+```
+eval_results/
+└── {task}/
+    └── {model}/
+        └── {date}/
+            └── {run_name}.csv  # or .xlsx
+```
+
+---
+
+## 10. Understanding Results
 
 ### Output Files
 
@@ -766,7 +899,7 @@ print(f"Avg latency: {timing['mean']:.2f}s")
 
 ---
 
-## 10. Configuration Options
+## 11. Configuration Options
 
 ### Full Config Reference
 
@@ -826,7 +959,7 @@ results = Evaluator.run_parallel(
 
 ---
 
-## 11. Common Errors & Solutions
+## 12. Common Errors & Solutions
 
 ### "Dataset 'X' not found"
 
