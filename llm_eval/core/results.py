@@ -180,9 +180,9 @@ class EvaluationResult:
         
         if self.errors:
             lines.append(f"\nErrors: {len(self.errors)} items failed")
-            # Show first few errors
-            for item_id, error in list(self.errors.items())[:3]:
-                lines.append(f"  - {item_id}: {error[:100]}...")
+            # Show all errors
+            for item_id, error in self.errors.items():
+                lines.append(f"  - {item_id}: {error}")
         
         return "\n".join(lines)
     
@@ -309,14 +309,15 @@ class EvaluationResult:
         for m in self.metrics:
             metric_fields.append(f'{m}_score')
             for k in meta_fields[m]:
-                metric_fields.append(f'{m}_{k}')
+                # Use __meta__ separator to distinguish from score columns
+                metric_fields.append(f'{m}__meta__{k}')
         header = base_fields + metric_fields
 
         # Prepare row formatter helpers
         def main_score(val: Any) -> Any:
             if isinstance(val, dict):
                 if 'error' in val:
-                    return 'ERROR'
+                    return f"ERROR: {val['error']}"
                 if 'score' in val:
                     return val.get('score')
             return val
@@ -351,7 +352,7 @@ class EvaluationResult:
                 if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
                     md = flatten_meta(sc['metadata'])
                 for k in meta_fields[m]:
-                    row[f'{m}_{k}'] = md.get(k, '')
+                    row[f'{m}__meta__{k}'] = md.get(k, '')
             rows.append(row)
 
         # Add failed items as rows too
@@ -381,7 +382,7 @@ class EvaluationResult:
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'
                 for k in meta_fields[m]:
-                    row[f'{m}_{k}'] = ''
+                    row[f'{m}__meta__{k}'] = ''
             rows.append(row)
 
         # Write CSV
@@ -452,14 +453,15 @@ class EvaluationResult:
         for m in self.metrics:
             metric_fields.append(f'{m}_score')
             for k in meta_fields[m]:
-                metric_fields.append(f'{m}_{k}')
+                # Use __meta__ separator to distinguish from score columns
+                metric_fields.append(f'{m}__meta__{k}')
         header = base_fields + metric_fields
 
         # Prepare row formatter helpers
         def main_score(val: Any) -> Any:
             if isinstance(val, dict):
                 if 'error' in val:
-                    return 'ERROR'
+                    return f"ERROR: {val['error']}"
                 if 'score' in val:
                     return val.get('score')
             return val
@@ -493,7 +495,7 @@ class EvaluationResult:
                 if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
                     md = flatten_meta(sc['metadata'])
                 for k in meta_fields[m]:
-                    row[f'{m}_{k}'] = md.get(k, '')
+                    row[f'{m}__meta__{k}'] = md.get(k, '')
             rows.append(row)
 
         # Add failed items as rows too
@@ -522,7 +524,7 @@ class EvaluationResult:
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'
                 for k in meta_fields[m]:
-                    row[f'{m}_{k}'] = ''
+                    row[f'{m}__meta__{k}'] = ''
             rows.append(row)
 
         # Write Excel using openpyxl directly
@@ -548,7 +550,7 @@ class EvaluationResult:
         return str(filepath)
 
     def _default_save_path(self, extension: str, output_dir: str) -> str:
-        """Create default save path with hierarchy: eval_results/task/model/date/filename."""
+        """Create default save path with hierarchy: llm-eval_results/task/model/date/filename."""
         ts = _extract_run_timestamp(self.run_name) or datetime.now()
         timestamp_str = ts.strftime("%y%m%d-%H%M")
         date_dir = ts.strftime("%Y-%m-%d")
@@ -571,12 +573,8 @@ class EvaluationResult:
         # Format: [base]-[dataset]-[model]-[timestamp][-counter].csv
         filename = f"{task_safe}-{self.dataset_name}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
 
-        base_dir = Path(output_dir)
-        root = base_dir.parent
-
         return str(
-            root
-            / "eval_results"
+            Path(output_dir)
             / task_safe
             / model_safe
             / date_dir
@@ -750,10 +748,8 @@ def _build_error_panel(results: Sequence[EvaluationResult]) -> Optional[Panel]:
         if not result.errors:
             continue
         error_lines.append(f"{result.run_name}: {len(result.errors)} failures")
-        for item_id, message in list(result.errors.items())[:3]:
-            error_lines.append(f"  • {item_id}: {message[:120]}")
-        if len(result.errors) > 3:
-            error_lines.append("  • ...")
+        for item_id, message in result.errors.items():
+            error_lines.append(f"  • {item_id}: {message}")
 
     if not error_lines:
         return None

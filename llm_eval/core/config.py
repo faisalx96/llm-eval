@@ -26,7 +26,7 @@ class EvaluatorConfig(BaseModel):
     cli_invocation: Optional[str] = None
     
     # Output settings
-    output_dir: str = "results"
+    output_dir: str = "llm-eval_results"
 
     @field_validator("models", mode="before")
     @classmethod

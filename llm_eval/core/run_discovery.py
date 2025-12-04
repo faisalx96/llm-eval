@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
 
+DEFAULT_RESULTS_DIR = "llm-eval_results"
+
 
 @dataclass
 class RunInfo:
@@ -76,7 +78,7 @@ def strip_model_provider(model_name: str) -> str:
 class RunDiscovery:
     """Scan results directory and build index of historical runs."""
 
-    def __init__(self, results_dir: str = "eval_results"):
+    def __init__(self, results_dir: str = DEFAULT_RESULTS_DIR):
         self.results_dir = Path(results_dir)
         self._cache: Optional[RunIndex] = None
         self._cache_time: Optional[float] = None
@@ -151,10 +153,11 @@ class RunDiscovery:
                 fieldnames = reader.fieldnames or []
 
                 # Extract metrics from column names ending with _score
+                # Exclude metadata columns (containing __meta__)
                 metrics = [
                     col.replace("_score", "")
                     for col in fieldnames
-                    if col.endswith("_score")
+                    if col.endswith("_score") and "__meta__" not in col
                 ]
 
                 # Read all rows to count totals
@@ -271,10 +274,11 @@ class RunDiscovery:
                 return None
 
             # Extract metrics from column names ending with _score
+            # Exclude metadata columns (containing __meta__)
             metrics = [
                 col.replace("_score", "")
                 for col in fieldnames
-                if col.endswith("_score")
+                if col.endswith("_score") and "__meta__" not in col
             ]
 
             total_items = len(rows)
@@ -387,11 +391,11 @@ class RunDiscovery:
         if not rows:
             return {"error": "Empty file"}
 
-        # Extract metrics
+        # Extract metrics (exclude metadata columns containing __meta__)
         metric_names = [
             col.replace("_score", "")
             for col in fieldnames
-            if col.endswith("_score")
+            if col.endswith("_score") and "__meta__" not in col
         ]
 
         # Build run info
@@ -442,12 +446,19 @@ class RunDiscovery:
             for m in metric_names:
                 score = row.get(f"{m}_score", "")
                 metric_values.append(score)
-                # Collect additional metric fields
+                # Collect additional metric fields (metadata)
                 meta = {}
                 for col in fieldnames:
-                    if col.startswith(f"{m}_") and col != f"{m}_score":
-                        field_name = col[len(f"{m}_"):]
+                    # New format: {metric}__meta__{field}
+                    if col.startswith(f"{m}__meta__"):
+                        field_name = col[len(f"{m}__meta__"):]
                         meta[field_name] = row.get(col, "")
+                    # Legacy format: {metric}_{field} (but not {metric}_score)
+                    elif col.startswith(f"{m}_") and col != f"{m}_score" and "__meta__" not in col:
+                        field_name = col[len(f"{m}_"):]
+                        # Only use legacy format if it's not another metric's score column
+                        if not field_name.endswith("_score"):
+                            meta[field_name] = row.get(col, "")
                 if meta:
                     metric_meta[m] = meta
 
@@ -459,11 +470,11 @@ class RunDiscovery:
             ui_row = {
                 "index": idx,
                 "status": status,
-                "input": input_full[:100] if len(input_full) > 100 else input_full,
+                "input": input_full,
                 "input_full": input_full,
-                "output": output_full[:100] if len(output_full) > 100 else output_full,
+                "output": output_full,
                 "output_full": output_full,
-                "expected": expected_full[:100] if len(expected_full) > 100 else expected_full,
+                "expected": expected_full,
                 "expected_full": expected_full,
                 "time": time_val,
                 "latency_ms": latency_ms,
@@ -522,11 +533,11 @@ class RunDiscovery:
         if not rows:
             return {"error": "Empty file"}
 
-        # Extract metrics
+        # Extract metrics (exclude metadata columns containing __meta__)
         metric_names = [
             col.replace("_score", "")
             for col in fieldnames
-            if col.endswith("_score")
+            if col.endswith("_score") and "__meta__" not in col
         ]
 
         # Build run info
@@ -581,12 +592,19 @@ class RunDiscovery:
             for m in metric_names:
                 score = row.get(f"{m}_score", "")
                 metric_values.append(score if score is not None else "")
-                # Collect additional metric fields
+                # Collect additional metric fields (metadata)
                 meta = {}
                 for col in fieldnames:
-                    if col.startswith(f"{m}_") and col != f"{m}_score":
-                        field_name = col[len(f"{m}_"):]
+                    # New format: {metric}__meta__{field}
+                    if col.startswith(f"{m}__meta__"):
+                        field_name = col[len(f"{m}__meta__"):]
                         meta[field_name] = row.get(col, "")
+                    # Legacy format: {metric}_{field} (but not {metric}_score)
+                    elif col.startswith(f"{m}_") and col != f"{m}_score" and "__meta__" not in col:
+                        field_name = col[len(f"{m}_"):]
+                        # Only use legacy format if it's not another metric's score column
+                        if not field_name.endswith("_score"):
+                            meta[field_name] = row.get(col, "")
                 if meta:
                     metric_meta[m] = meta
 
@@ -598,11 +616,11 @@ class RunDiscovery:
             ui_row = {
                 "index": idx,
                 "status": status,
-                "input": input_full[:100] if len(input_full) > 100 else input_full,
+                "input": input_full,
                 "input_full": input_full,
-                "output": output_full[:100] if len(output_full) > 100 else output_full,
+                "output": output_full,
                 "output_full": output_full,
-                "expected": expected_full[:100] if len(expected_full) > 100 else expected_full,
+                "expected": expected_full,
                 "expected_full": expected_full,
                 "time": str(time_val) if time_val else "0",
                 "latency_ms": latency_ms,

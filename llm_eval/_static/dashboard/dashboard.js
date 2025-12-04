@@ -104,9 +104,9 @@
     return d >= cutoff;
   }
 
-  function truncateText(text, maxLen = 200) {
-    if (!text || text.length <= maxLen) return text;
-    return text.substring(0, maxLen) + '...';
+  function truncateText(text, maxLen = null) {
+    // No truncation - return full text
+    return text || '';
   }
 
   // ═══════════════════════════════════════════════════

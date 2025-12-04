@@ -7,6 +7,7 @@ import time
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -17,6 +18,8 @@ except Exception:
 
 from ..core.run_discovery import RunDiscovery
 
+DEFAULT_RESULTS_DIR = "llm-eval_results"
+
 
 class DashboardServer:
     """HTTP server for the runs dashboard with auto-close on inactivity."""
@@ -25,7 +28,7 @@ class DashboardServer:
         self,
         host: str = "127.0.0.1",
         port: int = 8080,
-        results_dir: str = "eval_results",
+        results_dir: str = DEFAULT_RESULTS_DIR,
         inactivity_timeout: int = 300,
     ):
         self.host = host
@@ -352,7 +355,7 @@ class DashboardServer:
 
 def run_dashboard(
     port: int = 8080,
-    results_dir: str = "eval_results",
+    results_dir: str = DEFAULT_RESULTS_DIR,
     timeout: int = 300,
     auto_open: bool = True,
 ) -> None:

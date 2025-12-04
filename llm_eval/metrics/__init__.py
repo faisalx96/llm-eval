@@ -7,14 +7,19 @@ try:
     _has_deepeval = True
 except ImportError:
     # DeepEval not available, use only built-in metrics
-    from .builtin import exact_match, contains_expected, fuzzy_match, response_time, token_count
-    
+    from .builtin import (
+        exact_match, contains_expected, fuzzy_match, response_time, token_count,
+        correctness, faithfulness
+    )
+
     builtin_metrics = {
         'exact_match': exact_match,
         'contains': contains_expected,
         'fuzzy_match': fuzzy_match,
         'response_time': response_time,
         'token_count': token_count,
+        'correctness': correctness,
+        'faithfulness': faithfulness,
     }
     _has_deepeval = False
 

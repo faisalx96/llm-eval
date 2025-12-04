@@ -1000,7 +1000,9 @@ class Evaluator:
             else:
                 return metric_func()
         except Exception as e:
-            return {"score": 0, "error": str(e)}
+            error_tb = traceback.format_exc()
+            logger.error(f"Metric {getattr(metric_func, '__name__', 'unknown')} failed: {error_tb}")
+            return {"score": 0, "error": str(e), "traceback": error_tb}
 
 
 def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:

@@ -1,0 +1,3 @@
+# Additional dependencies for text-to-SQL example
+datasets>=2.14.0  # For loading sql-create-context from HuggingFace
+sqlglot>=20.0.0   # For SQL parsing (optional, fallback available)

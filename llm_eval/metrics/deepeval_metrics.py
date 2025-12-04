@@ -153,16 +153,17 @@ def discover_deepeval_metrics() -> Dict[str, Callable]:
 def get_deepeval_metrics() -> Dict[str, Callable]:
     """Get all available DeepEval metrics plus our custom ones."""
     metrics = discover_deepeval_metrics()
-    
-    # Add exact match for backward compatibility
-    def exact_match(output: Any, expected: Any) -> float:
-        """Simple exact match comparison."""
-        if output is None or expected is None:
-            return 0.0
-        return 1.0 if str(output).strip() == str(expected).strip() else 0.0
-    
+
+    # Add built-in metrics for backward compatibility and additional functionality
+    from .builtin import exact_match, correctness, faithfulness as builtin_faithfulness
+
     metrics['exact_match'] = exact_match
-    
+    metrics['correctness'] = correctness
+
+    # Add builtin faithfulness as 'faithfulness_hhem' to avoid conflict with DeepEval's
+    # DeepEval's faithfulness uses LLM-as-judge, ours uses HHEM model
+    metrics['faithfulness_hhem'] = builtin_faithfulness
+
     return metrics
 
 

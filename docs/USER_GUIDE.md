@@ -542,7 +542,7 @@ evaluator = Evaluator(
 # 4. Run evaluation
 results = evaluator.run()
 
-# 5. Results are auto-saved to eval_results/ directory
+# 5. Results are auto-saved to llm-eval_results/ directory
 print(f"Success rate: {results.success_rate:.1%}")
 print(f"Total items: {results.total_items}")
 ```
@@ -831,14 +831,19 @@ Visualize model performance across all runs:
 
 ### Dashboard Data Storage
 
-The dashboard reads results from `eval_results/` directory. Both CSV and XLSX formats are supported.
+The dashboard reads results from `llm-eval_results/` directory in your **current working directory**. Both CSV and XLSX formats are supported.
+
+> **Important**: Always run evaluations and the dashboard from your **project root directory**. Results are saved relative to where you run the script, so running from different directories will create separate result folders.
 
 ```
-eval_results/
-└── {task}/
-    └── {model}/
-        └── {date}/
-            └── {run_name}.csv  # or .xlsx
+my-project/                    # Run from here!
+├── llm-eval_results/          # Results saved here
+│   └── {task}/
+│       └── {model}/
+│           └── {date}/
+│               └── {run_name}.csv
+├── my_task.py
+└── .env
 ```
 
 ---
@@ -847,15 +852,17 @@ eval_results/
 
 ### Output Files
 
-Results are saved to `eval_results/{task}/{model}/{date}/`:
+Results are saved to `llm-eval_results/{task}/{model}/{date}/` in your **current working directory**:
 
 ```
-eval_results/
+llm-eval_results/
 └── my_task/
     └── gpt-4/
         └── 2024-01-15/
             └── my_task-qa-dataset-gpt-4-240115-1430.csv
 ```
+
+> **Tip**: Always run your evaluation scripts from your project root so results and dashboard stay in sync.
 
 ### CSV/Excel Columns
 

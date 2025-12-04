@@ -90,10 +90,6 @@ class ProgressTracker(ProgressObserver):
         elif value is None:
             display_val = "None"
         
-        # Truncate long strings
-        if len(display_val) > 50:
-            display_val = display_val[:50] + "..."
-
         self.item_statuses[index]['metrics'][metric] = display_val
 
         if metadata:
@@ -128,7 +124,7 @@ class ProgressTracker(ProgressObserver):
         
         self.item_statuses[index]['end_time'] = end_time
         self.item_statuses[index]['status'] = 'error'
-        self.item_statuses[index]['output'] = f'[red]error: {error[:30]}[/red]'
+        self.item_statuses[index]['output'] = f'[red]error: {error}[/red]'
         self.item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
         
         for metric in self.metrics:

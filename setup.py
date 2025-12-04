@@ -47,6 +47,8 @@ setup(
         "python-dotenv>=0.19.0",  # For environment variables
         "nest_asyncio>=1.5.0",  # For Jupyter notebook compatibility
         "openpyxl>=3.0.0",  # For Excel export
+        "transformers>=4.35.0",  # For faithfulness metric (HHEM model)
+        "torch>=2.0.0",  # For faithfulness metric
     ],
     extras_require={
         "dev": [
@@ -61,7 +63,7 @@ setup(
         "langchain": ["langchain>=0.1.0"],
         "langgraph": ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"],
         "openai": ["openai>=1.0.0"],
-        "all": ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"],  # All optional dependencies
+        "all": ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"],
     },
     entry_points={
         "console_scripts": [

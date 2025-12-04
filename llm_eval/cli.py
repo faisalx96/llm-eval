@@ -144,8 +144,8 @@ def run_dashboard_command(args: List[str]) -> None:
     )
     parser.add_argument(
         "--results-dir",
-        default="eval_results",
-        help="Directory containing evaluation results (default: eval_results)",
+        default="llm-eval_results",
+        help="Directory containing evaluation results (default: llm-eval_results)",
     )
     parser.add_argument(
         "--timeout",

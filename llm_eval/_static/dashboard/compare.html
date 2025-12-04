@@ -607,6 +607,233 @@
       animation: spin 0.8s linear infinite;
       margin-bottom: var(--space-md);
     }
+
+    /* Formatted object/dict display styles */
+    .formatted-object,
+    .formatted-array {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      line-height: 1.6;
+    }
+
+    .formatted-row {
+      padding: 6px 0;
+      padding-left: var(--space-md);
+      border-left: 2px solid var(--border-subtle);
+      margin-left: 2px;
+      margin-bottom: 4px;
+    }
+
+    .formatted-row:hover {
+      background: var(--bg-hover);
+      border-left-color: var(--accent-primary);
+    }
+
+    .formatted-key {
+      color: #f472b6;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      font-size: var(--font-xs);
+      letter-spacing: 0.5px;
+    }
+
+    .formatted-string {
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: block;
+      line-height: 1.5;
+    }
+
+    .formatted-number {
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    .formatted-boolean {
+      color: #a855f7;
+      font-weight: 600;
+    }
+
+    .formatted-null {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .formatted-array-item {
+      padding: 6px 0;
+      padding-left: var(--space-md);
+      border-left: 2px solid var(--border-subtle);
+      margin-left: 2px;
+      margin-bottom: 4px;
+    }
+
+    .formatted-array-item:hover {
+      background: var(--bg-hover);
+      border-left-color: var(--accent-primary);
+    }
+
+    .formatted-index {
+      color: #60a5fa;
+      font-size: var(--font-xs);
+      margin-right: 4px;
+      font-weight: 600;
+    }
+
+    /* Shared toggle button for metric details */
+    .item-metric-details-toggle {
+      margin-top: var(--space-md);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .metric-details-toggle {
+      font-size: var(--font-xs);
+      color: var(--accent-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .metric-details-toggle:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-primary);
+    }
+
+    /* Per-run metric details (inside each run output) */
+    .run-metric-details {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+      display: none;
+    }
+
+    .run-metric-details.expanded {
+      display: block;
+    }
+
+    .metric-detail-row {
+      padding: var(--space-sm) 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .metric-detail-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .metric-detail-name {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .metric-detail-value {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Metric tabs */
+    .metric-tabs {
+      display: flex;
+      gap: 2px;
+      margin-bottom: var(--space-md);
+      background: var(--bg-elevated);
+      padding: 3px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+
+    .metric-tab {
+      padding: 6px 16px;
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .metric-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+
+    .metric-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* Metric selector for items */
+    .items-filter-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .filter-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Winner indicator in item rows */
+    .metric-winner {
+      background: var(--success-dim);
+      border-radius: 3px;
+      padding: 0 4px;
+      margin-left: 4px;
+      font-size: var(--font-xs);
+      color: var(--success);
+    }
+
+    .metric-score-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 4px 0;
+    }
+
+    .metric-score-row.highlighted {
+      background: var(--bg-hover);
+      margin: 0 -4px;
+      padding: 4px;
+      border-radius: 3px;
+    }
+
+    .metric-score-name {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      min-width: 100px;
+    }
+
+    .metric-score-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+
+    .metric-scores-inline {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
   </style>
 </head>
 <body>
@@ -669,13 +896,17 @@
       <!-- Comparison Statistics -->
       <div class="comparison-stats" id="comparison-stats">
         <h3>Comparison Overview</h3>
+        <div class="metric-tabs" id="overview-metric-tabs"></div>
         <div class="stats-grid" id="stats-grid"></div>
       </div>
 
       <!-- Side-by-side items -->
       <div class="items-comparison">
         <h3>Item-by-Item Comparison</h3>
-        <div class="items-filter">
+        <div class="items-filter-row">
+          <span class="filter-label">Metric:</span>
+          <select id="items-metric-select" class="filter-select"></select>
+          <span class="filter-label">Filter:</span>
           <select id="item-filter" class="filter-select">
             <option value="all">All Items</option>
             <option value="different">Different Outputs</option>
@@ -685,6 +916,7 @@
             <option value="rarely_solved">Rarely Solved (≤25%)</option>
             <option value="unique_solve">Uniquely Solved (1 run only)</option>
           </select>
+          <span class="filter-label">Winner:</span>
           <select id="run-winner-filter" class="filter-select">
             <option value="any">Any Winner</option>
           </select>
@@ -708,11 +940,13 @@
       const state = {
         runs: [],
         allMetrics: [],
+        selectedOverviewMetric: null,  // For Comparison Overview tabs
+        selectedItemsMetric: null,     // For Item-by-Item filters
         itemFilter: 'all',
         winnerFilter: 'any',
         page: 1,
         pageSize: 20,
-        comparisonStats: null,
+        comparisonStats: {},  // Now keyed by metric name
       };
 
       const el = (id) => document.getElementById(id);
@@ -799,6 +1033,12 @@
         }
         state.allMetrics = Array.from(metricsSet).sort();
 
+        // Set default selected metrics
+        if (state.allMetrics.length > 0) {
+          state.selectedOverviewMetric = state.allMetrics[0];
+          state.selectedItemsMetric = state.allMetrics[0];
+        }
+
         // Update header stats
         el('run-count').textContent = state.runs.length;
         el('metric-count').textContent = state.allMetrics.length;
@@ -807,14 +1047,54 @@
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
         el('total-items').textContent = maxItems;
 
-        // Calculate comparison statistics
-        state.comparisonStats = calculateComparisonStats();
+        // Calculate comparison statistics for each metric
+        state.comparisonStats = {};
+        for (const metric of state.allMetrics) {
+          state.comparisonStats[metric] = calculateComparisonStatsForMetric(metric);
+        }
+
+        // Populate metric selectors
+        populateMetricSelectors();
 
         // Populate winner filter dropdown
         populateWinnerFilter();
       }
 
-      function calculateComparisonStats() {
+      function populateMetricSelectors() {
+        // Overview metric tabs
+        const tabsContainer = el('overview-metric-tabs');
+        if (tabsContainer) {
+          tabsContainer.innerHTML = state.allMetrics.map(metric =>
+            `<button class="metric-tab ${metric === state.selectedOverviewMetric ? 'active' : ''}" data-metric="${metric}">${metric}</button>`
+          ).join('');
+
+          tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+              state.selectedOverviewMetric = tab.dataset.metric;
+              tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+              renderComparisonStats();
+            });
+          });
+        }
+
+        // Items metric selector dropdown
+        const itemsMetricSelect = el('items-metric-select');
+        if (itemsMetricSelect) {
+          itemsMetricSelect.innerHTML = state.allMetrics.map(metric =>
+            `<option value="${metric}" ${metric === state.selectedItemsMetric ? 'selected' : ''}>${metric}</option>`
+          ).join('');
+
+          itemsMetricSelect.addEventListener('change', (e) => {
+            state.selectedItemsMetric = e.target.value;
+            state.page = 1;
+            populateWinnerFilter();
+            renderItems();
+          });
+        }
+      }
+
+      function calculateComparisonStatsForMetric(metricName) {
         const stats = {
           wins: new Array(state.runs.length).fill(0),
           ties: 0,
@@ -827,6 +1107,8 @@
           allCorrect: 0,
           allWrong: 0,
           passAtK: 0, // Items where at least one run scored 100%
+          passHatK: 0, // Items where ALL runs scored 100%
+          stabilityCount: 0, // Items where all runs were either all correct or all wrong (no mix)
           maxAtK: 0, // Sum of max scores across all items (best possible if you pick best run per item)
           correctDistribution: [], // How many items had 0, 1, 2, ... N runs correct
           overallAvgScore: 0,
@@ -842,20 +1124,26 @@
         // Initialize correct distribution array (index = number of runs correct, value = count)
         stats.correctDistribution = new Array(state.runs.length + 1).fill(0);
 
+        // Helper to get metric index for a run
+        function getMetricIndex(run) {
+          const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+          return metricNames.indexOf(metricName);
+        }
+
         // Calculate per-run stats
         for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
           const run = state.runs[runIdx];
           const snap = run.snapshot || {};
           const rows = snap.rows || [];
-          const metricNames = snap.metric_names || run.run?.metric_names || [];
+          const metricIdx = getMetricIndex(run);
 
           let scoreSum = 0, scoreCount = 0, latSum = 0, latCount = 0;
           let timeoutErrors = 0, runtimeErrors = 0, otherErrors = 0;
 
           for (const row of rows) {
-            // Score (first metric)
-            if (metricNames.length > 0) {
-              const v = (row.metric_values || [])[0];
+            // Score for the selected metric
+            if (metricIdx >= 0) {
+              const v = (row.metric_values || [])[metricIdx];
               const n = parseFloat(v);
               if (!isNaN(n)) { scoreSum += n; scoreCount++; }
             }
@@ -882,14 +1170,14 @@
         // Compare items head-to-head
         let agreements = 0;
         for (let i = 0; i < maxItems; i++) {
-          const scores = state.runs.map((run, runIdx) => {
+          const scores = state.runs.map((run) => {
             const snap = run.snapshot || {};
             const rows = snap.rows || [];
             const row = rows.find(r => r.index === i);
             if (!row) return null;
-            const metricNames = snap.metric_names || run.run?.metric_names || [];
-            if (metricNames.length === 0) return null;
-            const v = (row.metric_values || [])[0];
+            const metricIdx = getMetricIndex(run);
+            if (metricIdx < 0) return null;
+            const v = (row.metric_values || [])[metricIdx];
             const n = parseFloat(v);
             return isNaN(n) ? null : n;
           });
@@ -942,9 +1230,18 @@
 
           // All correct / all wrong / pass@k (at least one run got 100%)
           // Note: numCorrect was already calculated above
-          if (numCorrect === state.runs.length) stats.allCorrect++;
-          if (validScores.every(s => s < 0.0001)) stats.allWrong++;
+          const allCorrectItem = numCorrect === state.runs.length;
+          const allWrongItem = validScores.every(s => s < 0.0001);
+
+          if (allCorrectItem) stats.allCorrect++;
+          if (allWrongItem) stats.allWrong++;
           if (numCorrect > 0) stats.passAtK++;
+
+          // Pass^K: ALL runs got 100%
+          if (allCorrectItem) stats.passHatK++;
+
+          // Stability: all correct OR all wrong (no mixed results)
+          if (allCorrectItem || allWrongItem) stats.stabilityCount++;
 
           // Agreement (runs scored similarly - within 10% of each other)
           const scoreRange = maxScore - minScore;
@@ -1045,9 +1342,10 @@
 
       function renderComparisonStats() {
         const container = el('stats-grid');
-        if (!container || !state.comparisonStats) return;
+        if (!container || !state.comparisonStats || !state.selectedOverviewMetric) return;
 
-        const stats = state.comparisonStats;
+        const stats = state.comparisonStats[state.selectedOverviewMetric];
+        if (!stats) return;
         const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
 
         // Build win/loss bar with proper colors
@@ -1082,11 +1380,25 @@
             <div class="stat-box">
               <div class="stat-title">Pass@${state.runs.length}</div>
               <div class="stat-main positive">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
+              <div class="stat-detail">≥1 run correct</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Pass^${state.runs.length}</div>
+              <div class="stat-main positive">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
+              <div class="stat-detail">all runs correct</div>
             </div>
 
             <div class="stat-box">
               <div class="stat-title">Max@${state.runs.length}</div>
               <div class="stat-main positive">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
+              <div class="stat-detail">best per item</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Stability</div>
+              <div class="stat-main">${formatPercent(stats.stabilityCount / stats.totalCompared)}</div>
+              <div class="stat-detail">all same result</div>
             </div>
 
             <div class="stat-box">
@@ -1285,7 +1597,14 @@
         // Build aligned item list across runs
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
         const items = [];
-        const stats = state.comparisonStats;
+        const selectedMetric = state.selectedItemsMetric;
+        const stats = selectedMetric ? state.comparisonStats[selectedMetric] : null;
+
+        // Helper to get metric index for a run
+        function getMetricIndex(run) {
+          const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+          return selectedMetric ? metricNames.indexOf(selectedMetric) : 0;
+        }
 
         for (let i = 0; i < maxItems; i++) {
           const rowData = state.runs.map(run => {
@@ -1293,13 +1612,13 @@
             return rows.find(r => r.index === i) || null;
           });
 
-          // Get scores for this item
+          // Get scores for this item based on selected metric
           const scores = rowData.map((row, runIdx) => {
             if (!row) return null;
             const run = state.runs[runIdx];
-            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
-            if (metricNames.length === 0) return null;
-            const v = (row.metric_values || [])[0];
+            const metricIdx = getMetricIndex(run);
+            if (metricIdx < 0) return null;
+            const v = (row.metric_values || [])[metricIdx];
             const n = parseFloat(v);
             return isNaN(n) ? null : n;
           });
@@ -1403,27 +1722,77 @@
             const status = row.status || 'pending';
             const latencyMs = row.latency_ms;
 
-            // Get first metric value for badge
+            // Get metric values and metadata
             const metricVals = row.metric_values || [];
-            let metricBadge = '';
-            if (metricVals.length > 0) {
-              const v = parseFloat(metricVals[0]);
-              if (!isNaN(v)) {
-                const cls = getSuccessClass(v);
-                metricBadge = `<span class="metric-badge ${cls}">${formatPercent(v)}</span>`;
-              }
-            }
+            const metricMeta = row.metric_meta || {};
+            const run = state.runs[runIdx];
+            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+
+            // Determine if this run is the winner for the selected metric
+            const selectedMetric = state.selectedItemsMetric;
+            const stats = selectedMetric ? state.comparisonStats[selectedMetric] : null;
+            const itemWinner = stats?.itemWinners?.[index];
+            const isWinner = itemWinner === runIdx;
+
+            // Build inline metric scores (all metrics shown, selected one highlighted)
+            const metricScoresHtml = metricNames.map((name, i) => {
+              const score = metricVals[i];
+              const v = parseFloat(score);
+              if (isNaN(v)) return '';
+
+              const cls = getSuccessClass(v);
+              const isSelected = name === selectedMetric;
+              const winnerBadge = isSelected && isWinner ? '<span class="metric-winner">★</span>' : '';
+
+              return `<div class="metric-score-row ${isSelected ? 'highlighted' : ''}">
+                <span class="metric-score-name">${escapeHtml(name)}</span>
+                <span class="metric-score-value ${cls}">${formatPercent(v)}</span>
+                ${winnerBadge}
+              </div>`;
+            }).join('');
 
             // Latency badge
             const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
+
+            // Build metric details for this run (hidden by default, controlled by shared toggle)
+            let metricDetailsHtml = '';
+            const hasMetricMeta = Object.keys(metricMeta).length > 0;
+
+            if (hasMetricMeta) {
+              const detailRows = metricNames.map((name) => {
+                const meta = metricMeta[name] || {};
+                const metaKeys = Object.keys(meta);
+                if (metaKeys.length === 0) return '';
+
+                return metaKeys.map(key => {
+                  const val = meta[key];
+                  if (val === undefined || val === null || val === '') return '';
+                  const displayName = formatFieldName(key);
+                  return `<div class="metric-detail-row">
+                    <span class="metric-detail-name">${escapeHtml(name)} · ${displayName}</span>
+                    <span class="metric-detail-value">${escapeHtml(String(val))}</span>
+                  </div>`;
+                }).join('');
+              }).join('');
+
+              if (detailRows) {
+                metricDetailsHtml = `
+                  <div class="run-metric-details" data-item="${index}">
+                    ${detailRows}
+                  </div>
+                `;
+              }
+            }
 
             return `
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
-                  <span class="output-badges">${metricBadge}${latencyBadge}</span>
+                  <span class="output-badges">${latencyBadge}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${escapeHtml(output)}</div>
+                <div class="metric-scores-inline">${metricScoresHtml}</div>
+                ${metricDetailsHtml}
               </div>
             `;
           }).join('');
@@ -1436,6 +1805,9 @@
               </div>
           ` : '';
 
+          // Build shared metric details section (all runs' metadata in one expandable area)
+          const metricDetailsHtml = buildMetricDetailsSection(index, rowData);
+
           return `
             <div class="item-comparison-row">
               <div class="item-header">
@@ -1443,12 +1815,13 @@
               </div>
               <div class="item-input-row">
                 <div class="input-label">Input</div>
-                <div class="input-text">${escapeHtml(input)}</div>
+                <div class="input-text">${formatValue(input)}</div>
               </div>
               ${expectedRow}
               <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
                 ${outputCells}
               </div>
+              ${metricDetailsHtml}
             </div>
           `;
         }).join('');
@@ -1473,6 +1846,276 @@
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+      }
+
+      // Global function for toggling all metric details for an item
+      window.toggleItemMetricDetails = function(itemIndex) {
+        const details = document.querySelectorAll(`.run-metric-details[data-item="${itemIndex}"]`);
+        const icon = document.getElementById(`toggle-icon-${itemIndex}`);
+
+        if (details.length === 0) return;
+
+        const isExpanded = details[0].classList.contains('expanded');
+
+        details.forEach(detail => {
+          if (isExpanded) {
+            detail.classList.remove('expanded');
+          } else {
+            detail.classList.add('expanded');
+          }
+        });
+
+        if (icon) {
+          icon.textContent = isExpanded ? '▶' : '▼';
+        }
+      };
+
+      // Format field names to be more readable
+      function formatFieldName(name) {
+        // Remove common prefixes and convert to title case
+        return name
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+      }
+
+      // Build shared toggle button for metric details (controls all runs' details for this item)
+      function buildMetricDetailsSection(itemIndex, rowData) {
+        // Check if any run has metadata
+        const hasAnyMeta = rowData.some(row => {
+          if (!row) return false;
+          const metricMeta = row.metric_meta || {};
+          return Object.keys(metricMeta).some(metric => {
+            const meta = metricMeta[metric] || {};
+            return Object.keys(meta).length > 0;
+          });
+        });
+
+        if (!hasAnyMeta) return '';
+
+        return `
+          <div class="item-metric-details-toggle">
+            <button class="metric-details-toggle" onclick="toggleItemMetricDetails(${itemIndex})">
+              <span class="toggle-icon" id="toggle-icon-${itemIndex}">▶</span> Metric Details
+            </button>
+          </div>
+        `;
+      }
+
+      function formatValue(value) {
+        // Handle null/undefined
+        if (value === null || value === undefined) {
+          return '—';
+        }
+
+        // If it's already a string, check if it's a JSON string or Python dict repr
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+
+          // Try to parse as JSON first
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (typeof parsed === 'object' && parsed !== null) {
+              return formatObjectAsHtml(parsed);
+            }
+          } catch {
+            // Not valid JSON, continue to try Python dict repr
+          }
+
+          // Try to handle Python dict repr (single quotes, True/False/None)
+          if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+              (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+            const parsed = parsePythonDict(trimmed);
+            if (parsed !== null) {
+              return formatObjectAsHtml(parsed);
+            }
+          }
+
+          return escapeHtml(value);
+        }
+
+        // If it's an object or array, format it nicely
+        if (typeof value === 'object') {
+          return formatObjectAsHtml(value);
+        }
+
+        // For other primitives, just convert to string
+        return escapeHtml(String(value));
+      }
+
+      function parsePythonDict(str) {
+        // Parse Python dict repr like {'key': 'value', 'num': 123, 'bool': True}
+        // This is a simple parser that handles common cases
+        try {
+          let i = 0;
+          const len = str.length;
+
+          function skipWhitespace() {
+            while (i < len && /\s/.test(str[i])) i++;
+          }
+
+          function parseValue() {
+            skipWhitespace();
+            if (i >= len) return undefined;
+
+            const ch = str[i];
+
+            // String (single or double quoted)
+            if (ch === "'" || ch === '"') {
+              return parseString(ch);
+            }
+            // Object
+            if (ch === '{') {
+              return parseObject();
+            }
+            // Array
+            if (ch === '[') {
+              return parseArray();
+            }
+            // Number, boolean, None
+            return parseLiteral();
+          }
+
+          function parseString(quote) {
+            i++; // skip opening quote
+            let result = '';
+            while (i < len) {
+              const ch = str[i];
+              if (ch === '\\' && i + 1 < len) {
+                // Handle escape sequences
+                const next = str[i + 1];
+                if (next === 'n') { result += '\n'; i += 2; }
+                else if (next === 't') { result += '\t'; i += 2; }
+                else if (next === 'r') { result += '\r'; i += 2; }
+                else if (next === '\\') { result += '\\'; i += 2; }
+                else if (next === quote) { result += quote; i += 2; }
+                else { result += ch; i++; }
+              } else if (ch === quote) {
+                i++; // skip closing quote
+                return result;
+              } else {
+                result += ch;
+                i++;
+              }
+            }
+            return result; // unclosed string
+          }
+
+          function parseObject() {
+            i++; // skip '{'
+            const obj = {};
+            skipWhitespace();
+            if (str[i] === '}') { i++; return obj; }
+
+            while (i < len) {
+              skipWhitespace();
+              // Parse key (must be string)
+              const key = parseValue();
+              if (typeof key !== 'string') return null;
+
+              skipWhitespace();
+              if (str[i] !== ':') return null;
+              i++; // skip ':'
+
+              // Parse value
+              const val = parseValue();
+              obj[key] = val;
+
+              skipWhitespace();
+              if (str[i] === '}') { i++; return obj; }
+              if (str[i] === ',') { i++; continue; }
+              return null; // unexpected character
+            }
+            return obj;
+          }
+
+          function parseArray() {
+            i++; // skip '['
+            const arr = [];
+            skipWhitespace();
+            if (str[i] === ']') { i++; return arr; }
+
+            while (i < len) {
+              const val = parseValue();
+              arr.push(val);
+
+              skipWhitespace();
+              if (str[i] === ']') { i++; return arr; }
+              if (str[i] === ',') { i++; continue; }
+              return null;
+            }
+            return arr;
+          }
+
+          function parseLiteral() {
+            // Check for True, False, None, or numbers
+            if (str.slice(i, i + 4) === 'True') { i += 4; return true; }
+            if (str.slice(i, i + 5) === 'False') { i += 5; return false; }
+            if (str.slice(i, i + 4) === 'None') { i += 4; return null; }
+
+            // Parse number
+            let numStr = '';
+            while (i < len && /[0-9.\-+eE]/.test(str[i])) {
+              numStr += str[i];
+              i++;
+            }
+            if (numStr) {
+              const num = parseFloat(numStr);
+              if (!isNaN(num)) return num;
+            }
+            return undefined;
+          }
+
+          const result = parseValue();
+          return result;
+        } catch {
+          return null;
+        }
+      }
+
+      function formatObjectAsHtml(obj) {
+        if (Array.isArray(obj)) {
+          // Format arrays
+          if (obj.length === 0) return '<span class="formatted-array">[]</span>';
+          const items = obj.map((item, idx) => {
+            let formattedItem;
+            if (item === null || item === undefined) {
+              formattedItem = '<span class="formatted-null">null</span>';
+            } else if (typeof item === 'object') {
+              formattedItem = formatObjectAsHtml(item);
+            } else if (typeof item === 'string') {
+              formattedItem = `<span class="formatted-string">${escapeHtml(item)}</span>`;
+            } else {
+              formattedItem = escapeHtml(String(item));
+            }
+            return `<div class="formatted-array-item"><span class="formatted-index">[${idx}]</span> ${formattedItem}</div>`;
+          }).join('');
+          return `<div class="formatted-array">${items}</div>`;
+        }
+
+        // Format objects as key-value pairs
+        const entries = Object.entries(obj);
+        if (entries.length === 0) return '<span class="formatted-object">{}</span>';
+
+        const rows = entries.map(([key, val]) => {
+          let formattedVal;
+          if (val === null || val === undefined) {
+            formattedVal = '<span class="formatted-null">null</span>';
+          } else if (typeof val === 'object') {
+            formattedVal = formatObjectAsHtml(val);
+          } else if (typeof val === 'string') {
+            // Show full string without quotes
+            formattedVal = `<span class="formatted-string">${escapeHtml(val)}</span>`;
+          } else if (typeof val === 'number') {
+            formattedVal = `<span class="formatted-number">${val}</span>`;
+          } else if (typeof val === 'boolean') {
+            formattedVal = `<span class="formatted-boolean">${val}</span>`;
+          } else {
+            formattedVal = escapeHtml(String(val));
+          }
+          return `<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}</div>`;
+        }).join('');
+
+        return `<div class="formatted-object">${rows}</div>`;
       }
 
       // Event listeners
