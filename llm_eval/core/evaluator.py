@@ -558,8 +558,10 @@ class Evaluator:
                     return await self._evaluate_item(idx, item, tracker)
 
             for idx, item in enumerate(items):
-                result.add_input(f"item_{idx}", item.input)
-                result.add_metadata(f"item_{idx}", getattr(item, 'metadata', {}))
+                # Use actual item ID if available (e.g., from Langfuse dataset), fallback to index-based ID
+                item_id = getattr(item, 'id', None) or f"item_{idx}"
+                result.add_input(item_id, item.input)
+                result.add_metadata(item_id, getattr(item, 'metadata', {}))
                 tasks.append(_bounded_evaluate(idx, item))
 
             try:
@@ -590,10 +592,13 @@ class Evaluator:
                 pass
 
             for idx, eval_result in enumerate(eval_results):
+                # Use actual item ID if available (e.g., from Langfuse dataset), fallback to index-based ID
+                item = items[idx]
+                item_id = getattr(item, 'id', None) or f"item_{idx}"
                 if isinstance(eval_result, Exception):
-                    result.add_error(f"item_{idx}", str(eval_result))
+                    result.add_error(item_id, str(eval_result))
                 else:
-                    result.add_result(f"item_{idx}", eval_result)
+                    result.add_result(item_id, eval_result)
             
             if live_tui and dashboard:
                 final_panel = dashboard.render()
@@ -610,6 +615,11 @@ class Evaluator:
         if langfuse_url:
             result.langfuse_url = langfuse_url
             result.run_metadata["langfuse_url"] = langfuse_url
+            # Also store the IDs separately for future URL rebuilding
+            if self._langfuse_dataset_id:
+                result.run_metadata["langfuse_dataset_id"] = self._langfuse_dataset_id
+            if self._langfuse_run_id:
+                result.run_metadata["langfuse_run_id"] = self._langfuse_run_id
 
         self._notify_observer(
             "on_run_complete",

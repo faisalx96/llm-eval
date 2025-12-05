@@ -2488,6 +2488,7 @@
     `;
 
     // Reset form
+    el('publish-run-name').value = run.run_id;  // Default to original run_id but editable
     el('publish-project').value = '';
     el('publish-task').value = '';
     el('publish-task').disabled = true;
@@ -2509,17 +2510,503 @@
   function openPublishModalForSelected() {
     if (state.selectedRuns.size === 0) return;
 
-    // For now, only support single run publish
-    // TODO: Support bulk publish
-    if (state.selectedRuns.size > 1) {
-      alert('Please select only one run to publish at a time');
+    const selectedRuns = state.flatRuns.filter(r => state.selectedRuns.has(r.file_path));
+
+    if (selectedRuns.length === 1) {
+      // Single run - use standard publish modal
+      openPublishModal(selectedRuns[0]);
+    } else {
+      // Multiple runs - use aggregate publish modal
+      openAggregatePublishModal(selectedRuns);
+    }
+  }
+
+  // Aggregate publish state
+  const aggregatePublishState = {
+    runs: [],
+    thresholds: {},  // metric_name -> threshold (0-1)
+    commonMetrics: [],
+  };
+
+  function validateAggregateRuns(runs) {
+    // Check that all runs have the same model, dataset, task, and commit
+    if (runs.length < 2) return { valid: false, error: 'Need at least 2 runs to publish aggregate results' };
+
+    const first = runs[0];
+    const model = first.model_name;
+    const dataset = first.dataset_name;
+    const task = first.task_name;
+
+    for (const run of runs) {
+      if (run.model_name !== model) {
+        return { valid: false, error: `All runs must use the same model. Found "${model}" and "${run.model_name}"` };
+      }
+      if (run.dataset_name !== dataset) {
+        return { valid: false, error: `All runs must use the same dataset. Found "${dataset}" and "${run.dataset_name}"` };
+      }
+      if (run.task_name !== task) {
+        return { valid: false, error: `All runs must use the same task. Found "${task}" and "${run.task_name}"` };
+      }
+    }
+
+    // Check commit - warn if different but don't block
+    const commits = new Set(runs.map(r => r.commit || 'unknown'));
+    let warning = null;
+    if (commits.size > 1) {
+      warning = 'Warning: Selected runs have different git commits. This may affect comparability.';
+    }
+
+    return { valid: true, warning };
+  }
+
+  function getCommonMetrics(runs) {
+    // Find metrics that exist in all runs
+    if (runs.length === 0) return [];
+
+    const first = runs[0];
+    if (!first.metric_averages) return [];
+
+    const metrics = Object.keys(first.metric_averages);
+    return metrics.filter(metric =>
+      runs.every(r => r.metric_averages && r.metric_averages[metric] !== undefined)
+    );
+  }
+
+  function calculateAggregateMetricsFromItems(runsData, metric, threshold) {
+    // Calculate metrics per-item across K runs (same logic as Models view)
+    if (!runsData || runsData.length === 0) {
+      return {
+        metric_name: metric,
+        threshold: threshold,
+        pass_at_k: 0,
+        pass_k: 0,
+        max_at_k: 0,
+        stability: 0,
+        avg_score: 0,
+        min_score: 0,
+        max_score: 0,
+        runs_passed: 0,
+        total_runs: 0,
+      };
+    }
+
+    const K = runsData.length;
+
+    // Get metric index for each run
+    function getMetricIndex(runData) {
+      const metricNames = runData?.run?.metric_names || [];
+      return metricNames.indexOf(metric);
+    }
+
+    // Get max items across all runs
+    const maxItems = Math.max(...runsData.map(r => (r?.snapshot?.rows || []).length));
+
+    if (maxItems === 0) {
+      return {
+        metric_name: metric,
+        threshold: threshold,
+        pass_at_k: 0,
+        pass_k: 0,
+        max_at_k: 0,
+        stability: 0,
+        avg_score: 0,
+        min_score: 0,
+        max_score: 0,
+        runs_passed: 0,
+        total_runs: K,
+      };
+    }
+
+    let passAtKCount = 0;
+    let passHatKCount = 0;
+    let stabilityCount = 0;
+    let maxScoreSum = 0;
+    let totalScoreSum = 0;
+    let totalScoreCount = 0;
+    let itemsWithData = 0;
+
+    // Process each item
+    for (let i = 0; i < maxItems; i++) {
+      const scores = [];
+
+      // Get score for this item from each run
+      for (const runData of runsData) {
+        const rows = runData?.snapshot?.rows || [];
+        const row = rows.find(r => r.index === i) || rows[i];
+        if (!row) continue;
+
+        const metricIdx = getMetricIndex(runData);
+        if (metricIdx < 0) continue;
+
+        const metricValues = row?.metric_values || [];
+        const metricValue = metricValues[metricIdx];
+
+        if (metricValue !== undefined && metricValue !== null) {
+          const score = parseFloat(metricValue);
+          if (!isNaN(score)) {
+            scores.push(score);
+            totalScoreSum += score;
+            totalScoreCount++;
+          }
+        }
+      }
+
+      if (scores.length === 0) continue;
+      itemsWithData++;
+
+      // Calculate item-level stats
+      const maxScore = Math.max(...scores);
+      const minScore = Math.min(...scores);
+      const passingScores = scores.filter(s => s >= threshold);
+      const numCorrect = passingScores.length;
+
+      // Max@K: track the best score for this item across all runs
+      maxScoreSum += maxScore;
+
+      // Pass@K: at least one run passed for this item
+      if (numCorrect > 0) passAtKCount++;
+
+      // Pass^K: ALL runs passed for this item
+      const allCorrectItem = numCorrect === scores.length && scores.length > 0;
+      if (allCorrectItem) passHatKCount++;
+
+      // Stability: all runs have the same score for this item
+      const allSameScore = scores.every(s => Math.abs(s - scores[0]) < 0.0001);
+      if (allSameScore) stabilityCount++;
+    }
+
+    // Calculate final stats
+    const totalItems = itemsWithData;
+    const passAtK = totalItems > 0 ? passAtKCount / totalItems : 0;
+    const passK = totalItems > 0 ? passHatKCount / totalItems : 0;
+    const maxAtK = totalItems > 0 ? maxScoreSum / totalItems : 0;
+    const stability = totalItems > 0 ? stabilityCount / totalItems : 0;
+    const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
+
+    // Calculate run-level stats for min/max/runs_passed (for display)
+    const runAvgScores = runsData.map(r => {
+      const avg = r?.run?.metric_averages?.[metric];
+      return avg !== undefined ? avg : 0;
+    });
+    const runsPassed = runAvgScores.filter(s => s >= threshold).length;
+
+    return {
+      metric_name: metric,
+      threshold: threshold,
+      pass_at_k: passAtK,
+      pass_k: passK,
+      max_at_k: maxAtK,
+      stability: stability,
+      avg_score: avgScore,
+      min_score: Math.min(...runAvgScores),
+      max_score: Math.max(...runAvgScores),
+      runs_passed: runsPassed,
+      total_runs: K,
+    };
+  }
+
+  async function fetchRunsDataForAggregate(filePaths) {
+    if (filePaths.length === 0) return [];
+    try {
+      const params = filePaths.map(f => `files=${encodeURIComponent(f)}`).join('&');
+      const response = await fetch(`/api/compare?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch run data');
+      const data = await response.json();
+      return data.runs || [];
+    } catch (error) {
+      console.error('Error fetching runs data for aggregate:', error);
+      return [];
+    }
+  }
+
+  function openAggregatePublishModal(runs) {
+    // Validate runs
+    const validation = validateAggregateRuns(runs);
+
+    const errorDiv = el('aggregate-validation-error');
+    const errorMsg = el('aggregate-error-message');
+
+    if (!validation.valid) {
+      errorDiv.style.display = 'flex';
+      errorMsg.textContent = validation.error;
+      el('confirm-aggregate-publish-btn').disabled = true;
+    } else {
+      errorDiv.style.display = validation.warning ? 'flex' : 'none';
+      if (validation.warning) {
+        errorMsg.textContent = validation.warning;
+      }
+      el('confirm-aggregate-publish-btn').disabled = false;
+    }
+
+    // Store runs
+    aggregatePublishState.runs = runs;
+
+    // Get common metrics
+    const commonMetrics = getCommonMetrics(runs);
+    aggregatePublishState.commonMetrics = commonMetrics;
+
+    // Initialize thresholds to 80% by default
+    aggregatePublishState.thresholds = {};
+    commonMetrics.forEach(m => {
+      aggregatePublishState.thresholds[m] = 0.8;
+    });
+
+    const first = runs[0];
+    const k = runs.length;
+
+    // Generate default run name
+    const timestamp = new Date().toISOString().slice(2, 16).replace(/[-T:]/g, '').slice(0, 11);
+    const defaultRunName = `${first.model_name}-K${k}-${timestamp}`;
+    el('agg-publish-run-name').value = defaultRunName;
+
+    // Populate run info
+    const avgLatency = runs.reduce((sum, r) => sum + (r.avg_latency_ms || 0), 0) / k;
+    const avgItems = Math.round(runs.reduce((sum, r) => sum + r.total_items, 0) / k);
+
+    el('aggregate-run-info').innerHTML = `
+      <div class="info-header">
+        <h3>Aggregate Publish</h3>
+        <span class="k-badge">K = ${k} runs</span>
+      </div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Model</div>
+          <div class="info-value">${first.model_name}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Dataset</div>
+          <div class="info-value">${first.dataset_name}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Task</div>
+          <div class="info-value">${first.task_name}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Avg Items/Run</div>
+          <div class="info-value">${avgItems}</div>
+        </div>
+      </div>
+    `;
+
+    // Populate threshold sliders
+    const slidersContainer = el('threshold-sliders');
+    if (commonMetrics.length === 0) {
+      slidersContainer.innerHTML = '<p style="color: var(--text-muted);">No common metrics found across selected runs.</p>';
+    } else {
+      slidersContainer.innerHTML = commonMetrics.map(metric => `
+        <div class="threshold-row" data-metric="${metric}">
+          <span class="metric-name">${metric.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+          <div class="slider-container">
+            <input type="range" class="threshold-slider" data-metric="${metric}"
+                   min="0" max="100" step="5" value="80">
+            <span class="threshold-value" data-metric="${metric}">80%</span>
+          </div>
+        </div>
+      `).join('');
+
+      // Wire up slider events
+      slidersContainer.querySelectorAll('.threshold-slider').forEach(slider => {
+        slider.addEventListener('input', (e) => {
+          const metric = e.target.dataset.metric;
+          const value = parseInt(e.target.value);
+          aggregatePublishState.thresholds[metric] = value / 100;
+          slidersContainer.querySelector(`.threshold-value[data-metric="${metric}"]`).textContent = `${value}%`;
+        });
+      });
+    }
+
+    // Reset form
+    el('agg-publish-project').value = '';
+    el('agg-publish-task').value = '';
+    el('agg-publish-task').disabled = true;
+    el('agg-add-task-btn').disabled = true;
+    el('agg-publish-user-search').value = '';
+    el('agg-publish-user').value = '';
+    el('agg-publish-description').value = '';
+    el('agg-publish-branch').value = publishState.gitInfo.branch || '(not available)';
+    el('agg-publish-commit').value = publishState.gitInfo.commit || '(not available)';
+
+    // Update button text
+    el('confirm-aggregate-publish-btn').textContent = `Publish ${k} Runs`;
+
+    // Fetch projects
+    fetchProjectsForAggregate();
+
+    // Show modal
+    el('aggregate-publish-modal').style.display = 'flex';
+  }
+
+  async function fetchProjectsForAggregate() {
+    try {
+      const response = await fetch('/api/confluence/projects');
+      const data = await response.json();
+      const projects = data.projects || [];
+
+      const select = el('agg-publish-project');
+      select.innerHTML = '<option value="">Select a project...</option>' +
+        projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
+    }
+  }
+
+  async function fetchTasksForAggregate(projectName) {
+    try {
+      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`);
+      const data = await response.json();
+      const tasks = data.tasks || [];
+
+      const select = el('agg-publish-task');
+      select.innerHTML = '<option value="">Select a task...</option>' +
+        tasks.map(t => `<option value="${t.title}">${t.title}</option>`).join('');
+      select.disabled = false;
+      el('agg-add-task-btn').disabled = false;
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+    }
+  }
+
+  async function searchUsersForAggregate(query) {
+    try {
+      const url = query ? `/api/confluence/users?q=${encodeURIComponent(query)}` : '/api/confluence/users';
+      const response = await fetch(url);
+      const data = await response.json();
+      const users = data.users || [];
+
+      const dropdown = el('agg-user-dropdown');
+      if (users.length === 0) {
+        dropdown.innerHTML = '<div class="user-option no-results">No users found</div>';
+      } else {
+        dropdown.innerHTML = users.map(u => `
+          <div class="user-option" data-username="${u.username}" data-display="${u.display_name}">
+            <span class="user-name">${u.display_name}</span>
+            <span class="user-username">@${u.username}</span>
+          </div>
+        `).join('');
+
+        // Wire up click events
+        dropdown.querySelectorAll('.user-option').forEach(opt => {
+          opt.addEventListener('click', () => {
+            el('agg-publish-user').value = opt.dataset.username;
+            el('agg-publish-user-search').value = opt.dataset.display;
+            dropdown.style.display = 'none';
+          });
+        });
+      }
+      dropdown.style.display = 'block';
+    } catch (err) {
+      console.error('Failed to search users:', err);
+    }
+  }
+
+  async function publishAggregateRuns() {
+    const runs = aggregatePublishState.runs;
+    if (runs.length === 0) return;
+
+    const runName = el('agg-publish-run-name').value.trim();
+    const projectName = el('agg-publish-project').value;
+    const taskName = el('agg-publish-task').value;
+    const username = el('agg-publish-user').value;
+    const description = el('agg-publish-description').value.trim();
+
+    // Validate
+    if (!runName) {
+      showToast('error', 'Missing Run Name', 'Please provide a run name');
+      return;
+    }
+    if (!projectName) {
+      showToast('error', 'Missing Project', 'Please select a project');
+      return;
+    }
+    if (!taskName) {
+      showToast('error', 'Missing Task', 'Please select or create a task');
+      return;
+    }
+    if (!username) {
+      showToast('error', 'Missing User', 'Please select a user');
+      return;
+    }
+    if (!description) {
+      showToast('error', 'Missing Description', 'Please provide a description');
       return;
     }
 
-    const filePath = Array.from(state.selectedRuns)[0];
-    const run = state.flatRuns.find(r => r.file_path === filePath);
-    if (run) {
-      openPublishModal(run);
+    const btn = el('confirm-aggregate-publish-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading data...';
+
+    // Fetch detailed run data to calculate metrics properly
+    const filePaths = runs.map(r => r.file_path);
+    const runsData = await fetchRunsDataForAggregate(filePaths);
+
+    if (runsData.length === 0) {
+      showToast('error', 'Load Failed', 'Failed to load run data for metric calculation');
+      btn.disabled = false;
+      btn.textContent = `Publish ${runs.length} Runs`;
+      return;
+    }
+
+    btn.textContent = 'Publishing...';
+
+    // Calculate aggregate metrics for each metric using item-level data
+    const metricResults = aggregatePublishState.commonMetrics.map(metric => {
+      const threshold = aggregatePublishState.thresholds[metric] || 0.8;
+      return calculateAggregateMetricsFromItems(runsData, metric, threshold);
+    });
+
+    // Build per-run details with all metrics and latency
+    const runDetails = runs.map(r => ({
+      run_id: r.run_id,
+      langfuse_url: r.langfuse_url || null,
+      metrics: r.metric_averages || {},
+      latency_ms: r.avg_latency_ms || 0,
+    }));
+
+    const first = runs[0];
+    const avgLatency = runs.reduce((sum, r) => sum + (r.avg_latency_ms || 0), 0) / runs.length;
+    const avgItems = Math.round(runs.reduce((sum, r) => sum + r.total_items, 0) / runs.length);
+
+    try {
+      const response = await fetch('/api/confluence/publish-aggregate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_name: projectName,
+          task_name: taskName,
+          run_name: runName,
+          published_by: username,
+          description: description,
+          model: first.model_name,
+          dataset: first.dataset_name,
+          task: first.task_name,
+          run_details: runDetails,
+          metric_results: metricResults,
+          total_items_per_run: avgItems,
+          avg_latency_ms: avgLatency,
+          branch: publishState.gitInfo.branch,
+          commit: publishState.gitInfo.commit,
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        el('aggregate-publish-modal').style.display = 'none';
+        // Mark aggregate run as published
+        publishState.publishedRuns.add(runName);
+        // Show success toast
+        showToast('success', 'Published Successfully', `Aggregate results for ${runs.length} runs published to Confluence`);
+        // Clear selection and re-render
+        state.selectedRuns.clear();
+        render();
+      } else {
+        showToast('error', 'Publish Failed', result.error || 'Unknown error');
+      }
+    } catch (err) {
+      showToast('error', 'Publish Failed', err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = `Publish ${runs.length} Runs`;
     }
   }
 
@@ -2527,12 +3014,17 @@
     const run = publishState.currentRun;
     if (!run) return;
 
+    const runName = el('publish-run-name').value.trim();
     const projectName = el('publish-project').value;
     const taskName = el('publish-task').value;
     const username = el('publish-user').value;
     const description = el('publish-description').value.trim();
 
     // Validate
+    if (!runName) {
+      showToast('error', 'Missing Run Name', 'Please provide a run name');
+      return;
+    }
     if (!projectName) {
       showToast('error', 'Missing Project', 'Please select a project');
       return;
@@ -2561,7 +3053,7 @@
         body: JSON.stringify({
           project_name: projectName,
           task_name: taskName,
-          run_id: run.run_id,
+          run_id: runName,  // Use user-provided run name
           published_by: username,
           description: description,
           metrics: run.metric_averages || {},
@@ -2581,10 +3073,10 @@
 
       if (result.success) {
         el('publish-modal').style.display = 'none';
-        // Mark run as published
+        // Mark run as published (use original run_id for tracking)
         publishState.publishedRuns.add(run.run_id);
         // Show success toast
-        showToast('success', 'Published Successfully', `Run "${run.run_id}" has been published to Confluence`);
+        showToast('success', 'Published Successfully', `Run "${runName}" has been published to Confluence`);
         // Clear selection and re-render to show published badge
         state.selectedRuns.clear();
         render();
@@ -2600,7 +3092,10 @@
   }
 
   async function createTask() {
-    const projectName = el('publish-project').value;
+    // Check if this was triggered from the aggregate modal
+    const isAggregate = el('create-task-modal').dataset.target === 'aggregate';
+    const projectName = isAggregate ? el('agg-publish-project').value : el('publish-project').value;
+
     if (!projectName) {
       showToast('error', 'Missing Project', 'Please select a project first');
       return;
@@ -2627,11 +3122,17 @@
 
       if (result.id) {
         el('create-task-modal').style.display = 'none';
+        el('create-task-modal').dataset.target = '';  // Reset target
         el('new-task-name').value = '';
 
-        // Refresh tasks and select the new one
-        await fetchTasks(projectName);
-        el('publish-task').value = result.title;
+        // Refresh tasks and select the new one in the appropriate modal
+        if (isAggregate) {
+          await fetchTasksForAggregate(projectName);
+          el('agg-publish-task').value = result.title;
+        } else {
+          await fetchTasks(projectName);
+          el('publish-task').value = result.title;
+        }
         showToast('success', 'Task Created', `Task "${taskName}" has been created`);
       } else {
         showToast('error', 'Create Failed', result.error || 'Unknown error');
@@ -2683,14 +3184,58 @@
 
   el('add-task-btn')?.addEventListener('click', () => {
     el('create-task-modal').style.display = 'flex';
+    el('create-task-modal').dataset.target = '';  // Clear target for single-run modal
   });
 
   el('confirm-publish-btn')?.addEventListener('click', publishRun);
   el('confirm-create-task-btn')?.addEventListener('click', createTask);
   el('publish-selected')?.addEventListener('click', openPublishModalForSelected);
 
+  // Aggregate publish modal events
+  el('confirm-aggregate-publish-btn')?.addEventListener('click', publishAggregateRuns);
+
+  el('agg-publish-project')?.addEventListener('change', (e) => {
+    const projectName = e.target.value;
+    if (projectName) {
+      fetchTasksForAggregate(projectName);
+    } else {
+      el('agg-publish-task').innerHTML = '<option value="">Select a task...</option>';
+      el('agg-publish-task').disabled = true;
+      el('agg-add-task-btn').disabled = true;
+    }
+  });
+
+  el('agg-add-task-btn')?.addEventListener('click', () => {
+    // Reuse the create task modal but wire it to aggregate form
+    el('create-task-modal').style.display = 'flex';
+    el('create-task-modal').dataset.target = 'aggregate';
+  });
+
+  // User search for aggregate modal
+  el('agg-publish-user-search')?.addEventListener('input', debounce((e) => {
+    const query = e.target.value.trim();
+    if (query.length >= 1) {
+      searchUsersForAggregate(query);
+    } else {
+      el('agg-user-dropdown').style.display = 'none';
+    }
+  }, 200));
+
+  el('agg-publish-user-search')?.addEventListener('focus', () => {
+    // Fetch all users when focused
+    searchUsersForAggregate('');
+  });
+
+  // Close aggregate user dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const aggWrapper = document.querySelector('#aggregate-publish-modal .user-search-wrapper');
+    if (aggWrapper && !aggWrapper.contains(e.target)) {
+      el('agg-user-dropdown').style.display = 'none';
+    }
+  });
+
   // Close modals on click outside
-  ['publish-modal', 'create-task-modal'].forEach(modalId => {
+  ['publish-modal', 'create-task-modal', 'aggregate-publish-modal'].forEach(modalId => {
     el(modalId)?.addEventListener('click', (e) => {
       if (e.target.id === modalId) {
         el(modalId).style.display = 'none';

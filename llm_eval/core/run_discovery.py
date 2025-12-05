@@ -28,6 +28,8 @@ class RunInfo:
     metric_averages: Dict[str, float] = field(default_factory=dict)
     avg_latency_ms: float = 0.0
     langfuse_url: Optional[str] = None
+    langfuse_dataset_id: Optional[str] = None
+    langfuse_run_id: Optional[str] = None
 
     @property
     def success_rate(self) -> float:
@@ -51,6 +53,8 @@ class RunInfo:
             "success_rate": self.success_rate,
             "avg_latency_ms": self.avg_latency_ms,
             "langfuse_url": self.langfuse_url,
+            "langfuse_dataset_id": self.langfuse_dataset_id,
+            "langfuse_run_id": self.langfuse_run_id,
         }
 
 
@@ -177,12 +181,18 @@ class RunDiscovery:
                 # Try to get model and langfuse_url from run_metadata JSON
                 actual_model = strip_model_provider(model_name)
                 langfuse_url = None
+                langfuse_dataset_id = None
+                langfuse_run_id = None
                 try:
                     metadata = json.loads(first_row.get("run_metadata", "{}"))
                     if "model" in metadata:
                         actual_model = strip_model_provider(metadata["model"])
                     if "langfuse_url" in metadata:
                         langfuse_url = metadata["langfuse_url"]
+                    if "langfuse_dataset_id" in metadata:
+                        langfuse_dataset_id = metadata["langfuse_dataset_id"]
+                    if "langfuse_run_id" in metadata:
+                        langfuse_run_id = metadata["langfuse_run_id"]
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -247,6 +257,8 @@ class RunDiscovery:
                     metric_averages=metric_averages,
                     avg_latency_ms=avg_latency_ms,
                     langfuse_url=langfuse_url,
+                    langfuse_dataset_id=langfuse_dataset_id,
+                    langfuse_run_id=langfuse_run_id,
                 )
         except Exception:
             return None
@@ -295,6 +307,8 @@ class RunDiscovery:
             # Try to get model and langfuse_url from run_metadata JSON
             actual_model = strip_model_provider(model_name)
             langfuse_url = None
+            langfuse_dataset_id = None
+            langfuse_run_id = None
             try:
                 metadata_str = first_row.get("run_metadata", "{}")
                 if metadata_str:
@@ -303,6 +317,10 @@ class RunDiscovery:
                         actual_model = strip_model_provider(metadata["model"])
                     if "langfuse_url" in metadata:
                         langfuse_url = metadata["langfuse_url"]
+                    if "langfuse_dataset_id" in metadata:
+                        langfuse_dataset_id = metadata["langfuse_dataset_id"]
+                    if "langfuse_run_id" in metadata:
+                        langfuse_run_id = metadata["langfuse_run_id"]
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -366,6 +384,8 @@ class RunDiscovery:
                 metric_averages=metric_averages,
                 avg_latency_ms=avg_latency_ms,
                 langfuse_url=langfuse_url,
+                langfuse_dataset_id=langfuse_dataset_id,
+                langfuse_run_id=langfuse_run_id,
             )
         except Exception:
             return None
@@ -479,6 +499,7 @@ class RunDiscovery:
 
             ui_row = {
                 "index": idx,
+                "item_id": row.get("item_id", str(idx)),  # Use item_id from CSV, fallback to index
                 "status": status,
                 "input": input_full,
                 "input_full": input_full,
@@ -625,6 +646,7 @@ class RunDiscovery:
 
             ui_row = {
                 "index": idx,
+                "item_id": str(row.get("item_id", "") or "") or str(idx),  # Use item_id from xlsx, fallback to index
                 "status": status,
                 "input": input_full,
                 "input_full": input_full,

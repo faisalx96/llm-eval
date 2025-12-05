@@ -622,21 +622,18 @@
     .item-run-output .trace-link {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      padding: 2px 8px;
-      background: #e11d48;
-      color: #fff;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
+      padding: 1px 5px;
+      background: rgba(225, 29, 72, 0.15);
+      color: #e11d48;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
       text-decoration: none;
-      transition: background 0.15s, transform 0.15s;
-      gap: 3px;
+      transition: background 0.15s;
     }
 
     .item-run-output .trace-link:hover {
-      background: #be123c;
-      transform: scale(1.05);
+      background: rgba(225, 29, 72, 0.25);
     }
 
     .item-run-output .output-text {
@@ -1403,7 +1400,21 @@
           itemWinners: [], // For each item, which run won
         };
 
-        const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+        // Collect all unique item_ids across all runs for proper alignment
+        const allItemIds = new Set();
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            // Use item_id if available, otherwise fallback to index
+            const itemId = row.item_id || String(row.index);
+            allItemIds.add(itemId);
+          }
+        }
+        const itemIdList = Array.from(allItemIds);
+
+        // Create a map from item_id to array index for itemWinners tracking
+        state.itemIdToIndex = {};
+        itemIdList.forEach((id, idx) => { state.itemIdToIndex[id] = idx; });
 
         // Initialize correct distribution array (index = number of runs correct, value = count)
         stats.correctDistribution = new Array(state.runs.length + 1).fill(0);
@@ -1451,13 +1462,14 @@
           stats.errorTypes.push({ timeout: timeoutErrors, runtime: runtimeErrors, other: otherErrors });
         }
 
-        // Compare items head-to-head
+        // Compare items head-to-head using item_id for alignment
         let agreements = 0;
-        for (let i = 0; i < maxItems; i++) {
+        for (const itemId of itemIdList) {
           const scores = state.runs.map((run) => {
             const snap = run.snapshot || {};
             const rows = snap.rows || [];
-            const row = rows.find(r => r.index === i);
+            // Match by item_id, fallback to index for legacy data
+            const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
             if (!row) return null;
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
@@ -1508,7 +1520,7 @@
             stats.itemWinners.push(winners[0]);
             // Track biggest wins
             const diff = maxScore - minScore;
-            stats.biggestWins.push({ index: i, winner: winners[0], diff, scores });
+            stats.biggestWins.push({ itemId: itemId, winner: winners[0], diff, scores });
           } else {
             // Multiple runs tied for the highest score, but didn't beat everyone
             // This counts as a tie (no clear winner)
@@ -1925,11 +1937,21 @@
       }
 
       function getFilteredItems() {
-        // Build aligned item list across runs
-        const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
+        // Build aligned item list across runs using item_id
         const items = [];
         const selectedMetric = state.selectedItemsMetric;
         const stats = selectedMetric ? state.comparisonStats[selectedMetric] : null;
+
+        // Collect all unique item_ids across all runs for proper alignment
+        const allItemIds = new Set();
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            const itemId = row.item_id || String(row.index);
+            allItemIds.add(itemId);
+          }
+        }
+        const itemIdList = Array.from(allItemIds);
 
         // Helper to get metric index for a run
         function getMetricIndex(run) {
@@ -1937,10 +1959,11 @@
           return selectedMetric ? metricNames.indexOf(selectedMetric) : 0;
         }
 
-        for (let i = 0; i < maxItems; i++) {
+        for (const itemId of itemIdList) {
           const rowData = state.runs.map(run => {
             const rows = run.snapshot?.rows || [];
-            return rows.find(r => r.index === i) || null;
+            // Match by item_id, fallback to index for legacy data
+            return rows.find(r => (r.item_id || String(r.index)) === itemId) || null;
           });
 
           // Get scores for this item based on selected metric
@@ -1988,9 +2011,10 @@
             if (numCorrect !== 1) continue;
           }
 
-          // Apply winner filter
-          if (state.winnerFilter !== 'any' && stats) {
-            const winner = stats.itemWinners[i];
+          // Apply winner filter using item_id to index mapping
+          if (state.winnerFilter !== 'any' && stats && state.itemIdToIndex) {
+            const itemIndex = state.itemIdToIndex[itemId];
+            const winner = itemIndex !== undefined ? stats.itemWinners[itemIndex] : null;
             if (state.winnerFilter === 'tie') {
               // Only show ties (all runs same score OR multiple tied for highest)
               if (winner !== 'tie') continue;
@@ -2008,7 +2032,7 @@
             }
           }
 
-          items.push({ index: i, rowData });
+          items.push({ itemId: itemId, rowData });
         }
 
         return items;
@@ -2038,11 +2062,14 @@
           return;
         }
 
-        container.innerHTML = pageItems.map(({ index, rowData }) => {
+        container.innerHTML = pageItems.map(({ itemId, rowData }) => {
           // Get input and expected from any available row
           const inputRow = rowData.find(r => r);
           const input = inputRow?.input_full || inputRow?.input || '—';
           const expected = inputRow?.expected_full || inputRow?.expected || '';
+
+          // Use a safe ID for DOM elements by encoding the itemId
+          const safeId = btoa(itemId).replace(/[+/=]/g, '_');
 
           const outputCells = rowData.map((row, runIdx) => {
             const color = COLORS[runIdx % COLORS.length];
@@ -2074,7 +2101,9 @@
             // Determine if this run is the winner for the selected metric
             const selectedMetric = state.selectedItemsMetric;
             const stats = selectedMetric ? state.comparisonStats[selectedMetric] : null;
-            const itemWinner = stats?.itemWinners?.[index];
+            // Use itemIdToIndex mapping to find the winner for this item
+            const itemIndex = state.itemIdToIndex?.[itemId];
+            const itemWinner = itemIndex !== undefined ? stats?.itemWinners?.[itemIndex] : null;
             const isWinner = itemWinner === runIdx;
 
             // Build inline metric scores (all metrics shown, selected one highlighted)
@@ -2123,7 +2152,7 @@
 
               if (detailRows) {
                 metricDetailsHtml = `
-                  <div class="run-metric-details" data-item="${index}">
+                  <div class="run-metric-details" data-item="${safeId}">
                     ${detailRows}
                   </div>
                 `;
@@ -2152,12 +2181,19 @@
           ` : '';
 
           // Build shared metric details section (all runs' metadata in one expandable area)
-          const metricDetailsHtml = buildMetricDetailsSection(index, rowData);
+          const metricDetailsHtml = buildMetricDetailsSection(itemId, rowData);
+
+          // Format item ID for display (e.g., "item_5" -> "Item 6", or keep original if not matching pattern)
+          let displayItemId = itemId;
+          const itemMatch = itemId.match(/^item_(\d+)$/);
+          if (itemMatch) {
+            displayItemId = `Item ${parseInt(itemMatch[1], 10) + 1}`;
+          }
 
           return `
             <div class="item-comparison-row">
               <div class="item-header">
-                <span class="item-index">#${index + 1}</span>
+                <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
               </div>
               <div class="item-input-row">
                 <div class="input-label">Input</div>
@@ -2225,7 +2261,7 @@
       }
 
       // Build shared toggle button for metric details (controls all runs' details for this item)
-      function buildMetricDetailsSection(itemIndex, rowData) {
+      function buildMetricDetailsSection(itemId, rowData) {
         // Check if any run has metadata
         const hasAnyMeta = rowData.some(row => {
           if (!row) return false;
@@ -2238,10 +2274,13 @@
 
         if (!hasAnyMeta) return '';
 
+        // Use a safe ID for DOM elements by encoding the itemId
+        const safeId = btoa(itemId).replace(/[+/=]/g, '_');
+
         return `
           <div class="item-metric-details-toggle">
-            <button class="metric-details-toggle" onclick="toggleItemMetricDetails(${itemIndex})">
-              <span class="toggle-icon" id="toggle-icon-${itemIndex}">▶</span> Metric Details
+            <button class="metric-details-toggle" onclick="toggleItemMetricDetails('${safeId}')">
+              <span class="toggle-icon" id="toggle-icon-${safeId}">▶</span> Metric Details
             </button>
           </div>
         `;

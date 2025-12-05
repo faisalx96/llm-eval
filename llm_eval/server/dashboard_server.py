@@ -23,7 +23,14 @@ except Exception:
     pkg_files = None
 
 from ..core.run_discovery import RunDiscovery
-from ..confluence.client import MockConfluenceClient, PublishRequest, get_git_info
+from ..confluence.client import (
+    MockConfluenceClient,
+    PublishRequest,
+    AggregatePublishRequest,
+    AggregateMetricResult,
+    RunMetricDetail,
+    get_git_info,
+)
 
 DEFAULT_RESULTS_DIR = "llm-eval_results"
 DEFAULT_CONFLUENCE_DIR = "confluence_mock"
@@ -177,9 +184,19 @@ class DashboardServer:
                 # API: List all runs
                 if path == "/api/runs":
                     index = server.discovery.scan()
+                    data = index.to_dict()
+                    # Rebuild Langfuse URLs dynamically if we have the IDs
+                    langfuse_host = os.environ.get("LANGFUSE_HOST", "").rstrip("/")
+                    langfuse_project_id = os.environ.get("LANGFUSE_PROJECT_ID", "")
+                    if langfuse_host and langfuse_project_id:
+                        for run in data.get("runs", []):
+                            dataset_id = run.get("langfuse_dataset_id")
+                            run_id = run.get("langfuse_run_id")
+                            if dataset_id and run_id:
+                                run["langfuse_url"] = f"{langfuse_host}/project/{langfuse_project_id}/datasets/{dataset_id}/runs/{run_id}"
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(
-                        json.dumps(index.to_dict(), ensure_ascii=False).encode("utf-8")
+                        json.dumps(data, ensure_ascii=False).encode("utf-8")
                     )
                     return
 
@@ -439,8 +456,106 @@ class DashboardServer:
                         result = server.confluence.publish_run(request)
 
                         if result.success:
-                            # Track published run locally
+                            # Track published run locally (reload first to respect manual edits)
+                            server.published_runs = load_published_runs(server.discovery.results_dir)
                             server.published_runs.add(data["run_id"])
+                            save_published_runs(server.discovery.results_dir, server.published_runs)
+
+                            self._set_headers(HTTPStatus.OK)
+                            self.wfile.write(json.dumps({
+                                "success": True,
+                                "page_id": result.page_id,
+                                "page_url": result.page_url
+                            }).encode("utf-8"))
+                        else:
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(json.dumps({
+                                "success": False,
+                                "error": result.error
+                            }).encode("utf-8"))
+                        return
+                    except json.JSONDecodeError:
+                        self._set_headers(HTTPStatus.BAD_REQUEST)
+                        self.wfile.write(b'{"error": "Invalid JSON"}')
+                        return
+                    except Exception as e:
+                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
+                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+                        return
+
+                # API: Publish aggregate runs to Confluence
+                if path == "/api/confluence/publish-aggregate":
+                    try:
+                        content_length = int(self.headers.get("Content-Length", 0))
+                        body = self.rfile.read(content_length)
+                        data = json.loads(body.decode("utf-8"))
+
+                        # Validate required fields
+                        required = ["project_name", "task_name", "run_name", "published_by", "description",
+                                    "model", "dataset", "task", "run_details", "metric_results"]
+                        missing = [f for f in required if not data.get(f)]
+                        if missing:
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(json.dumps({
+                                "error": f"Missing required fields: {', '.join(missing)}"
+                            }).encode("utf-8"))
+                            return
+
+                        # Parse run details (per-run metrics)
+                        run_details = []
+                        for rd_data in data.get("run_details", []):
+                            run_details.append(RunMetricDetail(
+                                run_id=rd_data["run_id"],
+                                langfuse_url=rd_data.get("langfuse_url"),
+                                metrics=rd_data.get("metrics", {}),
+                                latency_ms=rd_data.get("latency_ms", 0),
+                            ))
+
+                        # Parse metric results
+                        metric_results = []
+                        for mr_data in data["metric_results"]:
+                            metric_results.append(AggregateMetricResult(
+                                metric_name=mr_data["metric_name"],
+                                threshold=mr_data["threshold"],
+                                pass_at_k=mr_data["pass_at_k"],
+                                pass_k=mr_data["pass_k"],
+                                max_at_k=mr_data["max_at_k"],
+                                stability=mr_data["stability"],
+                                avg_score=mr_data["avg_score"],
+                                min_score=mr_data["min_score"],
+                                max_score=mr_data["max_score"],
+                                runs_passed=mr_data["runs_passed"],
+                                total_runs=mr_data["total_runs"],
+                            ))
+
+                        # Build aggregate publish request
+                        request = AggregatePublishRequest(
+                            project_name=data["project_name"],
+                            task_name=data["task_name"],
+                            run_name=data["run_name"],
+                            published_by=data["published_by"],
+                            description=data["description"],
+                            model=data["model"],
+                            dataset=data["dataset"],
+                            task=data["task"],
+                            k_runs=len(run_details),
+                            run_details=run_details,
+                            metric_results=metric_results,
+                            total_items_per_run=data.get("total_items_per_run", 0),
+                            avg_latency_ms=data.get("avg_latency_ms", 0),
+                            branch=data.get("branch"),
+                            commit=data.get("commit"),
+                        )
+
+                        result = server.confluence.publish_aggregate_run(request)
+
+                        if result.success:
+                            # Track published aggregate run locally (reload first to respect manual edits)
+                            server.published_runs = load_published_runs(server.discovery.results_dir)
+                            # Add individual run IDs from run_details
+                            for rd in data.get("run_details", []):
+                                if rd.get("run_id"):
+                                    server.published_runs.add(rd["run_id"])
                             save_published_runs(server.discovery.results_dir, server.published_runs)
 
                             self._set_headers(HTTPStatus.OK)

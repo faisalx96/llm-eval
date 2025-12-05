@@ -251,6 +251,12 @@
 
         <div class="publish-form">
           <div class="form-group">
+            <label for="publish-run-name">Run Name <span class="required">*</span></label>
+            <input type="text" id="publish-run-name" class="form-input" placeholder="e.g., gpt-4o-241205-1430" />
+            <span class="form-hint">Name for this run in Confluence (editable)</span>
+          </div>
+
+          <div class="form-group">
             <label for="publish-project">Project <span class="required">*</span></label>
             <select id="publish-project" class="form-select">
               <option value="">Select a project...</option>
@@ -317,6 +323,92 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('create-task-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" id="confirm-create-task-btn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Aggregate Publish Modal (for multi-run publish) -->
+  <div class="modal" id="aggregate-publish-modal" style="display:none;">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>Publish Aggregate Results</h2>
+        <button class="modal-close" onclick="document.getElementById('aggregate-publish-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Validation errors (hidden by default) -->
+        <div class="aggregate-validation-error" id="aggregate-validation-error" style="display:none;">
+          <span class="error-icon">⚠️</span>
+          <span class="error-message" id="aggregate-error-message"></span>
+        </div>
+
+        <!-- Run info summary -->
+        <div class="aggregate-run-info" id="aggregate-run-info">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Threshold sliders for each metric -->
+        <div class="aggregate-thresholds" id="aggregate-thresholds">
+          <h3>Pass Thresholds</h3>
+          <p class="threshold-hint">Set the threshold for each metric. A run passes if its score is ≥ the threshold.</p>
+          <div class="threshold-sliders" id="threshold-sliders">
+            <!-- Populated by JS for each metric -->
+          </div>
+        </div>
+
+        <!-- Publish form -->
+        <div class="publish-form">
+          <div class="form-group">
+            <label for="agg-publish-run-name">Run Name <span class="required">*</span></label>
+            <input type="text" id="agg-publish-run-name" class="form-input" placeholder="e.g., gpt-4o-K5-241205-1430" />
+            <span class="form-hint">Name for this aggregate result in Confluence</span>
+          </div>
+
+          <div class="form-group">
+            <label for="agg-publish-project">Project <span class="required">*</span></label>
+            <select id="agg-publish-project" class="form-select">
+              <option value="">Select a project...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="agg-publish-task">Task <span class="required">*</span></label>
+            <div class="select-with-add">
+              <select id="agg-publish-task" class="form-select" disabled>
+                <option value="">Select a task...</option>
+              </select>
+              <button type="button" class="btn-add" id="agg-add-task-btn" title="Create new task" disabled>+</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="agg-publish-user">Published By <span class="required">*</span></label>
+            <div class="user-search-wrapper">
+              <input type="text" id="agg-publish-user-search" class="form-input" placeholder="Search users..." autocomplete="off" />
+              <input type="hidden" id="agg-publish-user" />
+              <div class="user-dropdown" id="agg-user-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="agg-publish-description">Description <span class="required">*</span></label>
+            <textarea id="agg-publish-description" class="form-textarea" rows="3" placeholder="Describe the purpose of this aggregate evaluation..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Branch</label>
+              <input type="text" id="agg-publish-branch" class="form-input" readonly />
+            </div>
+            <div class="form-group half">
+              <label>Commit</label>
+              <input type="text" id="agg-publish-commit" class="form-input" readonly />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('aggregate-publish-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-aggregate-publish-btn">Publish K Runs</button>
       </div>
     </div>
   </div>

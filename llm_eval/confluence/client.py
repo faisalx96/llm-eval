@@ -60,6 +60,58 @@ class PublishRequest:
 
 
 @dataclass
+class MetricThreshold:
+    """Threshold configuration for a metric in aggregate publish."""
+    metric_name: str
+    threshold: float  # 0.0 to 1.0
+
+
+@dataclass
+class AggregateMetricResult:
+    """Calculated aggregate metrics for a single metric."""
+    metric_name: str
+    threshold: float
+    pass_at_k: float  # Fraction of runs that passed
+    pass_k: float  # Probability all K runs pass (product of individual pass rates)
+    max_at_k: float  # Max score across K runs
+    stability: float  # 1 - normalized stddev of scores
+    avg_score: float
+    min_score: float
+    max_score: float
+    runs_passed: int
+    total_runs: int
+
+
+@dataclass
+class RunMetricDetail:
+    """Metric details for a single run in aggregate publish."""
+    run_id: str
+    langfuse_url: Optional[str]
+    metrics: Dict[str, float]  # metric_name -> score
+    latency_ms: float
+
+
+@dataclass
+class AggregatePublishRequest:
+    """Request to publish aggregate metrics for K runs to Confluence."""
+    project_name: str
+    task_name: str
+    run_name: str  # User-editable name for this aggregate publish
+    published_by: str
+    description: str
+    model: str
+    dataset: str
+    task: str  # The eval task name
+    k_runs: int  # Number of runs
+    run_details: List[RunMetricDetail]  # Per-run metrics and details
+    metric_results: List[AggregateMetricResult]  # Aggregate results per metric with thresholds
+    total_items_per_run: int  # Average items per run
+    avg_latency_ms: float
+    branch: Optional[str] = None
+    commit: Optional[str] = None
+
+
+@dataclass
 class PublishResult:
     """Result of publishing to Confluence."""
     success: bool
@@ -134,6 +186,11 @@ class ConfluenceClient(ABC):
     @abstractmethod
     def create_task(self, project_name: str, task_name: str) -> TaskPage:
         """Create a new task page in a project."""
+        pass
+
+    @abstractmethod
+    def publish_aggregate_run(self, request: AggregatePublishRequest) -> PublishResult:
+        """Publish aggregate metrics for K runs to a task page."""
         pass
 
 
@@ -306,12 +363,15 @@ class MockConfluenceClient(ConfluenceClient):
         else:
             latency_str = f"{latency_ms:.0f}ms"
 
-        # Format metrics as a table
+        # Format metrics as a table (including latency)
         metrics_rows = []
         for name, value in request.metrics.items():
             if isinstance(value, (int, float)):
                 pct = value * 100
                 metrics_rows.append(f"| {name.replace('_', ' ').title()} | {pct:.1f}% |")
+
+        # Add latency as a metric row
+        metrics_rows.append(f"| Latency | {latency_str} |")
 
         if metrics_rows:
             metrics_table = "| Metric | Score |\n|:-------|------:|\n" + "\n".join(metrics_rows)
@@ -322,7 +382,7 @@ class MockConfluenceClient(ConfluenceClient):
         run_anchor = self._sanitize_name(request.run_id)
 
         # Format trace link if available
-        trace_link = f"[View in Langfuse]({request.trace_url})" if request.trace_url else "N/A"
+        trace_row = f"| **Traces** | [View in Langfuse]({request.trace_url}) |" if request.trace_url else ""
 
         run_section = f"""
 ---
@@ -348,8 +408,7 @@ class MockConfluenceClient(ConfluenceClient):
 | **Total Samples** | {request.total_items:,} |
 | **Success Rate** | {success_rate:.1f}% ({request.success_count:,}/{request.total_items:,}) |
 | **Errors** | {request.error_count:,} |
-| **Avg Response Time** | {latency_str} |
-| **Traces** | {trace_link} |
+{trace_row}
 
 ### Source Control
 
@@ -385,22 +444,24 @@ This page documents evaluation runs for the **{request.task_name}** task. Each r
                 toc_start = existing_content.index(toc_marker)
                 toc_content_start = toc_start + len(toc_marker)
 
-                # Find where the table ends (first \n--- after table)
+                # Find where the table ends (first \n--- after table, or end of file)
                 rest_of_content = existing_content[toc_content_start:]
                 first_separator = rest_of_content.find("\n---")
+
+                new_toc_entry = f"| [{request.run_id}](#{run_anchor}) | {published_at} | @{request.published_by} | Single |\n"
 
                 if first_separator != -1:
                     # Insert new table row at the end of existing table
                     table_content = rest_of_content[:first_separator]
                     after_table = rest_of_content[first_separator:]
 
-                    new_toc_entry = f"| [{request.run_id}](#{run_anchor}) | {published_at} | @{request.published_by} |\n"
-
                     content = (existing_content[:toc_content_start] +
                               table_content + new_toc_entry +
                               after_table + run_section)
                 else:
-                    content = existing_content + run_section
+                    # No runs yet - table header exists but no separator
+                    # Append entry to table and add run section
+                    content = existing_content.rstrip() + "\n" + new_toc_entry + run_section
             elif old_toc_marker in existing_content:
                 # Old format - just append
                 content = existing_content + run_section
@@ -474,8 +535,18 @@ This page documents evaluation runs for the **{request.task_name}** task. Each r
 
         page_id = self._sanitize_name(task_name)
 
-        # Create markdown file with header
-        content = f"# {task_name}\n\n**Project**: {project_name}\n"
+        # Create markdown file with full header including evaluation history table
+        content = f"""# {task_name}
+
+**Project:** {project_name}
+
+This page documents evaluation runs for the **{task_name}** task. Each run includes performance metrics, configuration details, and approval status.
+
+## Evaluation History
+
+| Run ID | Date | Author | Type |
+|:-------|:-----|:-------|:-----|
+"""
 
         task_file = project_dir / f"{page_id}.md"
         with open(task_file, "w") as f:
@@ -485,6 +556,187 @@ This page documents evaluation runs for the **{request.task_name}** task. Each r
             page_id=page_id,
             title=task_name,
             project=project_name
+        )
+
+    def publish_aggregate_run(self, request: AggregatePublishRequest) -> PublishResult:
+        """Publish aggregate metrics for K runs to the mock filesystem as markdown."""
+        # Find or create project directory
+        project_dir = self._find_project_dir(request.project_name)
+        if not project_dir:
+            return PublishResult(
+                success=False,
+                error=f"Project not found: {request.project_name}"
+            )
+
+        # Find or create task file
+        task_file = self._find_task_file(project_dir, request.task_name)
+        if not task_file:
+            task_file = project_dir / f"{self._sanitize_name(request.task_name)}.md"
+            existing_content = ""
+        else:
+            with open(task_file) as f:
+                existing_content = f.read()
+
+        # Format the aggregate run section as markdown
+        published_at = datetime.now().strftime("%B %d, %Y at %H:%M")
+
+        # Format latency as human readable
+        latency_ms = request.avg_latency_ms
+        if latency_ms >= 60000:
+            minutes = int(latency_ms // 60000)
+            seconds = (latency_ms % 60000) / 1000
+            latency_str = f"{minutes}m {seconds:.0f}s"
+        elif latency_ms >= 1000:
+            latency_str = f"{latency_ms / 1000:.1f}s"
+        else:
+            latency_str = f"{latency_ms:.0f}ms"
+
+        # Helper to format latency
+        def format_latency(ms: float) -> str:
+            if ms >= 60000:
+                minutes = int(ms // 60000)
+                seconds = (ms % 60000) / 1000
+                return f"{minutes}m {seconds:.0f}s"
+            elif ms >= 1000:
+                return f"{ms / 1000:.1f}s"
+            else:
+                return f"{ms:.0f}ms"
+
+        # Get all metric names from run details
+        metric_names = list(request.run_details[0].metrics.keys()) if request.run_details else []
+
+        # Build per-run details table
+        # Header: Run ID | Metric1 | Metric2 | ... | Latency | Langfuse
+        metric_headers = " | ".join(m.replace('_', ' ').title() for m in metric_names)
+        run_table_header = f"| Run | {metric_headers} | Latency | Langfuse |"
+        # Separator: one for Run (left-align), one for each metric (center), one for Latency (center), one for Langfuse (center)
+        metric_separators = " | ".join(":---:" for _ in metric_names)
+        run_table_separator = f"|:-----|{metric_separators}|:------:|:--------:|"
+
+        run_table_rows = []
+        for rd in request.run_details:
+            metric_values = " | ".join(f"{rd.metrics.get(m, 0) * 100:.1f}%" for m in metric_names)
+            latency_val = format_latency(rd.latency_ms)
+            langfuse_link = f"[↗]({rd.langfuse_url})" if rd.langfuse_url else "—"
+            run_table_rows.append(f"| {rd.run_id} | {metric_values} | {latency_val} | {langfuse_link} |")
+
+        run_details_table = run_table_header + "\n" + run_table_separator + "\n" + "\n".join(run_table_rows)
+
+        # Build aggregate metrics table (matching Models view indicators)
+        K = request.k_runs
+        aggregate_rows = []
+        for mr in request.metric_results:
+            pass_at_k_pct = mr.pass_at_k * 100
+            pass_k_pct = mr.pass_k * 100
+            max_at_k_pct = mr.max_at_k * 100
+            stability_pct = mr.stability * 100
+            avg_pct = mr.avg_score * 100
+            threshold_pct = mr.threshold * 100
+
+            aggregate_rows.append(
+                f"| **{mr.metric_name.replace('_', ' ').title()}** | ≥{threshold_pct:.0f}% | "
+                f"{pass_at_k_pct:.1f}% | {pass_k_pct:.1f}% | {max_at_k_pct:.1f}% | {stability_pct:.1f}% | {avg_pct:.1f}% |"
+            )
+
+        aggregate_table = (
+            f"| Metric | Threshold | Pass@{K} | Pass^{K} | Max@{K} | Stability | Avg Score |\n"
+            "|:-------|:---------:|:------:|:------:|:-----:|:---------:|:---------:|\n"
+            + "\n".join(aggregate_rows)
+        )
+
+        # Create anchor-friendly ID for the run
+        run_anchor = self._sanitize_name(request.run_name)
+
+        run_section = f"""
+---
+
+## {request.run_name}
+
+> **Published:** {published_at} | **Author:** @{request.published_by} | **Type:** Aggregate (K={request.k_runs} runs)
+
+### Summary
+
+{request.description}
+
+### Individual Run Results
+
+{run_details_table}
+
+### Aggregate Metrics
+
+{aggregate_table}
+
+**Avg Latency:** {latency_str}
+
+### Configuration
+
+| Parameter | Value |
+|:----------|:------|
+| **Model** | {request.model} |
+| **Dataset** | {request.dataset} |
+| **Task** | {request.task} |
+| **Runs Evaluated** | {request.k_runs} |
+| **Avg Items/Run** | {request.total_items_per_run:,} |
+
+### Source Control
+
+| | |
+|:--|:--|
+| **Branch** | `{request.branch or 'N/A'}` |
+| **Commit** | `{request.commit or 'N/A'}` |
+"""
+
+        # Build content with TOC
+        if not existing_content:
+            header = f"""# {request.task_name}
+
+**Project:** {request.project_name}
+
+This page documents evaluation runs for the **{request.task_name}** task. Each run includes performance metrics, configuration details, and approval status.
+
+## Evaluation History
+
+"""
+            toc_entry = f"| [{request.run_name}](#{run_anchor}) | {published_at} | @{request.published_by} | K={request.k_runs} |\n"
+            toc_header = "| Run ID | Date | Author | Type |\n|:-------|:-----|:-------|:-----|\n"
+            content = header + toc_header + toc_entry + run_section
+        else:
+            # Existing file - update history table and append run
+            toc_marker = "## Evaluation History\n\n"
+            old_toc_marker = "## Table of Contents\n\n"
+
+            if toc_marker in existing_content:
+                toc_start = existing_content.index(toc_marker)
+                toc_content_start = toc_start + len(toc_marker)
+                rest_of_content = existing_content[toc_content_start:]
+                first_separator = rest_of_content.find("\n---")
+
+                new_toc_entry = f"| [{request.run_name}](#{run_anchor}) | {published_at} | @{request.published_by} | K={request.k_runs} |\n"
+
+                if first_separator != -1:
+                    table_content = rest_of_content[:first_separator]
+                    after_table = rest_of_content[first_separator:]
+
+                    content = (existing_content[:toc_content_start] +
+                              table_content + new_toc_entry +
+                              after_table + run_section)
+                else:
+                    # No runs yet - table header exists but no separator
+                    # Append entry to table and add run section
+                    content = existing_content.rstrip() + "\n" + new_toc_entry + run_section
+            elif old_toc_marker in existing_content:
+                content = existing_content + run_section
+            else:
+                content = existing_content + run_section
+
+        # Save task file
+        with open(task_file, "w") as f:
+            f.write(content)
+
+        return PublishResult(
+            success=True,
+            page_id=task_file.stem,
+            page_url=f"file://{task_file.absolute()}"
         )
 
 
@@ -546,5 +798,10 @@ class RealConfluenceClient(ConfluenceClient):
 
     def create_task(self, project_name: str, task_name: str) -> TaskPage:
         """Create task page in Confluence."""
+        # TODO: Implement using Confluence REST API
+        raise NotImplementedError("Real Confluence API not yet implemented")
+
+    def publish_aggregate_run(self, request: AggregatePublishRequest) -> PublishResult:
+        """Publish aggregate run to Confluence page."""
         # TODO: Implement using Confluence REST API
         raise NotImplementedError("Real Confluence API not yet implemented")

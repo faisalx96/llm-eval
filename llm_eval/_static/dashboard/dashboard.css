@@ -1248,13 +1248,15 @@ main {
 }
 
 .action-btn.langfuse-btn {
-  background: #e11d48;
-  color: #fff;
+  background: rgba(225, 29, 72, 0.15);
+  color: #e11d48;
+  padding: 3px 8px;
+  font-size: 10px;
 }
 
 .action-btn.langfuse-btn:hover {
-  background: #be123c;
-  color: #fff;
+  background: rgba(225, 29, 72, 0.25);
+  color: #e11d48;
 }
 
 /* Icon buttons for Publish and Delete */
@@ -1495,6 +1497,11 @@ main {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+}
+
+/* Create task modal should appear above other modals */
+#create-task-modal {
+  z-index: 1200;
 }
 
 .modal-content {
@@ -1916,7 +1923,7 @@ main {
   border-radius: 6px;
   max-height: 200px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 1100;
   margin-top: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -2565,11 +2572,173 @@ main {
   padding: var(--space-xl);
 }
 
+.modal-large {
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+}
+
+.modal-large .modal-body {
+  display: block;
+  padding: var(--space-xl);
+  max-height: calc(90vh - 140px);
+  overflow-y: auto;
+}
+
 .modal-description {
   font-size: var(--font-sm);
   color: var(--text-muted);
   margin-bottom: var(--space-lg);
   line-height: 1.5;
+}
+
+/* Aggregate Publish Modal */
+.aggregate-validation-error {
+  background: var(--error-dim);
+  color: var(--error);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: 8px;
+  margin-bottom: var(--space-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.aggregate-validation-error .error-icon {
+  font-size: 18px;
+}
+
+.aggregate-run-info {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.aggregate-run-info .info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.aggregate-run-info .info-header h3 {
+  margin: 0;
+  font-size: var(--font-lg);
+  color: var(--text-primary);
+}
+
+.aggregate-run-info .k-badge {
+  background: var(--accent-primary);
+  color: var(--bg-base);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: var(--font-sm);
+}
+
+.aggregate-run-info .info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+}
+
+.aggregate-run-info .info-item {
+  text-align: center;
+}
+
+.aggregate-run-info .info-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.aggregate-run-info .info-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.aggregate-thresholds {
+  margin-bottom: var(--space-lg);
+}
+
+.aggregate-thresholds h3 {
+  font-size: var(--font-md);
+  margin-bottom: var(--space-xs);
+  color: var(--text-primary);
+}
+
+.threshold-hint {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-md);
+}
+
+.threshold-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.threshold-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  background: var(--bg-elevated);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.threshold-row .metric-name {
+  min-width: 150px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.threshold-row .slider-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.threshold-row .threshold-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-active);
+  border-radius: 3px;
+  outline: none;
+}
+
+.threshold-row .threshold-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.threshold-row .threshold-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+.threshold-row .threshold-value {
+  min-width: 50px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-primary);
 }
 
 .run-selection-list {
