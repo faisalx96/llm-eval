@@ -29,6 +29,16 @@ from .observers import (
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
+
+
+def _strip_model_provider(model_name: Optional[str]) -> str:
+    """Remove provider prefix from model name (e.g., 'qwen/qwen3-235b' -> 'qwen3-235b')."""
+    if not model_name:
+        return ''
+    slash_idx = model_name.find('/')
+    return model_name[slash_idx + 1:] if slash_idx > 0 else model_name
+
+
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
 from ..server.app import UIServer
 import json
@@ -99,6 +109,14 @@ class Evaluator:
         # Configuration shortcuts
         self.max_concurrency = self.config.max_concurrency
         self.timeout = self.config.timeout
+
+        # Model handling - strip provider prefix once, keep full name for user's task
+        # e.g., "qwen/qwen3-235b" -> model_name="qwen3-235b", model_name_full="qwen/qwen3-235b"
+        self.model_name_full = self.config.model  # Original with provider (for user's task)
+        self.model_name = _strip_model_provider(self.config.model)  # Stripped (for display, paths, IDs)
+        self.models = [_strip_model_provider(m) for m in (self.config.models or [])]
+        self.models_full = self.config.models or []  # Original list with providers
+
         base_name_raw = (self.config.run_name or "").strip()
         base_name_stripped, has_suffix = _strip_run_suffix(base_name_raw)
         base_name = base_name_stripped or self._task_name
@@ -111,15 +129,11 @@ class Evaluator:
             user_provided_name = bool(self.config.run_name)
             self.run_name, self.display_name = self.build_run_identifiers(
                 base_name=base_name,
-                model_name=self.config.model,
+                model_name=self.model_name,  # Use stripped model name
                 add_suffix=not user_provided_name
             )
         self.run_metadata = self.config.run_metadata
-        
-        # Model handling
-        self.models = self.config.models or []
-        self.model_name = self.config.model
-        
+
         if self.model_name:
             self.run_metadata.setdefault('model', self.model_name)
 
@@ -134,7 +148,6 @@ class Evaluator:
         # Langfuse IDs for URL building (populated during run)
         self._langfuse_dataset_id: Optional[str] = getattr(self.dataset, 'id', None)
         self._langfuse_run_id: Optional[str] = None
-
 
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
@@ -757,21 +770,22 @@ class Evaluator:
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = (self.config.run_name or "").strip() or self._task_name
-        
+
         # Create base config dict from Pydantic model
         base_config_dict = self.config.model_dump(exclude={'models', 'model', 'run_name', 'run_metadata'})
-        
-        for idx, model_name in enumerate(self.models, start=1):
+
+        # Iterate over both stripped and full model names
+        for idx, (model_name, model_name_full) in enumerate(zip(self.models, self.models_full), start=1):
             run_config = copy.deepcopy(base_config_dict)
-            run_config['model'] = model_name
-            
+            run_config['model'] = model_name_full  # Full name for user's task
+
             run_metadata = dict(self.run_metadata or {})
-            run_metadata['model'] = model_name
+            run_metadata['model'] = model_name  # Stripped name for display/metadata
             run_config['run_metadata'] = run_metadata
-            
-            run_name, display_name = self.build_run_identifiers(base_name, model_name)
+
+            run_name, display_name = self.build_run_identifiers(base_name, model_name)  # Stripped for run ID
             run_config['run_name'] = run_name
-            
+
             runs.append(
                 {
                     "name": run_name,
@@ -780,7 +794,7 @@ class Evaluator:
                     "dataset": self.dataset_name,
                     "metrics": self._raw_metrics,
                     "config": run_config,
-                    "metadata": {"model": model_name},
+                    "metadata": {"model": model_name},  # Stripped for display
                 }
             )
 
@@ -838,8 +852,9 @@ class Evaluator:
                 pass
 
             # Execute task - purely async, no thread pool needed
+            # Pass full model name (with provider) to user's task
             task_start_time = time.time()
-            output = await self.task_adapter.arun(item.input, span, model_name=self.model_name)
+            output = await self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
             task_elapsed_time = time.time() - task_start_time
 
             # Update span with output

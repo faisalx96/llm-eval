@@ -20,6 +20,7 @@
     filterTask: '',
     filterModels: new Set(),  // Multi-select for models
     filterDataset: '',
+    filterPublishStatus: '',  // '', 'published', or 'unpublished'
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
@@ -27,10 +28,9 @@
     chartData: null,  // Aggregated data for charts
     allMetrics: [],   // All unique metric names across runs
     allModels: [],    // All unique model names
-    // Models view state
+    publishedRuns: new Set(),  // Track published run IDs for filtering
+    // Models view state (uses global filterTask/filterDataset for task+dataset)
     modelsViewState: {
-      selectedTask: '',
-      selectedDataset: '',
       selectedMetric: '',
       globalK: 5,
       threshold: 0.8,
@@ -120,6 +120,26 @@
   function truncateText(text, maxLen = null) {
     // No truncation - return full text
     return text || '';
+  }
+
+  function stripModelProvider(modelName) {
+    // Remove provider prefix (e.g., "qwen/qwen3-235b" -> "qwen3-235b")
+    if (!modelName) return '';
+    const slashIdx = modelName.indexOf('/');
+    return slashIdx > 0 ? modelName.slice(slashIdx + 1) : modelName;
+  }
+
+  function stripProviderFromRunId(runId) {
+    // Remove provider prefix from run ID (e.g., "ragbench-qwen/qwen3-235b-251205-1918" -> "ragbench-qwen3-235b-251205-1918")
+    if (!runId) return '';
+    const slashIdx = runId.indexOf('/');
+    if (slashIdx < 0) return runId;
+    // Find the dash before the provider (e.g., "ragbench-" before "qwen/")
+    const beforeSlash = runId.slice(0, slashIdx);
+    const lastDash = beforeSlash.lastIndexOf('-');
+    if (lastDash < 0) return runId.slice(slashIdx + 1);
+    // Keep everything before the provider name, then append everything after the slash
+    return beforeSlash.slice(0, lastDash + 1) + runId.slice(slashIdx + 1);
   }
 
   // ═══════════════════════════════════════════════════
@@ -241,6 +261,7 @@
       if (!combos[key].models[model]) {
         combos[key].models[model] = {
           runs: 0,
+          runsList: [],  // Store individual run data
           totalItems: 0,
           latestTimestamp: null,
           metricSums: {},
@@ -249,6 +270,16 @@
           latencyCount: 0,
         };
       }
+
+      // Store individual run data for display
+      combos[key].models[model].runsList.push({
+        run_id: run.run_id,
+        file_path: run.file_path,
+        timestamp: run.timestamp,
+        metric_averages: run.metric_averages || {},
+        avg_latency_ms: run.avg_latency_ms,
+        total_items: run.total_items,
+      });
 
       combos[key].models[model].runs++;
       combos[key].models[model].totalItems += run.total_items || 0;
@@ -328,7 +359,7 @@
       );
     }
 
-    // Quick filter (only time-based filters now)
+    // Quick filter (time-based)
     switch (state.quickFilter) {
       case 'today':
         runs = runs.filter(r => isToday(r.timestamp));
@@ -347,6 +378,11 @@
     }
     if (state.filterDataset) {
       runs = runs.filter(r => r.dataset_name === state.filterDataset);
+    }
+    if (state.filterPublishStatus === 'published') {
+      runs = runs.filter(r => state.publishedRuns.has(r.run_id));
+    } else if (state.filterPublishStatus === 'unpublished') {
+      runs = runs.filter(r => !state.publishedRuns.has(r.run_id));
     }
 
     // Sort
@@ -468,7 +504,7 @@
     // Update subtitle with filter info
     const subtitleEl = $('.charts-subtitle');
     if (subtitleEl) {
-      const isFiltered = state.searchQuery || state.quickFilter !== 'all';
+      const isFiltered = state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus;
       if (isFiltered) {
         subtitleEl.textContent = `Filtered: ${state.filteredRuns.length} runs • Showing average metric scores across all items`;
       } else {
@@ -479,8 +515,8 @@
     if (!chartData || chartData.combos.length === 0) {
       el('charts-grid').innerHTML = `
         <div class="chart-no-data" style="grid-column: 1/-1;">
-          ${state.searchQuery || state.quickFilter !== 'all' 
-            ? 'No runs match current filters' 
+          ${state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus
+            ? 'No runs match current filters'
             : 'No data available for charts. Run some evaluations first.'}
         </div>
       `;
@@ -493,9 +529,9 @@
     legendEl.innerHTML = state.allModels.map((model, idx) => {
       const isActive = state.filterModels.size === 0 || state.filterModels.has(model);
       return `
-        <div class="legend-item ${isActive ? '' : 'inactive'}" data-model="${model}">
+        <div class="legend-item ${isActive ? '' : 'inactive'}" data-model="${model}" title="${model}">
           <span class="legend-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
-          <span>${model}</span>
+          <span>${stripModelProvider(model)}</span>
         </div>
       `;
     }).join('');
@@ -540,54 +576,124 @@
         `;
       }
 
-      // Build charts for each metric
-      const metricChartsHtml = metrics.map(metric => {
-        // Get model scores for this metric, sorted by score
-        const modelScores = modelEntries
-          .map(([model, data]) => ({
+      // Build table with runs as rows and metrics as columns
+      // First, collect all unique runs across all models
+      const allRuns = [];
+      for (const [model, data] of modelEntries) {
+        for (const run of data.runsList) {
+          allRuns.push({
             model,
-            score: data.metricAverages?.[metric] ?? 0,
-            runs: data.runs,
-            latency: data.avgLatencyMs || 0,
-          }))
-          .filter(m => m.score > 0 || m.runs > 0)
-          .sort((a, b) => b.score - a.score);
+            run_id: run.run_id,
+            file_path: run.file_path,
+            timestamp: run.timestamp,
+            metric_averages: run.metric_averages || {},
+            latency: run.avg_latency_ms || 0,
+            isMultiRun: data.runs > 1,
+          });
+        }
+      }
 
-        if (modelScores.length === 0) return '';
+      // Generate unique card ID for sorting state
+      const cardId = `${combo.task}|||${combo.dataset}`.replace(/[^a-zA-Z0-9]/g, '_');
 
-        const barsHtml = modelScores.map(({ model, score, runs, latency }) => {
+      // Default sort by first metric descending
+      if (!state.chartSortState) state.chartSortState = {};
+      if (!state.chartSortState[cardId]) {
+        state.chartSortState[cardId] = { key: metrics[0] || 'latency', dir: 'desc' };
+      }
+      const sortState = state.chartSortState[cardId];
+
+      // Sort runs
+      allRuns.sort((a, b) => {
+        let aVal, bVal;
+        if (sortState.key === 'latency') {
+          aVal = a.latency || 0;
+          bVal = b.latency || 0;
+        } else {
+          aVal = a.metric_averages[sortState.key] ?? -1;
+          bVal = b.metric_averages[sortState.key] ?? -1;
+        }
+        return sortState.dir === 'desc' ? bVal - aVal : aVal - bVal;
+      });
+
+      if (allRuns.length === 0) return '';
+
+      // Build header row with sortable columns
+      const headerCells = metrics.map(metric => {
+        const isActive = sortState.key === metric;
+        const arrow = isActive ? (sortState.dir === 'desc' ? ' ↓' : ' ↑') : '';
+        return `<span class="chart-col-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${metric}">${metric}${arrow}</span>`;
+      }).join('');
+
+      const latencyActive = sortState.key === 'latency';
+      const latencyArrow = latencyActive ? (sortState.dir === 'desc' ? ' ↓' : ' ↑') : '';
+
+      // Build data rows
+      const rowsHtml = allRuns.map((runData) => {
+        const { model, run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
+        const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
+        const latencyStr = latency > 0 ? formatLatency(latency) : '—';
+        const dt = formatDate(timestamp);
+
+        // Format run label
+        const displayModel = stripModelProvider(model);
+        let displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span>`;
+        if (isMultiRun) {
+          const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
+          if (tsMatch) {
+            const [, yy, mm, dd, hh, min, counter] = tsMatch;
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const monthName = months[parseInt(mm, 10) - 1] || mm;
+            const day = parseInt(dd, 10);
+            const timeStr = `${hh}:${min}`;
+            const counterStr = counter ? ` #${counter}` : '';
+            displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
+          }
+        }
+        const tooltipText = `${run_id}\n${dt.full}\nClick to view details`;
+
+        // Build metric cells
+        const metricCells = metrics.map(metric => {
+          const score = metric_averages[metric];
+          if (score === undefined || score === null) {
+            return `<div class="chart-metric-cell"><span class="metric-na">—</span></div>`;
+          }
           const pct = score * 100;
-          const successClass = getSuccessClass(score);
-          const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
           const barWidth = Math.max(pct, 2);
-          const runsLabel = runs === 1 ? '1 run' : `${runs} runs`;
-          const latencyStr = latency > 0 ? formatLatency(latency) : '—';
-
           return `
-            <div class="chart-bar-row">
-              <span class="chart-bar-label" title="${model}">${model}</span>
-              <div class="chart-bar-container">
-                <div class="chart-bar-track">
-                  <div class="chart-bar-fill animated" data-model-idx="${modelIdx}" style="width:${barWidth}%">
-                    <span class="chart-bar-pct">${pct.toFixed(1)}%</span>
-                  </div>
+            <div class="chart-metric-cell">
+              <div class="chart-mini-bar-track">
+                <div class="chart-mini-bar-fill" data-model-idx="${modelIdx}" style="width:${barWidth}%">
+                  <span class="chart-mini-bar-pct">${pct.toFixed(1)}%</span>
                 </div>
-                <span class="chart-bar-latency" title="Avg latency">${latencyStr}</span>
-                <span class="chart-bar-runs" title="${runsLabel}">×${runs}</span>
               </div>
             </div>
           `;
         }).join('');
 
         return `
-          <div class="metric-section">
-            <div class="metric-section-header">${metric}</div>
-            <div class="chart-bars">
-              ${barsHtml}
-            </div>
+          <div class="chart-table-row">
+            <span class="chart-bar-label clickable-run ${isMultiRun ? 'multi-run' : ''}"
+                  data-file="${file_path}"
+                  title="${tooltipText}">${displayHtml}</span>
+            ${metricCells}
+            <span class="chart-latency-cell">${latencyStr}</span>
           </div>
         `;
       }).join('');
+
+      const metricChartsHtml = `
+        <div class="chart-table" data-card-id="${cardId}">
+          <div class="chart-table-header">
+            <span class="chart-col-header-run">Run</span>
+            ${headerCells}
+            <span class="chart-col-header-latency sortable-col ${latencyActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${latencyArrow}</span>
+          </div>
+          <div class="chart-table-body">
+            ${rowsHtml}
+          </div>
+        </div>
+      `;
 
       return `
         <div class="chart-card">
@@ -605,6 +711,39 @@
         </div>
       `;
     }).join('');
+
+    // Wire up click events for run labels
+    gridEl.querySelectorAll('.chart-bar-label.clickable-run').forEach(label => {
+      label.addEventListener('click', (e) => {
+        const target = e.target.closest('.chart-bar-label');
+        const filePath = target?.dataset.file;
+        if (filePath) {
+          // Navigate to run detail page
+          window.location.href = `/run/${encodeURIComponent(filePath)}`;
+        }
+      });
+    });
+
+    // Wire up sortable column headers
+    gridEl.querySelectorAll('.sortable-col').forEach(header => {
+      header.addEventListener('click', (e) => {
+        const cardId = e.target.dataset.card;
+        const sortKey = e.target.dataset.sort;
+        if (!cardId || !sortKey) return;
+
+        const currentSort = state.chartSortState[cardId] || { key: sortKey, dir: 'desc' };
+        if (currentSort.key === sortKey) {
+          // Toggle direction
+          currentSort.dir = currentSort.dir === 'desc' ? 'asc' : 'desc';
+        } else {
+          // New column, default to desc
+          currentSort.key = sortKey;
+          currentSort.dir = 'desc';
+        }
+        state.chartSortState[cardId] = currentSort;
+        renderChartsView();
+      });
+    });
   }
 
   // ═══════════════════════════════════════════════════
@@ -701,7 +840,6 @@
     tbody.innerHTML = runs.map((run, idx) => {
       const dt = formatDate(run.timestamp);
       const successClass = getSuccessClass(run.success_rate);
-      const statusClass = run.error_count > 0 ? 'warn' : 'ok';
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
@@ -723,13 +861,13 @@
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}">
           <td class="col-select" onclick="event.stopPropagation()">
-            <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
-          </td>
-          <td class="col-status">
-            <span class="status-dot ${statusClass}" title="${run.error_count} errors"></span>
+            <label class="custom-checkbox">
+              <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
+              <span class="checkmark"></span>
+            </label>
           </td>
           <td class="col-run">
-            <span class="run-id" title="${run.run_id}">${truncateText(run.run_id, 40)}</span>
+            <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
             ${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}
           </td>
           <td class="col-task">
@@ -738,14 +876,11 @@
           <td class="col-model">
             <span class="tag model" title="${run.model_name}">
               <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(run.model_name) % CHART_COLORS.length]}"></span>
-              ${truncateText(run.model_name, 30)}
+              ${stripModelProvider(run.model_name)}
             </span>
           </td>
           <td class="col-dataset">
             <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
-          </td>
-          <td class="col-items">
-            <span class="items-count">${run.total_items}</span>
           </td>
           <td class="col-success">
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
@@ -856,12 +991,12 @@
     return `
         <div class="grid-card ${isSelected ? 'selected' : ''}" data-file="${encodeURIComponent(run.file_path)}">
           <div class="grid-card-header">
-            <span class="grid-card-title">${run.run_id}</span>
+            <span class="grid-card-title" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
             <span class="grid-card-success ${successClass}">${formatPercent(run.success_rate)}</span>
           </div>
           <div class="grid-card-meta">
             <span class="tag task">${run.task_name}</span>
-            <span class="tag model">${run.model_name}</span>
+            <span class="tag model" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
         </div>
           <div class="grid-card-bar">
             <div class="segment success" style="width:${successPct}%"></div>
@@ -921,7 +1056,7 @@
                   <span class="timeline-time">${dt.time}</span>
                   <div class="timeline-info">
                     <span class="tag task">${run.task_name}</span>
-                    <span class="tag model">${run.model_name}</span>
+                    <span class="tag model" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
                     <span style="color:var(--text-muted);font-size:11px;">${run.total_items} items</span>
                   </div>
                   <span class="timeline-success ${successClass}">${formatPercent(run.success_rate)}</span>
@@ -949,7 +1084,7 @@
     const selected = state.selectedRuns.size;
 
     let filterText = 'Showing all runs';
-    if (state.searchQuery || state.quickFilter !== 'all') {
+    if (state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus) {
       filterText = `Showing ${filtered} of ${total} runs`;
     }
 
@@ -1087,8 +1222,12 @@
 
     const mvs = state.modelsViewState;
 
+    // Use global filters for task and dataset
+    const selectedTask = state.filterTask;
+    const selectedDataset = state.filterDataset;
+
     // If no task+dataset selected, show empty state
-    if (!mvs.selectedTask || !mvs.selectedDataset) {
+    if (!selectedTask || !selectedDataset) {
       if (modelsEmpty) modelsEmpty.style.display = 'flex';
       if (modelsGrid) modelsGrid.innerHTML = '';
       if (modelsRanking) modelsRanking.style.display = 'none';
@@ -1099,7 +1238,7 @@
 
     // Get runs matching task+dataset
     const matchingRuns = state.flatRuns.filter(r =>
-      r.task_name === mvs.selectedTask && r.dataset_name === mvs.selectedDataset
+      r.task_name === selectedTask && r.dataset_name === selectedDataset
     );
 
     if (matchingRuns.length === 0) {
@@ -1168,28 +1307,14 @@
   }
 
   function populateModelsViewDropdowns() {
-    const taskSelect = el('models-task-select');
-    const datasetSelect = el('models-dataset-select');
     const metricSelect = el('models-metric-select');
     const kInput = el('models-k-input');
 
-    if (!taskSelect || !datasetSelect || !metricSelect) return;
+    if (!metricSelect) return;
 
-    // Get unique tasks
-    const tasks = [...new Set(state.flatRuns.map(r => r.task_name))].sort();
-
-    // Preserve current selection
-    const currentTask = state.modelsViewState.selectedTask;
-    taskSelect.innerHTML = '<option value="">Select a task...</option>' +
-      tasks.map(t => `<option value="${t}" ${t === currentTask ? 'selected' : ''}>${t}</option>`).join('');
-
-    // Get datasets for selected task
-    const datasetsForTask = currentTask
-      ? [...new Set(state.flatRuns.filter(r => r.task_name === currentTask).map(r => r.dataset_name))].sort()
-      : [];
-    const currentDataset = state.modelsViewState.selectedDataset;
-    datasetSelect.innerHTML = '<option value="">Select a dataset...</option>' +
-      datasetsForTask.map(d => `<option value="${d}" ${d === currentDataset ? 'selected' : ''}>${d}</option>`).join('');
+    // Use global filters for task and dataset
+    const currentTask = state.filterTask;
+    const currentDataset = state.filterDataset;
 
     // Get metrics for selected task+dataset
     const runsForCombo = currentTask && currentDataset
@@ -1206,8 +1331,8 @@
     metricSelect.innerHTML = '<option value="">Select a metric...</option>' +
       metrics.map(m => `<option value="${m}" ${m === currentMetric ? 'selected' : ''}>${m}</option>`).join('');
 
-    // Auto-select first metric if none selected
-    if (!currentMetric && metrics.length > 0) {
+    // Auto-select first metric if none selected or current metric not in list
+    if ((!currentMetric || !metrics.includes(currentMetric)) && metrics.length > 0) {
       state.modelsViewState.selectedMetric = metrics[0];
       metricSelect.value = metrics[0];
     }
@@ -1253,6 +1378,10 @@
   }
 
   function calculateModelStatsFromItems(runsData, metricName, threshold, isBoolean) {
+    // Get run names before delegating to shared function
+    const runNames = (runsData || []).map((r, i) => r?.run?.run_name || `Run ${i + 1}`);
+    const K = runsData?.length || 0;
+
     if (!runsData || runsData.length === 0) {
       return {
         passAtK: 0, passHatK: 0, maxAtK: 0, stability: 0, avgScore: 0, avgLatency: 0,
@@ -1260,117 +1389,32 @@
       };
     }
 
-    const K = runsData.length;
     const effectiveThreshold = isBoolean ? 0.9999 : threshold;
 
-    // Get run names
-    const runNames = runsData.map((r, i) => r?.run?.run_name || `Run ${i + 1}`);
-
-    // Get metric index for each run
-    function getMetricIndex(runData) {
-      const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
-      return metricNames.indexOf(metricName);
-    }
-
-    // Get max items across all runs
-    const maxItems = Math.max(...runsData.map(r => (r?.snapshot?.rows || []).length));
-
-    if (maxItems === 0) {
-      return {
-        passAtK: 0, passHatK: 0, maxAtK: 0, stability: 0, avgScore: 0, avgLatency: 0,
-        totalItems: 0, K, correctDistribution: new Array(K + 1).fill(0), runNames
-      };
-    }
-
-    let passAtKCount = 0;  // Items where at least one run passed
-    let passHatKCount = 0; // Items where all runs passed
-    let stabilityCount = 0; // Items where all runs got same score
-    let maxScoreSum = 0;
-    let totalScoreSum = 0;
-    let totalScoreCount = 0;
-    let totalLatencySum = 0;
-    let totalLatencyCount = 0;
-    let itemsWithData = 0;
-
-    // Distribution: index = number of runs that passed, value = count of items
-    const correctDistribution = new Array(K + 1).fill(0);
-
-    // Iterate through each item index
-    for (let i = 0; i < maxItems; i++) {
-      const scores = [];
-
-      // Get score for this item from each run
-      for (const runData of runsData) {
-        const rows = runData?.snapshot?.rows || [];
-        // Find row by index
-        const row = rows.find(r => r.index === i) || rows[i];
-        if (!row) continue;
-
-        const metricIdx = getMetricIndex(runData);
-        if (metricIdx < 0) continue;
-
-        // metric_values is an array, indexed by metric position
-        const metricValues = row?.metric_values || [];
-        const metricValue = metricValues[metricIdx];
-
-        if (metricValue !== undefined && metricValue !== null) {
-          const score = parseFloat(metricValue);
-          if (!isNaN(score)) {
-            scores.push(score);
-            totalScoreSum += score;
-            totalScoreCount++;
-          }
-        }
-
-        // Collect latency
-        const latency = row?.latency_ms;
-        if (latency && latency > 0) {
-          totalLatencySum += latency;
-          totalLatencyCount++;
-        }
-      }
-
-      if (scores.length === 0) continue;
-      itemsWithData++;
-
-      // Calculate item-level stats
-      const maxScore = Math.max(...scores);
-      const minScore = Math.min(...scores);
-      const passingScores = scores.filter(s => s >= effectiveThreshold);
-      const numCorrect = passingScores.length;
-
-      // Update distribution
-      correctDistribution[numCorrect]++;
-
-      // Pass@K: at least one run passed
-      if (numCorrect > 0) passAtKCount++;
-
-      // Pass^K: all runs passed (all runs that have data for this item)
-      if (numCorrect === scores.length) passHatKCount++;
-
-      // Stability: all runs got same score
-      if (scores.length > 1 && Math.abs(maxScore - minScore) < 0.0001) {
-        stabilityCount++;
-      } else if (scores.length === 1) {
-        stabilityCount++; // Single run is stable by definition
-      }
-
-      // Max@K sum
-      maxScoreSum += maxScore;
-    }
-
-    // Calculate final stats
-    const totalItems = itemsWithData;
-    const passAtK = totalItems > 0 ? passAtKCount / totalItems : 0;
-    const passHatK = totalItems > 0 ? passHatKCount / totalItems : 0;
-    const maxAtK = totalItems > 0 ? maxScoreSum / totalItems : 0;
-    const stability = totalItems > 0 ? stabilityCount / totalItems : 0;
-    const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
-    const avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
+    // Use shared metrics calculation
+    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+      runsData,
+      metricName,
+      threshold: effectiveThreshold,
+      getMetricIndex: (runData) => {
+        const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
+        return metricNames.indexOf(metricName);
+      },
+      getItemId: (row) => row.item_id || String(row.index),
+      trackDistribution: true
+    });
 
     return {
-      passAtK, passHatK, maxAtK, stability, avgScore, avgLatency,
-      totalItems, K, correctDistribution, runNames
+      passAtK: metrics.passAtK,
+      passHatK: metrics.passHatK,
+      maxAtK: metrics.maxAtK,
+      stability: metrics.stability,
+      avgScore: metrics.avgScore,
+      avgLatency: metrics.avgLatency,
+      totalItems: metrics.totalItems,
+      K: metrics.K,
+      correctDistribution: metrics.correctDistribution || new Array(K + 1).fill(0),
+      runNames
     };
   }
 
@@ -1393,10 +1437,10 @@
     }
     state.modelsViewState.metricIsBoolean = allBoolean;
 
-    // Show/hide threshold control
+    // Show/hide threshold control (inline)
     const thresholdRow = el('models-threshold-row');
     if (thresholdRow) {
-      thresholdRow.style.display = allBoolean ? 'none' : 'flex';
+      thresholdRow.style.display = allBoolean ? 'none' : 'inline-flex';
     }
   }
 
@@ -1473,14 +1517,15 @@
       return `
         <div class="model-card" data-model="${model}">
           <div class="model-card-header">
-            <div class="model-card-title">
+            <div class="model-card-title" title="${model}">
               <span class="model-color-dot" style="background: ${color}"></span>
-              <span class="model-name">${model}</span>
+              <span class="model-name">${stripModelProvider(model)}</span>
             </div>
             <div class="model-card-runs">
               <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
               ${hasWarning ? `<span class="runs-warning" title="Only ${stats.totalAvailable} runs available (requested ${globalK})">⚠️</span>` : ''}
               <button class="customize-btn" data-model="${model}" title="Customize run selection">Edit</button>
+              ${K > 1 ? `<button class="publish-model-btn" data-model="${model}" title="Publish aggregate results to Confluence">Publish</button>` : ''}
             </div>
           </div>
 
@@ -1537,6 +1582,25 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         openRunSelectionModal(btn.dataset.model, runsByModel[btn.dataset.model]);
+      });
+    });
+
+    container.querySelectorAll('.publish-model-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const model = btn.dataset.model;
+        const stats = mvs.modelStats[model];
+        if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
+          // Get full run objects for the selected paths
+          const selectedRuns = state.flatRuns.filter(r => stats.selectedPaths.includes(r.file_path));
+          if (selectedRuns.length >= 2) {
+            openAggregatePublishModal(selectedRuns);
+          } else {
+            showToast('error', 'Not Enough Runs', 'Need at least 2 runs to publish aggregate results');
+          }
+        } else {
+          showToast('error', 'Not Enough Runs', 'Need at least 2 runs to publish aggregate results');
+        }
       });
     });
 
@@ -1606,7 +1670,8 @@
     const currentSelection = mvs.modelRunSelections[modelName] || [];
     const globalK = parseInt(mvs.globalK) || 5;
 
-    modelNameEl.textContent = modelName;
+    modelNameEl.textContent = stripModelProvider(modelName);
+    modelNameEl.title = modelName;
 
     // Track selection count
     let selectionCount = 0;
@@ -1627,11 +1692,12 @@
           const score = run.metric_averages?.[metric];
           const scoreClass = score !== undefined ? getSuccessClass(score) : '';
 
+          const isPublished = state.publishedRuns.has(run.run_id);
           return `
             <label class="run-selection-item ${isSelected ? 'selected' : ''}">
               <input type="checkbox" data-file="${run.file_path}" ${isSelected ? 'checked' : ''} />
               <div class="run-info">
-                <div class="run-name">${run.run_id}</div>
+                <div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}</div>
                 <div class="run-date">${dt.full}</div>
               </div>
               ${score !== undefined ? `<span class="run-score ${scoreClass}">${formatPercent(score)}</span>` : ''}
@@ -1981,10 +2047,10 @@
           <span>All Models</span>
         </div>
         ${models.map((m, idx) => `
-          <div class="multi-select-option" data-value="${m}" style="${searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? 'display:none' : ''}">
+          <div class="multi-select-option" data-value="${m}" title="${m}" style="${searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? 'display:none' : ''}">
             <span class="model-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
             <input type="checkbox" ${isShowingNone ? '' : (isShowingAll || state.filterModels.has(m) ? 'checked' : '')} />
-            <span>${m}</span>
+            <span>${stripModelProvider(m)}</span>
           </div>
         `).join('')}
       `;
@@ -2084,6 +2150,9 @@
   el('filter-task')?.addEventListener('change', (e) => {
     state.filterTask = e.target.value;
     state.focusedIndex = -1;
+    // Reset Models view state when task changes
+    state.modelsViewState.selectedMetric = '';
+    state.modelsViewState.modelRunSelections = {};
     render();
   });
 
@@ -2105,6 +2174,15 @@
 
   el('filter-dataset')?.addEventListener('change', (e) => {
     state.filterDataset = e.target.value;
+    state.focusedIndex = -1;
+    // Reset Models view state when dataset changes
+    state.modelsViewState.selectedMetric = '';
+    state.modelsViewState.modelRunSelections = {};
+    render();
+  });
+
+  el('filter-publish-status')?.addEventListener('change', (e) => {
+    state.filterPublishStatus = e.target.value;
     state.focusedIndex = -1;
     render();
   });
@@ -2130,22 +2208,7 @@
     });
   });
 
-  // Models view dropdowns
-  el('models-task-select')?.addEventListener('change', (e) => {
-    state.modelsViewState.selectedTask = e.target.value;
-    state.modelsViewState.selectedDataset = '';
-    state.modelsViewState.selectedMetric = '';
-    state.modelsViewState.modelRunSelections = {};  // Clear custom selections
-    render();
-  });
-
-  el('models-dataset-select')?.addEventListener('change', (e) => {
-    state.modelsViewState.selectedDataset = e.target.value;
-    state.modelsViewState.selectedMetric = '';
-    state.modelsViewState.modelRunSelections = {};  // Clear custom selections
-    render();
-  });
-
+  // Models view dropdowns (metric only - task/dataset use global filters)
   el('models-metric-select')?.addEventListener('change', (e) => {
     state.modelsViewState.selectedMetric = e.target.value;
     render();
@@ -2365,7 +2428,9 @@
     try {
       const response = await fetch('/api/confluence/published');
       const data = await response.json();
-      publishState.publishedRuns = new Set(data.run_ids || []);
+      const runIds = new Set(data.run_ids || []);
+      publishState.publishedRuns = runIds;
+      state.publishedRuns = runIds;  // Sync to main state for filtering
     } catch (err) {
       console.error('Failed to fetch published runs:', err);
     }
@@ -2476,19 +2541,19 @@
 
     el('publish-run-info').innerHTML = `
       <div class="run-header">
-        <span class="run-id">${run.run_id}</span>
+        <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
         <span class="run-success ${successClass}">${formatPercent(run.success_rate)}</span>
       </div>
       <div class="run-meta">
-        <span class="tag">${run.model_name}</span>
+        <span class="tag" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
         <span class="tag">${run.dataset_name}</span>
         <span>${run.total_items} items</span>
       </div>
       ${metricsHtml ? `<div class="run-metrics">${metricsHtml}</div>` : ''}
     `;
 
-    // Reset form
-    el('publish-run-name').value = run.run_id;  // Default to original run_id but editable
+    // Reset form - use stripped version for default name
+    el('publish-run-name').value = stripProviderFromRunId(run.run_id);
     el('publish-project').value = '';
     el('publish-task').value = '';
     el('publish-task').disabled = true;
@@ -2526,6 +2591,7 @@
     runs: [],
     thresholds: {},  // metric_name -> threshold (0-1)
     commonMetrics: [],
+    runsData: null,  // Cached run data from compare API for preview and publish
   };
 
   function validateAggregateRuns(runs) {
@@ -2573,7 +2639,9 @@
   }
 
   function calculateAggregateMetricsFromItems(runsData, metric, threshold) {
-    // Calculate metrics per-item across K runs (same logic as Models view)
+    // Use shared metrics calculation
+    const K = runsData?.length || 0;
+
     if (!runsData || runsData.length === 0) {
       return {
         metric_name: metric,
@@ -2590,98 +2658,16 @@
       };
     }
 
-    const K = runsData.length;
-
-    // Get metric index for each run
-    function getMetricIndex(runData) {
-      const metricNames = runData?.run?.metric_names || [];
-      return metricNames.indexOf(metric);
-    }
-
-    // Get max items across all runs
-    const maxItems = Math.max(...runsData.map(r => (r?.snapshot?.rows || []).length));
-
-    if (maxItems === 0) {
-      return {
-        metric_name: metric,
-        threshold: threshold,
-        pass_at_k: 0,
-        pass_k: 0,
-        max_at_k: 0,
-        stability: 0,
-        avg_score: 0,
-        min_score: 0,
-        max_score: 0,
-        runs_passed: 0,
-        total_runs: K,
-      };
-    }
-
-    let passAtKCount = 0;
-    let passHatKCount = 0;
-    let stabilityCount = 0;
-    let maxScoreSum = 0;
-    let totalScoreSum = 0;
-    let totalScoreCount = 0;
-    let itemsWithData = 0;
-
-    // Process each item
-    for (let i = 0; i < maxItems; i++) {
-      const scores = [];
-
-      // Get score for this item from each run
-      for (const runData of runsData) {
-        const rows = runData?.snapshot?.rows || [];
-        const row = rows.find(r => r.index === i) || rows[i];
-        if (!row) continue;
-
-        const metricIdx = getMetricIndex(runData);
-        if (metricIdx < 0) continue;
-
-        const metricValues = row?.metric_values || [];
-        const metricValue = metricValues[metricIdx];
-
-        if (metricValue !== undefined && metricValue !== null) {
-          const score = parseFloat(metricValue);
-          if (!isNaN(score)) {
-            scores.push(score);
-            totalScoreSum += score;
-            totalScoreCount++;
-          }
-        }
-      }
-
-      if (scores.length === 0) continue;
-      itemsWithData++;
-
-      // Calculate item-level stats
-      const maxScore = Math.max(...scores);
-      const minScore = Math.min(...scores);
-      const passingScores = scores.filter(s => s >= threshold);
-      const numCorrect = passingScores.length;
-
-      // Max@K: track the best score for this item across all runs
-      maxScoreSum += maxScore;
-
-      // Pass@K: at least one run passed for this item
-      if (numCorrect > 0) passAtKCount++;
-
-      // Pass^K: ALL runs passed for this item
-      const allCorrectItem = numCorrect === scores.length && scores.length > 0;
-      if (allCorrectItem) passHatKCount++;
-
-      // Stability: all runs have the same score for this item
-      const allSameScore = scores.every(s => Math.abs(s - scores[0]) < 0.0001);
-      if (allSameScore) stabilityCount++;
-    }
-
-    // Calculate final stats
-    const totalItems = itemsWithData;
-    const passAtK = totalItems > 0 ? passAtKCount / totalItems : 0;
-    const passK = totalItems > 0 ? passHatKCount / totalItems : 0;
-    const maxAtK = totalItems > 0 ? maxScoreSum / totalItems : 0;
-    const stability = totalItems > 0 ? stabilityCount / totalItems : 0;
-    const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
+    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+      runsData,
+      metricName: metric,
+      threshold,
+      getMetricIndex: (runData) => {
+        const metricNames = runData?.run?.metric_names || [];
+        return metricNames.indexOf(metric);
+      },
+      getItemId: (row) => row.item_id || String(row.index)
+    });
 
     // Calculate run-level stats for min/max/runs_passed (for display)
     const runAvgScores = runsData.map(r => {
@@ -2693,11 +2679,11 @@
     return {
       metric_name: metric,
       threshold: threshold,
-      pass_at_k: passAtK,
-      pass_k: passK,
-      max_at_k: maxAtK,
-      stability: stability,
-      avg_score: avgScore,
+      pass_at_k: metrics.passAtK,
+      pass_k: metrics.passHatK,
+      max_at_k: metrics.maxAtK,
+      stability: metrics.stability,
+      avg_score: metrics.avgScore,
       min_score: Math.min(...runAvgScores),
       max_score: Math.max(...runAvgScores),
       runs_passed: runsPassed,
@@ -2719,6 +2705,117 @@
     }
   }
 
+  // Load metrics preview when modal opens
+  async function loadMetricsPreview(runs) {
+    const previewTable = el('metrics-preview-table');
+    const loadingDiv = el('metrics-preview-loading');
+
+    // Show loading
+    previewTable.innerHTML = '';
+    loadingDiv.style.display = 'block';
+
+    // Fetch detailed run data
+    const filePaths = runs.map(r => r.file_path);
+    const runsData = await fetchRunsDataForAggregate(filePaths);
+
+    // Store for later use
+    aggregatePublishState.runsData = runsData;
+
+    loadingDiv.style.display = 'none';
+
+    if (runsData.length === 0) {
+      previewTable.innerHTML = '<p style="padding: 1rem; color: var(--text-muted);">Failed to load run data for preview.</p>';
+      return;
+    }
+
+    // Render the preview
+    updateMetricsPreview();
+  }
+
+  // Update metrics preview table based on current thresholds
+  function updateMetricsPreview() {
+    const previewTable = el('metrics-preview-table');
+    const runsData = aggregatePublishState.runsData;
+    const metrics = aggregatePublishState.commonMetrics;
+    const K = aggregatePublishState.runs.length;
+
+    if (!runsData || runsData.length === 0 || metrics.length === 0) {
+      previewTable.innerHTML = '<p style="padding: 1rem; color: var(--text-muted);">No metrics data available.</p>';
+      return;
+    }
+
+    // Calculate metrics for each metric name
+    const rows = metrics.map(metricName => {
+      const threshold = aggregatePublishState.thresholds[metricName] || 0.8;
+      const result = calculateAggregateMetricsFromItems(runsData, metricName, threshold);
+      return {
+        name: metricName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        threshold: threshold,
+        ...result
+      };
+    });
+
+    // Calculate average latency across all runs
+    let totalLatency = 0;
+    let latencyCount = 0;
+    for (const run of aggregatePublishState.runs) {
+      if (run.avg_latency_ms > 0) {
+        totalLatency += run.avg_latency_ms;
+        latencyCount++;
+      }
+    }
+    const avgLatency = latencyCount > 0 ? totalLatency / latencyCount : 0;
+
+    // Format latency
+    const formatLat = (ms) => {
+      if (!ms || ms <= 0) return '—';
+      if (ms >= 60000) return `${Math.floor(ms / 60000)}m ${((ms % 60000) / 1000).toFixed(0)}s`;
+      if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+      return `${ms.toFixed(0)}ms`;
+    };
+
+    // Get score color class
+    const getColorClass = (score) => {
+      if (score >= 0.8) return 'score-high';
+      if (score >= 0.5) return 'score-medium';
+      return 'score-low';
+    };
+
+    // Render table
+    previewTable.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Threshold</th>
+            <th>Pass@${K}</th>
+            <th>Pass^${K}</th>
+            <th>Max@${K}</th>
+            <th>Stability</th>
+            <th>Avg Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td>${r.name}</td>
+              <td>≥${(r.threshold * 100).toFixed(0)}%</td>
+              <td class="${getColorClass(r.pass_at_k)}">${(r.pass_at_k * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.pass_k)}">${(r.pass_k * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.max_at_k)}">${(r.max_at_k * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.stability)}">${(r.stability * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.avg_score)}">${(r.avg_score * 100).toFixed(1)}%</td>
+            </tr>
+          `).join('')}
+          <tr style="background: var(--bg-active);">
+            <td colspan="6" style="text-align: right; font-weight: 500;">Avg Latency:</td>
+            <td>${formatLat(avgLatency)}</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+
   function openAggregatePublishModal(runs) {
     // Validate runs
     const validation = validateAggregateRuns(runs);
@@ -2738,8 +2835,9 @@
       el('confirm-aggregate-publish-btn').disabled = false;
     }
 
-    // Store runs
+    // Store runs and reset cached data
     aggregatePublishState.runs = runs;
+    aggregatePublishState.runsData = null;  // Reset to force fresh fetch for preview
 
     // Get common metrics
     const commonMetrics = getCommonMetrics(runs);
@@ -2754,9 +2852,9 @@
     const first = runs[0];
     const k = runs.length;
 
-    // Generate default run name
+    // Generate default run name (use stripped model name)
     const timestamp = new Date().toISOString().slice(2, 16).replace(/[-T:]/g, '').slice(0, 11);
-    const defaultRunName = `${first.model_name}-K${k}-${timestamp}`;
+    const defaultRunName = `${stripModelProvider(first.model_name)}-K${k}-${timestamp}`;
     el('agg-publish-run-name').value = defaultRunName;
 
     // Populate run info
@@ -2771,7 +2869,7 @@
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">Model</div>
-          <div class="info-value">${first.model_name}</div>
+          <div class="info-value" title="${first.model_name}">${stripModelProvider(first.model_name)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Dataset</div>
@@ -2811,9 +2909,14 @@
           const value = parseInt(e.target.value);
           aggregatePublishState.thresholds[metric] = value / 100;
           slidersContainer.querySelector(`.threshold-value[data-metric="${metric}"]`).textContent = `${value}%`;
+          // Update preview when threshold changes
+          updateMetricsPreview();
         });
       });
     }
+
+    // Load and show metrics preview
+    loadMetricsPreview(runs);
 
     // Reset form
     el('agg-publish-project').value = '';
@@ -2933,20 +3036,22 @@
 
     const btn = el('confirm-aggregate-publish-btn');
     btn.disabled = true;
-    btn.textContent = 'Loading data...';
-
-    // Fetch detailed run data to calculate metrics properly
-    const filePaths = runs.map(r => r.file_path);
-    const runsData = await fetchRunsDataForAggregate(filePaths);
-
-    if (runsData.length === 0) {
-      showToast('error', 'Load Failed', 'Failed to load run data for metric calculation');
-      btn.disabled = false;
-      btn.textContent = `Publish ${runs.length} Runs`;
-      return;
-    }
-
     btn.textContent = 'Publishing...';
+
+    // Reuse runs data already fetched for preview (or fetch if not available)
+    let runsData = aggregatePublishState.runsData;
+    if (!runsData || runsData.length === 0) {
+      btn.textContent = 'Loading data...';
+      const filePaths = runs.map(r => r.file_path);
+      runsData = await fetchRunsDataForAggregate(filePaths);
+      if (runsData.length === 0) {
+        showToast('error', 'Load Failed', 'Failed to load run data for metric calculation');
+        btn.disabled = false;
+        btn.textContent = `Publish ${runs.length} Runs`;
+        return;
+      }
+      btn.textContent = 'Publishing...';
+    }
 
     // Calculate aggregate metrics for each metric using item-level data
     const metricResults = aggregatePublishState.commonMetrics.map(metric => {
@@ -2994,6 +3099,7 @@
         el('aggregate-publish-modal').style.display = 'none';
         // Mark aggregate run as published
         publishState.publishedRuns.add(runName);
+        state.publishedRuns.add(runName);  // Sync to main state
         // Show success toast
         showToast('success', 'Published Successfully', `Aggregate results for ${runs.length} runs published to Confluence`);
         // Clear selection and re-render
@@ -3075,6 +3181,7 @@
         el('publish-modal').style.display = 'none';
         // Mark run as published (use original run_id for tracking)
         publishState.publishedRuns.add(run.run_id);
+        state.publishedRuns.add(run.run_id);  // Sync to main state
         // Show success toast
         showToast('success', 'Published Successfully', `Run "${runName}" has been published to Confluence`);
         // Clear selection and re-render to show published badge

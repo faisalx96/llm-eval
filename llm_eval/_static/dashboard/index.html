@@ -78,12 +78,17 @@
       <select id="filter-task" class="filter-select">
         <option value="">All Tasks</option>
       </select>
+      <select id="filter-dataset" class="filter-select">
+        <option value="">All Datasets</option>
+      </select>
       <div class="multi-select-wrapper" id="model-filter-wrapper">
         <button class="multi-select-btn" id="filter-model-btn">All Models</button>
         <div class="multi-select-dropdown" id="filter-model-dropdown"></div>
       </div>
-      <select id="filter-dataset" class="filter-select">
-        <option value="">All Datasets</option>
+      <select id="filter-publish-status" class="filter-select">
+        <option value="">All Status</option>
+        <option value="published">Published</option>
+        <option value="unpublished">Unpublished</option>
       </select>
     </div>
   </div>
@@ -141,32 +146,25 @@
         </div>
         <div class="models-controls">
           <div class="models-filter-row">
-            <label class="filter-label">Task:</label>
-            <select id="models-task-select" class="filter-select">
-              <option value="">Select a task...</option>
-            </select>
-            <label class="filter-label">Dataset:</label>
-            <select id="models-dataset-select" class="filter-select">
-              <option value="">Select a dataset...</option>
-            </select>
             <label class="filter-label">Metric:</label>
             <select id="models-metric-select" class="filter-select">
               <option value="">Select a metric...</option>
             </select>
             <label class="filter-label">Runs per model:</label>
             <input type="number" id="models-k-input" class="filter-input-k" min="1" max="100" value="5" placeholder="5">
-          </div>
-          <div class="models-threshold-row" id="models-threshold-row" style="display:none;">
-            <label class="threshold-label">Pass if ≥</label>
-            <input type="range" id="models-threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-            <span class="threshold-value" id="models-threshold-value">80%</span>
+            <span class="models-threshold-inline" id="models-threshold-row" style="display:none;">
+              <label class="filter-label">Pass ≥</label>
+              <input type="range" id="models-threshold-slider" class="threshold-slider-inline" min="0" max="100" step="5" value="80">
+              <span class="threshold-value" id="models-threshold-value">80%</span>
+              <span class="stat-info-icon threshold-info">i<span class="stat-info-tooltip">Score threshold for Pass@K and Pass^K metrics. Items scoring at or above this threshold are considered "correct".</span></span>
+            </span>
           </div>
         </div>
       </div>
       <div class="models-empty" id="models-empty" style="display:none;">
         <div class="empty-icon">⊞</div>
         <h3>Select a Task and Dataset</h3>
-        <p>Choose a task and dataset from the dropdowns above to compare models</p>
+        <p>Use the filters above to select a task and dataset to compare models</p>
       </div>
       <div class="models-grid" id="models-grid"></div>
       <div class="models-ranking" id="models-ranking" style="display:none;"></div>
@@ -177,13 +175,16 @@
       <table class="runs-table">
         <thead>
           <tr id="table-header-row">
-            <th class="col-select"><input type="checkbox" id="select-all" title="Select all"/></th>
-            <th class="col-status sortable" data-sort="status" title="Error status"></th>
+            <th class="col-select">
+              <label class="custom-checkbox">
+                <input type="checkbox" id="select-all" title="Select all"/>
+                <span class="checkmark"></span>
+              </label>
+            </th>
             <th class="col-run sortable" data-sort="run">RUN ID</th>
             <th class="col-task sortable" data-sort="task">TASK</th>
             <th class="col-model sortable" data-sort="model">MODEL</th>
             <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
-            <th class="col-items sortable" data-sort="items">ITEMS</th>
             <th class="col-success sortable" data-sort="success">SUCCESS</th>
             <!-- Dynamic metric columns inserted here by JS -->
             <th class="col-latency sortable" data-sort="latency">LATENCY</th>
@@ -355,6 +356,18 @@
           </div>
         </div>
 
+        <!-- Metrics preview -->
+        <div class="aggregate-metrics-preview" id="aggregate-metrics-preview">
+          <h3>Metrics Preview</h3>
+          <p class="metrics-preview-hint">These aggregate metrics will be published:</p>
+          <div class="metrics-preview-table" id="metrics-preview-table">
+            <!-- Populated by JS -->
+          </div>
+          <div class="metrics-preview-loading" id="metrics-preview-loading" style="display:none;">
+            Loading metrics...
+          </div>
+        </div>
+
         <!-- Publish form -->
         <div class="publish-form">
           <div class="form-group">
@@ -465,6 +478,7 @@
     </div>
   </div>
 
+  <script src="/static/metrics.js"></script>
   <script src="/static/dashboard.js"></script>
 </body>
 </html>

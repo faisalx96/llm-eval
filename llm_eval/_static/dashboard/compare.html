@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM-Eval • Compare Runs</title>
   <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/metrics.js"></script>
   <style>
     /* Compare-specific styles */
     .compare-container {
@@ -97,6 +98,23 @@
       font-size: var(--font-md);
       color: var(--text-primary);
       word-break: break-all;
+    }
+
+    .published-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+      margin-left: var(--space-sm);
+    }
+
+    .published-badge .badge-icon {
+      font-size: 9px;
     }
 
     .run-summary-card .run-meta {
@@ -1127,6 +1145,7 @@
         metricIsBoolean: {},   // Per-metric flag: true if all scores are 0 or 1
         langfuseHost: '',      // Langfuse host URL
         langfuseProjectId: '', // Langfuse project ID
+        publishedRuns: new Set(),  // Track published run IDs
       };
 
       const el = (id) => document.getElementById(id);
@@ -1139,16 +1158,9 @@
         return 'score-1';
       }
 
-      function formatPercent(val) {
-        if (val === null || val === undefined) return '—';
-        return (val * 100).toFixed(1) + '%';
-      }
-
-      function formatLatency(ms) {
-        if (!ms || ms < 1) return '—';
-        if (ms < 1000) return `${Math.round(ms)}ms`;
-        return `${(ms / 1000).toFixed(1)}s`;
-      }
+      // Use shared utilities from metrics.js
+      const formatPercent = window.LLMEvalMetrics.formatPercent;
+      const formatLatency = window.LLMEvalMetrics.formatLatency;
 
       function buildLangfuseTraceUrl(traceId) {
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
@@ -1194,8 +1206,15 @@
         // Fetch comparison data from API
         const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
         try {
-          const response = await fetch('/api/compare?' + params);
-          const data = await response.json();
+          // Fetch both comparison data and published runs in parallel
+          const [compareResponse, publishedResponse] = await Promise.all([
+            fetch('/api/compare?' + params),
+            fetch('/api/confluence/published')
+          ]);
+
+          const data = await compareResponse.json();
+          const publishedData = await publishedResponse.json();
+          state.publishedRuns = new Set(publishedData.run_ids || []);
 
           if (!data.runs || data.runs.length < 2) {
             showEmpty();
@@ -1786,13 +1805,14 @@
           const color = COLORS[idx % COLORS.length];
           const successRate = (stats.completed || 0) / (stats.total || 1);
           const successClass = getSuccessClass(successRate);
+          const isPublished = state.publishedRuns.has(info.run_name);
 
           const canRemove = state.runs.length > 2;
           return `
             <div class="run-summary-card">
               <div class="run-header">
                 <div class="run-color-dot" style="background: ${color}"></div>
-                <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}</div>
+                <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}</div>
                 ${canRemove ? `<button class="remove-run" data-idx="${idx}" title="Remove from comparison">✕</button>` : ''}
               </div>
               <div class="run-meta">
