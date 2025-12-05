@@ -93,8 +93,9 @@ def main():
         dataset="ragbench-100",
         metrics=["correctness", "faithfulness"],  # Use metrics by name from registry
         model=["openai/gpt-oss-120b", "meta-llama/llama-4-maverick", "qwen/qwen3-235b-a22b-2507"],
+        # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={
-            "max_concurrency": 5,
+            "max_concurrency": 10,
             "run_name": "ragbench",
         }
     )

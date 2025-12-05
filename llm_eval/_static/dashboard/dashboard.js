@@ -27,6 +27,17 @@
     chartData: null,  // Aggregated data for charts
     allMetrics: [],   // All unique metric names across runs
     allModels: [],    // All unique model names
+    // Models view state
+    modelsViewState: {
+      selectedTask: '',
+      selectedDataset: '',
+      selectedMetric: '',
+      globalK: 5,
+      threshold: 0.8,
+      metricIsBoolean: false,
+      modelRunSelections: {},  // model_name -> [run_file_paths] (custom selection)
+      modelStats: {},          // model_name -> computed stats
+    },
   };
 
   // Chart color palette - extended for more models
@@ -73,9 +84,11 @@
   }
 
   function getSuccessClass(rate) {
-    if (rate >= 0.9) return 'high';
-    if (rate >= 0.7) return 'mid';
-    return 'low';
+    if (rate >= 0.9) return 'score-5';
+    if (rate >= 0.75) return 'score-4';
+    if (rate >= 0.6) return 'score-3';
+    if (rate >= 0.4) return 'score-2';
+    return 'score-1';
   }
 
   function formatNumber(n) {
@@ -703,6 +716,9 @@
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${pct}%</span></td>`;
       }).join('');
 
+      const isPublished = typeof publishState !== 'undefined' && publishState.publishedRuns.has(run.run_id);
+      const langfuseUrl = run.langfuse_url;
+
       return `
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}">
@@ -714,6 +730,7 @@
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${truncateText(run.run_id, 40)}</span>
+            ${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}
           </td>
           <td class="col-task">
             <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
@@ -744,8 +761,18 @@
             </span>
           </td>
           <td class="col-actions">
-            <a href="#" class="action-link delete-run" title="Delete">
-              <svg class="icon-trash" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            ${langfuseUrl ? `
+              <a href="${langfuseUrl}" target="_blank" class="action-btn langfuse-btn" title="View in Langfuse" onclick="event.stopPropagation()">Langfuse ↗</a>
+            ` : ''}
+            <a href="#" class="action-icon publish-run ${isPublished ? 'published' : ''}" title="${isPublished ? 'Already published' : 'Publish to Confluence'}">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                ${isPublished ?
+                  '<polyline points="20 6 9 17 4 12"></polyline>' :
+                  '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line>'}
+              </svg>
+            </a>
+            <a href="#" class="action-icon delete-run" title="Delete run">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
@@ -777,6 +804,16 @@
       tr.querySelector('.run-id').addEventListener('click', (e) => {
         e.stopPropagation();
         openRun(filePath);
+      });
+
+      tr.querySelector('.publish-run').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Don't open modal if already published
+        const alreadyPublished = typeof publishState !== 'undefined' && publishState.publishedRuns.has(run.run_id);
+        if (!alreadyPublished) {
+          openPublishModal(run);
+        }
       });
 
       tr.querySelector('.delete-run').addEventListener('click', (e) => {
@@ -935,6 +972,16 @@
     const chips = el('compare-chips');
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
 
+    // Hide Langfuse button - it's available in row actions
+    const langfuseBtn = el('langfuse-btn');
+    if (langfuseBtn) langfuseBtn.style.display = 'none';
+
+    // Show Publish button only when more than 1 run is selected
+    const publishBtn = el('publish-selected');
+    if (publishBtn) {
+      publishBtn.style.display = selectedRuns.length > 1 ? 'inline-block' : 'none';
+    }
+
     chips.innerHTML = selectedRuns.map(run => `
       <span class="compare-chip">
         <span>${run.run_id}</span>
@@ -963,6 +1010,7 @@
     const tableView = el('table-view');
     const gridView = el('grid-view');
     const timelineView = el('timeline-view');
+    const modelsView = el('models-view');
 
     if (!state.runs) {
       loading.style.display = 'flex';
@@ -971,6 +1019,7 @@
       tableView.style.display = 'none';
       gridView.style.display = 'none';
       timelineView.style.display = 'none';
+      if (modelsView) modelsView.style.display = 'none';
       return;
     }
 
@@ -984,16 +1033,18 @@
       tableView.style.display = 'none';
       gridView.style.display = 'none';
       timelineView.style.display = 'none';
+      if (modelsView) modelsView.style.display = 'none';
       return;
     }
 
     empty.style.display = 'none';
 
-    // Show current view (Charts or Table/Runs)
+    // Show current view (Charts, Table/Runs, or Models)
     chartsView.style.display = state.currentView === 'charts' ? 'block' : 'none';
     tableView.style.display = state.currentView === 'table' ? 'block' : 'none';
     gridView.style.display = 'none';  // Hidden - using simplified toggle
     timelineView.style.display = 'none';  // Hidden - using simplified toggle
+    if (modelsView) modelsView.style.display = state.currentView === 'models' ? 'block' : 'none';
 
     // Recompute chart data based on filtered runs
     state.chartData = computeChartData(state.filteredRuns);
@@ -1012,11 +1063,635 @@
       case 'timeline':
         renderTimelineView();
         break;
+      case 'models':
+        renderModelsView();
+        break;
     }
 
     renderStatsBar();
     renderStatusBar();
     renderComparePanel();
+  }
+
+  // ═══════════════════════════════════════════════════
+  // RENDERING: MODELS VIEW
+  // ═══════════════════════════════════════════════════
+
+  async function renderModelsView() {
+    const modelsEmpty = el('models-empty');
+    const modelsGrid = el('models-grid');
+    const modelsRanking = el('models-ranking');
+
+    // Populate dropdowns if not already populated
+    populateModelsViewDropdowns();
+
+    const mvs = state.modelsViewState;
+
+    // If no task+dataset selected, show empty state
+    if (!mvs.selectedTask || !mvs.selectedDataset) {
+      if (modelsEmpty) modelsEmpty.style.display = 'flex';
+      if (modelsGrid) modelsGrid.innerHTML = '';
+      if (modelsRanking) modelsRanking.style.display = 'none';
+      return;
+    }
+
+    if (modelsEmpty) modelsEmpty.style.display = 'none';
+
+    // Get runs matching task+dataset
+    const matchingRuns = state.flatRuns.filter(r =>
+      r.task_name === mvs.selectedTask && r.dataset_name === mvs.selectedDataset
+    );
+
+    if (matchingRuns.length === 0) {
+      if (modelsGrid) modelsGrid.innerHTML = '<div class="models-empty"><h3>No runs found</h3><p>No runs match the selected task and dataset</p></div>';
+      if (modelsRanking) modelsRanking.style.display = 'none';
+      return;
+    }
+
+    // Group runs by model
+    const runsByModel = {};
+    for (const run of matchingRuns) {
+      if (!runsByModel[run.model_name]) {
+        runsByModel[run.model_name] = [];
+      }
+      runsByModel[run.model_name].push(run);
+    }
+
+    // Sort runs within each model by date (newest first)
+    for (const model of Object.keys(runsByModel)) {
+      runsByModel[model].sort((a, b) => b._date - a._date);
+    }
+
+    // Select K runs per model
+    const globalK = parseInt(mvs.globalK) || 5;
+    const selectedRunsByModel = {};
+    for (const model of Object.keys(runsByModel)) {
+      const customSelection = mvs.modelRunSelections[model];
+      if (customSelection && customSelection.length > 0) {
+        // Use custom selection, filter to only valid runs
+        const validPaths = new Set(runsByModel[model].map(r => r.file_path));
+        selectedRunsByModel[model] = customSelection
+          .filter(fp => validPaths.has(fp))
+          .slice(0, globalK);
+      } else {
+        // Use most recent K runs
+        selectedRunsByModel[model] = runsByModel[model].slice(0, globalK).map(r => r.file_path);
+      }
+    }
+
+    // Detect if metric is boolean
+    detectModelsViewMetricType(matchingRuns, mvs.selectedMetric);
+
+    // Show loading state
+    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading">Loading run data...</div>';
+
+    // Fetch item-level data for each model and calculate stats
+    mvs.modelStats = {};
+    for (const model of Object.keys(runsByModel)) {
+      const selectedPaths = selectedRunsByModel[model];
+      const selectedRuns = runsByModel[model].filter(r => selectedPaths.includes(r.file_path));
+
+      // Fetch detailed data for this model's runs
+      const detailedData = await fetchModelRunsData(selectedPaths);
+
+      mvs.modelStats[model] = calculateModelStatsFromItems(detailedData, mvs.selectedMetric, mvs.threshold, mvs.metricIsBoolean);
+      mvs.modelStats[model].totalAvailable = runsByModel[model].length;
+      mvs.modelStats[model].selectedCount = selectedRuns.length;
+      mvs.modelStats[model].selectedPaths = selectedPaths;
+    }
+
+    // Render model cards
+    renderModelCards(runsByModel, globalK);
+
+    // Render ranking bar
+    renderModelsRanking();
+  }
+
+  function populateModelsViewDropdowns() {
+    const taskSelect = el('models-task-select');
+    const datasetSelect = el('models-dataset-select');
+    const metricSelect = el('models-metric-select');
+    const kInput = el('models-k-input');
+
+    if (!taskSelect || !datasetSelect || !metricSelect) return;
+
+    // Get unique tasks
+    const tasks = [...new Set(state.flatRuns.map(r => r.task_name))].sort();
+
+    // Preserve current selection
+    const currentTask = state.modelsViewState.selectedTask;
+    taskSelect.innerHTML = '<option value="">Select a task...</option>' +
+      tasks.map(t => `<option value="${t}" ${t === currentTask ? 'selected' : ''}>${t}</option>`).join('');
+
+    // Get datasets for selected task
+    const datasetsForTask = currentTask
+      ? [...new Set(state.flatRuns.filter(r => r.task_name === currentTask).map(r => r.dataset_name))].sort()
+      : [];
+    const currentDataset = state.modelsViewState.selectedDataset;
+    datasetSelect.innerHTML = '<option value="">Select a dataset...</option>' +
+      datasetsForTask.map(d => `<option value="${d}" ${d === currentDataset ? 'selected' : ''}>${d}</option>`).join('');
+
+    // Get metrics for selected task+dataset
+    const runsForCombo = currentTask && currentDataset
+      ? state.flatRuns.filter(r => r.task_name === currentTask && r.dataset_name === currentDataset)
+      : [];
+    const metricsSet = new Set();
+    for (const run of runsForCombo) {
+      if (run.metrics) {
+        run.metrics.forEach(m => metricsSet.add(m));
+      }
+    }
+    const metrics = [...metricsSet].sort();
+    const currentMetric = state.modelsViewState.selectedMetric;
+    metricSelect.innerHTML = '<option value="">Select a metric...</option>' +
+      metrics.map(m => `<option value="${m}" ${m === currentMetric ? 'selected' : ''}>${m}</option>`).join('');
+
+    // Auto-select first metric if none selected
+    if (!currentMetric && metrics.length > 0) {
+      state.modelsViewState.selectedMetric = metrics[0];
+      metricSelect.value = metrics[0];
+    }
+
+    // K input value
+    if (kInput) {
+      kInput.value = state.modelsViewState.globalK;
+    }
+
+    // Threshold slider value
+    const thresholdSlider = el('models-threshold-slider');
+    const thresholdValue = el('models-threshold-value');
+    if (thresholdSlider) {
+      const pct = Math.round(state.modelsViewState.threshold * 100);
+      thresholdSlider.value = pct;
+      if (thresholdValue) thresholdValue.textContent = `${pct}%`;
+    }
+  }
+
+  // Cache for fetched run data to avoid re-fetching
+  const modelsRunDataCache = {};
+
+  async function fetchModelRunsData(filePaths) {
+    if (filePaths.length === 0) return [];
+
+    // Check cache first
+    const cacheKey = filePaths.sort().join('|');
+    if (modelsRunDataCache[cacheKey]) {
+      return modelsRunDataCache[cacheKey];
+    }
+
+    try {
+      const params = filePaths.map(f => `files=${encodeURIComponent(f)}`).join('&');
+      const response = await fetch(`/api/compare?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch run data');
+      const data = await response.json();
+      modelsRunDataCache[cacheKey] = data.runs || [];
+      return data.runs || [];
+    } catch (error) {
+      console.error('Error fetching model runs data:', error);
+      return [];
+    }
+  }
+
+  function calculateModelStatsFromItems(runsData, metricName, threshold, isBoolean) {
+    if (!runsData || runsData.length === 0) {
+      return {
+        passAtK: 0, passHatK: 0, maxAtK: 0, stability: 0, avgScore: 0, avgLatency: 0,
+        totalItems: 0, K: 0, correctDistribution: [0], runNames: []
+      };
+    }
+
+    const K = runsData.length;
+    const effectiveThreshold = isBoolean ? 0.9999 : threshold;
+
+    // Get run names
+    const runNames = runsData.map((r, i) => r?.run?.run_name || `Run ${i + 1}`);
+
+    // Get metric index for each run
+    function getMetricIndex(runData) {
+      const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
+      return metricNames.indexOf(metricName);
+    }
+
+    // Get max items across all runs
+    const maxItems = Math.max(...runsData.map(r => (r?.snapshot?.rows || []).length));
+
+    if (maxItems === 0) {
+      return {
+        passAtK: 0, passHatK: 0, maxAtK: 0, stability: 0, avgScore: 0, avgLatency: 0,
+        totalItems: 0, K, correctDistribution: new Array(K + 1).fill(0), runNames
+      };
+    }
+
+    let passAtKCount = 0;  // Items where at least one run passed
+    let passHatKCount = 0; // Items where all runs passed
+    let stabilityCount = 0; // Items where all runs got same score
+    let maxScoreSum = 0;
+    let totalScoreSum = 0;
+    let totalScoreCount = 0;
+    let totalLatencySum = 0;
+    let totalLatencyCount = 0;
+    let itemsWithData = 0;
+
+    // Distribution: index = number of runs that passed, value = count of items
+    const correctDistribution = new Array(K + 1).fill(0);
+
+    // Iterate through each item index
+    for (let i = 0; i < maxItems; i++) {
+      const scores = [];
+
+      // Get score for this item from each run
+      for (const runData of runsData) {
+        const rows = runData?.snapshot?.rows || [];
+        // Find row by index
+        const row = rows.find(r => r.index === i) || rows[i];
+        if (!row) continue;
+
+        const metricIdx = getMetricIndex(runData);
+        if (metricIdx < 0) continue;
+
+        // metric_values is an array, indexed by metric position
+        const metricValues = row?.metric_values || [];
+        const metricValue = metricValues[metricIdx];
+
+        if (metricValue !== undefined && metricValue !== null) {
+          const score = parseFloat(metricValue);
+          if (!isNaN(score)) {
+            scores.push(score);
+            totalScoreSum += score;
+            totalScoreCount++;
+          }
+        }
+
+        // Collect latency
+        const latency = row?.latency_ms;
+        if (latency && latency > 0) {
+          totalLatencySum += latency;
+          totalLatencyCount++;
+        }
+      }
+
+      if (scores.length === 0) continue;
+      itemsWithData++;
+
+      // Calculate item-level stats
+      const maxScore = Math.max(...scores);
+      const minScore = Math.min(...scores);
+      const passingScores = scores.filter(s => s >= effectiveThreshold);
+      const numCorrect = passingScores.length;
+
+      // Update distribution
+      correctDistribution[numCorrect]++;
+
+      // Pass@K: at least one run passed
+      if (numCorrect > 0) passAtKCount++;
+
+      // Pass^K: all runs passed (all runs that have data for this item)
+      if (numCorrect === scores.length) passHatKCount++;
+
+      // Stability: all runs got same score
+      if (scores.length > 1 && Math.abs(maxScore - minScore) < 0.0001) {
+        stabilityCount++;
+      } else if (scores.length === 1) {
+        stabilityCount++; // Single run is stable by definition
+      }
+
+      // Max@K sum
+      maxScoreSum += maxScore;
+    }
+
+    // Calculate final stats
+    const totalItems = itemsWithData;
+    const passAtK = totalItems > 0 ? passAtKCount / totalItems : 0;
+    const passHatK = totalItems > 0 ? passHatKCount / totalItems : 0;
+    const maxAtK = totalItems > 0 ? maxScoreSum / totalItems : 0;
+    const stability = totalItems > 0 ? stabilityCount / totalItems : 0;
+    const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
+    const avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
+
+    return {
+      passAtK, passHatK, maxAtK, stability, avgScore, avgLatency,
+      totalItems, K, correctDistribution, runNames
+    };
+  }
+
+  function detectModelsViewMetricType(runs, metricName) {
+    if (!metricName) {
+      state.modelsViewState.metricIsBoolean = true;
+      return;
+    }
+
+    let allBoolean = true;
+    for (const run of runs) {
+      const metricAvg = run.metric_averages?.[metricName];
+      if (metricAvg !== undefined && metricAvg !== null) {
+        const val = parseFloat(metricAvg);
+        if (!isNaN(val) && Math.abs(val) > 0.0001 && Math.abs(val - 1) > 0.0001) {
+          allBoolean = false;
+          break;
+        }
+      }
+    }
+    state.modelsViewState.metricIsBoolean = allBoolean;
+
+    // Show/hide threshold control
+    const thresholdRow = el('models-threshold-row');
+    if (thresholdRow) {
+      thresholdRow.style.display = allBoolean ? 'none' : 'flex';
+    }
+  }
+
+  function buildModelDistributionBar(stats) {
+    const K = stats.K;
+    const dist = stats.correctDistribution || [];
+    const total = stats.totalItems || 1;
+
+    if (K === 0 || total === 0) return '';
+
+    let segments = '';
+    for (let i = 0; i <= K; i++) {
+      const count = dist[i] || 0;
+      if (count === 0) continue;
+      const pct = (count / total) * 100;
+      let segClass = 'dist-partial';
+      if (i === 0) segClass = 'dist-zero';
+      else if (i === K) segClass = 'dist-all';
+
+      segments += `<div class="dist-segment ${segClass}" style="flex: ${count}" title="${i}/${K} runs correct: ${count} items (${pct.toFixed(1)}%)">
+        <span class="dist-label">${i}</span>
+        <span class="dist-count">${count}</span>
+      </div>`;
+    }
+    return segments;
+  }
+
+  function renderModelCards(runsByModel, globalK) {
+    const container = el('models-grid');
+    if (!container) return;
+
+    const mvs = state.modelsViewState;
+    const isBoolean = mvs.metricIsBoolean;
+    const threshold = Math.round(mvs.threshold * 100);
+
+    const models = Object.keys(runsByModel).sort((a, b) => {
+      // Sort by avg score descending
+      const scoreA = mvs.modelStats[a]?.avgScore || 0;
+      const scoreB = mvs.modelStats[b]?.avgScore || 0;
+      return scoreB - scoreA;
+    });
+
+    container.innerHTML = models.map((model, idx) => {
+      const stats = mvs.modelStats[model];
+      const color = CHART_COLORS[idx % CHART_COLORS.length];
+      const hasWarning = stats.selectedCount < globalK;
+      const K = stats.K;
+
+      // Tooltips
+      const correctDef = isBoolean ? '100%' : `≥${threshold}%`;
+      const tooltips = {
+        passAtK: isBoolean
+          ? `% of items where at least one of the ${K} runs achieved 100%`
+          : `% of items where at least one of the ${K} runs scored ≥${threshold}%`,
+        passHatK: isBoolean
+          ? `% of items where ALL ${K} runs achieved 100%`
+          : `% of items where ALL ${K} runs scored ≥${threshold}%`,
+        maxAtK: `Average of the best score per item across all ${K} runs`,
+        stability: `% of items where all ${K} runs got the same score`,
+        avgScore: `Mean score across all items and all ${K} runs`,
+        avgLatency: `Average response time across all runs`,
+        correctDist: isBoolean
+          ? `How many runs got each item correct (100%). "0" = no run solved it, "${K}" = all runs solved it.`
+          : `How many runs scored ≥${threshold}% for each item.`
+      };
+
+      const distBar = buildModelDistributionBar(stats);
+
+      // Helper to create info icon with tooltip (same as compare view)
+      function infoIcon(tooltip) {
+        return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
+      }
+
+      return `
+        <div class="model-card" data-model="${model}">
+          <div class="model-card-header">
+            <div class="model-card-title">
+              <span class="model-color-dot" style="background: ${color}"></span>
+              <span class="model-name">${model}</span>
+            </div>
+            <div class="model-card-runs">
+              <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
+              ${hasWarning ? `<span class="runs-warning" title="Only ${stats.totalAvailable} runs available (requested ${globalK})">⚠️</span>` : ''}
+              <button class="customize-btn" data-model="${model}" title="Customize run selection">Edit</button>
+            </div>
+          </div>
+
+          <div class="model-stats-row">
+            <div class="model-stat-box">
+              <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
+              <div class="stat-main ${getSuccessClass(stats.passAtK)}">${formatPercent(stats.passAtK)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
+              <div class="stat-main ${getSuccessClass(stats.passHatK)}">${formatPercent(stats.passHatK)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
+              <div class="stat-main ${getSuccessClass(stats.maxAtK)}">${formatPercent(stats.maxAtK)}</div>
+            </div>
+          </div>
+
+          <div class="model-stats-row">
+            <div class="model-stat-box">
+              <div class="stat-title">Stability ${infoIcon(tooltips.stability)}</div>
+              <div class="stat-main ${getSuccessClass(stats.stability)}">${formatPercent(stats.stability)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main ${getSuccessClass(stats.avgScore)}">${formatPercent(stats.avgScore)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
+            </div>
+          </div>
+
+          <div class="model-stat-box-wide">
+            <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
+            <div class="distribution-bar">${distBar}</div>
+            <div class="distribution-legend">
+              <span class="dist-legend-item"><span style="color:var(--error)">■</span> 0 runs</span>
+              <span class="dist-legend-item"><span style="color:var(--warning)">■</span> 1-${K-1} runs</span>
+              <span class="dist-legend-item"><span style="color:var(--success)">■</span> ${K} runs</span>
+            </div>
+          </div>
+
+          <div class="model-card-footer">
+            <span class="latency">${stats.totalItems} items</span>
+            <a href="#" class="compare-link" data-model="${model}">See item-by-item comparison →</a>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Wire up event listeners
+    container.querySelectorAll('.customize-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openRunSelectionModal(btn.dataset.model, runsByModel[btn.dataset.model]);
+      });
+    });
+
+    container.querySelectorAll('.compare-link').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const model = link.dataset.model;
+        const stats = mvs.modelStats[model];
+        if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
+          // Open compare view with selected runs
+          sessionStorage.setItem('compareRuns', JSON.stringify(stats.selectedPaths));
+          window.location.href = '/compare';
+        } else {
+          alert('Need at least 2 runs to compare');
+        }
+      });
+    });
+  }
+
+  function renderModelsRanking() {
+    const container = el('models-ranking');
+    if (!container) return;
+
+    const mvs = state.modelsViewState;
+    const models = Object.keys(mvs.modelStats);
+
+    if (models.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    // Sort by avg score descending
+    const ranked = models
+      .map(m => ({ model: m, score: mvs.modelStats[m]?.avgScore || 0 }))
+      .sort((a, b) => b.score - a.score);
+
+    const rankEmojis = ['🥇', '🥈', '🥉'];
+
+    container.style.display = 'block';
+    container.innerHTML = `
+      <h3>Ranking (by Avg Score)</h3>
+      <div class="ranking-list">
+        ${ranked.map((item, idx) => {
+          const rank = idx < 3 ? rankEmojis[idx] : `#${idx + 1}`;
+          const scoreClass = getSuccessClass(item.score);
+          return `
+            <div class="ranking-item">
+              <span class="rank">${rank}</span>
+              <span class="model-name">${item.model}</span>
+              <span class="score ${scoreClass}">(${formatPercent(item.score)})</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function openRunSelectionModal(modelName, allRuns) {
+    const modal = el('run-selection-modal');
+    const modelNameEl = el('run-selection-model-name');
+    const listEl = el('run-selection-list');
+    const confirmBtn = el('confirm-run-selection-btn');
+
+    if (!modal || !listEl) return;
+
+    const mvs = state.modelsViewState;
+    const currentSelection = mvs.modelRunSelections[modelName] || [];
+    const globalK = parseInt(mvs.globalK) || 5;
+
+    modelNameEl.textContent = modelName;
+
+    // Track selection count
+    let selectionCount = 0;
+
+    // Render run list
+    listEl.innerHTML = `
+      <div class="run-selection-header">
+        <span class="selection-counter"><span id="selection-count">0</span> / ${globalK} selected</span>
+      </div>
+      <div class="run-selection-items">
+        ${allRuns.map((run, idx) => {
+          const isSelected = currentSelection.length > 0
+            ? currentSelection.includes(run.file_path)
+            : idx < globalK;  // Default: first K runs
+          if (isSelected) selectionCount++;
+          const dt = formatDate(run.timestamp);
+          const metric = mvs.selectedMetric;
+          const score = run.metric_averages?.[metric];
+          const scoreClass = score !== undefined ? getSuccessClass(score) : '';
+
+          return `
+            <label class="run-selection-item ${isSelected ? 'selected' : ''}">
+              <input type="checkbox" data-file="${run.file_path}" ${isSelected ? 'checked' : ''} />
+              <div class="run-info">
+                <div class="run-name">${run.run_id}</div>
+                <div class="run-date">${dt.full}</div>
+              </div>
+              ${score !== undefined ? `<span class="run-score ${scoreClass}">${formatPercent(score)}</span>` : ''}
+            </label>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    // Update counter
+    const updateCounter = () => {
+      const count = listEl.querySelectorAll('input[type="checkbox"]:checked').length;
+      const counterEl = listEl.querySelector('#selection-count');
+      if (counterEl) {
+        counterEl.textContent = count;
+        counterEl.parentElement.classList.toggle('at-limit', count >= globalK);
+        counterEl.parentElement.classList.toggle('over-limit', count > globalK);
+      }
+    };
+    updateCounter();
+
+    // Wire up checkbox change events to enforce K limit
+    listEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const item = e.target.closest('.run-selection-item');
+        const checkedCount = listEl.querySelectorAll('input[type="checkbox"]:checked').length;
+
+        if (e.target.checked && checkedCount > globalK) {
+          // Exceeded limit - uncheck this one
+          e.target.checked = false;
+          item.classList.remove('selected');
+          return;
+        }
+
+        item.classList.toggle('selected', e.target.checked);
+        updateCounter();
+      });
+    });
+
+    modal.style.display = 'flex';
+
+    // Wire confirm button
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    newConfirmBtn.addEventListener('click', () => {
+      const selected = [];
+      listEl.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+        selected.push(cb.dataset.file);
+      });
+
+      if (selected.length > 0) {
+        mvs.modelRunSelections[modelName] = selected;
+      } else {
+        delete mvs.modelRunSelections[modelName];
+      }
+
+      modal.style.display = 'none';
+      renderModelsView();
+    });
   }
 
   // ═══════════════════════════════════════════════════
@@ -1242,8 +1917,12 @@
 
   async function fetchRuns() {
     try {
-      const response = await fetch('/api/runs');
-      const data = await response.json();
+      // Fetch runs and published status in parallel
+      const [runsResponse] = await Promise.all([
+        fetch('/api/runs'),
+        fetchPublishedRuns()
+      ]);
+      const data = await runsResponse.json();
       state.runs = data;
       const { runs, metrics } = flattenRuns(data);
       state.flatRuns = runs;
@@ -1441,7 +2120,7 @@
     });
   });
 
-  // View toggle (Charts vs Runs)
+  // View toggle (Charts vs Runs vs Models)
   $$('.view-toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       $$('.view-toggle-btn').forEach(b => b.classList.remove('active'));
@@ -1449,6 +2128,60 @@
       state.currentView = btn.dataset.view;
       render();
     });
+  });
+
+  // Models view dropdowns
+  el('models-task-select')?.addEventListener('change', (e) => {
+    state.modelsViewState.selectedTask = e.target.value;
+    state.modelsViewState.selectedDataset = '';
+    state.modelsViewState.selectedMetric = '';
+    state.modelsViewState.modelRunSelections = {};  // Clear custom selections
+    render();
+  });
+
+  el('models-dataset-select')?.addEventListener('change', (e) => {
+    state.modelsViewState.selectedDataset = e.target.value;
+    state.modelsViewState.selectedMetric = '';
+    state.modelsViewState.modelRunSelections = {};  // Clear custom selections
+    render();
+  });
+
+  el('models-metric-select')?.addEventListener('change', (e) => {
+    state.modelsViewState.selectedMetric = e.target.value;
+    render();
+  });
+
+  el('models-k-input')?.addEventListener('change', (e) => {
+    const value = parseInt(e.target.value);
+    if (!isNaN(value) && value >= 1) {
+      state.modelsViewState.globalK = value;
+      state.modelsViewState.modelRunSelections = {};  // Clear custom selections when K changes
+      render();
+    }
+  });
+
+  // Models threshold slider
+  el('models-threshold-slider')?.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    const thresholdValue = el('models-threshold-value');
+    if (thresholdValue) thresholdValue.textContent = `${value}%`;
+  });
+
+  el('models-threshold-slider')?.addEventListener('change', (e) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= 0 && value <= 100) {
+      state.modelsViewState.threshold = value / 100;
+      // Clear stats cache so they get recalculated with new threshold
+      state.modelsViewState.modelStats = {};
+      renderModelsView();
+    }
+  });
+
+  // Close run selection modal when clicking outside
+  el('run-selection-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'run-selection-modal') {
+      el('run-selection-modal').style.display = 'none';
+    }
   });
 
   // Select all checkbox
@@ -1542,6 +2275,12 @@
         $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'charts'));
         render();
         break;
+      case 'm':
+        e.preventDefault();
+        state.currentView = 'models';
+        $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === 'models'));
+        render();
+        break;
     }
   });
 
@@ -1558,9 +2297,469 @@
   });
 
   // ═══════════════════════════════════════════════════
+  // CONFLUENCE PUBLISH FUNCTIONALITY
+  // ═══════════════════════════════════════════════════
+
+  const publishState = {
+    currentRun: null,
+    projects: [],
+    tasks: [],
+    users: [],
+    selectedUser: null,
+    gitInfo: { branch: null, commit: null },
+    publishedRuns: new Set()  // Track which runs have been published
+  };
+
+  // ═══════════════════════════════════════════════════
+  // TOAST NOTIFICATIONS
+  // ═══════════════════════════════════════════════════
+
+  function showToast(type, title, message, duration = 5000) {
+    const container = el('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const icon = type === 'success' ? '✓' : '✕';
+
+    toast.innerHTML = `
+      <div class="toast-icon">${icon}</div>
+      <div class="toast-content">
+        <div class="toast-title">${title}</div>
+        ${message ? `<div class="toast-message">${message}</div>` : ''}
+      </div>
+      <button class="toast-close">×</button>
+    `;
+
+    container.appendChild(toast);
+
+    // Close button
+    toast.querySelector('.toast-close').addEventListener('click', () => {
+      dismissToast(toast);
+    });
+
+    // Auto dismiss
+    if (duration > 0) {
+      setTimeout(() => dismissToast(toast), duration);
+    }
+
+    return toast;
+  }
+
+  function dismissToast(toast) {
+    toast.classList.add('toast-exit');
+    setTimeout(() => toast.remove(), 300);
+  }
+
+  // Fetch git info
+  async function fetchGitInfo() {
+    try {
+      const response = await fetch('/api/git/info');
+      publishState.gitInfo = await response.json();
+    } catch (err) {
+      console.error('Failed to fetch git info:', err);
+    }
+  }
+
+  // Fetch published run IDs from server
+  async function fetchPublishedRuns() {
+    try {
+      const response = await fetch('/api/confluence/published');
+      const data = await response.json();
+      publishState.publishedRuns = new Set(data.run_ids || []);
+    } catch (err) {
+      console.error('Failed to fetch published runs:', err);
+    }
+  }
+
+  // Fetch Confluence projects
+  async function fetchProjects() {
+    try {
+      const response = await fetch('/api/confluence/projects');
+      const data = await response.json();
+      publishState.projects = data.projects || [];
+      populateProjectDropdown();
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
+    }
+  }
+
+  // Fetch tasks for a project
+  async function fetchTasks(projectName) {
+    try {
+      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`);
+      const data = await response.json();
+      publishState.tasks = data.tasks || [];
+      populateTaskDropdown();
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+    }
+  }
+
+  // Fetch users
+  async function fetchUsers(query = '') {
+    try {
+      const url = query ? `/api/confluence/users?q=${encodeURIComponent(query)}` : '/api/confluence/users';
+      const response = await fetch(url);
+      const data = await response.json();
+      publishState.users = data.users || [];
+      renderUserDropdown();
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+    }
+  }
+
+  function populateProjectDropdown() {
+    const select = el('publish-project');
+    select.innerHTML = '<option value="">Select a project...</option>' +
+      publishState.projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  }
+
+  function populateTaskDropdown() {
+    const select = el('publish-task');
+    const addBtn = el('add-task-btn');
+
+    if (publishState.tasks.length === 0) {
+      select.innerHTML = '<option value="">No tasks yet - create one</option>';
+    } else {
+      select.innerHTML = '<option value="">Select a task...</option>' +
+        publishState.tasks.map(t => `<option value="${t.title}">${t.title}</option>`).join('');
+    }
+    select.disabled = false;
+    addBtn.disabled = false;
+  }
+
+  function renderUserDropdown() {
+    const dropdown = el('user-dropdown');
+
+    if (publishState.users.length === 0) {
+      dropdown.innerHTML = '<div class="no-results">No users found</div>';
+    } else {
+      dropdown.innerHTML = publishState.users.map(u => `
+        <div class="user-option" data-username="${u.username}">
+          <div class="user-name">${u.display_name}</div>
+          <div class="user-username">@${u.username}</div>
+        </div>
+      `).join('');
+
+      // Wire click events
+      dropdown.querySelectorAll('.user-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          selectUser(opt.dataset.username);
+        });
+      });
+    }
+    dropdown.style.display = 'block';
+  }
+
+  function selectUser(username) {
+    const user = publishState.users.find(u => u.username === username);
+    if (user) {
+      publishState.selectedUser = user;
+      el('publish-user').value = user.username;
+      el('publish-user-search').value = user.display_name;
+      el('user-dropdown').style.display = 'none';
+    }
+  }
+
+  function openPublishModal(run) {
+    publishState.currentRun = run;
+    publishState.selectedUser = null;
+
+    // Populate run info
+    const successClass = getSuccessClass(run.success_rate);
+    const metricsHtml = run.metric_averages ? Object.entries(run.metric_averages).map(([name, value]) => `
+      <div class="metric-item">
+        <span class="metric-name">${name}</span>
+        <span class="metric-value">${(value * 100).toFixed(1)}%</span>
+      </div>
+    `).join('') : '';
+
+    el('publish-run-info').innerHTML = `
+      <div class="run-header">
+        <span class="run-id">${run.run_id}</span>
+        <span class="run-success ${successClass}">${formatPercent(run.success_rate)}</span>
+      </div>
+      <div class="run-meta">
+        <span class="tag">${run.model_name}</span>
+        <span class="tag">${run.dataset_name}</span>
+        <span>${run.total_items} items</span>
+      </div>
+      ${metricsHtml ? `<div class="run-metrics">${metricsHtml}</div>` : ''}
+    `;
+
+    // Reset form
+    el('publish-project').value = '';
+    el('publish-task').value = '';
+    el('publish-task').disabled = true;
+    el('add-task-btn').disabled = true;
+    el('publish-user-search').value = '';
+    el('publish-user').value = '';
+    el('publish-description').value = '';
+    el('publish-branch').value = publishState.gitInfo.branch || '(not available)';
+    el('publish-commit').value = publishState.gitInfo.commit || '(not available)';
+
+    // Fetch projects and users
+    fetchProjects();
+    fetchUsers();
+
+    // Show modal
+    el('publish-modal').style.display = 'flex';
+  }
+
+  function openPublishModalForSelected() {
+    if (state.selectedRuns.size === 0) return;
+
+    // For now, only support single run publish
+    // TODO: Support bulk publish
+    if (state.selectedRuns.size > 1) {
+      alert('Please select only one run to publish at a time');
+      return;
+    }
+
+    const filePath = Array.from(state.selectedRuns)[0];
+    const run = state.flatRuns.find(r => r.file_path === filePath);
+    if (run) {
+      openPublishModal(run);
+    }
+  }
+
+  async function publishRun() {
+    const run = publishState.currentRun;
+    if (!run) return;
+
+    const projectName = el('publish-project').value;
+    const taskName = el('publish-task').value;
+    const username = el('publish-user').value;
+    const description = el('publish-description').value.trim();
+
+    // Validate
+    if (!projectName) {
+      showToast('error', 'Missing Project', 'Please select a project');
+      return;
+    }
+    if (!taskName) {
+      showToast('error', 'Missing Task', 'Please select or create a task');
+      return;
+    }
+    if (!username) {
+      showToast('error', 'Missing User', 'Please select a user');
+      return;
+    }
+    if (!description) {
+      showToast('error', 'Missing Description', 'Please provide a description');
+      return;
+    }
+
+    const btn = el('confirm-publish-btn');
+    btn.disabled = true;
+    btn.textContent = 'Publishing...';
+
+    try {
+      const response = await fetch('/api/confluence/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_name: projectName,
+          task_name: taskName,
+          run_id: run.run_id,
+          published_by: username,
+          description: description,
+          metrics: run.metric_averages || {},
+          model: run.model_name,
+          dataset: run.dataset_name,
+          total_items: run.total_items,
+          success_count: run.success_count,
+          error_count: run.error_count,
+          avg_latency_ms: run.avg_latency_ms,
+          branch: publishState.gitInfo.branch,
+          commit: publishState.gitInfo.commit,
+          trace_url: run.langfuse_url || null,
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        el('publish-modal').style.display = 'none';
+        // Mark run as published
+        publishState.publishedRuns.add(run.run_id);
+        // Show success toast
+        showToast('success', 'Published Successfully', `Run "${run.run_id}" has been published to Confluence`);
+        // Clear selection and re-render to show published badge
+        state.selectedRuns.clear();
+        render();
+      } else {
+        showToast('error', 'Publish Failed', result.error || 'Unknown error');
+      }
+    } catch (err) {
+      showToast('error', 'Publish Failed', err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Publish';
+    }
+  }
+
+  async function createTask() {
+    const projectName = el('publish-project').value;
+    if (!projectName) {
+      showToast('error', 'Missing Project', 'Please select a project first');
+      return;
+    }
+
+    const taskName = el('new-task-name').value.trim();
+    if (!taskName) {
+      showToast('error', 'Missing Task Name', 'Please enter a task name');
+      return;
+    }
+
+    const btn = el('confirm-create-task-btn');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
+    try {
+      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: taskName })
+      });
+
+      const result = await response.json();
+
+      if (result.id) {
+        el('create-task-modal').style.display = 'none';
+        el('new-task-name').value = '';
+
+        // Refresh tasks and select the new one
+        await fetchTasks(projectName);
+        el('publish-task').value = result.title;
+        showToast('success', 'Task Created', `Task "${taskName}" has been created`);
+      } else {
+        showToast('error', 'Create Failed', result.error || 'Unknown error');
+      }
+    } catch (err) {
+      showToast('error', 'Create Failed', err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create';
+    }
+  }
+
+  // Wire up publish modal events
+  el('publish-project')?.addEventListener('change', (e) => {
+    const projectName = e.target.value;
+    if (projectName) {
+      fetchTasks(projectName);
+    } else {
+      el('publish-task').innerHTML = '<option value="">Select a task...</option>';
+      el('publish-task').disabled = true;
+      el('add-task-btn').disabled = true;
+    }
+  });
+
+  el('publish-user-search')?.addEventListener('input', debounce((e) => {
+    const query = e.target.value.trim();
+    if (query.length >= 1) {
+      fetchUsers(query);
+    } else {
+      fetchUsers();
+    }
+  }, 200));
+
+  el('publish-user-search')?.addEventListener('focus', () => {
+    if (publishState.users.length > 0) {
+      el('user-dropdown').style.display = 'block';
+    } else {
+      fetchUsers();
+    }
+  });
+
+  // Close user dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const wrapper = document.querySelector('.user-search-wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+      el('user-dropdown').style.display = 'none';
+    }
+  });
+
+  el('add-task-btn')?.addEventListener('click', () => {
+    el('create-task-modal').style.display = 'flex';
+  });
+
+  el('confirm-publish-btn')?.addEventListener('click', publishRun);
+  el('confirm-create-task-btn')?.addEventListener('click', createTask);
+  el('publish-selected')?.addEventListener('click', openPublishModalForSelected);
+
+  // Close modals on click outside
+  ['publish-modal', 'create-task-modal'].forEach(modalId => {
+    el(modalId)?.addEventListener('click', (e) => {
+      if (e.target.id === modalId) {
+        el(modalId).style.display = 'none';
+      }
+    });
+  });
+
+  // Fetch git info on load
+  fetchGitInfo();
+
+  // ═══════════════════════════════════════════════════
+  // STATE PERSISTENCE (for back/forward navigation)
+  // ═══════════════════════════════════════════════════
+
+  function saveDashboardState() {
+    const stateToSave = {
+      currentView: state.currentView,
+      modelsViewState: state.modelsViewState,
+      filterTask: state.filterTask,
+      filterDataset: state.filterDataset,
+      quickFilter: state.quickFilter,
+      searchQuery: state.searchQuery,
+    };
+    sessionStorage.setItem('dashboardState', JSON.stringify(stateToSave));
+  }
+
+  function restoreDashboardState() {
+    const saved = sessionStorage.getItem('dashboardState');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.currentView) {
+          state.currentView = parsed.currentView;
+          $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.currentView));
+        }
+        if (parsed.modelsViewState) {
+          state.modelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
+        }
+        if (parsed.filterTask) state.filterTask = parsed.filterTask;
+        if (parsed.filterDataset) state.filterDataset = parsed.filterDataset;
+        if (parsed.quickFilter) {
+          state.quickFilter = parsed.quickFilter;
+          $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));
+        }
+        if (parsed.searchQuery) {
+          state.searchQuery = parsed.searchQuery;
+          el('search').value = state.searchQuery;
+        }
+      } catch (e) {
+        console.warn('Failed to restore dashboard state:', e);
+      }
+    }
+  }
+
+  // Save state before navigating away
+  window.addEventListener('beforeunload', saveDashboardState);
+
+  // Also save on visibility change (for mobile)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      saveDashboardState();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════
   // INIT
   // ═══════════════════════════════════════════════════
 
+  restoreDashboardState();
   startHeartbeat();
   fetchRuns();
 

@@ -43,7 +43,8 @@ class EvaluationResult:
         self.end_time = None
         self.last_saved_path: Optional[str] = None
         self._save_notice_consumed = False
-        
+        self.langfuse_url: Optional[str] = None  # URL to Langfuse dataset run
+
         # Results storage
         self.inputs = {}  # item_id -> input data
         self.metadatas = {}  # item_id -> metadata dict
@@ -221,6 +222,7 @@ class EvaluationResult:
             'success_rate': self.success_rate,
             'metrics': self.metrics,
             'metric_stats': metric_stats,
+            'langfuse_url': self.langfuse_url,
             'inputs': self.inputs,
             'metadatas': self.metadatas,
             'results': self.results,

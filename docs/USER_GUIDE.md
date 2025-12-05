@@ -13,6 +13,7 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 7. [Multi-Model Comparison](#7-multi-model-comparison)
 8. [Command Line Interface](#8-command-line-interface)
 9. [Dashboard & Web UI](#9-dashboard--web-ui)
+   - [Publishing to Confluence](#publishing-to-confluence)
 10. [Understanding Results](#10-understanding-results)
 11. [Configuration Options](#11-configuration-options)
 12. [Common Errors & Solutions](#12-common-errors--solutions)
@@ -38,7 +39,10 @@ Create a `.env` file in your project root:
 LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 LANGFUSE_HOST=https://cloud.langfuse.com
+LANGFUSE_PROJECT_ID=clxxxxxxxxxx
 ```
+
+> **Tip**: You can find your project ID in the Langfuse URL when viewing your project (e.g., `https://cloud.langfuse.com/project/clxxxxxxxxxx`).
 
 > ⚠️ **Common Error**: If you see `"Missing Langfuse public key"`, your `.env` file is not being loaded. Make sure:
 > - The file is named exactly `.env` (not `env` or `.env.txt`)
@@ -800,9 +804,21 @@ Compare multiple runs side-by-side to identify the best model:
 **Comparison Features:**
 - Side-by-side run statistics
 - Metric averages comparison with bar charts
-- Pass@N metrics (how many runs got each item correct)
 - Winner breakdown showing which model won most items
 - Correct distribution (how many runs solved each item)
+
+**Comparison Overview Metrics:**
+- **Pass@K**: % of items where at least one run passed
+- **Pass^K**: % of items where all runs passed
+- **Max@K**: Average of best scores per item
+- **Stability**: % of items where all runs got the same score
+- **Avg Score**: Mean score across all items and runs
+- **Avg Latency**: Mean response time
+
+Each metric has an info icon (ⓘ) with a detailed tooltip explanation.
+
+**Threshold for Continuous Metrics:**
+For metrics with scores between 0-100 (not just 0 or 1), a "Pass if ≥" slider appears. This lets you define what score counts as "passing" (default: 80%). Boolean metrics (0/1 scores) automatically use 100% as the pass threshold.
 
 #### Item-by-Item Comparison
 
@@ -813,8 +829,8 @@ Drill down into individual items across runs:
 **Features:**
 - View each input with expected output
 - See each model's response side-by-side
-- Color-coded scores (green for high, red for low)
-- Filter by winner or correctness
+- 5-color score scale: green (90%+) → lime (75%+) → yellow (60%+) → orange (40%+) → red (<40%)
+- Filter by winner, "All Runs Correct", "No Run Correct", or unique solves
 - Identify items that only specific models solved
 
 #### Charts View
@@ -845,6 +861,56 @@ my-project/                    # Run from here!
 ├── my_task.py
 └── .env
 ```
+
+### Publishing to Confluence
+
+The dashboard includes a feature to publish approved evaluation runs to Confluence for stakeholder visibility. This allows developers to document evaluation results with business-friendly descriptions.
+
+#### Publishing a Single Run
+
+1. Open the dashboard: `llm-eval dashboard`
+2. Switch to the **Runs** view (click "Runs" or press `t`)
+3. Find the run you want to publish
+4. Click the **publish icon** (↑) in the actions column
+5. Fill in the publish form:
+   - **Project**: Select or create a Confluence project folder
+   - **Task**: Select or create a task page within the project
+   - **Published By**: Search and select your username
+   - **Description**: Provide business context (required)
+6. Click **Publish**
+
+The branch name and commit hash are automatically captured from your git repository.
+
+#### Publishing from Selection
+
+1. In the Runs view, select one or more runs using the checkboxes
+2. Click the **Publish** button in the selection panel
+3. Complete the publish form as above
+
+#### Confluence Structure
+
+Published evaluations are organized hierarchically:
+
+```
+Confluence Space
+└── Project (folder)
+    └── Task (page)
+        ├── Run 1 (section)
+        ├── Run 2 (section)
+        └── Run 3 (section)
+```
+
+Each published run section includes:
+- Run ID and timestamp
+- Model and dataset information
+- Key metrics (success rate, metric scores, latency)
+- Business description from the publisher
+- Git branch and commit for traceability
+- Link to Langfuse traces (if available)
+
+#### Configuration
+
+By default, the dashboard uses a mock Confluence backend stored in `confluence_mock/` for development and testing. To connect to a real Confluence instance, configure your Confluence credentials.
 
 ---
 
@@ -935,6 +1001,7 @@ evaluator = Evaluator(
         "langfuse_public_key": "pk-...",
         "langfuse_secret_key": "sk-...",
         "langfuse_host": "https://cloud.langfuse.com",
+        "langfuse_project_id": "clxxxxxxxxxx",
     }
 )
 ```

@@ -86,6 +86,13 @@ class LangfuseDataset:
         return errors
     
     @property
+    def id(self) -> Optional[str]:
+        """Get the dataset ID from Langfuse."""
+        if self._dataset and hasattr(self._dataset, 'id'):
+            return self._dataset.id
+        return None
+
+    @property
     def size(self) -> int:
         """Get number of items in dataset."""
         items = self.get_items()

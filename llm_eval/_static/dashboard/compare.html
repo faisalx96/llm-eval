@@ -128,9 +128,11 @@
       color: var(--text-primary);
     }
 
-    .run-summary-card .stat-val.high { color: var(--success); }
-    .run-summary-card .stat-val.mid { color: var(--warning); }
-    .run-summary-card .stat-val.low { color: var(--error); }
+    .run-summary-card .stat-val.score-5 { color: var(--score-5); }
+    .run-summary-card .stat-val.score-4 { color: var(--score-4); }
+    .run-summary-card .stat-val.score-3 { color: var(--score-3); }
+    .run-summary-card .stat-val.score-2 { color: var(--score-2); }
+    .run-summary-card .stat-val.score-1 { color: var(--score-1); }
 
     /* Comparison Stats Section */
     .comparison-stats {
@@ -182,6 +184,70 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stat-info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      color: var(--bg-primary);
+      font-size: 10px;
+      font-weight: 700;
+      font-style: italic;
+      font-family: Georgia, serif;
+      cursor: help;
+      position: relative;
+      text-transform: lowercase;
+      flex-shrink: 0;
+    }
+
+    .stat-info-icon:hover {
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      transform: scale(1.1);
+    }
+
+    .stat-info-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 10px 12px;
+      width: 240px;
+      font-size: var(--font-sm);
+      font-weight: 400;
+      font-style: normal;
+      font-family: var(--font-sans);
+      color: var(--text-secondary);
+      text-transform: none;
+      letter-spacing: normal;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 1000;
+      text-align: left;
+    }
+
+    .stat-info-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 12px;
+      border: 6px solid transparent;
+      border-top-color: var(--border-default);
+    }
+
+    .stat-info-icon:hover .stat-info-tooltip {
+      display: block;
     }
 
     .stat-box .stat-main {
@@ -195,9 +261,11 @@
       font-size: var(--font-lg);
     }
 
-    .stat-box .stat-main.positive { color: var(--success); }
-    .stat-box .stat-main.negative { color: var(--error); }
-    .stat-box .stat-main.neutral { color: var(--text-secondary); }
+    .stat-box .stat-main.score-5 { color: var(--score-5); }
+    .stat-box .stat-main.score-4 { color: var(--score-4); }
+    .stat-box .stat-main.score-3 { color: var(--score-3); }
+    .stat-box .stat-main.score-2 { color: var(--score-2); }
+    .stat-box .stat-main.score-1 { color: var(--score-1); }
 
     .stat-box .stat-detail {
       font-size: var(--font-xs);
@@ -375,9 +443,11 @@
       font-weight: 600;
     }
 
-    .metrics-table .metric-val.high { color: var(--success); }
-    .metrics-table .metric-val.mid { color: var(--warning); }
-    .metrics-table .metric-val.low { color: var(--error); }
+    .metrics-table .metric-val.score-5 { color: var(--score-5); }
+    .metrics-table .metric-val.score-4 { color: var(--score-4); }
+    .metrics-table .metric-val.score-3 { color: var(--score-3); }
+    .metrics-table .metric-val.score-2 { color: var(--score-2); }
+    .metrics-table .metric-val.score-1 { color: var(--score-1); }
 
     .metrics-table .metric-val.best {
       background: var(--success-dim);
@@ -475,8 +545,10 @@
 
     .item-input-row .input-text,
     .item-expected-row .expected-text {
+      font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-secondary);
+      line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -537,17 +609,41 @@
       background: var(--bg-surface);
     }
 
-    .item-run-output .metric-badge.high { background: var(--success-dim); color: var(--success); }
-    .item-run-output .metric-badge.mid { background: var(--warning-dim); color: var(--warning); }
-    .item-run-output .metric-badge.low { background: var(--error-dim); color: var(--error); }
+    .item-run-output .metric-badge.score-5 { background: var(--success-dim); color: var(--score-5); }
+    .item-run-output .metric-badge.score-4 { background: rgba(132, 204, 22, 0.15); color: var(--score-4); }
+    .item-run-output .metric-badge.score-3 { background: rgba(234, 179, 8, 0.15); color: var(--score-3); }
+    .item-run-output .metric-badge.score-2 { background: rgba(249, 115, 22, 0.15); color: var(--score-2); }
+    .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
 
     .item-run-output .latency-badge {
       color: var(--text-muted);
     }
 
+    .item-run-output .trace-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      background: #e11d48;
+      color: #fff;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.15s;
+      gap: 3px;
+    }
+
+    .item-run-output .trace-link:hover {
+      background: #be123c;
+      transform: scale(1.05);
+    }
+
     .item-run-output .output-text {
+      font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-secondary);
+      line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
       max-height: 150px;
@@ -690,7 +786,7 @@
     }
 
     .metric-details-toggle {
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       color: var(--accent-primary);
       cursor: pointer;
       display: inline-flex;
@@ -720,34 +816,35 @@
     }
 
     .metric-detail-row {
-      padding: var(--space-sm) 0;
+      padding: 8px 0;
       border-bottom: 1px solid var(--border-subtle);
     }
 
     .metric-detail-row:last-child {
       border-bottom: none;
-      padding-bottom: 0;
     }
 
     .metric-detail-name {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      margin-bottom: 4px;
+      font-size: var(--font-sm);
+      color: #f472b6;
+      font-weight: 600;
+      margin-bottom: 6px;
       display: block;
     }
 
     .metric-detail-value {
+      font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-secondary);
       white-space: pre-wrap;
       word-break: break-word;
+      line-height: 1.6;
     }
 
     /* Metric tabs */
     .metric-tabs {
       display: flex;
       gap: 2px;
-      margin-bottom: var(--space-md);
       background: var(--bg-elevated);
       padding: 3px;
       border-radius: 6px;
@@ -775,6 +872,81 @@
       color: var(--text-primary);
       background: var(--bg-surface);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* Metric tabs row - contains tabs and threshold control */
+    .metric-tabs-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    /* Threshold control */
+    .threshold-control {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .threshold-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .threshold-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 6px;
+      background: var(--bg-elevated);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .threshold-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: var(--accent-primary);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .threshold-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 3px 10px rgba(0, 212, 170, 0.5);
+    }
+
+    .threshold-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      background: var(--accent-primary);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+    }
+
+    .threshold-slider::-moz-range-track {
+      background: var(--bg-elevated);
+      height: 6px;
+      border-radius: 3px;
+    }
+
+    .threshold-value {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--accent-primary);
+      min-width: 40px;
     }
 
     /* Metric selector for items */
@@ -806,21 +978,21 @@
     .metric-score-row {
       display: flex;
       align-items: center;
-      gap: var(--space-sm);
-      padding: 4px 0;
+      gap: 4px;
+      padding: 2px 0;
     }
 
     .metric-score-row.highlighted {
       background: var(--bg-hover);
       margin: 0 -4px;
-      padding: 4px;
+      padding: 2px 4px;
       border-radius: 3px;
     }
 
     .metric-score-name {
-      font-size: var(--font-sm);
+      font-size: var(--font-xs);
       color: var(--text-muted);
-      min-width: 100px;
+      min-width: 80px;
     }
 
     .metric-score-value {
@@ -896,7 +1068,14 @@
       <!-- Comparison Statistics -->
       <div class="comparison-stats" id="comparison-stats">
         <h3>Comparison Overview</h3>
-        <div class="metric-tabs" id="overview-metric-tabs"></div>
+        <div class="metric-tabs-row">
+          <div class="metric-tabs" id="overview-metric-tabs"></div>
+          <div class="threshold-control" id="threshold-control" style="display: none;">
+            <span class="threshold-label">Pass if ≥</span>
+            <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+            <span class="threshold-value" id="threshold-value">80%</span>
+          </div>
+        </div>
         <div class="stats-grid" id="stats-grid"></div>
       </div>
 
@@ -911,8 +1090,8 @@
             <option value="all">All Items</option>
             <option value="different">Different Outputs</option>
             <option value="errors">With Errors</option>
-            <option value="all_correct">All Runs 100%</option>
-            <option value="all_wrong">No Run 100%</option>
+            <option value="all_correct">All Runs Correct</option>
+            <option value="all_wrong">No Run Correct</option>
             <option value="rarely_solved">Rarely Solved (≤25%)</option>
             <option value="unique_solve">Uniquely Solved (1 run only)</option>
           </select>
@@ -947,14 +1126,20 @@
         page: 1,
         pageSize: 20,
         comparisonStats: {},  // Now keyed by metric name
+        metricThresholds: {},  // Per-metric threshold for "correct" (0-1 scale)
+        metricIsBoolean: {},   // Per-metric flag: true if all scores are 0 or 1
+        langfuseHost: '',      // Langfuse host URL
+        langfuseProjectId: '', // Langfuse project ID
       };
 
       const el = (id) => document.getElementById(id);
 
       function getSuccessClass(rate) {
-        if (rate >= 0.9) return 'high';
-        if (rate >= 0.7) return 'mid';
-        return 'low';
+        if (rate >= 0.9) return 'score-5';
+        if (rate >= 0.75) return 'score-4';
+        if (rate >= 0.6) return 'score-3';
+        if (rate >= 0.4) return 'score-2';
+        return 'score-1';
       }
 
       function formatPercent(val) {
@@ -966,6 +1151,12 @@
         if (!ms || ms < 1) return '—';
         if (ms < 1000) return `${Math.round(ms)}ms`;
         return `${(ms / 1000).toFixed(1)}s`;
+      }
+
+      function buildLangfuseTraceUrl(traceId) {
+        if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
+        const host = state.langfuseHost.replace(/\/$/, '');
+        return `${host}/project/${state.langfuseProjectId}/traces/${traceId}`;
       }
 
       function buildDistributionBar(stats) {
@@ -1015,6 +1206,8 @@
           }
 
           state.runs = data.runs;
+          state.langfuseHost = data.langfuse_host || '';
+          state.langfuseProjectId = data.langfuse_project_id || '';
           processRuns();
           render();
         } catch (err) {
@@ -1047,6 +1240,9 @@
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
         el('total-items').textContent = maxItems;
 
+        // Detect metric types (boolean vs continuous)
+        detectMetricTypes();
+
         // Calculate comparison statistics for each metric
         state.comparisonStats = {};
         for (const metric of state.allMetrics) {
@@ -1073,10 +1269,38 @@
               state.selectedOverviewMetric = tab.dataset.metric;
               tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
               tab.classList.add('active');
+              updateThresholdControl();
               renderComparisonStats();
             });
           });
         }
+
+        // Threshold slider (only for continuous metrics)
+        const thresholdSlider = el('threshold-slider');
+        const thresholdValue = el('threshold-value');
+        if (thresholdSlider) {
+          thresholdSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            if (thresholdValue) thresholdValue.textContent = `${value}%`;
+          });
+          thresholdSlider.addEventListener('change', (e) => {
+            const value = parseFloat(e.target.value);
+            if (!isNaN(value) && value >= 0 && value <= 100) {
+              state.metricThresholds[state.selectedOverviewMetric] = value / 100;
+              // Recalculate stats for this metric
+              state.comparisonStats[state.selectedOverviewMetric] = calculateComparisonStatsForMetric(state.selectedOverviewMetric);
+              // Also recalculate for items metric if different
+              if (state.selectedItemsMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
+                state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
+              }
+              renderComparisonStats();
+              renderItems();
+            }
+          });
+        }
+
+        // Initial threshold control visibility
+        updateThresholdControl();
 
         // Items metric selector dropdown
         const itemsMetricSelect = el('items-metric-select');
@@ -1091,6 +1315,66 @@
             populateWinnerFilter();
             renderItems();
           });
+        }
+      }
+
+      // Show/hide threshold control based on metric type
+      function updateThresholdControl() {
+        const thresholdControl = el('threshold-control');
+        const thresholdSlider = el('threshold-slider');
+        const thresholdValue = el('threshold-value');
+        if (!thresholdControl || !thresholdSlider) return;
+
+        const metric = state.selectedOverviewMetric;
+        if (!metric) {
+          thresholdControl.style.display = 'none';
+          return;
+        }
+
+        const isBoolean = state.metricIsBoolean[metric];
+        if (isBoolean) {
+          thresholdControl.style.display = 'none';
+        } else {
+          thresholdControl.style.display = 'flex';
+          // Set slider value to current threshold (as percentage)
+          const pct = Math.round((state.metricThresholds[metric] || 0.8) * 100);
+          thresholdSlider.value = pct;
+          if (thresholdValue) thresholdValue.textContent = `${pct}%`;
+        }
+      }
+
+      // Detect if a metric is boolean (all scores are 0 or 1) and initialize threshold
+      function detectMetricTypes() {
+        for (const metricName of state.allMetrics) {
+          let allBoolean = true;
+
+          for (const run of state.runs) {
+            const snap = run.snapshot || {};
+            const rows = snap.rows || [];
+            const metricNames = snap.metric_names || run.run?.metric_names || [];
+            const metricIdx = metricNames.indexOf(metricName);
+
+            if (metricIdx < 0) continue;
+
+            for (const row of rows) {
+              const v = (row.metric_values || [])[metricIdx];
+              const n = parseFloat(v);
+              if (!isNaN(n)) {
+                // Check if score is NOT 0 or 1 (with tolerance)
+                if (Math.abs(n) > 0.0001 && Math.abs(n - 1) > 0.0001) {
+                  allBoolean = false;
+                  break;
+                }
+              }
+            }
+            if (!allBoolean) break;
+          }
+
+          state.metricIsBoolean[metricName] = allBoolean;
+          // Default threshold: 80% for continuous metrics
+          if (!state.metricThresholds[metricName]) {
+            state.metricThresholds[metricName] = 0.8;
+          }
         }
       }
 
@@ -1184,13 +1468,17 @@
 
           const validScores = scores.filter(s => s !== null);
 
-          // Max@K: track the best score for this item across all runs
+          // Max@K: track the best score for this item across all runs (not affected by threshold)
           if (validScores.length > 0) {
             stats.maxAtK += Math.max(...validScores);
           }
 
+          // Determine threshold for "correct": 1.0 for boolean, user-defined for continuous
+          const isBoolean = state.metricIsBoolean[metricName];
+          const threshold = isBoolean ? 0.9999 : state.metricThresholds[metricName];
+
           // Count distribution for ALL items (even those with missing data)
-          const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
+          const numCorrect = scores.filter(s => s !== null && s >= threshold).length;
           stats.correctDistribution[numCorrect]++;
 
           // For head-to-head comparison, need at least 2 valid scores
@@ -1228,20 +1516,21 @@
             stats.itemWinners.push('tie');
           }
 
-          // All correct / all wrong / pass@k (at least one run got 100%)
-          // Note: numCorrect was already calculated above
-          const allCorrectItem = numCorrect === state.runs.length;
-          const allWrongItem = validScores.every(s => s < 0.0001);
+          // All correct / all wrong / pass@k (at least one run meets threshold)
+          // Note: numCorrect was already calculated above using threshold
+          const allCorrectItem = numCorrect === validScores.length && validScores.length > 0;
+          const allZeroItem = validScores.every(s => s < 0.0001); // All scores are 0%
 
           if (allCorrectItem) stats.allCorrect++;
-          if (allWrongItem) stats.allWrong++;
+          if (allZeroItem) stats.allWrong++;
           if (numCorrect > 0) stats.passAtK++;
 
-          // Pass^K: ALL runs got 100%
+          // Pass^K: ALL runs meet threshold
           if (allCorrectItem) stats.passHatK++;
 
-          // Stability: all correct OR all wrong (no mixed results)
-          if (allCorrectItem || allWrongItem) stats.stabilityCount++;
+          // Stability: all runs have the same score
+          const allSameScore = validScores.every(s => Math.abs(s - validScores[0]) < 0.0001);
+          if (allSameScore) stats.stabilityCount++;
 
           // Agreement (runs scored similarly - within 10% of each other)
           const scoreRange = maxScore - minScore;
@@ -1277,6 +1566,9 @@
         const select = el('run-winner-filter');
         if (!select) return;
 
+        // Save current value to restore after repopulating
+        const currentValue = state.winnerFilter;
+
         let options = '<option value="any">Any Winner</option>';
         options += '<option value="tie">Ties Only</option>';
 
@@ -1296,6 +1588,13 @@
         options += '</optgroup>';
 
         select.innerHTML = options;
+
+        // Restore previous selection if it still exists
+        if (select.querySelector(`option[value="${currentValue}"]`)) {
+          select.value = currentValue;
+        } else {
+          state.winnerFilter = 'any';
+        }
       }
 
       function removeRun(idx) {
@@ -1340,6 +1639,20 @@
         renderItems();
       }
 
+      // Helper to create info icon with tooltip
+      function infoIcon(tooltip) {
+        return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
+      }
+
+      // Helper to get color class based on percentage (0-1) - matches getSuccessClass thresholds
+      function scoreColorClass(value) {
+        if (value >= 0.9) return 'score-5';
+        if (value >= 0.75) return 'score-4';
+        if (value >= 0.6) return 'score-3';
+        if (value >= 0.4) return 'score-2';
+        return 'score-1';
+      }
+
       function renderComparisonStats() {
         const container = el('stats-grid');
         if (!container || !state.comparisonStats || !state.selectedOverviewMetric) return;
@@ -1347,6 +1660,7 @@
         const stats = state.comparisonStats[state.selectedOverviewMetric];
         if (!stats) return;
         const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+        const K = state.runs.length;
 
         // Build win/loss bar with proper colors
         const total = stats.totalCompared || 1;
@@ -1375,45 +1689,63 @@
           <span class="legend-count">${stats.ties}</span>
         </div>`;
 
+        // Tooltips for each metric - adjust based on boolean vs continuous
+        const isBoolean = state.metricIsBoolean[state.selectedOverviewMetric];
+        const threshold = Math.round((state.metricThresholds[state.selectedOverviewMetric] || 0.8) * 100);
+        const correctDef = isBoolean ? '100%' : `≥${threshold}%`;
+
+        const tooltips = {
+          passAtK: isBoolean
+            ? `Percentage of items where <strong>at least one</strong> of the ${K} runs achieved a perfect score (100%). Measures coverage - can any run solve this item?`
+            : `Percentage of items where <strong>at least one</strong> of the ${K} runs scored <strong>≥${threshold}%</strong>. Adjust the threshold above to change what counts as "correct".`,
+          passHatK: isBoolean
+            ? `Percentage of items where <strong>all ${K} runs</strong> achieved a perfect score (100%). Measures consistency - do all runs reliably solve this item?`
+            : `Percentage of items where <strong>all ${K} runs</strong> scored <strong>≥${threshold}%</strong>. Adjust the threshold above to change what counts as "correct".`,
+          maxAtK: `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
+          stability: `Percentage of items where all ${K} runs produced the <strong>same score</strong>. High stability = consistent, predictable behavior across runs.`,
+          avgScore: `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
+          avgLatency: `The <strong>mean response time</strong> across all items and all runs. Lower is better.`,
+          winnerBreakdown: `Shows which run "won" (scored highest) for each item. Ties occur when multiple runs share the top score. Helps identify which run performs best most often.`,
+          correctDist: isBoolean
+            ? `Distribution showing how many runs got each item correct. "0 runs" = no run solved it, "${K} runs" = all runs solved it. Helps identify easy vs hard items.`
+            : `Distribution showing how many runs scored ≥${threshold}% for each item. Adjust the threshold above to change what counts as "correct".`
+        };
+
         container.innerHTML = `
           <div class="stats-row">
             <div class="stat-box">
-              <div class="stat-title">Pass@${state.runs.length}</div>
-              <div class="stat-main positive">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
-              <div class="stat-detail">≥1 run correct</div>
+              <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
+              <div class="stat-main ${scoreColorClass(stats.passAtK / stats.totalCompared)}">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Pass^${state.runs.length}</div>
-              <div class="stat-main positive">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
-              <div class="stat-detail">all runs correct</div>
+              <div class="stat-title">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
+              <div class="stat-main ${scoreColorClass(stats.passHatK / stats.totalCompared)}">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Max@${state.runs.length}</div>
-              <div class="stat-main positive">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
-              <div class="stat-detail">best per item</div>
+              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
+              <div class="stat-main ${scoreColorClass(stats.maxAtK / stats.totalCompared)}">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Stability</div>
-              <div class="stat-main">${formatPercent(stats.stabilityCount / stats.totalCompared)}</div>
-              <div class="stat-detail">all same result</div>
+              <div class="stat-title">Stability ${infoIcon(tooltips.stability)}</div>
+              <div class="stat-main ${scoreColorClass(stats.stabilityCount / stats.totalCompared)}">${formatPercent(stats.stabilityCount / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Avg Score</div>
-              <div class="stat-main">${formatPercent(stats.overallAvgScore)}</div>
+              <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main ${scoreColorClass(stats.overallAvgScore)}">${formatPercent(stats.overallAvgScore)}</div>
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Avg Latency</div>
+              <div class="stat-title">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
               <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
             </div>
           </div>
 
           <div class="stat-box wide">
-            <div class="stat-title">Winner Breakdown</div>
+            <div class="stat-title">Winner Breakdown ${infoIcon(tooltips.winnerBreakdown)}</div>
             <div class="win-loss-bar">
               ${winBarSegments}
               ${tieSegment}
@@ -1422,11 +1754,10 @@
               ${legendItems}
               ${tieLegend}
             </div>
-            <div class="stat-detail">${stats.totalCompared} items compared</div>
           </div>
 
           <div class="stat-box wide">
-            <div class="stat-title">Correct Distribution (how many runs got each item right)</div>
+            <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
             <div class="distribution-bar">
               ${buildDistributionBar(stats)}
             </div>
@@ -1633,19 +1964,27 @@
             const hasError = rowData.some(r => r?.status === 'error');
             if (!hasError) continue;
           } else if (state.itemFilter === 'all_correct') {
-            // All runs got 100% (matches distribution "all correct")
-            if (validScores.length < 2 || !validScores.every(s => s >= 0.9999)) continue;
+            // All runs meet threshold (correct)
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            if (validScores.length < 2 || !validScores.every(s => s >= correctThreshold)) continue;
           } else if (state.itemFilter === 'all_wrong') {
-            // No run got 100% (matches distribution "0 correct")
-            if (validScores.length < 2 || validScores.some(s => s >= 0.9999)) continue;
+            // No run meets threshold (not correct)
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            if (validScores.length < 2 || validScores.some(s => s >= correctThreshold)) continue;
           } else if (state.itemFilter === 'rarely_solved') {
-            // 25% or fewer runs got 100%
-            const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
-            const threshold = Math.max(1, Math.floor(state.runs.length * 0.25));
-            if (numCorrect === 0 || numCorrect > threshold) continue;
+            // 25% or fewer runs meet threshold
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
+            const rareThreshold = Math.max(1, Math.floor(state.runs.length * 0.25));
+            if (numCorrect === 0 || numCorrect > rareThreshold) continue;
           } else if (state.itemFilter === 'unique_solve') {
-            // Exactly 1 run got 100%
-            const numCorrect = scores.filter(s => s !== null && s >= 0.9999).length;
+            // Exactly 1 run meets threshold
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
             if (numCorrect !== 1) continue;
           }
 
@@ -1660,9 +1999,11 @@
               // Only show items where this run was the SOLE winner (beat all others)
               if (winner !== winnerIdx) continue;
             } else if (state.winnerFilter.startsWith('only_')) {
-              // Only show items where ONLY this run got 100%
+              // Only show items where ONLY this run met threshold
               const runIdx = parseInt(state.winnerFilter.replace('only_', ''), 10);
-              const correctRuns = scores.map((s, idx) => s !== null && s >= 0.9999 ? idx : -1).filter(x => x >= 0);
+              const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+              const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+              const correctRuns = scores.map((s, idx) => s !== null && s >= correctThreshold ? idx : -1).filter(x => x >= 0);
               if (correctRuns.length !== 1 || correctRuns[0] !== runIdx) continue;
             }
           }
@@ -1721,6 +2062,8 @@
             const output = row.output_full || row.output || '—';
             const status = row.status || 'pending';
             const latencyMs = row.latency_ms;
+            const traceId = row.trace_id;
+            const traceUrl = buildLangfuseTraceUrl(traceId);
 
             // Get metric values and metadata
             const metricVals = row.metric_values || [];
@@ -1753,6 +2096,9 @@
 
             // Latency badge
             const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
+
+            // Langfuse trace link
+            const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
 
             // Build metric details for this run (hidden by default, controlled by shared toggle)
             let metricDetailsHtml = '';
@@ -1788,9 +2134,9 @@
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
-                  <span class="output-badges">${latencyBadge}</span>
+                  <span class="output-badges">${latencyBadge}${traceLink}</span>
                 </div>
-                <div class="output-text ${status === 'error' ? 'low' : ''}">${escapeHtml(output)}</div>
+                <div class="output-text ${status === 'error' ? 'low' : ''}">${formatValue(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${metricDetailsHtml}
               </div>
@@ -1801,7 +2147,7 @@
           const expectedRow = expected ? `
               <div class="item-expected-row">
                 <div class="expected-label">Expected Output</div>
-                <div class="expected-text">${escapeHtml(expected)}</div>
+                <div class="expected-text">${formatValue(expected)}</div>
               </div>
           ` : '';
 

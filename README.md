@@ -33,6 +33,7 @@ Create a `.env` file with your [Langfuse](https://langfuse.com) credentials:
 LANGFUSE_PUBLIC_KEY=pk-...
 LANGFUSE_SECRET_KEY=sk-...
 LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
+LANGFUSE_PROJECT_ID=your-project-id
 ```
 
 ### 3. Run Evaluation
@@ -131,6 +132,7 @@ llm-eval dashboard
 - Filter by task, model, dataset, or time range
 - Compare multiple runs side-by-side
 - View charts and metrics visualizations
+- **Publish to Confluence** - Share approved runs with stakeholders
 
 ![Dashboard Compare](docs/images/dashboard-compare.png)
 

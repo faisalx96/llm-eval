@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
   <!-- Top Stats Bar -->
   <header class="stats-bar">
     <div class="logo">
@@ -61,6 +64,10 @@
         <span class="view-icon">▤</span>
         <span class="view-label">Runs</span>
       </button>
+      <button class="view-toggle-btn" data-view="models">
+        <span class="view-icon">⊞</span>
+        <span class="view-label">Models</span>
+      </button>
     </div>
     <div class="quick-filters">
       <button class="filter-btn active" data-filter="all">All</button>
@@ -87,6 +94,8 @@
       <span>⊕ SELECTED <span id="compare-count">0</span> RUNS</span>
       <div class="compare-actions">
         <button id="compare-view" class="action-btn">Compare</button>
+        <button id="langfuse-btn" class="action-btn" style="display:none;">View in Langfuse</button>
+        <button id="publish-selected" class="action-btn primary">Publish</button>
         <button id="delete-selected" class="action-btn danger">Delete</button>
         <button id="compare-clear" class="action-btn secondary">Clear</button>
       </div>
@@ -121,6 +130,46 @@
         <div class="charts-legend" id="charts-legend"></div>
       </div>
       <div class="charts-grid" id="charts-grid"></div>
+    </div>
+
+    <!-- Models Comparison View -->
+    <div id="models-view" class="models-container" style="display:none;">
+      <div class="models-header">
+        <div class="models-title-row">
+          <h2>Model Comparison</h2>
+          <span class="models-subtitle">Compare model performance across K runs for the same task and dataset</span>
+        </div>
+        <div class="models-controls">
+          <div class="models-filter-row">
+            <label class="filter-label">Task:</label>
+            <select id="models-task-select" class="filter-select">
+              <option value="">Select a task...</option>
+            </select>
+            <label class="filter-label">Dataset:</label>
+            <select id="models-dataset-select" class="filter-select">
+              <option value="">Select a dataset...</option>
+            </select>
+            <label class="filter-label">Metric:</label>
+            <select id="models-metric-select" class="filter-select">
+              <option value="">Select a metric...</option>
+            </select>
+            <label class="filter-label">Runs per model:</label>
+            <input type="number" id="models-k-input" class="filter-input-k" min="1" max="100" value="5" placeholder="5">
+          </div>
+          <div class="models-threshold-row" id="models-threshold-row" style="display:none;">
+            <label class="threshold-label">Pass if ≥</label>
+            <input type="range" id="models-threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+            <span class="threshold-value" id="models-threshold-value">80%</span>
+          </div>
+        </div>
+      </div>
+      <div class="models-empty" id="models-empty" style="display:none;">
+        <div class="empty-icon">⊞</div>
+        <h3>Select a Task and Dataset</h3>
+        <p>Choose a task and dataset from the dropdowns above to compare models</p>
+      </div>
+      <div class="models-grid" id="models-grid"></div>
+      <div class="models-ranking" id="models-ranking" style="display:none;"></div>
     </div>
 
     <!-- Table View -->
@@ -188,6 +237,108 @@
     </div>
   </div>
 
+  <!-- Publish to Confluence Modal -->
+  <div class="modal" id="publish-modal" style="display:none;">
+    <div class="modal-content modal-publish">
+      <div class="modal-header">
+        <h2>Publish to Confluence</h2>
+        <button class="modal-close" onclick="document.getElementById('publish-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="publish-run-info" id="publish-run-info">
+          <!-- Run info will be populated by JS -->
+        </div>
+
+        <div class="publish-form">
+          <div class="form-group">
+            <label for="publish-project">Project <span class="required">*</span></label>
+            <select id="publish-project" class="form-select">
+              <option value="">Select a project...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="publish-task">Task <span class="required">*</span></label>
+            <div class="select-with-add">
+              <select id="publish-task" class="form-select" disabled>
+                <option value="">Select a task...</option>
+              </select>
+              <button type="button" class="btn-add" id="add-task-btn" title="Create new task" disabled>+</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="publish-user">Published By <span class="required">*</span></label>
+            <div class="user-search-wrapper">
+              <input type="text" id="publish-user-search" class="form-input" placeholder="Search users..." autocomplete="off" />
+              <input type="hidden" id="publish-user" />
+              <div class="user-dropdown" id="user-dropdown" style="display:none;"></div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="publish-description">Description <span class="required">*</span></label>
+            <textarea id="publish-description" class="form-textarea" rows="4" placeholder="Describe the purpose and results of this evaluation run..."></textarea>
+            <span class="form-hint">Provide business context for this evaluation</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group half">
+              <label>Branch</label>
+              <input type="text" id="publish-branch" class="form-input" readonly />
+            </div>
+            <div class="form-group half">
+              <label>Commit</label>
+              <input type="text" id="publish-commit" class="form-input" readonly />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('publish-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-publish-btn">Publish</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Task Modal -->
+  <div class="modal" id="create-task-modal" style="display:none;">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Create Task</h2>
+        <button class="modal-close" onclick="document.getElementById('create-task-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="new-task-name">Task Name <span class="required">*</span></label>
+          <input type="text" id="new-task-name" class="form-input" placeholder="e.g., Intent Classification" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('create-task-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-create-task-btn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Run Selection Modal (for Models view) -->
+  <div class="modal" id="run-selection-modal" style="display:none;">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2>Select Runs for <span id="run-selection-model-name"></span></h2>
+        <button class="modal-close" onclick="document.getElementById('run-selection-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Choose which runs to include in the comparison. Runs are ordered by most recent first.</p>
+        <div class="run-selection-list" id="run-selection-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('run-selection-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-run-selection-btn">Apply Selection</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Help Modal -->
   <div class="modal" id="help-modal" style="display:none;">
     <div class="modal-content">
@@ -216,6 +367,7 @@
           <div class="shortcut"><span class="kbd">1-3</span> Quick filters</div>
           <div class="shortcut"><span class="kbd">h</span> Charts (dashboard)</div>
           <div class="shortcut"><span class="kbd">t</span> Runs (list)</div>
+          <div class="shortcut"><span class="kbd">m</span> Models comparison</div>
         </div>
       </div>
     </div>

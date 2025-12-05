@@ -131,6 +131,10 @@ class Evaluator:
         base_observer = observer or NullEvaluationObserver()
         self.observer = CompositeEvaluationObserver([base_observer])
 
+        # Langfuse IDs for URL building (populated during run)
+        self._langfuse_dataset_id: Optional[str] = getattr(self.dataset, 'id', None)
+        self._langfuse_run_id: Optional[str] = None
+
 
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
@@ -354,6 +358,22 @@ class Evaluator:
                 raise ValueError(f"Metric must be string or callable, got {type(metric)}")
         return prepared
 
+    def _build_langfuse_url(self) -> Optional[str]:
+        """Build Langfuse dataset run URL using dataset ID and run ID."""
+        try:
+            host = getattr(self, 'langfuse_host', None)
+            project_id = getattr(self, 'langfuse_project_id', None)
+            dataset_id = self._langfuse_dataset_id
+            run_id = self._langfuse_run_id
+
+            if not host or not project_id or not dataset_id or not run_id:
+                return None
+
+            # Langfuse dataset run URL format uses IDs, not names
+            return f"{host.rstrip('/')}/project/{project_id}/datasets/{dataset_id}/runs/{run_id}"
+        except Exception:
+            return None
+
     def _attach_observer(self, observer: Optional[EvaluationObserver]) -> None:
         """Attach an additional observer (e.g., dashboards)."""
         if observer is None:
@@ -441,10 +461,10 @@ class Evaluator:
             dataset_name=self.dataset_name,
             run_name=self.run_name,
             metrics=list(self.metrics.keys()),
-            run_metadata=self.run_metadata,
+            run_metadata=self.run_metadata.copy(),
             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout}
         )
-    
+
         items = self.dataset.get_items()
         if not items:
             console.print("[yellow]Warning: Dataset is empty[/yellow]")
@@ -584,6 +604,13 @@ class Evaluator:
             dashboard.shutdown()
         # Mark evaluation as finished
         result.finish()
+
+        # Build Langfuse URL now that we have the run_id from API responses
+        langfuse_url = self._build_langfuse_url()
+        if langfuse_url:
+            result.langfuse_url = langfuse_url
+            result.run_metadata["langfuse_url"] = langfuse_url
+
         self._notify_observer(
             "on_run_complete",
             result_summary={
@@ -884,7 +911,7 @@ class Evaluator:
             if dataset_item_id and trace_id:
                 try:
                     from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
-                    await self.client.async_api.dataset_run_items.create(
+                    response = await self.client.async_api.dataset_run_items.create(
                         request=CreateDatasetRunItemRequest(
                             runName=self.run_name,
                             runDescription=None,
@@ -893,6 +920,21 @@ class Evaluator:
                             traceId=trace_id,
                         )
                     )
+                    # Capture run_id from first successful response for URL building
+                    if self._langfuse_run_id is None and response:
+                        # Try different possible attribute names
+                        run_id = (
+                            getattr(response, 'run_id', None) or
+                            getattr(response, 'runId', None) or
+                            getattr(response, 'dataset_run_id', None) or
+                            getattr(response, 'datasetRunId', None)
+                        )
+                        # Also check if it's in a nested 'run' object
+                        if not run_id and hasattr(response, 'run'):
+                            run_obj = response.run
+                            run_id = getattr(run_obj, 'id', None)
+                        self._langfuse_run_id = run_id
+                        logger.debug(f"Captured Langfuse run_id: {run_id}, response attrs: {dir(response)}")
                 except Exception as e:
                     logger.debug(f"Failed to link dataset run item: {e}")
 
@@ -969,7 +1011,7 @@ class Evaluator:
                 if dataset_item_id and trace_id:
                     try:
                         from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
-                        await self.client.async_api.dataset_run_items.create(
+                        response = await self.client.async_api.dataset_run_items.create(
                             request=CreateDatasetRunItemRequest(
                                 runName=self.run_name,
                                 runDescription=None,
@@ -978,6 +1020,18 @@ class Evaluator:
                                 traceId=trace_id,
                             )
                         )
+                        # Capture run_id from first successful response for URL building
+                        if self._langfuse_run_id is None and response:
+                            run_id = (
+                                getattr(response, 'run_id', None) or
+                                getattr(response, 'runId', None) or
+                                getattr(response, 'dataset_run_id', None) or
+                                getattr(response, 'datasetRunId', None)
+                            )
+                            if not run_id and hasattr(response, 'run'):
+                                run_obj = response.run
+                                run_id = getattr(run_obj, 'id', None)
+                            self._langfuse_run_id = run_id
                     except Exception:
                         pass
 

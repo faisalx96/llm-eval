@@ -27,6 +27,7 @@ class RunInfo:
     error_count: int
     metric_averages: Dict[str, float] = field(default_factory=dict)
     avg_latency_ms: float = 0.0
+    langfuse_url: Optional[str] = None
 
     @property
     def success_rate(self) -> float:
@@ -49,6 +50,7 @@ class RunInfo:
             "error_count": self.error_count,
             "success_rate": self.success_rate,
             "avg_latency_ms": self.avg_latency_ms,
+            "langfuse_url": self.langfuse_url,
         }
 
 
@@ -172,12 +174,15 @@ class RunDiscovery:
                 run_name = first_row.get("run_name", "")
                 dataset_name = first_row.get("dataset_name", "unknown")
 
-                # Try to get model from run_metadata JSON and strip provider prefix
+                # Try to get model and langfuse_url from run_metadata JSON
                 actual_model = strip_model_provider(model_name)
+                langfuse_url = None
                 try:
                     metadata = json.loads(first_row.get("run_metadata", "{}"))
                     if "model" in metadata:
                         actual_model = strip_model_provider(metadata["model"])
+                    if "langfuse_url" in metadata:
+                        langfuse_url = metadata["langfuse_url"]
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -241,6 +246,7 @@ class RunDiscovery:
                     error_count=error_count,
                     metric_averages=metric_averages,
                     avg_latency_ms=avg_latency_ms,
+                    langfuse_url=langfuse_url,
                 )
         except Exception:
             return None
@@ -286,14 +292,17 @@ class RunDiscovery:
             run_name = str(first_row.get("run_name", "") or "")
             dataset_name = str(first_row.get("dataset_name", "unknown") or "unknown")
 
-            # Try to get model from run_metadata JSON
+            # Try to get model and langfuse_url from run_metadata JSON
             actual_model = strip_model_provider(model_name)
+            langfuse_url = None
             try:
                 metadata_str = first_row.get("run_metadata", "{}")
                 if metadata_str:
                     metadata = json.loads(str(metadata_str))
                     if "model" in metadata:
                         actual_model = strip_model_provider(metadata["model"])
+                    if "langfuse_url" in metadata:
+                        langfuse_url = metadata["langfuse_url"]
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -356,6 +365,7 @@ class RunDiscovery:
                 error_count=error_count,
                 metric_averages=metric_averages,
                 avg_latency_ms=avg_latency_ms,
+                langfuse_url=langfuse_url,
             )
         except Exception:
             return None
