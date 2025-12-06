@@ -43,12 +43,8 @@ setup(
         "langfuse>=2.0.0",
         "pydantic>=2.0.0",
         "rich>=13.0.0",  # For nice progress bars
-        "aiohttp>=3.8.0",  # For async HTTP
         "python-dotenv>=0.19.0",  # For environment variables
-        "nest_asyncio>=1.5.0",  # For Jupyter notebook compatibility
         "openpyxl>=3.0.0",  # For Excel export
-        "transformers>=4.35.0",  # For faithfulness metric (HHEM model)
-        "torch>=2.0.0",  # For faithfulness metric
     ],
     extras_require={
         "dev": [
