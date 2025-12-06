@@ -28,7 +28,8 @@ function calculateItemLevelMetrics(options) {
     passAtK: 0,
     passHatK: 0,
     maxAtK: 0,
-    stability: 0,
+    consistency: 0,
+    reliability: 0,
     avgScore: 0,
     avgLatency: 0,
     totalItems: 0,
@@ -53,13 +54,15 @@ function calculateItemLevelMetrics(options) {
 
   let passAtKCount = 0;
   let passHatKCount = 0;
-  let stabilityCount = 0;
+  let totalConsistencySum = 0;  // Sum of per-item consistency scores
+  let totalReliabilitySum = 0;  // Sum of per-item reliability (pass_count / K)
   let maxScoreSum = 0;
   let totalScoreSum = 0;
   let totalScoreCount = 0;
   let totalLatencySum = 0;
   let totalLatencyCount = 0;
   let itemsWithData = 0;
+  let itemsWithMultipleRuns = 0;  // Only count items with K > 1 for consistency
 
   // Build item map for matching by ID if available
   const itemIds = new Set();
@@ -130,9 +133,22 @@ function calculateItemLevelMetrics(options) {
     const allCorrectItem = numCorrect === scores.length && scores.length > 0;
     if (allCorrectItem) passHatKCount++;
 
-    // Stability: all runs have the same score for this item
-    const allSameScore = scores.every(s => Math.abs(s - scores[0]) < 0.0001);
-    if (allSameScore) stabilityCount++;
+    // Consistency: binary agreement (do runs agree on pass/fail?)
+    // Formula: 2 * max(passCount, failCount) / K - 1
+    // Range: 0% (50/50 split) to 100% (all agree)
+    const numScores = scores.length;
+    if (numScores > 1) {
+      const numFail = numScores - numCorrect;
+      const maxAgreement = Math.max(numCorrect, numFail);
+      const itemConsistency = (2 * maxAgreement / numScores) - 1;
+      totalConsistencySum += itemConsistency;
+      itemsWithMultipleRuns++;
+
+      // Reliability: average pass rate per item
+      // Formula: pass_count / K for each item, then average
+      const itemReliability = numCorrect / numScores;
+      totalReliabilitySum += itemReliability;
+    }
   }
 
   // Calculate final stats
@@ -140,7 +156,10 @@ function calculateItemLevelMetrics(options) {
   result.passAtK = itemsWithData > 0 ? passAtKCount / itemsWithData : 0;
   result.passHatK = itemsWithData > 0 ? passHatKCount / itemsWithData : 0;
   result.maxAtK = itemsWithData > 0 ? maxScoreSum / itemsWithData : 0;
-  result.stability = itemsWithData > 0 ? stabilityCount / itemsWithData : 0;
+  // Consistency = average of per-item binary agreement scores
+  result.consistency = itemsWithMultipleRuns > 0 ? totalConsistencySum / itemsWithMultipleRuns : 0;
+  // Reliability = average of per-item pass rates
+  result.reliability = itemsWithMultipleRuns > 0 ? totalReliabilitySum / itemsWithMultipleRuns : 0;
   result.avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
   result.avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
   result.totalScoreSum = totalScoreSum;
@@ -209,7 +228,8 @@ function getMetricTooltips(K, isBoolean, threshold) {
       ? `Percentage of items where all ${K} runs achieved a perfect score (100%).`
       : `Percentage of items where all ${K} runs scored ≥${threshold}%.`,
     maxAtK: `Average of the best score across all ${K} runs for each item.`,
-    stability: `Percentage of items where all ${K} runs produced the same score.`,
+    consistency: `Measures how often runs agree on pass/fail across ${K} runs. 100% = all runs agree, 0% = 50/50 split.`,
+    reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass on every item, 0% = no runs pass.`,
     avgScore: `The mean score across all items and all runs.`,
     avgLatency: `The mean response time across all items and all runs.`
   };

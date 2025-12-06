@@ -1384,7 +1384,7 @@
 
     if (!runsData || runsData.length === 0) {
       return {
-        passAtK: 0, passHatK: 0, maxAtK: 0, stability: 0, avgScore: 0, avgLatency: 0,
+        passAtK: 0, passHatK: 0, maxAtK: 0, consistency: 0, reliability: 0, avgScore: 0, avgLatency: 0,
         totalItems: 0, K: 0, correctDistribution: [0], runNames: []
       };
     }
@@ -1408,7 +1408,8 @@
       passAtK: metrics.passAtK,
       passHatK: metrics.passHatK,
       maxAtK: metrics.maxAtK,
-      stability: metrics.stability,
+      consistency: metrics.consistency,
+      reliability: metrics.reliability,
       avgScore: metrics.avgScore,
       avgLatency: metrics.avgLatency,
       totalItems: metrics.totalItems,
@@ -1499,7 +1500,8 @@
           ? `% of items where ALL ${K} runs achieved 100%`
           : `% of items where ALL ${K} runs scored ≥${threshold}%`,
         maxAtK: `Average of the best score per item across all ${K} runs`,
-        stability: `% of items where all ${K} runs got the same score`,
+        consistency: `How often runs agree on pass/fail across ${K} runs. 100% = all agree, 0% = 50/50 split.`,
+        reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass, 0% = no runs pass.`,
         avgScore: `Mean score across all items and all ${K} runs`,
         avgLatency: `Average response time across all runs`,
         correctDist: isBoolean
@@ -1546,8 +1548,12 @@
 
           <div class="model-stats-row">
             <div class="model-stat-box">
-              <div class="stat-title">Stability ${infoIcon(tooltips.stability)}</div>
-              <div class="stat-main ${getSuccessClass(stats.stability)}">${formatPercent(stats.stability)}</div>
+              <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
+              <div class="stat-main ${getSuccessClass(stats.consistency)}">${formatPercent(stats.consistency)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
+              <div class="stat-main ${getSuccessClass(stats.reliability)}">${formatPercent(stats.reliability)}</div>
             </div>
             <div class="model-stat-box">
               <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
@@ -2649,7 +2655,8 @@
         pass_at_k: 0,
         pass_k: 0,
         max_at_k: 0,
-        stability: 0,
+        consistency: 0,
+        reliability: 0,
         avg_score: 0,
         min_score: 0,
         max_score: 0,
@@ -2682,7 +2689,8 @@
       pass_at_k: metrics.passAtK,
       pass_k: metrics.passHatK,
       max_at_k: metrics.maxAtK,
-      stability: metrics.stability,
+      consistency: metrics.consistency,
+      reliability: metrics.reliability,
       avg_score: metrics.avgScore,
       min_score: Math.min(...runAvgScores),
       max_score: Math.max(...runAvgScores),
@@ -2746,7 +2754,7 @@
 
     // Calculate metrics for each metric name
     const rows = metrics.map(metricName => {
-      const threshold = aggregatePublishState.thresholds[metricName] || 0.8;
+      const threshold = aggregatePublishState.thresholds[metricName] ?? 0.8;
       const result = calculateAggregateMetricsFromItems(runsData, metricName, threshold);
       return {
         name: metricName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -2774,11 +2782,13 @@
       return `${ms.toFixed(0)}ms`;
     };
 
-    // Get score color class
+    // Get score color class - 5-level gradient matching compare view
     const getColorClass = (score) => {
-      if (score >= 0.8) return 'score-high';
-      if (score >= 0.5) return 'score-medium';
-      return 'score-low';
+      if (score >= 0.9) return 'score-5';
+      if (score >= 0.75) return 'score-4';
+      if (score >= 0.6) return 'score-3';
+      if (score >= 0.4) return 'score-2';
+      return 'score-1';
     };
 
     // Render table
@@ -2791,7 +2801,8 @@
             <th>Pass@${K}</th>
             <th>Pass^${K}</th>
             <th>Max@${K}</th>
-            <th>Stability</th>
+            <th>Consistency</th>
+            <th>Reliability</th>
             <th>Avg Score</th>
           </tr>
         </thead>
@@ -2803,12 +2814,13 @@
               <td class="${getColorClass(r.pass_at_k)}">${(r.pass_at_k * 100).toFixed(1)}%</td>
               <td class="${getColorClass(r.pass_k)}">${(r.pass_k * 100).toFixed(1)}%</td>
               <td class="${getColorClass(r.max_at_k)}">${(r.max_at_k * 100).toFixed(1)}%</td>
-              <td class="${getColorClass(r.stability)}">${(r.stability * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.consistency)}">${(r.consistency * 100).toFixed(1)}%</td>
+              <td class="${getColorClass(r.reliability)}">${(r.reliability * 100).toFixed(1)}%</td>
               <td class="${getColorClass(r.avg_score)}">${(r.avg_score * 100).toFixed(1)}%</td>
             </tr>
           `).join('')}
           <tr style="background: var(--bg-active);">
-            <td colspan="6" style="text-align: right; font-weight: 500;">Avg Latency:</td>
+            <td colspan="8" style="text-align: right; font-weight: 500;">Avg Latency:</td>
             <td>${formatLat(avgLatency)}</td>
           </tr>
         </tbody>
@@ -3055,7 +3067,7 @@
 
     // Calculate aggregate metrics for each metric using item-level data
     const metricResults = aggregatePublishState.commonMetrics.map(metric => {
-      const threshold = aggregatePublishState.thresholds[metric] || 0.8;
+      const threshold = aggregatePublishState.thresholds[metric] ?? 0.8;
       return calculateAggregateMetricsFromItems(runsData, metric, threshold);
     });
 

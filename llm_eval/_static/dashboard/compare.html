@@ -1353,7 +1353,7 @@
         } else {
           thresholdControl.style.display = 'flex';
           // Set slider value to current threshold (as percentage)
-          const pct = Math.round((state.metricThresholds[metric] || 0.8) * 100);
+          const pct = Math.round((state.metricThresholds[metric] ?? 0.8) * 100);
           thresholdSlider.value = pct;
           if (thresholdValue) thresholdValue.textContent = `${pct}%`;
         }
@@ -1408,7 +1408,9 @@
           allWrong: 0,
           passAtK: 0, // Items where at least one run scored 100%
           passHatK: 0, // Items where ALL runs scored 100%
-          stabilityCount: 0, // Items where all runs were either all correct or all wrong (no mix)
+          totalConsistencySum: 0, // Sum of per-item consistency scores
+          totalReliabilitySum: 0, // Sum of per-item reliability (pass_count / K)
+          itemsWithMultipleRuns: 0, // Count of items with K > 1 for consistency/reliability
           maxAtK: 0, // Sum of max scores across all items (best possible if you pick best run per item)
           correctDistribution: [], // How many items had 0, 1, 2, ... N runs correct
           overallAvgScore: 0,
@@ -1559,9 +1561,20 @@
           // Pass^K: ALL runs meet threshold
           if (allCorrectItem) stats.passHatK++;
 
-          // Stability: all runs have the same score
-          const allSameScore = validScores.every(s => Math.abs(s - validScores[0]) < 0.0001);
-          if (allSameScore) stats.stabilityCount++;
+          // Consistency: binary agreement (do runs agree on pass/fail?)
+          // Formula: 2 * max(passCount, failCount) / K - 1
+          // Range: 0% (50/50 split) to 100% (all agree)
+          if (validScores.length > 1) {
+            const numFail = validScores.length - numCorrect;
+            const maxAgreement = Math.max(numCorrect, numFail);
+            const itemConsistency = (2 * maxAgreement / validScores.length) - 1;
+            stats.totalConsistencySum += itemConsistency;
+            stats.itemsWithMultipleRuns++;
+
+            // Reliability: average pass rate per item
+            const itemReliability = numCorrect / validScores.length;
+            stats.totalReliabilitySum += itemReliability;
+          }
 
           // Agreement (runs scored similarly - within 10% of each other)
           const scoreRange = maxScore - minScore;
@@ -1722,7 +1735,7 @@
 
         // Tooltips for each metric - adjust based on boolean vs continuous
         const isBoolean = state.metricIsBoolean[state.selectedOverviewMetric];
-        const threshold = Math.round((state.metricThresholds[state.selectedOverviewMetric] || 0.8) * 100);
+        const threshold = Math.round((state.metricThresholds[state.selectedOverviewMetric] ?? 0.8) * 100);
         const correctDef = isBoolean ? '100%' : `≥${threshold}%`;
 
         const tooltips = {
@@ -1733,7 +1746,8 @@
             ? `Percentage of items where <strong>all ${K} runs</strong> achieved a perfect score (100%). Measures consistency - do all runs reliably solve this item?`
             : `Percentage of items where <strong>all ${K} runs</strong> scored <strong>≥${threshold}%</strong>. Adjust the threshold above to change what counts as "correct".`,
           maxAtK: `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
-          stability: `Percentage of items where all ${K} runs produced the <strong>same score</strong>. High stability = consistent, predictable behavior across runs.`,
+          consistency: `Measures how often runs <strong>agree on pass/fail</strong> across ${K} runs. <strong>100%</strong> = all runs agree, <strong>0%</strong> = 50/50 split.`,
+          reliability: `Average <strong>pass rate per item</strong> across ${K} runs. <strong>100%</strong> = all runs pass on every item, <strong>0%</strong> = no runs pass.`,
           avgScore: `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
           avgLatency: `The <strong>mean response time</strong> across all items and all runs. Lower is better.`,
           winnerBreakdown: `Shows which run "won" (scored highest) for each item. Ties occur when multiple runs share the top score. Helps identify which run performs best most often.`,
@@ -1760,8 +1774,13 @@
             </div>
 
             <div class="stat-box">
-              <div class="stat-title">Stability ${infoIcon(tooltips.stability)}</div>
-              <div class="stat-main ${scoreColorClass(stats.stabilityCount / stats.totalCompared)}">${formatPercent(stats.stabilityCount / stats.totalCompared)}</div>
+              <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
+              <div class="stat-main ${scoreColorClass(stats.itemsWithMultipleRuns > 0 ? stats.totalConsistencySum / stats.itemsWithMultipleRuns : 0)}">${formatPercent(stats.itemsWithMultipleRuns > 0 ? stats.totalConsistencySum / stats.itemsWithMultipleRuns : 0)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
+              <div class="stat-main ${scoreColorClass(stats.itemsWithMultipleRuns > 0 ? stats.totalReliabilitySum / stats.itemsWithMultipleRuns : 0)}">${formatPercent(stats.itemsWithMultipleRuns > 0 ? stats.totalReliabilitySum / stats.itemsWithMultipleRuns : 0)}</div>
             </div>
 
             <div class="stat-box">

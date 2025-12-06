@@ -3004,17 +3004,11 @@ main {
   border-bottom: none;
 }
 
-.metrics-preview-table .score-high {
-  color: var(--success);
-}
-
-.metrics-preview-table .score-medium {
-  color: var(--warning);
-}
-
-.metrics-preview-table .score-low {
-  color: var(--error);
-}
+.metrics-preview-table .score-5 { color: var(--score-5); }
+.metrics-preview-table .score-4 { color: var(--score-4); }
+.metrics-preview-table .score-3 { color: var(--score-3); }
+.metrics-preview-table .score-2 { color: var(--score-2); }
+.metrics-preview-table .score-1 { color: var(--score-1); }
 
 .metrics-preview-loading {
   padding: var(--space-lg);

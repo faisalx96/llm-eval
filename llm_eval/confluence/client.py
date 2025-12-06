@@ -71,10 +71,11 @@ class AggregateMetricResult:
     """Calculated aggregate metrics for a single metric."""
     metric_name: str
     threshold: float
-    pass_at_k: float  # Fraction of runs that passed
-    pass_k: float  # Probability all K runs pass (product of individual pass rates)
-    max_at_k: float  # Max score across K runs
-    stability: float  # 1 - normalized stddev of scores
+    pass_at_k: float  # Fraction of items where at least one run passed
+    pass_k: float  # Fraction of items where all runs passed
+    max_at_k: float  # Average of best score per item across K runs
+    consistency: float  # How often runs agree on pass/fail (0% = 50/50 split, 100% = all agree)
+    reliability: float  # Average pass rate per item across K runs
     avg_score: float
     min_score: float
     max_score: float
@@ -629,18 +630,19 @@ This page documents evaluation runs for the **{task_name}** task. Each run inclu
             pass_at_k_pct = mr.pass_at_k * 100
             pass_k_pct = mr.pass_k * 100
             max_at_k_pct = mr.max_at_k * 100
-            stability_pct = mr.stability * 100
+            consistency_pct = mr.consistency * 100
+            reliability_pct = mr.reliability * 100
             avg_pct = mr.avg_score * 100
             threshold_pct = mr.threshold * 100
 
             aggregate_rows.append(
                 f"| **{mr.metric_name.replace('_', ' ').title()}** | ≥{threshold_pct:.0f}% | "
-                f"{pass_at_k_pct:.1f}% | {pass_k_pct:.1f}% | {max_at_k_pct:.1f}% | {stability_pct:.1f}% | {avg_pct:.1f}% |"
+                f"{pass_at_k_pct:.1f}% | {pass_k_pct:.1f}% | {max_at_k_pct:.1f}% | {consistency_pct:.1f}% | {reliability_pct:.1f}% | {avg_pct:.1f}% |"
             )
 
         aggregate_table = (
-            f"| Metric | Threshold | Pass@{K} | Pass^{K} | Max@{K} | Stability | Avg Score |\n"
-            "|:-------|:---------:|:------:|:------:|:-----:|:---------:|:---------:|\n"
+            f"| Metric | Threshold | Pass@{K} | Pass^{K} | Max@{K} | Consistency | Reliability | Avg Score |\n"
+            "|:-------|:---------:|:------:|:------:|:-----:|:-----------:|:-----------:|:---------:|\n"
             + "\n".join(aggregate_rows)
         )
 
