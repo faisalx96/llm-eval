@@ -1459,11 +1459,10 @@
           let timeoutErrors = 0, runtimeErrors = 0, otherErrors = 0;
 
           for (const row of rows) {
-            // Score for the selected metric
+            // Score for the selected metric (use centralized error handling)
             if (metricIdx >= 0) {
-              const v = (row.metric_values || [])[metricIdx];
-              const n = parseFloat(v);
-              if (!isNaN(n)) { scoreSum += n; scoreCount++; }
+              const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+              if (score !== null) { scoreSum += score; scoreCount++; }
             }
             // Latency
             if (row.latency_ms && row.status === 'completed') {
@@ -1914,11 +1913,10 @@
 
             let sum = 0, count = 0;
             for (const row of rows) {
-              const vals = row.metric_values || [];
-              const v = vals[idx];
-              const n = parseFloat(v);
-              if (!isNaN(n)) {
-                sum += n;
+              // Use centralized error handling - errors count as 0
+              const { score } = window.LLMEvalMetrics.getRowScore(row, idx);
+              if (score !== null) {
+                sum += score;
                 count++;
               }
             }

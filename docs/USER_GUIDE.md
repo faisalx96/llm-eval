@@ -39,10 +39,7 @@ Create a `.env` file in your project root:
 LANGFUSE_PUBLIC_KEY=pk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 LANGFUSE_SECRET_KEY=sk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 LANGFUSE_HOST=https://cloud.langfuse.com
-LANGFUSE_PROJECT_ID=clxxxxxxxxxx
 ```
-
-> **Tip**: You can find your project ID in the Langfuse URL when viewing your project (e.g., `https://cloud.langfuse.com/project/clxxxxxxxxxx`).
 
 > ⚠️ **Common Error**: If you see `"Missing Langfuse public key"`, your `.env` file is not being loaded. Make sure:
 > - The file is named exactly `.env` (not `env` or `.env.txt`)
@@ -1001,7 +998,6 @@ evaluator = Evaluator(
         "langfuse_public_key": "pk-...",
         "langfuse_secret_key": "sk-...",
         "langfuse_host": "https://cloud.langfuse.com",
-        "langfuse_project_id": "clxxxxxxxxxx",
     }
 )
 ```
@@ -1010,9 +1006,10 @@ evaluator = Evaluator(
 
 ```python
 results = evaluator.run(
-    show_tui=True,        # Show terminal UI dashboard (default: True)
-    auto_save=True,       # Save results automatically (default: True)
-    save_format="csv",    # "csv", "json", or "xlsx" (default: "csv")
+    show_tui=True,           # Show terminal UI dashboard (default: True)
+    auto_save=True,          # Save results automatically (default: True)
+    save_format="csv",       # "csv", "json", or "xlsx" (default: "csv")
+    max_parallel_runs=None,  # For multi-model: control parallel execution (see below)
 )
 ```
 
@@ -1026,10 +1023,34 @@ results = Evaluator.run_parallel(
     show_tui=True,          # Show terminal UI dashboard (default: True)
     auto_save=True,         # Save each run's results
     save_format="csv",      # "csv", "json", or "xlsx"
+    max_parallel_runs=None, # Control how many runs execute at once (see below)
 )
 ```
 
 > **Note**: The Web UI is always available at the URL printed at startup.
+
+### Controlling Parallel Runs (Queue Mode)
+
+When running many evaluations (e.g., 5 tasks × 6 models = 30 runs), you may want to limit how many run at once to avoid overwhelming your API or system.
+
+```python
+# Run all at once (default behavior)
+results = Evaluator.run_parallel(runs=runs_config)
+
+# Run sequentially - one at a time (queue mode)
+results = Evaluator.run_parallel(runs=runs_config, max_parallel_runs=1)
+
+# Run 3 at a time (balanced)
+results = Evaluator.run_parallel(runs=runs_config, max_parallel_runs=3)
+```
+
+| `max_parallel_runs` | Behavior |
+|---------------------|----------|
+| `None` (default) | All runs execute simultaneously |
+| `1` | Sequential queue - one run at a time |
+| `N` | Up to N runs execute at once |
+
+> **Tip**: Use `max_parallel_runs=1` for overnight batch jobs where you want predictable, sequential execution without overwhelming API rate limits.
 
 ---
 

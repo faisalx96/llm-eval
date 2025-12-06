@@ -33,7 +33,6 @@ Create a `.env` file with your [Langfuse](https://langfuse.com) credentials:
 LANGFUSE_PUBLIC_KEY=pk-...
 LANGFUSE_SECRET_KEY=sk-...
 LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
-LANGFUSE_PROJECT_ID=your-project-id
 ```
 
 ### 3. Run Evaluation
@@ -87,6 +86,7 @@ results = Evaluator.run_parallel(
     ],
     show_tui=True,
     auto_save=True,
+    max_parallel_runs=2,  # Run 2 at a time (None=all at once, 1=sequential)
 )
 ```
 

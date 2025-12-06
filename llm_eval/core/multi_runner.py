@@ -122,6 +122,7 @@ class MultiModelRunner:
         show_tui: bool = True,
         auto_save: bool = True,
         save_format: str = "csv",
+        max_parallel_runs: Optional[int] = None,
     ) -> List[EvaluationResult]:
         # 1. Pre-load unique datasets to avoid redundant downloads
         from .dataset import LangfuseDataset
@@ -193,7 +194,18 @@ class MultiModelRunner:
         live_enabled = show_tui and console_supports_live(self.console)
         dashboard = RunDashboard(dashboard_configs, enabled=live_enabled, console=self.console)
 
+        # Create semaphore if max_parallel_runs is set
+        semaphore = asyncio.Semaphore(max_parallel_runs) if max_parallel_runs else None
+
         async def _run_spec(spec: RunSpec):
+            # Acquire semaphore if limiting parallel runs
+            if semaphore:
+                async with semaphore:
+                    return await _run_spec_inner(spec)
+            else:
+                return await _run_spec_inner(spec)
+
+        async def _run_spec_inner(spec: RunSpec):
             observer = dashboard.create_observer(spec.name)
             # Pass config object directly
             evaluator = Evaluator(

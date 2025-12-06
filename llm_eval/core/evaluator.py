@@ -337,12 +337,22 @@ class Evaluator:
                 self.langfuse_host = host or 'https://cloud.langfuse.com'
             except Exception:
                 self.langfuse_host = 'https://cloud.langfuse.com'
-            # Optional project id for deep-links
+            # Get project ID for deep-links (auto-detect from API if not provided)
             try:
                 self.langfuse_project_id = (
                     self.config.langfuse_project_id
                     or os.getenv('LANGFUSE_PROJECT_ID')
                 )
+                # Auto-detect from Langfuse client if not provided
+                if not self.langfuse_project_id:
+                    # Try private method first (cached, no extra API call)
+                    if hasattr(client, '_get_project_id'):
+                        self.langfuse_project_id = client._get_project_id()
+                    # Fallback to public API
+                    if not self.langfuse_project_id and hasattr(client, 'api'):
+                        result = client.api.projects.get()
+                        if result.data:
+                            self.langfuse_project_id = result.data[0].id
             except Exception:
                 self.langfuse_project_id = None
             return client
@@ -409,7 +419,13 @@ class Evaluator:
                 logger.error(f"Observer callback {method} failed: {e}")
                 pass
     
-    def run(self, show_tui: bool = True, auto_save: bool = True, save_format: str = "csv") -> Union[EvaluationResult, List[EvaluationResult]]:
+    def run(
+        self,
+        show_tui: bool = True,
+        auto_save: bool = True,
+        save_format: str = "csv",
+        max_parallel_runs: Optional[int] = None,
+    ) -> Union[EvaluationResult, List[EvaluationResult]]:
         """
         Run the evaluation synchronously.
 
@@ -417,6 +433,11 @@ class Evaluator:
             show_tui: Whether to show the terminal UI dashboard (default: True)
             auto_save: Whether to automatically save results after evaluation (default: True)
             save_format: Format for auto-save - "csv", "json", or "xlsx" (default: "csv")
+            max_parallel_runs: Maximum number of model runs to execute concurrently
+                (only applies when evaluating multiple models).
+                None (default) = all models in parallel
+                1 = sequential (one model at a time)
+                N = run N models at a time
 
         Returns:
             EvaluationResult object with scores and statistics
@@ -441,7 +462,7 @@ class Evaluator:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         if len(self.models) > 1:
-            return self._run_multi_model(show_tui, auto_save, save_format)
+            return self._run_multi_model(show_tui, auto_save, save_format, max_parallel_runs)
 
         # Run the async evaluation
         result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
@@ -669,6 +690,7 @@ class Evaluator:
         show_tui: bool = True,
         auto_save: bool = False,
         save_format: str = "csv",
+        max_parallel_runs: Optional[int] = None,
     ) -> List[EvaluationResult]:
         """
         Evaluate multiple tasks concurrently from Python code.
@@ -678,6 +700,10 @@ class Evaluator:
             show_tui: Whether to show the terminal UI dashboard (default: True)
             auto_save: Forwarded to each evaluator (per-run auto-save).
             save_format: Format for auto-save - "csv", "json", or "xlsx" (default: "csv")
+            max_parallel_runs: Maximum number of runs to execute concurrently.
+                None (default) = all runs in parallel
+                1 = sequential (queue mode)
+                N = run N at a time
 
         Note:
             The Web UI is always available at the URL printed at startup.
@@ -705,6 +731,7 @@ class Evaluator:
                 show_tui=show_tui,
                 auto_save=auto_save,
                 save_format=save_format,
+                max_parallel_runs=max_parallel_runs,
             )
         )
 
@@ -769,7 +796,7 @@ class Evaluator:
     
     # Frontend concerns moved to llm_eval.utils.frontend
 
-    def _run_multi_model(self, show_tui: bool, auto_save: bool, save_format: str):
+    def _run_multi_model(self, show_tui: bool, auto_save: bool, save_format: str, max_parallel_runs: Optional[int] = None):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = (self.config.run_name or "").strip() or self._task_name
@@ -806,6 +833,7 @@ class Evaluator:
             show_tui=show_tui,
             auto_save=auto_save,
             save_format=save_format,
+            max_parallel_runs=max_parallel_runs,
         )
     
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):

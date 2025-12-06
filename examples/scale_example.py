@@ -48,16 +48,23 @@ def main():
         # ... add configs for Task 3, 4, 5 ...
     ]
 
-    # 4. Run everything in parallel
+    # 4. Run evaluations
     # Evaluator.run_parallel will expand the 'models' list into individual runs
     # Total runs = (Tasks) * (Models)
     print(f"Starting {len(runs_config) * len(models)} evaluations...")
-    
+
+    # Option A: Run all in parallel (default)
+    # results = Evaluator.run_parallel(runs=runs_config)
+
+    # Option B: Run sequentially (queue mode) - one at a time
+    # results = Evaluator.run_parallel(runs=runs_config, max_parallel_runs=1)
+
+    # Option C: Run 2 at a time (balanced)
     results = Evaluator.run_parallel(
         runs=runs_config,
         show_tui=True,
         auto_save=True,
-        keep_server_alive=True  # Keep Web UI running after evaluation completes
+        max_parallel_runs=2,  # Run 2 evaluations at a time
     )
 
     print("All evaluations complete!")
