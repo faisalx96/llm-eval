@@ -33,6 +33,7 @@ function calculateItemLevelMetrics(options) {
     avgScore: 0,
     avgLatency: 0,
     totalItems: 0,
+    failedCount: 0,
     K: K,
     totalScoreSum: 0,
     totalScoreCount: 0,
@@ -63,6 +64,7 @@ function calculateItemLevelMetrics(options) {
   let totalLatencyCount = 0;
   let itemsWithData = 0;
   let itemsWithMultipleRuns = 0;  // Only count items with K > 1 for consistency
+  let failedCount = 0;  // Total number of failed attempts across all items and runs
 
   // Build item map for matching by ID if available
   const itemIds = new Set();
@@ -91,10 +93,19 @@ function calculateItemLevelMetrics(options) {
       const metricIdx = getMetricIndex(runData);
       if (metricIdx < 0) continue;
 
+      // Check if item failed (status is 'error' or 'failed')
+      const isFailed = row.status === 'error' || row.status === 'failed';
+
       const metricValues = row?.metric_values || [];
       const metricValue = metricValues[metricIdx];
 
-      if (metricValue !== undefined && metricValue !== null) {
+      // Treat failed items as score 0
+      if (isFailed) {
+        scores.push(0);
+        totalScoreSum += 0;
+        totalScoreCount++;
+        failedCount++;
+      } else if (metricValue !== undefined && metricValue !== null) {
         const score = parseFloat(metricValue);
         if (!isNaN(score)) {
           scores.push(score);
@@ -153,6 +164,7 @@ function calculateItemLevelMetrics(options) {
 
   // Calculate final stats
   result.totalItems = itemsWithData;
+  result.failedCount = failedCount;
   result.passAtK = itemsWithData > 0 ? passAtKCount / itemsWithData : 0;
   result.passHatK = itemsWithData > 0 ? passHatKCount / itemsWithData : 0;
   result.maxAtK = itemsWithData > 0 ? maxScoreSum / itemsWithData : 0;
@@ -230,6 +242,7 @@ function getMetricTooltips(K, isBoolean, threshold) {
     maxAtK: `Average of the best score across all ${K} runs for each item.`,
     consistency: `Measures how often runs agree on pass/fail across ${K} runs. 100% = all runs agree, 0% = 50/50 split.`,
     reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass on every item, 0% = no runs pass.`,
+    failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
     avgScore: `The mean score across all items and all runs.`,
     avgLatency: `The mean response time across all items and all runs.`
   };

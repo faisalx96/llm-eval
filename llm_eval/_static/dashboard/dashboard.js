@@ -1385,7 +1385,7 @@
     if (!runsData || runsData.length === 0) {
       return {
         passAtK: 0, passHatK: 0, maxAtK: 0, consistency: 0, reliability: 0, avgScore: 0, avgLatency: 0,
-        totalItems: 0, K: 0, correctDistribution: [0], runNames: []
+        totalItems: 0, failedCount: 0, K: 0, correctDistribution: [0], runNames: []
       };
     }
 
@@ -1413,6 +1413,7 @@
       avgScore: metrics.avgScore,
       avgLatency: metrics.avgLatency,
       totalItems: metrics.totalItems,
+      failedCount: metrics.failedCount,
       K: metrics.K,
       correctDistribution: metrics.correctDistribution || new Array(K + 1).fill(0),
       runNames
@@ -1502,6 +1503,7 @@
         maxAtK: `Average of the best score per item across all ${K} runs`,
         consistency: `How often runs agree on pass/fail across ${K} runs. 100% = all agree, 0% = 50/50 split.`,
         reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass, 0% = no runs pass.`,
+        failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
         avgScore: `Mean score across all items and all ${K} runs`,
         avgLatency: `Average response time across all runs`,
         correctDist: isBoolean
@@ -1562,6 +1564,10 @@
             <div class="model-stat-box">
               <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
               <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
             </div>
           </div>
 
@@ -2658,6 +2664,7 @@
         consistency: 0,
         reliability: 0,
         avg_score: 0,
+        failed_count: 0,
         min_score: 0,
         max_score: 0,
         runs_passed: 0,
@@ -2692,6 +2699,7 @@
       consistency: metrics.consistency,
       reliability: metrics.reliability,
       avg_score: metrics.avgScore,
+      failed_count: metrics.failedCount,
       min_score: Math.min(...runAvgScores),
       max_score: Math.max(...runAvgScores),
       runs_passed: runsPassed,
@@ -2804,6 +2812,7 @@
             <th>Consistency</th>
             <th>Reliability</th>
             <th>Avg Score</th>
+            <th>Errors</th>
           </tr>
         </thead>
         <tbody>
@@ -2817,10 +2826,11 @@
               <td class="${getColorClass(r.consistency)}">${(r.consistency * 100).toFixed(1)}%</td>
               <td class="${getColorClass(r.reliability)}">${(r.reliability * 100).toFixed(1)}%</td>
               <td class="${getColorClass(r.avg_score)}">${(r.avg_score * 100).toFixed(1)}%</td>
+              <td class="${r.failed_count > 0 ? 'score-1' : ''}">${r.failed_count}</td>
             </tr>
           `).join('')}
           <tr style="background: var(--bg-active);">
-            <td colspan="8" style="text-align: right; font-weight: 500;">Avg Latency:</td>
+            <td colspan="9" style="text-align: right; font-weight: 500;">Avg Latency:</td>
             <td>${formatLat(avgLatency)}</td>
           </tr>
         </tbody>

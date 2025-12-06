@@ -3176,6 +3176,7 @@ main {
 .model-stat-box .stat-main.score-3 { color: var(--score-3); }
 .model-stat-box .stat-main.score-2 { color: var(--score-2); }
 .model-stat-box .stat-main.score-1 { color: var(--score-1); }
+.model-stat-box .stat-main.failed-count { color: var(--error); }
 
 /* Info icon (i) for tooltips */
 .stat-info-icon {

@@ -1412,6 +1412,7 @@
           totalReliabilitySum: 0, // Sum of per-item reliability (pass_count / K)
           itemsWithMultipleRuns: 0, // Count of items with K > 1 for consistency/reliability
           maxAtK: 0, // Sum of max scores across all items (best possible if you pick best run per item)
+          failedCount: 0, // Total number of failed attempts across all items and runs
           correctDistribution: [], // How many items had 0, 1, 2, ... N runs correct
           overallAvgScore: 0,
           overallAvgLatency: 0,
@@ -1486,19 +1487,26 @@
         // Compare items head-to-head using item_id for alignment
         let agreements = 0;
         for (const itemId of itemIdList) {
-          const scores = state.runs.map((run) => {
+          const scoresWithStatus = state.runs.map((run) => {
             const snap = run.snapshot || {};
             const rows = snap.rows || [];
             // Match by item_id, fallback to index for legacy data
             const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-            if (!row) return null;
+            if (!row) return { score: null, failed: false };
             const metricIdx = getMetricIndex(run);
-            if (metricIdx < 0) return null;
+            if (metricIdx < 0) return { score: null, failed: false };
+            // Check if failed
+            const isFailed = row.status === 'error' || row.status === 'failed';
+            if (isFailed) return { score: 0, failed: true };
             const v = (row.metric_values || [])[metricIdx];
             const n = parseFloat(v);
-            return isNaN(n) ? null : n;
+            return { score: isNaN(n) ? null : n, failed: false };
           });
 
+          // Count failed attempts
+          stats.failedCount += scoresWithStatus.filter(s => s.failed).length;
+
+          const scores = scoresWithStatus.map(s => s.score);
           const validScores = scores.filter(s => s !== null);
 
           // Max@K: track the best score for this item across all runs (not affected by threshold)
@@ -1748,6 +1756,7 @@
           maxAtK: `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
           consistency: `Measures how often runs <strong>agree on pass/fail</strong> across ${K} runs. <strong>100%</strong> = all runs agree, <strong>0%</strong> = 50/50 split.`,
           reliability: `Average <strong>pass rate per item</strong> across ${K} runs. <strong>100%</strong> = all runs pass on every item, <strong>0%</strong> = no runs pass.`,
+          failedCount: `Number of runs that <strong>threw an error</strong> (across all items). Errors are scored as 0%.`,
           avgScore: `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
           avgLatency: `The <strong>mean response time</strong> across all items and all runs. Lower is better.`,
           winnerBreakdown: `Shows which run "won" (scored highest) for each item. Ties occur when multiple runs share the top score. Helps identify which run performs best most often.`,
@@ -1791,6 +1800,11 @@
             <div class="stat-box">
               <div class="stat-title">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
               <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
             </div>
           </div>
 
@@ -2011,6 +2025,9 @@
             const run = state.runs[runIdx];
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
+            // Treat failed items as score 0
+            const isFailed = row.status === 'error' || row.status === 'failed';
+            if (isFailed) return 0;
             const v = (row.metric_values || [])[metricIdx];
             const n = parseFloat(v);
             return isNaN(n) ? null : n;

@@ -1060,6 +1060,8 @@ class Evaluator:
                     except Exception:
                         pass
 
+            # Update trace info even on error so Langfuse link appears in dashboard
+            tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             return Exception(str(e))
