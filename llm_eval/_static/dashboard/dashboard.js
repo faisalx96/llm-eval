@@ -1502,7 +1502,7 @@
           : `% of items where ALL ${K} runs scored ≥${threshold}%`,
         maxAtK: `Average of the best score per item across all ${K} runs`,
         consistency: `How often runs agree on pass/fail across ${K} runs. 100% = all agree, 0% = 50/50 split.`,
-        reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass, 0% = no runs pass.`,
+        reliability: `When an item CAN be solved, how often is it? Only includes items with ≥1 passing run.`,
         failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
         avgScore: `Mean score across all items and all ${K} runs`,
         avgLatency: `Average response time across all runs`,

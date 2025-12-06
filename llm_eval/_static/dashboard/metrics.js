@@ -56,7 +56,7 @@ function calculateItemLevelMetrics(options) {
   let passAtKCount = 0;
   let passHatKCount = 0;
   let totalConsistencySum = 0;  // Sum of per-item consistency scores
-  let totalReliabilitySum = 0;  // Sum of per-item reliability (pass_count / K)
+  let totalReliabilitySum = 0;  // Sum of per-item reliability (pass_count / K) for items with at least one pass
   let maxScoreSum = 0;
   let totalScoreSum = 0;
   let totalScoreCount = 0;
@@ -64,6 +64,7 @@ function calculateItemLevelMetrics(options) {
   let totalLatencyCount = 0;
   let itemsWithData = 0;
   let itemsWithMultipleRuns = 0;  // Only count items with K > 1 for consistency
+  let itemsWithAtLeastOnePass = 0;  // Items where at least one run passed (for reliability)
   let failedCount = 0;  // Total number of failed attempts across all items and runs
 
   // Build item map for matching by ID if available
@@ -155,10 +156,13 @@ function calculateItemLevelMetrics(options) {
       totalConsistencySum += itemConsistency;
       itemsWithMultipleRuns++;
 
-      // Reliability: average pass rate per item
-      // Formula: pass_count / K for each item, then average
-      const itemReliability = numCorrect / numScores;
-      totalReliabilitySum += itemReliability;
+      // Reliability: when it CAN answer correctly, how often does it?
+      // Formula: pass_count / K, but ONLY for items where pass_count > 0
+      if (numCorrect > 0) {
+        const itemReliability = numCorrect / numScores;
+        totalReliabilitySum += itemReliability;
+        itemsWithAtLeastOnePass++;
+      }
     }
   }
 
@@ -170,8 +174,8 @@ function calculateItemLevelMetrics(options) {
   result.maxAtK = itemsWithData > 0 ? maxScoreSum / itemsWithData : 0;
   // Consistency = average of per-item binary agreement scores
   result.consistency = itemsWithMultipleRuns > 0 ? totalConsistencySum / itemsWithMultipleRuns : 0;
-  // Reliability = average of per-item pass rates
-  result.reliability = itemsWithMultipleRuns > 0 ? totalReliabilitySum / itemsWithMultipleRuns : 0;
+  // Reliability = average pass rate for items that CAN be solved (at least one pass)
+  result.reliability = itemsWithAtLeastOnePass > 0 ? totalReliabilitySum / itemsWithAtLeastOnePass : 0;
   result.avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
   result.avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
   result.totalScoreSum = totalScoreSum;
@@ -241,7 +245,7 @@ function getMetricTooltips(K, isBoolean, threshold) {
       : `Percentage of items where all ${K} runs scored ≥${threshold}%.`,
     maxAtK: `Average of the best score across all ${K} runs for each item.`,
     consistency: `Measures how often runs agree on pass/fail across ${K} runs. 100% = all runs agree, 0% = 50/50 split.`,
-    reliability: `Average pass rate per item across ${K} runs. 100% = all runs pass on every item, 0% = no runs pass.`,
+    reliability: `When an item CAN be solved, how often is it? Only includes items with at least one passing run.`,
     failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
     avgScore: `The mean score across all items and all runs.`,
     avgLatency: `The mean response time across all items and all runs.`

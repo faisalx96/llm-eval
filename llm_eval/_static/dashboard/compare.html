@@ -1409,8 +1409,9 @@
           passAtK: 0, // Items where at least one run scored 100%
           passHatK: 0, // Items where ALL runs scored 100%
           totalConsistencySum: 0, // Sum of per-item consistency scores
-          totalReliabilitySum: 0, // Sum of per-item reliability (pass_count / K)
-          itemsWithMultipleRuns: 0, // Count of items with K > 1 for consistency/reliability
+          totalReliabilitySum: 0, // Sum of per-item reliability (pass_count / K) for items with at least one pass
+          itemsWithMultipleRuns: 0, // Count of items with K > 1 for consistency
+          itemsWithAtLeastOnePass: 0, // Count of items where at least one run passed (for reliability)
           maxAtK: 0, // Sum of max scores across all items (best possible if you pick best run per item)
           failedCount: 0, // Total number of failed attempts across all items and runs
           correctDistribution: [], // How many items had 0, 1, 2, ... N runs correct
@@ -1579,9 +1580,13 @@
             stats.totalConsistencySum += itemConsistency;
             stats.itemsWithMultipleRuns++;
 
-            // Reliability: average pass rate per item
-            const itemReliability = numCorrect / validScores.length;
-            stats.totalReliabilitySum += itemReliability;
+            // Reliability: when it CAN answer correctly, how often does it?
+            // Only include items with at least one passing run
+            if (numCorrect > 0) {
+              const itemReliability = numCorrect / validScores.length;
+              stats.totalReliabilitySum += itemReliability;
+              stats.itemsWithAtLeastOnePass++;
+            }
           }
 
           // Agreement (runs scored similarly - within 10% of each other)
@@ -1755,7 +1760,7 @@
             : `Percentage of items where <strong>all ${K} runs</strong> scored <strong>≥${threshold}%</strong>. Adjust the threshold above to change what counts as "correct".`,
           maxAtK: `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
           consistency: `Measures how often runs <strong>agree on pass/fail</strong> across ${K} runs. <strong>100%</strong> = all runs agree, <strong>0%</strong> = 50/50 split.`,
-          reliability: `Average <strong>pass rate per item</strong> across ${K} runs. <strong>100%</strong> = all runs pass on every item, <strong>0%</strong> = no runs pass.`,
+          reliability: `When an item <strong>CAN be solved</strong>, how often is it? Only includes items with <strong>≥1 passing run</strong>.`,
           failedCount: `Number of runs that <strong>threw an error</strong> (across all items). Errors are scored as 0%.`,
           avgScore: `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
           avgLatency: `The <strong>mean response time</strong> across all items and all runs. Lower is better.`,
@@ -1789,7 +1794,7 @@
 
             <div class="stat-box">
               <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
-              <div class="stat-main ${scoreColorClass(stats.itemsWithMultipleRuns > 0 ? stats.totalReliabilitySum / stats.itemsWithMultipleRuns : 0)}">${formatPercent(stats.itemsWithMultipleRuns > 0 ? stats.totalReliabilitySum / stats.itemsWithMultipleRuns : 0)}</div>
+              <div class="stat-main ${scoreColorClass(stats.itemsWithAtLeastOnePass > 0 ? stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass : 0)}">${formatPercent(stats.itemsWithAtLeastOnePass > 0 ? stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass : 0)}</div>
             </div>
 
             <div class="stat-box">

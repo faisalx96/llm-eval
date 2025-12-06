@@ -610,6 +610,9 @@ class Evaluator:
                 item_id = getattr(item, 'id', None) or f"item_{idx}"
                 if isinstance(eval_result, Exception):
                     result.add_error(item_id, str(eval_result))
+                elif isinstance(eval_result, dict) and "_error" in eval_result:
+                    # Error with trace_id info
+                    result.add_error(item_id, eval_result["_error"], eval_result.get("_trace_id"))
                 else:
                     result.add_result(item_id, eval_result)
             
@@ -1064,7 +1067,8 @@ class Evaluator:
             tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
-            return Exception(str(e))
+            # Return error info with trace_id so it can be saved to results
+            return {"_error": str(e), "_trace_id": meta.get('trace_id')}
 
     def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:
         """Synchronous version of metric computation for thread pool execution."""

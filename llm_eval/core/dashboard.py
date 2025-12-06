@@ -199,6 +199,10 @@ class RunDashboard:
         state.failed += 1
         state.in_progress = max(0, state.in_progress - 1)
         state.last_error = message
+        # Record 0 for all metrics on error (errors = 0% score)
+        for metric_name in state.metrics:
+            state.metric_totals[metric_name] = state.metric_totals.get(metric_name, 0.0) + 0.0
+            state.metric_counts[metric_name] = state.metric_counts.get(metric_name, 0) + 1
         if state.status == "pending":
             state.status = "running"
         state.touch()

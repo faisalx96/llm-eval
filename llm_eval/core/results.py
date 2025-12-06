@@ -49,7 +49,7 @@ class EvaluationResult:
         self.inputs = {}  # item_id -> input data
         self.metadatas = {}  # item_id -> metadata dict
         self.results = {}  # item_id -> result dict
-        self.errors = {}   # item_id -> error message
+        self.errors = {}   # item_id -> {"error": str, "trace_id": Optional[str]}
 
     def add_input(self, item_id: str, task_input: Any):
         """Add input data for an item."""
@@ -63,9 +63,9 @@ class EvaluationResult:
         """Add a successful evaluation result."""
         self.results[item_id] = result
 
-    def add_error(self, item_id: str, error: str):
+    def add_error(self, item_id: str, error: str, trace_id: Optional[str] = None):
         """Add an evaluation error."""
-        self.errors[item_id] = error
+        self.errors[item_id] = {"error": error, "trace_id": trace_id}
     
     def finish(self):
         """Mark evaluation as finished."""
@@ -182,8 +182,9 @@ class EvaluationResult:
         if self.errors:
             lines.append(f"\nErrors: {len(self.errors)} items failed")
             # Show all errors
-            for item_id, error in self.errors.items():
-                lines.append(f"  - {item_id}: {error}")
+            for item_id, error_info in self.errors.items():
+                error_msg = error_info["error"] if isinstance(error_info, dict) else error_info
+                lines.append(f"  - {item_id}: {error_msg}")
         
         return "\n".join(lines)
     
@@ -358,7 +359,15 @@ class EvaluationResult:
             rows.append(row)
 
         # Add failed items as rows too
-        for item_id, error in self.errors.items():
+        for item_id, error_info in self.errors.items():
+            # Handle both old format (string) and new format (dict with error and trace_id)
+            if isinstance(error_info, dict):
+                error_msg = error_info.get("error", str(error_info))
+                error_trace_id = error_info.get("trace_id", "")
+            else:
+                error_msg = str(error_info)
+                error_trace_id = ""
+
             # Get input and metadata for failed items
             task_input = self.inputs.get(item_id, '')
             if isinstance(task_input, dict):
@@ -373,11 +382,11 @@ class EvaluationResult:
                 'run_name': self.run_name,
                 'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
                 'run_config': json.dumps(self.run_config, ensure_ascii=False),
-                'trace_id': '',
+                'trace_id': error_trace_id or '',
                 'item_id': item_id,
                 'input': str(task_input),
                 'item_metadata': str(item_metadata),
-                'output': f'ERROR: {error}',
+                'output': f'ERROR: {error_msg}',
                 'expected_output': '',
                 'time': 0.0,
             }
@@ -501,7 +510,15 @@ class EvaluationResult:
             rows.append(row)
 
         # Add failed items as rows too
-        for item_id, error in self.errors.items():
+        for item_id, error_info in self.errors.items():
+            # Handle both old format (string) and new format (dict with error and trace_id)
+            if isinstance(error_info, dict):
+                error_msg = error_info.get("error", str(error_info))
+                error_trace_id = error_info.get("trace_id", "")
+            else:
+                error_msg = str(error_info)
+                error_trace_id = ""
+
             task_input = self.inputs.get(item_id, '')
             if isinstance(task_input, dict):
                 task_input = json.dumps(task_input, ensure_ascii=False)
@@ -515,11 +532,11 @@ class EvaluationResult:
                 'run_name': self.run_name,
                 'run_metadata': json.dumps(self.run_metadata, ensure_ascii=False),
                 'run_config': json.dumps(self.run_config, ensure_ascii=False),
-                'trace_id': '',
+                'trace_id': error_trace_id or '',
                 'item_id': item_id,
                 'input': str(task_input),
                 'item_metadata': str(item_metadata),
-                'output': f'ERROR: {error}',
+                'output': f'ERROR: {error_msg}',
                 'expected_output': '',
                 'time': 0.0,
             }
