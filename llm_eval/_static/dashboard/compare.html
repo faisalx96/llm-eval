@@ -1470,8 +1470,8 @@
               latSum += row.latency_ms;
               latCount++;
             }
-            // Errors
-            if (row.status === 'error') {
+            // Errors (use centralized check)
+            if (window.LLMEvalMetrics.isErrorRow(row)) {
               const output = (row.output_full || row.output || '').toLowerCase();
               if (output.includes('timeout')) timeoutErrors++;
               else if (output.includes('error')) runtimeErrors++;
@@ -1496,12 +1496,9 @@
             if (!row) return { score: null, failed: false };
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return { score: null, failed: false };
-            // Check if failed
-            const isFailed = row.status === 'error' || row.status === 'failed';
-            if (isFailed) return { score: 0, failed: true };
-            const v = (row.metric_values || [])[metricIdx];
-            const n = parseFloat(v);
-            return { score: isNaN(n) ? null : n, failed: false };
+            // Use centralized error handling from metrics.js
+            const { score, isError } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            return { score, failed: isError };
           });
 
           // Count failed attempts
@@ -2024,18 +2021,15 @@
             return rows.find(r => (r.item_id || String(r.index)) === itemId) || null;
           });
 
-          // Get scores for this item based on selected metric
+          // Get scores for this item based on selected metric (use centralized error handling)
           const scores = rowData.map((row, runIdx) => {
             if (!row) return null;
             const run = state.runs[runIdx];
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
-            // Treat failed items as score 0
-            const isFailed = row.status === 'error' || row.status === 'failed';
-            if (isFailed) return 0;
-            const v = (row.metric_values || [])[metricIdx];
-            const n = parseFloat(v);
-            return isNaN(n) ? null : n;
+            // Use centralized error handling from metrics.js
+            const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            return score;
           });
           const validScores = scores.filter(s => s !== null);
 
@@ -2045,7 +2039,7 @@
             const uniqueOutputs = new Set(outputs);
             if (uniqueOutputs.size <= 1) continue;
           } else if (state.itemFilter === 'errors') {
-            const hasError = rowData.some(r => r?.status === 'error');
+            const hasError = rowData.some(r => window.LLMEvalMetrics.isErrorRow(r));
             if (!hasError) continue;
           } else if (state.itemFilter === 'all_correct') {
             // All runs meet threshold (correct)

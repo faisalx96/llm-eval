@@ -11,6 +11,27 @@ import time
 
 DEFAULT_RESULTS_DIR = "llm-eval_results"
 
+# Error score constant - errors are always scored as 0
+# This is the Python equivalent of metrics.js getRowScore()
+ERROR_SCORE = 0.0
+
+
+def is_error_row(row: Dict[str, Any], metrics: List[str]) -> bool:
+    """Check if a row represents an error.
+
+    This is the SINGLE SOURCE OF TRUTH for error detection in Python.
+    Frontend equivalent: metrics.js isErrorRow()
+    """
+    output = str(row.get("output", "") or "")
+    if output.startswith("ERROR:"):
+        return True
+    # Also check if first metric score contains ERROR
+    if metrics:
+        score_str = str(row.get(f"{metrics[0]}_score", "") or "")
+        if "ERROR" in score_str or score_str == "N/A":
+            return True
+    return False
+
 
 @dataclass
 class RunInfo:
@@ -204,19 +225,24 @@ class RunDiscovery:
                 latency_count = 0
 
                 for row in rows:
-                    output = row.get("output", "")
-                    if output.startswith("ERROR:") or "ERROR" in str(row.get(f"{metrics[0]}_score", "")) if metrics else False:
+                    row_is_error = is_error_row(row, metrics)
+                    if row_is_error:
                         error_count += 1
 
-                    # Accumulate metric scores
+                    # Accumulate metric scores (errors = 0)
                     for m in metrics:
                         score_str = row.get(f"{m}_score", "")
-                        try:
-                            score = float(score_str)
-                            metric_sums[m] += score
+                        if row_is_error:
+                            # Errors are scored as 0
+                            metric_sums[m] += ERROR_SCORE
                             metric_counts[m] += 1
-                        except (ValueError, TypeError):
-                            pass
+                        else:
+                            try:
+                                score = float(score_str)
+                                metric_sums[m] += score
+                                metric_counts[m] += 1
+                            except (ValueError, TypeError):
+                                pass
 
                     # Accumulate latency (time column is in seconds)
                     time_str = row.get("time", "")
@@ -332,20 +358,25 @@ class RunDiscovery:
             latency_count = 0
 
             for row in rows:
-                output = str(row.get("output", "") or "")
-                if output.startswith("ERROR:") or (metrics and "ERROR" in str(row.get(f"{metrics[0]}_score", "") or "")):
+                row_is_error = is_error_row(row, metrics)
+                if row_is_error:
                     error_count += 1
 
-                # Accumulate metric scores
+                # Accumulate metric scores (errors = 0)
                 for m in metrics:
                     score_val = row.get(f"{m}_score")
-                    try:
-                        score = float(score_val) if score_val is not None else None
-                        if score is not None:
-                            metric_sums[m] += score
-                            metric_counts[m] += 1
-                    except (ValueError, TypeError):
-                        pass
+                    if row_is_error:
+                        # Errors are scored as 0
+                        metric_sums[m] += ERROR_SCORE
+                        metric_counts[m] += 1
+                    else:
+                        try:
+                            score = float(score_val) if score_val is not None else None
+                            if score is not None:
+                                metric_sums[m] += score
+                                metric_counts[m] += 1
+                        except (ValueError, TypeError):
+                            pass
 
                 # Accumulate latency
                 time_val = row.get("time")

@@ -5,7 +5,50 @@
  * - Compare view
  * - Models view
  * - Aggregate publish
+ *
+ * IMPORTANT: Error handling is centralized here. Errors are treated as 0% score.
  */
+
+/**
+ * Check if a row represents an error/failed item
+ * @param {Object} row - Row data from snapshot
+ * @returns {boolean} True if the row is an error
+ */
+function isErrorRow(row) {
+  if (!row) return false;
+  const status = row.status;
+  return status === 'error' || status === 'failed';
+}
+
+/**
+ * Get the score for a row, treating errors as 0
+ * This is the SINGLE SOURCE OF TRUTH for error -> score conversion
+ * @param {Object} row - Row data from snapshot
+ * @param {number} metricIdx - Index of the metric in metric_values array
+ * @returns {{score: number|null, isError: boolean}} Score (0 for errors) and error flag
+ */
+function getRowScore(row, metricIdx) {
+  if (!row) return { score: null, isError: false };
+
+  // Errors are always scored as 0
+  if (isErrorRow(row)) {
+    return { score: 0, isError: true };
+  }
+
+  const metricValues = row?.metric_values || [];
+  const metricValue = metricValues[metricIdx];
+
+  if (metricValue === undefined || metricValue === null || metricValue === '' || metricValue === 'N/A') {
+    return { score: null, isError: false };
+  }
+
+  const score = parseFloat(metricValue);
+  if (isNaN(score)) {
+    return { score: null, isError: false };
+  }
+
+  return { score, isError: false };
+}
 
 /**
  * Calculate aggregate metrics from item-level data across K runs
@@ -94,25 +137,14 @@ function calculateItemLevelMetrics(options) {
       const metricIdx = getMetricIndex(runData);
       if (metricIdx < 0) continue;
 
-      // Check if item failed (status is 'error' or 'failed')
-      const isFailed = row.status === 'error' || row.status === 'failed';
+      // Use centralized score extraction (errors = 0)
+      const { score, isError } = getRowScore(row, metricIdx);
 
-      const metricValues = row?.metric_values || [];
-      const metricValue = metricValues[metricIdx];
-
-      // Treat failed items as score 0
-      if (isFailed) {
-        scores.push(0);
-        totalScoreSum += 0;
+      if (score !== null) {
+        scores.push(score);
+        totalScoreSum += score;
         totalScoreCount++;
-        failedCount++;
-      } else if (metricValue !== undefined && metricValue !== null) {
-        const score = parseFloat(metricValue);
-        if (!isNaN(score)) {
-          scores.push(score);
-          totalScoreSum += score;
-          totalScoreCount++;
-        }
+        if (isError) failedCount++;
       }
 
       // Collect latency
@@ -255,7 +287,12 @@ function getMetricTooltips(K, isBoolean, threshold) {
 // Export for use in other modules (if using ES modules)
 if (typeof window !== 'undefined') {
   window.LLMEvalMetrics = {
+    // Core error handling - USE THESE for consistent error treatment
+    isErrorRow,
+    getRowScore,
+    // Metrics calculation
     calculateItemLevelMetrics,
+    // Formatting utilities
     formatPercent,
     formatLatency,
     getScoreColorClass,
