@@ -58,6 +58,46 @@ def save_published_runs(results_dir: str, run_ids: set) -> None:
         json.dump({"run_ids": sorted(run_ids)}, f, indent=2)
 
 
+# Cache for auto-detected Langfuse project ID
+_langfuse_project_id_cache: Optional[str] = None
+
+
+def get_langfuse_project_id() -> str:
+    """Get Langfuse project ID (from env or auto-detect from API)."""
+    global _langfuse_project_id_cache
+
+    # Check env var first
+    project_id = os.environ.get("LANGFUSE_PROJECT_ID", "")
+    if project_id:
+        return project_id
+
+    # Return cached value if available
+    if _langfuse_project_id_cache is not None:
+        return _langfuse_project_id_cache
+
+    # Try to auto-detect from Langfuse API
+    try:
+        from langfuse import Langfuse
+        client = Langfuse()
+
+        # Try private method first (cached, no extra API call)
+        if hasattr(client, '_get_project_id'):
+            _langfuse_project_id_cache = client._get_project_id() or ""
+        # Fallback to public API
+        elif hasattr(client, 'api') and hasattr(client.api, 'projects'):
+            result = client.api.projects.get()
+            if result.data:
+                _langfuse_project_id_cache = result.data[0].id
+            else:
+                _langfuse_project_id_cache = ""
+        else:
+            _langfuse_project_id_cache = ""
+    except Exception:
+        _langfuse_project_id_cache = ""
+
+    return _langfuse_project_id_cache
+
+
 class DashboardServer:
     """HTTP server for the runs dashboard with auto-close on inactivity."""
 
@@ -187,7 +227,7 @@ class DashboardServer:
                     data = index.to_dict()
                     # Rebuild Langfuse URLs dynamically if we have the IDs
                     langfuse_host = os.environ.get("LANGFUSE_HOST", "").rstrip("/")
-                    langfuse_project_id = os.environ.get("LANGFUSE_PROJECT_ID", "")
+                    langfuse_project_id = get_langfuse_project_id()
                     if langfuse_host and langfuse_project_id:
                         for run in data.get("runs", []):
                             dataset_id = run.get("langfuse_dataset_id")
@@ -249,7 +289,7 @@ class DashboardServer:
                                 runs_data.append(data)
                     # Include Langfuse config for trace URLs
                     langfuse_host = os.environ.get("LANGFUSE_HOST", "")
-                    langfuse_project_id = os.environ.get("LANGFUSE_PROJECT_ID", "")
+                    langfuse_project_id = get_langfuse_project_id()
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(
                         json.dumps({
