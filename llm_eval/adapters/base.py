@@ -10,7 +10,7 @@ from langfuse import Langfuse
 class TaskAdapter(ABC):
     """Base class for task adapters."""
     
-    def __init__(self, task: Any, client: Langfuse):
+    def __init__(self, task: Any, client: Optional[Langfuse]):
         self.task = task
         self.client = client
     
@@ -137,9 +137,13 @@ class FunctionAdapter(TaskAdapter):
             try:
                 if hasattr(trace, 'trace_id'):
                     ti = getattr(trace, 'trace_id')
-                    trace_id = str(ti() if callable(ti) else ti)
+                    val = ti() if callable(ti) else ti
+                    if val:
+                        trace_id = str(val)
                 elif hasattr(trace, 'id'):
-                    trace_id = str(getattr(trace, 'id'))
+                    val = getattr(trace, 'id')
+                    if val:
+                        trace_id = str(val)
             except Exception:
                 pass
 
@@ -251,7 +255,7 @@ class OpenAIAdapter(TaskAdapter):
             raise
 
 
-def auto_detect_task(task: Any, client: Langfuse) -> TaskAdapter:
+def auto_detect_task(task: Any, client: Optional[Langfuse]) -> TaskAdapter:
     """
     Auto-detect task type and return appropriate adapter.
     

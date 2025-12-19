@@ -28,9 +28,9 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 pip install llm-eval
 ```
 
-### Step 2: Set up Langfuse credentials
+### Step 2: Set up Langfuse credentials (optional for CSV datasets)
 
-LLM-Eval uses [Langfuse](https://langfuse.com) for dataset storage and tracing. You need an account.
+LLM-Eval integrates with [Langfuse](https://langfuse.com) for dataset storage and tracing. If you're using a **local CSV file** as your dataset, Langfuse credentials are optional—evaluations will run without tracing.
 
 Create a `.env` file in your project root:
 
@@ -79,9 +79,9 @@ print("Connected to Langfuse!")  # If no error, you're ready
 | Concept | Description |
 |---------|-------------|
 | **Task** | Your function that takes input and returns output (e.g., calls an LLM) |
-| **Dataset** | Collection of test items stored in Langfuse |
+| **Dataset** | Collection of test items (Langfuse dataset or local CSV file) |
 | **Metrics** | Functions that score your output |
-| **Trace** | Langfuse observability object for logging |
+| **Trace** | Langfuse observability object for logging (optional) |
 
 ---
 
@@ -488,6 +488,76 @@ client.create_dataset_item(
 )
 ```
 
+### CSV Datasets (Local)
+
+If you already have test cases in a spreadsheet or CSV, you can run evaluations directly from a local `.csv` file—**no Langfuse dataset required**.
+
+**You can use any column names** — you map them when constructing the dataset (Python) or via CLI flags.
+
+#### Required columns
+
+- A column containing the task **input** (you choose its name, then pass it as `input_col` / `--csv-input-col`).
+
+#### Optional columns
+
+- **Expected output** column (for built-in metrics like `exact_match`): pass as `expected_col` / `--csv-expected-col`
+- **ID** column: pass as `id_col` / `--csv-id-col` (otherwise IDs are generated as `row_000000`, `row_000001`, ...)
+- **Metadata** columns: pass as `metadata_cols` / `--csv-metadata-cols` (we convert them into a JSON object/dict per row)
+
+#### Cell parsing rules (minimal, predictable)
+
+- If a cell starts with `{` or `[`, it is parsed as JSON (dict/list).
+- Otherwise it is treated as a string.
+- If a `{...}` or `[...]` cell contains invalid JSON, you get a clear error including file, row, and column.
+
+#### Example CSV
+
+Create `datasets/qa.csv`:
+
+```csv
+question,answer,category,difficulty
+What is 2+2?,4,math,easy
+"{""question"":""Capital of Japan?"",""hint"":""Starts with T""}",Tokyo,geo,easy
+```
+
+Notes:
+- The first row's `question` is a plain string.
+- The second row's `question` is a JSON object (so your task can accept dict input).
+
+#### Run via CLI
+
+```bash
+llm-eval --task-file agent.py --task-function my_task \
+  --dataset-csv datasets/qa.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --csv-metadata-cols category,difficulty \
+  --metrics exact_match
+```
+
+#### Run via Python API
+
+```python
+from llm_eval import Evaluator, CsvDataset
+
+dataset = CsvDataset(
+    "datasets/qa.csv",
+    input_col="question",
+    expected_col="answer",
+    metadata_cols=["category", "difficulty"],
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+)
+
+results = evaluator.run()
+```
+
+**Tracing behavior:** If your Langfuse credentials are set, runs created from CSV will still emit Langfuse traces (useful if your task expects `trace_id`). If credentials are not set, evaluation still runs (without tracing).
+
 ### ⚠️ Common Dataset Mistakes
 
 ```python
@@ -550,12 +620,12 @@ print(f"Total items: {results.total_items}")
 
 ### What Happens When You Run
 
-1. **Dataset loads** from Langfuse
+1. **Dataset loads** (from Langfuse or local CSV)
 2. **Dashboard appears** showing live progress (TUI + Web UI)
 3. **Items run in parallel** (controlled by `max_concurrency`)
 4. **Metrics score** each output
 5. **Results save** to CSV automatically
-6. **Traces appear** in Langfuse for debugging
+6. **Traces appear** in Langfuse for debugging (if credentials are set)
 
 ### The Dashboard
 
@@ -1120,14 +1190,22 @@ def my_metric(output, expected):
 
 ```python
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # Optional for CSV datasets
 
-from llm_eval import Evaluator
+from llm_eval import Evaluator, CsvDataset
 
-# Minimal example
+# Minimal example (Langfuse dataset)
 evaluator = Evaluator(
     task=lambda x: f"Response: {x}",
     dataset="my-dataset",
+    metrics=["exact_match"],
+)
+results = evaluator.run()
+
+# CSV dataset example (no Langfuse required)
+evaluator = Evaluator(
+    task=my_task,
+    dataset=CsvDataset("data.csv", input_col="question", expected_col="answer"),
     metrics=["exact_match"],
 )
 results = evaluator.run()

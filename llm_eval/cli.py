@@ -15,6 +15,7 @@ from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner
 from .core.config import RunSpec
 
+from .core.dataset import CsvDataset
 
 console = Console()
 
@@ -61,10 +62,14 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
         try:
             task_file = Path(entry["task_file"])
             task_function = entry["task_function"]
-            dataset = entry["dataset"]
+            dataset = entry.get("dataset")
+            dataset_csv = entry.get("dataset_csv")
             metrics_value = entry["metrics"]
         except KeyError as exc:
             raise ValueError(f"Run #{idx} is missing required field: {exc}") from exc
+
+        if bool(dataset) == bool(dataset_csv):
+            raise ValueError(f"Run #{idx} must set exactly one of 'dataset' or 'dataset_csv'")
 
         resolved_task_file = task_file if task_file.is_absolute() else (base_dir / task_file).resolve()
         task_callable = load_function_from_file(str(resolved_task_file), task_function)
@@ -78,6 +83,30 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
 
         config_template = dict(entry.get("config") or {})
         metadata_template = dict(entry.get("metadata") or {})
+        # Resolve dataset object/name
+        resolved_dataset: Any
+        if dataset_csv:
+            csv_path = Path(str(dataset_csv))
+            resolved_csv = csv_path if csv_path.is_absolute() else (base_dir / csv_path).resolve()
+            csv_input_col = entry.get("csv_input_col", "input")
+            csv_expected_col = entry.get("csv_expected_col", "expected_output")
+            csv_id_col = entry.get("csv_id_col")
+            csv_md_cols = entry.get("csv_metadata_cols")
+            md_cols = []
+            if isinstance(csv_md_cols, str):
+                md_cols = [c.strip() for c in csv_md_cols.split(",") if c.strip()]
+            elif isinstance(csv_md_cols, list):
+                md_cols = [str(c).strip() for c in csv_md_cols if str(c).strip()]
+            resolved_dataset = CsvDataset(
+                resolved_csv,
+                input_col=str(csv_input_col),
+                expected_col=str(csv_expected_col) if csv_expected_col else None,
+                id_col=str(csv_id_col) if csv_id_col else None,
+                metadata_cols=md_cols,
+            )
+        else:
+            resolved_dataset = dataset
+
 
         model_values = entry.get("models")
         if model_values is None:
@@ -116,7 +145,7 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
                     name=run_id,
                     display_name=display,
                     task=task_callable,
-                    dataset=dataset,
+                    dataset=resolved_dataset,
                     metrics=metrics,
                     task_file=str(resolved_task_file),
                     task_function=task_function,
@@ -216,9 +245,36 @@ Examples:
         help="Name of the Langfuse dataset"
     )
     parser.add_argument(
+        "--dataset-csv",
+        required=False,
+        help="Path to a local CSV dataset file"
+    )
+    parser.add_argument(
         "--metrics",
         required=False,
         help="Comma-separated list of metrics (e.g., 'exact_match,fuzzy_match')"
+    )
+    # CSV dataset options
+    parser.add_argument(
+        "--csv-input-col",
+        default="input",
+        help="CSV column name to use as input (default: input)"
+    )
+    parser.add_argument(
+        "--csv-expected-col",
+        default="expected_output",
+        help="CSV column name to use as expected output (default: expected_output). "
+             "Use empty string to disable expected output."
+    )
+    parser.add_argument(
+        "--csv-id-col",
+        default=None,
+        help="Optional CSV column name to use as item id"
+    )
+    parser.add_argument(
+        "--csv-metadata-cols",
+        default=None,
+        help="Optional comma-separated list of CSV columns to copy into item metadata"
     )
     parser.add_argument(
         "--model",
@@ -326,12 +382,15 @@ Examples:
             missing = {
                 "--task-file": args.task_file,
                 "--task-function": args.task_function,
-                "--dataset": args.dataset,
+                "--dataset/--dataset-csv": (args.dataset or args.dataset_csv),
                 "--metrics": args.metrics,
             }
             missing_flags = [flag for flag, value in missing.items() if not value]
             if missing_flags:
                 parser.error(f"Missing required arguments: {', '.join(missing_flags)}")
+
+        if not is_multi_run and bool(args.dataset) == bool(args.dataset_csv):
+            parser.error("Provide exactly one of --dataset (Langfuse) or --dataset-csv (CSV).")
 
         # Load the task function
         console.print(f"Loading task function '{args.task_function}' from {args.task_file}")
@@ -364,10 +423,26 @@ Examples:
             config['ui_port'] = 0
         
         # Create evaluator
-        console.print(f"Setting up evaluation for dataset '{args.dataset}'")
+        dataset_obj: Any = args.dataset
+        if args.dataset_csv:
+            md_cols: List[str] = []
+            if args.csv_metadata_cols:
+                md_cols = [c.strip() for c in str(args.csv_metadata_cols).split(",") if c.strip()]
+            expected_col = str(args.csv_expected_col) if args.csv_expected_col is not None else "expected_output"
+            if expected_col.strip() == "":
+                expected_col = None
+            dataset_obj = CsvDataset(
+                args.dataset_csv,
+                input_col=str(args.csv_input_col),
+                expected_col=expected_col,
+                id_col=str(args.csv_id_col) if args.csv_id_col else None,
+                metadata_cols=md_cols,
+            )
+        dataset_label = getattr(dataset_obj, "name", None) or str(dataset_obj)
+        console.print(f"Setting up evaluation for dataset '{dataset_label}'")
         evaluator = Evaluator(
             task=task_function,
-            dataset=args.dataset,
+            dataset=dataset_obj,
             metrics=metrics,
             config=config,
             model=model_arg,

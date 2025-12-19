@@ -6,7 +6,11 @@
 
 **Evaluate your LLM applications with just 3 lines of code.**
 
-A fast, async evaluation framework built on [Langfuse](https://langfuse.com) for testing and benchmarking LLM applications.
+A fast, async evaluation framework for testing and benchmarking LLM applications. Supports [Langfuse](https://langfuse.com) datasets or local CSV files.
+
+**📚 Docs:**
+- [User Guide](docs/USER_GUIDE.md) — Tasks, datasets, configuration, and troubleshooting
+- [Metrics Guide](docs/METRICS_GUIDE.md) — 40+ metrics organized by use case
 
 ## 🚀 Features
 
@@ -15,6 +19,7 @@ A fast, async evaluation framework built on [Langfuse](https://langfuse.com) for
 - **Multi-Model Support** - Compare GPT-4, Claude, Llama side-by-side in one run
 - **Real-Time Dashboard** - Terminal UI + Web UI with live progress, historical runs, model comparison, and charts
 - **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
+- **Flexible Datasets** - Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
 - **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
 
 ## ⚡ Quick Start
@@ -25,7 +30,7 @@ A fast, async evaluation framework built on [Langfuse](https://langfuse.com) for
 pip install llm-eval
 ```
 
-### 2. Set up Langfuse
+### 2. Set up Langfuse (optional for CSV datasets)
 
 Create a `.env` file with your [Langfuse](https://langfuse.com) credentials:
 
@@ -35,25 +40,47 @@ LANGFUSE_SECRET_KEY=sk-...
 LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
 ```
 
+> **Using CSV datasets?** Langfuse credentials are optional. Without them, evaluations still run but without tracing.
+
 ### 3. Run Evaluation
+
+You need three things:
+1. **[Task function](docs/USER_GUIDE.md#3-writing-your-task-function)** - Takes input (and optionally `model_name`), returns output
+2. **[Dataset](docs/USER_GUIDE.md#5-setting-up-your-dataset)** - Langfuse dataset name or a [local CSV file](docs/USER_GUIDE.md#csv-datasets-local)
+3. **[Metrics](docs/USER_GUIDE.md#4-using-metrics)** - Built-in (`exact_match`, `contains_expected`, `fuzzy_match`) or custom functions
 
 ```python
 from llm_eval import Evaluator
 
-# Define your LLM task
-def my_llm_task(input_data):
-    # Your LLM call here
-    return "response"
+# Your task: receives the 'input' field from each dataset item
+def my_llm_task(question):
+    return call_your_llm(question)
 
-# Run evaluation
+# Run evaluation with a Langfuse dataset
 evaluator = Evaluator(
     task=my_llm_task,
     dataset="my-langfuse-dataset",  # Dataset name in Langfuse
     metrics=["exact_match", "contains_expected"],
 )
-
 results = evaluator.run()
 ```
+
+**Using a local CSV instead of Langfuse:**
+
+```python
+from llm_eval import Evaluator, CsvDataset
+
+dataset = CsvDataset("qa.csv", input_col="question", expected_col="answer")
+
+evaluator = Evaluator(
+    task=my_llm_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+)
+results = evaluator.run()
+```
+
+> CSV datasets work without Langfuse credentials. If credentials are set, traces are still recorded.
 
 ## 🔄 Multi-Model Comparison
 
@@ -95,6 +122,11 @@ results = Evaluator.run_parallel(
 ```bash
 # Single evaluation
 llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+
+# Single evaluation from a local CSV (no Langfuse dataset required)
+llm-eval --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
+  --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
+  --metrics exact_match
 
 # Multi-model from config
 llm-eval --runs-config experiments.json
@@ -162,9 +194,9 @@ evaluator = Evaluator(
 
 ## 📚 Documentation
 
-- [User Guide](docs/USER_GUIDE.md) - Complete guide for installation, tasks, metrics, and configuration
-- [Metrics Guide](docs/METRICS_GUIDE.md) - Comprehensive metric store with 40+ metrics by use case
-- [Examples](examples/) - Jupyter notebooks and scripts
+- [User Guide](docs/USER_GUIDE.md) - Tasks, metrics, datasets, configuration, and troubleshooting
+- [Metrics Guide](docs/METRICS_GUIDE.md) - 40+ metrics organized by use case (RAG, agents, safety, etc.)
+- [Examples](examples/) - Runnable scripts and Jupyter notebooks
 
 ## 📄 License
 

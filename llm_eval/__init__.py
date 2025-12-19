@@ -12,6 +12,7 @@ from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner
 from .core.results import EvaluationResult
 from .core.config import RunSpec
+from .core.dataset import CsvDataset
 from .metrics import builtin_metrics, list_available_metrics
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "EvaluationResult",
     "MultiModelRunner",
     "RunSpec",
+    "CsvDataset",
     "builtin_metrics",
     "list_available_metrics",
 ]

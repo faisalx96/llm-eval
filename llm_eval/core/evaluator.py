@@ -1,5 +1,7 @@
 """Main Evaluator class for LLM evaluation."""
 
+from __future__ import annotations
+
 import asyncio
 import inspect
 import os
@@ -50,6 +52,36 @@ logger = logging.getLogger(__name__)
 
 console = Console()
 
+class NullTrace:
+    """No-op trace/span used when Langfuse is disabled.
+
+    Must support the subset of the Langfuse span API used by adapters and the evaluator.
+    """
+
+    def __init__(self, name: str = "", input: Any = None, metadata: Optional[Dict[str, Any]] = None):
+        self.name = name
+        self.input = input
+        self.metadata = metadata or {}
+        self.output: Any = None
+
+    def update(self, **kwargs: Any) -> None:
+        # Store a few common fields for debugging; otherwise no-op.
+        if "input" in kwargs:
+            self.input = kwargs.get("input")
+        if "metadata" in kwargs and isinstance(kwargs.get("metadata"), dict):
+            self.metadata = kwargs.get("metadata") or {}
+        if "output" in kwargs:
+            self.output = kwargs.get("output")
+
+    def start_span(self, name: str = "", input: Any = None, metadata: Optional[Dict[str, Any]] = None) -> "NullTrace":
+        return NullTrace(name=name, input=input, metadata=metadata)
+
+    def score(self, **kwargs: Any) -> None:
+        return None
+
+    def end(self) -> None:
+        return None
+
 
 from .config import EvaluatorConfig
 
@@ -61,7 +93,7 @@ class Evaluator:
     def __init__(
         self,
         task: Any,
-        dataset: Union[str, LangfuseDataset], 
+        dataset: Union[str, Any],
         metrics: List[Union[str, Callable]],
         config: Optional[Union[Dict[str, Any], EvaluatorConfig]] = None,
         observer: Optional[EvaluationObserver] = None,
@@ -92,12 +124,26 @@ class Evaluator:
         self._raw_metrics = list(metrics)
         self.metrics = self._prepare_metrics(metrics)
         
-        # Initialize Langfuse client
-        self.client = langfuse_client or self._init_langfuse()
+        # Initialize Langfuse client ONLY when credentials exist (or user provided a client).
+        # This ensures CSV/local datasets work without requiring Langfuse setup.
+        self.client: Optional[Langfuse] = None
+        self.langfuse_enabled: bool = False
+        if langfuse_client is not None:
+            self.client = langfuse_client
+            self.langfuse_enabled = True
+        elif self._langfuse_credentials_available():
+            self.client = self._init_langfuse()
+            self.langfuse_enabled = True
         
         # Load and validate dataset
         if isinstance(dataset, str):
             self.dataset_name = dataset
+            if not self.client:
+                raise LangfuseConnectionError(
+                    "Langfuse dataset name provided but Langfuse credentials are missing. "
+                    "Set LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY or pass langfuse_client, "
+                    "or use a CSV dataset object / --dataset-csv."
+                )
             self.dataset = LangfuseDataset(self.client, dataset)
         else:
             self.dataset = dataset
@@ -365,6 +411,16 @@ class Evaluator:
                     "- LANGFUSE_HOST (if using custom instance)"
                 )
             raise LangfuseConnectionError(f"Failed to connect to Langfuse: {e}")
+
+    def _langfuse_credentials_available(self) -> bool:
+        """Return True if Langfuse credentials appear to be available from config/env.
+
+        This is intentionally a lightweight check that does not validate credentials.
+        """
+        # Note: do not auto-load .env here; _init_langfuse already best-effort loads it.
+        public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
+        secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
+        return bool(public_key and secret_key)
     
 
 
@@ -862,19 +918,33 @@ class Evaluator:
                 },
             )
 
-            # Create span/trace using non-blocking API (queues internally)
+            # Create span/trace using non-blocking API (queues internally) when Langfuse is enabled.
+            # Otherwise use a no-op trace so tasks/metrics/UI still work.
             item_metadata = getattr(item, 'metadata', {})
-            span = self.client.start_span(
-                name=f"eval-{self.run_name}-item-{index}",
-                input=item.input,
-                metadata={
-                    **self.run_metadata,
-                    "item_index": index,
-                    "dataset_item_id": getattr(item, 'id', None),
-                    "run_name": self.run_name,
-                    "item_metadata": item_metadata,
-                },
-            )
+            if self.client:
+                span = self.client.start_span(
+                    name=f"eval-{self.run_name}-item-{index}",
+                    input=item.input,
+                    metadata={
+                        **self.run_metadata,
+                        "item_index": index,
+                        "dataset_item_id": getattr(item, 'id', None),
+                        "run_name": self.run_name,
+                        "item_metadata": item_metadata,
+                    },
+                )
+            else:
+                span = NullTrace(
+                    name=f"eval-{self.run_name}-item-{index}",
+                    input=item.input,
+                    metadata={
+                        **self.run_metadata,
+                        "item_index": index,
+                        "dataset_item_id": getattr(item, 'id', None),
+                        "run_name": self.run_name,
+                        "item_metadata": item_metadata,
+                    },
+                )
 
             # Extract trace metadata
             try:
@@ -961,10 +1031,10 @@ class Evaluator:
             except Exception:
                 pass
 
-            # Link to dataset run item using async API
+            # Link to Langfuse dataset run item only for Langfuse datasets (even if tracing is enabled for CSV).
             dataset_item_id = getattr(item, 'id', None)
             trace_id = meta.get('trace_id')
-            if dataset_item_id and trace_id:
+            if isinstance(self.dataset, LangfuseDataset) and self.client and dataset_item_id and trace_id:
                 try:
                     from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
                     response = await self.client.async_api.dataset_run_items.create(
@@ -1061,10 +1131,10 @@ class Evaluator:
                 except Exception:
                     pass
 
-                # Link to dataset run item even on error so it shows in Langfuse
+                # Link to dataset run item even on error (Langfuse datasets only)
                 dataset_item_id = getattr(item, 'id', None)
                 trace_id = meta.get('trace_id')
-                if dataset_item_id and trace_id:
+                if isinstance(self.dataset, LangfuseDataset) and self.client and dataset_item_id and trace_id:
                     try:
                         from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
                         response = await self.client.async_api.dataset_run_items.create(
