@@ -1,13 +1,37 @@
 (() => {
+  // Base URL handling for proxy/subpath compatibility
+  // Find the base URL by looking for '/run/' in the pathname
+  const BASE_URL = (() => {
+    const loc = window.location;
+    const pathname = loc.pathname;
+    const runIndex = pathname.indexOf('/run/');
+    if (runIndex >= 0) {
+      // Base is everything before /run/
+      return loc.origin + pathname.substring(0, runIndex + 1);
+    }
+    // Fallback: use directory of current path
+    let base = pathname;
+    if (!base.endsWith('/')) {
+      base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+    }
+    return loc.origin + base;
+  })();
+
+  function apiUrl(path) {
+    const cleanPath = path.replace(/^\.?\.?\//, '');
+    return BASE_URL + cleanPath;
+  }
+
   // Detect if we're in dashboard mode (viewing historical run)
-  const isDashboardMode = window.location.pathname.startsWith('/run/');
+  const isDashboardMode = window.location.pathname.includes('/run/');
   // Extract file path from URL (preferred) or fallback to sessionStorage
   const getDashboardRunFile = () => {
     if (!isDashboardMode) return null;
     // Try to extract from URL first: /run/{encodedFilePath}
     const urlPath = window.location.pathname;
-    if (urlPath.startsWith('/run/')) {
-      const encodedPath = urlPath.slice(5); // Remove '/run/'
+    const runIndex = urlPath.indexOf('/run/');
+    if (runIndex >= 0) {
+      const encodedPath = urlPath.slice(runIndex + 5); // Remove everything up to and including '/run/'
       if (encodedPath) {
         return decodeURIComponent(encodedPath);
       }
@@ -849,7 +873,7 @@
 
   function bootstrapDashboard(filePath) {
     // Dashboard mode: fetch historical run data from dashboard API
-    fetch('/api/runs/' + encodeURIComponent(filePath))
+    fetch(apiUrl('api/runs/' + encodeURIComponent(filePath)))
       .then(r => r.json())
       .then(data => {
         if (data.error) {

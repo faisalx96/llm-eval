@@ -7,6 +7,30 @@
   'use strict';
 
   // ═══════════════════════════════════════════════════
+  // BASE URL HANDLING (for proxy/subpath compatibility)
+  // ═══════════════════════════════════════════════════
+
+  // Compute the base URL for API calls, handling reverse proxy scenarios
+  // e.g., if served at https://proxy.example/workspace/8080/, API calls should go to that base
+  const BASE_URL = (() => {
+    const loc = window.location;
+    // Get the pathname and ensure it ends with /
+    let base = loc.pathname;
+    // If pathname doesn't end with /, get the directory part
+    if (!base.endsWith('/')) {
+      base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+    }
+    return loc.origin + base;
+  })();
+
+  // Helper to build API URLs
+  function apiUrl(path) {
+    // Remove leading ./ or / from path
+    const cleanPath = path.replace(/^\.?\//, '');
+    return BASE_URL + cleanPath;
+  }
+
+  // ═══════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════
 
@@ -719,7 +743,7 @@
         const filePath = target?.dataset.file;
         if (filePath) {
           // Navigate to run detail page
-          window.location.href = `/run/${encodeURIComponent(filePath)}`;
+          window.location.href = apiUrl(`run/${encodeURIComponent(filePath)}`);
         }
       });
     });
@@ -1366,7 +1390,7 @@
 
     try {
       const params = filePaths.map(f => `files=${encodeURIComponent(f)}`).join('&');
-      const response = await fetch(`/api/compare?${params}`);
+      const response = await fetch(apiUrl(`api/compare?${params}`));
       if (!response.ok) throw new Error('Failed to fetch run data');
       const data = await response.json();
       modelsRunDataCache[cacheKey] = data.runs || [];
@@ -1624,7 +1648,7 @@
         if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
           // Open compare view with selected runs
           sessionStorage.setItem('compareRuns', JSON.stringify(stats.selectedPaths));
-          window.location.href = '/compare';
+          window.location.href = apiUrl('compare');
         } else {
           alert('Need at least 2 runs to compare');
         }
@@ -1850,7 +1874,7 @@
 
   function openRun(filePath) {
     sessionStorage.setItem('dashboardRunFile', filePath);
-    window.location.href = `/run/${encodeURIComponent(filePath)}`;
+    window.location.href = `./run/${encodeURIComponent(filePath)}`;
   }
 
   function openComparison() {
@@ -1861,7 +1885,7 @@
     // Store selected runs for comparison page
     const files = Array.from(state.selectedRuns);
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
-    window.location.href = '/compare';
+    window.location.href = './compare';
   }
 
   function confirmDeleteRun(filePath, runId) {
@@ -1881,7 +1905,7 @@
       newConfirmBtn.textContent = 'Deleting...';
 
       try {
-        const response = await fetch('/api/runs/delete', {
+        const response = await fetch(apiUrl('api/runs/delete'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ file_path: filePath })
@@ -1931,7 +1955,7 @@
 
       for (const filePath of filePaths) {
         try {
-          const response = await fetch('/api/runs/delete', {
+          const response = await fetch(apiUrl('api/runs/delete'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ file_path: filePath })
@@ -1997,7 +2021,7 @@
     try {
       // Fetch runs and published status in parallel
       const [runsResponse] = await Promise.all([
-        fetch('/api/runs'),
+        fetch(apiUrl('api/runs')),
         fetchPublishedRuns()
       ]);
       const data = await runsResponse.json();
@@ -2143,7 +2167,7 @@
 
   function startHeartbeat() {
     setInterval(() => {
-      fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+      fetch(apiUrl('api/heartbeat'), { method: 'POST' }).catch(() => {});
     }, 30000);
   }
 
@@ -2428,7 +2452,7 @@
   // Fetch git info
   async function fetchGitInfo() {
     try {
-      const response = await fetch('/api/git/info');
+      const response = await fetch(apiUrl('api/git/info'));
       publishState.gitInfo = await response.json();
     } catch (err) {
       console.error('Failed to fetch git info:', err);
@@ -2438,7 +2462,7 @@
   // Fetch published run IDs from server
   async function fetchPublishedRuns() {
     try {
-      const response = await fetch('/api/confluence/published');
+      const response = await fetch(apiUrl('api/confluence/published'));
       const data = await response.json();
       const runIds = new Set(data.run_ids || []);
       publishState.publishedRuns = runIds;
@@ -2451,7 +2475,7 @@
   // Fetch Confluence projects
   async function fetchProjects() {
     try {
-      const response = await fetch('/api/confluence/projects');
+      const response = await fetch(apiUrl('api/confluence/projects'));
       const data = await response.json();
       publishState.projects = data.projects || [];
       populateProjectDropdown();
@@ -2463,7 +2487,7 @@
   // Fetch tasks for a project
   async function fetchTasks(projectName) {
     try {
-      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`);
+      const response = await fetch(apiUrl(`api/confluence/projects/${encodeURIComponent(projectName)}/tasks`));
       const data = await response.json();
       publishState.tasks = data.tasks || [];
       populateTaskDropdown();
@@ -2475,7 +2499,7 @@
   // Fetch users
   async function fetchUsers(query = '') {
     try {
-      const url = query ? `/api/confluence/users?q=${encodeURIComponent(query)}` : '/api/confluence/users';
+      const url = apiUrl(query ? `api/confluence/users?q=${encodeURIComponent(query)}` : 'api/confluence/users');
       const response = await fetch(url);
       const data = await response.json();
       publishState.users = data.users || [];
@@ -2711,7 +2735,7 @@
     if (filePaths.length === 0) return [];
     try {
       const params = filePaths.map(f => `files=${encodeURIComponent(f)}`).join('&');
-      const response = await fetch(`/api/compare?${params}`);
+      const response = await fetch(apiUrl(`api/compare?${params}`));
       if (!response.ok) throw new Error('Failed to fetch run data');
       const data = await response.json();
       return data.runs || [];
@@ -2963,7 +2987,7 @@
 
   async function fetchProjectsForAggregate() {
     try {
-      const response = await fetch('/api/confluence/projects');
+      const response = await fetch(apiUrl('api/confluence/projects'));
       const data = await response.json();
       const projects = data.projects || [];
 
@@ -2977,7 +3001,7 @@
 
   async function fetchTasksForAggregate(projectName) {
     try {
-      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`);
+      const response = await fetch(apiUrl(`api/confluence/projects/${encodeURIComponent(projectName)}/tasks`));
       const data = await response.json();
       const tasks = data.tasks || [];
 
@@ -2993,7 +3017,7 @@
 
   async function searchUsersForAggregate(query) {
     try {
-      const url = query ? `/api/confluence/users?q=${encodeURIComponent(query)}` : '/api/confluence/users';
+      const url = apiUrl(query ? `api/confluence/users?q=${encodeURIComponent(query)}` : 'api/confluence/users');
       const response = await fetch(url);
       const data = await response.json();
       const users = data.users || [];
@@ -3094,7 +3118,7 @@
     const avgItems = Math.round(runs.reduce((sum, r) => sum + r.total_items, 0) / runs.length);
 
     try {
-      const response = await fetch('/api/confluence/publish-aggregate', {
+      const response = await fetch(apiUrl('api/confluence/publish-aggregate'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3175,7 +3199,7 @@
     btn.textContent = 'Publishing...';
 
     try {
-      const response = await fetch('/api/confluence/publish', {
+      const response = await fetch(apiUrl('api/confluence/publish'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3241,7 +3265,7 @@
     btn.textContent = 'Creating...';
 
     try {
-      const response = await fetch(`/api/confluence/projects/${encodeURIComponent(projectName)}/tasks`, {
+      const response = await fetch(apiUrl(`api/confluence/projects/${encodeURIComponent(projectName)}/tasks`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: taskName })

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM-Eval • Compare Runs</title>
-  <link rel="stylesheet" href="/static/dashboard.css">
-  <script src="/static/metrics.js"></script>
+  <link rel="stylesheet" href="./static/dashboard.css">
+  <script src="./static/metrics.js"></script>
   <style>
     /* Compare-specific styles */
     .compare-container {
@@ -1056,7 +1056,7 @@
       <div style="font-size: 48px; margin-bottom: var(--space-md);">∅</div>
       <h2>No runs to compare</h2>
       <p>Select at least 2 runs from the dashboard to compare.</p>
-      <a href="/" class="back-link">← Back to Dashboard</a>
+      <a href="" class="back-link" onclick="window.location.href=apiUrl('');return false;">← Back to Dashboard</a>
     </div>
 
     <div id="compare-content" style="display: none;">
@@ -1065,7 +1065,7 @@
           <div class="compare-title">Run Comparison</div>
           <div class="compare-subtitle" id="compare-subtitle">Comparing evaluation runs</div>
         </div>
-        <a href="/" class="back-link">← Back to Dashboard</a>
+        <a href="" class="back-link" onclick="window.location.href=apiUrl('');return false;">← Back to Dashboard</a>
       </div>
 
       <!-- Run summaries -->
@@ -1125,6 +1125,21 @@
   <script>
     (() => {
       'use strict';
+
+      // Base URL handling for proxy/subpath compatibility
+      const BASE_URL = (() => {
+        const loc = window.location;
+        let base = loc.pathname;
+        if (!base.endsWith('/')) {
+          base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+        }
+        return loc.origin + base;
+      })();
+
+      function apiUrl(path) {
+        const cleanPath = path.replace(/^\.?\//, '');
+        return BASE_URL + cleanPath;
+      }
 
       const COLORS = [
         '#00d4aa', '#00a8ff', '#a855f7', '#f472b6',
@@ -1208,8 +1223,8 @@
         try {
           // Fetch both comparison data and published runs in parallel
           const [compareResponse, publishedResponse] = await Promise.all([
-            fetch('/api/compare?' + params),
-            fetch('/api/confluence/published')
+            fetch(apiUrl('api/compare?' + params)),
+            fetch(apiUrl('api/confluence/published'))
           ]);
 
           const data = await compareResponse.json();
