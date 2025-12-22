@@ -743,67 +743,663 @@ This page documents evaluation runs for the **{request.task_name}** task. Each r
 
 
 class RealConfluenceClient(ConfluenceClient):
-    """Real Confluence API client for production use.
-
-    This is a placeholder for the actual Confluence REST API integration.
-    It will use the Confluence REST API to interact with on-premise Confluence.
+    """Real Confluence API client for on-premise Confluence Data Center.
+    
+    Tested with Confluence 9.x. Uses REST API v1 for broad compatibility.
+    
+    Environment variables:
+        CONFLUENCE_URL: Base URL (e.g., https://confluence.company.com)
+        CONFLUENCE_USERNAME: Your username
+        CONFLUENCE_API_TOKEN: Personal Access Token or API token
+        CONFLUENCE_SPACE_KEY: Space key to publish to (e.g., EVAL)
     """
 
     def __init__(
         self,
         base_url: str,
-        username: str,
+        username: Optional[str],
         api_token: str,
         space_key: str
     ):
+        import requests
+        
         self.base_url = base_url.rstrip("/")
         self.username = username
         self.api_token = api_token
         self.space_key = space_key
-        # TODO: Initialize requests session with auth
+        
+        # Initialize session with authentication
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        })
+        
+        if username:
+            # Basic Auth: username + API token/password
+            self.session.auth = (username, api_token)
+        else:
+            # Bearer Token: Personal Access Token (PAT) - no username needed
+            self.session.headers["Authorization"] = f"Bearer {api_token}"
+        
+        # Cache for parent page IDs (project folders)
+        self._project_cache: Dict[str, str] = {}
+
+    def _api(self, endpoint: str) -> str:
+        """Build full API URL."""
+        return f"{self.base_url}/rest/api{endpoint}"
+
+    def _get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make GET request to Confluence API."""
+        resp = self.session.get(self._api(endpoint), params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _post(self, endpoint: str, data: Dict) -> Dict[str, Any]:
+        """Make POST request to Confluence API."""
+        import json
+        resp = self.session.post(self._api(endpoint), data=json.dumps(data))
+        resp.raise_for_status()
+        return resp.json()
+
+    def _put(self, endpoint: str, data: Dict) -> Dict[str, Any]:
+        """Make PUT request to Confluence API."""
+        import json
+        resp = self.session.put(self._api(endpoint), data=json.dumps(data))
+        resp.raise_for_status()
+        return resp.json()
+
+    def _find_page_by_title(self, title: str, parent_id: Optional[str] = None) -> Optional[Dict]:
+        """Find a page by title in the space."""
+        params = {
+            "spaceKey": self.space_key,
+            "title": title,
+            "expand": "version,body.storage,ancestors",
+        }
+        result = self._get("/content", params)
+        pages = result.get("results", [])
+        
+        if not pages:
+            return None
+        
+        # If parent_id specified, filter to children of that parent
+        if parent_id:
+            for page in pages:
+                # Check ancestors - the parent could be at any level
+                ancestors = page.get("ancestors", [])
+                for ancestor in ancestors:
+                    if ancestor.get("id") == parent_id:
+                        return page
+            return None
+        
+        return pages[0]
+
+    def _get_page(self, page_id: str) -> Dict:
+        """Get page by ID with content."""
+        return self._get(f"/content/{page_id}", {"expand": "version,body.storage,ancestors"})
 
     def list_projects(self) -> List[Project]:
-        """List projects from Confluence API."""
-        # TODO: Implement using Confluence REST API
-        # GET /rest/api/content?type=page&spaceKey={space}&title=Projects
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """List folders in the space."""
+        projects = []
+        
+        # Method 1: REST API with type=folder (Server/DC)
+        try:
+            result = self._get("/content", {
+                "spaceKey": self.space_key,
+                "type": "folder",
+                "limit": 100,
+            })
+            
+            for folder in result.get("results", []):
+                folder_id = folder["id"]
+                folder_title = folder["title"]
+                self._project_cache[folder_title] = folder_id
+                projects.append(Project(
+                    project_id=folder_id,
+                    name=folder_title,
+                    description="",
+                    owner=""
+                ))
+            
+            if projects:
+                return sorted(projects, key=lambda p: p.name)
+        except Exception:
+            pass  # Not supported on Cloud, try CQL
+        
+        # Method 2: CQL search for folders (Confluence Cloud)
+        try:
+            result = self._get("/search", {
+                "cql": f'space="{self.space_key}" AND type=folder',
+                "limit": 100,
+            })
+            
+            for item in result.get("results", []):
+                content = item.get("content", {})
+                folder_id = content.get("id", "")
+                folder_title = content.get("title", "")
+                if folder_id and folder_title:
+                    self._project_cache[folder_title] = folder_id
+                    projects.append(Project(
+                        project_id=folder_id,
+                        name=folder_title,
+                        description="",
+                        owner=""
+                    ))
+        except Exception:
+            pass
+        
+        return sorted(projects, key=lambda p: p.name)
 
     def list_tasks(self, project_name: str) -> List[TaskPage]:
-        """List task pages from Confluence API."""
-        # TODO: Implement using Confluence REST API
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """List pages inside a project (folder or parent page)."""
+        tasks = []
+        
+        # Get the project/folder ID from cache or find it
+        project_id = self._project_cache.get(project_name)
+        if not project_id:
+            # Re-list projects to populate cache
+            self.list_projects()
+            project_id = self._project_cache.get(project_name)
+        
+        if not project_id:
+            return tasks
+        
+        # Get child pages
+        try:
+            result = self._get(f"/content/{project_id}/child/page", {"limit": 100})
+            
+            for page in result.get("results", []):
+                tasks.append(TaskPage(
+                    page_id=page["id"],
+                    title=page["title"],
+                    project=project_name
+                ))
+        except Exception:
+            pass
+        
+        return sorted(tasks, key=lambda t: t.title)
 
     def search_users(self, query: str) -> List[User]:
-        """Search users via Confluence API."""
-        # TODO: Implement using Confluence REST API
-        # GET /rest/api/user/search?query={query}
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """Search for users by name."""
+        users = []
+        
+        try:
+            # Try CQL search first (works well on Server/DC)
+            result = self._get("/search", {
+                "cql": f'type=user AND (user.fullname~"{query}" OR user~"{query}")',
+                "limit": 25,
+            })
+            
+            for item in result.get("results", []):
+                user_data = item.get("user", item)
+                users.append(User(
+                    username=user_data.get("username", user_data.get("accountId", "")),
+                    display_name=user_data.get("displayName", user_data.get("publicName", ""))
+                ))
+            
+            if users:
+                return users
+        except Exception:
+            pass
+        
+        try:
+            # Fallback: Confluence user search API
+            result = self._get("/search/user", {"query": query, "limit": 25})
+            
+            for user_data in result.get("results", []):
+                users.append(User(
+                    username=user_data.get("username", user_data.get("accountId", "")),
+                    display_name=user_data.get("displayName", user_data.get("publicName", ""))
+                ))
+        except Exception:
+            pass
+        
+        return users
 
     def list_users(self) -> List[User]:
-        """List users from Confluence."""
-        # TODO: Implement using Confluence REST API
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """List all users from Confluence."""
+        users = []
+        
+        # Try multiple methods to get users
+        
+        # Method 1: CQL search for all users
+        try:
+            result = self._get("/search", {
+                "cql": "type=user",
+                "limit": 100,
+            })
+            
+            for item in result.get("results", []):
+                user_data = item.get("user", item)
+                username = user_data.get("username", user_data.get("accountId", ""))
+                display_name = user_data.get("displayName", user_data.get("publicName", username))
+                if username:
+                    users.append(User(username=username, display_name=display_name))
+            
+            if users:
+                return sorted(users, key=lambda u: u.display_name.lower())
+        except Exception:
+            pass
+        
+        # Method 2: Get members of common groups
+        for group_name in ["confluence-users", "users", "site-admins"]:
+            try:
+                result = self._get(f"/group/{group_name}/member", {"limit": 100})
+                
+                for user_data in result.get("results", []):
+                    username = user_data.get("username", "")
+                    display_name = user_data.get("displayName", username)
+                    if username and not any(u.username == username for u in users):
+                        users.append(User(username=username, display_name=display_name))
+                
+                if users:
+                    break
+            except Exception:
+                continue
+        
+        return sorted(users, key=lambda u: u.display_name.lower())
+
+    def _format_run_content(self, request: PublishRequest) -> str:
+        """Format a run as Confluence storage format (XHTML)."""
+        published_at = datetime.now().strftime("%B %d, %Y at %H:%M")
+        success_rate = (request.success_count / request.total_items * 100) if request.total_items > 0 else 0
+        
+        # Format latency
+        latency_ms = request.avg_latency_ms
+        if latency_ms >= 60000:
+            minutes = int(latency_ms // 60000)
+            seconds = (latency_ms % 60000) / 1000
+            latency_str = f"{minutes}m {seconds:.0f}s"
+        elif latency_ms >= 1000:
+            latency_str = f"{latency_ms / 1000:.1f}s"
+        else:
+            latency_str = f"{latency_ms:.0f}ms"
+        
+        # Build metrics rows
+        metrics_rows = ""
+        for name, value in request.metrics.items():
+            if isinstance(value, (int, float)):
+                pct = value * 100
+                metrics_rows += f"<tr><td>{name.replace('_', ' ').title()}</td><td>{pct:.1f}%</td></tr>"
+        metrics_rows += f"<tr><td>Latency</td><td>{latency_str}</td></tr>"
+        
+        # Trace link
+        trace_row = ""
+        if request.trace_url:
+            trace_row = f'<tr><td><strong>Traces</strong></td><td><a href="{request.trace_url}">View in Langfuse</a></td></tr>'
+        
+        return f"""
+<ac:structured-macro ac:name="panel" ac:schema-version="1">
+  <ac:parameter ac:name="title">{request.run_id}</ac:parameter>
+  <ac:rich-text-body>
+    <p><strong>Published:</strong> {published_at} | <strong>Author:</strong> @{request.published_by}</p>
+    
+    <h4>Summary</h4>
+    <p>{request.description}</p>
+    
+    <h4>Performance Metrics</h4>
+    <table>
+      <thead><tr><th>Metric</th><th>Score</th></tr></thead>
+      <tbody>{metrics_rows}</tbody>
+    </table>
+    
+    <h4>Run Configuration</h4>
+    <table>
+      <tbody>
+        <tr><td><strong>Model</strong></td><td>{request.model}</td></tr>
+        <tr><td><strong>Dataset</strong></td><td>{request.dataset}</td></tr>
+        <tr><td><strong>Total Samples</strong></td><td>{request.total_items:,}</td></tr>
+        <tr><td><strong>Success Rate</strong></td><td>{success_rate:.1f}% ({request.success_count:,}/{request.total_items:,})</td></tr>
+        <tr><td><strong>Errors</strong></td><td>{request.error_count:,}</td></tr>
+        {trace_row}
+      </tbody>
+    </table>
+    
+    <h4>Source Control</h4>
+    <table>
+      <tbody>
+        <tr><td><strong>Branch</strong></td><td><code>{request.branch or 'N/A'}</code></td></tr>
+        <tr><td><strong>Commit</strong></td><td><code>{request.commit or 'N/A'}</code></td></tr>
+      </tbody>
+    </table>
+  </ac:rich-text-body>
+</ac:structured-macro>
+<hr/>
+"""
 
     def publish_run(self, request: PublishRequest) -> PublishResult:
-        """Publish run to Confluence page."""
-        # TODO: Implement using Confluence REST API
-        # 1. Find or create page
-        # 2. Get current page content
-        # 3. Append new section using Confluence storage format
-        # 4. PUT updated content
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """Publish an evaluation run to a Confluence page."""
+        try:
+            # Find the project (folder or parent page)
+            project_id = self._project_cache.get(request.project_name)
+            if not project_id:
+                # Re-list projects to populate cache
+                self.list_projects()
+                project_id = self._project_cache.get(request.project_name)
+            
+            if not project_id:
+                return PublishResult(success=False, error=f"Project not found: {request.project_name}")
+            
+            # Find or create task page
+            task_page = self._find_page_by_title(request.task_name, parent_id=project_id)
+            
+            if task_page:
+                # Update existing page - append new run
+                page_id = task_page["id"]
+                current_version = task_page["version"]["number"]
+                current_content = task_page.get("body", {}).get("storage", {}).get("value", "")
+                
+                new_content = current_content + self._format_run_content(request)
+                
+                update_data = {
+                    "version": {"number": current_version + 1},
+                    "title": request.task_name,
+                    "type": "page",
+                    "body": {
+                        "storage": {
+                            "value": new_content,
+                            "representation": "storage"
+                        }
+                    }
+                }
+                
+                result = self._put(f"/content/{page_id}", update_data)
+            else:
+                # Create new task page under the folder/project
+                header = f"""<p><strong>Project:</strong> {request.project_name}</p>
+<p>This page documents evaluation runs for the <strong>{request.task_name}</strong> task.</p>
+<hr/>
+"""
+                content = header + self._format_run_content(request)
+                
+                # Try creating with folder as container (Confluence Cloud)
+                create_data = {
+                    "type": "page",
+                    "title": request.task_name,
+                    "space": {"key": self.space_key},
+                    "container": {"id": project_id, "type": "folder"},
+                    "body": {
+                        "storage": {
+                            "value": content,
+                            "representation": "storage"
+                        }
+                    }
+                }
+                
+                try:
+                    result = self._post("/content", create_data)
+                    page_id = result["id"]
+                except Exception:
+                    # Fallback: try with ancestors instead of container
+                    create_data = {
+                        "type": "page",
+                        "title": request.task_name,
+                        "space": {"key": self.space_key},
+                        "ancestors": [{"id": project_id}],
+                        "body": {
+                            "storage": {
+                                "value": content,
+                                "representation": "storage"
+                            }
+                        }
+                    }
+                    result = self._post("/content", create_data)
+                    page_id = result["id"]
+            
+            # Build page URL
+            page_url = f"{self.base_url}/pages/viewpage.action?pageId={page_id}"
+            
+            return PublishResult(
+                success=True,
+                page_id=page_id,
+                page_url=page_url
+            )
+            
+        except Exception as e:
+            return PublishResult(success=False, error=str(e))
 
     def create_project(self, name: str, description: str, owner: str) -> Project:
-        """Create project folder in Confluence."""
-        # TODO: Implement using Confluence REST API
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """Create a new project page in Confluence."""
+        content = f"""
+<p>{description}</p>
+<p><strong>Owner:</strong> @{owner}</p>
+<p>This project folder contains evaluation task pages.</p>
+"""
+        
+        create_data = {
+            "type": "page",
+            "title": name,
+            "space": {"key": self.space_key},
+            "body": {
+                "storage": {
+                    "value": content,
+                    "representation": "storage"
+                }
+            }
+        }
+        
+        result = self._post("/content", create_data)
+        page_id = result["id"]
+        self._project_cache[name] = page_id
+        
+        return Project(
+            project_id=page_id,
+            name=name,
+            description=description,
+            owner=owner
+        )
 
     def create_task(self, project_name: str, task_name: str) -> TaskPage:
-        """Create task page in Confluence."""
-        # TODO: Implement using Confluence REST API
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """Create a new task page under a project."""
+        # Find project
+        project_id = self._project_cache.get(project_name)
+        if not project_id:
+            project_page = self._find_page_by_title(project_name)
+            if not project_page:
+                raise ValueError(f"Project not found: {project_name}")
+            project_id = project_page["id"]
+            self._project_cache[project_name] = project_id
+        
+        content = f"""
+<h1>{task_name}</h1>
+<p><strong>Project:</strong> {project_name}</p>
+<p>This page documents evaluation runs for the <strong>{task_name}</strong> task.</p>
+<hr/>
+"""
+        
+        create_data = {
+            "type": "page",
+            "title": task_name,
+            "ancestors": [{"id": project_id}],
+            "space": {"key": self.space_key},
+            "body": {
+                "storage": {
+                    "value": content,
+                    "representation": "storage"
+                }
+            }
+        }
+        
+        result = self._post("/content", create_data)
+        
+        return TaskPage(
+            page_id=result["id"],
+            title=task_name,
+            project=project_name
+        )
+
+    def _format_aggregate_content(self, request: AggregatePublishRequest) -> str:
+        """Format aggregate run as Confluence storage format."""
+        published_at = datetime.now().strftime("%B %d, %Y at %H:%M")
+        
+        # Format latency
+        def format_latency(ms: float) -> str:
+            if ms >= 60000:
+                minutes = int(ms // 60000)
+                seconds = (ms % 60000) / 1000
+                return f"{minutes}m {seconds:.0f}s"
+            elif ms >= 1000:
+                return f"{ms / 1000:.1f}s"
+            else:
+                return f"{ms:.0f}ms"
+        
+        latency_str = format_latency(request.avg_latency_ms)
+        
+        # Get metric names
+        metric_names = list(request.run_details[0].metrics.keys()) if request.run_details else []
+        
+        # Build per-run table
+        run_header = "<tr><th>Run</th>"
+        for m in metric_names:
+            run_header += f"<th>{m.replace('_', ' ').title()}</th>"
+        run_header += "<th>Latency</th><th>Langfuse</th></tr>"
+        
+        run_rows = ""
+        for rd in request.run_details:
+            run_rows += f"<tr><td>{rd.run_id}</td>"
+            for m in metric_names:
+                run_rows += f"<td>{rd.metrics.get(m, 0) * 100:.1f}%</td>"
+            run_rows += f"<td>{format_latency(rd.latency_ms)}</td>"
+            if rd.langfuse_url:
+                run_rows += f'<td><a href="{rd.langfuse_url}">↗</a></td>'
+            else:
+                run_rows += "<td>—</td>"
+            run_rows += "</tr>"
+        
+        # Build aggregate metrics table
+        K = request.k_runs
+        agg_rows = ""
+        for mr in request.metric_results:
+            agg_rows += f"""<tr>
+                <td><strong>{mr.metric_name.replace('_', ' ').title()}</strong></td>
+                <td>≥{mr.threshold * 100:.0f}%</td>
+                <td>{mr.pass_at_k * 100:.1f}%</td>
+                <td>{mr.pass_k * 100:.1f}%</td>
+                <td>{mr.max_at_k * 100:.1f}%</td>
+                <td>{mr.consistency * 100:.1f}%</td>
+                <td>{mr.reliability * 100:.1f}%</td>
+                <td>{mr.avg_score * 100:.1f}%</td>
+            </tr>"""
+        
+        return f"""
+<ac:structured-macro ac:name="panel" ac:schema-version="1">
+  <ac:parameter ac:name="title">{request.run_name} (K={request.k_runs} runs)</ac:parameter>
+  <ac:rich-text-body>
+    <p><strong>Published:</strong> {published_at} | <strong>Author:</strong> @{request.published_by} | <strong>Type:</strong> Aggregate</p>
+    
+    <h4>Summary</h4>
+    <p>{request.description}</p>
+    
+    <h4>Individual Run Results</h4>
+    <table>
+      <thead>{run_header}</thead>
+      <tbody>{run_rows}</tbody>
+    </table>
+    
+    <h4>Aggregate Metrics</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th><th>Threshold</th><th>Pass@{K}</th><th>Pass^{K}</th>
+          <th>Max@{K}</th><th>Consistency</th><th>Reliability</th><th>Avg Score</th>
+        </tr>
+      </thead>
+      <tbody>{agg_rows}</tbody>
+    </table>
+    <p><strong>Avg Latency:</strong> {latency_str}</p>
+    
+    <h4>Configuration</h4>
+    <table>
+      <tbody>
+        <tr><td><strong>Model</strong></td><td>{request.model}</td></tr>
+        <tr><td><strong>Dataset</strong></td><td>{request.dataset}</td></tr>
+        <tr><td><strong>Task</strong></td><td>{request.task}</td></tr>
+        <tr><td><strong>Runs Evaluated</strong></td><td>{request.k_runs}</td></tr>
+        <tr><td><strong>Avg Items/Run</strong></td><td>{request.total_items_per_run:,}</td></tr>
+      </tbody>
+    </table>
+    
+    <h4>Source Control</h4>
+    <table>
+      <tbody>
+        <tr><td><strong>Branch</strong></td><td><code>{request.branch or 'N/A'}</code></td></tr>
+        <tr><td><strong>Commit</strong></td><td><code>{request.commit or 'N/A'}</code></td></tr>
+      </tbody>
+    </table>
+  </ac:rich-text-body>
+</ac:structured-macro>
+<hr/>
+"""
 
     def publish_aggregate_run(self, request: AggregatePublishRequest) -> PublishResult:
-        """Publish aggregate run to Confluence page."""
-        # TODO: Implement using Confluence REST API
-        raise NotImplementedError("Real Confluence API not yet implemented")
+        """Publish aggregate metrics for K runs to Confluence."""
+        try:
+            # Find the project page
+            project_id = self._project_cache.get(request.project_name)
+            if not project_id:
+                project_page = self._find_page_by_title(request.project_name)
+                if not project_page:
+                    return PublishResult(success=False, error=f"Project not found: {request.project_name}")
+                project_id = project_page["id"]
+                self._project_cache[request.project_name] = project_id
+            
+            # Find or create task page
+            task_page = self._find_page_by_title(request.task_name, parent_id=project_id)
+            
+            if task_page:
+                # Update existing page
+                page_id = task_page["id"]
+                current_version = task_page["version"]["number"]
+                current_content = task_page.get("body", {}).get("storage", {}).get("value", "")
+                
+                new_content = current_content + self._format_aggregate_content(request)
+                
+                update_data = {
+                    "version": {"number": current_version + 1},
+                    "title": request.task_name,
+                    "type": "page",
+                    "body": {
+                        "storage": {
+                            "value": new_content,
+                            "representation": "storage"
+                        }
+                    }
+                }
+                
+                result = self._put(f"/content/{page_id}", update_data)
+            else:
+                # Create new task page
+                header = f"""
+<h1>{request.task_name}</h1>
+<p><strong>Project:</strong> {request.project_name}</p>
+<p>This page documents evaluation runs for the <strong>{request.task_name}</strong> task.</p>
+<hr/>
+"""
+                content = header + self._format_aggregate_content(request)
+                
+                create_data = {
+                    "type": "page",
+                    "title": request.task_name,
+                    "ancestors": [{"id": project_id}],
+                    "space": {"key": self.space_key},
+                    "body": {
+                        "storage": {
+                            "value": content,
+                            "representation": "storage"
+                        }
+                    }
+                }
+                
+                result = self._post("/content", create_data)
+                page_id = result["id"]
+            
+            page_url = f"{self.base_url}/pages/viewpage.action?pageId={page_id}"
+            
+            return PublishResult(
+                success=True,
+                page_id=page_id,
+                page_url=page_url
+            )
+            
+        except Exception as e:
+            return PublishResult(success=False, error=str(e))

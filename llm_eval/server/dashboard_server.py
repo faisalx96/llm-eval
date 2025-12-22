@@ -25,6 +25,7 @@ except Exception:
 from ..core.run_discovery import RunDiscovery
 from ..confluence.client import (
     MockConfluenceClient,
+    RealConfluenceClient,
     PublishRequest,
     AggregatePublishRequest,
     AggregateMetricResult,
@@ -35,6 +36,24 @@ from ..confluence.client import (
 DEFAULT_RESULTS_DIR = "llm-eval_results"
 DEFAULT_CONFLUENCE_DIR = "confluence_mock"
 PUBLISHED_RUNS_FILE = ".published_runs.json"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFLUENCE CONFIGURATION (for airgapped/internal deployments)
+# ══════════════════════════════════════════════════════════════════════════════
+# Set these values to pre-configure Confluence for all users in your organization.
+# Users won't need to set environment variables if these are configured.
+# Environment variables take precedence if set.
+#
+# To configure: replace None with your values, e.g.:
+#   CONFLUENCE_DEFAULT_URL = "https://confluence.mycompany.com"
+#   CONFLUENCE_DEFAULT_SPACE = "EVAL"
+#   CONFLUENCE_DEFAULT_TOKEN = "your-service-account-PAT"
+#
+CONFLUENCE_DEFAULT_URL: Optional[str] = None      # e.g., "https://confluence.company.com"
+CONFLUENCE_DEFAULT_SPACE: Optional[str] = None    # e.g., "LLMEVAL"
+CONFLUENCE_DEFAULT_TOKEN: Optional[str] = None    # Service account PAT (recommended)
+CONFLUENCE_DEFAULT_USERNAME: Optional[str] = None # Only needed for basic auth, not PAT
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 def load_published_runs(results_dir: str) -> set:
@@ -114,8 +133,8 @@ class DashboardServer:
         self.discovery = RunDiscovery(results_dir)
         self.inactivity_timeout = inactivity_timeout
 
-        # Initialize Confluence client (mock for now)
-        self.confluence = MockConfluenceClient(confluence_dir)
+        # Initialize Confluence client - use real client if env vars are set
+        self.confluence = self._init_confluence_client(confluence_dir)
 
         # Track published runs locally
         self.published_runs = load_published_runs(results_dir)
@@ -129,6 +148,34 @@ class DashboardServer:
         # Resolve static directories
         self.dashboard_static_dir = self._resolve_dashboard_static_dir()
         self.ui_static_dir = self._resolve_ui_static_dir()
+
+    def _init_confluence_client(self, confluence_dir: str):
+        """Initialize Confluence client.
+        
+        Priority order for configuration:
+        1. Environment variables (CONFLUENCE_URL, CONFLUENCE_API_TOKEN, etc.)
+        2. Built-in defaults (CONFLUENCE_DEFAULT_* at top of this file)
+        3. Mock filesystem client (fallback for development)
+        """
+        # Get config from env vars first, then fall back to built-in defaults
+        confluence_url = os.environ.get("CONFLUENCE_URL") or CONFLUENCE_DEFAULT_URL
+        confluence_user = os.environ.get("CONFLUENCE_USERNAME") or CONFLUENCE_DEFAULT_USERNAME
+        confluence_token = os.environ.get("CONFLUENCE_API_TOKEN") or CONFLUENCE_DEFAULT_TOKEN
+        confluence_space = os.environ.get("CONFLUENCE_SPACE_KEY") or CONFLUENCE_DEFAULT_SPACE
+        
+        # Username is optional for PAT auth (Server/DC 7.9+)
+        if all([confluence_url, confluence_token, confluence_space]):
+            auth_type = "Basic Auth" if confluence_user else "PAT (Bearer)"
+            print(f"[Confluence] Using real API: {confluence_url} (space: {confluence_space}, auth: {auth_type})")
+            return RealConfluenceClient(
+                base_url=confluence_url,
+                username=confluence_user,  # Can be None for PAT auth
+                api_token=confluence_token,
+                space_key=confluence_space,
+            )
+        else:
+            print(f"[Confluence] Using mock filesystem: {confluence_dir}")
+            return MockConfluenceClient(confluence_dir)
 
     def _resolve_dashboard_static_dir(self) -> str:
         """Resolve path to dashboard static files."""
