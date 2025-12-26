@@ -3312,9 +3312,6 @@
     });
   });
 
-  // Fetch git info on load
-  fetchGitInfo();
-
   // ═══════════════════════════════════════════════════
   // STATE PERSISTENCE (for back/forward navigation)
   // ═══════════════════════════════════════════════════
