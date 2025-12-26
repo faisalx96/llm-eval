@@ -25,7 +25,7 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(length=200), nullable=False, server_default=""),
         sa.Column("title", sa.String(length=200), nullable=False, server_default=""),
         sa.Column("role", sa.Enum("EMPLOYEE", "MANAGER", "GM", "VP", name="userrole"), nullable=False, server_default="EMPLOYEE"),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.UniqueConstraint("email", name="uq_users_email"),

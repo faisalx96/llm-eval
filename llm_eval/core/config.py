@@ -31,7 +31,7 @@ class EvaluatorConfig(BaseModel):
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None
     platform_api_key: Optional[str] = None
-    live_mode: str = "local"  # local|platform
+    live_mode: str = "auto"  # auto|local|platform
 
     @field_validator("models", mode="before")
     @classmethod

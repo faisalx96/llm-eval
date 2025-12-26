@@ -820,8 +820,10 @@ In addition to the local web UI, `llm-eval` can stream run events to a **deploye
 - the live run UI (served by the platform, not your laptop)
 
 To enable streaming, provide the platform URL and API key (args or env vars):
-- `--platform-url` / `LLM_EVAL_PLATFORM_URL`
 - `--platform-api-key` / `LLM_EVAL_PLATFORM_API_KEY`
+
+The platform URL is treated as an internal default. For dev/test only, you can override it with:
+- `--platform-url` or `LLM_EVAL_PLATFORM_URL`
 
 Example:
 

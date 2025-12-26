@@ -389,7 +389,7 @@ Examples:
     parser.add_argument(
         "--platform-url",
         required=False,
-        help="Deployed platform base URL (enables live_mode=platform)"
+        help="Advanced: override platform base URL (normally built-in for internal deployments)"
     )
     parser.add_argument(
         "--platform-api-key",
@@ -399,8 +399,8 @@ Examples:
     parser.add_argument(
         "--live-mode",
         required=False,
-        choices=["local", "platform"],
-        help="Where to host the live run dashboard: local (default) or platform"
+        choices=["auto", "local", "platform"],
+        help="Where to host the live run dashboard: auto (default), local, or platform"
     )
     parser.add_argument(
         "--quiet", "-q",
@@ -529,7 +529,7 @@ Examples:
             purl = args.platform_url or os.getenv("LLM_EVAL_PLATFORM_URL")
             pkey = args.platform_api_key or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
             if purl and pkey:
-                config["live_mode"] = "platform"
+                config["live_mode"] = "auto"
         
         # Create evaluator
         dataset_obj: Any = args.dataset

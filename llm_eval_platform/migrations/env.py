@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
@@ -13,7 +14,8 @@ from llm_eval_platform.settings import PlatformSettings
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Provide `sys` so alembic.ini handler args like `(sys.stderr,)` evaluate correctly.
+    fileConfig(config.config_file_name, defaults={"sys": sys})
 
 target_metadata = Base.metadata
 

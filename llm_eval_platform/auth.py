@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.db.models import ApiKey, User
+from llm_eval_platform.db.models import ApiKey, User, UserRole
 from llm_eval_platform.deps import get_db
 from llm_eval_platform.security import api_key_prefix, verify_api_key
 from llm_eval_platform.settings import PlatformSettings
@@ -68,6 +68,18 @@ def require_ui_principal(
     - Support first-admin bootstrap via X-Admin-Bootstrap == LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN
     """
     settings = PlatformSettings()
+
+    # Local dev mode: no auth headers required. Create or reuse a stable dev user.
+    if str(settings.auth_mode).lower() == "none":
+        email = "dev@local"
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            user = User(email=email, display_name="Dev User", role=UserRole.VP)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return Principal(user=user, auth_type="none")
+
     email = (x_user_email or x_email or "").strip().lower()
 
     if email:

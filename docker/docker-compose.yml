@@ -23,7 +23,8 @@ services:
       LLM_EVAL_ENVIRONMENT: dev
       LLM_EVAL_BASE_URL: http://localhost:8000
       LLM_EVAL_DATABASE_URL: postgresql+psycopg2://llm_eval:llm_eval@db:5432/llm_eval
-      LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN: change-me
+      LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN: test
+      LLM_EVAL_AUTH_MODE: none
     ports:
       - "8000:8000"
     depends_on:
@@ -40,5 +41,3 @@ services:
 #    image: redis:7
 #    ports:
 #      - "6379:6379"
-
-

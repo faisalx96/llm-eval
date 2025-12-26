@@ -28,9 +28,10 @@ MVP is designed for a trusted internal network:
 Use the API ingestion (recommended) or file upload:
 
 ### From the SDK (live streaming)
-- Run your evaluation with `--platform-url` and `--platform-api-key` (or env vars):
-  - `LLM_EVAL_PLATFORM_URL`
+- Run your evaluation with **only an API key** (or env var):
   - `LLM_EVAL_PLATFORM_API_KEY`
+
+The platform URL is treated as an internal default (can be overridden for dev with `LLM_EVAL_PLATFORM_URL`).
 
 ### Upload a saved results file
 - Use `llm-eval submit` (CLI) or `POST /v1/runs:upload`.

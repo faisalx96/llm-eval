@@ -47,6 +47,7 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
+from ..platform_defaults import DEFAULT_PLATFORM_URL
 try:
     from ..platform_client import PlatformClient, PlatformEventStream  # type: ignore
 except Exception:  # pragma: no cover
@@ -576,11 +577,14 @@ class Evaluator:
         html_url = None
         ui_server = None
         self._platform_stream = None
-        if str(getattr(self.config, "live_mode", "local")).lower() == "platform":
-            platform_url = getattr(self.config, "platform_url", None) or os.getenv("LLM_EVAL_PLATFORM_URL")
-            platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
-            if not platform_url or not platform_api_key or PlatformClient is None:
-                raise RuntimeError("live_mode=platform requires platform_url + platform_api_key")
+        live_mode = str(getattr(self.config, "live_mode", "auto")).lower()
+        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+        # Policy: if API key exists and user didn't explicitly force local mode, stream to platform.
+        use_platform = (live_mode == "platform") or (live_mode == "auto" and bool(platform_api_key))
+        if use_platform:
+            platform_url = getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
+            if not platform_api_key or PlatformClient is None:
+                raise RuntimeError("Platform streaming requires platform_api_key (or LLM_EVAL_PLATFORM_API_KEY)")
             client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
             handle = client.create_run(
                 external_run_id=self.run_name,
