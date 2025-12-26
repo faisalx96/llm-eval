@@ -2147,7 +2147,8 @@
             const status = row.status || 'pending';
             const latencyMs = row.latency_ms;
             const traceId = row.trace_id;
-            const traceUrl = buildLangfuseTraceUrl(traceId);
+            // Use direct trace_url if available, otherwise build from trace_id
+            const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId);
 
             // Get metric values and metadata
             const metricVals = row.metric_values || [];
