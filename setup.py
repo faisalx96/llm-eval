@@ -42,6 +42,7 @@ setup(
     install_requires=[
         "langfuse>=2.0.0",
         "pydantic>=2.0.0",
+        "pydantic-settings>=2.0.0",
         "rich>=13.0.0",  # For nice progress bars
         "python-dotenv>=0.19.0",  # For environment variables
         "openpyxl>=3.0.0",  # For Excel export
@@ -59,11 +60,21 @@ setup(
         "langchain": ["langchain>=0.1.0"],
         "langgraph": ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"],
         "openai": ["openai>=1.0.0"],
+        "platform": [
+            "fastapi>=0.110.0",
+            "uvicorn>=0.30.0",
+            "sqlalchemy>=2.0.0",
+            "alembic>=1.13.0",
+            "psycopg2-binary>=2.9.0",
+            "python-multipart>=0.0.9",
+            "httpx>=0.27.0",
+        ],
         "all": ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"],
     },
     entry_points={
         "console_scripts": [
             "llm-eval=llm_eval.cli:main",
+            "llm-eval-platform=llm_eval_platform.cli:main",
         ],
     },
 )

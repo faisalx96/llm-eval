@@ -44,7 +44,7 @@
     filterTask: '',
     filterModels: new Set(),  // Multi-select for models
     filterDataset: '',
-    filterPublishStatus: '',  // '', 'published', or 'unpublished'
+    filterPublishStatus: '',  // '' or workflow status (DRAFT/SUBMITTED/APPROVED/REJECTED/RUNNING/COMPLETED/FAILED)
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
@@ -52,7 +52,8 @@
     chartData: null,  // Aggregated data for charts
     allMetrics: [],   // All unique metric names across runs
     allModels: [],    // All unique model names
-    publishedRuns: new Set(),  // Track published run IDs for filtering
+    publishedRuns: new Set(),  // legacy (Confluence); unused on platform
+    currentUser: null,
     // Models view state (uses global filterTask/filterDataset for task+dataset)
     modelsViewState: {
       selectedMetric: '',
@@ -403,10 +404,8 @@
     if (state.filterDataset) {
       runs = runs.filter(r => r.dataset_name === state.filterDataset);
     }
-    if (state.filterPublishStatus === 'published') {
-      runs = runs.filter(r => state.publishedRuns.has(r.run_id));
-    } else if (state.filterPublishStatus === 'unpublished') {
-      runs = runs.filter(r => !state.publishedRuns.has(r.run_id));
+    if (state.filterPublishStatus) {
+      runs = runs.filter(r => (r.status || '') === state.filterPublishStatus);
     }
 
     // Sort
@@ -878,8 +877,12 @@
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${pct}%</span></td>`;
       }).join('');
 
-      const isPublished = typeof publishState !== 'undefined' && publishState.publishedRuns.has(run.run_id);
+      const status = run.status || '';
       const langfuseUrl = run.langfuse_url;
+
+      const role = (state.currentUser && state.currentUser.role) || '';
+      const canApprove = role === 'MANAGER' && status === 'SUBMITTED';
+      const canSubmit = status === 'DRAFT';
 
       return `
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
@@ -892,7 +895,7 @@
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
-            ${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}
+            ${status ? `<span class="status-badge status-${status}">${status}</span>` : ''}
           </td>
           <td class="col-task">
             <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
@@ -923,13 +926,27 @@
             ${langfuseUrl ? `
               <a href="${langfuseUrl}" target="_blank" class="action-btn langfuse-btn" title="View in Langfuse" onclick="event.stopPropagation()">Langfuse ↗</a>
             ` : ''}
-            <a href="#" class="action-icon publish-run ${isPublished ? 'published' : ''}" title="${isPublished ? 'Already published' : 'Publish to Confluence'}">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                ${isPublished ?
-                  '<polyline points="20 6 9 17 4 12"></polyline>' :
-                  '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line>'}
-              </svg>
-            </a>
+            ${canSubmit ? `
+              <a href="#" class="action-icon submit-run" title="Submit for approval">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </a>
+            ` : ''}
+            ${canApprove ? `
+              <a href="#" class="action-icon approve-run" title="Approve">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </a>
+              <a href="#" class="action-icon reject-run" title="Reject">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </a>
+            ` : ''}
             <a href="#" class="action-icon delete-run" title="Delete run">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -965,13 +982,49 @@
         openRun(filePath);
       });
 
-      tr.querySelector('.publish-run').addEventListener('click', (e) => {
+      const submitBtn = tr.querySelector('.submit-run');
+      if (submitBtn) submitBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // Don't open modal if already published
-        const alreadyPublished = typeof publishState !== 'undefined' && publishState.publishedRuns.has(run.run_id);
-        if (!alreadyPublished) {
-          openPublishModal(run);
+        try {
+          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/submit`), { method: 'POST' });
+          await fetchRuns();
+        } catch (err) {
+          console.error('Submit failed', err);
+        }
+      });
+
+      const approveBtn = tr.querySelector('.approve-run');
+      if (approveBtn) approveBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const comment = prompt('Approval comment (optional):') || '';
+        try {
+          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/approve`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment }),
+          });
+          await fetchRuns();
+        } catch (err) {
+          console.error('Approve failed', err);
+        }
+      });
+
+      const rejectBtn = tr.querySelector('.reject-run');
+      if (rejectBtn) rejectBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const comment = prompt('Rejection comment (optional):') || '';
+        try {
+          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/reject`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment }),
+          });
+          await fetchRuns();
+        } catch (err) {
+          console.error('Reject failed', err);
         }
       });
 
@@ -2019,16 +2072,21 @@
 
   async function fetchRuns() {
     try {
-      // Fetch runs and published status in parallel
-      const [runsResponse] = await Promise.all([
+      // Fetch runs and current user in parallel (platform)
+      const [runsResponse, meResponse] = await Promise.all([
         fetch(apiUrl('api/runs')),
-        fetchPublishedRuns()
+        fetch(apiUrl('v1/me')).catch(() => null),
       ]);
       const data = await runsResponse.json();
       state.runs = data;
       const { runs, metrics } = flattenRuns(data);
       state.flatRuns = runs;
       state.allMetrics = metrics;
+      try {
+        state.currentUser = meResponse ? await meResponse.json() : null;
+      } catch {
+        state.currentUser = null;
+      }
       state.aggregations = computeAggregations(state.flatRuns);
       state.chartData = computeChartData(state.flatRuns);
 

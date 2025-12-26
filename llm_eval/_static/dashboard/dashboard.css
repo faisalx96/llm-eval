@@ -2313,6 +2313,28 @@ main {
   margin-left: var(--space-sm);
 }
 
+/* Workflow status badge (platform) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: var(--space-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.status-badge.status-DRAFT { color: var(--text-muted); }
+.status-badge.status-SUBMITTED { color: var(--warning); border-color: rgba(245, 158, 11, 0.35); }
+.status-badge.status-APPROVED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
+.status-badge.status-REJECTED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
+.status-badge.status-RUNNING { color: var(--accent-secondary); border-color: rgba(0, 168, 255, 0.35); }
+.status-badge.status-COMPLETED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
+.status-badge.status-FAILED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
+
 .published-badge .badge-icon {
   font-size: 10px;
 }

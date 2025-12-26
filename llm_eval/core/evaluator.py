@@ -47,6 +47,11 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
+try:
+    from ..platform_client import PlatformClient, PlatformEventStream  # type: ignore
+except Exception:  # pragma: no cover
+    PlatformClient = None  # type: ignore
+    PlatformEventStream = None  # type: ignore
  
 
 
@@ -565,24 +570,62 @@ class Evaluator:
         # Initialize progress tracker
         tracker = ProgressTracker(items, list(self.metrics.keys()))
     
-        # Web UI setup - always start the server
+        # Live UI setup:
+        # - local (default): start UIServer on 127.0.0.1 (legacy)
+        # - platform: create remote run and stream events
         html_url = None
         ui_server = None
-        desired_port = 0
-        try:
-            desired_port = int(self.config.ui_port)
-        except Exception:
+        self._platform_stream = None
+        if str(getattr(self.config, "live_mode", "local")).lower() == "platform":
+            platform_url = getattr(self.config, "platform_url", None) or os.getenv("LLM_EVAL_PLATFORM_URL")
+            platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+            if not platform_url or not platform_api_key or PlatformClient is None:
+                raise RuntimeError("live_mode=platform requires platform_url + platform_api_key")
+            client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
+            handle = client.create_run(
+                external_run_id=self.run_name,
+                task=self._task_name,
+                dataset=str(self.dataset_name),
+                model=self.model_name,
+                metrics=list(self.metrics.keys()),
+                run_metadata=dict(self.run_metadata or {}),
+                run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+            )
+            html_url = handle.live_url
+            self._platform_stream = PlatformEventStream(platform_url=platform_url, api_key=platform_api_key, run_id=handle.run_id)
+            # Seed run_started event (platform also has run record already; this is for richer metadata)
+            try:
+                self._platform_stream.emit(
+                    "run_started",
+                    {
+                        "external_run_id": self.run_name,
+                        "task": self._task_name,
+                        "dataset": str(self.dataset_name),
+                        "model": self.model_name,
+                        "metrics": list(self.metrics.keys()),
+                        "run_metadata": dict(self.run_metadata or {}),
+                        "run_config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                        "started_at": datetime.utcnow().isoformat(),
+                    },
+                )
+            except Exception:
+                pass
+        else:
             desired_port = 0
-        ui_server = UIServer(host="127.0.0.1", port=desired_port)
-        host, port = ui_server.start()
-        html_url = f"http://{host}:{port}/"
-        run_info = {**(run_info or {}), "html_url": html_url}
-        ui_server.run_state.set_run_info({
-            "dataset_name": self.dataset_name,
-            "run_name": self.run_name,
-            "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
-            **({} if run_info is None else run_info),
-        })
+            try:
+                desired_port = int(self.config.ui_port)
+            except Exception:
+                desired_port = 0
+            ui_server = UIServer(host="127.0.0.1", port=desired_port)
+            host, port = ui_server.start()
+            html_url = f"http://{host}:{port}/"
+            run_info = {**(run_info or {}), "html_url": html_url}
+            ui_server.run_state.set_run_info({
+                "dataset_name": self.dataset_name,
+                "run_name": self.run_name,
+                "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                **({} if run_info is None else run_info),
+            })
 
         dashboard = None
         live_context = nullcontext()
@@ -638,7 +681,7 @@ class Evaluator:
                 dashboard.bind(live)
 
             # Inline run_with_table logic
-            html_update_task = asyncio.create_task(update_html())
+            html_update_task = asyncio.create_task(update_html()) if ui_server is not None else None
 
             semaphore = asyncio.Semaphore(self.max_concurrency)
             tasks = []
@@ -660,18 +703,20 @@ class Evaluator:
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+                if html_update_task is not None:
+                    html_update_task.cancel()
+                    try:
+                        await html_update_task
+                    except asyncio.CancelledError:
+                        pass
+                raise
+
+            if html_update_task is not None:
                 html_update_task.cancel()
                 try:
                     await html_update_task
                 except asyncio.CancelledError:
                     pass
-                raise
-
-            html_update_task.cancel()
-            try:
-                await html_update_task
-            except asyncio.CancelledError:
-                pass
 
             # Final snapshot
             try:
@@ -727,6 +772,28 @@ class Evaluator:
         # Store UI URL if available
         if html_url:
             result.html_url = html_url
+
+        # Finalize remote streaming
+        if getattr(self, "_platform_stream", None) is not None:
+            try:
+                self._platform_stream.emit(
+                    "run_completed",
+                    {
+                        "ended_at": datetime.utcnow().isoformat(),
+                        "final_status": "COMPLETED",
+                        "summary": {
+                            "total_items": result.total_items,
+                            "success_count": len(result.results),
+                            "error_count": len(result.errors),
+                        },
+                    },
+                )
+            except Exception:
+                pass
+            try:
+                self._platform_stream.close()
+            except Exception:
+                pass
         
         # Auto-save if requested (message printed by save_* methods)
         if auto_save:
@@ -909,6 +976,24 @@ class Evaluator:
         try:
             tracker.start_item(index)
 
+            # Platform: item started
+            try:
+                ps = getattr(self, "_platform_stream", None)
+                if ps is not None:
+                    item_id = getattr(item, "id", None) or f"item_{index}"
+                    ps.emit(
+                        "item_started",
+                        {
+                            "item_id": str(item_id),
+                            "index": int(index),
+                            "input": item.input,
+                            "expected": getattr(item, "expected_output", None),
+                            "item_metadata": getattr(item, "metadata", {}) or {},
+                        },
+                    )
+            except Exception:
+                pass
+
             self._notify_observer(
                 "on_item_start",
                 item_index=index,
@@ -1014,6 +1099,35 @@ class Evaluator:
                         pass
 
                     scores[m_name] = score
+
+                    # Platform: metric scored
+                    try:
+                        ps = getattr(self, "_platform_stream", None)
+                        if ps is not None:
+                            item_id = getattr(item, "id", None) or f"item_{index}"
+                            score_numeric = None
+                            score_raw = score
+                            meta_payload: Dict[str, Any] = {}
+                            if isinstance(score, dict):
+                                score_raw = score
+                                if isinstance(score.get("score"), (int, float, bool)):
+                                    score_numeric = float(score["score"])
+                                if isinstance(score.get("metadata"), dict):
+                                    meta_payload = score.get("metadata") or {}
+                            elif isinstance(score, (int, float, bool)):
+                                score_numeric = float(score)
+                            ps.emit(
+                                "metric_scored",
+                                {
+                                    "item_id": str(item_id),
+                                    "metric_name": str(m_name),
+                                    "score_numeric": score_numeric,
+                                    "score_raw": score_raw,
+                                    "meta": meta_payload,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.error(f"Metric {m_name} failed: {e}")
                     error_tb = traceback.format_exc()
@@ -1102,6 +1216,24 @@ class Evaluator:
 
             tracker.complete_item(index)
 
+            # Platform: item completed
+            try:
+                ps = getattr(self, "_platform_stream", None)
+                if ps is not None:
+                    item_id = getattr(item, "id", None) or f"item_{index}"
+                    ps.emit(
+                        "item_completed",
+                        {
+                            "item_id": str(item_id),
+                            "output": output,
+                            "latency_ms": float(task_elapsed_time * 1000.0),
+                            "trace_id": meta.get("trace_id"),
+                            "trace_url": meta.get("trace_url"),
+                        },
+                    )
+            except Exception:
+                pass
+
             self._notify_observer(
                 "on_item_complete",
                 item_index=index,
@@ -1166,6 +1298,21 @@ class Evaluator:
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             # Return error info with trace_id so it can be saved to results
+            try:
+                ps = getattr(self, "_platform_stream", None)
+                if ps is not None:
+                    item_id = getattr(item, "id", None) or f"item_{index}"
+                    ps.emit(
+                        "item_failed",
+                        {
+                            "item_id": str(item_id),
+                            "error": str(e),
+                            "trace_id": meta.get("trace_id"),
+                            "trace_url": meta.get("trace_url"),
+                        },
+                    )
+            except Exception:
+                pass
             return {"_error": str(e), "_trace_id": meta.get('trace_id')}
 
     def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:

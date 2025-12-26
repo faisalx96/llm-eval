@@ -813,6 +813,35 @@ results = evaluator.run(
 
 There are two ways to access the Web UI:
 
+#### 0. Deployed Platform (remote live dashboard)
+
+In addition to the local web UI, `llm-eval` can stream run events to a **deployed platform** that hosts:
+- a centralized historical runs dashboard
+- the live run UI (served by the platform, not your laptop)
+
+To enable streaming, provide the platform URL and API key (args or env vars):
+- `--platform-url` / `LLM_EVAL_PLATFORM_URL`
+- `--platform-api-key` / `LLM_EVAL_PLATFORM_API_KEY`
+
+Example:
+
+```bash
+llm-eval --task-file examples/example.py --task-function my_task \
+  --dataset-csv examples/my_dataset.csv \
+  --metrics exact_match \
+  --platform-url http://localhost:8000 \
+  --platform-api-key <YOUR_API_KEY>
+```
+
+To upload a saved results artifact (offline/backfill):
+
+```bash
+llm-eval submit --file path/to/results.csv \
+  --platform-url http://localhost:8000 \
+  --api-key <YOUR_API_KEY> \
+  --task my_task --dataset my_dataset --model my_model
+```
+
 #### 1. Live Evaluation UI (Per-Run)
 
 When you start an evaluation, a **live Web UI** is automatically launched for that run. You'll see a clickable link in the terminal output:

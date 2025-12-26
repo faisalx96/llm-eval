@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any, List, Optional, Union
 import shlex
 import asyncio
+import mimetypes
+import uuid
+from urllib import request as urlrequest
 
 from rich.console import Console
 from .core.evaluator import Evaluator
@@ -18,6 +21,79 @@ from .core.config import RunSpec
 from .core.dataset import CsvDataset
 
 console = Console()
+def _encode_multipart_formdata(fields: dict, files: dict) -> tuple[bytes, str]:
+    boundary = "----llm-eval-" + uuid.uuid4().hex
+    crlf = "\r\n"
+    lines: list[bytes] = []
+
+    for name, value in (fields or {}).items():
+        lines.append(f"--{boundary}".encode())
+        lines.append(f'Content-Disposition: form-data; name="{name}"'.encode())
+        lines.append(b"")
+        lines.append(str(value).encode("utf-8"))
+
+    for name, fileinfo in (files or {}).items():
+        filename, content, content_type = fileinfo
+        lines.append(f"--{boundary}".encode())
+        lines.append(
+            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"'.encode()
+        )
+        lines.append(f"Content-Type: {content_type}".encode())
+        lines.append(b"")
+        lines.append(content)
+
+    lines.append(f"--{boundary}--".encode())
+    lines.append(b"")
+    body = crlf.encode().join(lines)
+    return body, boundary
+
+
+def run_submit_command(argv: List[str]) -> None:
+    parser = argparse.ArgumentParser(description="Submit an existing results file to the deployed platform")
+    parser.add_argument("--file", required=True, help="Path to results file (.csv or .json)")
+    parser.add_argument("--platform-url", required=True, help="Deployed platform base URL")
+    parser.add_argument("--api-key", required=True, help="Platform API key (Bearer token)")
+    parser.add_argument("--task", required=True, help="Task name")
+    parser.add_argument("--dataset", required=True, help="Dataset name")
+    parser.add_argument("--model", required=False, default="", help="Model name (optional)")
+    args = parser.parse_args(argv)
+
+    file_path = Path(args.file)
+    if not file_path.exists():
+        raise SystemExit(f"File not found: {file_path}")
+
+    raw = file_path.read_bytes()
+    ctype = mimetypes.guess_type(str(file_path.name))[0] or "application/octet-stream"
+
+    body, boundary = _encode_multipart_formdata(
+        fields={
+            "task": args.task,
+            "dataset": args.dataset,
+            "model": args.model or "",
+        },
+        files={
+            "file": (file_path.name, raw, ctype),
+        },
+    )
+
+    url = args.platform_url.rstrip("/") + "/v1/runs:upload"
+    req = urlrequest.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Authorization": f"Bearer {args.api_key}",
+        },
+        method="POST",
+    )
+    with urlrequest.urlopen(req, timeout=60) as resp:
+        resp_body = resp.read().decode("utf-8")
+    try:
+        data = json.loads(resp_body)
+    except Exception:
+        data = {"raw": resp_body}
+    console.print(f"[bold]Uploaded[/bold] run_id={data.get('run_id')} live_url={data.get('live_url')}")
+
 
 
 def load_function_from_file(file_path: str, function_name: str):
@@ -203,6 +279,10 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "dashboard":
         run_dashboard_command(sys.argv[2:])
         return
+    # Submit saved results to platform
+    if len(sys.argv) > 1 and sys.argv[1] == "submit":
+        run_submit_command(sys.argv[2:])
+        return
 
     parser = argparse.ArgumentParser(
         description="Evaluate LLM tasks using Langfuse datasets",
@@ -305,6 +385,22 @@ Examples:
     parser.add_argument(
         "--output",
         help="File to save detailed results (JSON format)"
+    )
+    parser.add_argument(
+        "--platform-url",
+        required=False,
+        help="Deployed platform base URL (enables live_mode=platform)"
+    )
+    parser.add_argument(
+        "--platform-api-key",
+        required=False,
+        help="API key for the deployed platform (Bearer token)"
+    )
+    parser.add_argument(
+        "--live-mode",
+        required=False,
+        choices=["local", "platform"],
+        help="Where to host the live run dashboard: local (default) or platform"
     )
     parser.add_argument(
         "--quiet", "-q",
@@ -421,6 +517,19 @@ Examples:
             config['ui_port'] = int(args.ui_port)
         except Exception:
             config['ui_port'] = 0
+        # Platform preferences
+        if args.platform_url:
+            config["platform_url"] = args.platform_url
+        if args.platform_api_key:
+            config["platform_api_key"] = args.platform_api_key
+        if args.live_mode:
+            config["live_mode"] = args.live_mode
+        else:
+            # Deprecation path: if platform is configured, prefer platform live mode.
+            purl = args.platform_url or os.getenv("LLM_EVAL_PLATFORM_URL")
+            pkey = args.platform_api_key or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+            if purl and pkey:
+                config["live_mode"] = "platform"
         
         # Create evaluator
         dataset_obj: Any = args.dataset

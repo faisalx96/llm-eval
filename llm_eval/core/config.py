@@ -28,6 +28,11 @@ class EvaluatorConfig(BaseModel):
     # Output settings
     output_dir: str = "llm-eval_results"
 
+    # Platform integration (deployed web app)
+    platform_url: Optional[str] = None
+    platform_api_key: Optional[str] = None
+    live_mode: str = "local"  # local|platform
+
     @field_validator("models", mode="before")
     @classmethod
     def normalize_models(cls, v: Any) -> Optional[List[str]]:
