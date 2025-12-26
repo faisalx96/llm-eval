@@ -104,6 +104,23 @@ body {
   min-height: 44px;
 }
 
+.header-meta .header-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--font-sm);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: var(--font-mono);
+}
+
+.header-meta .header-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
 .logo {
   display: flex;
   align-items: center;

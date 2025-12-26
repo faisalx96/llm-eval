@@ -31,7 +31,8 @@ class EvaluatorConfig(BaseModel):
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None
     platform_api_key: Optional[str] = None
-    live_mode: str = "auto"  # auto|local|platform
+    # Default policy: stream to platform. Users may explicitly opt out via live_mode="local".
+    live_mode: str = "platform"  # local|platform|auto
 
     @field_validator("models", mode="before")
     @classmethod

@@ -889,9 +889,10 @@
         state.langfuseHost = run.langfuse_host || '';
         state.langfuseProjectId = run.langfuse_project_id || '';
 
-        // Mark as finished (historical data)
+        // If platform run is still executing, poll for updates.
+        const isRunning = String(run.status || '').toUpperCase() === 'RUNNING';
         state.runStartMs = Date.now();
-        state.runEndMs = Date.now();
+        state.runEndMs = isRunning ? null : Date.now();
 
         try {
           const ds = run.dataset_name || 'Dataset';
@@ -917,6 +918,35 @@
           const map = new Map();
           (snap.rows || []).forEach(r => map.set(Number(r.index) || 0, r));
           state.rowByIndex = map;
+        } catch {}
+
+        // Poll while running (simple approach; replace with SSE/WS later)
+        try {
+          if (isRunning) {
+            if (state._pollId) clearInterval(state._pollId);
+            startRunTimer();
+            state._pollId = setInterval(() => {
+              fetch(apiUrl('api/runs/' + encodeURIComponent(filePath)))
+                .then(r => r.json())
+                .then(d2 => {
+                  const r2 = d2.run || {};
+                  const s2 = d2.snapshot || { rows: [], stats: {} };
+                  state.run = r2;
+                  state.snapshot = s2;
+                  syncMetricNamesFromSnapshot(s2);
+                  updateMetricSeriesFromSnapshot(s2);
+                  renderAll();
+                  const st = String(r2.status || '').toUpperCase();
+                  if (st && st !== 'RUNNING') {
+                    clearInterval(state._pollId);
+                    state._pollId = null;
+                    state.runEndMs = Date.now();
+                    stopRunTimer();
+                  }
+                })
+                .catch(() => {});
+            }, 2000);
+          }
         } catch {}
       })
       .catch(err => {

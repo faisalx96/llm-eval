@@ -7,7 +7,7 @@ import inspect
 import os
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import subprocess
 from pathlib import Path
@@ -48,6 +48,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 from ..platform_defaults import DEFAULT_PLATFORM_URL
+
+
+def _utc_now_str() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 try:
     from ..platform_client import PlatformClient, PlatformEventStream  # type: ignore
 except Exception:  # pragma: no cover
@@ -577,9 +581,18 @@ class Evaluator:
         html_url = None
         ui_server = None
         self._platform_stream = None
-        live_mode = str(getattr(self.config, "live_mode", "auto")).lower()
+        live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
         platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
-        # Policy: if API key exists and user didn't explicitly force local mode, stream to platform.
+        # Policy:
+        # - platform: require API key (raise if missing)
+        # - auto: use platform if key exists; otherwise raise (explicitly choose local if you want no platform)
+        # - local: never use platform
+        if live_mode in {"platform", "auto"} and not platform_api_key:
+            raise RuntimeError(
+                "Missing platform API key. Set EvaluatorConfig(platform_api_key=...) "
+                "or export LLM_EVAL_PLATFORM_API_KEY. "
+                "If you want to run without the platform, set live_mode='local'."
+            )
         use_platform = (live_mode == "platform") or (live_mode == "auto" and bool(platform_api_key))
         if use_platform:
             platform_url = getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
@@ -607,9 +620,10 @@ class Evaluator:
                         "dataset": str(self.dataset_name),
                         "model": self.model_name,
                         "metrics": list(self.metrics.keys()),
+                        "total_items": int(self.total_items),
                         "run_metadata": dict(self.run_metadata or {}),
                         "run_config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
-                        "started_at": datetime.utcnow().isoformat(),
+                        "started_at": _utc_now_str(),
                     },
                 )
             except Exception:
@@ -783,7 +797,7 @@ class Evaluator:
                 self._platform_stream.emit(
                     "run_completed",
                     {
-                        "ended_at": datetime.utcnow().isoformat(),
+                        "ended_at": _utc_now_str(),
                         "final_status": "COMPLETED",
                         "summary": {
                             "total_items": result.total_items,

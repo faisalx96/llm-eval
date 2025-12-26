@@ -29,6 +29,10 @@ def _sdk_static_dashboard_index() -> Path:
     return _repo_root() / "llm_eval" / "_static" / "dashboard" / "index.html"
 
 
+def _sdk_static_profile_index() -> Path:
+    return _repo_root() / "llm_eval" / "_static" / "dashboard" / "profile.html"
+
+
 def _iso(dt: Optional[datetime]) -> str:
     return (dt or datetime.utcnow()).isoformat()
 
@@ -39,6 +43,15 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     error_items = {it.item_id for it in items if it.error}
     error_count = len(error_items)
     success_count = total_items - error_count
+    completed_count = len([it for it in items if (it.output is not None) or (it.error is not None)])
+
+    expected_total = None
+    if isinstance(run.run_metadata, dict):
+        try:
+            if run.run_metadata.get("total_items") is not None:
+                expected_total = int(run.run_metadata["total_items"])
+        except Exception:
+            expected_total = None
 
     # Avg latency across all items that have latency
     latencies = [it.latency_ms for it in items if it.latency_ms is not None]
@@ -74,6 +87,10 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
         "metrics": metrics,
         "metric_averages": metric_averages,
         "total_items": total_items,
+        # Progress signals for list view (esp. RUNNING).
+        "progress_completed": completed_count,
+        "progress_total": expected_total,
+        "progress_pct": (completed_count / expected_total) if expected_total else None,
         "success_count": success_count,
         "error_count": error_count,
         "success_rate": (success_count / total_items) if total_items else 0.0,
@@ -90,6 +107,14 @@ def dashboard_index() -> FileResponse:
     idx = _sdk_static_dashboard_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Dashboard UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
+@router.get("/profile")
+def profile_index() -> FileResponse:
+    idx = _sdk_static_profile_index()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Profile UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
@@ -112,10 +137,12 @@ def legacy_list_runs(
     # - MANAGER: all runs (subtree enforcement will be added once org_closure is populated)
     # - GM/VP: approved runs only
     q = db.query(Run).order_by(Run.created_at.desc())
-    if principal.user.role == UserRole.EMPLOYEE:
-        q = q.filter(Run.owner_user_id == principal.user.id)
-    elif principal.user.role in {UserRole.GM, UserRole.VP}:
-        q = q.filter(Run.status == RunWorkflowStatus.APPROVED)
+    # Local dev mode: show everything to reduce friction.
+    if principal.auth_type != "none":
+        if principal.user.role == UserRole.EMPLOYEE:
+            q = q.filter(Run.owner_user_id == principal.user.id)
+        elif principal.user.role in {UserRole.GM, UserRole.VP}:
+            q = q.filter(Run.status == RunWorkflowStatus.APPROVED)
     runs = q.all()
 
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
@@ -202,6 +229,7 @@ def legacy_run_data(
             "metric_names": metrics,
             "config": run.run_config,
             "metadata": run.run_metadata,
+            "status": run.status,
             "langfuse_host": run.run_metadata.get("langfuse_host", "") if isinstance(run.run_metadata, dict) else "",
             "langfuse_project_id": run.run_metadata.get("langfuse_project_id", "") if isinstance(run.run_metadata, dict) else "",
         },
@@ -220,6 +248,9 @@ def submit_run(
         raise HTTPException(status_code=404, detail="Run not found")
     if run.owner_user_id != principal.user.id:
         raise HTTPException(status_code=403, detail="Only owner can submit")
+    # Allow submitting completed/failed runs for the approval workflow.
+    if run.status in {RunWorkflowStatus.APPROVED, RunWorkflowStatus.REJECTED, RunWorkflowStatus.SUBMITTED}:
+        raise HTTPException(status_code=400, detail=f"Run not submittable from status={run.status}")
     run.status = RunWorkflowStatus.SUBMITTED
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:

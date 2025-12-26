@@ -3,6 +3,7 @@
 import argparse
 import copy
 import json
+import os
 import sys
 import importlib.util
 from pathlib import Path
@@ -51,12 +52,16 @@ def _encode_multipart_formdata(fields: dict, files: dict) -> tuple[bytes, str]:
 def run_submit_command(argv: List[str]) -> None:
     parser = argparse.ArgumentParser(description="Submit an existing results file to the deployed platform")
     parser.add_argument("--file", required=True, help="Path to results file (.csv or .json)")
-    parser.add_argument("--platform-url", required=True, help="Deployed platform base URL")
-    parser.add_argument("--api-key", required=True, help="Platform API key (Bearer token)")
+    parser.add_argument("--platform-url", required=False, default=None, help="Advanced: override platform base URL")
+    parser.add_argument("--api-key", required=False, default=None, help="Platform API key (Bearer token). If omitted, uses LLM_EVAL_PLATFORM_API_KEY")
     parser.add_argument("--task", required=True, help="Task name")
     parser.add_argument("--dataset", required=True, help="Dataset name")
     parser.add_argument("--model", required=False, default="", help="Model name (optional)")
     args = parser.parse_args(argv)
+
+    api_key = args.api_key or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+    if not api_key:
+        raise SystemExit("Missing API key. Provide --api-key or set LLM_EVAL_PLATFORM_API_KEY")
 
     file_path = Path(args.file)
     if not file_path.exists():
@@ -76,13 +81,15 @@ def run_submit_command(argv: List[str]) -> None:
         },
     )
 
-    url = args.platform_url.rstrip("/") + "/v1/runs:upload"
+    from .platform_defaults import DEFAULT_PLATFORM_URL
+    platform_url = (args.platform_url or DEFAULT_PLATFORM_URL).rstrip("/")
+    url = platform_url + "/v1/runs:upload"
     req = urlrequest.Request(
         url,
         data=body,
         headers={
             "Content-Type": f"multipart/form-data; boundary={boundary}",
-            "Authorization": f"Bearer {args.api_key}",
+            "Authorization": f"Bearer {api_key}",
         },
         method="POST",
     )

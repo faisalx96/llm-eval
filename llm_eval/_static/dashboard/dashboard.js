@@ -187,6 +187,8 @@
             ...run,
             task_name: taskName,
             model_name: run.model_name || modelName,
+            // Some views/filters rely on this precomputed display value.
+            display_model: stripModelProvider(run.model_name || modelName || ''),
             _date: new Date(run.timestamp),
           });
         }
@@ -376,11 +378,11 @@
     if (state.searchQuery) {
       const q = state.searchQuery.toLowerCase();
       runs = runs.filter(r =>
-          r.run_id.toLowerCase().includes(q) ||
-          r.task_name.toLowerCase().includes(q) ||
-          r.model_name.toLowerCase().includes(q) ||
-          r.display_model.toLowerCase().includes(q) ||
-          r.dataset_name.toLowerCase().includes(q)
+          String(r.run_id || '').toLowerCase().includes(q) ||
+          String(r.task_name || '').toLowerCase().includes(q) ||
+          String(r.model_name || '').toLowerCase().includes(q) ||
+          String(r.display_model || '').toLowerCase().includes(q) ||
+          String(r.dataset_name || '').toLowerCase().includes(q)
       );
     }
 
@@ -882,7 +884,14 @@
 
       const role = (state.currentUser && state.currentUser.role) || '';
       const canApprove = role === 'MANAGER' && status === 'SUBMITTED';
-      const canSubmit = status === 'DRAFT';
+      // Runs submitted via SDK/file upload land as COMPLETED/FAILED; those should be submittable for approval.
+      const canSubmit = (status === 'DRAFT' || status === 'COMPLETED' || status === 'FAILED');
+      const progressText = (status === 'RUNNING' && run.progress_total)
+        ? `${run.progress_completed || 0}/${run.progress_total}`
+        : (status === 'RUNNING' ? `${run.progress_completed || 0}` : '');
+      const progressPctText = (status === 'RUNNING' && typeof run.progress_pct === 'number')
+        ? `${Math.round(run.progress_pct * 100)}%`
+        : '';
 
       return `
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
@@ -895,7 +904,7 @@
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
-            ${status ? `<span class="status-badge status-${status}">${status}</span>` : ''}
+            ${status ? `<span class="status-badge status-${status}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}
           </td>
           <td class="col-task">
             <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
@@ -2087,6 +2096,7 @@
       } catch {
         state.currentUser = null;
       }
+      updateProfileLink();
       state.aggregations = computeAggregations(state.flatRuns);
       state.chartData = computeChartData(state.flatRuns);
 
@@ -2096,6 +2106,8 @@
       el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       render();
+      // Adjust refresh cadence based on whether we have active runs.
+      try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
     } catch (err) {
       console.error('Failed to fetch runs:', err);
       el('loading').innerHTML = `
@@ -2103,6 +2115,15 @@
         <span>Is the server running?</span>
       `;
     }
+  }
+
+  function updateProfileLink() {
+    const link = el('profile-link');
+    if (!link) return;
+    link.href = apiUrl('profile');
+    const u = state.currentUser || {};
+    const label = u.display_name || u.email || 'Profile';
+    link.textContent = label;
   }
 
   function populateFilterDropdowns() {
@@ -3519,7 +3540,21 @@
   startHeartbeat();
   fetchRuns();
 
-  // Refresh every 60 seconds
-  setInterval(fetchRuns, 60000);
+  // Refresh cadence:
+  // - If any runs are RUNNING, refresh frequently to show progress.
+  // - Otherwise, keep the dashboard light.
+  let runsRefreshId = null;
+  function updateRunsRefreshCadence() {
+    try {
+      const anyRunning = (state.flatRuns || []).some(r => String(r.status || '').toUpperCase() === 'RUNNING');
+      const intervalMs = anyRunning ? 5000 : 60000;
+      if (runsRefreshId) clearInterval(runsRefreshId);
+      runsRefreshId = setInterval(fetchRuns, intervalMs);
+    } catch {
+      if (runsRefreshId) clearInterval(runsRefreshId);
+      runsRefreshId = setInterval(fetchRuns, 60000);
+    }
+  }
+  updateRunsRefreshCadence();
 
 })();

@@ -8,7 +8,11 @@ ENV PYTHONUNBUFFERED=1
 # System deps (psycopg2-binary doesn't require build deps)
 RUN pip install --no-cache-dir --upgrade pip
 
-COPY . /app
+# Copy only what we need (faster builds; smaller cache bust surface).
+COPY setup.py README.md /app/
+COPY llm_eval /app/llm_eval
+COPY llm_eval_platform /app/llm_eval_platform
+COPY docker /app/docker
 
 RUN pip install --no-cache-dir ".[platform]"
 

@@ -85,16 +85,17 @@ class PlatformEventStream:
         self._q.put(evt)
 
     def close(self) -> None:
+        # Request stop and wait for a final flush.
         self._stop.set()
         try:
-            self._thread.join(timeout=2)
+            self._thread.join(timeout=5)
         except Exception:
             pass
 
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
         last_flush = time.time()
-        while not self._stop.is_set():
+        while True:
             try:
                 evt = self._q.get(timeout=0.25)
                 batch.append(evt)
@@ -102,7 +103,16 @@ class PlatformEventStream:
                 pass
             now = time.time()
             should_flush = (len(batch) >= 25) or (batch and (now - last_flush) >= 1.0)
-            if not should_flush:
+            # If we're stopping, flush whatever we have (and drain the queue).
+            if self._stop.is_set():
+                try:
+                    while True:
+                        evt2 = self._q.get_nowait()
+                        batch.append(evt2)
+                except Empty:
+                    pass
+                should_flush = bool(batch)
+            if not should_flush and not self._stop.is_set():
                 continue
             try:
                 ndjson = "\n".join(json.dumps(e, ensure_ascii=False) for e in batch) + "\n"
@@ -112,6 +122,8 @@ class PlatformEventStream:
             except Exception:
                 # Best-effort; keep events for retry on next loop.
                 time.sleep(0.5)
+            if self._stop.is_set() and not batch:
+                break
 
 
 class PlatformClient:

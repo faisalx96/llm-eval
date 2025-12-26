@@ -39,6 +39,32 @@ def me(principal: Principal = Depends(require_ui_principal)) -> Dict[str, Any]:
     }
 
 
+@router.get("/v1/me/api-keys")
+def list_api_keys(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    keys = (
+        db.query(ApiKey)
+        .filter(ApiKey.user_id == principal.user.id)
+        .order_by(ApiKey.created_at.desc())
+        .all()
+    )
+    return {
+        "api_keys": [
+            {
+                "id": k.id,
+                "name": k.name,
+                "prefix": k.prefix,
+                "scopes": k.scopes,
+                "created_at": k.created_at.isoformat() if k.created_at else None,
+                "revoked_at": k.revoked_at.isoformat() if k.revoked_at else None,
+            }
+            for k in keys
+        ]
+    }
+
+
 @router.post("/v1/me/api-keys", response_model=CreateApiKeyResponse)
 def create_api_key(
     req: CreateApiKeyRequest,

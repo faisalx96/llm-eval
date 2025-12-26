@@ -1,0 +1,28 @@
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.ipynb_checkpoints/
+
+# local artifacts / large data
+llm-eval_results/
+artifacts/
+tui_debug.log
+llm_eval_platform.db
+*.sqlite
+*.sqlite3
+
+# build / packaging outputs
+build/
+dist/
+*.egg-info/
+
+# dev / secrets
+.env
+.env.*
+.DS_Store
+

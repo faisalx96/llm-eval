@@ -126,7 +126,10 @@ async def ingest_events(
             run.dataset = payload.dataset
             run.model = payload.model
             run.metrics = payload.metrics
-            run.run_metadata = payload.run_metadata
+            md = dict(payload.run_metadata or {})
+            if payload.total_items is not None:
+                md["total_items"] = int(payload.total_items)
+            run.run_metadata = md
             run.run_config = payload.run_config
             run.started_at = payload.started_at
             run.status = RunWorkflowStatus.RUNNING

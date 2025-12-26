@@ -23,6 +23,8 @@ class RunStartedPayload(BaseModel):
     dataset: str
     model: Optional[str] = None
     metrics: list[str] = Field(default_factory=list)
+    # Optional hint to enable progress % in list views.
+    total_items: Optional[int] = Field(default=None, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     run_config: Dict[str, Any] = Field(default_factory=dict)
     started_at: datetime
