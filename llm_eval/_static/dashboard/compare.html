@@ -100,22 +100,7 @@
       word-break: break-all;
     }
 
-    .published-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      padding: 2px 6px;
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--success);
-      border-radius: 3px;
-      font-size: 10px;
-      font-weight: 500;
-      margin-left: var(--space-sm);
-    }
-
-    .published-badge .badge-icon {
-      font-size: 9px;
-    }
+    /* Confluence publishing removed */
 
     .run-summary-card .run-meta {
       display: flex;
@@ -1056,7 +1041,7 @@
       <div style="font-size: 48px; margin-bottom: var(--space-md);">∅</div>
       <h2>No runs to compare</h2>
       <p>Select at least 2 runs from the dashboard to compare.</p>
-      <a href="" class="back-link" onclick="window.location.href=apiUrl('');return false;">← Back to Dashboard</a>
+      <a href="" class="back-link" id="back-link-empty">← Back to Dashboard</a>
     </div>
 
     <div id="compare-content" style="display: none;">
@@ -1065,7 +1050,7 @@
           <div class="compare-title">Run Comparison</div>
           <div class="compare-subtitle" id="compare-subtitle">Comparing evaluation runs</div>
         </div>
-        <a href="" class="back-link" onclick="window.location.href=apiUrl('');return false;">← Back to Dashboard</a>
+        <a href="" class="back-link" id="back-link-header">← Back to Dashboard</a>
       </div>
 
       <!-- Run summaries -->
@@ -1141,6 +1126,15 @@
         return BASE_URL + cleanPath;
       }
 
+      // Fix back links for subpath/proxy deployments.
+      try {
+        const backUrl = apiUrl('');
+        const backHeader = document.getElementById('back-link-header');
+        const backEmpty = document.getElementById('back-link-empty');
+        if (backHeader) backHeader.href = backUrl;
+        if (backEmpty) backEmpty.href = backUrl;
+      } catch {}
+
       const COLORS = [
         '#00d4aa', '#00a8ff', '#a855f7', '#f472b6',
         '#fbbf24', '#60a5fa', '#34d399', '#fb923c'
@@ -1160,7 +1154,8 @@
         metricIsBoolean: {},   // Per-metric flag: true if all scores are 0 or 1
         langfuseHost: '',      // Langfuse host URL
         langfuseProjectId: '', // Langfuse project ID
-        publishedRuns: new Set(),  // Track published run IDs
+        // Confluence publishing removed
+        publishedRuns: new Set(),
       };
 
       const el = (id) => document.getElementById(id);
@@ -1221,15 +1216,9 @@
         // Fetch comparison data from API
         const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
         try {
-          // Fetch both comparison data and published runs in parallel
-          const [compareResponse, publishedResponse] = await Promise.all([
-            fetch(apiUrl('api/compare?' + params)),
-            fetch(apiUrl('api/confluence/published'))
-          ]);
-
+          const compareResponse = await fetch(apiUrl('api/compare?' + params));
           const data = await compareResponse.json();
-          const publishedData = await publishedResponse.json();
-          state.publishedRuns = new Set(publishedData.run_ids || []);
+          state.publishedRuns = new Set();
 
           if (!data.runs || data.runs.length < 2) {
             showEmpty();
@@ -1854,14 +1843,14 @@
           const color = COLORS[idx % COLORS.length];
           const successRate = (stats.completed || 0) / (stats.total || 1);
           const successClass = getSuccessClass(successRate);
-          const isPublished = state.publishedRuns.has(info.run_name);
+          const isPublished = false;
 
           const canRemove = state.runs.length > 2;
           return `
             <div class="run-summary-card">
               <div class="run-header">
                 <div class="run-color-dot" style="background: ${color}"></div>
-                <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}${isPublished ? '<span class="published-badge"><span class="badge-icon">✓</span>Published</span>' : ''}</div>
+                <div class="run-name">${info.run_name || 'Run ' + (idx + 1)}</div>
                 ${canRemove ? `<button class="remove-run" data-idx="${idx}" title="Remove from comparison">✕</button>` : ''}
               </div>
               <div class="run-meta">

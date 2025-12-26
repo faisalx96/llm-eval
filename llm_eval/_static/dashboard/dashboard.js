@@ -52,7 +52,8 @@
     chartData: null,  // Aggregated data for charts
     allMetrics: [],   // All unique metric names across runs
     allModels: [],    // All unique model names
-    publishedRuns: new Set(),  // legacy (Confluence); unused on platform
+    // Confluence support removed.
+    publishedRuns: new Set(),
     currentUser: null,
     // Models view state (uses global filterTask/filterDataset for task+dataset)
     modelsViewState: {
@@ -936,7 +937,7 @@
               <a href="${langfuseUrl}" target="_blank" class="action-btn langfuse-btn" title="View in Langfuse" onclick="event.stopPropagation()">Langfuse ↗</a>
             ` : ''}
             ${canSubmit ? `
-              <a href="#" class="action-icon submit-run" title="Submit for approval">
+              <a href="#" class="action-icon submit-run" title="Submit">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -1197,10 +1198,11 @@
     const langfuseBtn = el('langfuse-btn');
     if (langfuseBtn) langfuseBtn.style.display = 'none';
 
-    // Show Publish button only when more than 1 run is selected
+    // Show Submit button when at least 1 run is selected (bulk submit for approval)
     const publishBtn = el('publish-selected');
     if (publishBtn) {
-      publishBtn.style.display = selectedRuns.length > 1 ? 'inline-block' : 'none';
+      publishBtn.style.display = selectedRuns.length >= 1 ? 'inline-block' : 'none';
+      publishBtn.textContent = 'Submit';
     }
 
     chips.innerHTML = selectedRuns.map(run => `
@@ -1615,7 +1617,6 @@
               <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
               ${hasWarning ? `<span class="runs-warning" title="Only ${stats.totalAvailable} runs available (requested ${globalK})">⚠️</span>` : ''}
               <button class="customize-btn" data-model="${model}" title="Customize run selection">Edit</button>
-              ${K > 1 ? `<button class="publish-model-btn" data-model="${model}" title="Publish aggregate results to Confluence">Publish</button>` : ''}
             </div>
           </div>
 
@@ -1680,25 +1681,6 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         openRunSelectionModal(btn.dataset.model, runsByModel[btn.dataset.model]);
-      });
-    });
-
-    container.querySelectorAll('.publish-model-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const model = btn.dataset.model;
-        const stats = mvs.modelStats[model];
-        if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
-          // Get full run objects for the selected paths
-          const selectedRuns = state.flatRuns.filter(r => stats.selectedPaths.includes(r.file_path));
-          if (selectedRuns.length >= 2) {
-            openAggregatePublishModal(selectedRuns);
-          } else {
-            showToast('error', 'Not Enough Runs', 'Need at least 2 runs to publish aggregate results');
-          }
-        } else {
-          showToast('error', 'Not Enough Runs', 'Need at least 2 runs to publish aggregate results');
-        }
       });
     });
 
@@ -2475,20 +2457,6 @@
   });
 
   // ═══════════════════════════════════════════════════
-  // CONFLUENCE PUBLISH FUNCTIONALITY
-  // ═══════════════════════════════════════════════════
-
-  const publishState = {
-    currentRun: null,
-    projects: [],
-    tasks: [],
-    users: [],
-    selectedUser: null,
-    gitInfo: { branch: null, commit: null },
-    publishedRuns: new Set()  // Track which runs have been published
-  };
-
-  // ═══════════════════════════════════════════════════
   // TOAST NOTIFICATIONS
   // ═══════════════════════════════════════════════════
 
@@ -2528,179 +2496,47 @@
     setTimeout(() => toast.remove(), 300);
   }
 
-  // Fetch git info
-  async function fetchGitInfo() {
-    try {
-      const response = await fetch(apiUrl('api/git/info'));
-      publishState.gitInfo = await response.json();
-    } catch (err) {
-      console.error('Failed to fetch git info:', err);
-    }
-  }
+  // Confluence support removed (publishing, projects/tasks/users, and related git-info fetching).
 
-  // Fetch published run IDs from server
-  async function fetchPublishedRuns() {
-    try {
-      const response = await fetch(apiUrl('api/confluence/published'));
-      const data = await response.json();
-      const runIds = new Set(data.run_ids || []);
-      publishState.publishedRuns = runIds;
-      state.publishedRuns = runIds;  // Sync to main state for filtering
-    } catch (err) {
-      console.error('Failed to fetch published runs:', err);
-    }
-  }
-
-  // Fetch Confluence projects
-  async function fetchProjects() {
-    try {
-      const response = await fetch(apiUrl('api/confluence/projects'));
-      const data = await response.json();
-      publishState.projects = data.projects || [];
-      populateProjectDropdown();
-    } catch (err) {
-      console.error('Failed to fetch projects:', err);
-    }
-  }
-
-  // Fetch tasks for a project
-  async function fetchTasks(projectName) {
-    try {
-      const response = await fetch(apiUrl(`api/confluence/projects/${encodeURIComponent(projectName)}/tasks`));
-      const data = await response.json();
-      publishState.tasks = data.tasks || [];
-      populateTaskDropdown();
-    } catch (err) {
-      console.error('Failed to fetch tasks:', err);
-    }
-  }
-
-  // Fetch users
-  async function fetchUsers(query = '') {
-    try {
-      const url = apiUrl(query ? `api/confluence/users?q=${encodeURIComponent(query)}` : 'api/confluence/users');
-      const response = await fetch(url);
-      const data = await response.json();
-      publishState.users = data.users || [];
-      renderUserDropdown();
-    } catch (err) {
-      console.error('Failed to fetch users:', err);
-    }
-  }
-
-  function populateProjectDropdown() {
-    const select = el('publish-project');
-    select.innerHTML = '<option value="">Select a project...</option>' +
-      publishState.projects.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
-  }
-
-  function populateTaskDropdown() {
-    const select = el('publish-task');
-    const addBtn = el('add-task-btn');
-
-    if (publishState.tasks.length === 0) {
-      select.innerHTML = '<option value="">No tasks yet - create one</option>';
-    } else {
-      select.innerHTML = '<option value="">Select a task...</option>' +
-        publishState.tasks.map(t => `<option value="${t.title}">${t.title}</option>`).join('');
-    }
-    select.disabled = false;
-    addBtn.disabled = false;
-  }
-
-  function renderUserDropdown() {
-    const dropdown = el('user-dropdown');
-
-    if (publishState.users.length === 0) {
-      dropdown.innerHTML = '<div class="no-results">No users found</div>';
-    } else {
-      dropdown.innerHTML = publishState.users.map(u => `
-        <div class="user-option" data-username="${u.username}">
-          <div class="user-name">${u.display_name}</div>
-          <div class="user-username">@${u.username}</div>
-        </div>
-      `).join('');
-
-      // Wire click events
-      dropdown.querySelectorAll('.user-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-          selectUser(opt.dataset.username);
-        });
-      });
-    }
-    dropdown.style.display = 'block';
-  }
-
-  function selectUser(username) {
-    const user = publishState.users.find(u => u.username === username);
-    if (user) {
-      publishState.selectedUser = user;
-      el('publish-user').value = user.username;
-      el('publish-user-search').value = user.display_name;
-      el('user-dropdown').style.display = 'none';
-    }
-  }
-
-  function openPublishModal(run) {
-    publishState.currentRun = run;
-    publishState.selectedUser = null;
-
-    // Populate run info
-    const successClass = getSuccessClass(run.success_rate);
-    const metricsHtml = run.metric_averages ? Object.entries(run.metric_averages).map(([name, value]) => `
-      <div class="metric-item">
-        <span class="metric-name">${name}</span>
-        <span class="metric-value">${(value * 100).toFixed(1)}%</span>
-      </div>
-    `).join('') : '';
-
-    el('publish-run-info').innerHTML = `
-      <div class="run-header">
-        <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
-        <span class="run-success ${successClass}">${formatPercent(run.success_rate)}</span>
-      </div>
-      <div class="run-meta">
-        <span class="tag" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
-        <span class="tag">${run.dataset_name}</span>
-        <span>${run.total_items} items</span>
-      </div>
-      ${metricsHtml ? `<div class="run-metrics">${metricsHtml}</div>` : ''}
-    `;
-
-    // Reset form - use stripped version for default name
-    el('publish-run-name').value = stripProviderFromRunId(run.run_id);
-    el('publish-project').value = '';
-    el('publish-task').value = '';
-    el('publish-task').disabled = true;
-    el('add-task-btn').disabled = true;
-    el('publish-user-search').value = '';
-    el('publish-user').value = '';
-    el('publish-description').value = '';
-    el('publish-branch').value = publishState.gitInfo.branch || '(not available)';
-    el('publish-commit').value = publishState.gitInfo.commit || '(not available)';
-
-    // Fetch projects and users
-    fetchProjects();
-    fetchUsers();
-
-    // Show modal
-    el('publish-modal').style.display = 'flex';
-  }
-
-  function openPublishModalForSelected() {
+  async function submitSelectedRuns() {
     if (state.selectedRuns.size === 0) return;
-
     const selectedRuns = state.flatRuns.filter(r => state.selectedRuns.has(r.file_path));
+    let ok = 0;
+    let failed = 0;
 
-    if (selectedRuns.length === 1) {
-      // Single run - use standard publish modal
-      openPublishModal(selectedRuns[0]);
-    } else {
-      // Multiple runs - use aggregate publish modal
-      openAggregatePublishModal(selectedRuns);
+    for (const run of selectedRuns) {
+      const runId = run.run_id || run.file_path;
+      try {
+        const res = await fetch(apiUrl(`v1/runs/${encodeURIComponent(runId)}/submit`), { method: 'POST' });
+        if (res.ok) ok++;
+        else failed++;
+      } catch (e) {
+        failed++;
+      }
+    }
+
+    try {
+      await fetchRuns();
+    } catch {}
+
+    try {
+      if (failed === 0) showToast('success', 'Submitted', `Submitted ${ok} run(s)`);
+      else showToast('error', 'Partial Submit', `Submitted ${ok}, failed ${failed}`);
+    } catch {
+      if (failed === 0) alert(`Submitted ${ok} run(s)`);
+      else alert(`Submitted ${ok}, failed ${failed}`);
     }
   }
 
+  // Compare panel: bulk-submit selected runs for approval.
+  el('publish-selected')?.addEventListener('click', () => submitSelectedRuns());
+
+  /* Confluence publishing removed.
+   *
+   * The sections below were the legacy Confluence publish/aggregate publish UI
+   * and related API calls. They are intentionally disabled to avoid any Confluence
+   * surface area in the dashboard.
+   */
   // Aggregate publish state
   const aggregatePublishState = {
     runs: [],
@@ -3421,7 +3257,8 @@
 
   el('confirm-publish-btn')?.addEventListener('click', publishRun);
   el('confirm-create-task-btn')?.addEventListener('click', createTask);
-  el('publish-selected')?.addEventListener('click', openPublishModalForSelected);
+  // Compare panel: rename "Publish" to "Submit" and bulk-submit selected runs for approval.
+  el('publish-selected')?.addEventListener('click', () => submitSelectedRuns());
 
   // Aggregate publish modal events
   el('confirm-aggregate-publish-btn')?.addEventListener('click', publishAggregateRuns);
@@ -3547,7 +3384,7 @@
   function updateRunsRefreshCadence() {
     try {
       const anyRunning = (state.flatRuns || []).some(r => String(r.status || '').toUpperCase() === 'RUNNING');
-      const intervalMs = anyRunning ? 5000 : 60000;
+      const intervalMs = anyRunning ? 2000 : 60000;
       if (runsRefreshId) clearInterval(runsRefreshId);
       runsRefreshId = setInterval(fetchRuns, intervalMs);
     } catch {

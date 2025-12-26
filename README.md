@@ -164,7 +164,6 @@ llm-eval dashboard
 - Filter by task, model, dataset, or time range
 - Compare multiple runs side-by-side
 - View charts and metrics visualizations
-- **Publish to Confluence** - Share approved runs with stakeholders
 
 ![Dashboard Compare](docs/images/dashboard-compare.png)
 

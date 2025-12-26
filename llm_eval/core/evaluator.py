@@ -794,6 +794,9 @@ class Evaluator:
         # Finalize remote streaming
         if getattr(self, "_platform_stream", None) is not None:
             try:
+                # Persist final metadata (e.g., langfuse_url) to the platform by embedding it in the
+                # completion summary. The platform ingest path will merge this into Run.run_metadata.
+                final_run_metadata = dict(result.run_metadata or {})
                 self._platform_stream.emit(
                     "run_completed",
                     {
@@ -803,6 +806,7 @@ class Evaluator:
                             "total_items": result.total_items,
                             "success_count": len(result.results),
                             "error_count": len(result.errors),
+                            "run_metadata": final_run_metadata,
                         },
                     },
                 )
@@ -1243,6 +1247,7 @@ class Evaluator:
                         "item_completed",
                         {
                             "item_id": str(item_id),
+                            "index": int(index),  # Include index for fallback when item_started was missed
                             "output": output,
                             "latency_ms": float(task_elapsed_time * 1000.0),
                             "trace_id": meta.get("trace_id"),
@@ -1324,6 +1329,7 @@ class Evaluator:
                         "item_failed",
                         {
                             "item_id": str(item_id),
+                            "index": int(index),  # Include index for fallback when item_started was missed
                             "error": str(e),
                             "trace_id": meta.get("trace_id"),
                             "trace_url": meta.get("trace_url"),

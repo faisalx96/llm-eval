@@ -1501,6 +1501,39 @@ main {
   opacity: 0.7;
 }
 
+/* Submit icon - green */
+.action-icon.submit-run {
+  color: var(--accent-primary);
+  background: rgba(0, 212, 170, 0.1);
+}
+
+.action-icon.submit-run:hover {
+  background: rgba(0, 212, 170, 0.2);
+  color: var(--accent-primary);
+}
+
+/* Approve icon - green */
+.action-icon.approve-run {
+  color: var(--accent-primary);
+  background: rgba(0, 212, 170, 0.1);
+}
+
+.action-icon.approve-run:hover {
+  background: rgba(0, 212, 170, 0.2);
+  color: var(--accent-primary);
+}
+
+/* Reject icon - red */
+.action-icon.reject-run {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.action-icon.reject-run:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+}
+
 /* Delete icon - red */
 .action-icon.delete-run {
   color: var(--error);

@@ -1,3 +1,0 @@
-# Retrieval
-
-**Project**: RAG

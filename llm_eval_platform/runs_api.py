@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from llm_eval_platform.auth import Principal, require_ui_principal
-from llm_eval_platform.db.models import Approval, ApprovalDecision, Run, RunItem, RunItemScore, RunWorkflowStatus, UserRole
+from llm_eval_platform.db.models import Approval, ApprovalDecision, Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, UserRole
 from llm_eval_platform.deps import get_db
 
 
@@ -27,6 +28,9 @@ def _sdk_static_ui_index() -> Path:
 
 def _sdk_static_dashboard_index() -> Path:
     return _repo_root() / "llm_eval" / "_static" / "dashboard" / "index.html"
+
+def _sdk_static_dashboard_compare() -> Path:
+    return _repo_root() / "llm_eval" / "_static" / "dashboard" / "compare.html"
 
 
 def _sdk_static_profile_index() -> Path:
@@ -118,6 +122,14 @@ def profile_index() -> FileResponse:
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
+@router.get("/compare")
+def compare_index() -> FileResponse:
+    idx = _sdk_static_dashboard_compare()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Compare UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
 @router.get("/run/{run_id:path}")
 def run_ui(run_id: str) -> FileResponse:
     # Serve the existing run UI index; it will call /api/runs/{run_id} in dashboard-mode.
@@ -153,6 +165,39 @@ def legacy_list_runs(
         tasks.setdefault(task, {}).setdefault(model, []).append(summary)
 
     return {"tasks": tasks, "last_updated": datetime.utcnow().isoformat()}
+
+
+@router.get("/api/compare")
+def legacy_compare(
+    files: List[str] = Query(default=[]),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return multiple run snapshots for comparison.
+
+    The static dashboard expects query param(s) named `files` containing opaque run identifiers.
+    In the platform, `file_path` is the run_id, so we accept run IDs here.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files specified")
+    run_ids: list[str] = []
+    for f in files:
+        for part in str(f).split(","):
+            p = part.strip()
+            if p:
+                run_ids.append(p)
+
+    runs_data: list[dict[str, Any]] = []
+    for run_id in run_ids:
+        data = legacy_run_data(run_id=run_id, db=db, principal=principal)
+        if not data.get("error"):
+            runs_data.append(data)
+
+    return {
+        "runs": runs_data,
+        "langfuse_host": os.getenv("LANGFUSE_HOST", ""),
+        "langfuse_project_id": os.getenv("LANGFUSE_PROJECT_ID", ""),
+    }
 
 
 @router.get("/api/runs/{run_id:path}")
@@ -235,6 +280,36 @@ def legacy_run_data(
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
     }
+
+
+@router.post("/api/runs/delete")
+def delete_run(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Delete a run and all associated data."""
+    file_path = request.get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path required")
+
+    run = db.query(Run).filter(Run.id == file_path).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Only owner or manager can delete
+    if run.owner_user_id != principal.user.id and principal.user.role not in {UserRole.MANAGER, UserRole.GM, UserRole.VP}:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    # Delete related data first (foreign key constraints)
+    db.query(RunItemScore).filter(RunItemScore.run_id == run.id).delete()
+    db.query(RunItem).filter(RunItem.run_id == run.id).delete()
+    db.query(RunEvent).filter(RunEvent.run_id == run.id).delete()
+    db.query(Approval).filter(Approval.run_id == run.id).delete()
+    db.delete(run)
+    db.commit()
+
+    return {"ok": True}
 
 
 @router.post("/v1/runs/{run_id}/submit")

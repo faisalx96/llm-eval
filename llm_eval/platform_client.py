@@ -65,7 +65,8 @@ class PlatformEventStream:
         self._seq = 0
         self._q: "Queue[dict[str, Any]]" = Queue()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._loop, name="llm-eval-platform-stream", daemon=True)
+        # Non-daemon thread ensures events are flushed before program exits
+        self._thread = threading.Thread(target=self._loop, name="llm-eval-platform-stream", daemon=False)
         self._thread.start()
 
     def next_sequence(self) -> int:
@@ -88,21 +89,25 @@ class PlatformEventStream:
         # Request stop and wait for a final flush.
         self._stop.set()
         try:
-            self._thread.join(timeout=5)
+            # Wait up to 30 seconds for all events to be flushed
+            self._thread.join(timeout=30)
         except Exception:
             pass
 
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
         last_flush = time.time()
+        retry_count = 0
+        max_retries = 10  # Maximum retries for a failed batch
         while True:
             try:
-                evt = self._q.get(timeout=0.25)
+                evt = self._q.get(timeout=0.1)  # Check more frequently
                 batch.append(evt)
             except Empty:
                 pass
             now = time.time()
-            should_flush = (len(batch) >= 25) or (batch and (now - last_flush) >= 1.0)
+            # Flush aggressively: every 5 events or 250ms for near real-time updates
+            should_flush = (len(batch) >= 5) or (batch and (now - last_flush) >= 0.25)
             # If we're stopping, flush whatever we have (and drain the queue).
             if self._stop.is_set():
                 try:
@@ -119,9 +124,16 @@ class PlatformEventStream:
                 _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
                 batch.clear()
                 last_flush = now
+                retry_count = 0  # Reset on success
             except Exception:
-                # Best-effort; keep events for retry on next loop.
-                time.sleep(0.5)
+                retry_count += 1
+                if retry_count >= max_retries:
+                    # Give up after max retries to prevent hanging
+                    batch.clear()
+                    retry_count = 0
+                else:
+                    # Best-effort; keep events for retry on next loop.
+                    time.sleep(0.5)
             if self._stop.is_set() and not batch:
                 break
 

@@ -13,7 +13,6 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 7. [Multi-Model Comparison](#7-multi-model-comparison)
 8. [Command Line Interface](#8-command-line-interface)
 9. [Dashboard & Web UI](#9-dashboard--web-ui)
-   - [Publishing to Confluence](#publishing-to-confluence)
 10. [Understanding Results](#10-understanding-results)
 11. [Configuration Options](#11-configuration-options)
 12. [Common Errors & Solutions](#12-common-errors--solutions)
@@ -960,55 +959,9 @@ my-project/                    # Run from here!
 └── .env
 ```
 
-### Publishing to Confluence
+### Publishing
 
-The dashboard includes a feature to publish approved evaluation runs to Confluence for stakeholder visibility. This allows developers to document evaluation results with business-friendly descriptions.
-
-#### Publishing a Single Run
-
-1. Open the dashboard: `llm-eval dashboard`
-2. Switch to the **Runs** view (click "Runs" or press `t`)
-3. Find the run you want to publish
-4. Click the **publish icon** (↑) in the actions column
-5. Fill in the publish form:
-   - **Project**: Select or create a Confluence project folder
-   - **Task**: Select or create a task page within the project
-   - **Published By**: Search and select your username
-   - **Description**: Provide business context (required)
-6. Click **Publish**
-
-The branch name and commit hash are automatically captured from your git repository.
-
-#### Publishing from Selection
-
-1. In the Runs view, select one or more runs using the checkboxes
-2. Click the **Publish** button in the selection panel
-3. Complete the publish form as above
-
-#### Confluence Structure
-
-Published evaluations are organized hierarchically:
-
-```
-Confluence Space
-└── Project (folder)
-    └── Task (page)
-        ├── Run 1 (section)
-        ├── Run 2 (section)
-        └── Run 3 (section)
-```
-
-Each published run section includes:
-- Run ID and timestamp
-- Model and dataset information
-- Key metrics (success rate, metric scores, latency)
-- Business description from the publisher
-- Git branch and commit for traceability
-- Link to Langfuse traces (if available)
-
-#### Configuration
-
-By default, the dashboard uses a mock Confluence backend stored in `confluence_mock/` for development and testing. To connect to a real Confluence instance, configure your Confluence credentials.
+Confluence publishing has been removed. Share results by linking to the dashboard/compare views and exporting results (CSV/JSON) as needed.
 
 ---
 

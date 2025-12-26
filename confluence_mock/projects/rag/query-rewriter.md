@@ -1,3 +1,0 @@
-# Query Rewriter
-
-**Project**: RAG

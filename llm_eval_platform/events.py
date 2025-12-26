@@ -48,6 +48,7 @@ class MetricScoredPayload(BaseModel):
 
 class ItemCompletedPayload(BaseModel):
     item_id: str
+    index: Optional[int] = None  # Item index for fallback when item_started was missed
     output: Any
     latency_ms: float = Field(ge=0)
     trace_id: Optional[str] = None
@@ -56,6 +57,7 @@ class ItemCompletedPayload(BaseModel):
 
 class ItemFailedPayload(BaseModel):
     item_id: str
+    index: Optional[int] = None  # Item index for fallback when item_started was missed
     error: str
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None

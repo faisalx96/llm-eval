@@ -179,7 +179,7 @@ async def ingest_events(
                 item = RunItem(
                     run_id=run_id,
                     item_id=payload.item_id,
-                    index=0,
+                    index=payload.index if payload.index is not None else 0,
                     input={},
                     expected=None,
                     output=payload.output,
@@ -191,6 +191,9 @@ async def ingest_events(
                 )
                 db.add(item)
             else:
+                # Update index if it was 0 (placeholder) and we now have the real index
+                if item.index == 0 and payload.index is not None and payload.index != 0:
+                    item.index = payload.index
                 item.output = payload.output
                 item.error = None
                 item.latency_ms = payload.latency_ms
@@ -203,7 +206,7 @@ async def ingest_events(
                 item = RunItem(
                     run_id=run_id,
                     item_id=payload.item_id,
-                    index=0,
+                    index=payload.index if payload.index is not None else 0,
                     input={},
                     expected=None,
                     output=None,
@@ -215,6 +218,9 @@ async def ingest_events(
                 )
                 db.add(item)
             else:
+                # Update index if it was 0 (placeholder) and we now have the real index
+                if item.index == 0 and payload.index is not None and payload.index != 0:
+                    item.index = payload.index
                 item.error = payload.error
                 item.trace_id = payload.trace_id
                 item.trace_url = payload.trace_url
@@ -222,6 +228,15 @@ async def ingest_events(
         elif isinstance(payload, RunCompletedPayload):
             run.ended_at = payload.ended_at
             run.status = RunWorkflowStatus.COMPLETED if payload.final_status == "COMPLETED" else RunWorkflowStatus.FAILED
+            # Allow the client to attach final metadata (e.g., langfuse_url) at completion time.
+            # This is safe because ingestion is authenticated (API key) and scoped to the run owner.
+            try:
+                md = payload.summary.get("run_metadata") if isinstance(payload.summary, dict) else None
+                if isinstance(md, dict) and md:
+                    current = run.run_metadata if isinstance(run.run_metadata, dict) else {}
+                    run.run_metadata = {**current, **md}
+            except Exception:
+                pass
 
         applied += 1
 

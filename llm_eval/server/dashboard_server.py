@@ -23,58 +23,8 @@ except Exception:
     pkg_files = None
 
 from ..core.run_discovery import RunDiscovery
-from ..confluence.client import (
-    MockConfluenceClient,
-    RealConfluenceClient,
-    PublishRequest,
-    AggregatePublishRequest,
-    AggregateMetricResult,
-    RunMetricDetail,
-    get_git_info,
-)
 
 DEFAULT_RESULTS_DIR = "llm-eval_results"
-DEFAULT_CONFLUENCE_DIR = "confluence_mock"
-PUBLISHED_RUNS_FILE = ".published_runs.json"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CONFLUENCE CONFIGURATION (for airgapped/internal deployments)
-# ══════════════════════════════════════════════════════════════════════════════
-# Set these values to pre-configure Confluence for all users in your organization.
-# Users won't need to set environment variables if these are configured.
-# Environment variables take precedence if set.
-#
-# To configure: replace None with your values, e.g.:
-#   CONFLUENCE_DEFAULT_URL = "https://confluence.mycompany.com"
-#   CONFLUENCE_DEFAULT_SPACE = "EVAL"
-#   CONFLUENCE_DEFAULT_TOKEN = "your-service-account-PAT"
-#
-CONFLUENCE_DEFAULT_URL: Optional[str] = None      # e.g., "https://confluence.company.com"
-CONFLUENCE_DEFAULT_SPACE: Optional[str] = None    # e.g., "LLMEVAL"
-CONFLUENCE_DEFAULT_TOKEN: Optional[str] = None    # Service account PAT (recommended)
-CONFLUENCE_DEFAULT_USERNAME: Optional[str] = None # Only needed for basic auth, not PAT
-# ══════════════════════════════════════════════════════════════════════════════
-
-
-def load_published_runs(results_dir: str) -> set:
-    """Load set of published run IDs from local file."""
-    filepath = os.path.join(results_dir, PUBLISHED_RUNS_FILE)
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return set(data.get("run_ids", []))
-        except Exception:
-            pass
-    return set()
-
-
-def save_published_runs(results_dir: str, run_ids: set) -> None:
-    """Save set of published run IDs to local file."""
-    filepath = os.path.join(results_dir, PUBLISHED_RUNS_FILE)
-    os.makedirs(results_dir, exist_ok=True)
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump({"run_ids": sorted(run_ids)}, f, indent=2)
 
 
 # Cache for auto-detected Langfuse project ID
@@ -126,18 +76,11 @@ class DashboardServer:
         port: int = 8080,
         results_dir: str = DEFAULT_RESULTS_DIR,
         inactivity_timeout: int = 300,
-        confluence_dir: str = DEFAULT_CONFLUENCE_DIR,
     ):
         self.host = host
         self.port = port
         self.discovery = RunDiscovery(results_dir)
         self.inactivity_timeout = inactivity_timeout
-
-        # Initialize Confluence client - use real client if env vars are set
-        self.confluence = self._init_confluence_client(confluence_dir)
-
-        # Track published runs locally
-        self.published_runs = load_published_runs(results_dir)
 
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.thread: Optional[threading.Thread] = None
@@ -148,34 +91,6 @@ class DashboardServer:
         # Resolve static directories
         self.dashboard_static_dir = self._resolve_dashboard_static_dir()
         self.ui_static_dir = self._resolve_ui_static_dir()
-
-    def _init_confluence_client(self, confluence_dir: str):
-        """Initialize Confluence client.
-        
-        Priority order for configuration:
-        1. Environment variables (CONFLUENCE_URL, CONFLUENCE_API_TOKEN, etc.)
-        2. Built-in defaults (CONFLUENCE_DEFAULT_* at top of this file)
-        3. Mock filesystem client (fallback for development)
-        """
-        # Get config from env vars first, then fall back to built-in defaults
-        confluence_url = os.environ.get("CONFLUENCE_URL") or CONFLUENCE_DEFAULT_URL
-        confluence_user = os.environ.get("CONFLUENCE_USERNAME") or CONFLUENCE_DEFAULT_USERNAME
-        confluence_token = os.environ.get("CONFLUENCE_API_TOKEN") or CONFLUENCE_DEFAULT_TOKEN
-        confluence_space = os.environ.get("CONFLUENCE_SPACE_KEY") or CONFLUENCE_DEFAULT_SPACE
-        
-        # Username is optional for PAT auth (Server/DC 7.9+)
-        if all([confluence_url, confluence_token, confluence_space]):
-            auth_type = "Basic Auth" if confluence_user else "PAT (Bearer)"
-            print(f"[Confluence] Using real API: {confluence_url} (space: {confluence_space}, auth: {auth_type})")
-            return RealConfluenceClient(
-                base_url=confluence_url,
-                username=confluence_user,  # Can be None for PAT auth
-                api_token=confluence_token,
-                space_key=confluence_space,
-            )
-        else:
-            print(f"[Confluence] Using mock filesystem: {confluence_dir}")
-            return MockConfluenceClient(confluence_dir)
 
     def _resolve_dashboard_static_dir(self) -> str:
         """Resolve path to dashboard static files."""
@@ -347,63 +262,6 @@ class DashboardServer:
                     )
                     return
 
-                # API: List Confluence projects
-                if path == "/api/confluence/projects":
-                    projects = server.confluence.list_projects()
-                    self._set_headers(HTTPStatus.OK)
-                    self.wfile.write(json.dumps({
-                        "projects": [
-                            {"id": p.project_id, "name": p.name, "description": p.description}
-                            for p in projects
-                        ]
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                # API: List tasks for a project
-                if path.startswith("/api/confluence/projects/") and path.endswith("/tasks"):
-                    project_name = unquote(path[25:-6])  # Extract project name
-                    tasks = server.confluence.list_tasks(project_name)
-                    self._set_headers(HTTPStatus.OK)
-                    self.wfile.write(json.dumps({
-                        "tasks": [
-                            {"id": t.page_id, "title": t.title}
-                            for t in tasks
-                        ]
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                # API: List/search Confluence users
-                if path == "/api/confluence/users":
-                    query = parse_qs(parsed.query)
-                    search_query = query.get("q", [""])[0]
-                    if search_query:
-                        users = server.confluence.search_users(search_query)
-                    else:
-                        users = server.confluence.list_users()
-                    self._set_headers(HTTPStatus.OK)
-                    self.wfile.write(json.dumps({
-                        "users": [
-                            {"username": u.username, "display_name": u.display_name}
-                            for u in users
-                        ]
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                # API: Get git info (branch, commit)
-                if path == "/api/git/info":
-                    git_info = get_git_info()
-                    self._set_headers(HTTPStatus.OK)
-                    self.wfile.write(json.dumps(git_info, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                # API: Get published run IDs (from local cache)
-                if path == "/api/confluence/published":
-                    self._set_headers(HTTPStatus.OK)
-                    self.wfile.write(json.dumps({
-                        "run_ids": list(server.published_runs)
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
                 # Serve evaluation UI static files (CSS, JS)
                 if path.startswith("/ui/"):
                     rel_path = path[4:]  # Remove '/ui/'
@@ -504,230 +362,7 @@ class DashboardServer:
                         self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
                         return
 
-                # API: Publish run to Confluence
-                if path == "/api/confluence/publish":
-                    try:
-                        content_length = int(self.headers.get("Content-Length", 0))
-                        body = self.rfile.read(content_length)
-                        data = json.loads(body.decode("utf-8"))
-
-                        # Validate required fields
-                        required = ["project_name", "task_name", "run_id", "published_by", "description"]
-                        missing = [f for f in required if not data.get(f)]
-                        if missing:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(json.dumps({
-                                "error": f"Missing required fields: {', '.join(missing)}"
-                            }).encode("utf-8"))
-                            return
-
-                        # Build publish request
-                        request = PublishRequest(
-                            project_name=data["project_name"],
-                            task_name=data["task_name"],
-                            run_id=data["run_id"],
-                            published_by=data["published_by"],
-                            description=data["description"],
-                            metrics=data.get("metrics", {}),
-                            model=data.get("model", ""),
-                            dataset=data.get("dataset", ""),
-                            total_items=data.get("total_items", 0),
-                            success_count=data.get("success_count", 0),
-                            error_count=data.get("error_count", 0),
-                            avg_latency_ms=data.get("avg_latency_ms", 0),
-                            branch=data.get("branch"),
-                            commit=data.get("commit"),
-                            trace_url=data.get("trace_url"),
-                        )
-
-                        result = server.confluence.publish_run(request)
-
-                        if result.success:
-                            # Track published run locally (reload first to respect manual edits)
-                            server.published_runs = load_published_runs(server.discovery.results_dir)
-                            server.published_runs.add(data["run_id"])
-                            save_published_runs(server.discovery.results_dir, server.published_runs)
-
-                            self._set_headers(HTTPStatus.OK)
-                            self.wfile.write(json.dumps({
-                                "success": True,
-                                "page_id": result.page_id,
-                                "page_url": result.page_url
-                            }).encode("utf-8"))
-                        else:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(json.dumps({
-                                "success": False,
-                                "error": result.error
-                            }).encode("utf-8"))
-                        return
-                    except json.JSONDecodeError:
-                        self._set_headers(HTTPStatus.BAD_REQUEST)
-                        self.wfile.write(b'{"error": "Invalid JSON"}')
-                        return
-                    except Exception as e:
-                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
-                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-                        return
-
-                # API: Publish aggregate runs to Confluence
-                if path == "/api/confluence/publish-aggregate":
-                    try:
-                        content_length = int(self.headers.get("Content-Length", 0))
-                        body = self.rfile.read(content_length)
-                        data = json.loads(body.decode("utf-8"))
-
-                        # Validate required fields
-                        required = ["project_name", "task_name", "run_name", "published_by", "description",
-                                    "model", "dataset", "task", "run_details", "metric_results"]
-                        missing = [f for f in required if not data.get(f)]
-                        if missing:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(json.dumps({
-                                "error": f"Missing required fields: {', '.join(missing)}"
-                            }).encode("utf-8"))
-                            return
-
-                        # Parse run details (per-run metrics)
-                        run_details = []
-                        for rd_data in data.get("run_details", []):
-                            run_details.append(RunMetricDetail(
-                                run_id=rd_data["run_id"],
-                                langfuse_url=rd_data.get("langfuse_url"),
-                                metrics=rd_data.get("metrics", {}),
-                                latency_ms=rd_data.get("latency_ms", 0),
-                            ))
-
-                        # Parse metric results
-                        metric_results = []
-                        for mr_data in data["metric_results"]:
-                            metric_results.append(AggregateMetricResult(
-                                metric_name=mr_data["metric_name"],
-                                threshold=mr_data["threshold"],
-                                pass_at_k=mr_data["pass_at_k"],
-                                pass_k=mr_data["pass_k"],
-                                max_at_k=mr_data["max_at_k"],
-                                consistency=mr_data["consistency"],
-                                reliability=mr_data["reliability"],
-                                avg_score=mr_data["avg_score"],
-                                min_score=mr_data["min_score"],
-                                max_score=mr_data["max_score"],
-                                runs_passed=mr_data["runs_passed"],
-                                total_runs=mr_data["total_runs"],
-                            ))
-
-                        # Build aggregate publish request
-                        request = AggregatePublishRequest(
-                            project_name=data["project_name"],
-                            task_name=data["task_name"],
-                            run_name=data["run_name"],
-                            published_by=data["published_by"],
-                            description=data["description"],
-                            model=data["model"],
-                            dataset=data["dataset"],
-                            task=data["task"],
-                            k_runs=len(run_details),
-                            run_details=run_details,
-                            metric_results=metric_results,
-                            total_items_per_run=data.get("total_items_per_run", 0),
-                            avg_latency_ms=data.get("avg_latency_ms", 0),
-                            branch=data.get("branch"),
-                            commit=data.get("commit"),
-                        )
-
-                        result = server.confluence.publish_aggregate_run(request)
-
-                        if result.success:
-                            # Track published aggregate run locally (reload first to respect manual edits)
-                            server.published_runs = load_published_runs(server.discovery.results_dir)
-                            # Add individual run IDs from run_details
-                            for rd in data.get("run_details", []):
-                                if rd.get("run_id"):
-                                    server.published_runs.add(rd["run_id"])
-                            save_published_runs(server.discovery.results_dir, server.published_runs)
-
-                            self._set_headers(HTTPStatus.OK)
-                            self.wfile.write(json.dumps({
-                                "success": True,
-                                "page_id": result.page_id,
-                                "page_url": result.page_url
-                            }).encode("utf-8"))
-                        else:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(json.dumps({
-                                "success": False,
-                                "error": result.error
-                            }).encode("utf-8"))
-                        return
-                    except json.JSONDecodeError:
-                        self._set_headers(HTTPStatus.BAD_REQUEST)
-                        self.wfile.write(b'{"error": "Invalid JSON"}')
-                        return
-                    except Exception as e:
-                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
-                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-                        return
-
-                # API: Create new Confluence project
-                if path == "/api/confluence/projects":
-                    try:
-                        content_length = int(self.headers.get("Content-Length", 0))
-                        body = self.rfile.read(content_length)
-                        data = json.loads(body.decode("utf-8"))
-
-                        name = data.get("name", "").strip()
-                        if not name:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(b'{"error": "Project name is required"}')
-                            return
-
-                        project = server.confluence.create_project(
-                            name=name,
-                            description=data.get("description", ""),
-                            owner=data.get("owner", "")
-                        )
-
-                        self._set_headers(HTTPStatus.OK)
-                        self.wfile.write(json.dumps({
-                            "id": project.project_id,
-                            "name": project.name
-                        }).encode("utf-8"))
-                        return
-                    except Exception as e:
-                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
-                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-                        return
-
-                # API: Create new task page
-                if path.startswith("/api/confluence/projects/") and path.endswith("/tasks"):
-                    try:
-                        project_name = unquote(path[25:-6])
-                        content_length = int(self.headers.get("Content-Length", 0))
-                        body = self.rfile.read(content_length)
-                        data = json.loads(body.decode("utf-8"))
-
-                        task_name = data.get("name", "").strip()
-                        if not task_name:
-                            self._set_headers(HTTPStatus.BAD_REQUEST)
-                            self.wfile.write(b'{"error": "Task name is required"}')
-                            return
-
-                        task = server.confluence.create_task(project_name, task_name)
-
-                        self._set_headers(HTTPStatus.OK)
-                        self.wfile.write(json.dumps({
-                            "id": task.page_id,
-                            "title": task.title
-                        }).encode("utf-8"))
-                        return
-                    except ValueError as e:
-                        self._set_headers(HTTPStatus.NOT_FOUND)
-                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-                        return
-                    except Exception as e:
-                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
-                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
-                        return
+                # Confluence support removed.
 
                 self._set_headers(HTTPStatus.NOT_FOUND)
                 self.wfile.write(b'{}')
