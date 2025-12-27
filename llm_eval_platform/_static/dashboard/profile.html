@@ -54,82 +54,95 @@
     }
 
     /* API Keys */
+    .keys-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
     .keys-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-default);
     }
 
-    .keys-list {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-sm);
-    }
-
-    .key-item {
-      display: flex;
-      align-items: center;
-      gap: var(--space-md);
-      padding: var(--space-sm) var(--space-md);
-      background: var(--bg-surface);
-      border-radius: 6px;
-      border: 1px solid var(--border-default);
-    }
-
-    .key-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .key-name {
-      font-weight: 500;
-      color: var(--text-primary);
+    .keys-header-title {
       font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
-    .key-meta {
+    .keys-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .keys-table th {
+      text-align: left;
+      padding: var(--space-sm) var(--space-lg);
+      font-size: var(--font-xs);
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .keys-table td {
+      padding: var(--space-md) var(--space-lg);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .keys-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .keys-table .key-name {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .keys-table .key-token {
+      font-family: var(--font-mono);
       font-size: var(--font-xs);
       color: var(--text-muted);
-      display: flex;
-      gap: var(--space-md);
-      margin-top: 2px;
     }
 
-    .key-prefix {
-      font-family: var(--font-mono);
-      background: var(--bg-elevated);
-      padding: 2px 6px;
+    .status-badge {
+      display: inline-block;
+      padding: 3px 8px;
       border-radius: 4px;
       font-size: var(--font-xs);
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: var(--font-xs);
       font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
 
-    .badge.active {
+    .status-badge.active {
       background: rgba(0, 212, 170, 0.15);
       color: var(--accent-primary);
     }
 
-    .badge.revoked {
+    .status-badge.revoked {
       background: rgba(255, 100, 100, 0.15);
       color: #ff6b6b;
     }
 
+    .keys-table .key-actions {
+      text-align: right;
+    }
+
     .empty-state {
+      padding: var(--space-xl);
       text-align: center;
-      padding: var(--space-lg);
       color: var(--text-muted);
       font-size: var(--font-sm);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
     }
 
     .btn {
@@ -168,7 +181,7 @@
       background: rgba(255, 100, 100, 0.12);
     }
 
-    .btn.sm {
+    .btn.sm, .btn.btn-sm {
       padding: 4px 10px;
       font-size: var(--font-xs);
     }
@@ -178,34 +191,16 @@
       cursor: not-allowed;
     }
 
-    /* Create Key Inline */
-    .create-key-box {
-      display: none;
-      background: var(--bg-surface);
-      border: 1px solid var(--accent-primary);
-      border-radius: 6px;
-      padding: var(--space-md);
-      margin-bottom: var(--space-md);
-    }
-
-    .create-key-box.visible {
-      display: flex;
-      gap: var(--space-sm);
-      align-items: center;
-    }
-
-    .create-key-box .form-input {
-      flex: 1;
-    }
-
     .form-input {
       background: var(--bg-elevated);
       border: 1px solid var(--border-default);
-      border-radius: 6px;
+      border-radius: 4px;
       padding: 8px 12px;
       color: var(--text-primary);
       font-size: var(--font-sm);
       outline: none;
+      width: 100%;
+      box-sizing: border-box;
     }
 
     .form-input:focus {
@@ -216,35 +211,110 @@
       color: var(--text-muted);
     }
 
-    /* Token Reveal */
-    .token-reveal-box {
+    .btn.copied {
+      background: rgba(0, 212, 170, 0.2);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    /* Modal Overlay */
+    .modal-overlay {
       display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.visible {
+      display: flex;
+    }
+
+    .modal-box {
       background: var(--bg-surface);
-      border: 1px solid var(--accent-primary);
-      border-radius: 6px;
-      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 12px;
+      padding: var(--space-xl);
+      max-width: 420px;
+      width: 90%;
+    }
+
+    .modal-header {
+      margin-bottom: var(--space-lg);
+    }
+
+    .modal-title {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .modal-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: var(--space-xs);
+    }
+
+    .modal-body {
+      margin-bottom: var(--space-lg);
+    }
+
+    .form-group {
       margin-bottom: var(--space-md);
     }
 
-    .token-reveal-box.visible {
+    .form-label {
+      display: block;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: var(--space-xs);
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: var(--space-sm);
+      justify-content: flex-end;
+    }
+
+    /* Token Success State */
+    .token-success {
+      display: none;
+    }
+
+    .token-success.visible {
       display: block;
     }
 
     .token-warning {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-md);
       background: rgba(255, 193, 7, 0.1);
       border: 1px solid rgba(255, 193, 7, 0.3);
       border-radius: 6px;
-      padding: var(--space-sm) var(--space-md);
       margin-bottom: var(--space-md);
-      font-size: var(--font-sm);
-      color: var(--text-secondary);
     }
 
-    .token-warning strong {
+    .token-warning-icon {
+      font-size: 18px;
+    }
+
+    .token-warning-text {
+      font-size: var(--font-sm);
       color: #ffc107;
     }
 
-    .token-row {
+    .token-display {
       display: flex;
       gap: var(--space-sm);
       align-items: center;
@@ -255,17 +325,11 @@
       font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-primary);
-      word-break: break-all;
       background: var(--bg-elevated);
       padding: 10px 12px;
       border-radius: 6px;
       border: 1px solid var(--border-default);
-    }
-
-    .btn.copied {
-      background: rgba(0, 212, 170, 0.2);
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
+      word-break: break-all;
     }
 
     /* Confirm Dialog */
@@ -366,34 +430,74 @@
 
     <!-- API Keys Section -->
     <div class="section">
-      <div class="keys-header">
-        <div class="section-title" style="margin-bottom: 0;">API Keys</div>
-        <button class="btn primary" id="new-key-btn">+ New Key</button>
-      </div>
-
-      <div class="create-key-box" id="create-key-box">
-        <input type="text" class="form-input" id="key-name" placeholder="Key name (e.g., laptop, ci-pipeline)">
-        <button class="btn" id="cancel-create-btn">Cancel</button>
-        <button class="btn primary" id="confirm-create-btn">Create</button>
-      </div>
-
-      <div class="token-reveal-box" id="token-reveal-box">
-        <div class="token-warning">
-          <strong>⚠️ Save now</strong> — this key won't be shown again.
+      <div class="section-title">API Keys</div>
+      <div class="keys-section">
+        <div class="keys-header">
+          <div class="keys-header-title">Your API Keys</div>
+          <button class="btn primary btn-sm" id="new-key-btn">+ New Key</button>
         </div>
-        <div class="token-row">
-          <div class="token-value" id="token-value">—</div>
-          <button class="btn primary" id="copy-token-btn">Copy</button>
-          <button class="btn" id="done-btn">Done</button>
-        </div>
-      </div>
 
-      <div id="keys-container">
-        <div class="empty-state" id="keys-empty">No API keys yet</div>
-        <div class="keys-list" id="keys-list"></div>
+        <div id="keys-container">
+          <table class="keys-table" id="keys-table" style="display: none;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Key</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th style="width: 80px;"></th>
+              </tr>
+            </thead>
+            <tbody id="keys-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="keys-empty">No API keys yet. Create one to get started.</div>
+        </div>
       </div>
     </div>
   </main>
+
+  <!-- Create API Key Modal -->
+  <div class="modal-overlay" id="create-key-modal">
+    <div class="modal-box">
+      <!-- Create Form (initial state) -->
+      <div id="create-form">
+        <div class="modal-header">
+          <h2 class="modal-title">Create API Key</h2>
+          <p class="modal-subtitle">API keys are used to authenticate SDK requests</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="key-name">Key Name</label>
+            <input type="text" class="form-input" id="key-name" placeholder="e.g., dev-laptop, ci-pipeline">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" id="cancel-create-btn">Cancel</button>
+          <button class="btn primary" id="confirm-create-btn">Create Key</button>
+        </div>
+      </div>
+
+      <!-- Token Display (after creation) -->
+      <div class="token-success" id="token-success">
+        <div class="modal-header">
+          <h2 class="modal-title">API Key Created</h2>
+        </div>
+        <div class="modal-body">
+          <div class="token-warning">
+            <span class="token-warning-icon">⚠</span>
+            <span class="token-warning-text">Copy this key now — you won't be able to see it again</span>
+          </div>
+          <div class="token-display">
+            <div class="token-value" id="token-value">—</div>
+            <button class="btn primary" id="copy-token-btn">Copy</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn primary" id="done-btn">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="confirm-overlay" id="confirm-overlay">
     <div class="confirm-dialog">
@@ -455,34 +559,32 @@
       }
 
       function renderKeys(keys) {
-        const list = el('keys-list');
+        const table = el('keys-table');
+        const tbody = el('keys-tbody');
         const empty = el('keys-empty');
 
         if (keys.length === 0) {
-          list.innerHTML = '';
+          table.style.display = 'none';
           empty.style.display = 'block';
           return;
         }
 
+        table.style.display = 'table';
         empty.style.display = 'none';
-        list.innerHTML = keys.map(k => {
+        tbody.innerHTML = keys.map(k => {
           const isRevoked = !!k.revoked_at;
           return `
-            <div class="key-item">
-              <div class="key-info">
-                <div class="key-name">${escapeHtml(k.name || 'Unnamed')}</div>
-                <div class="key-meta">
-                  <span class="key-prefix">${escapeHtml(k.prefix)}•••</span>
-                  <span>${formatDate(k.created_at)}</span>
-                </div>
-              </div>
-              <span class="badge ${isRevoked ? 'revoked' : 'active'}">${isRevoked ? 'Revoked' : 'Active'}</span>
-              ${isRevoked ? '' : `<button class="btn sm danger revoke-btn" data-id="${k.id}">Revoke</button>`}
-            </div>
+            <tr>
+              <td class="key-name">${escapeHtml(k.name || 'Unnamed')}</td>
+              <td class="key-token">${escapeHtml(k.prefix)}••••••••</td>
+              <td><span class="status-badge ${isRevoked ? 'revoked' : 'active'}">${isRevoked ? 'Revoked' : 'Active'}</span></td>
+              <td>${formatDate(k.created_at)}</td>
+              <td class="key-actions">${isRevoked ? '' : `<button class="btn btn-sm danger revoke-btn" data-id="${k.id}">Revoke</button>`}</td>
+            </tr>
           `;
         }).join('');
 
-        list.querySelectorAll('.revoke-btn').forEach(btn => {
+        tbody.querySelectorAll('.revoke-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
             const id = e.target.dataset.id;
             showConfirm('Revoke API Key', 'This key will stop working immediately. This cannot be undone.', () => revokeKey(id));
@@ -529,28 +631,33 @@
         await loadKeys();
       }
 
-      const createBox = el('create-key-box');
-      const tokenBox = el('token-reveal-box');
+      const createModal = el('create-key-modal');
+      const createForm = el('create-form');
+      const tokenSuccess = el('token-success');
       const newKeyBtn = el('new-key-btn');
 
-      function showCreateBox() {
-        createBox.classList.add('visible');
-        tokenBox.classList.remove('visible');
-        newKeyBtn.style.display = 'none';
+      function showCreateModal() {
+        createForm.style.display = 'block';
+        tokenSuccess.classList.remove('visible');
+        createModal.classList.add('visible');
         el('key-name').value = '';
-        el('key-name').focus();
+        setTimeout(() => el('key-name').focus(), 100);
       }
 
-      function hideAllBoxes() {
-        createBox.classList.remove('visible');
-        tokenBox.classList.remove('visible');
-        newKeyBtn.style.display = '';
+      function hideCreateModal() {
+        createModal.classList.remove('visible');
+        createForm.style.display = 'block';
+        tokenSuccess.classList.remove('visible');
       }
 
-      newKeyBtn.addEventListener('click', showCreateBox);
-      el('cancel-create-btn').addEventListener('click', hideAllBoxes);
+      newKeyBtn.addEventListener('click', showCreateModal);
+      el('cancel-create-btn').addEventListener('click', hideCreateModal);
+      createModal.addEventListener('click', (e) => {
+        if (e.target === createModal) hideCreateModal();
+      });
+
       el('done-btn').addEventListener('click', () => {
-        hideAllBoxes();
+        hideCreateModal();
         loadKeys();
       });
 
@@ -570,8 +677,8 @@
           if (!res.ok) throw new Error(await res.text() || 'Create failed');
           const data = await res.json();
 
-          createBox.classList.remove('visible');
-          tokenBox.classList.add('visible');
+          createForm.style.display = 'none';
+          tokenSuccess.classList.add('visible');
           el('token-value').textContent = data.token || '—';
           el('copy-token-btn').textContent = 'Copy';
           el('copy-token-btn').classList.remove('copied');
@@ -579,7 +686,7 @@
           alert('Failed to create API key: ' + err.message);
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Create';
+          btn.textContent = 'Create Key';
         }
       });
 
@@ -601,8 +708,25 @@
 
       Promise.all([loadMe(), loadKeys()]).catch(err => {
         console.error(err);
-        alert('Failed to load profile. Are you authenticated?');
+        showAuthError();
       });
+
+      function showAuthError() {
+        document.querySelector('.profile-container').innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
+            <div style="text-align: center; max-width: 360px; padding: 40px;">
+              <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
+              <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+              <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access your profile</p>
+
+              <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Sign in with SSO
+              </button>
+            </div>
+          </div>
+        `;
+      }
     })();
   </script>
 </body>

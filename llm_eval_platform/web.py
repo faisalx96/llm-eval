@@ -19,6 +19,27 @@ def _require_admin(principal: Principal) -> None:
         raise HTTPException(status_code=403, detail="Admin only")
 
 
+def _check_manager_conflict(
+    db: Session, team_unit_id: Optional[str], role: UserRole, exclude_user_id: Optional[str] = None
+) -> None:
+    """Raise 400 if assigning MANAGER role would create duplicate manager for team."""
+    if role != UserRole.MANAGER or not team_unit_id:
+        return
+    query = db.query(User).filter(
+        User.team_unit_id == team_unit_id,
+        User.role == UserRole.MANAGER,
+        User.is_active == True,
+    )
+    if exclude_user_id:
+        query = query.filter(User.id != exclude_user_id)
+    existing_manager = query.first()
+    if existing_manager:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Team already has a manager: {existing_manager.email}"
+        )
+
+
 router = APIRouter()
 
 
@@ -191,6 +212,9 @@ def admin_create_user(
         if not team:
             raise HTTPException(status_code=400, detail="Team not found")
 
+    # Prevent duplicate managers per team
+    _check_manager_conflict(db, req.team_unit_id, req.role)
+
     u = User(
         email=email,
         display_name=req.display_name,
@@ -241,11 +265,45 @@ def admin_update_user(
             if not team:
                 raise HTTPException(status_code=400, detail="Team not found")
         user.team_unit_id = req.team_unit_id if req.team_unit_id else None
+
+    # Prevent duplicate managers per team (check with updated values)
+    final_role = req.role if req.role is not None else user.role
+    final_team = user.team_unit_id  # already updated above if provided
+    _check_manager_conflict(db, final_team, final_role, exclude_user_id=user_id)
+
     if req.is_active is not None:
         user.is_active = req.is_active
 
     db.commit()
     db.refresh(user)
     return {"id": user.id, "email": user.email, "ok": True}
+
+
+@router.delete("/v1/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Delete a user (admin only)."""
+    _require_admin(principal)
+
+    # Prevent self-deletion
+    if user_id == principal.user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Clear manager reference from any team this user manages
+    db.query(OrgUnit).filter(OrgUnit.manager_user_id == user_id).update({"manager_user_id": None})
+
+    # Delete user's API keys
+    db.query(ApiKey).filter(ApiKey.user_id == user_id).delete()
+
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "deleted_id": user_id}
 
 

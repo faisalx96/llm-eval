@@ -2068,13 +2068,24 @@
         fetch(apiUrl('api/runs')),
         fetch(apiUrl('v1/me')).catch(() => null),
       ]);
+
+      // Handle authentication errors
+      if (runsResponse.status === 401 || (meResponse && meResponse.status === 401)) {
+        showAuthError();
+        return;
+      }
+
+      if (!runsResponse.ok) {
+        throw new Error(`HTTP ${runsResponse.status}`);
+      }
+
       const data = await runsResponse.json();
       state.runs = data;
       const { runs, metrics } = flattenRuns(data);
       state.flatRuns = runs;
       state.allMetrics = metrics;
       try {
-        state.currentUser = meResponse ? await meResponse.json() : null;
+        state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
       } catch {
         state.currentUser = null;
       }
@@ -2097,6 +2108,38 @@
         <span>Is the server running?</span>
       `;
     }
+  }
+
+  function showAuthError() {
+    // Hide everything except header logo
+    el('loading').style.display = 'none';
+    const commandBar = document.querySelector('.command-bar');
+    if (commandBar) commandBar.style.display = 'none';
+    const comparePanel = el('compare-panel');
+    if (comparePanel) comparePanel.style.display = 'none';
+    const footer = document.querySelector('.status-bar');
+    if (footer) footer.style.display = 'none';
+    const statsBar = document.querySelector('.stats-bar .stat-cells');
+    if (statsBar) statsBar.style.display = 'none';
+    const headerMeta = document.querySelector('.stats-bar .header-meta');
+    if (headerMeta) headerMeta.style.display = 'none';
+
+    // Replace main content with login page
+    const main = document.querySelector('main');
+    main.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 60px);">
+        <div style="text-align: center; max-width: 360px; padding: 40px;">
+          <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
+          <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+          <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the evaluation dashboard</p>
+
+          <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            Sign in with SSO
+          </button>
+        </div>
+      </div>
+    `;
   }
 
   function updateProfileLink() {
@@ -3380,9 +3423,28 @@
   // INIT
   // ═══════════════════════════════════════════════════
 
-  restoreDashboardState();
-  startHeartbeat();
-  fetchRuns();
+  // Check auth first before loading dashboard
+  async function checkAuthAndInit() {
+    try {
+      const res = await fetch(apiUrl('v1/me'));
+      if (res.status === 401) {
+        showAuthError();
+        return;
+      }
+      if (!res.ok) {
+        throw new Error('Auth check failed');
+      }
+      // Authenticated - proceed with dashboard
+      restoreDashboardState();
+      startHeartbeat();
+      fetchRuns();
+    } catch (err) {
+      console.error('Auth check error:', err);
+      showAuthError();
+    }
+  }
+
+  checkAuthAndInit();
 
   // Refresh cadence:
   // - If any runs are RUNNING, refresh frequently to show progress.

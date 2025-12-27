@@ -12,12 +12,17 @@ let deleteCallback = null;
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadCurrentUser();
-  
+  const authResult = await loadCurrentUser();
+
+  // Check authentication first
+  if (authResult === 'unauthenticated') {
+    showAuthError();
+    return;
+  }
+
   // Check admin access
   if (!currentUser || currentUser.role !== 'ADMIN') {
-    showToast('error', 'Access Denied', 'Admin privileges required');
-    setTimeout(() => window.location.href = '/', 1500);
+    showAccessDenied();
     return;
   }
 
@@ -29,12 +34,57 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadCurrentUser() {
   try {
     const res = await fetch('/v1/me');
+    if (res.status === 401) {
+      return 'unauthenticated';
+    }
     if (res.ok) {
       currentUser = await res.json();
+      return 'ok';
     }
+    return 'error';
   } catch (e) {
     console.error('Failed to load current user:', e);
+    return 'error';
   }
+}
+
+function showAuthError() {
+  document.querySelector('.admin-container').innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
+      <div style="text-align: center; max-width: 360px; padding: 40px;">
+        <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
+        <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+        <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the admin panel</p>
+
+        <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign in with SSO
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function showAccessDenied() {
+  document.querySelector('.admin-container').innerHTML = `
+    <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
+      <div style="text-align: center; max-width: 400px; padding: 40px;">
+        <div style="font-size: 64px; margin-bottom: 24px; color: var(--error);">⊘</div>
+        <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Access Denied</h1>
+        <p style="color: var(--text-muted); margin-bottom: 32px;">Admin privileges are required to access this page</p>
+
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; padding: 24px; text-align: left;">
+          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+            Your account does not have administrator privileges. Contact your platform administrator if you need access to this page.
+          </p>
+        </div>
+
+        <a href="/" style="display: inline-block; margin-top: 24px; padding: 10px 24px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none;">
+          ← Back to Dashboard
+        </a>
+      </div>
+    </div>
+  `;
 }
 
 async function loadAllData() {
@@ -55,13 +105,7 @@ function setupNavigation() {
     });
   });
 
-  // Handle hash navigation
-  if (window.location.hash) {
-    const page = window.location.hash.substring(1);
-    if (['users', 'org', 'settings'].includes(page)) {
-      setActivePage(page);
-    }
-  }
+  // Hash navigation is handled by renderCurrentPage() after data loads
 
   // User search
   document.getElementById('user-search')?.addEventListener('input', (e) => {
@@ -114,7 +158,8 @@ async function loadUsers() {
     const res = await fetch('/v1/admin/users');
     if (res.ok) {
       const data = await res.json();
-      users = data.users || [];
+      // Handle both {users: [...]} and direct array response
+      users = Array.isArray(data) ? data : (data.users || []);
     } else {
       console.error('Failed to load users:', res.status, await res.text());
       showToast('error', 'Error', 'Failed to load users');
@@ -149,6 +194,7 @@ function renderUsers(searchQuery = '') {
 
   tbody.innerHTML = filtered.map(user => {
     const team = user.team ? user.team.name : '—';
+    const isCurrentUser = currentUser && currentUser.id === user.id;
     return `
       <tr data-user-id="${user.id}">
         <td>${escapeHtml(user.email)}</td>
@@ -157,7 +203,19 @@ function renderUsers(searchQuery = '') {
         <td>${escapeHtml(team)}</td>
         <td>${user.is_active ? '✓ Active' : '✗ Inactive'}</td>
         <td class="table-actions">
-          <button class="table-btn" onclick="editUser('${user.id}')">Edit</button>
+          <a href="#" class="action-icon edit-action" onclick="editUser('${user.id}'); return false;" title="Edit user">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </a>
+          ${isCurrentUser ? '' : `
+          <a href="#" class="action-icon delete-action" onclick="deleteUser('${user.id}', '${escapeHtml(user.email)}'); return false;" title="Delete user">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </a>`}
         </td>
       </tr>
     `;
@@ -239,6 +297,29 @@ async function saveUser() {
     showToast('error', 'Error', 'Failed to save user');
   }
 }
+
+window.deleteUser = (userId, userEmail) => {
+  document.getElementById('delete-confirm-message').textContent =
+    `Are you sure you want to delete user "${userEmail}"? This will also delete their API keys.`;
+
+  deleteCallback = async () => {
+    try {
+      const res = await fetch(`/v1/admin/users/${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('success', 'Success', 'User deleted');
+        await Promise.all([loadUsers(), loadOrgUnits()]);
+        renderUsers();
+      } else {
+        const err = await res.json();
+        showToast('error', 'Error', err.detail || 'Failed to delete user');
+      }
+    } catch (e) {
+      showToast('error', 'Error', 'Failed to delete user');
+    }
+  };
+
+  document.getElementById('delete-confirm-modal').style.display = 'flex';
+};
 
 // --- Organization ---
 async function loadOrgUnits() {
@@ -325,8 +406,18 @@ function renderOrgNode(unit) {
         <span class="org-node-type">${unit.type}</span>
         ${managerName ? `<span class="org-node-manager">👤 ${escapeHtml(managerName)}</span>` : ''}
         <div class="org-node-actions">
-          <button class="table-btn" onclick="editOrgUnit('${unit.id}')">Edit</button>
-          <button class="table-btn danger" onclick="deleteOrgUnit('${unit.id}')">Delete</button>
+          <a href="#" class="action-icon edit-action" onclick="editOrgUnit('${unit.id}'); return false;" title="Edit unit">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </a>
+          <a href="#" class="action-icon delete-action" onclick="deleteOrgUnit('${unit.id}'); return false;" title="Delete unit">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </a>
         </div>
       </div>
       ${hasChildren ? `

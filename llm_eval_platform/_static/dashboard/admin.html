@@ -169,6 +169,36 @@
       color: var(--error);
     }
 
+    /* Action icons */
+    .action-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+
+    .action-icon.edit-action {
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.1);
+    }
+
+    .action-icon.edit-action:hover {
+      background: rgba(0, 212, 170, 0.2);
+    }
+
+    .action-icon.delete-action {
+      color: var(--error);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .action-icon.delete-action:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
     /* Org tree */
     .org-tree {
       padding: var(--space-md);
