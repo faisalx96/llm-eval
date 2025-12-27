@@ -10,6 +10,7 @@ from llm_eval_platform.settings import PlatformSettings
 from llm_eval_platform.web import router as web_router
 from llm_eval_platform.runs_api import router as runs_router
 from llm_eval_platform.ingest_api import router as ingest_router
+from llm_eval_platform.org_api import router as org_router
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
@@ -21,15 +22,13 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     def healthz() -> JSONResponse:
         return JSONResponse({"ok": True, "service": "llm-eval-platform", "env": settings.environment})
 
-    # Serve the existing UI assets from the SDK package directory.
-    # These are currently vanilla HTML/JS and can be reused without a Node build.
-    repo_root = Path(__file__).resolve().parents[1]
-    sdk_static = repo_root / "llm_eval" / "_static"
+    # Serve UI assets from the platform package (no longer from SDK)
+    platform_static = Path(__file__).resolve().parent / "_static"
 
-    dashboard_dir = sdk_static / "dashboard"
-    ui_dir = sdk_static / "ui"
+    dashboard_dir = platform_static / "dashboard"
+    ui_dir = platform_static / "ui"
 
-    # Dashboard (historical + approvals + profile later)
+    # Dashboard (historical + approvals + profile + admin)
     if dashboard_dir.exists():
         app.mount("/static", StaticFiles(directory=str(dashboard_dir)), name="dashboard_static")
 
@@ -40,6 +39,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(web_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
+    app.include_router(org_router)
 
     return app
 

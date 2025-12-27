@@ -242,42 +242,38 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
 
 def run_dashboard_command(args: List[str]) -> None:
     """Run the dashboard subcommand."""
-    from .server.dashboard_server import run_dashboard
+    import webbrowser
+    from .platform_defaults import DEFAULT_PLATFORM_URL
 
     parser = argparse.ArgumentParser(
         prog="llm-eval dashboard",
-        description="Open a web UI showing all historical evaluation runs",
+        description="Open the LLM-Eval platform dashboard in your browser",
     )
     parser.add_argument(
-        "--port",
-        type=int,
-        default=8080,
-        help="Port for dashboard server (default: 8080)",
-    )
-    parser.add_argument(
-        "--results-dir",
-        default="llm-eval_results",
-        help="Directory containing evaluation results (default: llm-eval_results)",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=300,
-        help="Auto-close after N seconds of inactivity (default: 300)",
+        "--platform-url",
+        default=None,
+        help="Platform URL (defaults to LLM_EVAL_PLATFORM_URL or built-in URL)",
     )
     parser.add_argument(
         "--no-open",
         action="store_true",
-        help="Do not open browser automatically",
+        help="Do not open browser automatically, just print URL",
     )
 
     parsed = parser.parse_args(args)
-    run_dashboard(
-        port=parsed.port,
-        results_dir=parsed.results_dir,
-        timeout=parsed.timeout,
-        auto_open=not parsed.no_open,
-    )
+    platform_url = parsed.platform_url or os.getenv("LLM_EVAL_PLATFORM_URL") or DEFAULT_PLATFORM_URL
+    platform_url = platform_url.rstrip("/")
+    
+    console.print(f"[bold]LLM-Eval Platform Dashboard:[/bold] {platform_url}")
+    console.print("[dim]Note: Local dashboard server has been deprecated.[/dim]")
+    console.print("[dim]Use the platform dashboard at the URL above.[/dim]")
+    
+    if not parsed.no_open:
+        try:
+            webbrowser.open(platform_url)
+            console.print("[green]Opened in browser[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Could not open browser: {e}[/yellow]")
 
 
 def main():
@@ -407,7 +403,7 @@ Examples:
         "--live-mode",
         required=False,
         choices=["auto", "local", "platform"],
-        help="Where to host the live run dashboard: auto (default), local, or platform"
+        help="[DEPRECATED] Live mode is now always 'platform'. Use --no-ui to disable."
     )
     parser.add_argument(
         "--quiet", "-q",

@@ -42,7 +42,8 @@ def _strip_model_provider(model_name: Optional[str]) -> str:
 
 
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
-from ..server.app import UIServer
+# UIServer has been removed - platform streaming is now required
+# from ..server.app import UIServer  # DEPRECATED
 import json
 import logging
 
@@ -575,29 +576,27 @@ class Evaluator:
         # Initialize progress tracker
         tracker = ProgressTracker(items, list(self.metrics.keys()))
     
-        # Live UI setup:
-        # - local (default): start UIServer on 127.0.0.1 (legacy)
-        # - platform: create remote run and stream events
+        # Live UI setup (platform streaming required):
+        # Local UIServer has been removed - all live viewing is via the platform
         html_url = None
-        ui_server = None
         self._platform_stream = None
-        live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
         platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
-        # Policy:
-        # - platform: require API key (raise if missing)
-        # - auto: use platform if key exists; otherwise raise (explicitly choose local if you want no platform)
-        # - local: never use platform
-        if live_mode in {"platform", "auto"} and not platform_api_key:
-            raise RuntimeError(
-                "Missing platform API key. Set EvaluatorConfig(platform_api_key=...) "
-                "or export LLM_EVAL_PLATFORM_API_KEY. "
-                "If you want to run without the platform, set live_mode='local'."
+        live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
+
+        # Platform streaming is now required for live UI
+        if live_mode == "local":
+            import warnings
+            warnings.warn(
+                "live_mode='local' is deprecated - local UIServer has been removed. "
+                "Please configure platform streaming (LLM_EVAL_PLATFORM_API_KEY) or use TUI only.",
+                DeprecationWarning,
+                stacklevel=2,
             )
-        use_platform = (live_mode == "platform") or (live_mode == "auto" and bool(platform_api_key))
-        if use_platform:
+            # Continue without live UI - TUI will still work
+        elif platform_api_key:
             platform_url = getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
-            if not platform_api_key or PlatformClient is None:
-                raise RuntimeError("Platform streaming requires platform_api_key (or LLM_EVAL_PLATFORM_API_KEY)")
+            if PlatformClient is None:
+                raise RuntimeError("Platform streaming requires the platform client module")
             client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
             handle = client.create_run(
                 external_run_id=self.run_name,
@@ -629,21 +628,8 @@ class Evaluator:
             except Exception:
                 pass
         else:
-            desired_port = 0
-            try:
-                desired_port = int(self.config.ui_port)
-            except Exception:
-                desired_port = 0
-            ui_server = UIServer(host="127.0.0.1", port=desired_port)
-            host, port = ui_server.start()
-            html_url = f"http://{host}:{port}/"
-            run_info = {**(run_info or {}), "html_url": html_url}
-            ui_server.run_state.set_run_info({
-                "dataset_name": self.dataset_name,
-                "run_name": self.run_name,
-                "config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
-                **({} if run_info is None else run_info),
-            })
+            # No platform configured - TUI only, no live web UI
+            pass
 
         dashboard = None
         live_context = nullcontext()
@@ -681,25 +667,9 @@ class Evaluator:
             metrics=list(self.metrics.keys()),
         )
 
-        async def update_html():
-            while True:
-                try:
-                    snap = tracker.get_snapshot()
-                    if ui_server is not None:
-                        ui_server.run_state.set_snapshot(snap)
-                except Exception as e:
-                    logger.debug(f"Failed to update UI snapshot: {e}")
-                    pass
-                await asyncio.sleep(2)
-
-
-
         with live_context as live:
             if dashboard and live:
                 dashboard.bind(live)
-
-            # Inline run_with_table logic
-            html_update_task = asyncio.create_task(update_html()) if ui_server is not None else None
 
             semaphore = asyncio.Semaphore(self.max_concurrency)
             tasks = []
@@ -721,28 +691,7 @@ class Evaluator:
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
-                if html_update_task is not None:
-                    html_update_task.cancel()
-                    try:
-                        await html_update_task
-                    except asyncio.CancelledError:
-                        pass
                 raise
-
-            if html_update_task is not None:
-                html_update_task.cancel()
-                try:
-                    await html_update_task
-                except asyncio.CancelledError:
-                    pass
-
-            # Final snapshot
-            try:
-                if ui_server is not None:
-                    snap = tracker.get_snapshot()
-                    ui_server.run_state.set_snapshot(snap)
-            except Exception:
-                pass
 
             for idx, eval_result in enumerate(eval_results):
                 # Use actual item ID if available (e.g., from Langfuse dataset), fallback to index-based ID

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM-Eval • Admin</title>
+  <link rel="stylesheet" href="./static/dashboard.css">
+  <style>
+    /* Admin-specific styles */
+    .admin-container {
+      display: flex;
+      height: calc(100vh - 44px);
+    }
+
+    .admin-sidebar {
+      width: 220px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-default);
+      padding: var(--space-md);
+      flex-shrink: 0;
+    }
+
+    .admin-nav {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .admin-nav-item {
+      margin-bottom: var(--space-xs);
+    }
+
+    .admin-nav-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      color: var(--text-secondary);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: var(--font-sm);
+      transition: all 0.15s;
+    }
+
+    .admin-nav-link:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .admin-nav-link.active {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+
+    .admin-nav-link .nav-icon {
+      font-size: 16px;
+    }
+
+    .admin-content {
+      flex: 1;
+      overflow: auto;
+      padding: var(--space-lg);
+      background: var(--bg-base);
+    }
+
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-lg);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .admin-header h1 {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .admin-header h1 .header-icon {
+      font-size: 20px;
+      color: var(--accent-primary);
+    }
+
+    /* Data table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--bg-surface);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-default);
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: var(--space-md);
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .data-table th {
+      background: var(--bg-elevated);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .data-table td {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+    }
+
+    .data-table tbody tr:hover {
+      background: var(--bg-hover);
+    }
+
+    .data-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Role badge */
+    .role-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .role-badge.role-ADMIN { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+    .role-badge.role-VP { background: rgba(0, 212, 170, 0.2); color: var(--accent-primary); }
+    .role-badge.role-GM { background: rgba(0, 168, 255, 0.2); color: var(--accent-secondary); }
+    .role-badge.role-MANAGER { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .role-badge.role-EMPLOYEE { background: var(--bg-elevated); color: var(--text-muted); }
+
+    /* Action buttons in table */
+    .table-actions {
+      display: flex;
+      gap: var(--space-xs);
+    }
+
+    .table-btn {
+      padding: 4px 10px;
+      font-size: var(--font-xs);
+      border-radius: 4px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .table-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+
+    .table-btn.danger:hover {
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    /* Org tree */
+    .org-tree {
+      padding: var(--space-md);
+    }
+
+    .org-node {
+      margin-bottom: var(--space-sm);
+    }
+
+    .org-node-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .org-node-header:hover {
+      border-color: var(--accent-primary);
+    }
+
+    .org-node-header.expanded {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .org-node-toggle {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+    }
+
+    .org-node-toggle.expanded {
+      transform: rotate(90deg);
+    }
+
+    .org-node-icon {
+      font-size: 14px;
+    }
+
+    .org-node-icon.sector { color: var(--accent-tertiary); }
+    .org-node-icon.department { color: var(--accent-secondary); }
+    .org-node-icon.team { color: var(--accent-primary); }
+
+    .org-node-name {
+      flex: 1;
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .org-node-type {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .org-node-manager {
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      background: var(--bg-elevated);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .org-node-children {
+      margin-left: var(--space-xl);
+      padding-left: var(--space-md);
+      border-left: 2px solid var(--border-default);
+      margin-top: var(--space-sm);
+    }
+
+    .org-node-actions {
+      display: flex;
+      gap: var(--space-xs);
+    }
+
+    /* Settings form */
+    .settings-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-lg);
+    }
+
+    .settings-section h2 {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-md) 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .settings-row:last-child {
+      border-bottom: none;
+    }
+
+    .settings-label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .settings-label .label-title {
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .settings-label .label-desc {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 24px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 2px;
+      bottom: 2px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      background: var(--bg-void);
+      transform: translateX(20px);
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: var(--space-xl);
+      color: var(--text-muted);
+    }
+
+    .empty-state .empty-icon {
+      font-size: 48px;
+      margin-bottom: var(--space-md);
+    }
+
+    .empty-state p {
+      font-size: var(--font-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    /* Modal form styles */
+    .modal-form {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .modal-form .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+
+    .modal-form label {
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .modal-form input,
+    .modal-form select {
+      padding: var(--space-sm) var(--space-md);
+      font-size: var(--font-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-primary);
+    }
+
+    .modal-form input:focus,
+    .modal-form select:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+    }
+
+    /* Back link */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: var(--font-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .back-link:hover {
+      color: var(--accent-primary);
+    }
+
+    /* Search box */
+    .admin-search {
+      display: flex;
+      align-items: center;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 0 var(--space-md);
+      width: 250px;
+    }
+
+    .admin-search input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      padding: var(--space-sm);
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+    }
+
+    .admin-search input:focus {
+      outline: none;
+    }
+
+    .admin-search input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .admin-search .search-icon {
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Top Stats Bar -->
+  <header class="stats-bar">
+    <div class="logo">
+      <span class="logo-icon">◈</span>
+      <span class="logo-text">LLM-EVAL</span>
+    </div>
+    <div class="stat-cells">
+      <div class="stat-cell">
+        <span class="stat-label">ADMIN PANEL</span>
+        <span class="stat-value" style="font-size: var(--font-sm);">Manage Users & Settings</span>
+      </div>
+    </div>
+    <div class="header-meta">
+      <a href="/" class="header-link" title="Dashboard">← Dashboard</a>
+      <a id="profile-link" class="header-link" href="/profile" title="Profile">Profile</a>
+    </div>
+  </header>
+
+  <!-- Admin Container -->
+  <div class="admin-container">
+    <!-- Sidebar Navigation -->
+    <aside class="admin-sidebar">
+      <nav>
+        <ul class="admin-nav">
+          <li class="admin-nav-item">
+            <a href="#users" class="admin-nav-link active" data-page="users">
+              <span class="nav-icon">👤</span>
+              <span>Users</span>
+            </a>
+          </li>
+          <li class="admin-nav-item">
+            <a href="#org" class="admin-nav-link" data-page="org">
+              <span class="nav-icon">🏢</span>
+              <span>Organization</span>
+            </a>
+          </li>
+          <li class="admin-nav-item">
+            <a href="#settings" class="admin-nav-link" data-page="settings">
+              <span class="nav-icon">⚙️</span>
+              <span>Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-content">
+      <!-- Users Page -->
+      <section id="users-page" class="admin-page">
+        <div class="admin-header">
+          <h1><span class="header-icon">👤</span> Users</h1>
+          <div style="display: flex; gap: var(--space-md);">
+            <div class="admin-search">
+              <span class="search-icon">⌕</span>
+              <input type="text" id="user-search" placeholder="Search users..." />
+            </div>
+            <button class="btn btn-primary" id="add-user-btn">+ Add User</button>
+          </div>
+        </div>
+        <table class="data-table" id="users-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Display Name</th>
+              <th>Role</th>
+              <th>Team</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <!-- Users populated by JS -->
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Organization Page -->
+      <section id="org-page" class="admin-page" style="display: none;">
+        <div class="admin-header">
+          <h1><span class="header-icon">🏢</span> Organization Structure</h1>
+          <div style="display: flex; gap: var(--space-md);">
+            <button class="btn btn-secondary" id="rebuild-closure-btn" title="Rebuild org closure table">🔄 Rebuild Closure</button>
+            <button class="btn btn-primary" id="add-org-unit-btn">+ Add Unit</button>
+          </div>
+        </div>
+        <div class="org-tree" id="org-tree">
+          <!-- Org tree populated by JS -->
+        </div>
+      </section>
+
+      <!-- Settings Page -->
+      <section id="settings-page" class="admin-page" style="display: none;">
+        <div class="admin-header">
+          <h1><span class="header-icon">⚙️</span> Platform Settings</h1>
+        </div>
+
+        <div class="settings-section">
+          <h2>Visibility Rules</h2>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span class="label-title">GM/VP Approved-Only Visibility</span>
+              <span class="label-desc">When enabled, GM and VP users can only view runs that have been approved.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-gm-vp-approved-only" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span class="label-title">Manager Full Subtree Access</span>
+              <span class="label-desc">When enabled, managers can view all runs from their entire org subtree, not just direct reports.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-manager-full-subtree" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Platform Behavior</h2>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span class="label-title">Allow Self-Registration</span>
+              <span class="label-desc">When enabled, users can create accounts through the UI without admin approval.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-self-registration" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <div class="settings-label">
+              <span class="label-title">Require Approval for Runs</span>
+              <span class="label-desc">When enabled, all runs must be approved by a manager before being visible to GM/VP.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-require-approval" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: var(--space-md);">
+          <button class="btn btn-secondary" id="reset-settings-btn">Reset to Defaults</button>
+          <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add/Edit User Modal -->
+  <div class="modal" id="user-modal" style="display: none;">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2 id="user-modal-title">Add User</h2>
+        <button class="modal-close" onclick="closeModal('user-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <form class="modal-form" id="user-form">
+          <input type="hidden" id="user-id" />
+          <div class="form-group">
+            <label for="user-email">Email <span style="color: var(--error);">*</span></label>
+            <input type="email" id="user-email" required placeholder="user@example.com" />
+          </div>
+          <div class="form-group">
+            <label for="user-display-name">Display Name</label>
+            <input type="text" id="user-display-name" placeholder="John Doe" />
+          </div>
+          <div class="form-group">
+            <label for="user-title">Title</label>
+            <input type="text" id="user-title" placeholder="Software Engineer" />
+          </div>
+          <div class="form-group">
+            <label for="user-role">Role</label>
+            <select id="user-role">
+              <option value="EMPLOYEE">Employee</option>
+              <option value="MANAGER">Manager</option>
+              <option value="GM">General Manager</option>
+              <option value="VP">Vice President</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="user-team">Team</label>
+            <select id="user-team">
+              <option value="">No Team</option>
+              <!-- Teams populated by JS -->
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('user-modal')">Cancel</button>
+        <button class="btn btn-primary" id="save-user-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Org Unit Modal -->
+  <div class="modal" id="org-unit-modal" style="display: none;">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2 id="org-unit-modal-title">Add Organization Unit</h2>
+        <button class="modal-close" onclick="closeModal('org-unit-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <form class="modal-form" id="org-unit-form">
+          <input type="hidden" id="org-unit-id" />
+          <div class="form-group">
+            <label for="org-unit-name">Name <span style="color: var(--error);">*</span></label>
+            <input type="text" id="org-unit-name" required placeholder="Engineering" />
+          </div>
+          <div class="form-group">
+            <label for="org-unit-type">Type</label>
+            <select id="org-unit-type">
+              <option value="SECTOR">Sector</option>
+              <option value="DEPARTMENT">Department</option>
+              <option value="TEAM">Team</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="org-unit-parent">Parent Unit</label>
+            <select id="org-unit-parent">
+              <option value="">None (Top Level)</option>
+              <!-- Parent options populated by JS -->
+            </select>
+          </div>
+          <div class="form-group" id="manager-group">
+            <label for="org-unit-manager">Team Manager</label>
+            <select id="org-unit-manager">
+              <option value="">No Manager</option>
+              <!-- Managers populated by JS -->
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('org-unit-modal')">Cancel</button>
+        <button class="btn btn-primary" id="save-org-unit-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal" id="delete-confirm-modal" style="display: none;">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Confirm Delete</h2>
+        <button class="modal-close" onclick="closeModal('delete-confirm-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="delete-confirm-message">Are you sure you want to delete this item?</p>
+        <p class="warning-text">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('delete-confirm-modal')">Cancel</button>
+        <button class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./static/admin.js"></script>
+</body>
+</html>
+

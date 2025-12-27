@@ -864,15 +864,19 @@ Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard
 - Search and filter results
 - Export to CSV
 
-#### 2. Historical Dashboard (CLI Command)
+#### 2. Platform Dashboard (Recommended)
 
-To browse **all past evaluation runs**, use the dashboard CLI command:
+To browse **all evaluation runs**, use the dashboard CLI command:
 
 ```bash
 llm-eval dashboard
 ```
 
-This opens a web dashboard where you can view, filter, compare, and analyze all your historical runs.
+This opens the platform dashboard in your browser where you can view, filter, compare, and analyze all runs.
+
+> **Note**: The local dashboard server has been deprecated. All dashboard functionality is now provided by the deployed platform. You'll need:
+> - `LLM_EVAL_PLATFORM_URL` (or use the built-in default)
+> - `LLM_EVAL_PLATFORM_API_KEY` for uploading runs
 
 #### Historical Runs View
 
@@ -944,20 +948,15 @@ Visualize model performance across all runs:
 
 ### Dashboard Data Storage
 
-The dashboard reads results from `llm-eval_results/` directory in your **current working directory**. Both CSV and XLSX formats are supported.
+The platform dashboard stores all runs in a central database. When you run evaluations with platform streaming enabled (`LLM_EVAL_PLATFORM_API_KEY`), runs are automatically stored on the platform.
 
-> **Important**: Always run evaluations and the dashboard from your **project root directory**. Results are saved relative to where you run the script, so running from different directories will create separate result folders.
+For local development, results are also saved to `llm-eval_results/` directory in your **current working directory**. You can upload these to the platform using:
 
+```bash
+llm-eval submit --file path/to/results.csv --task my_task --dataset my-dataset
 ```
-my-project/                    # Run from here!
-├── llm-eval_results/          # Results saved here
-│   └── {task}/
-│       └── {model}/
-│           └── {date}/
-│               └── {run_name}.csv
-├── my_task.py
-└── .env
-```
+
+> **Note**: Uploaded files are parsed and ingested into the database. Raw uploaded files are NOT stored persistently.
 
 ### Publishing
 

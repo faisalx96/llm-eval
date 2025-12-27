@@ -29,6 +29,13 @@ class UserRole(str, enum.Enum):
     MANAGER = "MANAGER"
     GM = "GM"
     VP = "VP"
+    ADMIN = "ADMIN"
+
+
+class OrgUnitType(str, enum.Enum):
+    TEAM = "TEAM"
+    DEPARTMENT = "DEPARTMENT"
+    SECTOR = "SECTOR"
 
 
 class RunWorkflowStatus(str, enum.Enum):
@@ -55,6 +62,8 @@ class User(Base):
     title: Mapped[str] = mapped_column(String(200), default="")
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.EMPLOYEE)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Each user belongs to exactly one TEAM org unit (nullable during bootstrap/migration)
+    team_unit_id: Mapped[Optional[str]] = mapped_column(ForeignKey("org_units.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -87,7 +96,7 @@ class OrgEdge(Base):
 
 
 class OrgClosure(Base):
-    """Ancestor/descendant closure for fast subtree authorization."""
+    """Ancestor/descendant closure for fast subtree authorization (legacy, user-based)."""
 
     __tablename__ = "org_closure"
 
@@ -97,6 +106,48 @@ class OrgClosure(Base):
     depth: Mapped[int] = mapped_column(Integer)  # 0=self
 
     __table_args__ = (UniqueConstraint("ancestor_id", "descendant_id", name="uq_org_closure"),)
+
+
+class OrgUnit(Base):
+    """Org unit: SECTOR → DEPARTMENT → TEAM hierarchy."""
+
+    __tablename__ = "org_units"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[OrgUnitType] = mapped_column(Enum(OrgUnitType), nullable=False, index=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(ForeignKey("org_units.id"), nullable=True, index=True)
+    # Only TEAM units have a manager; nullable for DEPARTMENT/SECTOR
+    manager_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("name", "type", "parent_id", name="uq_org_unit_name_type_parent"),
+    )
+
+
+class OrgUnitClosure(Base):
+    """Ancestor/descendant closure for OrgUnit hierarchy (fast subtree queries)."""
+
+    __tablename__ = "org_unit_closure"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ancestor_id: Mapped[str] = mapped_column(ForeignKey("org_units.id"), index=True)
+    descendant_id: Mapped[str] = mapped_column(ForeignKey("org_units.id"), index=True)
+    depth: Mapped[int] = mapped_column(Integer)  # 0=self
+
+    __table_args__ = (UniqueConstraint("ancestor_id", "descendant_id", name="uq_org_unit_closure"),)
+
+
+class PlatformSetting(Base):
+    """Platform-wide settings/policy toggles (key-value store)."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ApiKey(Base):

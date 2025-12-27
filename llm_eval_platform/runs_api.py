@@ -11,30 +11,91 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from llm_eval_platform.auth import Principal, require_ui_principal
-from llm_eval_platform.db.models import Approval, ApprovalDecision, Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, UserRole
+from llm_eval_platform.db.models import (
+    Approval,
+    ApprovalDecision,
+    OrgUnit,
+    OrgUnitClosure,
+    OrgUnitType,
+    PlatformSetting,
+    Run,
+    RunEvent,
+    RunItem,
+    RunItemScore,
+    RunWorkflowStatus,
+    User,
+    UserRole,
+)
 from llm_eval_platform.deps import get_db
 
 
 router = APIRouter()
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+def _platform_static_dir() -> Path:
+    """Return the platform static directory."""
+    return Path(__file__).resolve().parent / "_static"
 
 
-def _sdk_static_ui_index() -> Path:
-    return _repo_root() / "llm_eval" / "_static" / "ui" / "index.html"
+def _platform_static_ui_index() -> Path:
+    return _platform_static_dir() / "ui" / "index.html"
 
 
-def _sdk_static_dashboard_index() -> Path:
-    return _repo_root() / "llm_eval" / "_static" / "dashboard" / "index.html"
-
-def _sdk_static_dashboard_compare() -> Path:
-    return _repo_root() / "llm_eval" / "_static" / "dashboard" / "compare.html"
+def _platform_static_dashboard_index() -> Path:
+    return _platform_static_dir() / "dashboard" / "index.html"
 
 
-def _sdk_static_profile_index() -> Path:
-    return _repo_root() / "llm_eval" / "_static" / "dashboard" / "profile.html"
+def _platform_static_dashboard_compare() -> Path:
+    return _platform_static_dir() / "dashboard" / "compare.html"
+
+
+def _platform_static_profile_index() -> Path:
+    return _platform_static_dir() / "dashboard" / "profile.html"
+
+
+def _platform_static_admin_index() -> Path:
+    return _platform_static_dir() / "dashboard" / "admin.html"
+
+
+def _get_setting(db: Session, key: str, default: str = "") -> str:
+    """Get a platform setting value."""
+    row = db.query(PlatformSetting).filter(PlatformSetting.key == key).first()
+    return row.value if row else default
+
+
+def _user_team_subtree_ids(db: Session, user: User) -> set[str]:
+    """Get all org unit IDs in the user's team's subtree (ancestors)."""
+    if not user.team_unit_id:
+        return set()
+    # Get all ancestors of the user's team (including the team itself)
+    closures = db.query(OrgUnitClosure).filter(OrgUnitClosure.descendant_id == user.team_unit_id).all()
+    return {c.ancestor_id for c in closures}
+
+
+def _manager_team_ids(db: Session, manager_user_id: str) -> set[str]:
+    """Get all team IDs where this user is the manager."""
+    teams = db.query(OrgUnit).filter(
+        OrgUnit.type == OrgUnitType.TEAM,
+        OrgUnit.manager_user_id == manager_user_id
+    ).all()
+    return {t.id for t in teams}
+
+
+def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
+    """Check if the principal can approve/reject this run."""
+    # Must be authenticated
+    if principal.auth_type == "none":
+        return False
+    # Get the run owner's team
+    owner = db.query(User).filter(User.id == run.owner_user_id).first()
+    if not owner or not owner.team_unit_id:
+        return False
+    # Get the team
+    team = db.query(OrgUnit).filter(OrgUnit.id == owner.team_unit_id).first()
+    if not team:
+        return False
+    # Only the team's manager can approve
+    return team.manager_user_id == principal.user.id
 
 
 def _iso(dt: Optional[datetime]) -> str:
@@ -108,7 +169,7 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
 
 @router.get("/")
 def dashboard_index() -> FileResponse:
-    idx = _sdk_static_dashboard_index()
+    idx = _platform_static_dashboard_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Dashboard UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
@@ -116,24 +177,40 @@ def dashboard_index() -> FileResponse:
 
 @router.get("/profile")
 def profile_index() -> FileResponse:
-    idx = _sdk_static_profile_index()
+    idx = _platform_static_profile_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Profile UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
+@router.get("/admin")
+def admin_index() -> FileResponse:
+    idx = _platform_static_admin_index()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Admin UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
 @router.get("/compare")
 def compare_index() -> FileResponse:
-    idx = _sdk_static_dashboard_compare()
+    idx = _platform_static_dashboard_compare()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Compare UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
+@router.get("/admin")
+def admin_index() -> FileResponse:
+    idx = _platform_static_admin_index()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Admin UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
 @router.get("/run/{run_id:path}")
 def run_ui(run_id: str) -> FileResponse:
     # Serve the existing run UI index; it will call /api/runs/{run_id} in dashboard-mode.
-    idx = _sdk_static_ui_index()
+    idx = _platform_static_ui_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Run UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
@@ -144,18 +221,50 @@ def legacy_list_runs(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    # Visibility (v0):
-    # - EMPLOYEE: own runs
-    # - MANAGER: all runs (subtree enforcement will be added once org_closure is populated)
-    # - GM/VP: approved runs only
+    """List runs with visibility based on role and org structure.
+
+    Visibility rules:
+    - ADMIN: all runs (platform administration)
+    - EMPLOYEE: own runs only
+    - MANAGER: runs from their managed team(s)
+    - GM/VP: approved runs only in their subtree (configurable via policy)
+    - Local dev mode (auth_type == "none"): show everything
+    """
     q = db.query(Run).order_by(Run.created_at.desc())
-    # Local dev mode: show everything to reduce friction.
-    if principal.auth_type != "none":
-        if principal.user.role == UserRole.EMPLOYEE:
-            q = q.filter(Run.owner_user_id == principal.user.id)
-        elif principal.user.role in {UserRole.GM, UserRole.VP}:
-            q = q.filter(Run.status == RunWorkflowStatus.APPROVED)
-    runs = q.all()
+
+    # Local dev mode: show everything to reduce friction
+    if principal.auth_type == "none":
+        runs = q.all()
+    elif principal.user.role == UserRole.ADMIN:
+        # Admin sees all runs
+        runs = q.all()
+    elif principal.user.role == UserRole.EMPLOYEE:
+        # Employee sees only their own runs
+        runs = q.filter(Run.owner_user_id == principal.user.id).all()
+    elif principal.user.role == UserRole.MANAGER:
+        # Manager sees runs from their managed team(s)
+        managed_team_ids = _manager_team_ids(db, principal.user.id)
+        if managed_team_ids:
+            # Get users in those teams
+            team_users = db.query(User.id).filter(User.team_unit_id.in_(managed_team_ids)).all()
+            team_user_ids = {u.id for u in team_users}
+            # Include manager's own runs too
+            team_user_ids.add(principal.user.id)
+            runs = q.filter(Run.owner_user_id.in_(team_user_ids)).all()
+        else:
+            # No managed teams, show only own runs
+            runs = q.filter(Run.owner_user_id == principal.user.id).all()
+    elif principal.user.role in {UserRole.GM, UserRole.VP}:
+        # GM/VP: approved runs only by default (can be relaxed via policy)
+        gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
+        if gm_vp_approved_only:
+            runs = q.filter(Run.status == RunWorkflowStatus.APPROVED).all()
+        else:
+            # Show SUBMITTED and APPROVED
+            runs = q.filter(Run.status.in_([RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED])).all()
+    else:
+        # Fallback: own runs only
+        runs = q.filter(Run.owner_user_id == principal.user.id).all()
 
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     for r in runs:
@@ -200,6 +309,63 @@ def legacy_compare(
     }
 
 
+def _can_view_run(db: Session, principal: Principal, run: Run) -> bool:
+    """Check if the principal can view this run based on visibility rules."""
+    # Local dev mode: allow all
+    if principal.auth_type == "none":
+        return True
+
+    # Admin can view all
+    if principal.user.role == UserRole.ADMIN:
+        return True
+
+    # Owner can always view their own runs
+    if run.owner_user_id == principal.user.id:
+        return True
+
+    # Manager can view runs from their managed teams
+    if principal.user.role == UserRole.MANAGER:
+        owner = db.query(User).filter(User.id == run.owner_user_id).first()
+        if owner and owner.team_unit_id:
+            managed_team_ids = _manager_team_ids(db, principal.user.id)
+            if owner.team_unit_id in managed_team_ids:
+                return True
+        return False
+
+    # GM/VP can view approved runs (or submitted if policy allows)
+    if principal.user.role in {UserRole.GM, UserRole.VP}:
+        gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
+        if gm_vp_approved_only:
+            return run.status == RunWorkflowStatus.APPROVED
+        else:
+            return run.status in {RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED}
+
+    return False
+
+
+def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
+    """Check if the principal can approve/reject this run (must be the team's manager or admin)."""
+    # Local dev mode: allow all
+    if principal.auth_type == "none":
+        return True
+
+    # Admin can approve all
+    if principal.user.role == UserRole.ADMIN:
+        return True
+
+    # Only managers can approve
+    if principal.user.role != UserRole.MANAGER:
+        return False
+
+    # Manager must be the team manager for the run owner's team
+    owner = db.query(User).filter(User.id == run.owner_user_id).first()
+    if not owner or not owner.team_unit_id:
+        return False
+
+    managed_team_ids = _manager_team_ids(db, principal.user.id)
+    return owner.team_unit_id in managed_team_ids
+
+
 @router.get("/api/runs/{run_id:path}")
 def legacy_run_data(
     run_id: str,
@@ -209,7 +375,7 @@ def legacy_run_data(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         return {"error": "Run not found"}
-    if run.owner_user_id != principal.user.id and principal.user.role not in {UserRole.MANAGER, UserRole.GM, UserRole.VP}:
+    if not _can_view_run(db, principal, run):
         return {"error": "Access denied"}
 
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
@@ -297,8 +463,21 @@ def delete_run(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    # Only owner or manager can delete
-    if run.owner_user_id != principal.user.id and principal.user.role not in {UserRole.MANAGER, UserRole.GM, UserRole.VP}:
+    # Admin can always delete
+    if principal.user.role == UserRole.ADMIN:
+        pass
+    # Owner can delete their own runs
+    elif run.owner_user_id == principal.user.id:
+        pass
+    # Manager can delete runs from their managed teams
+    elif principal.user.role == UserRole.MANAGER:
+        owner = db.query(User).filter(User.id == run.owner_user_id).first()
+        if not owner or not owner.team_unit_id:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        managed_team_ids = _manager_team_ids(db, principal.user.id)
+        if owner.team_unit_id not in managed_team_ids:
+            raise HTTPException(status_code=403, detail="Permission denied")
+    else:
         raise HTTPException(status_code=403, detail="Permission denied")
 
     # Delete related data first (foreign key constraints)
@@ -346,13 +525,14 @@ def approve_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    if principal.user.role != UserRole.MANAGER:
-        raise HTTPException(status_code=403, detail="Manager only")
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
         raise HTTPException(status_code=400, detail="Run not submitted")
+    # Check if the principal can approve this run (must be the team's manager)
+    if not _can_approve_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Only the team manager can approve")
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:
         raise HTTPException(status_code=400, detail="Missing approval record")
@@ -372,13 +552,14 @@ def reject_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    if principal.user.role != UserRole.MANAGER:
-        raise HTTPException(status_code=403, detail="Manager only")
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
         raise HTTPException(status_code=400, detail="Run not submitted")
+    # Check if the principal can reject this run (must be the team's manager)
+    if not _can_approve_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Only the team manager can reject")
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:
         raise HTTPException(status_code=400, detail="Missing approval record")

@@ -87,3 +87,6 @@ AGENTS.md
 *.json
 *.csv
 *.xlsx
+
+# Cursor
+.cursor/

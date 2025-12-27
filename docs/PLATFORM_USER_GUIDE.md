@@ -2,38 +2,105 @@
 
 The llm-eval platform is the deployed web app that stores runs centrally and hosts the live run dashboard.
 
-## Access model (MVP)
+## Access Model
 
-MVP is designed for a trusted internal network:
-- The platform identifies users via reverse-proxy headers:
-  - `X-User-Email` (preferred) or `X-Email`
-- First admin bootstrap:
-  - Set `LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN`
-  - Send `X-Admin-Bootstrap: <token>` + `X-User-Email: you@company.com` on your first request
+The platform identifies users via reverse-proxy headers:
+- `X-User-Email` (preferred) or `X-Email`
 
-## Roles & visibility (MVP)
+First admin bootstrap:
+1. Set `LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN`
+2. Send `X-Admin-Bootstrap: <token>` + `X-User-Email: you@company.com` on your first request
 
-- **Employee**: sees own runs; can submit a draft run.
-- **Manager**: sees all runs (subtree enforcement is enabled once org import/closure is populated); can approve/reject submitted runs.
-- **GM/VP**: sees approved runs only.
+## Organization & Roles
 
-## Using the dashboard
+### Organizational Hierarchy
+Users are organized into a three-level hierarchy:
+- **Sector** → **Department** → **Team**
 
-- Open `http://<platform>/` to view runs.
-- Click a run ID to open the run details UI (`/run/<run_id>`).
-- Use the **Status** filter to show `DRAFT/SUBMITTED/APPROVED/REJECTED/...`.
+Each user belongs to exactly one Team, which determines their visibility and approval authority.
 
-## Uploading an eval run
+### Roles
+- **EMPLOYEE**: Standard user role
+  - Sees own runs only
+  - Can submit runs for approval
+- **MANAGER**: Team manager role
+  - Sees runs from their managed team(s)
+  - Can approve/reject submitted runs from team members
+- **GM**: General Manager role
+  - Sees approved runs only (configurable)
+  - Cannot approve/reject
+- **VP**: Vice President role
+  - Sees approved runs only (configurable)
+  - Cannot approve/reject
+- **ADMIN**: Platform administrator
+  - Full access to all runs and settings
+  - Can manage users, org structure, and platform settings
 
-Use the API ingestion (recommended) or file upload:
+### Visibility Rules (Admin Configurable)
+- **GM/VP Approved-Only**: When enabled, GM and VP users can only see runs that have been approved
+- **Manager Visibility Scope**: Controls whether managers see all runs in their org subtree or just their direct team
 
-### From the SDK (live streaming)
-- Run your evaluation with **only an API key** (or env var):
-  - `LLM_EVAL_PLATFORM_API_KEY`
+## Using the Dashboard
 
-The platform URL is treated as an internal default (can be overridden for dev with `LLM_EVAL_PLATFORM_URL`).
+### Main Dashboard
+- Open `http://<platform>/` to view runs
+- Click a run ID to open the run details UI (`/run/<run_id>`)
+- Use the **Status** filter to show `DRAFT/SUBMITTED/APPROVED/REJECTED/...`
+- Compare multiple runs using the comparison view
 
-### Upload a saved results file
-- Use `llm-eval submit` (CLI) or `POST /v1/runs:upload`.
+### Profile Page
+- View your profile and organization info at `/profile`
+- Manage API keys for SDK integration
+
+### Admin Panel (ADMIN role only)
+- Access at `/admin`
+- Manage users, organization structure, and platform settings
+- See [Admin Guide](ADMIN_GUIDE.md) for details
+
+## Uploading Eval Runs
+
+### From the SDK (Live Streaming - Recommended)
+Run your evaluation with an API key:
+```bash
+export LLM_EVAL_PLATFORM_API_KEY=your-api-key
+llm-eval --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match
+```
+
+The platform URL is configured internally (override with `LLM_EVAL_PLATFORM_URL` for development).
+
+**Note**: The local UI server has been deprecated. All live run viewing is through the platform dashboard.
+
+### Upload a Saved Results File
+Use the CLI:
+```bash
+llm-eval submit --file results.csv --task my_task --dataset my-dataset
+```
+
+Or the API:
+```bash
+curl -X POST http://<platform>/v1/runs:upload \
+  -H "Authorization: Bearer $API_KEY" \
+  -F "file=@results.csv" \
+  -F "task=my_task" \
+  -F "dataset=my-dataset"
+```
+
+**Note**: Uploaded files are parsed and ingested into the database. Raw uploaded files are NOT stored persistently.
+
+## Run Workflow
+
+1. **DRAFT**: Run is created but not submitted
+2. **SUBMITTED**: User submits run for approval
+3. **APPROVED**: Manager approves the run (visible to GM/VP)
+4. **REJECTED**: Manager rejects the run
+
+## Opening the Dashboard
+
+From the CLI:
+```bash
+llm-eval dashboard
+```
+
+This opens the platform dashboard in your browser.
 
 
