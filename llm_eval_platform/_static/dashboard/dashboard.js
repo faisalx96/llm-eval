@@ -939,9 +939,11 @@
               <span class="checkmark"></span>
             </label>
           </td>
-          <td class="col-run">
-            <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
+          <td class="col-status">
             ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}
+          </td>
+          <td class="col-run">
+            <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
           </td>
           <td class="col-task">
             <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
@@ -977,32 +979,58 @@
             </span>
           </td>
           <td class="col-actions">
+            ${(canSubmit || canApprove) ? `
+              <div class="actions-dropdown" onclick="event.stopPropagation()">
+                <button class="actions-trigger workflow-trigger" title="${canApprove ? 'Review' : 'Submit'}">
+                  ${canApprove ? `
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                  ` : `
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                  `}
+                </button>
+                <div class="actions-menu">
+                  ${canSubmit ? `
+                    <a href="#" class="actions-item submit-run">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                      <span>Submit for Approval</span>
+                    </a>
+                  ` : ''}
+                  ${canApprove ? `
+                    <a href="#" class="actions-item approve-run approve">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      <span>Approve</span>
+                    </a>
+                    <a href="#" class="actions-item reject-run reject">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                      <span>Reject</span>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
             ${langfuseUrl ? `
-              <a href="${langfuseUrl}" target="_blank" class="action-btn langfuse-btn" title="View in Langfuse" onclick="event.stopPropagation()">Langfuse ↗</a>
-            ` : ''}
-            ${canSubmit ? `
-              <a href="#" class="action-icon submit-run" title="Submit">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
+              <a href="${langfuseUrl}" target="_blank" class="action-icon langfuse-icon" title="View in Langfuse" onclick="event.stopPropagation()">
+                <img src="./static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
               </a>
             ` : ''}
-            ${canApprove ? `
-              <a href="#" class="action-icon approve-run" title="Approve">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-              </a>
-              <a href="#" class="action-icon reject-run" title="Reject">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </a>
-            ` : ''}
-            <a href="#" class="action-icon delete-run" title="Delete run">
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <a href="#" class="action-icon delete-run" title="Delete" onclick="event.stopPropagation()">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
@@ -1036,10 +1064,15 @@
         openRun(filePath);
       });
 
+      const closeDropdown = () => {
+        tr.querySelector('.actions-dropdown')?.classList.remove('open');
+      };
+
       const submitBtn = tr.querySelector('.submit-run');
       if (submitBtn) submitBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        closeDropdown();
         try {
           await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/submit`), { method: 'POST' });
           await fetchRuns();
@@ -1052,6 +1085,7 @@
       if (approveBtn) approveBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        closeDropdown();
         showWorkflowModal('approve', run.run_id, run.task_name);
       });
 
@@ -1059,14 +1093,31 @@
       if (rejectBtn) rejectBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        closeDropdown();
         showWorkflowModal('reject', run.run_id, run.task_name);
       });
 
       tr.querySelector('.delete-run').addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        closeDropdown();
         confirmDeleteRun(filePath, run.run_id);
       });
+
+      // Actions dropdown toggle
+      const actionsDropdown = tr.querySelector('.actions-dropdown');
+      const actionsTrigger = tr.querySelector('.actions-trigger');
+      if (actionsTrigger && actionsDropdown) {
+        actionsTrigger.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // Close any other open dropdowns
+          document.querySelectorAll('.actions-dropdown.open').forEach(d => {
+            if (d !== actionsDropdown) d.classList.remove('open');
+          });
+          actionsDropdown.classList.toggle('open');
+        });
+      }
 
       tr.addEventListener('click', () => {
         state.focusedIndex = idx;
@@ -2232,22 +2283,63 @@
   }
 
   function updateProfileLink() {
-    const link = el('profile-link');
-    if (!link) return;
-    link.href = apiUrl('profile');
     const u = state.currentUser || {};
-    const label = u.display_name || u.email || 'Profile';
-    link.textContent = label;
+    const displayName = u.display_name || (u.email ? u.email.split('@')[0] : 'User');
+    const initials = getInitials(displayName);
 
-    // Show admin link for ADMIN users
-    const adminLink = el('admin-link');
-    if (adminLink) {
-      if (u.role === 'ADMIN') {
-        adminLink.style.display = '';
-      } else {
-        adminLink.style.display = 'none';
-      }
+    // Update avatar
+    const avatar = el('header-user-avatar');
+    if (avatar) {
+      avatar.textContent = initials;
     }
+
+    // Update display name
+    const nameEl = el('header-user-name');
+    if (nameEl) {
+      nameEl.textContent = displayName;
+    }
+
+    // Update dropdown header
+    const emailEl = el('header-user-email');
+    if (emailEl) {
+      emailEl.textContent = u.email || '';
+    }
+
+    const roleEl = el('header-user-role');
+    if (roleEl) {
+      roleEl.textContent = u.role || '';
+    }
+
+    // Show admin menu item for ADMIN users
+    const adminLink = el('header-admin-link');
+    if (adminLink) {
+      adminLink.style.display = u.role === 'ADMIN' ? '' : 'none';
+    }
+
+    // Setup dropdown toggle
+    setupHeaderUserDropdown();
+  }
+
+  function setupHeaderUserDropdown() {
+    const dropdown = el('header-user-dropdown');
+    const trigger = el('header-user-trigger');
+    if (!dropdown || !trigger) return;
+
+    // Prevent duplicate listeners
+    if (trigger.dataset.initialized) return;
+    trigger.dataset.initialized = 'true';
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('open');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+      }
+    });
   }
 
   function populateFilterDropdowns() {
@@ -2408,6 +2500,15 @@
     const dropdown = el('filter-model-dropdown');
     if (wrapper && dropdown && !wrapper.contains(e.target)) {
       dropdown.classList.remove('open');
+    }
+  });
+
+  // Close actions dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.actions-dropdown')) {
+      document.querySelectorAll('.actions-dropdown.open').forEach(d => {
+        d.classList.remove('open');
+      });
     }
   });
 

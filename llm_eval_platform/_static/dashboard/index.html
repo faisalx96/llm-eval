@@ -12,39 +12,55 @@
 
   <!-- Top Stats Bar -->
   <header class="stats-bar">
-    <div class="logo">
-      <span class="logo-icon">◈</span>
-      <span class="logo-text">LLM-EVAL</span>
+    <div class="stats-bar-left">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">LLM-EVAL</span>
+      </div>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">RUNS</span>
+          <span class="stat-value" id="total-runs">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">TASKS</span>
+          <span class="stat-value" id="total-tasks">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">MODELS</span>
+          <span class="stat-value" id="total-models">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">AVG SUCCESS</span>
+          <span class="stat-value" id="avg-success">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">ITEMS EVAL'D</span>
+          <span class="stat-value" id="total-items">—</span>
+        </div>
+        <div class="stat-cell trend">
+          <span class="stat-label">7-DAY TREND</span>
+          <div class="trend-chart" id="weekly-trend"></div>
+        </div>
+      </div>
     </div>
-    <div class="stat-cells">
-      <div class="stat-cell">
-        <span class="stat-label">RUNS</span>
-        <span class="stat-value" id="total-runs">—</span>
+    <div class="user-menu-wrapper">
+      <div class="user-dropdown" id="header-user-dropdown">
+        <button class="user-dropdown-trigger" id="header-user-trigger">
+          <span class="user-avatar" id="header-user-avatar">?</span>
+          <span class="user-name" id="header-user-name">User</span>
+          <span class="dropdown-arrow">▼</span>
+        </button>
+        <div class="user-dropdown-menu" id="header-user-menu">
+          <div class="user-dropdown-header">
+            <span class="user-dropdown-email" id="header-user-email"></span>
+            <span class="user-dropdown-role" id="header-user-role"></span>
+          </div>
+          <div class="user-dropdown-divider"></div>
+          <a href="/profile" class="user-dropdown-item">Profile</a>
+          <a href="/admin" class="user-dropdown-item" id="header-admin-link">Admin</a>
+        </div>
       </div>
-      <div class="stat-cell">
-        <span class="stat-label">TASKS</span>
-        <span class="stat-value" id="total-tasks">—</span>
-      </div>
-      <div class="stat-cell">
-        <span class="stat-label">MODELS</span>
-        <span class="stat-value" id="total-models">—</span>
-      </div>
-      <div class="stat-cell">
-        <span class="stat-label">AVG SUCCESS</span>
-        <span class="stat-value" id="avg-success">—</span>
-      </div>
-      <div class="stat-cell">
-        <span class="stat-label">ITEMS EVAL'D</span>
-        <span class="stat-value" id="total-items">—</span>
-      </div>
-      <div class="stat-cell trend">
-        <span class="stat-label">7-DAY TREND</span>
-        <div class="trend-chart" id="weekly-trend"></div>
-      </div>
-    </div>
-    <div class="header-meta">
-      <a id="admin-link" class="header-btn" href="/admin" title="Admin" style="display:none;">Admin</a>
-      <a id="profile-link" class="header-btn" href="#" title="Profile">Profile</a>
     </div>
   </header>
 
@@ -185,7 +201,8 @@
                 <span class="checkmark"></span>
               </label>
             </th>
-            <th class="col-run sortable" data-sort="run">RUN ID</th>
+            <th class="col-status sortable" data-sort="status">STATUS</th>
+            <th class="col-run sortable" data-sort="run">RUN</th>
             <th class="col-task sortable" data-sort="task">TASK</th>
             <th class="col-model sortable" data-sort="model">MODEL</th>
             <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
@@ -194,7 +211,7 @@
             <!-- Dynamic metric columns inserted here by JS -->
             <th class="col-latency sortable" data-sort="latency">LATENCY</th>
             <th class="col-time sortable" data-sort="time">TIME</th>
-            <th class="col-actions"></th>
+            <th class="col-actions">ACTIONS</th>
           </tr>
         </thead>
         <tbody id="runs-tbody"></tbody>

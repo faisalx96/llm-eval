@@ -174,6 +174,7 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
 
     return {
         "run_id": run.id,
+        "external_run_id": run.external_run_id or "",
         "task_name": run.task,
         "model_name": run.model or "",
         "dataset_name": run.dataset,
