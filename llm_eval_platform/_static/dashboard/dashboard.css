@@ -539,32 +539,45 @@ body {
 
 .action-btn {
   padding: var(--space-xs) var(--space-sm);
-  background: var(--accent-tertiary);
+  background: rgba(168, 85, 247, 0.15);
   border: none;
-  border-radius: 3px;
-  color: white;
+  border-radius: 4px;
+  color: #a855f7;
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: all 0.15s;
 }
 
 .action-btn:hover {
-  opacity: 0.9;
+  background: rgba(168, 85, 247, 0.25);
 }
 
 .action-btn.secondary {
-  background: transparent;
-  border: 1px solid var(--accent-tertiary);
-  color: var(--accent-tertiary);
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.action-btn.secondary:hover {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.action-btn.primary {
+  background: rgba(0, 212, 170, 0.15);
+  color: #00d4aa;
+}
+
+.action-btn.primary:hover {
+  background: rgba(0, 212, 170, 0.25);
 }
 
 .action-btn.danger {
-  background: var(--error);
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
 .action-btn.danger:hover {
-  background: #ff4444;
+  background: rgba(239, 68, 68, 0.25);
 }
 
 .compare-chips {
@@ -1517,6 +1530,7 @@ main {
   color: #e11d48;
   padding: 3px 8px;
   font-size: 10px;
+  border: none;
 }
 
 .action-btn.langfuse-btn:hover {
@@ -2434,12 +2448,11 @@ main {
   background: var(--bg-elevated);
   color: var(--text-secondary);
 }
-.status-badge.status-DRAFT { color: var(--text-muted); }
 .status-badge.status-SUBMITTED { color: var(--warning); border-color: rgba(245, 158, 11, 0.35); }
 .status-badge.status-APPROVED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
 .status-badge.status-REJECTED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
 .status-badge.status-RUNNING { color: var(--accent-secondary); border-color: rgba(0, 168, 255, 0.35); }
-.status-badge.status-COMPLETED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
+.status-badge.status-COMPLETED { color: #a855f7; border-color: rgba(168, 85, 247, 0.35); }
 .status-badge.status-FAILED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
 
 .published-badge .badge-icon {

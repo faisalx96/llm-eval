@@ -44,7 +44,7 @@
     filterTask: '',
     filterModels: new Set(),  // Multi-select for models
     filterDataset: '',
-    filterPublishStatus: '',  // '' or workflow status (DRAFT/SUBMITTED/APPROVED/REJECTED/RUNNING/COMPLETED/FAILED)
+    filterPublishStatus: '',  // '' or workflow status (RUNNING/COMPLETED/FAILED/SUBMITTED/APPROVED/REJECTED)
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
@@ -912,7 +912,8 @@
       const role = (state.currentUser && state.currentUser.role) || '';
       const canApprove = role === 'MANAGER' && status === 'SUBMITTED';
       // Runs submitted via SDK/file upload land as COMPLETED/FAILED; those should be submittable for approval.
-      const canSubmit = (status === 'DRAFT' || status === 'COMPLETED' || status === 'FAILED');
+      // Managers don't submit - they approve/reject. Only non-managers can submit.
+      const canSubmit = role !== 'MANAGER' && (status === 'COMPLETED' || status === 'FAILED');
       const progressText = (status === 'RUNNING' && run.progress_total)
         ? `${run.progress_completed || 0}/${run.progress_total}`
         : (status === 'RUNNING' ? `${run.progress_completed || 0}` : '');
@@ -981,7 +982,7 @@
             ` : ''}
             ${canSubmit ? `
               <a href="#" class="action-icon submit-run" title="Submit">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
@@ -1221,10 +1222,19 @@
     const langfuseBtn = el('langfuse-btn');
     if (langfuseBtn) langfuseBtn.style.display = 'none';
 
-    // Show Submit button when at least 1 run is selected (bulk submit for approval)
+    // Show Submit button only if:
+    // 1. User is not a manager (managers approve/reject, not submit)
+    // 2. At least 1 run is selected
+    // 3. ALL selected runs are submittable (COMPLETED or FAILED status)
     const publishBtn = el('publish-selected');
     if (publishBtn) {
-      publishBtn.style.display = selectedRuns.length >= 1 ? 'inline-block' : 'none';
+      const role = (state.currentUser && state.currentUser.role) || '';
+      const isManager = role === 'MANAGER';
+      const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
+        const status = r.status || '';
+        return status === 'COMPLETED' || status === 'FAILED';
+      });
+      publishBtn.style.display = (!isManager && allSubmittable) ? 'inline-block' : 'none';
       publishBtn.textContent = 'Submit';
     }
 
@@ -1946,7 +1956,7 @@
 
   function openComparison() {
     if (state.selectedRuns.size < 2) {
-      alert('Select at least 2 runs to compare');
+      showToast('error', 'Cannot Compare', 'Select at least 2 runs to compare');
       return;
     }
     // Store selected runs for comparison page
@@ -2633,10 +2643,33 @@
   async function submitSelectedRuns() {
     if (state.selectedRuns.size === 0) return;
     const selectedRuns = state.flatRuns.filter(r => state.selectedRuns.has(r.file_path));
+
+    // Pre-validate: check which runs can be submitted
+    const submittableStatuses = ['COMPLETED', 'FAILED'];
+    const submittable = [];
+    const notSubmittable = [];
+
+    for (const run of selectedRuns) {
+      const status = run.status || '';
+      if (submittableStatuses.includes(status)) {
+        submittable.push(run);
+      } else {
+        notSubmittable.push(run);
+      }
+    }
+
+    // If some runs can't be submitted, show a single clear error
+    if (notSubmittable.length > 0) {
+      const statuses = [...new Set(notSubmittable.map(r => r.status))].join(', ');
+      showToast('error', 'Cannot Submit', `${notSubmittable.length} run(s) already have status: ${statuses}`);
+      return;
+    }
+
+    // Submit only the valid runs
     let ok = 0;
     let failed = 0;
 
-    for (const run of selectedRuns) {
+    for (const run of submittable) {
       const runId = run.run_id || run.file_path;
       try {
         const res = await fetch(apiUrl(`v1/runs/${encodeURIComponent(runId)}/submit`), { method: 'POST' });

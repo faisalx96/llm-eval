@@ -14,6 +14,7 @@ RunEventType = Literal[
     "item_completed",
     "item_failed",
     "run_completed",
+    "metadata_update",
 ]
 
 
@@ -69,6 +70,15 @@ class RunCompletedPayload(BaseModel):
     final_status: Literal["COMPLETED", "FAILED"] = "COMPLETED"
 
 
+class MetadataUpdatePayload(BaseModel):
+    """Update run metadata mid-flight (e.g., langfuse_url once available)."""
+    langfuse_url: Optional[str] = None
+    langfuse_dataset_id: Optional[str] = None
+    langfuse_run_id: Optional[str] = None
+    # Generic key-value pairs to merge into run_metadata
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
 RunEventPayload = Union[
     RunStartedPayload,
     ItemStartedPayload,
@@ -76,6 +86,7 @@ RunEventPayload = Union[
     ItemCompletedPayload,
     ItemFailedPayload,
     RunCompletedPayload,
+    MetadataUpdatePayload,
 ]
 
 

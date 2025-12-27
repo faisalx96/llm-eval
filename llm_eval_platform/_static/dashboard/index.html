@@ -45,8 +45,6 @@
     <div class="header-meta">
       <a id="admin-link" class="header-btn" href="/admin" title="Admin" style="display:none;">Admin</a>
       <a id="profile-link" class="header-btn" href="#" title="Profile">Profile</a>
-      <span id="last-updated">—</span>
-      <span class="help-trigger"><span class="kbd">?</span> help</span>
     </div>
   </header>
 
@@ -89,13 +87,12 @@
       </div>
       <select id="filter-publish-status" class="filter-select" title="Workflow status">
         <option value="">All Status</option>
-        <option value="DRAFT">Draft</option>
-        <option value="SUBMITTED">Submitted</option>
-        <option value="APPROVED">Approved</option>
-        <option value="REJECTED">Rejected</option>
         <option value="RUNNING">Running</option>
         <option value="COMPLETED">Completed</option>
         <option value="FAILED">Failed</option>
+        <option value="SUBMITTED">Submitted</option>
+        <option value="APPROVED">Approved</option>
+        <option value="REJECTED">Rejected</option>
       </select>
     </div>
   </div>
@@ -220,10 +217,8 @@
       <span id="status-selected">0 selected</span>
     </div>
     <div class="status-right">
-      <span class="status-hint"><span class="kbd">j</span>/<span class="kbd">k</span> navigate</span>
-      <span class="status-hint"><span class="kbd">x</span> select</span>
-      <span class="status-hint"><span class="kbd">c</span> compare</span>
-      <span class="status-hint"><span class="kbd">Enter</span> open</span>
+      <span>Last Updated: <span id="last-updated">—</span></span>
+      <span class="help-trigger"><span class="kbd">?</span> help</span>
     </div>
   </footer>
 

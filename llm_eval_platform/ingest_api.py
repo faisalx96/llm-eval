@@ -18,6 +18,7 @@ from llm_eval_platform.events import (
     ItemCompletedPayload,
     ItemFailedPayload,
     ItemStartedPayload,
+    MetadataUpdatePayload,
     MetricScoredPayload,
     RunCompletedPayload,
     RunEventV1,
@@ -119,7 +120,12 @@ async def ingest_events(
         )
 
         # Apply side-effects into normalized tables
+        # Parse payload explicitly based on event type to avoid Union ambiguity
+        raw_payload = raw.get("payload") or {}
         payload = evt.payload
+        if evt.type == "metadata_update":
+            payload = MetadataUpdatePayload.model_validate(raw_payload)
+
         if isinstance(payload, RunStartedPayload):
             run.external_run_id = payload.external_run_id
             run.task = payload.task
@@ -237,6 +243,21 @@ async def ingest_events(
                     run.run_metadata = {**current, **md}
             except Exception:
                 pass
+
+        elif isinstance(payload, MetadataUpdatePayload):
+            # Update run metadata mid-flight (e.g., langfuse_url once available)
+            current = run.run_metadata if isinstance(run.run_metadata, dict) else {}
+            updates = {}
+            if payload.langfuse_url:
+                updates["langfuse_url"] = payload.langfuse_url
+            if payload.langfuse_dataset_id:
+                updates["langfuse_dataset_id"] = payload.langfuse_dataset_id
+            if payload.langfuse_run_id:
+                updates["langfuse_run_id"] = payload.langfuse_run_id
+            if payload.extra:
+                updates.update(payload.extra)
+            if updates:
+                run.run_metadata = {**current, **updates}
 
         applied += 1
 

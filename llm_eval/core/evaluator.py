@@ -598,13 +598,16 @@ class Evaluator:
             if PlatformClient is None:
                 raise RuntimeError("Platform streaming requires the platform client module")
             client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
+            # Include total_items in metadata for progress tracking
+            start_metadata = dict(self.run_metadata or {})
+            start_metadata["total_items"] = len(items)
             handle = client.create_run(
                 external_run_id=self.run_name,
                 task=self._task_name,
                 dataset=str(self.dataset_name),
                 model=self.model_name,
                 metrics=list(self.metrics.keys()),
-                run_metadata=dict(self.run_metadata or {}),
+                run_metadata=start_metadata,
                 run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
             )
             html_url = handle.live_url
@@ -1149,6 +1152,18 @@ class Evaluator:
                             run_id = getattr(run_obj, 'id', None)
                         self._langfuse_run_id = run_id
                         logger.debug(f"Captured Langfuse run_id: {run_id}, response attrs: {dir(response)}")
+                        # Send langfuse_url to platform as soon as we have it
+                        if self._langfuse_run_id and self._platform_stream:
+                            langfuse_url = self._build_langfuse_url()
+                            if langfuse_url:
+                                try:
+                                    self._platform_stream.emit("metadata_update", {
+                                        "langfuse_url": langfuse_url,
+                                        "langfuse_dataset_id": self._langfuse_dataset_id,
+                                        "langfuse_run_id": self._langfuse_run_id,
+                                    })
+                                except Exception:
+                                    pass
                 except Exception as e:
                     logger.debug(f"Failed to link dataset run item: {e}")
 
@@ -1265,6 +1280,18 @@ class Evaluator:
                                 run_obj = response.run
                                 run_id = getattr(run_obj, 'id', None)
                             self._langfuse_run_id = run_id
+                            # Send langfuse_url to platform as soon as we have it
+                            if self._langfuse_run_id and self._platform_stream:
+                                langfuse_url = self._build_langfuse_url()
+                                if langfuse_url:
+                                    try:
+                                        self._platform_stream.emit("metadata_update", {
+                                            "langfuse_url": langfuse_url,
+                                            "langfuse_dataset_id": self._langfuse_dataset_id,
+                                            "langfuse_run_id": self._langfuse_run_id,
+                                        })
+                                    except Exception:
+                                        pass
                     except Exception:
                         pass
 
