@@ -29,6 +29,42 @@ def _require_admin(principal: Principal) -> None:
         raise HTTPException(status_code=403, detail="Admin only")
 
 
+def _validate_org_unit_for_role(
+    db: Session, org_unit_id: Optional[str], role: UserRole
+) -> None:
+    """Validate that the org unit type matches the role requirements."""
+    if not org_unit_id:
+        return
+
+    # ADMIN doesn't need org unit
+    if role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Admin users should not be assigned to an org unit")
+
+    unit = db.query(OrgUnit).filter(OrgUnit.id == org_unit_id).first()
+    if not unit:
+        raise HTTPException(status_code=400, detail="Org unit not found")
+
+    # Map roles to expected org unit types
+    expected_types = {
+        UserRole.EMPLOYEE: OrgUnitType.TEAM,
+        UserRole.MANAGER: OrgUnitType.TEAM,
+        UserRole.GM: OrgUnitType.DEPARTMENT,
+        UserRole.VP: OrgUnitType.SECTOR,
+    }
+
+    expected_type = expected_types.get(role)
+    if expected_type and unit.type != expected_type:
+        type_names = {
+            OrgUnitType.TEAM: "Team",
+            OrgUnitType.DEPARTMENT: "Department",
+            OrgUnitType.SECTOR: "Sector",
+        }
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role.value} must be assigned to a {type_names.get(expected_type, 'valid org unit')}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Org tree / listing
 # ---------------------------------------------------------------------------
@@ -37,10 +73,33 @@ def _require_admin(principal: Principal) -> None:
 def _org_unit_to_dict(unit: OrgUnit, db: Session) -> Dict[str, Any]:
     """Convert an OrgUnit to a dict with manager info."""
     manager = None
-    if unit.manager_user_id:
+
+    # For teams, use manager_user_id
+    if unit.type == OrgUnitType.TEAM and unit.manager_user_id:
         mgr = db.query(User).filter(User.id == unit.manager_user_id).first()
         if mgr:
             manager = {"id": mgr.id, "email": mgr.email, "display_name": mgr.display_name}
+
+    # For departments, find GM assigned to this department
+    elif unit.type == OrgUnitType.DEPARTMENT:
+        gm = db.query(User).filter(
+            User.team_unit_id == unit.id,
+            User.role == UserRole.GM,
+            User.is_active == True
+        ).first()
+        if gm:
+            manager = {"id": gm.id, "email": gm.email, "display_name": gm.display_name}
+
+    # For sectors, find VP assigned to this sector
+    elif unit.type == OrgUnitType.SECTOR:
+        vp = db.query(User).filter(
+            User.team_unit_id == unit.id,
+            User.role == UserRole.VP,
+            User.is_active == True
+        ).first()
+        if vp:
+            manager = {"id": vp.id, "email": vp.email, "display_name": vp.display_name}
+
     return {
         "id": unit.id,
         "name": unit.name,
@@ -409,8 +468,8 @@ def list_users(
 
 
 class UpdateUserRequest(BaseModel):
+    email: Optional[str] = None
     display_name: Optional[str] = None
-    title: Optional[str] = None
     role: Optional[UserRole] = None
     team_unit_id: Optional[str] = None
     is_active: Optional[bool] = None
@@ -423,31 +482,45 @@ def update_user(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update a user's profile (role, team, title, is_active)."""
+    """Update a user's profile (role, team, is_active)."""
     _require_admin(principal)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if req.email is not None:
+        new_email = req.email.strip().lower()
+        # Check for duplicate email
+        existing = db.query(User).filter(User.email == new_email, User.id != user_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use")
+        user.email = new_email
     if req.display_name is not None:
         user.display_name = req.display_name
-    if req.title is not None:
-        user.title = req.title
 
     # Track old values for manager sync logic
     old_team_id = user.team_unit_id
     old_role = user.role
 
+    # Determine final role and org unit for validation
+    final_role = req.role if req.role is not None else user.role
+    final_org_unit = req.team_unit_id if req.team_unit_id is not None else user.team_unit_id
+
+    # If role is changing to ADMIN, clear org unit
+    if final_role == UserRole.ADMIN and final_org_unit:
+        final_org_unit = None
+
+    # Validate org unit matches role requirements
+    _validate_org_unit_for_role(db, final_org_unit, final_role)
+
     if req.role is not None:
         user.role = req.role
     if req.team_unit_id is not None:
-        # Validate team exists and is a TEAM
-        if req.team_unit_id:
-            team = db.query(OrgUnit).filter(OrgUnit.id == req.team_unit_id, OrgUnit.type == OrgUnitType.TEAM).first()
-            if not team:
-                raise HTTPException(status_code=400, detail="Team not found")
         user.team_unit_id = req.team_unit_id if req.team_unit_id else None
+    # Clear org unit if becoming admin
+    if final_role == UserRole.ADMIN:
+        user.team_unit_id = None
     if req.is_active is not None:
         user.is_active = req.is_active
 

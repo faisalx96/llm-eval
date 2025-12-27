@@ -169,6 +169,137 @@
       color: var(--error);
     }
 
+    /* Admin subtitle */
+    .admin-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* User Stats */
+    .user-stats {
+      display: flex;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .stat-card {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-md);
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .stat-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .stat-card-icon.total { background: rgba(107, 114, 128, 0.15); }
+    .stat-card-icon.admin { background: rgba(168, 85, 247, 0.15); }
+    .stat-card-icon.vp { background: rgba(0, 212, 170, 0.15); }
+    .stat-card-icon.gm { background: rgba(0, 168, 255, 0.15); }
+    .stat-card-icon.manager { background: rgba(251, 191, 36, 0.15); }
+    .stat-card-icon.employee { background: rgba(107, 114, 128, 0.15); }
+
+    .stat-card-content {
+      flex: 1;
+    }
+
+    .stat-card-value {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .stat-card-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* User cell in table */
+    .user-cell {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .user-info {
+      min-width: 0;
+    }
+
+    .user-name {
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .user-name .you-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      background: rgba(0, 212, 170, 0.15);
+      color: var(--accent-primary);
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .user-email {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Status indicator */
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+    }
+
+    .status-indicator .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-indicator.active .status-dot {
+      background: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    }
+
+    .status-indicator.inactive .status-dot {
+      background: var(--text-muted);
+    }
+
     /* Action icons */
     .action-icon {
       display: inline-flex;
@@ -535,22 +666,40 @@
       <!-- Users Page -->
       <section id="users-page" class="admin-page">
         <div class="admin-header">
-          <h1><span class="header-icon">👤</span> Users</h1>
-          <div style="display: flex; gap: var(--space-md);">
+          <div>
+            <h1>Users</h1>
+            <p class="admin-subtitle">Manage user accounts and permissions</p>
+          </div>
+          <div style="display: flex; gap: var(--space-md); align-items: center;">
             <div class="admin-search">
-              <span class="search-icon">⌕</span>
+              <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
               <input type="text" id="user-search" placeholder="Search users..." />
             </div>
-            <button class="btn btn-primary" id="add-user-btn">+ Add User</button>
+            <button class="btn btn-primary" id="add-user-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="8.5" cy="7" r="4"></circle>
+                <line x1="20" y1="8" x2="20" y2="14"></line>
+                <line x1="23" y1="11" x2="17" y2="11"></line>
+              </svg>
+              Add User
+            </button>
           </div>
         </div>
+
+        <!-- User Stats -->
+        <div class="user-stats" id="user-stats"></div>
+
+        <!-- Users Table -->
         <table class="data-table" id="users-table">
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Display Name</th>
+              <th>User</th>
               <th>Role</th>
-              <th>Team</th>
+              <th>Org Unit</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -656,10 +805,6 @@
             <input type="text" id="user-display-name" placeholder="John Doe" />
           </div>
           <div class="form-group">
-            <label for="user-title">Title</label>
-            <input type="text" id="user-title" placeholder="Software Engineer" />
-          </div>
-          <div class="form-group">
             <label for="user-role">Role</label>
             <select id="user-role">
               <option value="EMPLOYEE">Employee</option>
@@ -669,11 +814,11 @@
               <option value="ADMIN">Admin</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="user-team">Team</label>
+          <div class="form-group" id="user-org-unit-group">
+            <label for="user-team" id="user-org-unit-label">Team</label>
             <select id="user-team">
-              <option value="">No Team</option>
-              <!-- Teams populated by JS -->
+              <option value="">None</option>
+              <!-- Org units populated by JS based on role -->
             </select>
           </div>
         </form>

@@ -91,6 +91,16 @@
     };
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function formatDate(isoStr) {
     try {
       const d = new Date(isoStr);
@@ -146,6 +156,15 @@
   function truncateText(text, maxLen = null) {
     // No truncation - return full text
     return text || '';
+  }
+
+  function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
   }
 
   function stripModelProvider(modelName) {
@@ -457,6 +476,12 @@
         break;
       case 'dataset-desc':
         runs.sort((a, b) => b.dataset_name.localeCompare(a.dataset_name));
+        break;
+      case 'owner-asc':
+        runs.sort((a, b) => (a.owner?.display_name || '').localeCompare(b.owner?.display_name || ''));
+        break;
+      case 'owner-desc':
+        runs.sort((a, b) => (b.owner?.display_name || '').localeCompare(a.owner?.display_name || ''));
         break;
       case 'status-asc':
         runs.sort((a, b) => a.error_count - b.error_count);
@@ -852,7 +877,7 @@
     updateTableHeader();
 
     if (runs.length === 0) {
-      const colCount = 9 + metricsToShow.length; // base columns + metrics
+      const colCount = 10 + metricsToShow.length; // base columns + metrics
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -882,6 +907,7 @@
 
       const status = run.status || '';
       const langfuseUrl = run.langfuse_url;
+      const approval = run.approval || null;
 
       const role = (state.currentUser && state.currentUser.role) || '';
       const canApprove = role === 'MANAGER' && status === 'SUBMITTED';
@@ -894,6 +920,15 @@
         ? `${Math.round(run.progress_pct * 100)}%`
         : '';
 
+      // Build status tooltip with approval info
+      let statusTooltip = status;
+      if (approval && approval.decision_by) {
+        statusTooltip = `${status} by ${approval.decision_by.display_name || approval.decision_by.email}`;
+        if (approval.comment) {
+          statusTooltip += `\n"${approval.comment}"`;
+        }
+      }
+
       return `
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}">
@@ -905,7 +940,7 @@
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</span>
-            ${status ? `<span class="status-badge status-${status}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}
+            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}
           </td>
           <td class="col-task">
             <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
@@ -918,6 +953,14 @@
           </td>
           <td class="col-dataset">
             <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
+          </td>
+          <td class="col-owner">
+            ${run.owner ? `
+              <span class="owner-name" title="${run.owner.email}">
+                <span class="owner-avatar">${getInitials(run.owner.display_name)}</span>
+                ${truncateText(run.owner.display_name, 15)}
+              </span>
+            ` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
           <td class="col-success">
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
@@ -958,7 +1001,7 @@
               </a>
             ` : ''}
             <a href="#" class="action-icon delete-run" title="Delete run">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
@@ -1005,37 +1048,17 @@
       });
 
       const approveBtn = tr.querySelector('.approve-run');
-      if (approveBtn) approveBtn.addEventListener('click', async (e) => {
+      if (approveBtn) approveBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const comment = prompt('Approval comment (optional):') || '';
-        try {
-          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/approve`), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ comment }),
-          });
-          await fetchRuns();
-        } catch (err) {
-          console.error('Approve failed', err);
-        }
+        showWorkflowModal('approve', run.run_id, run.task_name);
       });
 
       const rejectBtn = tr.querySelector('.reject-run');
-      if (rejectBtn) rejectBtn.addEventListener('click', async (e) => {
+      if (rejectBtn) rejectBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const comment = prompt('Rejection comment (optional):') || '';
-        try {
-          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/reject`), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ comment }),
-          });
-          await fetchRuns();
-        } catch (err) {
-          console.error('Reject failed', err);
-        }
+        showWorkflowModal('reject', run.run_id, run.task_name);
       });
 
       tr.querySelector('.delete-run').addEventListener('click', (e) => {
@@ -2027,6 +2050,62 @@
         alert(`Deleted ${successCount} run(s). Failed to delete ${errorCount} run(s).`);
       }
     });
+  }
+
+  function showWorkflowModal(action, runId, taskName) {
+    const modal = el('workflow-modal');
+    const titleEl = el('workflow-modal-title');
+    const descEl = el('workflow-modal-description');
+    const runNameEl = el('workflow-run-name');
+    const commentEl = el('workflow-comment');
+    const confirmBtn = el('confirm-workflow-btn');
+
+    const isApprove = action === 'approve';
+    titleEl.textContent = isApprove ? 'Approve Run' : 'Reject Run';
+    descEl.textContent = isApprove
+      ? 'Approve this run to make it visible to leadership.'
+      : 'Reject this run and send it back for review.';
+    runNameEl.textContent = `${taskName} (${runId.substring(0, 8)}...)`;
+    commentEl.value = '';
+    modal.style.display = 'flex';
+
+    // Update button style
+    confirmBtn.className = isApprove ? 'btn btn-primary' : 'btn btn-danger';
+    confirmBtn.textContent = isApprove ? 'Approve' : 'Reject';
+
+    // Remove old listener and add new one
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+    newConfirmBtn.addEventListener('click', async () => {
+      newConfirmBtn.disabled = true;
+      newConfirmBtn.textContent = isApprove ? 'Approving...' : 'Rejecting...';
+
+      try {
+        const endpoint = isApprove ? 'approve' : 'reject';
+        const response = await fetch(apiUrl(`v1/runs/${encodeURIComponent(runId)}/${endpoint}`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comment: commentEl.value || '' }),
+        });
+
+        if (response.ok) {
+          modal.style.display = 'none';
+          await fetchRuns();
+        } else {
+          const data = await response.json();
+          alert(`Failed to ${action}: ` + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        alert(`Failed to ${action}: ` + err.message);
+      } finally {
+        newConfirmBtn.disabled = false;
+        newConfirmBtn.textContent = isApprove ? 'Approve' : 'Reject';
+      }
+    });
+
+    // Focus the comment field
+    setTimeout(() => commentEl.focus(), 100);
   }
 
   function moveFocus(delta) {

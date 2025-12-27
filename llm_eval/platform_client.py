@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import threading
 import time
 import uuid
@@ -9,6 +11,25 @@ from datetime import datetime, timezone
 from queue import Queue, Empty
 from typing import Any, Dict, Optional
 from urllib import request
+
+# Enable debug logging with LLM_EVAL_PLATFORM_DEBUG=1 or LLM_EVAL_PLATFORM_DEBUG=/path/to/file.log
+_DEBUG = os.environ.get("LLM_EVAL_PLATFORM_DEBUG", "")
+_DEBUG_FILE = None
+if _DEBUG and _DEBUG.lower() not in ("0", "false", "no", ""):
+    if _DEBUG.lower() in ("1", "true", "yes"):
+        _DEBUG_FILE = sys.stderr
+    else:
+        # Treat as file path
+        try:
+            _DEBUG_FILE = open(_DEBUG, "a", buffering=1)  # Line-buffered
+        except Exception:
+            _DEBUG_FILE = sys.stderr
+
+
+def _debug(msg: str) -> None:
+    if _DEBUG_FILE:
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{ts}] [platform-stream] {msg}", file=_DEBUG_FILE, flush=True)
 
 
 def _utc_now() -> str:
@@ -73,7 +94,7 @@ class PlatformEventStream:
         self._seq += 1
         return self._seq
 
-    def emit(self, type_: str, payload: Dict[str, Any]) -> None:
+    def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
         evt = {
             "schema_version": 1,
             "event_id": str(uuid.uuid4()),
@@ -83,22 +104,45 @@ class PlatformEventStream:
             "run_id": self.run_id,
             "payload": payload,
         }
-        self._q.put(evt)
+        if sync:
+            # Send synchronously for critical events (e.g., run_completed)
+            _debug(f"sync emit: {type_}")
+            ndjson = json.dumps(evt, ensure_ascii=False) + "\n"
+            for attempt in range(3):
+                try:
+                    _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
+                    _debug(f"sync emit success: {type_}")
+                    return
+                except Exception as e:
+                    _debug(f"sync emit error (attempt {attempt + 1}/3): {e}")
+                    time.sleep(0.5)
+            _debug(f"sync emit FAILED after 3 attempts: {type_}")
+        else:
+            self._q.put(evt)
 
     def close(self) -> None:
         # Request stop and wait for a final flush.
+        qsize = self._q.qsize()
+        _debug(f"close() called, queue size={qsize}, seq={self._seq}")
         self._stop.set()
         try:
             # Wait up to 30 seconds for all events to be flushed
             self._thread.join(timeout=30)
-        except Exception:
-            pass
+            if self._thread.is_alive():
+                _debug("WARNING: flush thread still alive after 30s timeout")
+            else:
+                _debug("flush thread joined successfully")
+        except Exception as e:
+            _debug(f"close() exception: {e}")
 
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
         last_flush = time.time()
         retry_count = 0
         max_retries = 10  # Maximum retries for a failed batch
+        total_sent = 0
+        total_dropped = 0
+        _debug(f"flush loop started for run {self.run_id}")
         while True:
             try:
                 evt = self._q.get(timeout=0.1)  # Check more frequently
@@ -117,24 +161,32 @@ class PlatformEventStream:
                 except Empty:
                     pass
                 should_flush = bool(batch)
+                if should_flush:
+                    _debug(f"final flush: {len(batch)} events")
             if not should_flush and not self._stop.is_set():
                 continue
             try:
                 ndjson = "\n".join(json.dumps(e, ensure_ascii=False) for e in batch) + "\n"
                 _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
+                total_sent += len(batch)
+                _debug(f"flushed {len(batch)} events (total sent: {total_sent})")
                 batch.clear()
                 last_flush = now
                 retry_count = 0  # Reset on success
-            except Exception:
+            except Exception as e:
                 retry_count += 1
+                _debug(f"flush error (attempt {retry_count}/{max_retries}): {e}")
                 if retry_count >= max_retries:
                     # Give up after max retries to prevent hanging
+                    total_dropped += len(batch)
+                    _debug(f"DROPPED {len(batch)} events after {max_retries} retries (total dropped: {total_dropped})")
                     batch.clear()
                     retry_count = 0
                 else:
                     # Best-effort; keep events for retry on next loop.
                     time.sleep(0.5)
             if self._stop.is_set() and not batch:
+                _debug(f"flush loop exiting: sent={total_sent}, dropped={total_dropped}")
                 break
 
 

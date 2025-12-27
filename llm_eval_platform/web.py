@@ -40,6 +40,42 @@ def _check_manager_conflict(
         )
 
 
+def _validate_org_unit_for_role(
+    db: Session, org_unit_id: Optional[str], role: UserRole
+) -> None:
+    """Validate that the org unit type matches the role requirements."""
+    if not org_unit_id:
+        return
+
+    # ADMIN doesn't need org unit
+    if role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Admin users should not be assigned to an org unit")
+
+    unit = db.query(OrgUnit).filter(OrgUnit.id == org_unit_id).first()
+    if not unit:
+        raise HTTPException(status_code=400, detail="Org unit not found")
+
+    # Map roles to expected org unit types
+    expected_types = {
+        UserRole.EMPLOYEE: OrgUnitType.TEAM,
+        UserRole.MANAGER: OrgUnitType.TEAM,
+        UserRole.GM: OrgUnitType.DEPARTMENT,
+        UserRole.VP: OrgUnitType.SECTOR,
+    }
+
+    expected_type = expected_types.get(role)
+    if expected_type and unit.type != expected_type:
+        type_names = {
+            OrgUnitType.TEAM: "Team",
+            OrgUnitType.DEPARTMENT: "Department",
+            OrgUnitType.SECTOR: "Sector",
+        }
+        raise HTTPException(
+            status_code=400,
+            detail=f"{role.value} must be assigned to a {type_names.get(expected_type, 'valid org unit')}"
+        )
+
+
 router = APIRouter()
 
 
@@ -161,7 +197,6 @@ def revoke_api_key(
 class CreateUserRequest(BaseModel):
     email: str
     display_name: str = ""
-    title: str = ""
     role: UserRole = UserRole.EMPLOYEE
     team_unit_id: Optional[str] = None
     is_active: bool = True
@@ -206,11 +241,8 @@ def admin_create_user(
     if existing:
         return {"id": existing.id, "email": existing.email, "existing": True}
 
-    # Validate team if provided
-    if req.team_unit_id:
-        team = db.query(OrgUnit).filter(OrgUnit.id == req.team_unit_id, OrgUnit.type == OrgUnitType.TEAM).first()
-        if not team:
-            raise HTTPException(status_code=400, detail="Team not found")
+    # Validate org unit matches role requirements
+    _validate_org_unit_for_role(db, req.team_unit_id, req.role)
 
     # Prevent duplicate managers per team
     _check_manager_conflict(db, req.team_unit_id, req.role)
@@ -218,7 +250,6 @@ def admin_create_user(
     u = User(
         email=email,
         display_name=req.display_name,
-        title=req.title,
         role=req.role,
         team_unit_id=req.team_unit_id,
         is_active=req.is_active,
@@ -232,7 +263,6 @@ def admin_create_user(
 class UpdateUserRequest(BaseModel):
     email: Optional[str] = None
     display_name: Optional[str] = None
-    title: Optional[str] = None
     role: Optional[UserRole] = None
     team_unit_id: Optional[str] = None
     is_active: Optional[bool] = None
@@ -255,21 +285,28 @@ def admin_update_user(
         user.email = req.email.strip().lower()
     if req.display_name is not None:
         user.display_name = req.display_name
-    if req.title is not None:
-        user.title = req.title
+
+    # Determine final role and org unit for validation
+    final_role = req.role if req.role is not None else user.role
+    final_org_unit = req.team_unit_id if req.team_unit_id is not None else user.team_unit_id
+
+    # If role is changing to ADMIN, clear org unit
+    if final_role == UserRole.ADMIN and final_org_unit:
+        final_org_unit = None
+
+    # Validate org unit matches role requirements
+    _validate_org_unit_for_role(db, final_org_unit, final_role)
+
     if req.role is not None:
         user.role = req.role
     if req.team_unit_id is not None:
-        if req.team_unit_id:
-            team = db.query(OrgUnit).filter(OrgUnit.id == req.team_unit_id, OrgUnit.type == OrgUnitType.TEAM).first()
-            if not team:
-                raise HTTPException(status_code=400, detail="Team not found")
         user.team_unit_id = req.team_unit_id if req.team_unit_id else None
+    # Clear org unit if becoming admin
+    if final_role == UserRole.ADMIN:
+        user.team_unit_id = None
 
     # Prevent duplicate managers per team (check with updated values)
-    final_role = req.role if req.role is not None else user.role
-    final_team = user.team_unit_id  # already updated above if provided
-    _check_manager_conflict(db, final_team, final_role, exclude_user_id=user_id)
+    _check_manager_conflict(db, user.team_unit_id, final_role, exclude_user_id=user_id)
 
     if req.is_active is not None:
         user.is_active = req.is_active

@@ -142,6 +142,36 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
                     scount += 1
             metric_averages[m] = (ssum / scount) if scount else 0.0
 
+    # Get owner user info
+    owner = db.query(User).filter(User.id == run.owner_user_id).first()
+    owner_info = None
+    if owner:
+        owner_info = {
+            "id": owner.id,
+            "email": owner.email,
+            "display_name": owner.display_name or owner.email.split("@")[0],
+        }
+
+    # Get approval info if exists
+    approval_info = None
+    approval = db.query(Approval).filter(Approval.run_id == run.id).first()
+    if approval:
+        decision_by = None
+        if approval.decision_by_user_id:
+            decision_user = db.query(User).filter(User.id == approval.decision_by_user_id).first()
+            if decision_user:
+                decision_by = {
+                    "id": decision_user.id,
+                    "email": decision_user.email,
+                    "display_name": decision_user.display_name or decision_user.email.split("@")[0],
+                }
+        approval_info = {
+            "decision": approval.decision.value if approval.decision else None,
+            "decision_at": _iso(approval.decision_at) if approval.decision_at else None,
+            "decision_by": decision_by,
+            "comment": approval.comment or "",
+        }
+
     return {
         "run_id": run.id,
         "task_name": run.task,
@@ -164,6 +194,8 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
         "langfuse_dataset_id": run.run_metadata.get("langfuse_dataset_id") if isinstance(run.run_metadata, dict) else None,
         "langfuse_run_id": run.run_metadata.get("langfuse_run_id") if isinstance(run.run_metadata, dict) else None,
         "status": run.status,
+        "owner": owner_info,
+        "approval": approval_info,
     }
 
 

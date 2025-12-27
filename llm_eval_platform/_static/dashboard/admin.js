@@ -124,6 +124,11 @@ function setupNavigation() {
 
   // Org unit type change handler
   document.getElementById('org-unit-type')?.addEventListener('change', updateOrgUnitFormVisibility);
+
+  // User role change handler - update org unit dropdown based on role
+  document.getElementById('user-role')?.addEventListener('change', (e) => {
+    updateUserOrgUnitDropdown(e.target.value);
+  });
 }
 
 function setActivePage(page) {
@@ -171,11 +176,68 @@ async function loadUsers() {
 }
 
 function renderUsers(searchQuery = '') {
+  const statsContainer = document.getElementById('user-stats');
   const tbody = document.getElementById('users-tbody');
   if (!tbody) return;
 
+  // Render stats
+  if (statsContainer) {
+    const totalUsers = users.length;
+    const adminCount = users.filter(u => u.role === 'ADMIN').length;
+    const vpCount = users.filter(u => u.role === 'VP').length;
+    const gmCount = users.filter(u => u.role === 'GM').length;
+    const managerCount = users.filter(u => u.role === 'MANAGER').length;
+    const employeeCount = users.filter(u => u.role === 'EMPLOYEE').length;
+
+    statsContainer.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-card-icon total">👥</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${totalUsers}</div>
+          <div class="stat-card-label">Total</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon admin">👑</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${adminCount}</div>
+          <div class="stat-card-label">Admins</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon vp">🎯</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${vpCount}</div>
+          <div class="stat-card-label">VPs</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon gm">📊</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${gmCount}</div>
+          <div class="stat-card-label">GMs</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon manager">📋</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${managerCount}</div>
+          <div class="stat-card-label">Managers</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon employee">👤</div>
+        <div class="stat-card-content">
+          <div class="stat-card-value">${employeeCount}</div>
+          <div class="stat-card-label">Employees</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Filter users
   const filtered = searchQuery
-    ? users.filter(u => 
+    ? users.filter(u =>
         u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (u.display_name || '').toLowerCase().includes(searchQuery.toLowerCase())
       )
@@ -184,24 +246,52 @@ function renderUsers(searchQuery = '') {
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" class="empty-state">
-          <p>No users found</p>
+        <td colspan="5" class="empty-state">
+          <p>${searchQuery ? 'No users match your search' : 'No users found'}</p>
         </td>
       </tr>
     `;
     return;
   }
 
+  // Avatar colors based on role
+  const avatarColors = {
+    ADMIN: '#a855f7',
+    VP: '#00d4aa',
+    GM: '#00a8ff',
+    MANAGER: '#fbbf24',
+    EMPLOYEE: '#6b7280'
+  };
+
   tbody.innerHTML = filtered.map(user => {
-    const team = user.team ? user.team.name : '—';
+    const orgUnit = user.team ? user.team.name : '—';
     const isCurrentUser = currentUser && currentUser.id === user.id;
+    const displayName = user.display_name || user.email.split('@')[0];
+    const initials = getInitials(displayName);
+    const avatarColor = avatarColors[user.role] || avatarColors.EMPLOYEE;
+
     return `
       <tr data-user-id="${user.id}">
-        <td>${escapeHtml(user.email)}</td>
-        <td>${escapeHtml(user.display_name || '—')}</td>
+        <td>
+          <div class="user-cell">
+            <div class="user-avatar" style="background: ${avatarColor};">${initials}</div>
+            <div class="user-info">
+              <div class="user-name">
+                ${escapeHtml(displayName)}
+                ${isCurrentUser ? '<span class="you-badge">You</span>' : ''}
+              </div>
+              <div class="user-email">${escapeHtml(user.email)}</div>
+            </div>
+          </div>
+        </td>
         <td><span class="role-badge role-${user.role}">${user.role}</span></td>
-        <td>${escapeHtml(team)}</td>
-        <td>${user.is_active ? '✓ Active' : '✗ Inactive'}</td>
+        <td>${escapeHtml(orgUnit)}</td>
+        <td>
+          <span class="status-indicator ${user.is_active ? 'active' : 'inactive'}">
+            <span class="status-dot"></span>
+            ${user.is_active ? 'Active' : 'Inactive'}
+          </span>
+        </td>
         <td class="table-actions">
           <a href="#" class="action-icon edit-action" onclick="editUser('${user.id}'); return false;" title="Edit user">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -222,21 +312,63 @@ function renderUsers(searchQuery = '') {
   }).join('');
 }
 
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
+function updateUserOrgUnitDropdown(selectedRole, currentUnitId = '') {
+  const orgUnitSelect = document.getElementById('user-team');
+  const orgUnitLabel = document.getElementById('user-org-unit-label');
+  const orgUnitGroup = document.getElementById('user-org-unit-group');
+
+  // Determine which org unit type to show based on role
+  let unitType, labelText, emptyText;
+  switch (selectedRole) {
+    case 'VP':
+      unitType = 'SECTOR';
+      labelText = 'Sector';
+      emptyText = 'No Sector';
+      break;
+    case 'GM':
+      unitType = 'DEPARTMENT';
+      labelText = 'Department';
+      emptyText = 'No Department';
+      break;
+    case 'ADMIN':
+      // Admins don't need org unit assignment
+      orgUnitGroup.style.display = 'none';
+      return;
+    default: // EMPLOYEE, MANAGER
+      unitType = 'TEAM';
+      labelText = 'Team';
+      emptyText = 'No Team';
+  }
+
+  orgUnitGroup.style.display = 'flex';
+  orgUnitLabel.textContent = labelText;
+
+  // Populate dropdown with filtered org units
+  const filteredUnits = orgUnits.filter(u => u.type === unitType);
+  orgUnitSelect.innerHTML = `<option value="">${emptyText}</option>`;
+  filteredUnits.forEach(unit => {
+    const selected = unit.id === currentUnitId ? 'selected' : '';
+    orgUnitSelect.innerHTML += `<option value="${unit.id}" ${selected}>${escapeHtml(unit.name)}</option>`;
+  });
+}
+
 function openUserModal(userId = null) {
   const modal = document.getElementById('user-modal');
   const title = document.getElementById('user-modal-title');
   const form = document.getElementById('user-form');
-  
+  const roleSelect = document.getElementById('user-role');
+
   form.reset();
   document.getElementById('user-id').value = '';
-  
-  // Populate team dropdown
-  const teamSelect = document.getElementById('user-team');
-  teamSelect.innerHTML = '<option value="">No Team</option>';
-  const teams = orgUnits.filter(u => u.type === 'TEAM');
-  teams.forEach(team => {
-    teamSelect.innerHTML += `<option value="${team.id}">${escapeHtml(team.name)}</option>`;
-  });
 
   if (userId) {
     title.textContent = 'Edit User';
@@ -245,12 +377,14 @@ function openUserModal(userId = null) {
       document.getElementById('user-id').value = user.id;
       document.getElementById('user-email').value = user.email;
       document.getElementById('user-display-name').value = user.display_name || '';
-      document.getElementById('user-title').value = user.title || '';
       document.getElementById('user-role').value = user.role;
-      document.getElementById('user-team').value = user.team?.id || '';
+      updateUserOrgUnitDropdown(user.role, user.team?.id || '');
     }
   } else {
     title.textContent = 'Add User';
+    // Default to EMPLOYEE role
+    roleSelect.value = 'EMPLOYEE';
+    updateUserOrgUnitDropdown('EMPLOYEE');
   }
 
   modal.style.display = 'flex';
@@ -263,7 +397,6 @@ async function saveUser() {
   const data = {
     email: document.getElementById('user-email').value,
     display_name: document.getElementById('user-display-name').value,
-    title: document.getElementById('user-title').value,
     role: document.getElementById('user-role').value,
     team_unit_id: document.getElementById('user-team').value || null
   };

@@ -410,10 +410,6 @@
           <div class="info-value" id="me-name">—</div>
         </div>
         <div class="info-item">
-          <div class="info-label">Title</div>
-          <div class="info-value" id="me-title">—</div>
-        </div>
-        <div class="info-item">
           <div class="info-label">Role</div>
           <div class="info-value" id="me-role">—</div>
         </div>
@@ -545,7 +541,6 @@
 
         el('me-email').textContent = me.email || '—';
         el('me-name').textContent = me.display_name || '—';
-        el('me-title').textContent = me.title || '—';
         el('me-role').textContent = me.role || '—';
         el('me-team').textContent = me.team?.name || '—';
         el('me-department').textContent = me.department?.name || '—';

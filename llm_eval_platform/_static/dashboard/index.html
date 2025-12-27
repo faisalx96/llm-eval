@@ -192,6 +192,7 @@
             <th class="col-task sortable" data-sort="task">TASK</th>
             <th class="col-model sortable" data-sort="model">MODEL</th>
             <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
+            <th class="col-owner sortable" data-sort="owner">OWNER</th>
             <th class="col-success sortable" data-sort="success">SUCCESS</th>
             <!-- Dynamic metric columns inserted here by JS -->
             <th class="col-latency sortable" data-sort="latency">LATENCY</th>
@@ -241,6 +242,28 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('delete-modal').style.display='none'">Cancel</button>
         <button class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Approval/Rejection Modal -->
+  <div class="modal" id="workflow-modal" style="display:none;">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2 id="workflow-modal-title">Approve Run</h2>
+        <button class="modal-close" onclick="document.getElementById('workflow-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="workflow-modal-description">Add an optional comment for this action.</p>
+        <p class="workflow-run-name" id="workflow-run-name"></p>
+        <div style="margin-top: 12px;">
+          <label for="workflow-comment" style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Comment (optional)</label>
+          <textarea id="workflow-comment" rows="3" style="width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; padding: 8px; color: var(--text-primary); font-size: 13px; resize: vertical;" placeholder="Enter a comment..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('workflow-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-workflow-btn">Confirm</button>
       </div>
     </div>
   </div>

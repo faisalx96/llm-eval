@@ -743,6 +743,12 @@ class Evaluator:
         # Finalize remote streaming
         if getattr(self, "_platform_stream", None) is not None:
             try:
+                # First, close the async queue to flush all pending item events
+                self._platform_stream.close()
+            except Exception:
+                pass
+            try:
+                # Then send run_completed synchronously to ensure it gets through
                 # Persist final metadata (e.g., langfuse_url) to the platform by embedding it in the
                 # completion summary. The platform ingest path will merge this into Run.run_metadata.
                 final_run_metadata = dict(result.run_metadata or {})
@@ -758,11 +764,8 @@ class Evaluator:
                             "run_metadata": final_run_metadata,
                         },
                     },
+                    sync=True,  # Send synchronously to guarantee delivery
                 )
-            except Exception:
-                pass
-            try:
-                self._platform_stream.close()
             except Exception:
                 pass
         
