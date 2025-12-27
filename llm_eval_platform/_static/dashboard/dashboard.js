@@ -2462,7 +2462,7 @@
   });
 
   // Header help shortcut
-  $('.header-meta').addEventListener('click', () => {
+  $('.help-trigger')?.addEventListener('click', () => {
     el('help-modal').style.display = 'flex';
   });
 

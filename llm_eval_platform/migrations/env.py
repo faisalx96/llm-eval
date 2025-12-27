@@ -4,6 +4,9 @@ import os
 import sys
 from logging.config import fileConfig
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
@@ -21,10 +24,6 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Prefer env var; fall back to settings default
-    env_url = os.environ.get("LLM_EVAL_DATABASE_URL")
-    if env_url:
-        return env_url
     return PlatformSettings().database_url
 
 

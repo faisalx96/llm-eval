@@ -819,7 +819,7 @@ In addition to the local web UI, `llm-eval` can stream run events to a **deploye
 - the live run UI (served by the platform, not your laptop)
 
 To enable streaming, provide the platform URL and API key (args or env vars):
-- `--platform-api-key` / `LLM_EVAL_PLATFORM_API_KEY`
+- `--platform-api-key` / `LLM_EVAL_API_KEY`
 
 The platform URL is treated as an internal default. For dev/test only, you can override it with:
 - `--platform-url` or `LLM_EVAL_PLATFORM_URL`
@@ -876,7 +876,7 @@ This opens the platform dashboard in your browser where you can view, filter, co
 
 > **Note**: The local dashboard server has been deprecated. All dashboard functionality is now provided by the deployed platform. You'll need:
 > - `LLM_EVAL_PLATFORM_URL` (or use the built-in default)
-> - `LLM_EVAL_PLATFORM_API_KEY` for uploading runs
+> - `LLM_EVAL_API_KEY` for uploading runs
 
 #### Historical Runs View
 
@@ -948,7 +948,7 @@ Visualize model performance across all runs:
 
 ### Dashboard Data Storage
 
-The platform dashboard stores all runs in a central database. When you run evaluations with platform streaming enabled (`LLM_EVAL_PLATFORM_API_KEY`), runs are automatically stored on the platform.
+The platform dashboard stores all runs in a central database. When you run evaluations with platform streaming enabled (`LLM_EVAL_API_KEY`), runs are automatically stored on the platform.
 
 For local development, results are also saved to `llm-eval_results/` directory in your **current working directory**. You can upload these to the platform using:
 

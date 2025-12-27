@@ -53,15 +53,15 @@ def run_submit_command(argv: List[str]) -> None:
     parser = argparse.ArgumentParser(description="Submit an existing results file to the deployed platform")
     parser.add_argument("--file", required=True, help="Path to results file (.csv or .json)")
     parser.add_argument("--platform-url", required=False, default=None, help="Advanced: override platform base URL")
-    parser.add_argument("--api-key", required=False, default=None, help="Platform API key (Bearer token). If omitted, uses LLM_EVAL_PLATFORM_API_KEY")
+    parser.add_argument("--api-key", required=False, default=None, help="Platform API key (Bearer token). If omitted, uses LLM_EVAL_API_KEY")
     parser.add_argument("--task", required=True, help="Task name")
     parser.add_argument("--dataset", required=True, help="Dataset name")
     parser.add_argument("--model", required=False, default="", help="Model name (optional)")
     args = parser.parse_args(argv)
 
-    api_key = args.api_key or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+    api_key = args.api_key or os.getenv("LLM_EVAL_API_KEY")
     if not api_key:
-        raise SystemExit("Missing API key. Provide --api-key or set LLM_EVAL_PLATFORM_API_KEY")
+        raise SystemExit("Missing API key. Provide --api-key or set LLM_EVAL_API_KEY")
 
     file_path = Path(args.file)
     if not file_path.exists():
@@ -530,7 +530,7 @@ Examples:
         else:
             # Deprecation path: if platform is configured, prefer platform live mode.
             purl = args.platform_url or os.getenv("LLM_EVAL_PLATFORM_URL")
-            pkey = args.platform_api_key or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+            pkey = args.platform_api_key or os.getenv("LLM_EVAL_API_KEY")
             if purl and pkey:
                 config["live_mode"] = "auto"
         

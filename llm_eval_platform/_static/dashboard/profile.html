@@ -7,103 +7,141 @@
   <link rel="stylesheet" href="./static/dashboard.css">
   <style>
     .profile-container {
-      padding: var(--space-xl);
+      padding: var(--space-lg) var(--space-xl);
       overflow-y: auto;
       height: calc(100vh - 44px);
     }
 
-    .profile-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: var(--space-md);
-      margin-bottom: var(--space-lg);
+    .section {
+      margin-bottom: var(--space-xl);
     }
 
-    .profile-title {
-      font-size: var(--font-lg);
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .profile-subtitle {
+    .section-title {
       font-size: var(--font-sm);
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    .profile-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: var(--space-lg);
-    }
-
-    .card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-lg);
-    }
-
-    .card-title {
-      font-size: var(--font-md);
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin-bottom: var(--space-md);
     }
 
-    .kv {
+    .info-grid {
       display: grid;
-      grid-template-columns: 120px 1fr;
-      gap: 8px 12px;
-      font-size: var(--font-sm);
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: var(--space-md);
     }
 
-    .kv .k {
+    .info-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-md);
+    }
+
+    .info-label {
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.4px;
-      font-size: var(--font-xs);
-      padding-top: 2px;
+      letter-spacing: 0.3px;
+      margin-bottom: 4px;
     }
 
-    .kv .v {
-      color: var(--text-secondary);
+    .info-value {
+      font-size: var(--font-sm);
+      color: var(--text-primary);
       font-family: var(--font-mono);
       word-break: break-word;
     }
 
-    .row {
+    /* API Keys */
+    .keys-header {
       display: flex;
-      gap: var(--space-sm);
+      justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
-      margin-top: var(--space-md);
+      margin-bottom: var(--space-md);
     }
 
-    .input {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
+    .keys-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .key-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
       border-radius: 6px;
-      padding: 8px 10px;
+      border: 1px solid var(--border-default);
+    }
+
+    .key-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .key-name {
+      font-weight: 500;
       color: var(--text-primary);
       font-size: var(--font-sm);
-      min-width: 220px;
-      outline: none;
     }
 
-    .input::placeholder {
+    .key-meta {
+      font-size: var(--font-xs);
       color: var(--text-muted);
+      display: flex;
+      gap: var(--space-md);
+      margin-top: 2px;
+    }
+
+    .key-prefix {
+      font-family: var(--font-mono);
+      background: var(--bg-elevated);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+    }
+
+    .badge.active {
+      background: rgba(0, 212, 170, 0.15);
+      color: var(--accent-primary);
+    }
+
+    .badge.revoked {
+      background: rgba(255, 100, 100, 0.15);
+      color: #ff6b6b;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-lg);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
     }
 
     .btn {
-      padding: 8px 12px;
+      padding: 6px 12px;
       border-radius: 6px;
       border: 1px solid var(--border-default);
       background: var(--bg-elevated);
       color: var(--text-secondary);
       cursor: pointer;
       font-size: var(--font-sm);
+      font-weight: 500;
+      transition: all 0.15s ease;
     }
 
     .btn.primary {
@@ -119,43 +157,161 @@
 
     .btn.primary:hover {
       background: rgba(0, 212, 170, 0.18);
-      color: #d6fff6;
     }
 
-    .token-box {
-      margin-top: var(--space-md);
-      padding: var(--space-md);
-      border-radius: 8px;
-      border: 1px solid var(--border-default);
-      background: var(--bg-elevated);
-      display: none;
+    .btn.danger {
+      border-color: rgba(255, 100, 100, 0.35);
+      color: #ff6b6b;
     }
 
-    .token-box .label {
+    .btn.danger:hover {
+      background: rgba(255, 100, 100, 0.12);
+    }
+
+    .btn.sm {
+      padding: 4px 10px;
       font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      margin-bottom: 6px;
     }
 
-    .token-box code {
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Create Key Inline */
+    .create-key-box {
+      display: none;
+      background: var(--bg-surface);
+      border: 1px solid var(--accent-primary);
+      border-radius: 6px;
+      padding: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .create-key-box.visible {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: center;
+    }
+
+    .create-key-box .form-input {
+      flex: 1;
+    }
+
+    .form-input {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent-primary);
+    }
+
+    .form-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Token Reveal */
+    .token-reveal-box {
+      display: none;
+      background: var(--bg-surface);
+      border: 1px solid var(--accent-primary);
+      border-radius: 6px;
+      padding: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .token-reveal-box.visible {
       display: block;
+    }
+
+    .token-warning {
+      background: rgba(255, 193, 7, 0.1);
+      border: 1px solid rgba(255, 193, 7, 0.3);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      margin-bottom: var(--space-md);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+    }
+
+    .token-warning strong {
+      color: #ffc107;
+    }
+
+    .token-row {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: center;
+    }
+
+    .token-value {
+      flex: 1;
       font-family: var(--font-mono);
+      font-size: var(--font-sm);
       color: var(--text-primary);
       word-break: break-all;
-      white-space: pre-wrap;
-      line-height: 1.5;
+      background: var(--bg-elevated);
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-default);
     }
 
-    .back-link {
+    .btn.copied {
+      background: rgba(0, 212, 170, 0.2);
+      border-color: var(--accent-primary);
       color: var(--accent-primary);
-      text-decoration: none;
-      font-size: var(--font-sm);
     }
 
-    .back-link:hover {
-      text-decoration: underline;
+    /* Confirm Dialog */
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-overlay.visible {
+      display: flex;
+    }
+
+    .confirm-dialog {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      max-width: 400px;
+      width: 90%;
+    }
+
+    .confirm-title {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+
+    .confirm-message {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      margin-bottom: var(--space-lg);
+    }
+
+    .confirm-actions {
+      display: flex;
+      gap: var(--space-sm);
+      justify-content: flex-end;
     }
   </style>
 </head>
@@ -172,52 +328,83 @@
       </div>
     </div>
     <div class="header-meta">
-      <a class="back-link" href="" id="back-link">← Back to Dashboard</a>
+      <a class="header-btn" href="" id="back-link">← Dashboard</a>
     </div>
   </header>
 
   <main class="profile-container">
-    <div class="profile-header">
-      <div>
-        <div class="profile-title">Your Profile</div>
-        <div class="profile-subtitle">Identity and API keys for ingesting runs</div>
+    <!-- Identity Section -->
+    <div class="section">
+      <div class="section-title">Identity</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Email</div>
+          <div class="info-value" id="me-email">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Name</div>
+          <div class="info-value" id="me-name">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Title</div>
+          <div class="info-value" id="me-title">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Role</div>
+          <div class="info-value" id="me-role">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Team</div>
+          <div class="info-value" id="me-team">—</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Department</div>
+          <div class="info-value" id="me-department">—</div>
+        </div>
       </div>
     </div>
 
-    <div class="profile-grid">
-      <section class="card">
-        <div class="card-title">Identity</div>
-        <div class="kv">
-          <div class="k">Email</div><div class="v" id="me-email">—</div>
-          <div class="k">Name</div><div class="v" id="me-name">—</div>
-          <div class="k">Title</div><div class="v" id="me-title">—</div>
-          <div class="k">Role</div><div class="v" id="me-role">—</div>
-          <div class="k">User ID</div><div class="v" id="me-id">—</div>
-        </div>
-      </section>
+    <!-- API Keys Section -->
+    <div class="section">
+      <div class="keys-header">
+        <div class="section-title" style="margin-bottom: 0;">API Keys</div>
+        <button class="btn primary" id="new-key-btn">+ New Key</button>
+      </div>
 
-      <section class="card">
-        <div class="card-title">API Key</div>
-        <div style="color: var(--text-muted); font-size: var(--font-sm); line-height: 1.5;">
-          Create a key to authenticate the SDK / ingestion API (shown once).
-        </div>
+      <div class="create-key-box" id="create-key-box">
+        <input type="text" class="form-input" id="key-name" placeholder="Key name (e.g., laptop, ci-pipeline)">
+        <button class="btn" id="cancel-create-btn">Cancel</button>
+        <button class="btn primary" id="confirm-create-btn">Create</button>
+      </div>
 
-        <div class="row">
-          <input class="input" id="key-name" placeholder="Key name (e.g., laptop)" />
-          <input class="input" id="key-scopes" placeholder="Scopes (comma-separated) e.g., runs:write,runs:read" />
-          <button class="btn primary" id="create-key-btn">Create key</button>
+      <div class="token-reveal-box" id="token-reveal-box">
+        <div class="token-warning">
+          <strong>⚠️ Save now</strong> — this key won't be shown again.
         </div>
+        <div class="token-row">
+          <div class="token-value" id="token-value">—</div>
+          <button class="btn primary" id="copy-token-btn">Copy</button>
+          <button class="btn" id="done-btn">Done</button>
+        </div>
+      </div>
 
-        <div class="token-box" id="token-box">
-          <div class="label">Token (copy + store securely)</div>
-          <code id="token-value">—</code>
-          <div class="row">
-            <button class="btn" id="copy-token-btn">Copy</button>
-          </div>
-        </div>
-      </section>
+      <div id="keys-container">
+        <div class="empty-state" id="keys-empty">No API keys yet</div>
+        <div class="keys-list" id="keys-list"></div>
+      </div>
     </div>
   </main>
+
+  <div class="confirm-overlay" id="confirm-overlay">
+    <div class="confirm-dialog">
+      <div class="confirm-title" id="confirm-title">Confirm</div>
+      <div class="confirm-message" id="confirm-message">Are you sure?</div>
+      <div class="confirm-actions">
+        <button class="btn" id="confirm-cancel-btn">Cancel</button>
+        <button class="btn danger" id="confirm-ok-btn">Revoke</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     (() => {
@@ -238,10 +425,14 @@
       }
 
       const el = (id) => document.getElementById(id);
-
-      // Fix back link for subpath/proxy deployments
       const back = el('back-link');
       if (back) back.href = apiUrl('');
+
+      function formatDate(isoStr) {
+        if (!isoStr) return '—';
+        const d = new Date(isoStr);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
 
       async function loadMe() {
         const res = await fetch(apiUrl('v1/me'));
@@ -252,18 +443,121 @@
         el('me-name').textContent = me.display_name || '—';
         el('me-title').textContent = me.title || '—';
         el('me-role').textContent = me.role || '—';
-        el('me-id').textContent = me.id || '—';
+        el('me-team').textContent = me.team?.name || '—';
+        el('me-department').textContent = me.department?.name || '—';
       }
 
-      async function createKey() {
-        const name = (el('key-name').value || 'default').trim();
-        const scopesStr = (el('key-scopes').value || 'runs:write,runs:read').trim();
-        const scopes = scopesStr
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean);
+      async function loadKeys() {
+        const res = await fetch(apiUrl('v1/me/api-keys'));
+        if (!res.ok) throw new Error('Failed to load API keys');
+        const data = await res.json();
+        renderKeys(data.api_keys || []);
+      }
 
-        const btn = el('create-key-btn');
+      function renderKeys(keys) {
+        const list = el('keys-list');
+        const empty = el('keys-empty');
+
+        if (keys.length === 0) {
+          list.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+
+        empty.style.display = 'none';
+        list.innerHTML = keys.map(k => {
+          const isRevoked = !!k.revoked_at;
+          return `
+            <div class="key-item">
+              <div class="key-info">
+                <div class="key-name">${escapeHtml(k.name || 'Unnamed')}</div>
+                <div class="key-meta">
+                  <span class="key-prefix">${escapeHtml(k.prefix)}•••</span>
+                  <span>${formatDate(k.created_at)}</span>
+                </div>
+              </div>
+              <span class="badge ${isRevoked ? 'revoked' : 'active'}">${isRevoked ? 'Revoked' : 'Active'}</span>
+              ${isRevoked ? '' : `<button class="btn sm danger revoke-btn" data-id="${k.id}">Revoke</button>`}
+            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('.revoke-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            showConfirm('Revoke API Key', 'This key will stop working immediately. This cannot be undone.', () => revokeKey(id));
+          });
+        });
+      }
+
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      const confirmOverlay = el('confirm-overlay');
+      let confirmCallback = null;
+
+      function showConfirm(title, message, onConfirm) {
+        el('confirm-title').textContent = title;
+        el('confirm-message').textContent = message;
+        confirmCallback = onConfirm;
+        confirmOverlay.classList.add('visible');
+      }
+
+      function hideConfirm() {
+        confirmOverlay.classList.remove('visible');
+        confirmCallback = null;
+      }
+
+      el('confirm-cancel-btn').addEventListener('click', hideConfirm);
+      el('confirm-ok-btn').addEventListener('click', async () => {
+        if (confirmCallback) await confirmCallback();
+        hideConfirm();
+      });
+      confirmOverlay.addEventListener('click', (e) => {
+        if (e.target === confirmOverlay) hideConfirm();
+      });
+
+      async function revokeKey(id) {
+        const res = await fetch(apiUrl(`v1/me/api-keys/${id}`), { method: 'DELETE' });
+        if (!res.ok) {
+          alert('Failed to revoke: ' + await res.text());
+          return;
+        }
+        await loadKeys();
+      }
+
+      const createBox = el('create-key-box');
+      const tokenBox = el('token-reveal-box');
+      const newKeyBtn = el('new-key-btn');
+
+      function showCreateBox() {
+        createBox.classList.add('visible');
+        tokenBox.classList.remove('visible');
+        newKeyBtn.style.display = 'none';
+        el('key-name').value = '';
+        el('key-name').focus();
+      }
+
+      function hideAllBoxes() {
+        createBox.classList.remove('visible');
+        tokenBox.classList.remove('visible');
+        newKeyBtn.style.display = '';
+      }
+
+      newKeyBtn.addEventListener('click', showCreateBox);
+      el('cancel-create-btn').addEventListener('click', hideAllBoxes);
+      el('done-btn').addEventListener('click', () => {
+        hideAllBoxes();
+        loadKeys();
+      });
+
+      el('confirm-create-btn').addEventListener('click', async () => {
+        const name = (el('key-name').value || 'default').trim();
+        const scopes = ['runs:write', 'runs:read'];
+        const btn = el('confirm-create-btn');
         btn.disabled = true;
         btn.textContent = 'Creating...';
 
@@ -273,36 +567,39 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, scopes }),
           });
-          if (!res.ok) {
-            const msg = await res.text();
-            throw new Error(msg || 'Create failed');
-          }
+          if (!res.ok) throw new Error(await res.text() || 'Create failed');
           const data = await res.json();
 
+          createBox.classList.remove('visible');
+          tokenBox.classList.add('visible');
           el('token-value').textContent = data.token || '—';
-          el('token-box').style.display = 'block';
+          el('copy-token-btn').textContent = 'Copy';
+          el('copy-token-btn').classList.remove('copied');
+        } catch (err) {
+          alert('Failed to create API key: ' + err.message);
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Create key';
-        }
-      }
-
-      el('create-key-btn').addEventListener('click', () => createKey().catch(err => {
-        console.error(err);
-        alert('Failed to create API key. Check server logs / auth headers.');
-      }));
-
-      el('copy-token-btn').addEventListener('click', async () => {
-        const text = el('token-value').textContent || '';
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          // Fallback: best-effort prompt
-          window.prompt('Copy token:', text);
+          btn.textContent = 'Create';
         }
       });
 
-      loadMe().catch(err => {
+      el('copy-token-btn').addEventListener('click', async () => {
+        const text = el('token-value').textContent || '';
+        const btn = el('copy-token-btn');
+        try {
+          await navigator.clipboard.writeText(text);
+          btn.classList.add('copied');
+          btn.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.textContent = 'Copy';
+          }, 2000);
+        } catch {
+          window.prompt('Copy this token:', text);
+        }
+      });
+
+      Promise.all([loadMe(), loadKeys()]).catch(err => {
         console.error(err);
         alert('Failed to load profile. Are you authenticated?');
       });
@@ -310,5 +607,3 @@
   </script>
 </body>
 </html>
-
-

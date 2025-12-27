@@ -580,7 +580,7 @@ class Evaluator:
         # Local UIServer has been removed - all live viewing is via the platform
         html_url = None
         self._platform_stream = None
-        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_PLATFORM_API_KEY")
+        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_API_KEY")
         live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
 
         # Platform streaming is now required for live UI
@@ -588,7 +588,7 @@ class Evaluator:
             import warnings
             warnings.warn(
                 "live_mode='local' is deprecated - local UIServer has been removed. "
-                "Please configure platform streaming (LLM_EVAL_PLATFORM_API_KEY) or use TUI only.",
+                "Please configure platform streaming (LLM_EVAL_API_KEY) or use TUI only.",
                 DeprecationWarning,
                 stacklevel=2,
             )

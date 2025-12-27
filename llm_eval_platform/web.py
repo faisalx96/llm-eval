@@ -115,6 +115,28 @@ def create_api_key(
     return CreateApiKeyResponse(id=row.id, prefix=row.prefix, token=token)
 
 
+@router.delete("/v1/me/api-keys/{key_id}")
+def revoke_api_key(
+    key_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Revoke an API key (soft delete)."""
+    from datetime import datetime
+    key = (
+        db.query(ApiKey)
+        .filter(ApiKey.id == key_id, ApiKey.user_id == principal.user.id)
+        .first()
+    )
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    if key.revoked_at:
+        raise HTTPException(status_code=400, detail="API key already revoked")
+    key.revoked_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "id": key_id}
+
+
 class CreateUserRequest(BaseModel):
     email: str
     display_name: str = ""

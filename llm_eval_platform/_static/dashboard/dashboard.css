@@ -121,6 +121,36 @@ body {
   border-color: var(--border-default);
 }
 
+.header-meta .header-btn {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: var(--font-sm);
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.header-meta .header-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.header-meta .help-trigger {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.header-meta .help-trigger:hover {
+  color: var(--text-secondary);
+}
+
 .logo {
   display: flex;
   align-items: center;

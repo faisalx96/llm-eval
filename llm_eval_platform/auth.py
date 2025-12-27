@@ -74,7 +74,7 @@ def require_ui_principal(
         email = "dev@local"
         user = db.query(User).filter(User.email == email).first()
         if not user:
-            user = User(email=email, display_name="Dev User", role=UserRole.VP)
+            user = User(email=email, display_name="Dev User", role=UserRole.ADMIN)
             db.add(user)
             db.commit()
             db.refresh(user)

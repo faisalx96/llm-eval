@@ -62,7 +62,7 @@ Each user belongs to exactly one Team, which determines their visibility and app
 ### From the SDK (Live Streaming - Recommended)
 Run your evaluation with an API key:
 ```bash
-export LLM_EVAL_PLATFORM_API_KEY=your-api-key
+export LLM_EVAL_API_KEY=your-api-key
 llm-eval --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match
 ```
 

@@ -259,10 +259,44 @@ def assign_team_manager(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
+    old_manager_id = team.manager_user_id
+
     if req.manager_user_id:
         user = db.query(User).filter(User.id == req.manager_user_id).first()
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
+
+        # Check if user is already manager of another team
+        other_team = (
+            db.query(OrgUnit)
+            .filter(OrgUnit.manager_user_id == req.manager_user_id, OrgUnit.id != team_id)
+            .first()
+        )
+        if other_team:
+            raise HTTPException(
+                status_code=400,
+                detail=f"User is already manager of team '{other_team.name}'. Remove them first.",
+            )
+
+        # Update user's role and team assignment
+        user.role = UserRole.MANAGER
+        user.team_unit_id = team_id
+
+    # Clear old manager's role if they're being replaced
+    if old_manager_id and old_manager_id != req.manager_user_id:
+        old_manager = db.query(User).filter(User.id == old_manager_id).first()
+        if old_manager and old_manager.role == UserRole.MANAGER:
+            old_manager.role = UserRole.EMPLOYEE
+
+    # Also clear any other users who have MANAGER role on this team (data consistency fix)
+    other_managers = (
+        db.query(User)
+        .filter(User.team_unit_id == team_id, User.role == UserRole.MANAGER)
+        .all()
+    )
+    for mgr in other_managers:
+        if mgr.id != req.manager_user_id:
+            mgr.role = UserRole.EMPLOYEE
 
     team.manager_user_id = req.manager_user_id
     db.commit()
@@ -400,6 +434,11 @@ def update_user(
         user.display_name = req.display_name
     if req.title is not None:
         user.title = req.title
+
+    # Track old values for manager sync logic
+    old_team_id = user.team_unit_id
+    old_role = user.role
+
     if req.role is not None:
         user.role = req.role
     if req.team_unit_id is not None:
@@ -411,6 +450,56 @@ def update_user(
         user.team_unit_id = req.team_unit_id if req.team_unit_id else None
     if req.is_active is not None:
         user.is_active = req.is_active
+
+    # Sync manager relationship with team's manager_user_id
+    new_role = user.role
+    new_team_id = user.team_unit_id
+
+    # If user is becoming a manager of a team, update the team's manager_user_id
+    if new_role == UserRole.MANAGER and new_team_id:
+        # Check if user is already manager of another team
+        other_team = (
+            db.query(OrgUnit)
+            .filter(OrgUnit.manager_user_id == user_id, OrgUnit.id != new_team_id)
+            .first()
+        )
+        if other_team:
+            raise HTTPException(
+                status_code=400,
+                detail=f"User is already manager of team '{other_team.name}'. Remove them first.",
+            )
+
+        # Check if another user with MANAGER role is already assigned to this team
+        existing_manager = (
+            db.query(User)
+            .filter(User.team_unit_id == new_team_id, User.role == UserRole.MANAGER, User.id != user_id)
+            .first()
+        )
+        if existing_manager:
+            mgr_name = existing_manager.display_name or existing_manager.email
+            raise HTTPException(
+                status_code=400,
+                detail=f"Team already has a manager: {mgr_name}. Remove them first.",
+            )
+
+        team = db.query(OrgUnit).filter(OrgUnit.id == new_team_id).first()
+        if team:
+            # Check if team already has a different manager (via manager_user_id)
+            if team.manager_user_id and team.manager_user_id != user_id:
+                existing_mgr = db.query(User).filter(User.id == team.manager_user_id).first()
+                mgr_name = existing_mgr.display_name or existing_mgr.email if existing_mgr else "another user"
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Team '{team.name}' already has a manager: {mgr_name}. Remove them first.",
+                )
+            team.manager_user_id = user_id
+
+    # If user was a manager and is leaving that role or team, clear old team's manager_user_id
+    if old_role == UserRole.MANAGER and old_team_id:
+        if new_role != UserRole.MANAGER or new_team_id != old_team_id:
+            old_team = db.query(OrgUnit).filter(OrgUnit.id == old_team_id).first()
+            if old_team and old_team.manager_user_id == user_id:
+                old_team.manager_user_id = None
 
     db.commit()
     db.refresh(user)

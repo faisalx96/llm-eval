@@ -96,15 +96,16 @@ function setActivePage(page) {
 
   // Update hash
   window.location.hash = page;
+
+  // Render the page content
+  if (page === 'users') renderUsers();
+  else if (page === 'org') renderOrgTree();
+  else if (page === 'settings') renderSettings();
 }
 
 function renderCurrentPage() {
   const page = window.location.hash.substring(1) || 'users';
   setActivePage(page);
-  
-  if (page === 'users') renderUsers();
-  else if (page === 'org') renderOrgTree();
-  else if (page === 'settings') renderSettings();
 }
 
 // --- Users ---
@@ -112,10 +113,15 @@ async function loadUsers() {
   try {
     const res = await fetch('/v1/admin/users');
     if (res.ok) {
-      users = await res.json();
+      const data = await res.json();
+      users = data.users || [];
+    } else {
+      console.error('Failed to load users:', res.status, await res.text());
+      showToast('error', 'Error', 'Failed to load users');
     }
   } catch (e) {
     console.error('Failed to load users:', e);
+    showToast('error', 'Error', 'Failed to load users');
   }
 }
 
@@ -208,7 +214,7 @@ async function saveUser() {
     let res;
     if (userId) {
       res = await fetch(`/v1/admin/users/${userId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
@@ -223,7 +229,7 @@ async function saveUser() {
     if (res.ok) {
       showToast('success', 'Success', userId ? 'User updated' : 'User created');
       closeModal('user-modal');
-      await loadUsers();
+      await Promise.all([loadUsers(), loadOrgUnits()]);
       renderUsers();
     } else {
       const err = await res.json();
