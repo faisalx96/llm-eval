@@ -6,8 +6,9 @@
     const pathname = loc.pathname;
     const runIndex = pathname.indexOf('/run/');
     if (runIndex >= 0) {
-      // Base is everything before /run/
-      return loc.origin + pathname.substring(0, runIndex + 1);
+      // Base is everything BEFORE /run/, plus trailing slash
+      // runIndex is the position of '/' in '/run/', so substring(0, runIndex) gives us the prefix
+      return loc.origin + pathname.substring(0, runIndex) + '/';
     }
     // Fallback: use directory of current path
     let base = pathname;
@@ -31,9 +32,20 @@
     const urlPath = window.location.pathname;
     const runIndex = urlPath.indexOf('/run/');
     if (runIndex >= 0) {
-      const encodedPath = urlPath.slice(runIndex + 5); // Remove everything up to and including '/run/'
-      if (encodedPath) {
-        return decodeURIComponent(encodedPath);
+      let filePath = urlPath.slice(runIndex + 5); // Remove everything up to and including '/run/'
+      if (filePath) {
+        // Decode URL encoding - may need multiple passes if double-encoded
+        try {
+          let decoded = decodeURIComponent(filePath);
+          while (decoded !== filePath && decoded.includes('%')) {
+            filePath = decoded;
+            decoded = decodeURIComponent(filePath);
+          }
+          return decoded;
+        } catch (e) {
+          console.error('[qym] Failed to decode file path:', e);
+          return filePath;
+        }
       }
     }
     // Fallback to sessionStorage
@@ -873,15 +885,19 @@
 
   function bootstrapDashboard(filePath) {
     // Dashboard mode: fetch historical run data from dashboard API
-    fetch(apiUrl('api/runs/' + encodeURIComponent(filePath)))
+    const url = apiUrl('api/runs/' + encodeURIComponent(filePath));
+    console.log('[qym] Dashboard mode - fetching:', url, 'filePath:', filePath);
+    fetch(url)
       .then(r => r.json())
       .then(data => {
+        console.log('[qym] API response:', data);
         if (data.error) {
           console.error('Failed to load run:', data.error);
           return;
         }
         const run = data.run || {};
         const snap = data.snapshot || { rows: [], stats: {} };
+        console.log('[qym] Run:', run, 'Snapshot rows:', snap.rows?.length);
 
         state.run = run;
         state.snapshot = snap;
@@ -925,6 +941,7 @@
   }
 
   // Choose bootstrap mode
+  console.log('[qym] Bootstrap check - isDashboardMode:', isDashboardMode, 'dashboardRunFile:', dashboardRunFile, 'BASE_URL:', BASE_URL);
   if (isDashboardMode && dashboardRunFile) {
     bootstrapDashboard(dashboardRunFile);
   } else {

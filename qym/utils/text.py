@@ -20,3 +20,4 @@ def arabic_display(text: str) -> str:
     reshaped = arabic_reshaper.reshape(text)
     return get_display(reshaped)
 
+

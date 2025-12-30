@@ -6,7 +6,7 @@ Evaluate any LLM task with just 3 lines of code:
     results = evaluator.run()
 """
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner

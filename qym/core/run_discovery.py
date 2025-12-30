@@ -275,7 +275,7 @@ class RunDiscovery:
                     model_name=actual_model,
                     dataset_name=dataset_name,
                     timestamp=timestamp,
-                    file_path=str(file_path),
+                    file_path=str(file_path.resolve()),  # Use absolute path
                     metrics=metrics,
                     total_items=total_items,
                     success_count=success_count,
@@ -434,8 +434,30 @@ class RunDiscovery:
     def get_run_data(self, file_path: str) -> Dict[str, Any]:
         """Load full run data and transform to UI snapshot format."""
         path = Path(file_path)
+        
+        # Try multiple path resolutions:
+        # 1. As-is (could be absolute or relative to CWD)
+        # 2. Relative to results_dir parent (if file_path includes results_dir name)
+        # 3. As a subpath of results_dir
         if not path.exists():
-            return {"error": "File not found"}
+            # Try resolving relative to results_dir's parent
+            if self.results_dir.exists():
+                # If file_path is like "qym_results/task/model/date/file.csv"
+                # and results_dir is "qym_results", try parent/file_path
+                alt_path = self.results_dir.parent / file_path
+                if alt_path.exists():
+                    path = alt_path
+                else:
+                    # Try as subpath: results_dir / (file_path minus results_dir name)
+                    results_name = self.results_dir.name
+                    if file_path.startswith(results_name + "/"):
+                        sub_path = file_path[len(results_name) + 1:]
+                        alt_path = self.results_dir / sub_path
+                        if alt_path.exists():
+                            path = alt_path
+        
+        if not path.exists():
+            return {"error": f"File not found: {file_path}"}
 
         # Handle xlsx files
         if path.suffix.lower() == ".xlsx":

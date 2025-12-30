@@ -298,7 +298,10 @@ class DashboardServer:
                 # API: Get single run data
                 if path.startswith("/api/runs/"):
                     encoded_path = path[10:]  # Remove '/api/runs/'
+                    # Decode URL encoding - may need multiple passes if double-encoded
                     file_path = unquote(encoded_path)
+                    while '%' in file_path and file_path != unquote(file_path):
+                        file_path = unquote(file_path)
                     data = server.discovery.get_run_data(file_path)
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(

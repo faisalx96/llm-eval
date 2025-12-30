@@ -4,15 +4,36 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Evaluation Results</title>
-  <link rel="icon" type="image/png" href="/ui/qym_icon.png">
-  <link rel="stylesheet" href="/ui/app.css" />
+  <script>
+    // Set base URL dynamically for reverse proxy and /run/* path compatibility
+    (function() {
+      var base = document.createElement('base');
+      var loc = window.location;
+      var path = loc.pathname;
+      var runIdx = path.indexOf('/run/');
+      if (runIdx >= 0) {
+        // Dashboard mode: /run/{path} → base is everything BEFORE /run/, plus trailing slash
+        // The '/' at runIdx is the start of '/run/', so we want substring up to runIdx, then add '/'
+        base.href = loc.origin + path.substring(0, runIdx) + '/';
+      } else {
+        // Live mode: page is at / or /index.html → use directory
+        var dir = path.endsWith('/') ? path : path.substring(0, path.lastIndexOf('/') + 1) || '/';
+        base.href = loc.origin + dir;
+      }
+      // Prepend to head so it's before any link/script tags
+      document.head.insertBefore(base, document.head.firstChild);
+      console.log('[qym] Base URL set to:', base.href);
+    })();
+  </script>
+  <link rel="icon" type="image/png" href="ui/qym_icon.png">
+  <link rel="stylesheet" href="ui/app.css" />
 </head>
 <body>
   <div class="container">
     <header class="header" role="banner">
       <div class="header-row">
         <div class="header-brand">
-          <img src="/ui/qym_text.png" alt="qym" class="header-text-logo" />
+          <img src="ui/qym_text.png" alt="qym" class="header-text-logo" />
           <h1>Evaluation Results</h1>
         </div>
         <div class="header-tools" role="group" aria-label="Actions">
@@ -141,7 +162,7 @@
       </div>
     </div>
   </div>
-  <script src="/ui/app.js"></script>
+  <script src="ui/app.js"></script>
 </body>
   
 </html>
