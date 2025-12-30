@@ -44,6 +44,8 @@ setup(
         "pydantic>=2.0.0",
         "rich>=13.0.0",  # For nice progress bars
         "python-dotenv>=0.19.0",  # For environment variables
+        "python-bidi>=0.4.2",  # For RTL/Arabic text rendering in TUI
+        "arabic-reshaper>=3.0.0",  # For Arabic letter shaping
         "openpyxl>=3.0.0",  # For Excel export
     ],
     extras_require={

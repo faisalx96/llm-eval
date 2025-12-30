@@ -117,6 +117,12 @@ body {
   color: var(--accent-primary);
 }
 
+.logo-img {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
 .logo-text {
   font-family: var(--font-mono);
   font-size: var(--font-md);

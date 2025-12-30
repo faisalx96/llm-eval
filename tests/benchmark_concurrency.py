@@ -1,5 +1,5 @@
 """
-Concurrency Benchmark for قيِّم (qym)
+Concurrency Benchmark for qym
 
 Measures actual parallelism loss due to synchronous blocking in the evaluation pipeline.
 
@@ -486,7 +486,7 @@ def print_result_table(results: List[BenchmarkResult]):
 def run_full_benchmark(dataset_name: str = "saudi-qa-verification-v1"):
     """Run the complete benchmark suite."""
 
-    print_header("قيِّم CONCURRENCY BENCHMARK")
+    print_header("qym CONCURRENCY BENCHMARK")
     print(f"Dataset: {dataset_name}")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 

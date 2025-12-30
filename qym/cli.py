@@ -14,6 +14,7 @@ from rich.console import Console
 from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner
 from .core.config import RunSpec
+from .utils.text import arabic_display
 
 from .core.dataset import CsvDataset
 
@@ -205,7 +206,8 @@ def main():
         return
 
     parser = argparse.ArgumentParser(
-        description="قيِّم - Evaluate LLM tasks using Langfuse datasets",
+        # Use arabic_display() for proper RTL text rendering in terminals
+        description=f"{arabic_display('أداة قيِّم')} - Evaluate LLM tasks using Langfuse datasets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

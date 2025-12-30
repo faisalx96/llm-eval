@@ -1,4 +1,4 @@
-# قيِّم User Guide
+# qym (قيِّم) User Guide
 
 A step-by-step guide to evaluating your LLM applications. Follow this guide carefully to avoid common errors.
 
@@ -30,7 +30,7 @@ pip install qym
 
 ### Step 2: Set up Langfuse credentials (optional for CSV datasets)
 
-قيِّم integrates with [Langfuse](https://langfuse.com) for dataset storage and tracing. If you're using a **local CSV file** as your dataset, Langfuse credentials are optional—evaluations will run without tracing.
+qym integrates with [Langfuse](https://langfuse.com) for dataset storage and tracing. If you're using a **local CSV file** as your dataset, Langfuse credentials are optional—evaluations will run without tracing.
 
 Create a `.env` file in your project root:
 
@@ -59,11 +59,11 @@ print("Connected to Langfuse!")  # If no error, you're ready
 
 ## 2. Understanding the Basics
 
-### How قيِّم Works
+### How qym Works
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                          قيِّم                               │
+│                        qym (قيِّم)                            │
 │                                                             │
 │   Dataset          Your Task         Metrics                │
 │   (Langfuse)   →   Function    →    (Scoring)   →  Results  │
@@ -87,7 +87,7 @@ print("Connected to Langfuse!")  # If no error, you're ready
 
 ## 3. Writing Your Task Function
 
-Your task function is the code being evaluated. قيِّم uses **smart argument resolution** to call your function flexibly.
+Your task function is the code being evaluated. qym uses **smart argument resolution** to call your function flexibly.
 
 ### How Input is Passed to Your Task
 
@@ -633,7 +633,7 @@ When you run, you'll see:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ قيِّم Dashboard                              Web UI: http://... │
+│ qym Dashboard                               Web UI: http://... │
 ├─────────────────────────────────────────────────────────────┤
 │ Run: my-first-eval                                          │
 │ Dataset: my-qa-dataset (100 items)                          │
@@ -784,7 +784,7 @@ qym --runs-config experiments.json
 
 ## 9. Dashboard & Web UI
 
-قيِّم provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
+qym provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
 
 ### Terminal UI (TUI)
 

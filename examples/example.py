@@ -48,7 +48,6 @@ def ai_assistant(question: str, model: Optional[str] = None, trace_id: Optional[
     delay = random.randint(3, 10)  # Simulate processing time
     time.sleep(delay)
     prefix = f"[{model}]" if model else "[default-model]"
-    x = 1/0
     if "capital of france" in question_lower:
         response = f"{prefix} Paris is the capital and largest city of France."
     elif "python" in question_lower:
@@ -91,7 +90,7 @@ def main():
         # config={"run_name": "saudi qa"}
     )
     
-    results_mixed = evaluator_mixed.run(save_format="xlsx")
+    results_mixed = evaluator_mixed.run(save_format="csv")
     # if isinstance(results_mixed, list):
     #     for res in results_mixed:
     #         res.print_summary()

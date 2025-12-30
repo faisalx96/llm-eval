@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>قيِّم Eval UI</title>
-  <link rel="stylesheet" href="../ui/app.css" />
+  <title>Evaluation Results</title>
+  <link rel="stylesheet" href="/ui/app.css" />
 </head>
 <body>
   <div class="container">
     <header class="header" role="banner">
       <div class="header-row">
-        <h1>قيِّم Evaluation Results</h1>
+        <div class="header-brand">
+          <img src="/ui/qym_logo.png" alt="qym" class="header-logo" />
+          <h1>Evaluation Results</h1>
+        </div>
         <div class="header-tools" role="group" aria-label="Actions">
           <button id="export-btn" class="btn" title="Export current view to CSV">Export CSV</button>
         </div>
@@ -137,7 +140,7 @@
       </div>
     </div>
   </div>
-  <script src="../ui/app.js"></script>
+  <script src="/ui/app.js"></script>
 </body>
   
 </html>

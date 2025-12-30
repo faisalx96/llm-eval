@@ -1,16 +1,35 @@
-# قيِّم (qym)
+<p align="center">
+  <img src="docs/images/qym_logo.png" alt="qym logo" width="400" />
+</p>
 
-[![PyPI version](https://badge.fury.io/py/qym.svg)](https://badge.fury.io/py/qym)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- <h1 align="center">qym</h1>
+<p align="center"><em>قيِّم • evaluate</em></p> -->
+---
 
-**Evaluate your LLM applications with just 3 lines of code.**
+<h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
 
-A fast, async evaluation framework for testing and benchmarking LLM applications. Supports [Langfuse](https://langfuse.com) datasets or local CSV files.
+<p align="center">
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg" alt="Python 3.9+" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
+  <a href="docs/USER_GUIDE.md"><img src="https://img.shields.io/badge/Documentation-Guide-blue.svg" alt="Documentation" /></a>
+</p>
 
-**📚 Docs:**
-- [User Guide](docs/USER_GUIDE.md) — Tasks, datasets, configuration, and troubleshooting
-- [Metrics Guide](docs/METRICS_GUIDE.md) — 40+ metrics organized by use case
+<p align="center">
+  <a href="#overview">Overview</a> |
+  <a href="#quick-start">Installation</a> |
+  <a href="examples/">Examples</a> |
+  <a href="#features">Features</a> |
+  <a href="docs/USER_GUIDE.md">User Guide</a> |
+  <a href="#command-line-interface">CLI</a>
+</p>
+
+## 📖 Overview
+
+Evaluate your LLM applications with just 3 lines of code. qym is a fast, async evaluation framework for testing and benchmarking LLM applications. It provides a structured approach to evaluation, ensuring consistency and high-quality outputs while reducing the trial-and-error typically associated with manual testing.
+
+The framework supports [Langfuse](https://langfuse.com) datasets (with full tracing) or local CSV files, and includes 40+ built-in metrics for RAG, agents, safety, and more. Whether you're a researcher exploring LLM capabilities or a developer building production applications, qym provides a comprehensive solution for evaluation.
+
+📚 **Documentation:** Comprehensive guides are available in the [User Guide](docs/USER_GUIDE.md) and [Metrics Guide](docs/METRICS_GUIDE.md).
 
 ## 🚀 Features
 
@@ -134,7 +153,7 @@ qym --runs-config experiments.json
 
 ## 📊 Dashboard
 
-قيِّم provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
+qym provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
 
 ### Terminal UI
 

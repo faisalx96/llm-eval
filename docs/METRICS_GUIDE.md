@@ -1,4 +1,4 @@
-# قيِّم Evaluation Metrics Store
+# qym (قيِّم) Evaluation Metrics Store
 
 A comprehensive reference of metrics for evaluating LLM applications. Use this guide to select the right metrics for your use case.
 

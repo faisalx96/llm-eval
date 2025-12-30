@@ -151,6 +151,36 @@ class UIServer:
                                 server.clients.remove(client)
                     return
 
+                # Serve UI static files at /ui/ path (for compatibility with dashboard)
+                if path.startswith('/ui/'):
+                    rel_path = path[4:]  # Remove '/ui/'
+                    abspath = os.path.abspath(os.path.join(server.static_dir, rel_path))
+                    if abspath.startswith(os.path.abspath(server.static_dir)) and os.path.exists(abspath) and not os.path.isdir(abspath):
+                        try:
+                            ctype = 'text/plain; charset=utf-8'
+                            if abspath.endswith('.html'):
+                                ctype = 'text/html; charset=utf-8'
+                            elif abspath.endswith('.js'):
+                                ctype = 'application/javascript; charset=utf-8'
+                            elif abspath.endswith('.css'):
+                                ctype = 'text/css; charset=utf-8'
+                            elif abspath.endswith('.png'):
+                                ctype = 'image/png'
+                            elif abspath.endswith('.svg'):
+                                ctype = 'image/svg+xml'
+                            elif abspath.endswith(('.jpg', '.jpeg')):
+                                ctype = 'image/jpeg'
+                            with open(abspath, 'rb') as f:
+                                data = f.read()
+                            self._set_headers(HTTPStatus.OK, ctype)
+                            self.wfile.write(data)
+                            return
+                        except Exception:
+                            pass
+                    self._set_headers(HTTPStatus.NOT_FOUND)
+                    self.wfile.write(b'{}')
+                    return
+
                 # Static files
                 # Map / -> index.html; otherwise serve files under static_dir
                 fs_path = 'index.html' if path in ('/', '/index.html') else path.lstrip('/')
@@ -171,6 +201,12 @@ class UIServer:
                         ctype = 'application/javascript; charset=utf-8'
                     elif abspath.endswith('.css'):
                         ctype = 'text/css; charset=utf-8'
+                    elif abspath.endswith('.png'):
+                        ctype = 'image/png'
+                    elif abspath.endswith('.svg'):
+                        ctype = 'image/svg+xml'
+                    elif abspath.endswith(('.jpg', '.jpeg')):
+                        ctype = 'image/jpeg'
                     with open(abspath, 'rb') as f:
                         data = f.read()
                     self._set_headers(HTTPStatus.OK, ctype)

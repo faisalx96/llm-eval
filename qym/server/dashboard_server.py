@@ -255,6 +255,14 @@ class DashboardServer:
                         ctype = "text/css; charset=utf-8"
                     elif abspath.endswith(".json"):
                         ctype = "application/json; charset=utf-8"
+                    elif abspath.endswith(".png"):
+                        ctype = "image/png"
+                    elif abspath.endswith(".svg"):
+                        ctype = "image/svg+xml"
+                    elif abspath.endswith((".jpg", ".jpeg")):
+                        ctype = "image/jpeg"
+                    elif abspath.endswith(".ico"):
+                        ctype = "image/x-icon"
                     with open(abspath, "rb") as f:
                         data = f.read()
                     self._set_headers(HTTPStatus.OK, ctype)
