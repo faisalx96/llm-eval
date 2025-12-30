@@ -1306,7 +1306,7 @@
     detectModelsViewMetricType(matchingRuns, mvs.selectedMetric);
 
     // Show loading state
-    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading">Loading run data...</div>';
+    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading"><img src="./static/qym_icon.png" alt="" class="loading-icon" /><span>Loading run data...</span></div>';
 
     // Fetch item-level data for each model and calculate stats
     mvs.modelStats = {};

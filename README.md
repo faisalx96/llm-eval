@@ -9,6 +9,8 @@
 <h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
 
 <p align="center">
+  <img src="docs/images/qym_icon.png" alt="" height="20" />
+  &nbsp;
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg" alt="Python 3.9+" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
   <a href="docs/USER_GUIDE.md"><img src="https://img.shields.io/badge/Documentation-Guide-blue.svg" alt="Documentation" /></a>

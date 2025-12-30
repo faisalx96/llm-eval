@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>قيِّم • Analytics</title>
+  <title>qym • Analytics</title>
+  <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
 </head>
 <body>
@@ -13,7 +14,7 @@
   <!-- Top Stats Bar -->
   <header class="stats-bar">
     <div class="logo">
-      <img src="./static/qym_logo.png" alt="qym" class="logo-img" />
+      <img src="./static/qym_text.png" alt="qym" class="logo-text-img" />
     </div>
     <div class="stat-cells">
       <div class="stat-cell">
@@ -110,13 +111,13 @@
   <!-- Main Content -->
   <main>
     <div id="loading" class="loading">
-      <div class="loading-spinner"></div>
+      <img src="./static/qym_icon.png" alt="" class="loading-icon" />
       <span>Scanning qym_results/...</span>
     </div>
     
     <div id="empty" class="empty" style="display:none;">
       <div class="empty-state">
-        <div class="empty-icon">∅</div>
+        <img src="./static/qym_text.png" alt="qym" class="empty-logo" />
         <h2>No evaluation runs found</h2>
         <p>Run an evaluation to populate this dashboard.</p>
         <code>qym --task-file my_task.py --task-function my_func \
@@ -363,7 +364,8 @@
             <!-- Populated by JS -->
           </div>
           <div class="metrics-preview-loading" id="metrics-preview-loading" style="display:none;">
-            Loading metrics...
+            <img src="./static/qym_icon.png" alt="" class="loading-icon-sm" />
+            <span>Loading metrics...</span>
           </div>
         </div>
 
@@ -473,6 +475,9 @@
           <div class="shortcut"><span class="kbd">t</span> Runs (list)</div>
           <div class="shortcut"><span class="kbd">m</span> Models comparison</div>
         </div>
+      </div>
+      <div class="modal-footer help-footer">
+        <img src="./static/qym_text.png" alt="qym" class="help-logo" />
       </div>
     </div>
   </div>

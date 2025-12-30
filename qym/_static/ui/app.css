@@ -40,6 +40,7 @@ body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, S
 .header-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .header-brand { display: flex; align-items: center; gap: 14px; }
 .header-logo { height: 40px; width: auto; }
+.header-text-logo { height: 36px; width: auto; }
 .header h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.2px; }
 .sub { color: var(--muted); margin-bottom: 12px; }
 .chips { display:flex; gap:8px; flex-wrap: wrap; margin-bottom: 10px; }
