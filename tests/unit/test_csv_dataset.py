@@ -1,7 +1,7 @@
 import pytest
 
-from llm_eval.core.dataset import CsvDataset
-from llm_eval.utils.errors import CsvDatasetSchemaError
+from qym.core.dataset import CsvDataset
+from qym.utils.errors import CsvDatasetSchemaError
 
 
 def test_csv_dataset_column_mapping_and_metadata(tmp_path):

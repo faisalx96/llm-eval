@@ -1,5 +1,5 @@
 """
-LLM-Eval: Simple, automated LLM evaluation framework built on Langfuse.
+قيِّم (qym): Simple, automated LLM evaluation framework built on Langfuse.
 
 Evaluate any LLM task with just 3 lines of code:
     evaluator = Evaluator(task, dataset, metrics)

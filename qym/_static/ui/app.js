@@ -814,7 +814,7 @@
       a.href = URL.createObjectURL(blob);
       const ds = (state.run && state.run.dataset_name) || 'dataset';
       const rn = (state.run && state.run.run_name) || 'run';
-      a.download = `llm-eval_${ds}_${rn}.csv`;
+      a.download = `qym_${ds}_${rn}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
     } catch (e) { console.error('CSV export failed', e); }
@@ -839,7 +839,7 @@
       try {
         const ds = run.dataset_name || 'Dataset';
         const rn = run.run_name || 'Run';
-        document.title = `LLM Eval – ${ds} / ${rn}`;
+        document.title = `قيِّم – ${ds} / ${rn}`;
       } catch {}
       // Apply default header style (B)
       try { document.body.setAttribute('data-header-style', 'b'); } catch {}
@@ -896,7 +896,7 @@
         try {
           const ds = run.dataset_name || 'Dataset';
           const rn = run.run_name || 'Run';
-          document.title = `LLM Eval – ${ds} / ${rn} (Historical)`;
+          document.title = `قيِّم – ${ds} / ${rn} (Historical)`;
         } catch {}
 
         try { document.body.setAttribute('data-header-style', 'b'); } catch {}

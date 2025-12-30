@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM-Eval • Analytics</title>
+  <title>قيِّم • Analytics</title>
   <link rel="stylesheet" href="./static/dashboard.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
   <header class="stats-bar">
     <div class="logo">
       <span class="logo-icon">◈</span>
-      <span class="logo-text">LLM-EVAL</span>
+      <span class="logo-text">قيِّم</span>
     </div>
     <div class="stat-cells">
       <div class="stat-cell">
@@ -112,7 +112,7 @@
   <main>
     <div id="loading" class="loading">
       <div class="loading-spinner"></div>
-      <span>Scanning llm-eval_results/...</span>
+      <span>Scanning qym_results/...</span>
     </div>
     
     <div id="empty" class="empty" style="display:none;">
@@ -120,7 +120,7 @@
         <div class="empty-icon">∅</div>
         <h2>No evaluation runs found</h2>
         <p>Run an evaluation to populate this dashboard.</p>
-        <code>llm-eval --task-file my_task.py --task-function my_func \
+        <code>qym --task-file my_task.py --task-function my_func \
   --dataset my-dataset --metrics exact_match</code>
       </div>
     </div>

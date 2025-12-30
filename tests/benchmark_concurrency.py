@@ -1,5 +1,5 @@
 """
-Concurrency Benchmark for LLM-Eval
+Concurrency Benchmark for قيِّم (qym)
 
 Measures actual parallelism loss due to synchronous blocking in the evaluation pipeline.
 
@@ -178,9 +178,9 @@ def timed_block(name: str):
 
 def patch_evaluator_for_instrumentation():
     """Patch Evaluator methods to collect timing data."""
-    from llm_eval.core.evaluator import Evaluator
-    from llm_eval.core.progress import ProgressTracker
-    from llm_eval.core.dashboard import RunDashboard
+    from qym.core.evaluator import Evaluator
+    from qym.core.progress import ProgressTracker
+    from qym.core.dashboard import RunDashboard
 
     # Patch _notify_observer
     original_notify = Evaluator._notify_observer
@@ -323,7 +323,7 @@ def run_single_evaluation(
     show_ui: bool = False,
 ) -> BenchmarkResult:
     """Run a single evaluation and measure performance."""
-    from llm_eval import Evaluator
+    from qym import Evaluator
 
     # Reset instrumentation
     if instrument:
@@ -393,7 +393,7 @@ def run_concurrent_evaluations(
     show_ui: bool = False,
 ) -> BenchmarkResult:
     """Run N concurrent evaluations and measure total performance."""
-    from llm_eval import Evaluator
+    from qym import Evaluator
 
     if instrument:
         INSTRUMENT.enabled = True
@@ -425,7 +425,7 @@ def run_concurrent_evaluations(
         })
 
     # Get item count from first run's dataset
-    from llm_eval.core.dataset import LangfuseDataset
+    from qym.core.dataset import LangfuseDataset
     from langfuse import Langfuse
     client = Langfuse()
     ds = LangfuseDataset(client, dataset_name)
@@ -486,7 +486,7 @@ def print_result_table(results: List[BenchmarkResult]):
 def run_full_benchmark(dataset_name: str = "saudi-qa-verification-v1"):
     """Run the complete benchmark suite."""
 
-    print_header("LLM-EVAL CONCURRENCY BENCHMARK")
+    print_header("قيِّم CONCURRENCY BENCHMARK")
     print(f"Dataset: {dataset_name}")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 

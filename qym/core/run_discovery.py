@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
 
-DEFAULT_RESULTS_DIR = "llm-eval_results"
+DEFAULT_RESULTS_DIR = "qym_results"
 
 # Error score constant - errors are always scored as 0
 # This is the Python equivalent of metrics.js getRowScore()

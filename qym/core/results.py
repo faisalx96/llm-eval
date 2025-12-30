@@ -569,7 +569,7 @@ class EvaluationResult:
         return str(filepath)
 
     def _default_save_path(self, extension: str, output_dir: str) -> str:
-        """Create default save path with hierarchy: llm-eval_results/task/model/date/filename."""
+        """Create default save path with hierarchy: qym_results/task/model/date/filename."""
         ts = _extract_run_timestamp(self.run_name) or datetime.now()
         timestamp_str = ts.strftime("%y%m%d-%H%M")
         date_dir = ts.strftime("%Y-%m-%d")
@@ -804,7 +804,7 @@ def _label_with_model(name: str, metadata: Dict[str, Any]) -> Text:
 
 def summary_display_enabled() -> bool:
     """Return True when summaries should render (opt-in via env flag)."""
-    value = os.environ.get("LLM_EVAL_SHOW_SUMMARY", "")
+    value = os.environ.get("QYM_SHOW_SUMMARY", "")
     return value.lower() in {"1", "true", "yes", "on"}
 
 

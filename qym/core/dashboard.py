@@ -22,7 +22,7 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
-from llm_eval import __version__
+from qym import __version__
 
 from .observers import EvaluationObserver
 
@@ -275,7 +275,7 @@ class RunDashboard:
         grid.add_column(justify="left", ratio=1)
         grid.add_column(justify="right", ratio=1)
         
-        title = Text("⚡ LLM-Eval", style="bold magenta")
+        title = Text("⚡ قيِّم", style="bold magenta")
         
         stats = Text()
         stats.append(f"Time: {_format_duration(elapsed_total)}  ", style="bold white")

@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from llm_eval import Evaluator
+from qym import Evaluator
 from task import text2sql_task
 from metrics import valid_sql, execution_accuracy
 

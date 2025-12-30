@@ -31,7 +31,7 @@ def list_available_metrics():
     
     if not _has_deepeval:
         print("🔸 Note: Using built-in metrics only (DeepEval not installed)")
-        print("   To get advanced metrics, install with: pip install llm-eval[deepeval]")
+        print("   To get advanced metrics, install with: pip install qym[deepeval]")
         print()
     
     for name, metric in sorted(builtin_metrics.items()):

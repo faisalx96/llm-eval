@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_eval import CsvDataset, Evaluator
+from qym import CsvDataset, Evaluator
 
 
 def my_task(question, model_name=None, trace_id=None):

@@ -7,7 +7,7 @@ from __future__ import annotations
 import random
 import time
 
-from llm_eval import Evaluator
+from qym import Evaluator
 
 
 def gpt_like(question: str) -> str:

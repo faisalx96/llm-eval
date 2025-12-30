@@ -3,22 +3,26 @@
 from __future__ import annotations
 
 
-class LLMEvalError(Exception):
-    """Base exception for all llm-eval errors."""
+class QymError(Exception):
+    """Base exception for all قيِّم (qym) errors."""
     pass
 
 
-class LangfuseConnectionError(LLMEvalError):
+# Backwards compatibility alias
+LLMEvalError = QymError
+
+
+class LangfuseConnectionError(QymError):
     """Raised when connection to Langfuse fails."""
     pass
 
 
-class DatasetNotFoundError(LLMEvalError):
+class DatasetNotFoundError(QymError):
     """Raised when dataset is not found in Langfuse."""
     pass
 
 
-class CsvDatasetError(LLMEvalError):
+class CsvDatasetError(QymError):
     """Raised when loading or parsing a CSV dataset fails."""
 
 
@@ -39,11 +43,11 @@ class CsvDatasetSchemaError(CsvDatasetError):
         super().__init__(" ".join(parts))
 
 
-class MetricError(LLMEvalError):
+class MetricError(QymError):
     """Raised when metric computation fails."""
     pass
 
 
-class TaskExecutionError(LLMEvalError):
+class TaskExecutionError(QymError):
     """Raised when task execution fails."""
     pass

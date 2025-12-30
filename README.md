@@ -1,6 +1,6 @@
-# LLM-Eval
+# قيِّم (qym)
 
-[![PyPI version](https://badge.fury.io/py/llm-eval.svg)](https://badge.fury.io/py/llm-eval)
+[![PyPI version](https://badge.fury.io/py/qym.svg)](https://badge.fury.io/py/qym)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -27,7 +27,7 @@ A fast, async evaluation framework for testing and benchmarking LLM applications
 ### 1. Install
 
 ```bash
-pip install llm-eval
+pip install qym
 ```
 
 ### 2. Set up Langfuse (optional for CSV datasets)
@@ -50,7 +50,7 @@ You need three things:
 3. **[Metrics](docs/USER_GUIDE.md#4-using-metrics)** - Built-in (`exact_match`, `contains_expected`, `fuzzy_match`) or custom functions
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 # Your task: receives the 'input' field from each dataset item
 def my_llm_task(question):
@@ -68,7 +68,7 @@ results = evaluator.run()
 **Using a local CSV instead of Langfuse:**
 
 ```python
-from llm_eval import Evaluator, CsvDataset
+from qym import Evaluator, CsvDataset
 
 dataset = CsvDataset("qa.csv", input_col="question", expected_col="answer")
 
@@ -87,7 +87,7 @@ results = evaluator.run()
 Compare multiple models in parallel:
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 async def my_task(question, trace=None, model_name="gpt-4"):
     # Use model_name to route to different models
@@ -121,20 +121,20 @@ results = Evaluator.run_parallel(
 
 ```bash
 # Single evaluation
-llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+qym --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 
 # Single evaluation from a local CSV (no Langfuse dataset required)
-llm-eval --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
+qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
   --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
   --metrics exact_match
 
 # Multi-model from config
-llm-eval --runs-config experiments.json
+qym --runs-config experiments.json
 ```
 
 ## 📊 Dashboard
 
-LLM-Eval provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
+قيِّم provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
 
 ### Terminal UI
 
@@ -155,7 +155,7 @@ A web interface is automatically launched for each evaluation run. Click the **"
 Browse all past runs with the CLI command:
 
 ```bash
-llm-eval dashboard
+qym dashboard
 ```
 
 ![Dashboard Runs](docs/images/dashboard-runs.png)

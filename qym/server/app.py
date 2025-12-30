@@ -88,7 +88,7 @@ class UIServer:
         # Finally fall back to installed package resources
         if pkg_files is not None:
             try:
-                p = pkg_files('llm_eval').joinpath('_static/ui')
+                p = pkg_files('qym').joinpath('_static/ui')
                 return str(p)
             except Exception:
                 pass
@@ -181,7 +181,7 @@ class UIServer:
 
         self.httpd = ThreadingHTTPServer((self.host, self.port), Handler)
         self.port = self.httpd.server_address[1]
-        self.thread = threading.Thread(target=self.httpd.serve_forever, name='llm-eval-ui', daemon=True)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, name='qym-ui', daemon=True)
         self.thread.start()
         return self.host, self.port
 

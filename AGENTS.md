@@ -1,29 +1,29 @@
 # Repository Guidelines
 
-This guide explains how to develop, test, and contribute to `llm-eval`.
+This guide explains how to develop, test, and contribute to `qym` (قيِّم).
 
 ## Project Structure & Module Organization
-- `llm_eval/`: Python package
+- `qym/`: Python package
   - `core/`: evaluator orchestration (`Evaluator`, datasets, results)
   - `metrics/`: built-ins and registry for custom metrics
   - `adapters/`: task adapters (functions, LangChain/OpenAI)
   - `utils/`: errors and HTML/HTTP frontend helpers
-  - `cli.py`: `llm-eval` entry point
+  - `cli.py`: `qym` entry point
 - `docs/`: user guides (`USER_GUIDE.md`, `METRICS_GUIDE.md`)
 - `examples/`: runnable examples and notebooks
 - `internal/`: developer docs (error handling, requirements)
-- Generated: `build/`, `llm_eval.egg-info/` (do not edit)
+- Generated: `build/`, `qym.egg-info/` (do not edit)
 
 ## Build, Test, and Development Commands
 - Setup (editable + dev tools): `pip install -e .[dev]`
-- Run CLI: `llm-eval --help`
+- Run CLI: `qym --help`
 - Format: `black . && isort .`
-- Type check: `mypy llm_eval`
+- Type check: `mypy qym`
 - Tests: `pytest -q` (supports `pytest-asyncio`)
 
 Example local run:
 ```
-llm-eval --task-file examples/example.py \
+qym --task-file examples/example.py \
   --task-function my_task --dataset my-set \
   --metrics exact_match,fuzzy_match
 ```
@@ -54,5 +54,5 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - `.env` is gitignored; never commit secrets.
 
 ## Extending the Framework
-- Metrics: add to `llm_eval/metrics/builtin.py` or register dynamically via `metrics.registry.register_metric(name, func)`.
-- Adapters: add under `llm_eval/adapters/` and wire into `auto_detect_task`.
+- Metrics: add to `qym/metrics/builtin.py` or register dynamically via `metrics.registry.register_metric(name, func)`.
+- Adapters: add under `qym/adapters/` and wire into `auto_detect_task`.

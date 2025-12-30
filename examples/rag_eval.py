@@ -17,7 +17,7 @@ Usage:
 """
 import os
 from dotenv import load_dotenv
-from llm_eval import Evaluator
+from qym import Evaluator
 from typing import Optional
 from openai import AsyncOpenAI
 

@@ -33,7 +33,7 @@ from ..confluence.client import (
     get_git_info,
 )
 
-DEFAULT_RESULTS_DIR = "llm-eval_results"
+DEFAULT_RESULTS_DIR = "qym_results"
 DEFAULT_CONFLUENCE_DIR = "confluence_mock"
 PUBLISHED_RUNS_FILE = ".published_runs.json"
 
@@ -185,7 +185,7 @@ class DashboardServer:
             return fallback
         if pkg_files is not None:
             try:
-                p = pkg_files("llm_eval").joinpath("_static/dashboard")
+                p = pkg_files("qym").joinpath("_static/dashboard")
                 return str(p)
             except Exception:
                 pass
@@ -199,7 +199,7 @@ class DashboardServer:
             return fallback
         if pkg_files is not None:
             try:
-                p = pkg_files("llm_eval").joinpath("_static/ui")
+                p = pkg_files("qym").joinpath("_static/ui")
                 return str(p)
             except Exception:
                 pass
@@ -738,13 +738,13 @@ class DashboardServer:
 
         # Start server thread
         self.thread = threading.Thread(
-            target=self.httpd.serve_forever, name="llm-eval-dashboard", daemon=True
+            target=self.httpd.serve_forever, name="qym-dashboard", daemon=True
         )
         self.thread.start()
 
         # Start inactivity monitor
         self._inactivity_thread = threading.Thread(
-            target=self._check_inactivity, name="llm-eval-dashboard-monitor", daemon=True
+            target=self._check_inactivity, name="qym-dashboard-monitor", daemon=True
         )
         self._inactivity_thread.start()
 

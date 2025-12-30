@@ -140,7 +140,7 @@ def discover_deepeval_metrics() -> Dict[str, Callable]:
         raise ImportError(
             "DeepEval is required for advanced evaluation metrics.\n"
             "For air-gapped environments, you can use built-in metrics only.\n"
-            "To install DeepEval: pip install llm-eval[deepeval]\n"
+            "To install DeepEval: pip install qym[deepeval]\n"
             "Or use only built-in metrics: exact_match, contains, fuzzy_match"
         )
     except Exception as e:

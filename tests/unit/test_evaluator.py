@@ -1,12 +1,12 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from llm_eval.core.evaluator import Evaluator
-from llm_eval.core.dataset import CsvDataset
+from qym.core.evaluator import Evaluator
+from qym.core.dataset import CsvDataset
 
 class TestEvaluator:
     def test_init(self, mock_task, mock_langfuse, mock_dataset):
         """Test basic initialization of Evaluator with DI."""
-        with patch("llm_eval.core.evaluator.auto_detect_task"):
+        with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
                 dataset=mock_dataset,  # Injected dataset
@@ -24,7 +24,7 @@ class TestEvaluator:
     @pytest.mark.asyncio
     async def test_evaluate_item_success(self, mock_task, mock_langfuse, mock_dataset):
         """Test _evaluate_item method success path."""
-        with patch("llm_eval.core.evaluator.auto_detect_task"):
+        with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
                 dataset=mock_dataset,
@@ -64,7 +64,7 @@ class TestEvaluator:
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
 
-        with patch("llm_eval.core.evaluator.auto_detect_task"):
+        with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
                 dataset=ds,

@@ -1,5 +1,5 @@
 /**
- * LLM-Eval Analytics Dashboard
+ * قيِّم Analytics Dashboard
  * Dense, keyboard-driven interface for analyzing evaluation runs
  */
 
@@ -1416,7 +1416,7 @@
     const effectiveThreshold = isBoolean ? 0.9999 : threshold;
 
     // Use shared metrics calculation
-    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+    const metrics = window.QymMetrics.calculateItemLevelMetrics({
       runsData,
       metricName,
       threshold: effectiveThreshold,
@@ -2696,7 +2696,7 @@
       };
     }
 
-    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+    const metrics = window.QymMetrics.calculateItemLevelMetrics({
       runsData,
       metricName: metric,
       threshold,

@@ -1,5 +1,5 @@
 /**
- * Shared metrics calculation utilities for LLM Eval Dashboard
+ * Shared metrics calculation utilities for قيِّم Dashboard
  *
  * This module provides consistent metric calculations across:
  * - Compare view
@@ -286,7 +286,7 @@ function getMetricTooltips(K, isBoolean, threshold) {
 
 // Export for use in other modules (if using ES modules)
 if (typeof window !== 'undefined') {
-  window.LLMEvalMetrics = {
+  window.QymMetrics = {
     // Core error handling - USE THESE for consistent error treatment
     isErrorRow,
     getRowScore,

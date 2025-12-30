@@ -299,7 +299,7 @@ class Evaluator:
         except Exception:
             try:
                 import importlib.metadata as _im
-                version = _im.version("llm-eval")
+                version = _im.version("qym")
             except Exception:
                 version = None
 
@@ -850,7 +850,7 @@ class Evaluator:
         else:
             return "CATEGORICAL"
     
-    # Frontend concerns moved to llm_eval.utils.frontend
+    # Frontend concerns moved to qym.utils.frontend
 
     def _run_multi_model(self, show_tui: bool, auto_save: bool, save_format: str, max_parallel_runs: Optional[int] = None):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""

@@ -1,4 +1,4 @@
-# LLM-Eval User Guide
+# قيِّم User Guide
 
 A step-by-step guide to evaluating your LLM applications. Follow this guide carefully to avoid common errors.
 
@@ -25,12 +25,12 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 ### Step 1: Install the package
 
 ```bash
-pip install llm-eval
+pip install qym
 ```
 
 ### Step 2: Set up Langfuse credentials (optional for CSV datasets)
 
-LLM-Eval integrates with [Langfuse](https://langfuse.com) for dataset storage and tracing. If you're using a **local CSV file** as your dataset, Langfuse credentials are optional—evaluations will run without tracing.
+قيِّم integrates with [Langfuse](https://langfuse.com) for dataset storage and tracing. If you're using a **local CSV file** as your dataset, Langfuse credentials are optional—evaluations will run without tracing.
 
 Create a `.env` file in your project root:
 
@@ -59,11 +59,11 @@ print("Connected to Langfuse!")  # If no error, you're ready
 
 ## 2. Understanding the Basics
 
-### How LLM-Eval Works
+### How قيِّم Works
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        LLM-Eval                             │
+│                          قيِّم                               │
 │                                                             │
 │   Dataset          Your Task         Metrics                │
 │   (Langfuse)   →   Function    →    (Scoring)   →  Results  │
@@ -87,7 +87,7 @@ print("Connected to Langfuse!")  # If no error, you're ready
 
 ## 3. Writing Your Task Function
 
-Your task function is the code being evaluated. LLM-Eval uses **smart argument resolution** to call your function flexibly.
+Your task function is the code being evaluated. قيِّم uses **smart argument resolution** to call your function flexibly.
 
 ### How Input is Passed to Your Task
 
@@ -527,7 +527,7 @@ Notes:
 #### Run via CLI
 
 ```bash
-llm-eval --task-file agent.py --task-function my_task \
+qym --task-file agent.py --task-function my_task \
   --dataset-csv datasets/qa.csv \
   --csv-input-col question \
   --csv-expected-col answer \
@@ -538,7 +538,7 @@ llm-eval --task-file agent.py --task-function my_task \
 #### Run via Python API
 
 ```python
-from llm_eval import Evaluator, CsvDataset
+from qym import Evaluator, CsvDataset
 
 dataset = CsvDataset(
     "datasets/qa.csv",
@@ -586,7 +586,7 @@ evaluator = Evaluator(
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file FIRST - this is critical!
 
-from llm_eval import Evaluator
+from qym import Evaluator
 
 # 1. Define your task (parameter name can be anything)
 def simple_task(question, model_name=None):
@@ -613,7 +613,7 @@ evaluator = Evaluator(
 # 4. Run evaluation
 results = evaluator.run()
 
-# 5. Results are auto-saved to llm-eval_results/ directory
+# 5. Results are auto-saved to qym_results/ directory
 print(f"Success rate: {results.success_rate:.1%}")
 print(f"Total items: {results.total_items}")
 ```
@@ -633,7 +633,7 @@ When you run, you'll see:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ LLM-Eval Dashboard                       Web UI: http://... │
+│ قيِّم Dashboard                              Web UI: http://... │
 ├─────────────────────────────────────────────────────────────┤
 │ Run: my-first-eval                                          │
 │ Dataset: my-qa-dataset (100 items)                          │
@@ -654,7 +654,7 @@ When you run, you'll see:
 ### Option A: Single Evaluator with Multiple Models
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 async def my_task(question, model_name="gpt-4"):
     # model_name is automatically passed by the Evaluator
@@ -674,7 +674,7 @@ results = evaluator.run()  # Returns list of 3 EvaluationResult objects
 ### Option B: run_parallel for Different Tasks
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 results = Evaluator.run_parallel(
     runs=[
@@ -723,7 +723,7 @@ Make sure your task accepts `model_name` or `model` parameter!
 
 ```bash
 # Evaluate a function from a file
-llm-eval --task-file agent.py --task-function my_task \
+qym --task-file agent.py --task-function my_task \
          --dataset qa-dataset \
          --metrics exact_match
 ```
@@ -731,7 +731,7 @@ llm-eval --task-file agent.py --task-function my_task \
 ### All CLI Options
 
 ```bash
-llm-eval \
+qym \
     --task-file agent.py \           # Python file containing your task
     --task-function my_task \         # Function name to call
     --dataset qa-dataset \            # Langfuse dataset name
@@ -777,14 +777,14 @@ Create `experiments.json`:
 Run all experiments:
 
 ```bash
-llm-eval --runs-config experiments.json
+qym --runs-config experiments.json
 ```
 
 ---
 
 ## 9. Dashboard & Web UI
 
-LLM-Eval provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
+قيِّم provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
 
 ### Terminal UI (TUI)
 
@@ -839,7 +839,7 @@ Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard
 To browse **all past evaluation runs**, use the dashboard CLI command:
 
 ```bash
-llm-eval dashboard
+qym dashboard
 ```
 
 This opens a web dashboard where you can view, filter, compare, and analyze all your historical runs.
@@ -914,13 +914,13 @@ Visualize model performance across all runs:
 
 ### Dashboard Data Storage
 
-The dashboard reads results from `llm-eval_results/` directory in your **current working directory**. Both CSV and XLSX formats are supported.
+The dashboard reads results from `qym_results/` directory in your **current working directory**. Both CSV and XLSX formats are supported.
 
 > **Important**: Always run evaluations and the dashboard from your **project root directory**. Results are saved relative to where you run the script, so running from different directories will create separate result folders.
 
 ```
 my-project/                    # Run from here!
-├── llm-eval_results/          # Results saved here
+├── qym_results/               # Results saved here
 │   └── {task}/
 │       └── {model}/
 │           └── {date}/
@@ -935,7 +935,7 @@ The dashboard includes a feature to publish approved evaluation runs to Confluen
 
 #### Publishing a Single Run
 
-1. Open the dashboard: `llm-eval dashboard`
+1. Open the dashboard: `qym dashboard`
 2. Switch to the **Runs** view (click "Runs" or press `t`)
 3. Find the run you want to publish
 4. Click the **publish icon** (↑) in the actions column
@@ -985,10 +985,10 @@ By default, the dashboard uses a mock Confluence backend stored in `confluence_m
 
 ### Output Files
 
-Results are saved to `llm-eval_results/{task}/{model}/{date}/` in your **current working directory**:
+Results are saved to `qym_results/{task}/{model}/{date}/` in your **current working directory**:
 
 ```
-llm-eval_results/
+qym_results/
 └── my_task/
     └── gpt-4/
         └── 2024-01-15/
@@ -1192,7 +1192,7 @@ def my_metric(output, expected):
 from dotenv import load_dotenv
 load_dotenv()  # Optional for CSV datasets
 
-from llm_eval import Evaluator, CsvDataset
+from qym import Evaluator, CsvDataset
 
 # Minimal example (Langfuse dataset)
 evaluator = Evaluator(

@@ -13,7 +13,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from langfuse import Langfuse
-from llm_eval import Evaluator, list_available_metrics
+from qym import Evaluator, list_available_metrics
 
 # Load environment variables from .env file
 load_dotenv()

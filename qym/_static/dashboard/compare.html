@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM-Eval • Compare Runs</title>
+  <title>قيِّم • Compare Runs</title>
   <link rel="stylesheet" href="./static/dashboard.css">
   <script src="./static/metrics.js"></script>
   <style>
@@ -1174,8 +1174,8 @@
       }
 
       // Use shared utilities from metrics.js
-      const formatPercent = window.LLMEvalMetrics.formatPercent;
-      const formatLatency = window.LLMEvalMetrics.formatLatency;
+      const formatPercent = window.QymMetrics.formatPercent;
+      const formatLatency = window.QymMetrics.formatLatency;
 
       function buildLangfuseTraceUrl(traceId) {
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
@@ -1476,7 +1476,7 @@
           for (const row of rows) {
             // Score for the selected metric (use centralized error handling)
             if (metricIdx >= 0) {
-              const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+              const { score } = window.QymMetrics.getRowScore(row, metricIdx);
               if (score !== null) { scoreSum += score; scoreCount++; }
             }
             // Latency
@@ -1485,7 +1485,7 @@
               latCount++;
             }
             // Errors (use centralized check)
-            if (window.LLMEvalMetrics.isErrorRow(row)) {
+            if (window.QymMetrics.isErrorRow(row)) {
               const output = (row.output_full || row.output || '').toLowerCase();
               if (output.includes('timeout')) timeoutErrors++;
               else if (output.includes('error')) runtimeErrors++;
@@ -1511,7 +1511,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return { score: null, failed: false };
             // Use centralized error handling from metrics.js
-            const { score, isError } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            const { score, isError } = window.QymMetrics.getRowScore(row, metricIdx);
             return { score, failed: isError };
           });
 
@@ -1929,7 +1929,7 @@
             let sum = 0, count = 0;
             for (const row of rows) {
               // Use centralized error handling - errors count as 0
-              const { score } = window.LLMEvalMetrics.getRowScore(row, idx);
+              const { score } = window.QymMetrics.getRowScore(row, idx);
               if (score !== null) {
                 sum += score;
                 count++;
@@ -2041,7 +2041,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
             // Use centralized error handling from metrics.js
-            const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            const { score } = window.QymMetrics.getRowScore(row, metricIdx);
             return score;
           });
           const validScores = scores.filter(s => s !== null);
@@ -2052,7 +2052,7 @@
             const uniqueOutputs = new Set(outputs);
             if (uniqueOutputs.size <= 1) continue;
           } else if (state.itemFilter === 'errors') {
-            const hasError = rowData.some(r => window.LLMEvalMetrics.isErrorRow(r));
+            const hasError = rowData.some(r => window.QymMetrics.isErrorRow(r));
             if (!hasError) continue;
           } else if (state.itemFilter === 'all_correct') {
             // All runs meet threshold (correct)

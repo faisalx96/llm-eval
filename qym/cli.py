@@ -1,4 +1,4 @@
-"""Command-line interface for llm-eval."""
+"""Command-line interface for قيِّم (qym)."""
 
 import argparse
 import copy
@@ -162,7 +162,7 @@ def run_dashboard_command(args: List[str]) -> None:
     from .server.dashboard_server import run_dashboard
 
     parser = argparse.ArgumentParser(
-        prog="llm-eval dashboard",
+        prog="qym dashboard",
         description="Open a web UI showing all historical evaluation runs",
     )
     parser.add_argument(
@@ -173,8 +173,8 @@ def run_dashboard_command(args: List[str]) -> None:
     )
     parser.add_argument(
         "--results-dir",
-        default="llm-eval_results",
-        help="Directory containing evaluation results (default: llm-eval_results)",
+        default="qym_results",
+        help="Directory containing evaluation results (default: qym_results)",
     )
     parser.add_argument(
         "--timeout",
@@ -205,26 +205,26 @@ def main():
         return
 
     parser = argparse.ArgumentParser(
-        description="Evaluate LLM tasks using Langfuse datasets",
+        description="قيِّم - Evaluate LLM tasks using Langfuse datasets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Evaluate a function from a Python file
-  llm-eval --task-file my_bot.py --task-function ask_question \\
+  qym --task-file my_bot.py --task-function ask_question \\
            --dataset qa-test-set --metrics exact_match,fuzzy_match
 
   # Use custom configuration
-  llm-eval --task-file bot.py --task-function chat \\
+  qym --task-file bot.py --task-function chat \\
            --dataset conversations --metrics contains \\
            --config '{"max_concurrency": 5, "timeout": 10}'
 
   # Save results to file
-  llm-eval --task-file agent.py --task-function run \\
+  qym --task-file agent.py --task-function run \\
            --dataset test-cases --metrics exact_match \\
            --output results.json
 
   # Open dashboard to view historical runs
-  llm-eval dashboard
+  qym dashboard
         """
     )
     
@@ -412,7 +412,7 @@ Examples:
         # Record CLI invocation for frontend run overview
         try:
             argv_str = ' '.join(shlex.quote(a) for a in sys.argv[1:])
-            config['cli_invocation'] = f"llm-eval {argv_str}".strip()
+            config['cli_invocation'] = f"qym {argv_str}".strip()
         except Exception:
             pass
 
