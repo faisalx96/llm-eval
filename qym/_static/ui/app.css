@@ -223,6 +223,30 @@ tbody tr { cursor: pointer; }
 .metric-row .value.metric-yes { color: var(--ok); }
 .metric-row .value.metric-no { color: var(--err); }
 .metric-row .value.metric-na { color: var(--muted); font-weight: 500; }
+.metric-edit-block { display:flex; flex-direction:column; gap:6px; }
+.metric-edit-controls { display:flex; gap:6px; align-items:center; }
+.metric-edit-input {
+  width: 90px;
+  background:#0c1220;
+  color: var(--text);
+  border:1px solid var(--soft);
+  border-radius:6px;
+  padding:4px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+.metric-edit-save {
+  background: transparent;
+  border:1px solid var(--soft);
+  color: var(--text);
+  border-radius:6px;
+  padding:4px 8px;
+  cursor:pointer;
+  font-size: 0.8rem;
+}
+.metric-edit-save:disabled { opacity: 0.6; cursor: default; }
+.metric-edit-status { color: var(--text-muted); font-size: 0.75rem; }
+.metric-modified { color: var(--text-muted); font-size: 0.75rem; }
 body[data-theme="light"] .metric-row { background:#f5f7fb; }
 /* Keep copy icon clean in light mode (no background/border) */
 body[data-theme="light"] .copy-btn { background: transparent; }

@@ -2,6 +2,7 @@
 
 import csv
 import json
+import os
 import logging
 import re
 import sys
@@ -25,6 +26,48 @@ DEFAULT_RESULTS_DIR = "qym_results"
 # Error score constant - errors are always scored as 0
 # This is the Python equivalent of metrics.js getRowScore()
 ERROR_SCORE = 0.0
+
+
+def parse_metric_score(value: Any) -> Optional[float]:
+    """Parse a metric score from common boolean/numeric formats."""
+    if value is None:
+        return None
+    raw = str(value).strip()
+    if raw == "":
+        return None
+    lowered = raw.lower()
+    if lowered in {"n/a", "na", "none"}:
+        return None
+    if raw in {"✓"} or lowered in {"true", "yes", "y"}:
+        return 1.0
+    if raw in {"✗"} or lowered in {"false", "no", "n"}:
+        return 0.0
+    if lowered in {"1", "1.0"}:
+        return 1.0
+    if lowered in {"0", "0.0"}:
+        return 0.0
+    if raw.endswith("%"):
+        try:
+            return float(raw[:-1].strip()) / 100.0
+        except (ValueError, TypeError):
+            return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def normalize_metric_score(value: Any) -> Optional[str]:
+    """Normalize a metric score to a numeric string for CSV storage."""
+    if value is None:
+        return ""
+    raw = str(value).strip()
+    if raw == "":
+        return ""
+    parsed = parse_metric_score(raw)
+    if parsed is None:
+        return None
+    return f"{parsed:g}"
 
 
 def is_error_row(row: Dict[str, Any], metrics: List[str]) -> bool:
@@ -248,12 +291,10 @@ class RunDiscovery:
                             metric_sums[m] += ERROR_SCORE
                             metric_counts[m] += 1
                         else:
-                            try:
-                                score = float(score_str)
+                            score = parse_metric_score(score_str)
+                            if score is not None:
                                 metric_sums[m] += score
                                 metric_counts[m] += 1
-                            except (ValueError, TypeError):
-                                pass
 
                     # Accumulate latency (time column is in seconds)
                     time_str = row.get("time", "")
@@ -612,6 +653,7 @@ class RunDiscovery:
             "run": {
                 "dataset_name": dataset_name,
                 "run_name": run_name,
+                "file_path": str(path.resolve()),
                 "metric_names": metric_names,
                 "config": config,
                 "metadata": metadata,
@@ -759,6 +801,7 @@ class RunDiscovery:
             "run": {
                 "dataset_name": dataset_name,
                 "run_name": run_name,
+                "file_path": str(path.resolve()),
                 "metric_names": metric_names,
                 "config": config,
                 "metadata": metadata,
@@ -771,3 +814,106 @@ class RunDiscovery:
                 "metric_names": metric_names,
             },
         }
+
+    def update_metric_score(
+        self, file_path: str, row_index: int, metric_name: str, new_score: Any
+    ) -> Dict[str, Any]:
+        """Update a metric score in a CSV run file and record audit metadata."""
+        path = Path(file_path)
+
+        # Try multiple path resolutions (same as get_run_data)
+        if not path.exists():
+            if self.results_dir.exists():
+                alt_path = self.results_dir.parent / file_path
+                if alt_path.exists():
+                    path = alt_path
+                else:
+                    results_name = self.results_dir.name
+                    if file_path.startswith(results_name + "/"):
+                        sub_path = file_path[len(results_name) + 1 :]
+                        alt_path = self.results_dir / sub_path
+                        if alt_path.exists():
+                            path = alt_path
+
+        if not path.exists():
+            return {"error": f"File not found: {file_path}"}
+
+        # Security: ensure the resolved path is within results_dir
+        try:
+            results_abs = os.path.abspath(self.results_dir)
+            resolved = os.path.abspath(path)
+            if resolved != results_abs and not resolved.startswith(results_abs + os.sep):
+                return {"error": "Access denied"}
+        except Exception:
+            return {"error": "Access denied"}
+
+        if path.suffix.lower() == ".xlsx":
+            return {"error": "XLSX runs are read-only"}
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or []
+                rows = list(reader)
+        except csv.Error as e:
+            error_msg = str(e)
+            if "field larger than field limit" in error_msg:
+                return {
+                    "error": f"CSV field exceeds {CSV_FIELD_SIZE_LIMIT // (1024*1024)}MB size limit."
+                }
+            return {"error": f"CSV parsing error: {error_msg}"}
+        except UnicodeDecodeError as e:
+            return {"error": f"File encoding error: {e}. Try re-saving the file as UTF-8."}
+        except Exception as e:
+            return {"error": f"{type(e).__name__}: {e}"}
+
+        if row_index < 0 or row_index >= len(rows):
+            return {"error": f"Row index out of range: {row_index}"}
+
+        score_col = f"{metric_name}_score"
+        if score_col not in fieldnames:
+            return {"error": f"Metric not found: {metric_name}"}
+
+        meta_modified = f"{metric_name}__meta__modified"
+        meta_original = f"{metric_name}__meta__original_score"
+        if meta_modified not in fieldnames:
+            fieldnames.append(meta_modified)
+        if meta_original not in fieldnames:
+            fieldnames.append(meta_original)
+
+        # Normalize new score to string for CSV
+        new_score_str = normalize_metric_score(new_score)
+        if new_score_str is None:
+            return {"error": "Invalid score value"}
+        row = rows[row_index]
+        current_score = row.get(score_col, "")
+        original_score = row.get(meta_original, "")
+        if original_score in (None, ""):
+            original_score = current_score
+
+        row[score_col] = new_score_str
+        row[meta_original] = original_score
+        original_comp = parse_metric_score(original_score)
+        if original_comp is None and str(original_score).strip() != "":
+            original_comp = str(original_score).strip()
+        new_comp = parse_metric_score(new_score_str)
+        if new_comp is None and str(new_score_str).strip() != "":
+            new_comp = str(new_score_str).strip()
+        row[meta_modified] = "true" if new_comp != original_comp else "false"
+
+        # Ensure all rows have the audit columns
+        for r in rows:
+            if meta_modified not in r:
+                r[meta_modified] = ""
+            if meta_original not in r:
+                r[meta_original] = ""
+
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(rows)
+        except Exception as e:
+            return {"error": f"Failed to write CSV: {type(e).__name__}: {e}"}
+
+        return {"ok": True}

@@ -584,6 +584,14 @@
       return String(text||'').replace(/\[(?:\/)?(?:dim|red|yellow)\]/g, '');
     } catch { return String(text||''); }
   }
+  function escapeAttr(text){
+    return String(text ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   function classifyMetric(raw){
     const t = String(raw||'').trim().toLowerCase();
     if (t === '✓' || t === 'true' || t === 'yes' || t === '1' || t === '1.0') return 'metric-yes';
@@ -695,21 +703,72 @@
     const meta = row.metric_meta || {};
     const $ml = el('drawer-metrics');
     if ($ml){
+      const canEditMetrics = Boolean(state.isDashboardMode && ((state.run && state.run.file_path) || dashboardRunFile));
       const items = names.map((n, i) => {
         const v = vals[i];
         const cls = classifyMetric(v);
         const txt = (v==null||v==='') ? '—' : String(v);
-        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span></div>`;
         const extrasObj = meta[n] || {};
-        const extras = Object.keys(extrasObj).map(k => {
+        const modifiedRaw = extrasObj.modified;
+        const originalRaw = extrasObj.original_score;
+        const hasOriginal = !(originalRaw == null || originalRaw === '');
+        const modified = String(modifiedRaw || '').toLowerCase() === 'true';
+        const modifiedNote = hasOriginal
+          ? `<div class="metric-modified">${modified ? 'Modified' : 'Original'} · original: ${escapeAttr(String(originalRaw))}</div>`
+          : '';
+        const extras = Object.keys(extrasObj).filter(k => !['modified','original_score'].includes(k)).map(k => {
           const vv = extrasObj[k];
           const c = classifyMetric(vv);
           const t = (vv==null||vv==='') ? '—' : String(vv);
           return `<div class="metric-row"><span class="name">${n}_${k}</span><span class="value ${c}">${t}</span></div>`;
         }).join('');
-        return header + extras;
+        if (canEditMetrics){
+          const val = (v==null||v==='') ? '' : String(v);
+          const header = `<div class="metric-row metric-edit-row">
+            <span class="name">${n}_score</span>
+            <div class="metric-edit-controls">
+              <input class="metric-edit-input" type="text" value="${escapeAttr(val)}" data-metric="${escapeAttr(n)}" />
+              <button class="metric-edit-save" data-metric="${escapeAttr(n)}">Save</button>
+              <span class="metric-edit-status" aria-live="polite"></span>
+            </div>
+          </div>`;
+          return `<div class="metric-edit-block" data-metric="${escapeAttr(n)}">${header}${modifiedNote}${extras}</div>`;
+        }
+        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span></div>`;
+        return header + modifiedNote + extras;
       }).join('');
       $ml.innerHTML = items || '<div class="muted">No metrics</div>';
+      if (canEditMetrics){
+        $ml.querySelectorAll('.metric-edit-save').forEach(btn => {
+          btn.onclick = async () => {
+            const block = btn.closest('.metric-edit-block');
+            const input = block ? block.querySelector('.metric-edit-input') : null;
+            const status = block ? block.querySelector('.metric-edit-status') : null;
+            const metric = btn.dataset.metric || (input ? input.dataset.metric : '');
+            const filePath = (state.run && state.run.file_path) || dashboardRunFile || '';
+            const rowIndex = Number(row.index) || 0;
+            if (!filePath || !metric || !input){
+              if (status) status.textContent = 'Unavailable';
+              return;
+            }
+            btn.disabled = true;
+            if (status) status.textContent = 'Saving...';
+            try {
+              const result = await updateMetricScore(filePath, rowIndex, metric, input.value);
+              if (result && result.row){
+                applyUpdatedRow(result.row);
+                setTimeout(() => openDrawer(result.row), 200);
+              }
+              if (status) status.textContent = 'Saved';
+              setTimeout(() => { if (status) status.textContent = ''; }, 1500);
+            } catch (err) {
+              if (status) status.textContent = 'Error';
+            } finally {
+              btn.disabled = false;
+            }
+          };
+        });
+      }
     }
     overlay.classList.add('show');
     overlay.hidden = false;
@@ -726,6 +785,45 @@
   // Header tools: export only
   const expBtn = el('export-btn');
   if (expBtn) expBtn.addEventListener('click', exportCSV);
+
+  async function updateMetricScore(filePath, rowIndex, metricName, newScore){
+    const res = await fetch(apiUrl('api/runs/update_metric'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_path: filePath,
+        row_index: rowIndex,
+        metric_name: metricName,
+        new_score: newScore,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Failed to update metric');
+    }
+    return data;
+  }
+
+  function applyUpdatedRow(updatedRow){
+    try {
+      const idx = Number(updatedRow.index) || 0;
+      const rows = state.snapshot.rows || [];
+      if (idx >= 0 && idx < rows.length) {
+        rows[idx] = updatedRow;
+      } else {
+        const pos = rows.findIndex(r => Number(r.index) === idx);
+        if (pos >= 0) rows[pos] = updatedRow;
+      }
+      try {
+        state.rowByIndex = state.rowByIndex || new Map();
+        state.rowByIndex.set(idx, updatedRow);
+      } catch {}
+      updateMetricSeriesFromSnapshot(state.snapshot);
+      renderMetricCharts();
+      renderQuickBar();
+      renderAll();
+    } catch {}
+  }
 
   function csvEscape(v){
     const s = (v==null) ? '' : String(v);

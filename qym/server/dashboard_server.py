@@ -515,6 +515,80 @@ class DashboardServer:
                         self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
                         return
 
+                # Update metric score for a row
+                if path == "/api/runs/update_metric":
+                    try:
+                        content_length = int(self.headers.get("Content-Length", 0))
+                        body = self.rfile.read(content_length)
+                        data = json.loads(body.decode("utf-8"))
+
+                        file_path = data.get("file_path", "")
+                        metric_name = data.get("metric_name", "")
+                        row_index = data.get("row_index", None)
+                        new_score = data.get("new_score", None)
+
+                        if not file_path or metric_name == "" or row_index is None:
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(b'{"error": "Missing required fields"}')
+                            return
+
+                        try:
+                            row_index = int(row_index)
+                        except (ValueError, TypeError):
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(b'{"error": "Invalid row_index"}')
+                            return
+
+                        update_result = server.discovery.update_metric_score(
+                            file_path=file_path,
+                            row_index=row_index,
+                            metric_name=metric_name,
+                            new_score=new_score,
+                        )
+                        if update_result.get("error"):
+                            self._set_headers(HTTPStatus.BAD_REQUEST)
+                            self.wfile.write(
+                                json.dumps({"error": update_result["error"]}).encode("utf-8")
+                            )
+                            return
+
+                        # Refresh run index so aggregate scores update in runs view
+                        try:
+                            server.discovery.scan(force_refresh=True)
+                        except Exception:
+                            pass
+
+                        run_data = server.discovery.get_run_data(file_path)
+                        if run_data.get("error"):
+                            self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
+                            self.wfile.write(
+                                json.dumps({"error": run_data["error"]}).encode("utf-8")
+                            )
+                            return
+
+                        rows = run_data.get("snapshot", {}).get("rows", [])
+                        if row_index < 0 or row_index >= len(rows):
+                            self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
+                            self.wfile.write(b'{"error": "Row index out of range"}')
+                            return
+
+                        self._set_headers(HTTPStatus.OK)
+                        self.wfile.write(
+                            json.dumps(
+                                {"ok": True, "row": rows[row_index], "run": run_data.get("run", {})},
+                                ensure_ascii=False,
+                            ).encode("utf-8")
+                        )
+                        return
+                    except json.JSONDecodeError:
+                        self._set_headers(HTTPStatus.BAD_REQUEST)
+                        self.wfile.write(b'{"error": "Invalid JSON"}')
+                        return
+                    except Exception as e:
+                        self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR)
+                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+                        return
+
                 # API: Publish run to Confluence
                 if path == "/api/confluence/publish":
                     try:

@@ -666,6 +666,53 @@
       overflow-y: auto;
     }
 
+    .metric-edit-block {
+      margin-top: 6px;
+      padding: 6px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+    }
+    .metric-edit-title {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .metric-edit-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .metric-edit-input {
+      width: 90px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save {
+      background: transparent;
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save:disabled { opacity: 0.6; cursor: default; }
+    .metric-edit-status {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .metric-edit-meta {
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
     /* Pagination */
     .pagination {
       display: flex;
@@ -2191,6 +2238,31 @@
               </div>`;
             }).join('');
 
+            const selectedMetricIndex = selectedMetric ? metricNames.indexOf(selectedMetric) : -1;
+            let metricEditHtml = '';
+            if (selectedMetricIndex >= 0) {
+              const rawScore = metricVals[selectedMetricIndex];
+              const rawValue = (rawScore == null || rawScore === '') ? '' : String(rawScore);
+              const selectedMeta = metricMeta[selectedMetric] || {};
+              const originalRaw = selectedMeta.original_score;
+              const hasOriginal = !(originalRaw == null || originalRaw === '');
+              const modified = String(selectedMeta.modified || '').toLowerCase() === 'true';
+              const modifiedNote = hasOriginal
+                ? `<div class="metric-edit-meta ${modified ? 'modified' : ''}">${modified ? 'Modified' : 'Original'} · original: ${escapeHtml(String(originalRaw))}</div>`
+                : '';
+              metricEditHtml = `
+                <div class="metric-edit-block">
+                  <div class="metric-edit-title">Edit ${escapeHtml(selectedMetric)}_score</div>
+                  <div class="metric-edit-controls">
+                    <input class="metric-edit-input" type="text" value="${escapeAttr(rawValue)}" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(selectedMetric)}" />
+                    <button class="metric-edit-save" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(selectedMetric)}">Save</button>
+                    <span class="metric-edit-status" aria-live="polite"></span>
+                  </div>
+                  ${modifiedNote}
+                </div>
+              `;
+            }
+
             // Latency badge
             const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
 
@@ -2204,7 +2276,7 @@
             if (hasMetricMeta) {
               const detailRows = metricNames.map((name) => {
                 const meta = metricMeta[name] || {};
-                const metaKeys = Object.keys(meta);
+                const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k));
                 if (metaKeys.length === 0) return '';
 
                 return metaKeys.map(key => {
@@ -2235,6 +2307,7 @@
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${formatValue(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
+                ${metricEditHtml}
                 ${metricDetailsHtml}
               </div>
             `;
@@ -2290,12 +2363,101 @@
         if (scrollToTop) {
           container.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+
+        wireMetricEditHandlers();
       }
 
       function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+      }
+      function escapeAttr(text) {
+        return String(text ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+        const res = await fetch(apiUrl('api/runs/update_metric'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_path: filePath,
+            row_index: rowIndex,
+            metric_name: metricName,
+            new_score: newScore,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to update metric');
+        }
+        return data;
+      }
+
+      function applyUpdatedRowToRun(runIdx, updatedRow) {
+        try {
+          const run = state.runs[runIdx];
+          if (!run || !run.snapshot) return;
+          const rows = run.snapshot.rows || [];
+          const idx = Number(updatedRow.index) || 0;
+          if (idx >= 0 && idx < rows.length) {
+            rows[idx] = updatedRow;
+          } else {
+            const pos = rows.findIndex(r => Number(r.index) === idx);
+            if (pos >= 0) rows[pos] = updatedRow;
+          }
+        } catch {}
+      }
+
+      function refreshComparisonStatsAfterEdit() {
+        if (state.selectedOverviewMetric) {
+          state.comparisonStats[state.selectedOverviewMetric] = calculateComparisonStatsForMetric(state.selectedOverviewMetric);
+        }
+        if (state.selectedItemsMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
+          state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
+        }
+        renderComparisonStats();
+        renderMetricsTable();
+        renderSummaries();
+      }
+
+      function wireMetricEditHandlers() {
+        document.querySelectorAll('.metric-edit-save').forEach(btn => {
+          btn.onclick = async () => {
+            const runIdx = Number(btn.dataset.runIdx);
+            const rowIndex = Number(btn.dataset.rowIndex);
+            const metricName = btn.dataset.metric || '';
+            const controls = btn.closest('.metric-edit-controls');
+            const input = controls ? controls.querySelector('.metric-edit-input') : null;
+            const status = controls ? controls.querySelector('.metric-edit-status') : null;
+            const run = state.runs[runIdx];
+            const filePath = run?.run?.file_path || '';
+            if (!filePath || !metricName || !input) {
+              if (status) status.textContent = 'Unavailable';
+              return;
+            }
+            btn.disabled = true;
+            if (status) status.textContent = 'Saving...';
+            try {
+              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value);
+              if (result && result.row) {
+                applyUpdatedRowToRun(runIdx, result.row);
+                refreshComparisonStatsAfterEdit();
+                renderItems();
+              }
+            } catch (err) {
+              if (status) status.textContent = 'Error';
+            } finally {
+              btn.disabled = false;
+              if (status && status.textContent === 'Saving...') status.textContent = '';
+            }
+          };
+        });
       }
 
       // Global function for toggling all metric details for an item
