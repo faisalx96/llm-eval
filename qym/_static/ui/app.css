@@ -224,7 +224,11 @@ tbody tr { cursor: pointer; }
 .metric-row .value.metric-no { color: var(--err); }
 .metric-row .value.metric-na { color: var(--muted); font-weight: 500; }
 .metric-edit-block { display:flex; flex-direction:column; gap:6px; }
+.metric-edit-header { display:flex; align-items:center; justify-content: space-between; gap:8px; }
+.metric-edit-title { color: var(--muted); font-size: 0.85rem; }
+.metric-edit-badge { font-size: 0.7rem; color: var(--ok); border: 1px solid rgba(34,197,94,0.4); padding: 1px 6px; border-radius: 999px; }
 .metric-edit-controls { display:flex; gap:6px; align-items:center; }
+.metric-edit-controls.hidden { display: none; }
 .metric-edit-input {
   width: 90px;
   background:#0c1220;
@@ -245,6 +249,15 @@ tbody tr { cursor: pointer; }
   font-size: 0.8rem;
 }
 .metric-edit-save:disabled { opacity: 0.6; cursor: default; }
+.metric-edit-toggle {
+  background: transparent;
+  border:1px solid var(--soft);
+  color: var(--text);
+  border-radius:6px;
+  padding:4px 8px;
+  cursor:pointer;
+  font-size: 0.8rem;
+}
 .metric-edit-status { color: var(--text-muted); font-size: 0.75rem; }
 .metric-modified { color: var(--text-muted); font-size: 0.75rem; }
 body[data-theme="light"] .metric-row { background:#f5f7fb; }

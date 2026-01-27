@@ -724,21 +724,39 @@
         }).join('');
         if (canEditMetrics){
           const val = (v==null||v==='') ? '' : String(v);
-          const header = `<div class="metric-row metric-edit-row">
-            <span class="name">${n}_score</span>
-            <div class="metric-edit-controls">
+          const editedBadge = modified ? '<span class="metric-edit-badge">Edited</span>' : '';
+          const header = `
+            <div class="metric-row metric-edit-row">
+              <span class="name">${n}_score ${editedBadge}</span>
+              <span class="value ${cls}">${txt}</span>
+            </div>
+            <div class="metric-edit-header">
+              <div class="metric-edit-title">Edit score</div>
+              <button class="metric-edit-toggle" data-metric="${escapeAttr(n)}">Edit</button>
+            </div>
+            <div class="metric-edit-controls hidden" data-metric="${escapeAttr(n)}">
               <input class="metric-edit-input" type="text" value="${escapeAttr(val)}" data-metric="${escapeAttr(n)}" />
               <button class="metric-edit-save" data-metric="${escapeAttr(n)}">Save</button>
               <span class="metric-edit-status" aria-live="polite"></span>
-            </div>
-          </div>`;
+            </div>`;
           return `<div class="metric-edit-block" data-metric="${escapeAttr(n)}">${header}${modifiedNote}${extras}</div>`;
         }
-        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span></div>`;
+        const editedBadge = modified ? '<span class="metric-edit-badge">Edited</span>' : '';
+        const header = `<div class="metric-row"><span class="name">${n}_score ${editedBadge}</span><span class="value ${cls}">${txt}</span></div>`;
         return header + modifiedNote + extras;
       }).join('');
       $ml.innerHTML = items || '<div class="muted">No metrics</div>';
       if (canEditMetrics){
+        $ml.querySelectorAll('.metric-edit-toggle').forEach(btn => {
+          btn.onclick = () => {
+            const block = btn.closest('.metric-edit-block');
+            const controls = block ? block.querySelector('.metric-edit-controls') : null;
+            if (!controls) return;
+            const isHidden = controls.classList.contains('hidden');
+            controls.classList.toggle('hidden');
+            btn.textContent = isHidden ? 'Hide' : 'Edit';
+          };
+        });
         $ml.querySelectorAll('.metric-edit-save').forEach(btn => {
           btn.onclick = async () => {
             const block = btn.closest('.metric-edit-block');
