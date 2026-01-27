@@ -842,51 +842,71 @@ class RealConfluenceClient(ConfluenceClient):
         """List folders in the space."""
         projects = []
         
-        # Method 1: REST API with type=folder (Server/DC)
-        try:
-            result = self._get("/content", {
-                "spaceKey": self.space_key,
-                "type": "folder",
-                "limit": 100,
-            })
-            
-            for folder in result.get("results", []):
-                folder_id = folder["id"]
-                folder_title = folder["title"]
-                self._project_cache[folder_title] = folder_id
-                projects.append(Project(
-                    project_id=folder_id,
-                    name=folder_title,
-                    description="",
-                    owner=""
-                ))
-            
-            if projects:
-                return sorted(projects, key=lambda p: p.name)
-        except Exception:
-            pass  # Not supported on Cloud, try CQL
-        
-        # Method 2: CQL search for folders (Confluence Cloud)
-        try:
-            result = self._get("/search", {
-                "cql": f'space="{self.space_key}" AND type=folder',
-                "limit": 100,
-            })
-            
-            for item in result.get("results", []):
-                content = item.get("content", {})
-                folder_id = content.get("id", "")
-                folder_title = content.get("title", "")
-                if folder_id and folder_title:
-                    self._project_cache[folder_title] = folder_id
+        # Method 1: Use parent page ID to get child pages (preferred for Confluence Cloud)
+        parent_id = os.getenv("CONFLUENCE_PARENT_PAGE_ID")
+        if parent_id:
+            try:
+                result = self._get(f"/content/{parent_id}/child/page", {"limit": 100})
+                for page in result.get("results", []):
+                    page_id = page['id']
+                    page_title = page['title']
+                    self._project_cache[page_title] = page_id
                     projects.append(Project(
-                        project_id=folder_id,
-                        name=folder_title,
+                        project_id=page_id,
+                        name=page_title,
                         description="",
                         owner=""
                     ))
-        except Exception:
-            pass
+                if projects:
+                    return sorted(projects, key=lambda p: p.name)
+            except Exception:
+                pass
+        
+        # Method 2: REST API with type=folder (Server/DC)
+        # try:
+        #     result = self._get("/content", {
+        #         "spaceKey": self.space_key,
+        #         "type": "folder",
+        #         "limit": 100,
+        #     })
+            
+        #     for folder in result.get("results", []):
+        #         folder_id = folder["id"]
+        #         folder_title = folder["title"]
+        #         self._project_cache[folder_title] = folder_id
+        #         projects.append(Project(
+        #             project_id=folder_id,
+        #             name=folder_title,
+        #             description="",
+        #             owner=""
+        #         ))
+            
+        #     if projects:
+        #         return sorted(projects, key=lambda p: p.name)
+        # except Exception:
+        #     pass  # Not supported on Cloud, try CQL
+        
+        # # Method 3: CQL search for folders (Confluence Cloud)
+        # try:
+        #     result = self._get("/search", {
+        #         "cql": f'space="{self.space_key}" AND type=folder',
+        #         "limit": 100,
+        #     })
+            
+        #     for item in result.get("results", []):
+        #         content = item.get("content", {})
+        #         folder_id = content.get("id", "")
+        #         folder_title = content.get("title", "")
+        #         if folder_id and folder_title:
+        #             self._project_cache[folder_title] = folder_id
+        #             projects.append(Project(
+        #                 project_id=folder_id,
+        #                 name=folder_title,
+        #                 description="",
+        #                 owner=""
+        #             ))
+        # except Exception:
+        #     pass
         
         return sorted(projects, key=lambda p: p.name)
 

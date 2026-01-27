@@ -877,7 +877,7 @@ class Evaluator:
                     "name": run_name,
                     "display_name": display_name,
                     "task": self.task,
-                    "dataset": self.dataset_name,
+                    "dataset": self.dataset,
                     "metrics": self._raw_metrics,
                     "config": run_config,
                     "metadata": {"model": model_name},  # Stripped for display
