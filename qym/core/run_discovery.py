@@ -2,12 +2,23 @@
 
 import csv
 import json
+import logging
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
+
+# Configure logger for run discovery
+logger = logging.getLogger(__name__)
+
+# Increase CSV field size limit to handle large cell values (e.g., long LLM outputs)
+# Default is 128KB which is too small for verbose model outputs
+# Set to 500MB - generous but not unlimited to prevent memory issues
+CSV_FIELD_SIZE_LIMIT = 500 * 1024 * 1024  # 500MB
+csv.field_size_limit(CSV_FIELD_SIZE_LIMIT)
 
 DEFAULT_RESULTS_DIR = "qym_results"
 
@@ -286,7 +297,21 @@ class RunDiscovery:
                     langfuse_dataset_id=langfuse_dataset_id,
                     langfuse_run_id=langfuse_run_id,
                 )
-        except Exception:
+        except csv.Error as e:
+            error_msg = str(e)
+            if "field larger than field limit" in error_msg:
+                logger.warning(
+                    f"[RunDiscovery] Skipping '{file_path.name}': CSV field exceeds {CSV_FIELD_SIZE_LIMIT // (1024*1024)}MB limit. "
+                    f"File may contain extremely large cell values."
+                )
+            else:
+                logger.warning(f"[RunDiscovery] Skipping '{file_path.name}': CSV parsing error - {error_msg}")
+            return None
+        except UnicodeDecodeError as e:
+            logger.warning(f"[RunDiscovery] Skipping '{file_path.name}': File encoding error - {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"[RunDiscovery] Skipping '{file_path.name}': Unexpected error - {type(e).__name__}: {e}")
             return None
 
     def _parse_xlsx_file(
@@ -418,7 +443,8 @@ class RunDiscovery:
                 langfuse_dataset_id=langfuse_dataset_id,
                 langfuse_run_id=langfuse_run_id,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[RunDiscovery] Skipping '{file_path.name}': XLSX parsing error - {type(e).__name__}: {e}")
             return None
 
     def _extract_timestamp(self, run_name: str) -> datetime:
@@ -468,11 +494,21 @@ class RunDiscovery:
                 reader = csv.DictReader(f)
                 fieldnames = reader.fieldnames or []
                 rows = list(reader)
+        except csv.Error as e:
+            error_msg = str(e)
+            if "field larger than field limit" in error_msg:
+                return {
+                    "error": f"CSV field exceeds {CSV_FIELD_SIZE_LIMIT // (1024*1024)}MB size limit. "
+                    f"This file contains extremely large cell values that cannot be loaded."
+                }
+            return {"error": f"CSV parsing error: {error_msg}"}
+        except UnicodeDecodeError as e:
+            return {"error": f"File encoding error: {e}. Try re-saving the file as UTF-8."}
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"{type(e).__name__}: {e}"}
 
         if not rows:
-            return {"error": "Empty file"}
+            return {"error": "Empty file - no data rows found"}
 
         # Extract metrics (exclude metadata columns containing __meta__)
         metric_names = [
@@ -594,7 +630,7 @@ class RunDiscovery:
         try:
             import openpyxl
         except ImportError:
-            return {"error": "openpyxl is required to read xlsx files"}
+            return {"error": "openpyxl package is required to read xlsx files. Install with: pip install openpyxl"}
 
         try:
             wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -612,10 +648,10 @@ class RunDiscovery:
 
             wb.close()
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"XLSX parsing error: {type(e).__name__}: {e}"}
 
         if not rows:
-            return {"error": "Empty file"}
+            return {"error": "Empty file - no data rows found"}
 
         # Extract metrics (exclude metadata columns containing __meta__)
         metric_names = [
