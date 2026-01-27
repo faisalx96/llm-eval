@@ -627,6 +627,15 @@ class RunDiscovery:
             output_full = row.get("output", "")
             expected_full = row.get("expected_output", "")
 
+            # Optional: per-item task start timestamp (epoch ms)
+            task_started_at_ms = None
+            raw_started = row.get("task_started_at_ms", None)
+            if raw_started not in (None, ""):
+                try:
+                    task_started_at_ms = int(float(raw_started))
+                except (ValueError, TypeError):
+                    task_started_at_ms = None
+
             ui_row = {
                 "index": idx,
                 "item_id": row.get("item_id", str(idx)),  # Use item_id from CSV, fallback to index
@@ -639,6 +648,7 @@ class RunDiscovery:
                 "expected_full": expected_full,
                 "time": time_val,
                 "latency_ms": latency_ms,
+                "task_started_at_ms": task_started_at_ms,
                 "trace_id": row.get("trace_id", ""),
                 "trace_url": "",  # Historical runs don't have live trace URLs
                 "metric_values": metric_values,
@@ -775,6 +785,15 @@ class RunDiscovery:
             output_full = str(row.get("output", "") or "")
             expected_full = str(row.get("expected_output", "") or "")
 
+            # Optional: per-item task start timestamp (epoch ms)
+            task_started_at_ms = None
+            raw_started = row.get("task_started_at_ms", None)
+            if raw_started not in (None, ""):
+                try:
+                    task_started_at_ms = int(float(raw_started))
+                except (ValueError, TypeError):
+                    task_started_at_ms = None
+
             ui_row = {
                 "index": idx,
                 "item_id": str(row.get("item_id", "") or "") or str(idx),  # Use item_id from xlsx, fallback to index
@@ -787,6 +806,7 @@ class RunDiscovery:
                 "expected_full": expected_full,
                 "time": str(time_val) if time_val else "0",
                 "latency_ms": latency_ms,
+                "task_started_at_ms": task_started_at_ms,
                 "trace_id": str(row.get("trace_id", "") or ""),
                 "trace_url": "",
                 "metric_values": metric_values,

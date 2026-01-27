@@ -639,6 +639,15 @@
       color: var(--text-muted);
     }
 
+    .item-run-output .start-badge {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+    }
+
     .item-run-output .trace-link {
       display: inline-flex;
       align-items: center;
@@ -1285,6 +1294,24 @@
       // Use shared utilities from metrics.js
       const formatPercent = window.QymMetrics.formatPercent;
       const formatLatency = window.QymMetrics.formatLatency;
+
+      function formatTaskStart(ms) {
+        if (!ms || ms <= 0) return null;
+        try {
+          const d = new Date(ms);
+          const pad = (n) => String(n).padStart(2, '0');
+          const yyyy = d.getFullYear();
+          const mm = pad(d.getMonth() + 1);
+          const dd = pad(d.getDate());
+          const hh = pad(d.getHours());
+          const min = pad(d.getMinutes());
+          const sec = pad(d.getSeconds());
+          const ts = `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+          return { ts };
+        } catch {
+          return null;
+        }
+      }
 
       function buildLangfuseTraceUrl(traceId) {
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
@@ -2266,6 +2293,7 @@
             const output = row.output_full || row.output || '—';
             const status = row.status || 'pending';
             const latencyMs = row.latency_ms;
+            const taskStartedAtMs = row.task_started_at_ms;
             const traceId = row.trace_id;
             const traceUrl = buildLangfuseTraceUrl(traceId);
 
@@ -2335,6 +2363,12 @@
             // Latency badge
             const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
 
+            // Task start badge (local time)
+            const startInfo = formatTaskStart(taskStartedAtMs);
+            const startBadge = startInfo
+              ? `<span class="start-badge" title="${escapeAttr(startInfo.ts)}">${escapeHtml(startInfo.ts)}</span>`
+              : '';
+
             // Langfuse trace link
             const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
 
@@ -2373,7 +2407,7 @@
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges">${latencyBadge}${traceLink}</span>
+                  <span class="output-badges">${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${formatValue(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>

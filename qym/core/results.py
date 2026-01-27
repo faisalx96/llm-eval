@@ -49,7 +49,7 @@ class EvaluationResult:
         self.inputs = {}  # item_id -> input data
         self.metadatas = {}  # item_id -> metadata dict
         self.results = {}  # item_id -> result dict
-        self.errors = {}   # item_id -> {"error": str, "trace_id": Optional[str]}
+        self.errors = {}   # item_id -> {"error": str, "trace_id": Optional[str], "task_started_at_ms": Optional[int]}
 
     def add_input(self, item_id: str, task_input: Any):
         """Add input data for an item."""
@@ -63,9 +63,19 @@ class EvaluationResult:
         """Add a successful evaluation result."""
         self.results[item_id] = result
 
-    def add_error(self, item_id: str, error: str, trace_id: Optional[str] = None):
+    def add_error(
+        self,
+        item_id: str,
+        error: str,
+        trace_id: Optional[str] = None,
+        task_started_at_ms: Optional[int] = None,
+    ):
         """Add an evaluation error."""
-        self.errors[item_id] = {"error": error, "trace_id": trace_id}
+        self.errors[item_id] = {
+            "error": error,
+            "trace_id": trace_id,
+            "task_started_at_ms": task_started_at_ms,
+        }
     
     def finish(self):
         """Mark evaluation as finished."""
@@ -306,7 +316,8 @@ class EvaluationResult:
         # Prepare header
         base_fields = [
             'dataset_name', 'run_name', 'run_metadata', 'run_config',
-            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time'
+            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time',
+            'task_started_at_ms',
         ]
         metric_fields: List[str] = []
         for m in self.metrics:
@@ -345,6 +356,7 @@ class EvaluationResult:
                 'output': result.get('output', ''),
                 'expected_output': result.get('expected', ''),
                 'time': result.get('time', 0.0),
+                'task_started_at_ms': result.get('task_started_at_ms', ''),
             }
             scores = result.get('scores', {})
             for m in self.metrics:
@@ -364,9 +376,11 @@ class EvaluationResult:
             if isinstance(error_info, dict):
                 error_msg = error_info.get("error", str(error_info))
                 error_trace_id = error_info.get("trace_id", "")
+                error_task_started_at_ms = error_info.get("task_started_at_ms", "")
             else:
                 error_msg = str(error_info)
                 error_trace_id = ""
+                error_task_started_at_ms = ""
 
             # Get input and metadata for failed items
             task_input = self.inputs.get(item_id, '')
@@ -389,6 +403,7 @@ class EvaluationResult:
                 'output': f'ERROR: {error_msg}',
                 'expected_output': '',
                 'time': 0.0,
+                'task_started_at_ms': error_task_started_at_ms,
             }
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'
@@ -458,7 +473,8 @@ class EvaluationResult:
         # Prepare header (same as CSV)
         base_fields = [
             'dataset_name', 'run_name', 'run_metadata', 'run_config',
-            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time'
+            'trace_id', 'item_id', 'input', 'item_metadata', 'output', 'expected_output', 'time',
+            'task_started_at_ms',
         ]
         metric_fields: List[str] = []
         for m in self.metrics:
@@ -496,6 +512,7 @@ class EvaluationResult:
                 'output': result.get('output', ''),
                 'expected_output': result.get('expected', ''),
                 'time': result.get('time', 0.0),
+                'task_started_at_ms': result.get('task_started_at_ms', ''),
             }
             scores = result.get('scores', {})
             for m in self.metrics:
@@ -515,9 +532,11 @@ class EvaluationResult:
             if isinstance(error_info, dict):
                 error_msg = error_info.get("error", str(error_info))
                 error_trace_id = error_info.get("trace_id", "")
+                error_task_started_at_ms = error_info.get("task_started_at_ms", "")
             else:
                 error_msg = str(error_info)
                 error_trace_id = ""
+                error_task_started_at_ms = ""
 
             task_input = self.inputs.get(item_id, '')
             if isinstance(task_input, dict):
@@ -539,6 +558,7 @@ class EvaluationResult:
                 'output': f'ERROR: {error_msg}',
                 'expected_output': '',
                 'time': 0.0,
+                'task_started_at_ms': error_task_started_at_ms,
             }
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'

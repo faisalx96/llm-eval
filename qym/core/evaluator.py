@@ -689,7 +689,12 @@ class Evaluator:
                     result.add_error(item_id, str(eval_result))
                 elif isinstance(eval_result, dict) and "_error" in eval_result:
                     # Error with trace_id info
-                    result.add_error(item_id, eval_result["_error"], eval_result.get("_trace_id"))
+                    result.add_error(
+                        item_id,
+                        eval_result["_error"],
+                        eval_result.get("_trace_id"),
+                        task_started_at_ms=eval_result.get("task_started_at_ms"),
+                    )
                 else:
                     result.add_result(item_id, eval_result)
             
@@ -904,7 +909,8 @@ class Evaluator:
         """
         meta = {"trace_id": None, "trace_url": None}
         span = None
-        item_start_time = time.time()
+        # For dashboard display / persistence: when the task execution began (epoch ms).
+        task_started_at_ms: Optional[int] = None
 
         try:
             tracker.start_item(index)
@@ -952,8 +958,9 @@ class Evaluator:
             except Exception:
                 pass
 
-            # Execute task - purely async, no thread pool needed
-            # Pass full model name (with provider) to user's task
+            # Execute task - purely async, no thread pool needed.
+            # Pass full model name (with provider) to user's task.
+            task_started_at_ms = int(time.time() * 1000)
             task_start_time = time.time()
             output = await self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
             task_elapsed_time = time.time() - task_start_time
@@ -1119,6 +1126,7 @@ class Evaluator:
                 "trace_id": meta.get('trace_id'),
                 "trace_url": meta.get('trace_url'),
                 "time": task_elapsed_time,
+                "task_started_at_ms": task_started_at_ms,
                 "success": True,
             }
 
@@ -1166,7 +1174,11 @@ class Evaluator:
             tracker.fail_item(index, str(e))
             self._notify_observer("on_item_error", item_index=index, error=str(e))
             # Return error info with trace_id so it can be saved to results
-            return {"_error": str(e), "_trace_id": meta.get('trace_id')}
+            return {
+                "_error": str(e),
+                "_trace_id": meta.get('trace_id'),
+                "task_started_at_ms": task_started_at_ms,
+            }
 
     def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:
         """Synchronous version of metric computation for thread pool execution."""
