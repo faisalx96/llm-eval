@@ -432,6 +432,20 @@
       case 'success-asc':
         runs.sort((a, b) => a.success_rate - b.success_rate);
         break;
+      case 'completed-desc':
+        runs.sort((a, b) => {
+          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
+          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          return bVal - aVal;
+        });
+        break;
+      case 'completed-asc':
+        runs.sort((a, b) => {
+          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
+          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          return aVal - bVal;
+        });
+        break;
       case 'items-desc':
         runs.sort((a, b) => b.total_items - a.total_items);
         break;
@@ -814,7 +828,7 @@
       newKey = sortField.startsWith('metric-') ? `${sortField}-${direction}` : `${sortField}-${direction}`;
     } else {
       // Default to descending for numeric/time, ascending for text
-      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency'];
+      const numericFields = ['success', 'completed', 'items', 'status', 'time', 'date', 'latency'];
       const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-');
       newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
     }
@@ -850,7 +864,7 @@
     updateTableHeader();
 
     if (runs.length === 0) {
-      const colCount = 9 + metricsToShow.length; // base columns + metrics
+      const colCount = 10 + metricsToShow.length; // base columns + metrics
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -864,6 +878,10 @@
     tbody.innerHTML = runs.map((run, idx) => {
       const dt = formatDate(run.timestamp);
       const successClass = getSuccessClass(run.success_rate);
+      const completedRate = run.total_items
+        ? (run.success_count + run.error_count) / run.total_items
+        : 0;
+      const completedText = formatPercent(completedRate);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
@@ -908,6 +926,9 @@
           </td>
           <td class="col-success">
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
+          </td>
+          <td class="col-completed">
+            <span class="completed-rate">${completedText}</span>
           </td>
           ${metricCells}
           <td class="col-latency">

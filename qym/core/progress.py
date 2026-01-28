@@ -171,6 +171,7 @@ class ProgressTracker(ProgressObserver):
             'metric_names': self.metrics,
         }
 
+
     def _generate_row(self, idx: int, s: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a single row for the snapshot."""
         oval = self._strip_tags(s.get('output', ''))

@@ -151,6 +151,28 @@ class RunDashboard:
         state.metric_counts = {m: 0 for m in metrics}
         state.start_time = time.time()
         state.status = "running"
+        try:
+            resume_completed = int(state.run_info.get("resume_completed") or 0)
+            resume_failed = int(state.run_info.get("resume_failed") or 0)
+        except Exception:
+            resume_completed = 0
+            resume_failed = 0
+        if resume_completed or resume_failed:
+            state.completed = resume_completed
+            state.failed = resume_failed
+            state.in_progress = 0
+            if state.completed + state.failed >= state.total_items and state.total_items:
+                state.status = "completed"
+        try:
+            totals = state.run_info.get("resume_metric_totals") or {}
+            counts = state.run_info.get("resume_metric_counts") or {}
+            for m in state.metrics:
+                if m in totals:
+                    state.metric_totals[m] = float(totals.get(m) or 0.0)
+                if m in counts:
+                    state.metric_counts[m] = int(counts.get(m) or 0)
+        except Exception:
+            pass
         state.touch()
         self.refresh()
 

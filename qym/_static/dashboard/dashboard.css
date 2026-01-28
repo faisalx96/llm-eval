@@ -1356,6 +1356,18 @@ main {
   text-align: right;
 }
 
+.col-completed {
+  width: 90px;
+  text-align: right;
+}
+
+.completed-rate {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .success-rate {
   font-family: var(--font-mono);
   font-size: var(--font-sm);

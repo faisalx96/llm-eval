@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import os
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple, Set
 from datetime import datetime
 import time
 import subprocess
@@ -21,6 +21,14 @@ from rich.live import Live
 from rich.table import Table
 
 from .results import EvaluationResult
+from .checkpoint import (
+    CheckpointWriter,
+    load_checkpoint_state,
+    iter_checkpoint_rows,
+    parse_checkpoint_row,
+    parse_metric_score,
+    serialize_checkpoint_row,
+)
 from .dataset import LangfuseDataset
 from .progress import ProgressTracker, ProgressObserver
 from .observers import (
@@ -547,6 +555,15 @@ class Evaluator:
         Note:
             The Web UI is always available at the URL printed at startup.
         """
+        checkpoint_state = None
+        if self.config.resume_from:
+            checkpoint_state = load_checkpoint_state(self.config.resume_from)
+            if checkpoint_state and checkpoint_state.run_name:
+                # Resume should continue the original run_id by default.
+                self.run_name = checkpoint_state.run_name
+                self.display_name = checkpoint_state.run_name
+                self.config.run_name = checkpoint_state.run_name
+
         result = EvaluationResult(
             dataset_name=self.dataset_name,
             run_name=self.run_name,
@@ -563,7 +580,8 @@ class Evaluator:
         run_info = self._build_run_info(result)
 
         # Initialize progress tracker
-        tracker = ProgressTracker(items, list(self.metrics.keys()))
+        metric_names = list(self.metrics.keys())
+        tracker = ProgressTracker(items, metric_names)
     
         # Web UI setup - always start the server
         html_url = None
@@ -613,12 +631,105 @@ class Evaluator:
                 vertical_overflow="crop",
             )
 
+        # Checkpoint/resume setup
+        checkpoint_path = None
+        checkpoint_writer = None
+        completed_item_ids: Set[str] = set()
+        checkpoint_rows: List[Dict[str, Any]] = []
+        resume_completed = 0
+        resume_failed = 0
+        resume_metric_totals: Dict[str, float] = {m: 0.0 for m in metric_names}
+        resume_metric_counts: Dict[str, int] = {m: 0 for m in metric_names}
+        if self.config.checkpoint_enabled:
+            if (self.config.checkpoint_format or "").lower() != "csv":
+                raise ValueError("Only CSV checkpointing is supported.")
+            checkpoint_path = self.config.resume_from or result._default_save_path(
+                "csv", output_dir=self.config.output_dir
+            )
+            checkpoint_state = checkpoint_state or load_checkpoint_state(checkpoint_path)
+            if checkpoint_state:
+                if checkpoint_state.dataset_name and checkpoint_state.dataset_name != self.dataset_name:
+                    raise ValueError(
+                        f"Resume dataset mismatch: {checkpoint_state.dataset_name} != {self.dataset_name}"
+                    )
+                if sorted(checkpoint_state.metrics) != sorted(metric_names):
+                    raise ValueError(
+                        "Resume metrics mismatch: "
+                        f"{checkpoint_state.metrics} != {metric_names}"
+                    )
+                if self.config.resume_rerun_errors:
+                    raise ValueError(
+                        "resume_rerun_errors is not supported when appending to the same run file."
+                    )
+                completed_item_ids = set(checkpoint_state.completed_item_ids)
+                resume_failed = len(checkpoint_state.error_item_ids)
+                resume_completed = max(0, len(completed_item_ids) - resume_failed)
+                for row in iter_checkpoint_rows(checkpoint_path):
+                    checkpoint_rows.append(row)
+                    for m in metric_names:
+                        val = parse_metric_score(row.get(f"{m}_score", ""))
+                        if val is not None:
+                            resume_metric_totals[m] += float(val)
+                            resume_metric_counts[m] += 1
+                    item_id, row_result, is_error = parse_checkpoint_row(row, metric_names)
+                    if not item_id:
+                        continue
+                    if is_error:
+                        error_output = str(row_result.get("output", "") or "")
+                        error_msg = error_output.replace("ERROR:", "").strip() or "error"
+                        result.add_error(
+                            item_id,
+                            error_msg,
+                            row_result.get("trace_id"),
+                            task_started_at_ms=row_result.get("task_started_at_ms"),
+                        )
+                    else:
+                        result.add_result(item_id, row_result)
+
+            checkpoint_writer = CheckpointWriter(
+                checkpoint_path,
+                metrics=metric_names,
+                flush_each_item=self.config.checkpoint_flush_each_item,
+                fsync=self.config.checkpoint_fsync,
+            )
+            checkpoint_writer.open()
+
+        run_info = {
+            **(run_info or {}),
+            "resume_completed": resume_completed,
+            "resume_failed": resume_failed,
+            "resume_metric_totals": resume_metric_totals,
+            "resume_metric_counts": resume_metric_counts,
+        }
+
         self._notify_observer(
             "on_run_start",
             run_info=run_info or {},
             total_items=len(items),
             metrics=list(self.metrics.keys()),
         )
+
+        # Build item list and input metadata
+        item_id_to_index: Dict[str, int] = {}
+        pending_entries: List[Tuple[int, str, Any]] = []
+        use_fallback_ids = bool(
+            checkpoint_state
+            and any(str(item_id).startswith("item_") for item_id in completed_item_ids)
+        )
+        for idx, item in enumerate(items):
+            primary_id_raw = getattr(item, "id", None)
+            primary_id = str(primary_id_raw) if primary_id_raw is not None else None
+            fallback_id = f"item_{idx}"
+            if primary_id:
+                item_id_to_index[primary_id] = idx
+            item_id_to_index[fallback_id] = idx
+            # Use the same ID scheme as the checkpoint when resuming.
+            item_id = fallback_id if use_fallback_ids or not primary_id else primary_id
+            result.add_input(item_id, item.input)
+            result.add_metadata(item_id, getattr(item, "metadata", {}))
+            if item_id in completed_item_ids or fallback_id in completed_item_ids or (primary_id in completed_item_ids if primary_id else False):
+                continue
+            pending_entries.append((idx, item_id, item))
 
         async def update_html():
             while True:
@@ -637,35 +748,154 @@ class Evaluator:
             if dashboard and live:
                 dashboard.bind(live)
 
-            # Inline run_with_table logic
             html_update_task = asyncio.create_task(update_html())
 
-            semaphore = asyncio.Semaphore(self.max_concurrency)
-            tasks = []
+            work_queue: asyncio.Queue = asyncio.Queue()
+            write_queue: asyncio.Queue = asyncio.Queue()
+            interrupted = False
 
-            async def _bounded_evaluate(idx, item):
-                async with semaphore:
-                    return await self._evaluate_item(idx, item, tracker)
+            async def _write_loop():
+                if not checkpoint_writer:
+                    return
+                while True:
+                    row = await write_queue.get()
+                    if row is None:
+                        write_queue.task_done()
+                        break
+                    checkpoint_writer.append_row(row)
+                    write_queue.task_done()
 
-            for idx, item in enumerate(items):
-                # Use actual item ID if available (e.g., from Langfuse dataset), fallback to index-based ID
-                item_id = getattr(item, 'id', None) or f"item_{idx}"
-                result.add_input(item_id, item.input)
-                result.add_metadata(item_id, getattr(item, 'metadata', {}))
-                tasks.append(_bounded_evaluate(idx, item))
+            def _main_score(val: Any) -> Any:
+                if isinstance(val, dict):
+                    if "error" in val:
+                        return f"ERROR: {val['error']}"
+                    if "score" in val:
+                        return val.get("score")
+                return val
+
+            async def _worker():
+                while True:
+                    entry = await work_queue.get()
+                    if entry is None:
+                        work_queue.task_done()
+                        break
+                    idx, item_id, item = entry
+                    try:
+                        eval_result = await self._evaluate_item(idx, item, tracker)
+                    except Exception as e:
+                        eval_result = e
+
+                    if isinstance(eval_result, Exception):
+                        error_msg = str(eval_result)
+                        result.add_error(item_id, error_msg)
+                        row = serialize_checkpoint_row(
+                            dataset_name=self.dataset_name,
+                            run_name=self.run_name,
+                            run_metadata=self.run_metadata,
+                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            trace_id="",
+                            item_id=item_id,
+                            item_input=item.input,
+                            item_metadata=getattr(item, "metadata", {}),
+                            output=f"ERROR: {error_msg}",
+                            expected_output=getattr(item, "expected_output", None),
+                            time_seconds=0.0,
+                            task_started_at_ms=None,
+                            scores={m: "N/A" for m in metric_names},
+                            metric_meta={},
+                        )
+                    elif isinstance(eval_result, dict) and "_error" in eval_result:
+                        error_msg = str(eval_result.get("_error", "error"))
+                        result.add_error(
+                            item_id,
+                            error_msg,
+                            eval_result.get("_trace_id"),
+                            task_started_at_ms=eval_result.get("task_started_at_ms"),
+                        )
+                        row = serialize_checkpoint_row(
+                            dataset_name=self.dataset_name,
+                            run_name=self.run_name,
+                            run_metadata=self.run_metadata,
+                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            trace_id=eval_result.get("_trace_id") or "",
+                            item_id=item_id,
+                            item_input=item.input,
+                            item_metadata=getattr(item, "metadata", {}),
+                            output=f"ERROR: {error_msg}",
+                            expected_output=getattr(item, "expected_output", None),
+                            time_seconds=0.0,
+                            task_started_at_ms=eval_result.get("task_started_at_ms"),
+                            scores={m: "N/A" for m in metric_names},
+                            metric_meta={},
+                        )
+                    else:
+                        result.add_result(item_id, eval_result)
+                        scores = eval_result.get("scores", {})
+                        metric_meta: Dict[str, Dict[str, Any]] = {}
+                        score_row: Dict[str, Any] = {}
+                        for m in metric_names:
+                            sc = scores.get(m)
+                            score_row[m] = _main_score(sc)
+                            if isinstance(sc, dict) and isinstance(sc.get("metadata"), dict):
+                                metric_meta[m] = sc["metadata"]
+                        row = serialize_checkpoint_row(
+                            dataset_name=self.dataset_name,
+                            run_name=self.run_name,
+                            run_metadata=self.run_metadata,
+                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            trace_id=eval_result.get("trace_id") or "",
+                            item_id=item_id,
+                            item_input=item.input,
+                            item_metadata=getattr(item, "metadata", {}),
+                            output=eval_result.get("output"),
+                            expected_output=eval_result.get("expected"),
+                            time_seconds=float(eval_result.get("time", 0.0) or 0.0),
+                            task_started_at_ms=eval_result.get("task_started_at_ms"),
+                            scores=score_row,
+                            metric_meta=metric_meta,
+                        )
+
+                    if checkpoint_writer:
+                        await write_queue.put(row)
+                    work_queue.task_done()
+
+            if pending_entries:
+                for entry in pending_entries:
+                    await work_queue.put(entry)
+            for _ in range(self.max_concurrency):
+                await work_queue.put(None)
+
+            writer_task = asyncio.create_task(_write_loop()) if checkpoint_writer else None
+            worker_tasks = [asyncio.create_task(_worker()) for _ in range(self.max_concurrency)]
 
             try:
-                eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+                await asyncio.gather(*worker_tasks)
             except KeyboardInterrupt:
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                html_update_task.cancel()
+                interrupted = True
+                # Stop scheduling new work
+                while not work_queue.empty():
+                    try:
+                        work_queue.get_nowait()
+                        work_queue.task_done()
+                    except Exception:
+                        break
+                for _ in worker_tasks:
+                    await work_queue.put(None)
                 try:
-                    await html_update_task
-                except asyncio.CancelledError:
-                    pass
-                raise
+                    await asyncio.wait_for(
+                        asyncio.gather(*worker_tasks, return_exceptions=True),
+                        timeout=self.config.interrupt_grace_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    for task in worker_tasks:
+                        task.cancel()
+            finally:
+                if writer_task:
+                    await write_queue.join()
+                    await write_queue.put(None)
+                    await writer_task
+                if checkpoint_writer:
+                    checkpoint_writer.close()
 
             html_update_task.cancel()
             try:
@@ -681,23 +911,10 @@ class Evaluator:
             except Exception:
                 pass
 
-            for idx, eval_result in enumerate(eval_results):
-                # Use actual item ID if available (e.g., from Langfuse dataset), fallback to index-based ID
-                item = items[idx]
-                item_id = getattr(item, 'id', None) or f"item_{idx}"
-                if isinstance(eval_result, Exception):
-                    result.add_error(item_id, str(eval_result))
-                elif isinstance(eval_result, dict) and "_error" in eval_result:
-                    # Error with trace_id info
-                    result.add_error(
-                        item_id,
-                        eval_result["_error"],
-                        eval_result.get("_trace_id"),
-                        task_started_at_ms=eval_result.get("task_started_at_ms"),
-                    )
-                else:
-                    result.add_result(item_id, eval_result)
-            
+            if interrupted:
+                result.interrupted = True
+                result.last_saved_path = checkpoint_path
+
             if live_tui and dashboard:
                 final_panel = dashboard.render()
 
@@ -705,6 +922,8 @@ class Evaluator:
             console.print(final_panel)
         if live_tui and dashboard:
             dashboard.shutdown()
+        if checkpoint_path:
+            result.last_saved_path = checkpoint_path
         # Mark evaluation as finished
         result.finish()
 
@@ -734,7 +953,7 @@ class Evaluator:
             result.html_url = html_url
         
         # Auto-save if requested (message printed by save_* methods)
-        if auto_save:
+        if auto_save and not checkpoint_path:
             try:
                 result.save(format=save_format, output_dir=self.config.output_dir)
             except Exception as e:

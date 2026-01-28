@@ -612,7 +612,17 @@ class RunDiscovery:
                     # New format: {metric}__meta__{field}
                     if col.startswith(f"{m}__meta__"):
                         field_name = col[len(f"{m}__meta__"):]
-                        meta[field_name] = row.get(col, "")
+                        if field_name == "json":
+                            raw = row.get(col, "")
+                            if raw:
+                                try:
+                                    parsed = json.loads(raw)
+                                    if isinstance(parsed, dict):
+                                        meta.update({k: str(v) for k, v in parsed.items()})
+                                except Exception:
+                                    meta[field_name] = raw
+                        else:
+                            meta[field_name] = row.get(col, "")
                     # Legacy format: {metric}_{field} (but not {metric}_score)
                     elif col.startswith(f"{m}_") and col != f"{m}_score" and "__meta__" not in col:
                         field_name = col[len(f"{m}_"):]
@@ -770,7 +780,17 @@ class RunDiscovery:
                     # New format: {metric}__meta__{field}
                     if col.startswith(f"{m}__meta__"):
                         field_name = col[len(f"{m}__meta__"):]
-                        meta[field_name] = row.get(col, "")
+                        if field_name == "json":
+                            raw = row.get(col, "")
+                            if raw:
+                                try:
+                                    parsed = json.loads(str(raw))
+                                    if isinstance(parsed, dict):
+                                        meta.update({k: str(v) for k, v in parsed.items()})
+                                except Exception:
+                                    meta[field_name] = str(raw)
+                        else:
+                            meta[field_name] = row.get(col, "")
                     # Legacy format: {metric}_{field} (but not {metric}_score)
                     elif col.startswith(f"{m}_") and col != f"{m}_score" and "__meta__" not in col:
                         field_name = col[len(f"{m}_"):]

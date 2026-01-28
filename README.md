@@ -42,6 +42,7 @@ The framework supports [Langfuse](https://langfuse.com) datasets (with full trac
 - **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
 - **Flexible Datasets** - Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
 - **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
+- **Resume Runs** - Checkpoint partial results and resume interrupted evaluations
 
 ## ⚡ Quick Start
 
@@ -151,6 +152,10 @@ qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
 
 # Multi-model from config
 qym --runs-config experiments.json
+
+# Resume a partially completed run
+qym resume --run-file qym_results/task/model/date/run-id.csv \
+  --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 ```
 
 ## 📊 Dashboard

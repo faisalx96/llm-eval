@@ -229,6 +229,7 @@ class MultiModelRunner:
         tasks = [asyncio.create_task(_run_spec(spec)) for spec in self.specs]
 
         final_panel = None
+        interrupted = False
         if live_enabled:
             dashboard_bound = False
             try:
@@ -245,10 +246,10 @@ class MultiModelRunner:
                     try:
                         results = await asyncio.gather(*tasks, return_exceptions=True)
                     except KeyboardInterrupt:
+                        interrupted = True
                         for task in tasks:
                             task.cancel()
-                        await asyncio.gather(*tasks, return_exceptions=True)
-                        raise
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
                     finally:
                         final_panel = dashboard.render()
             finally:
@@ -266,9 +267,11 @@ class MultiModelRunner:
             if isinstance(result, Exception):
                 errors.append((spec, result))
             else:
+                if interrupted:
+                    result.interrupted = True
                 final_results.append(result)
 
-        if errors:
+        if errors and not interrupted:
             summary = ", ".join(f"{spec.name}: {err}" for spec, err in errors)
             raise RuntimeError(f"One or more runs failed: {summary}")
 

@@ -27,6 +27,13 @@ class EvaluatorConfig(BaseModel):
     
     # Output settings
     output_dir: str = "qym_results"
+    checkpoint_enabled: bool = True
+    checkpoint_format: str = "csv"
+    checkpoint_flush_each_item: bool = True
+    checkpoint_fsync: bool = False
+    resume_from: Optional[str] = None
+    resume_rerun_errors: bool = False
+    interrupt_grace_seconds: float = 2.0
 
     @field_validator("models", mode="before")
     @classmethod

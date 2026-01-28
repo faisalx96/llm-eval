@@ -17,6 +17,7 @@ from .core.config import RunSpec
 from .utils.text import arabic_display
 
 from .core.dataset import CsvDataset
+from .core.checkpoint import load_checkpoint_state
 
 console = Console()
 
@@ -204,6 +205,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "dashboard":
         run_dashboard_command(sys.argv[2:])
         return
+    resume_mode = False
+    argv = sys.argv[1:]
+    if len(argv) > 0 and argv[0] == "resume":
+        resume_mode = True
+        argv = argv[1:]
 
     parser = argparse.ArgumentParser(
         # Use arabic_display() for proper RTL text rendering in terminals
@@ -309,6 +315,12 @@ Examples:
         help="File to save detailed results (JSON format)"
     )
     parser.add_argument(
+        "--resume-from",
+        "--run-file",
+        dest="resume_from",
+        help="Path to a checkpoint CSV to resume from"
+    )
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="Only show final summary, no progress"
@@ -323,8 +335,10 @@ Examples:
         help="Path to JSON/YAML file describing multiple runs to execute in parallel"
     )
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     is_multi_run = bool(args.runs_config)
+    if resume_mode and not args.resume_from:
+        parser.error("--run-file is required for resume")
     if is_multi_run and args.model:
         console.print("[yellow]⚠️  Ignoring --model because --runs-config is provided.[/yellow]")
 
@@ -364,6 +378,15 @@ Examples:
 
         runner.print_summary(results)
         runner.print_saved_paths(results)
+
+        interrupted_runs = [res for res in results if getattr(res, "interrupted", False)]
+        if interrupted_runs:
+            for res in interrupted_runs:
+                resume_path = getattr(res, "last_saved_path", None)
+                if resume_path:
+                    console.print(f"[yellow]Partial results saved to {resume_path}[/yellow]")
+                    console.print(f"[yellow]Resume with: qym resume --run-file {resume_path} ...[/yellow]")
+            sys.exit(1)
 
         for spec, result in zip(run_specs, results):
             if spec.output_path:
@@ -409,6 +432,12 @@ Examples:
             except json.JSONDecodeError as e:
                 console.print(f"[red]Error parsing config JSON: {e}[/red]")
                 sys.exit(1)
+        if args.resume_from:
+            config["resume_from"] = args.resume_from
+            if "run_name" not in config:
+                resume_state = load_checkpoint_state(args.resume_from)
+                if resume_state and resume_state.run_name:
+                    config["run_name"] = resume_state.run_name
         if "run_name" not in config:
             config["run_name"] = args.task_function
         # Record CLI invocation for frontend run overview
@@ -480,6 +509,12 @@ Examples:
         
         # Print UI URL and optionally open browser (single run only)
         primary_result = run_results[0]
+        if getattr(primary_result, "interrupted", False):
+            resume_path = getattr(primary_result, "last_saved_path", None)
+            if resume_path:
+                console.print(f"[yellow]Partial results saved to {resume_path}[/yellow]")
+                console.print(f"[yellow]Resume with: qym resume --run-file {resume_path} ...[/yellow]")
+            sys.exit(1)
         try:
             if getattr(primary_result, 'html_url', None) and not args.no_open and not args.quiet:
                 console.print(f"\n[blue]UI:[/blue] {primary_result.html_url}")

@@ -15,8 +15,9 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 9. [Dashboard & Web UI](#9-dashboard--web-ui)
    - [Publishing to Confluence](#publishing-to-confluence)
 10. [Understanding Results](#10-understanding-results)
-11. [Configuration Options](#11-configuration-options)
-12. [Common Errors & Solutions](#12-common-errors--solutions)
+11. [Pause/Resume & Checkpointing](#11-pause-resume--checkpointing)
+12. [Configuration Options](#12-configuration-options)
+13. [Common Errors & Solutions](#13-common-errors--solutions)
 
 ---
 
@@ -780,6 +781,46 @@ Run all experiments:
 qym --runs-config experiments.json
 ```
 
+### Resume a Partial Run
+
+If a run is interrupted, qym writes a checkpoint CSV as items complete. Resume by pointing to the checkpoint file:
+
+```bash
+qym resume --run-file qym_results/my_task/my_model/2026-01-27/my_task-my_dataset-my_model-260127-1200.csv \
+  --task-file agent.py --task-function my_task \
+  --dataset my-dataset --metrics exact_match
+```
+
+Resume requirements:
+- Use the same dataset and metrics as the original run.
+- Point to the exact checkpoint CSV for that run.
+- `resume_from` automatically reuses the checkpoint run_id (no need to set `run_name`).
+
+Where to find the checkpoint file:
+- The checkpoint is the same CSV under `qym_results/...` and is updated as items finish.
+- On interrupt, qym prints the checkpoint path in the terminal.
+
+Resume via Python API:
+
+```python
+from qym import Evaluator
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match"],
+    config={
+        "resume_from": "qym_results/.../run.csv",
+    },
+)
+
+results = evaluator.run()
+```
+
+Multi-model resume:
+- Resume is per-run. Use the specific run CSV for the model you want to resume.
+- If using a `--runs-config`, set `resume_from` inside each run’s config block.
+
 ---
 
 ## 9. Dashboard & Web UI
@@ -1039,7 +1080,45 @@ print(f"Avg latency: {timing['mean']:.2f}s")
 
 ---
 
-## 11. Configuration Options
+## 11. Pause/Resume & Checkpointing
+
+qym can persist **partial results** while a run is in progress and resume later if the process stops (Ctrl+C, crash, or kill).
+
+### How it works
+
+- A checkpoint CSV is written **per completed item** (append-only).
+- The checkpoint file is also a normal run file, so it appears in the dashboard.
+- Resume skips any `item_id` already present in the checkpoint file.
+
+### CLI behavior on interrupt
+
+On Ctrl+C, qym prints a resume command with the checkpoint path:
+
+```
+Partial results saved to qym_results/.../run.csv
+Resume with: qym resume --run-file qym_results/.../run.csv ...
+```
+
+### Configuration fields
+
+```python
+config = {
+    "checkpoint_enabled": True,
+    "checkpoint_format": "csv",
+    "checkpoint_flush_each_item": True,
+    "checkpoint_fsync": False,   # Set True for extra durability (slower)
+    "resume_from": "qym_results/.../run.csv",
+    "interrupt_grace_seconds": 2.0,
+}
+```
+
+### Notes
+
+- Resume appends to the **same run file** and **same run_id**.
+- Completed items (including errors) are skipped on resume.
+- `resume_rerun_errors` is not supported when appending to the same run file.
+
+## 12. Configuration Options
 
 ### Full Config Reference
 
@@ -1124,7 +1203,7 @@ results = Evaluator.run_parallel(runs=runs_config, max_parallel_runs=3)
 
 ---
 
-## 12. Common Errors & Solutions
+## 13. Common Errors & Solutions
 
 ### "Dataset 'X' not found"
 
