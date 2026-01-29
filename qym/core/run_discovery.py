@@ -501,6 +501,8 @@ class RunDiscovery:
     def get_run_data(self, file_path: str) -> Dict[str, Any]:
         """Load full run data and transform to UI snapshot format."""
         path = Path(file_path)
+        if not path.is_absolute() and file_path and os.path.exists("/" + file_path):
+            path = Path("/" + file_path)
         
         # Try multiple path resolutions:
         # 1. As-is (could be absolute or relative to CWD)
