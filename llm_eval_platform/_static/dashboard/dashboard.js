@@ -457,6 +457,20 @@
       case 'success-asc':
         runs.sort((a, b) => a.success_rate - b.success_rate);
         break;
+      case 'completed-desc':
+        runs.sort((a, b) => {
+          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
+          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          return bVal - aVal;
+        });
+        break;
+      case 'completed-asc':
+        runs.sort((a, b) => {
+          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
+          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          return aVal - bVal;
+        });
+        break;
       case 'items-desc':
         runs.sort((a, b) => b.total_items - a.total_items);
         break;
@@ -899,6 +913,10 @@
     tbody.innerHTML = runs.map((run, idx) => {
       const dt = formatDate(run.timestamp);
       const successClass = getSuccessClass(run.success_rate);
+      const completedRate = run.total_items
+        ? (run.success_count + run.error_count) / run.total_items
+        : 0;
+      const completedText = formatPercent(completedRate);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
@@ -975,6 +993,9 @@
           </td>
           <td class="col-success">
             <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
+          </td>
+          <td class="col-completed">
+            <span class="completed-rate">${completedText}</span>
           </td>
           ${metricCells}
           <td class="col-latency">
@@ -1568,7 +1589,7 @@
     const effectiveThreshold = isBoolean ? 0.9999 : threshold;
 
     // Use shared metrics calculation
-    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+    const metrics = window.QymMetrics.calculateItemLevelMetrics({
       runsData,
       metricName,
       threshold: effectiveThreshold,
@@ -2894,7 +2915,7 @@
       };
     }
 
-    const metrics = window.LLMEvalMetrics.calculateItemLevelMetrics({
+    const metrics = window.QymMetrics.calculateItemLevelMetrics({
       runsData,
       metricName: metric,
       threshold,

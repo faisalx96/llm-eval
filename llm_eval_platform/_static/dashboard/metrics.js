@@ -286,7 +286,7 @@ function getMetricTooltips(K, isBoolean, threshold) {
 
 // Export for use in other modules (if using ES modules)
 if (typeof window !== 'undefined') {
-  window.LLMEvalMetrics = {
+  window.QymMetrics = {
     // Core error handling - USE THESE for consistent error treatment
     isErrorRow,
     getRowScore,

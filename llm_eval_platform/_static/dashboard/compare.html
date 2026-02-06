@@ -622,6 +622,15 @@
       color: var(--text-muted);
     }
 
+    .item-run-output .start-badge {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+    }
+
     .item-run-output .trace-link {
       display: inline-flex;
       align-items: center;
@@ -648,6 +657,93 @@
       word-break: break-word;
       max-height: 150px;
       overflow-y: auto;
+    }
+
+    .metric-edit-block {
+      margin-top: 6px;
+      padding: 6px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+    }
+    .metric-edit-title {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .metric-edit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+    .metric-edit-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .metric-edit-controls.hidden { display: none; }
+    .metric-edit-block.hidden { display: none; }
+    .metric-edit-input {
+      width: 90px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save {
+      background: transparent;
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save:disabled { opacity: 0.6; cursor: default; }
+    .metric-edit-status {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .metric-edit-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      background: rgba(34,197,94,0.15);
+      color: var(--success);
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .metric-edit-badge::before {
+      content: "●";
+      font-size: 7px;
+      margin-right: 4px;
+    }
+    .metric-edit-open {
+      background: #1f2430;
+      border: none;
+      color: #a7b0c0;
+      border-radius: 6px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 6px;
+      line-height: 1;
+      opacity: 0.95;
+    }
+    .metric-edit-open:hover {
+      opacity: 1;
+      background: #222a36;
+      color: #c3c9d6;
+    }
+    .metric-edit-meta {
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
     }
 
     /* Pagination */
@@ -978,8 +1074,24 @@
     .metric-score-row {
       display: flex;
       align-items: center;
-      gap: 4px;
+      justify-content: flex-start;
+      gap: 8px;
       padding: 2px 0;
+    }
+    .metric-score-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .winner-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      background: var(--success-dim);
+      color: var(--success);
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
     }
 
     .metric-score-row.highlighted {
@@ -1171,8 +1283,26 @@
       }
 
       // Use shared utilities from metrics.js
-      const formatPercent = window.LLMEvalMetrics.formatPercent;
-      const formatLatency = window.LLMEvalMetrics.formatLatency;
+      const formatPercent = window.QymMetrics.formatPercent;
+      const formatLatency = window.QymMetrics.formatLatency;
+
+      function formatTaskStart(ms) {
+        if (!ms || ms <= 0) return null;
+        try {
+          const d = new Date(ms);
+          const pad = (n) => String(n).padStart(2, '0');
+          const yyyy = d.getFullYear();
+          const mm = pad(d.getMonth() + 1);
+          const dd = pad(d.getDate());
+          const hh = pad(d.getHours());
+          const min = pad(d.getMinutes());
+          const sec = pad(d.getSeconds());
+          const ts = `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+          return { ts };
+        } catch {
+          return null;
+        }
+      }
 
       function buildLangfuseTraceUrl(traceId) {
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
@@ -1467,7 +1597,7 @@
           for (const row of rows) {
             // Score for the selected metric (use centralized error handling)
             if (metricIdx >= 0) {
-              const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+              const { score } = window.QymMetrics.getRowScore(row, metricIdx);
               if (score !== null) { scoreSum += score; scoreCount++; }
             }
             // Latency
@@ -1476,7 +1606,7 @@
               latCount++;
             }
             // Errors (use centralized check)
-            if (window.LLMEvalMetrics.isErrorRow(row)) {
+            if (window.QymMetrics.isErrorRow(row)) {
               const output = (row.output_full || row.output || '').toLowerCase();
               if (output.includes('timeout')) timeoutErrors++;
               else if (output.includes('error')) runtimeErrors++;
@@ -1502,7 +1632,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return { score: null, failed: false };
             // Use centralized error handling from metrics.js
-            const { score, isError } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            const { score, isError } = window.QymMetrics.getRowScore(row, metricIdx);
             return { score, failed: isError };
           });
 
@@ -1920,7 +2050,7 @@
             let sum = 0, count = 0;
             for (const row of rows) {
               // Use centralized error handling - errors count as 0
-              const { score } = window.LLMEvalMetrics.getRowScore(row, idx);
+              const { score } = window.QymMetrics.getRowScore(row, idx);
               if (score !== null) {
                 sum += score;
                 count++;
@@ -2032,7 +2162,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
             // Use centralized error handling from metrics.js
-            const { score } = window.LLMEvalMetrics.getRowScore(row, metricIdx);
+            const { score } = window.QymMetrics.getRowScore(row, metricIdx);
             return score;
           });
           const validScores = scores.filter(s => s !== null);
@@ -2043,7 +2173,7 @@
             const uniqueOutputs = new Set(outputs);
             if (uniqueOutputs.size <= 1) continue;
           } else if (state.itemFilter === 'errors') {
-            const hasError = rowData.some(r => window.LLMEvalMetrics.isErrorRow(r));
+            const hasError = rowData.some(r => window.QymMetrics.isErrorRow(r));
             if (!hasError) continue;
           } else if (state.itemFilter === 'all_correct') {
             // All runs meet threshold (correct)
@@ -2148,6 +2278,7 @@
             const output = row.output_full || row.output || '—';
             const status = row.status || 'pending';
             const latencyMs = row.latency_ms;
+            const taskStartedAtMs = row.task_started_at_ms;
             const traceId = row.trace_id;
             // Use direct trace_url if available, otherwise build from trace_id
             const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId);
@@ -2174,17 +2305,55 @@
 
               const cls = getSuccessClass(v);
               const isSelected = name === selectedMetric;
-              const winnerBadge = isSelected && isWinner ? '<span class="metric-winner">★</span>' : '';
+              const meta = metricMeta[name] || {};
+              const editBtn = `<button class="metric-edit-open" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="Edit ${escapeAttr(name)}" title="Edit">✎</button>`;
+              const editedBadge = String(meta.modified || '').toLowerCase() === 'true'
+                ? '<span class="metric-edit-badge">Edited</span>'
+                : '';
 
               return `<div class="metric-score-row ${isSelected ? 'highlighted' : ''}">
                 <span class="metric-score-name">${escapeHtml(name)}</span>
-                <span class="metric-score-value ${cls}">${formatPercent(v)}</span>
-                ${winnerBadge}
+                <span class="metric-score-meta">
+                  <span class="metric-score-value ${cls}">${formatPercent(v)}</span>
+                  ${editBtn}
+                  ${editedBadge}
+                </span>
               </div>`;
             }).join('');
 
+            let metricEditHtml = '';
+            if (metricNames.length) {
+              metricEditHtml = metricNames.map((name, i) => {
+                const rawScore = metricVals[i];
+                const rawValue = (rawScore == null || rawScore === '') ? '' : String(rawScore);
+                const meta = metricMeta[name] || {};
+                const originalRaw = meta.original_score;
+                const hasOriginal = !(originalRaw == null || originalRaw === '');
+                const modifiedNote = hasOriginal
+                  ? `<div class="metric-edit-meta">Original: ${escapeHtml(String(originalRaw))}</div>`
+                  : '';
+                return `
+                  <div class="metric-edit-block hidden" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}">
+                    <div class="metric-edit-title">Edit ${escapeHtml(name)}_score</div>
+                    <div class="metric-edit-controls">
+                      <input class="metric-edit-input" type="text" value="${escapeAttr(rawValue)}" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" />
+                      <button class="metric-edit-save" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}">Save</button>
+                      <span class="metric-edit-status" aria-live="polite"></span>
+                    </div>
+                    ${modifiedNote}
+                  </div>
+                `;
+              }).join('');
+            }
+
             // Latency badge
             const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
+
+            // Task start badge (local time)
+            const startInfo = formatTaskStart(taskStartedAtMs);
+            const startBadge = startInfo
+              ? `<span class="start-badge" title="${escapeAttr(startInfo.ts)}">${escapeHtml(startInfo.ts)}</span>`
+              : '';
 
             // Langfuse trace link
             const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
@@ -2196,7 +2365,7 @@
             if (hasMetricMeta) {
               const detailRows = metricNames.map((name) => {
                 const meta = metricMeta[name] || {};
-                const metaKeys = Object.keys(meta);
+                const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k));
                 if (metaKeys.length === 0) return '';
 
                 return metaKeys.map(key => {
@@ -2219,14 +2388,16 @@
               }
             }
 
+            const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
             return `
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
-                  <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
-                  <span class="output-badges">${latencyBadge}${traceLink}</span>
+                  <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
+                  <span class="output-badges">${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${formatValue(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
+                ${metricEditHtml}
                 ${metricDetailsHtml}
               </div>
             `;
@@ -2282,12 +2453,133 @@
         if (scrollToTop) {
           container.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+
+        wireMetricEditHandlers();
+        alignOutputHeights();
       }
 
       function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+      }
+      function escapeAttr(text) {
+        return String(text ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function alignOutputHeights() {
+        try {
+          const rows = document.querySelectorAll('.item-outputs-row');
+          rows.forEach(row => {
+            const outputs = row.querySelectorAll('.item-run-output .output-text');
+            if (!outputs.length) return;
+            outputs.forEach(el => { el.style.minHeight = '0px'; });
+            let max = 0;
+            outputs.forEach(el => {
+              const h = el.scrollHeight || el.offsetHeight || 0;
+              if (h > max) max = h;
+            });
+            outputs.forEach(el => { el.style.minHeight = `${max}px`; });
+          });
+        } catch {}
+      }
+
+      async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+        const res = await fetch(apiUrl('api/runs/update_metric'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_path: filePath,
+            row_index: rowIndex,
+            metric_name: metricName,
+            new_score: newScore,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to update metric');
+        }
+        return data;
+      }
+
+      function applyUpdatedRowToRun(runIdx, updatedRow) {
+        try {
+          const run = state.runs[runIdx];
+          if (!run || !run.snapshot) return;
+          const rows = run.snapshot.rows || [];
+          const idx = Number(updatedRow.index) || 0;
+          if (idx >= 0 && idx < rows.length) {
+            rows[idx] = updatedRow;
+          } else {
+            const pos = rows.findIndex(r => Number(r.index) === idx);
+            if (pos >= 0) rows[pos] = updatedRow;
+          }
+        } catch {}
+      }
+
+      function refreshComparisonStatsAfterEdit() {
+        if (state.selectedOverviewMetric) {
+          state.comparisonStats[state.selectedOverviewMetric] = calculateComparisonStatsForMetric(state.selectedOverviewMetric);
+        }
+        if (state.selectedItemsMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
+          state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
+        }
+        renderComparisonStats();
+        renderMetricsTable();
+        renderSummaries();
+      }
+
+      function wireMetricEditHandlers() {
+        document.querySelectorAll('.metric-edit-open').forEach(btn => {
+          btn.onclick = () => {
+            const runIdx = btn.dataset.runIdx;
+            const rowIndex = btn.dataset.rowIndex;
+            const metric = btn.dataset.metric;
+            const block = document.querySelector(`.metric-edit-block[data-run-idx="${runIdx}"][data-row-index="${rowIndex}"][data-metric="${metric}"]`);
+            if (!block) return;
+            const isHidden = block.classList.contains('hidden');
+            block.classList.toggle('hidden');
+            btn.textContent = isHidden ? '✕' : '✎';
+            btn.setAttribute('title', isHidden ? 'Close' : 'Edit');
+            btn.setAttribute('aria-label', isHidden ? 'Close edit' : 'Edit');
+          };
+        });
+        document.querySelectorAll('.metric-edit-save').forEach(btn => {
+          btn.onclick = async () => {
+            const runIdx = Number(btn.dataset.runIdx);
+            const rowIndex = Number(btn.dataset.rowIndex);
+            const metricName = btn.dataset.metric || '';
+            const controls = btn.closest('.metric-edit-controls');
+            const input = controls ? controls.querySelector('.metric-edit-input') : null;
+            const status = controls ? controls.querySelector('.metric-edit-status') : null;
+            const run = state.runs[runIdx];
+            const filePath = run?.run?.file_path || '';
+            if (!filePath || !metricName || !input) {
+              if (status) status.textContent = 'Unavailable';
+              return;
+            }
+            btn.disabled = true;
+            if (status) status.textContent = 'Saving...';
+            try {
+              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value);
+              if (result && result.row) {
+                applyUpdatedRowToRun(runIdx, result.row);
+                refreshComparisonStatsAfterEdit();
+                renderItems();
+              }
+            } catch (err) {
+              if (status) status.textContent = 'Error';
+            } finally {
+              btn.disabled = false;
+              if (status && status.textContent === 'Saving...') status.textContent = '';
+            }
+          };
+        });
       }
 
       // Global function for toggling all metric details for an item

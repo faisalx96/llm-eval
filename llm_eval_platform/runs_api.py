@@ -481,6 +481,117 @@ def legacy_run_data(
     }
 
 
+@router.post("/api/runs/update_metric")
+def update_metric(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Update a single metric score for a run item."""
+    file_path = request.get("file_path")
+    row_index = request.get("row_index")
+    metric_name = request.get("metric_name")
+    new_score = request.get("new_score")
+
+    if not file_path or metric_name is None or row_index is None:
+        raise HTTPException(status_code=400, detail="file_path, row_index, and metric_name required")
+
+    run = db.query(Run).filter(Run.id == file_path).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Find the item by index
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run.id, RunItem.index == int(row_index))
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # Find or create the score record
+    score_record = (
+        db.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == item.item_id,
+            RunItemScore.metric_name == metric_name,
+        )
+        .first()
+    )
+
+    if not score_record:
+        score_record = RunItemScore(
+            run_id=run.id,
+            item_id=item.item_id,
+            metric_name=metric_name,
+            meta={},
+        )
+        db.add(score_record)
+
+    # Store original score in meta if not already stored
+    meta = dict(score_record.meta or {})
+    if "original_score" not in meta:
+        meta["original_score"] = score_record.score_raw if score_record.score_raw is not None else score_record.score_numeric
+    meta["modified"] = "true"
+    score_record.meta = meta
+
+    # Update the score
+    try:
+        numeric_val = float(new_score)
+        score_record.score_numeric = numeric_val
+        score_record.score_raw = numeric_val
+    except (ValueError, TypeError):
+        score_record.score_numeric = None
+        score_record.score_raw = new_score
+
+    db.commit()
+
+    # Build the updated row response matching the compare API format
+    metrics = list(run.metrics or [])
+    all_scores = db.query(RunItemScore).filter(
+        RunItemScore.run_id == run.id, RunItemScore.item_id == item.item_id
+    ).all()
+    score_map = {s.metric_name: s for s in all_scores}
+
+    metric_values: list[Any] = []
+    metric_meta: dict[str, Any] = {}
+    for m in metrics:
+        sc = score_map.get(m)
+        if not sc:
+            metric_values.append("")
+            continue
+        val = sc.score_raw
+        if sc.score_numeric is not None:
+            val = sc.score_numeric
+        metric_values.append(val)
+        if sc.meta:
+            metric_meta[m] = sc.meta
+
+    is_error = bool(item.error)
+    status = "error" if is_error else "success"
+
+    row = {
+        "index": item.index,
+        "item_id": item.item_id,
+        "status": status,
+        "input": item.input,
+        "input_full": item.input,
+        "output": item.output if not is_error else f"ERROR: {item.error}",
+        "output_full": item.output if not is_error else f"ERROR: {item.error}",
+        "expected": item.expected,
+        "expected_full": item.expected,
+        "time": "" if item.latency_ms is None else f"{(item.latency_ms or 0)/1000.0:.3f}",
+        "latency_ms": item.latency_ms or 0,
+        "trace_id": item.trace_id or "",
+        "trace_url": item.trace_url or "",
+        "metric_values": metric_values,
+        "metric_meta": metric_meta,
+    }
+
+    return {"ok": True, "row": row}
+
+
 @router.post("/api/runs/delete")
 def delete_run(
     request: Dict[str, Any],

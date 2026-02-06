@@ -1,4 +1,4 @@
-/* LLM-Eval Analytics Dashboard
+/* قيِّم Analytics Dashboard
    Dense, analytical interface inspired by terminal UIs and trading dashboards
 */
 
@@ -397,6 +397,55 @@ body {
 .logo-icon {
   font-size: 18px;
   color: var(--accent-primary);
+}
+
+.logo-img {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
+.logo-text-img {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+}
+
+.loading-icon {
+  width: 48px;
+  height: 48px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.loading-icon-sm {
+  width: 24px;
+  height: 24px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+.empty-logo {
+  height: 48px;
+  width: auto;
+  margin-bottom: var(--space-md);
+  opacity: 0.8;
+}
+
+.help-footer {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.help-logo {
+  height: 24px;
+  width: auto;
+  opacity: 0.6;
 }
 
 .logo-text {
@@ -1641,6 +1690,18 @@ main {
 
 .col-success {
   white-space: nowrap;
+}
+
+.col-completed {
+  width: 90px;
+  text-align: right;
+}
+
+.completed-rate {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .success-rate {
@@ -2995,8 +3056,10 @@ main {
 
 .models-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-sm);
   padding: var(--space-xl);
   color: var(--text-muted);
   font-size: var(--font-sm);
@@ -3519,6 +3582,10 @@ main {
 .metrics-preview-table .score-1 { color: var(--score-1); }
 
 .metrics-preview-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
   padding: var(--space-lg);
   text-align: center;
   color: var(--text-muted);
