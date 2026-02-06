@@ -343,4 +343,3 @@ def admin_delete_user(
     db.commit()
     return {"ok": True, "deleted_id": user_id}
 
-

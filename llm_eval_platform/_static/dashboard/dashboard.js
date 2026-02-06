@@ -116,7 +116,10 @@
   }
 
   function formatPercent(rate) {
-    return `${(rate * 100).toFixed(1)}%`;
+    const pct = rate * 100;
+    if (pct === 0) return '0%';
+    if (pct === 100) return '100%';
+    return `${pct.toFixed(1)}%`;
   }
 
   function getSuccessClass(rate) {
@@ -321,6 +324,7 @@
       // Store individual run data for display
       combos[key].models[model].runsList.push({
         run_id: run.run_id,
+        external_run_id: run.external_run_id,
         file_path: run.file_path,
         timestamp: run.timestamp,
         metric_averages: run.metric_averages || {},
@@ -635,6 +639,7 @@
           allRuns.push({
             model,
             run_id: run.run_id,
+            external_run_id: run.external_run_id,
             file_path: run.file_path,
             timestamp: run.timestamp,
             metric_averages: run.metric_averages || {},
@@ -681,25 +686,27 @@
 
       // Build data rows
       const rowsHtml = allRuns.map((runData) => {
-        const { model, run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
+        const { model, run_id, external_run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
         const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
         const latencyStr = latency > 0 ? formatLatency(latency) : '—';
         const dt = formatDate(timestamp);
 
-        // Format run label
+        // Format run label: always show model name + date
         const displayModel = stripModelProvider(model);
         let displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span>`;
-        if (isMultiRun) {
-          const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
-          if (tsMatch) {
-            const [, yy, mm, dd, hh, min, counter] = tsMatch;
-            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            const monthName = months[parseInt(mm, 10) - 1] || mm;
-            const day = parseInt(dd, 10);
-            const timeStr = `${hh}:${min}`;
-            const counterStr = counter ? ` #${counter}` : '';
-            displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
-          }
+        // Try to extract date from run_id pattern
+        const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
+        if (tsMatch) {
+          const [, yy, mm, dd, hh, min, counter] = tsMatch;
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const monthName = months[parseInt(mm, 10) - 1] || mm;
+          const day = parseInt(dd, 10);
+          const timeStr = `${hh}:${min}`;
+          const counterStr = counter ? ` #${counter}` : '';
+          displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
+        } else {
+          // Fallback: use formatted timestamp from run data
+          displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
         }
         const tooltipText = `${run_id}\n${dt.full}\nClick to view details`;
 
@@ -711,11 +718,12 @@
           }
           const pct = score * 100;
           const barWidth = Math.max(pct, 2);
+          const pctStr = pct === 0 ? '0%' : pct === 100 ? '100%' : `${pct.toFixed(1)}%`;
           return `
             <div class="chart-metric-cell">
               <div class="chart-mini-bar-track">
                 <div class="chart-mini-bar-fill" data-model-idx="${modelIdx}" style="width:${barWidth}%">
-                  <span class="chart-mini-bar-pct">${pct.toFixed(1)}%</span>
+                  <span class="chart-mini-bar-pct">${pctStr}</span>
                 </div>
               </div>
             </div>
@@ -736,7 +744,7 @@
       const metricChartsHtml = `
         <div class="chart-table" data-card-id="${cardId}">
           <div class="chart-table-header">
-            <span class="chart-col-header-run">Run</span>
+            <span class="chart-col-header-run">Model</span>
             ${headerCells}
             <span class="chart-col-header-latency sortable-col ${latencyActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${latencyArrow}</span>
           </div>
@@ -979,50 +987,40 @@
             </span>
           </td>
           <td class="col-actions">
-            ${(canSubmit || canApprove) ? `
+            ${canApprove ? `
               <div class="actions-dropdown" onclick="event.stopPropagation()">
-                <button class="actions-trigger workflow-trigger" title="${canApprove ? 'Review' : 'Submit'}">
-                  ${canApprove ? `
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="16" y1="13" x2="8" y2="13"></line>
-                      <line x1="16" y1="17" x2="8" y2="17"></line>
-                    </svg>
-                  ` : `
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="22" y1="2" x2="11" y2="13"></line>
-                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                  `}
+                <button class="actions-trigger workflow-trigger" title="Review">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                  </svg>
                 </button>
                 <div class="actions-menu">
-                  ${canSubmit ? `
-                    <a href="#" class="actions-item submit-run">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                      </svg>
-                      <span>Submit for Approval</span>
-                    </a>
-                  ` : ''}
-                  ${canApprove ? `
-                    <a href="#" class="actions-item approve-run approve">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                      <span>Approve</span>
-                    </a>
-                    <a href="#" class="actions-item reject-run reject">
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
-                      <span>Reject</span>
-                    </a>
-                  ` : ''}
+                  <a href="#" class="actions-item approve-run approve">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Approve</span>
+                  </a>
+                  <a href="#" class="actions-item reject-run reject">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    <span>Reject</span>
+                  </a>
                 </div>
               </div>
+            ` : ''}
+            ${canSubmit ? `
+              <a href="#" class="action-icon submit-run" title="Submit for Approval" onclick="event.stopPropagation()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </a>
             ` : ''}
             ${langfuseUrl ? `
               <a href="${langfuseUrl}" target="_blank" class="action-icon langfuse-icon" title="View in Langfuse" onclick="event.stopPropagation()">
@@ -1074,10 +1072,16 @@
         e.stopPropagation();
         closeDropdown();
         try {
-          await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/submit`), { method: 'POST' });
+          const resp = await fetch(apiUrl(`v1/runs/${encodeURIComponent(run.run_id)}/submit`), { method: 'POST' });
+          if (resp.ok) {
+            showToast('success', 'Submitted', 'Run submitted for approval');
+          } else {
+            showToast('error', 'Submit Failed', 'Could not submit run');
+          }
           await fetchRuns();
         } catch (err) {
           console.error('Submit failed', err);
+          showToast('error', 'Submit Failed', err.message || 'Could not submit run');
         }
       });
 
@@ -2287,10 +2291,16 @@
     const displayName = u.display_name || (u.email ? u.email.split('@')[0] : 'User');
     const initials = getInitials(displayName);
 
-    // Update avatar
+    // Update trigger avatar
     const avatar = el('header-user-avatar');
     if (avatar) {
       avatar.textContent = initials;
+    }
+
+    // Update menu avatar
+    const menuAvatar = el('header-menu-avatar');
+    if (menuAvatar) {
+      menuAvatar.textContent = initials;
     }
 
     // Update display name
@@ -2337,6 +2347,13 @@
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
       if (!dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+      }
+    });
+
+    // Close on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
         dropdown.classList.remove('open');
       }
     });

@@ -10,6 +10,42 @@
   <!-- Toast Notifications -->
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- User Menu -->
+  <div class="header-user-dropdown" id="header-user-dropdown">
+    <button class="trigger" id="header-user-trigger">
+      <span class="avatar" id="header-user-avatar">?</span>
+      <span class="name" id="header-user-name">User</span>
+      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="menu" id="header-user-menu">
+      <div class="menu-header">
+        <div class="avatar" id="header-menu-avatar">?</div>
+        <div class="info">
+          <div class="email" id="header-user-email"></div>
+          <div class="role" id="header-user-role"></div>
+        </div>
+      </div>
+      <nav class="menu-nav">
+        <a href="/profile" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Profile
+        </a>
+        <a href="/admin" class="menu-item" id="header-admin-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Admin Panel
+        </a>
+      </nav>
+    </div>
+  </div>
+
   <!-- Top Stats Bar -->
   <header class="stats-bar">
     <div class="stats-bar-left">
@@ -41,24 +77,6 @@
         <div class="stat-cell trend">
           <span class="stat-label">7-DAY TREND</span>
           <div class="trend-chart" id="weekly-trend"></div>
-        </div>
-      </div>
-    </div>
-    <div class="user-menu-wrapper">
-      <div class="user-dropdown" id="header-user-dropdown">
-        <button class="user-dropdown-trigger" id="header-user-trigger">
-          <span class="user-avatar" id="header-user-avatar">?</span>
-          <span class="user-name" id="header-user-name">User</span>
-          <span class="dropdown-arrow">▼</span>
-        </button>
-        <div class="user-dropdown-menu" id="header-user-menu">
-          <div class="user-dropdown-header">
-            <span class="user-dropdown-email" id="header-user-email"></span>
-            <span class="user-dropdown-role" id="header-user-role"></span>
-          </div>
-          <div class="user-dropdown-divider"></div>
-          <a href="/profile" class="user-dropdown-item">Profile</a>
-          <a href="/admin" class="user-dropdown-item" id="header-admin-link">Admin</a>
         </div>
       </div>
     </div>

@@ -380,20 +380,61 @@
   </style>
 </head>
 <body>
-  <header class="stats-bar">
-    <div class="logo">
-      <span class="logo-icon">◈</span>
-      <span class="logo-text">LLM-EVAL</span>
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- User Menu -->
+  <div class="header-user-dropdown" id="header-user-dropdown">
+    <button class="trigger" id="header-user-trigger">
+      <span class="avatar" id="header-user-avatar">?</span>
+      <span class="name" id="header-user-name">User</span>
+      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="menu" id="header-user-menu">
+      <div class="menu-header">
+        <div class="avatar" id="header-menu-avatar">?</div>
+        <div class="info">
+          <div class="email" id="header-user-email"></div>
+          <div class="role" id="header-user-role"></div>
+        </div>
+      </div>
+      <nav class="menu-nav">
+        <a href="/" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Dashboard
+        </a>
+        <a href="/admin" class="menu-item" id="header-admin-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Admin Panel
+        </a>
+      </nav>
     </div>
-    <div class="stat-cells">
-      <div class="stat-cell">
-        <span class="stat-label">PAGE</span>
-        <span class="stat-value">Profile</span>
+  </div>
+
+  <header class="stats-bar">
+    <div class="stats-bar-left">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">LLM-EVAL</span>
+      </div>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">PAGE</span>
+          <span class="stat-value">Profile</span>
+        </div>
       </div>
     </div>
-    <div class="header-meta">
-      <a class="header-btn" href="" id="back-link">← Dashboard</a>
-    </div>
+    <a href="" class="back-link" id="back-link">← Back to Dashboard</a>
   </header>
 
   <main class="profile-container">
@@ -544,6 +585,72 @@
         el('me-role').textContent = me.role || '—';
         el('me-team').textContent = me.team?.name || '—';
         el('me-department').textContent = me.department?.name || '—';
+
+        // Populate header user dropdown
+        populateHeaderUser(me);
+        setupHeaderUserDropdown();
+      }
+
+      function getInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return name.substring(0, 2).toUpperCase();
+      }
+
+      function populateHeaderUser(user) {
+        if (!user) return;
+
+        const displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
+        const initials = getInitials(displayName);
+
+        // Update trigger
+        const avatar = el('header-user-avatar');
+        const name = el('header-user-name');
+        if (avatar) avatar.textContent = initials;
+        if (name) name.textContent = displayName;
+
+        // Update menu header
+        const menuAvatar = el('header-menu-avatar');
+        const email = el('header-user-email');
+        const role = el('header-user-role');
+        if (menuAvatar) menuAvatar.textContent = initials;
+        if (email) email.textContent = user.email || '';
+        if (role) role.textContent = user.role || '';
+
+        // Show admin link only for admins
+        const adminLink = el('header-admin-link');
+        if (adminLink) {
+          adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
+        }
+      }
+
+      function setupHeaderUserDropdown() {
+        const dropdown = el('header-user-dropdown');
+        const trigger = el('header-user-trigger');
+        if (!dropdown || !trigger) return;
+
+        if (trigger.dataset.initialized) return;
+        trigger.dataset.initialized = 'true';
+
+        trigger.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dropdown.classList.toggle('open');
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!dropdown.contains(e.target)) {
+            dropdown.classList.remove('open');
+          }
+        });
+
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            dropdown.classList.remove('open');
+          }
+        });
       }
 
       async function loadKeys() {

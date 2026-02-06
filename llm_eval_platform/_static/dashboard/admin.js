@@ -20,6 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // Setup header user dropdown (works for all authenticated users)
+  setupHeaderUserDropdown();
+  populateHeaderUser();
+
   // Check admin access
   if (!currentUser || currentUser.role !== 'ADMIN') {
     showAccessDenied();
@@ -832,5 +836,53 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// --- Header User Dropdown ---
+function setupHeaderUserDropdown() {
+  const dropdown = document.getElementById('header-user-dropdown');
+  const trigger = document.getElementById('header-user-trigger');
+  if (!dropdown || !trigger) return;
+
+  if (trigger.dataset.initialized) return;
+  trigger.dataset.initialized = 'true';
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      dropdown.classList.remove('open');
+    }
+  });
+}
+
+function populateHeaderUser() {
+  if (!currentUser) return;
+
+  const displayName = currentUser.display_name || currentUser.email.split('@')[0];
+  const initials = getInitials(displayName);
+
+  // Update trigger avatar and name
+  const avatar = document.getElementById('header-user-avatar');
+  const name = document.getElementById('header-user-name');
+  if (avatar) avatar.textContent = initials;
+  if (name) name.textContent = displayName;
+
+  // Update menu header
+  const menuAvatar = document.getElementById('header-menu-avatar');
+  const email = document.getElementById('header-user-email');
+  const role = document.getElementById('header-user-role');
+  if (menuAvatar) menuAvatar.textContent = initials;
+  if (email) email.textContent = currentUser.email;
+  if (role) role.textContent = currentUser.role;
 }
 

@@ -615,21 +615,57 @@
   <!-- Toast Notifications -->
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- User Menu -->
+  <div class="header-user-dropdown" id="header-user-dropdown">
+    <button class="trigger" id="header-user-trigger">
+      <span class="avatar" id="header-user-avatar">?</span>
+      <span class="name" id="header-user-name">User</span>
+      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="menu" id="header-user-menu">
+      <div class="menu-header">
+        <div class="avatar" id="header-menu-avatar">?</div>
+        <div class="info">
+          <div class="email" id="header-user-email"></div>
+          <div class="role" id="header-user-role"></div>
+        </div>
+      </div>
+      <nav class="menu-nav">
+        <a href="/" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Dashboard
+        </a>
+        <a href="/profile" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Profile
+        </a>
+      </nav>
+    </div>
+  </div>
+
   <!-- Top Stats Bar -->
   <header class="stats-bar">
-    <div class="logo">
-      <span class="logo-icon">◈</span>
-      <span class="logo-text">LLM-EVAL</span>
-    </div>
-    <div class="stat-cells">
-      <div class="stat-cell">
-        <span class="stat-label">ADMIN PANEL</span>
-        <span class="stat-value" style="font-size: var(--font-sm);">Manage Users & Settings</span>
+    <div class="stats-bar-left">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">LLM-EVAL</span>
       </div>
-    </div>
-    <div class="header-meta">
-      <a href="/" class="header-btn" title="Dashboard">← Dashboard</a>
-      <a id="profile-link" class="header-btn" href="/profile" title="Profile">Profile</a>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">ADMIN PANEL</span>
+          <span class="stat-value" style="font-size: var(--font-sm);">Manage Users & Settings</span>
+        </div>
+      </div>
     </div>
   </header>
 
