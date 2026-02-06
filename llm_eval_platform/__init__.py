@@ -1,6 +1,6 @@
-"""Deployed web platform for llm-eval (API + UI).
+"""Deployed web platform for qym (API + UI).
 
-This package is intentionally separate from the SDK (`llm_eval/`).
+This package is intentionally separate from the SDK (`qym/`).
 """
 
 __all__ = ["__version__"]

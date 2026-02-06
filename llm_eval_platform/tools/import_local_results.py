@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
-from llm_eval.core.run_discovery import RunDiscovery  # legacy parser
+from qym.core.run_discovery import RunDiscovery  # legacy parser
 from llm_eval_platform.db.session import SessionLocal
 from llm_eval_platform.db.models import Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
 

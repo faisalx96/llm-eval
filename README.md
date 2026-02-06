@@ -1,16 +1,37 @@
-# LLM-Eval
+<p align="center">
+  <img src="docs/images/qym_logo.png" alt="qym logo" width="400" />
+</p>
 
-[![PyPI version](https://badge.fury.io/py/llm-eval.svg)](https://badge.fury.io/py/llm-eval)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- <h1 align="center">qym</h1>
+<p align="center"><em>قيِّم • evaluate</em></p> -->
+---
 
-**Evaluate your LLM applications with just 3 lines of code.**
+<h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
 
-A fast, async evaluation framework for testing and benchmarking LLM applications. Supports [Langfuse](https://langfuse.com) datasets or local CSV files.
+<p align="center">
+  <img src="docs/images/qym_icon.png" alt="" height="20" />
+  &nbsp;
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg" alt="Python 3.9+" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
+  <a href="docs/USER_GUIDE.md"><img src="https://img.shields.io/badge/Documentation-Guide-blue.svg" alt="Documentation" /></a>
+</p>
 
-**📚 Docs:**
-- [User Guide](docs/USER_GUIDE.md) — Tasks, datasets, configuration, and troubleshooting
-- [Metrics Guide](docs/METRICS_GUIDE.md) — 40+ metrics organized by use case
+<p align="center">
+  <a href="#overview">Overview</a> |
+  <a href="#quick-start">Installation</a> |
+  <a href="examples/">Examples</a> |
+  <a href="#features">Features</a> |
+  <a href="docs/USER_GUIDE.md">User Guide</a> |
+  <a href="#command-line-interface">CLI</a>
+</p>
+
+## 📖 Overview
+
+Evaluate your LLM applications with just 3 lines of code. qym is a fast, async evaluation framework for testing and benchmarking LLM applications. It provides a structured approach to evaluation, ensuring consistency and high-quality outputs while reducing the trial-and-error typically associated with manual testing.
+
+The framework supports [Langfuse](https://langfuse.com) datasets (with full tracing) or local CSV files, and includes 40+ built-in metrics for RAG, agents, safety, and more. Whether you're a researcher exploring LLM capabilities or a developer building production applications, qym provides a comprehensive solution for evaluation.
+
+📚 **Documentation:** Comprehensive guides are available in the [User Guide](docs/USER_GUIDE.md) and [Metrics Guide](docs/METRICS_GUIDE.md).
 
 ## 🚀 Features
 
@@ -21,13 +42,14 @@ A fast, async evaluation framework for testing and benchmarking LLM applications
 - **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
 - **Flexible Datasets** - Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
 - **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
+- **Resume Runs** - Checkpoint partial results and resume interrupted evaluations
 
 ## ⚡ Quick Start
 
 ### 1. Install
 
 ```bash
-pip install llm-eval
+pip install qym
 ```
 
 ### 2. Set up Langfuse (optional for CSV datasets)
@@ -50,7 +72,7 @@ You need three things:
 3. **[Metrics](docs/USER_GUIDE.md#4-using-metrics)** - Built-in (`exact_match`, `contains_expected`, `fuzzy_match`) or custom functions
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 # Your task: receives the 'input' field from each dataset item
 def my_llm_task(question):
@@ -68,7 +90,7 @@ results = evaluator.run()
 **Using a local CSV instead of Langfuse:**
 
 ```python
-from llm_eval import Evaluator, CsvDataset
+from qym import Evaluator, CsvDataset
 
 dataset = CsvDataset("qa.csv", input_col="question", expected_col="answer")
 
@@ -87,7 +109,7 @@ results = evaluator.run()
 Compare multiple models in parallel:
 
 ```python
-from llm_eval import Evaluator
+from qym import Evaluator
 
 async def my_task(question, trace=None, model_name="gpt-4"):
     # Use model_name to route to different models
@@ -121,20 +143,24 @@ results = Evaluator.run_parallel(
 
 ```bash
 # Single evaluation
-llm-eval --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+qym --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 
 # Single evaluation from a local CSV (no Langfuse dataset required)
-llm-eval --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
+qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
   --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
   --metrics exact_match
 
 # Multi-model from config
-llm-eval --runs-config experiments.json
+qym --runs-config experiments.json
+
+# Resume a partially completed run
+qym resume --run-file qym_results/task/model/date/run-id.csv \
+  --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 ```
 
 ## 📊 Dashboard
 
-LLM-Eval provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
+qym provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
 
 ### Terminal UI
 
@@ -155,7 +181,7 @@ A web interface is automatically launched for each evaluation run. Click the **"
 Browse all past runs with the CLI command:
 
 ```bash
-llm-eval dashboard
+qym dashboard
 ```
 
 ![Dashboard Runs](docs/images/dashboard-runs.png)

@@ -1,6 +1,6 @@
 import asyncio
 from typing import Dict, Any
-from llm_eval.core.evaluator import Evaluator
+from qym.core.evaluator import Evaluator
 
 def response_length_check(output, expected):
     return 1.0 if len(str(output)) > 0 else 0.0

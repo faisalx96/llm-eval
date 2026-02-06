@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLM-Eval ΓÇó Profile</title>
+  <link rel="stylesheet" href="./static/dashboard.css">
+  <style>
+    .profile-container {
+      padding: var(--space-xl);
+      overflow-y: auto;
+      height: calc(100vh - 44px);
+    }
+
+    .profile-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .profile-title {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .profile-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: var(--space-lg);
+    }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+    }
+
+    .card-title {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 8px 12px;
+      font-size: var(--font-sm);
+    }
+
+    .kv .k {
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-size: var(--font-xs);
+      padding-top: 2px;
+    }
+
+    .kv .v {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      word-break: break-word;
+    }
+
+    .row {
+      display: flex;
+      gap: var(--space-sm);
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: var(--space-md);
+    }
+
+    .input {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      min-width: 220px;
+      outline: none;
+    }
+
+    .input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .btn {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: var(--font-sm);
+    }
+
+    .btn.primary {
+      border-color: rgba(0, 212, 170, 0.35);
+      background: rgba(0, 212, 170, 0.12);
+      color: var(--accent-primary);
+    }
+
+    .btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .btn.primary:hover {
+      background: rgba(0, 212, 170, 0.18);
+      color: #d6fff6;
+    }
+
+    .token-box {
+      margin-top: var(--space-md);
+      padding: var(--space-md);
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      display: none;
+    }
+
+    .token-box .label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 6px;
+    }
+
+    .token-box code {
+      display: block;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      word-break: break-all;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .back-link {
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-size: var(--font-sm);
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header class="stats-bar">
+    <div class="logo">
+      <span class="logo-icon">Γùê</span>
+      <span class="logo-text">LLM-EVAL</span>
+    </div>
+    <div class="stat-cells">
+      <div class="stat-cell">
+        <span class="stat-label">PAGE</span>
+        <span class="stat-value">Profile</span>
+      </div>
+    </div>
+    <div class="header-meta">
+      <a class="back-link" href="" id="back-link">ΓåÉ Back to Dashboard</a>
+    </div>
+  </header>
+
+  <main class="profile-container">
+    <div class="profile-header">
+      <div>
+        <div class="profile-title">Your Profile</div>
+        <div class="profile-subtitle">Identity and API keys for ingesting runs</div>
+      </div>
+    </div>
+
+    <div class="profile-grid">
+      <section class="card">
+        <div class="card-title">Identity</div>
+        <div class="kv">
+          <div class="k">Email</div><div class="v" id="me-email">ΓÇö</div>
+          <div class="k">Name</div><div class="v" id="me-name">ΓÇö</div>
+          <div class="k">Title</div><div class="v" id="me-title">ΓÇö</div>
+          <div class="k">Role</div><div class="v" id="me-role">ΓÇö</div>
+          <div class="k">User ID</div><div class="v" id="me-id">ΓÇö</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">API Key</div>
+        <div style="color: var(--text-muted); font-size: var(--font-sm); line-height: 1.5;">
+          Create a key to authenticate the SDK / ingestion API (shown once).
+        </div>
+
+        <div class="row">
+          <input class="input" id="key-name" placeholder="Key name (e.g., laptop)" />
+          <input class="input" id="key-scopes" placeholder="Scopes (comma-separated) e.g., runs:write,runs:read" />
+          <button class="btn primary" id="create-key-btn">Create key</button>
+        </div>
+
+        <div class="token-box" id="token-box">
+          <div class="label">Token (copy + store securely)</div>
+          <code id="token-value">ΓÇö</code>
+          <div class="row">
+            <button class="btn" id="copy-token-btn">Copy</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const BASE_URL = (() => {
+        const loc = window.location;
+        let base = loc.pathname;
+        if (!base.endsWith('/')) {
+          base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+        }
+        return loc.origin + base;
+      })();
+
+      function apiUrl(path) {
+        const cleanPath = String(path || '').replace(/^\.?\//, '');
+        return BASE_URL + cleanPath;
+      }
+
+      const el = (id) => document.getElementById(id);
+
+      // Fix back link for subpath/proxy deployments
+      const back = el('back-link');
+      if (back) back.href = apiUrl('');
+
+      async function loadMe() {
+        const res = await fetch(apiUrl('v1/me'));
+        if (!res.ok) throw new Error('Failed to load /v1/me');
+        const me = await res.json();
+
+        el('me-email').textContent = me.email || 'ΓÇö';
+        el('me-name').textContent = me.display_name || 'ΓÇö';
+        el('me-title').textContent = me.title || 'ΓÇö';
+        el('me-role').textContent = me.role || 'ΓÇö';
+        el('me-id').textContent = me.id || 'ΓÇö';
+      }
+
+      async function createKey() {
+        const name = (el('key-name').value || 'default').trim();
+        const scopesStr = (el('key-scopes').value || 'runs:write,runs:read').trim();
+        const scopes = scopesStr
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        const btn = el('create-key-btn');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+
+        try {
+          const res = await fetch(apiUrl('v1/me/api-keys'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, scopes }),
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || 'Create failed');
+          }
+          const data = await res.json();
+
+          el('token-value').textContent = data.token || 'ΓÇö';
+          el('token-box').style.display = 'block';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Create key';
+        }
+      }
+
+      el('create-key-btn').addEventListener('click', () => createKey().catch(err => {
+        console.error(err);
+        alert('Failed to create API key. Check server logs / auth headers.');
+      }));
+
+      el('copy-token-btn').addEventListener('click', async () => {
+        const text = el('token-value').textContent || '';
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Fallback: best-effort prompt
+          window.prompt('Copy token:', text);
+        }
+      });
+
+      loadMe().catch(err => {
+        console.error(err);
+        alert('Failed to load profile. Are you authenticated?');
+      });
+    })();
+  </script>
+</body>
+</html>
+
+

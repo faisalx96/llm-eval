@@ -4,26 +4,26 @@ import re
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-with open("llm_eval/__init__.py", "r", encoding="utf-8") as f:
+with open("qym/__init__.py", "r", encoding="utf-8") as f:
     version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
     if version_match:
         version = version_match.group(1)
     else:
-        raise RuntimeError("Unable to find version string in llm_eval/__init__.py")
+        raise RuntimeError("Unable to find version string in qym/__init__.py")
 
 setup(
-    name="llm-eval",
+    name="qym",
     version=version,
     author="Faisal Bin Hussein",
     author_email="faisalx96@yahoo.com",
-    description="Simple, automated LLM evaluation framework built on Langfuse",
+    description="قيِّم - Simple, automated LLM evaluation framework built on Langfuse",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/faisalx96/llm-eval",
+    url="https://github.com/faisalx96/qym",
     packages=find_packages(),
     include_package_data=True,
     package_data={
-        "llm_eval": [
+        "qym": [
             "_static/ui/*",
             "_static/dashboard/*",
         ],
@@ -45,6 +45,8 @@ setup(
         "pydantic-settings>=2.0.0",
         "rich>=13.0.0",  # For nice progress bars
         "python-dotenv>=0.19.0",  # For environment variables
+        "python-bidi>=0.4.2",  # For RTL/Arabic text rendering in TUI
+        "arabic-reshaper>=3.0.0",  # For Arabic letter shaping
         "openpyxl>=3.0.0",  # For Excel export
     ],
     extras_require={
@@ -73,7 +75,8 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "llm-eval=llm_eval.cli:main",
+            "qym=qym.cli:main",
+            "llm-eval=qym.cli:main",
             "llm-eval-platform=llm_eval_platform.cli:main",
         ],
     },

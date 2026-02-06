@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 import sys
+from pathlib import Path
 
 # Mock external heavy dependencies before they are imported by app code
 mock_rich = MagicMock()
@@ -21,6 +22,10 @@ sys.modules["rich.style"] = MagicMock()
 sys.modules["rich.theme"] = MagicMock()
 sys.modules["rich.progress_bar"] = MagicMock()
 sys.modules["rich.spinner"] = MagicMock()
+
+repo_root = Path(__file__).resolve().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 mock_langfuse_pkg = MagicMock()
 mock_langfuse_pkg.__path__ = []
