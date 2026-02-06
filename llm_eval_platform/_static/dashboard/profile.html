@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LLM-Eval • Profile</title>
+  <title>قيِّم • Profile</title>
+  <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
   <style>
     .profile-container {
@@ -424,8 +425,7 @@
   <header class="stats-bar">
     <div class="stats-bar-left">
       <div class="logo">
-        <span class="logo-icon">◈</span>
-        <span class="logo-text">LLM-EVAL</span>
+        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" />
       </div>
       <div class="stat-cells">
         <div class="stat-cell">
@@ -817,8 +817,8 @@
         document.querySelector('.profile-container').innerHTML = `
           <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
             <div style="text-align: center; max-width: 360px; padding: 40px;">
-              <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
-              <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+              <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
+              <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
               <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access your profile</p>
 
               <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">

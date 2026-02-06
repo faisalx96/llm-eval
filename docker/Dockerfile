@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip
 
 # Copy only what we need (faster builds; smaller cache bust surface).
 COPY setup.py README.md /app/
-COPY llm_eval /app/llm_eval
+COPY qym /app/qym
 COPY llm_eval_platform /app/llm_eval_platform
 COPY docker /app/docker
 

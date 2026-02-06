@@ -1,5 +1,5 @@
 /**
- * LLM-Eval Analytics Dashboard
+ * قيِّم Analytics Dashboard
  * Dense, keyboard-driven interface for analyzing evaluation runs
  */
 
@@ -1479,7 +1479,7 @@
     detectModelsViewMetricType(matchingRuns, mvs.selectedMetric);
 
     // Show loading state
-    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading">Loading run data...</div>';
+    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading"><img src="./static/qym_icon.png" alt="" class="loading-icon" /><span>Loading run data...</span></div>';
 
     // Fetch item-level data for each model and calculate stats
     mvs.modelStats = {};
@@ -2294,8 +2294,8 @@
     main.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 60px);">
         <div style="text-align: center; max-width: 360px; padding: 40px;">
-          <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
-          <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+          <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
+          <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
           <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the evaluation dashboard</p>
 
           <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">

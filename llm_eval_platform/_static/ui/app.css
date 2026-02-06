@@ -38,7 +38,9 @@ body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, S
 .container { max-width: 1320px; margin: 0 auto; padding: 20px; }
 .header { background: radial-gradient(1200px 400px at 10% -20%, rgba(124,58,237,0.18), transparent), var(--panel-2); border: 1px solid var(--soft); border-radius: 14px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
 .header-row { display:flex; align-items:center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.header h1 { margin: 0 0 6px 0; font-size: 1.8rem; letter-spacing: 0.2px; }
+.header-brand { display: flex; align-items: center; gap: 14px; }
+.header-text-logo { height: 36px; width: auto; }
+.header h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.2px; }
 .sub { color: var(--muted); margin-bottom: 12px; }
 .chips { display:flex; gap:8px; flex-wrap: wrap; margin-bottom: 10px; }
 .chip { background: #0f172a; border:1px solid var(--soft); color: var(--text); padding:6px 10px; border-radius:999px; font-size: 0.85rem; }

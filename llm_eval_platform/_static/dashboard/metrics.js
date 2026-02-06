@@ -1,5 +1,5 @@
 /**
- * Shared metrics calculation utilities for LLM Eval Dashboard
+ * Shared metrics calculation utilities for قيِّم Dashboard
  *
  * This module provides consistent metric calculations across:
  * - Compare view

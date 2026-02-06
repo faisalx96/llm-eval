@@ -56,8 +56,8 @@ function showAuthError() {
   document.querySelector('.admin-container').innerHTML = `
     <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
       <div style="text-align: center; max-width: 360px; padding: 40px;">
-        <div style="font-size: 64px; margin-bottom: 24px;">◈</div>
-        <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">LLM-Eval Platform</h1>
+        <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
+        <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
         <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the admin panel</p>
 
         <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
