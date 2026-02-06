@@ -459,6 +459,7 @@ def legacy_run_data(
                 "latency_ms": it.latency_ms or 0,
                 "trace_id": it.trace_id or "",
                 "trace_url": it.trace_url or "",
+                "task_started_at_ms": it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None,
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
             }
@@ -468,8 +469,9 @@ def legacy_run_data(
 
     return {
         "run": {
+            "file_path": run.id,
             "dataset_name": run.dataset,
-            "run_name": run.id,
+            "run_name": run.external_run_id or run.id,
             "metric_names": metrics,
             "config": run.run_config,
             "metadata": run.run_metadata,
@@ -585,6 +587,7 @@ def update_metric(
         "latency_ms": item.latency_ms or 0,
         "trace_id": item.trace_id or "",
         "trace_url": item.trace_url or "",
+        "task_started_at_ms": item.item_metadata.get("task_started_at_ms") if isinstance(item.item_metadata, dict) else None,
         "metric_values": metric_values,
         "metric_meta": metric_meta,
     }

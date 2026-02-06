@@ -1088,8 +1088,8 @@
       display: inline-flex;
       align-items: center;
       padding: 1px 5px;
-      background: var(--success-dim);
-      color: var(--success);
+      background: rgba(234, 179, 8, 0.2);
+      color: #f59e0b;
       border-radius: 3px;
       font-size: 10px;
       font-weight: 500;
@@ -1310,6 +1310,13 @@
         return `${host}/project/${state.langfuseProjectId}/traces/${traceId}`;
       }
 
+      function buildLangfuseTraceUrlFromRun(traceId, runInfo) {
+        const host = (runInfo.langfuse_host || '').replace(/\/$/, '');
+        const projectId = runInfo.langfuse_project_id || '';
+        if (!traceId || !host || !projectId) return null;
+        return `${host}/project/${projectId}/traces/${traceId}`;
+      }
+
       function buildDistributionBar(stats) {
         return stats.correctDistribution.map((count, idx) => {
           if (count === 0) return '';
@@ -1360,6 +1367,12 @@
           state.runs = data.runs;
           state.langfuseHost = data.langfuse_host || '';
           state.langfuseProjectId = data.langfuse_project_id || '';
+          // Fallback: use per-run Langfuse config if top-level is empty
+          if (!state.langfuseHost && data.runs?.length) {
+            const firstRun = data.runs[0]?.run || {};
+            state.langfuseHost = firstRun.langfuse_host || '';
+            state.langfuseProjectId = firstRun.langfuse_project_id || '';
+          }
           processRuns();
           render();
         } catch (err) {
@@ -2280,8 +2293,8 @@
             const latencyMs = row.latency_ms;
             const taskStartedAtMs = row.task_started_at_ms;
             const traceId = row.trace_id;
-            // Use direct trace_url if available, otherwise build from trace_id
-            const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId);
+            // Use direct trace_url if available, otherwise build from trace_id (global or per-run config)
+            const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId) || buildLangfuseTraceUrlFromRun(traceId, runInfo);
 
             // Get metric values and metadata
             const metricVals = row.metric_values || [];
