@@ -177,6 +177,13 @@
     for (const [taskName, models] of Object.entries(data.tasks)) {
       for (const [modelName, runList] of Object.entries(models)) {
         for (const run of runList) {
+          const totalItems = Number(run.total_items || 0);
+          const successCount = Number(run.success_count || 0);
+          const errorCount = Number(run.error_count || 0);
+          const completedCount = successCount + errorCount;
+          const completionRate = totalItems > 0 ? (completedCount / totalItems) : 0;
+          const successOnCompletedRate = completedCount > 0 ? (successCount / completedCount) : null;
+
           // Collect all unique metrics
           if (run.metrics) {
             run.metrics.forEach(m => metricsSet.add(m));
@@ -186,6 +193,8 @@
             ...run,
             task_name: taskName,
             model_name: run.model_name || modelName,
+            completion_rate: completionRate,
+            success_on_completed_rate: successOnCompletedRate,
             _date: new Date(run.timestamp),
           });
         }
@@ -427,22 +436,30 @@
         runs.sort((a, b) => a._date - b._date);
         break;
       case 'success-desc':
-        runs.sort((a, b) => b.success_rate - a.success_rate);
+        runs.sort((a, b) => {
+          const aVal = a.success_on_completed_rate ?? -1;
+          const bVal = b.success_on_completed_rate ?? -1;
+          return bVal - aVal;
+        });
         break;
       case 'success-asc':
-        runs.sort((a, b) => a.success_rate - b.success_rate);
+        runs.sort((a, b) => {
+          const aVal = a.success_on_completed_rate ?? -1;
+          const bVal = b.success_on_completed_rate ?? -1;
+          return aVal - bVal;
+        });
         break;
       case 'completed-desc':
         runs.sort((a, b) => {
-          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
-          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          const aVal = a.completion_rate ?? 0;
+          const bVal = b.completion_rate ?? 0;
           return bVal - aVal;
         });
         break;
       case 'completed-asc':
         runs.sort((a, b) => {
-          const aVal = a.total_items ? (a.success_count + a.error_count) / a.total_items : 0;
-          const bVal = b.total_items ? (b.success_count + b.error_count) / b.total_items : 0;
+          const aVal = a.completion_rate ?? 0;
+          const bVal = b.completion_rate ?? 0;
           return aVal - bVal;
         });
         break;
@@ -877,11 +894,11 @@
 
     tbody.innerHTML = runs.map((run, idx) => {
       const dt = formatDate(run.timestamp);
-      const successClass = getSuccessClass(run.success_rate);
-      const completedRate = run.total_items
-        ? (run.success_count + run.error_count) / run.total_items
-        : 0;
+      const completedRate = run.completion_rate ?? 0;
+      const successRate = run.success_on_completed_rate;
+      const successClass = getSuccessClass(successRate ?? 0);
       const completedText = formatPercent(completedRate);
+      const successText = successRate === null ? '—' : formatPercent(successRate);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
@@ -924,11 +941,11 @@
           <td class="col-dataset">
             <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
           </td>
-          <td class="col-success">
-            <span class="success-rate ${successClass}">${formatPercent(run.success_rate)}</span>
-          </td>
           <td class="col-completed">
             <span class="completed-rate">${completedText}</span>
+          </td>
+          <td class="col-success">
+            <span class="success-rate ${successClass}">${successText}</span>
           </td>
           ${metricCells}
           <td class="col-latency">
@@ -3482,7 +3499,7 @@
   startHeartbeat();
   fetchRuns();
 
-  // Refresh every 60 seconds
-  setInterval(fetchRuns, 60000);
+  // Refresh every 30 seconds
+  setInterval(fetchRuns, 30000);
 
 })();
