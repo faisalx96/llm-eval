@@ -571,7 +571,11 @@ class Evaluator:
             run_name=self.run_name,
             metrics=list(self.metrics.keys()),
             run_metadata=self.run_metadata.copy(),
-            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout}
+            run_config={
+                "max_concurrency": self.max_concurrency,
+                "timeout": self.timeout,
+                "user_provided_run_name": bool(self.config.run_name),
+            }
         )
 
         items = self.dataset.get_items()

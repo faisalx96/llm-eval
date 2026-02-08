@@ -609,13 +609,27 @@ class EvaluationResult:
         dataset_safe = _sanitize_path_component(str(self.dataset_name))
         model_safe = _sanitize_path_component(str(model_name))
 
-        # Extract counter suffix if present after timestamp (e.g., -YYMMDD-HHMM-1)
-        # Must follow the timestamp pattern to avoid matching the timestamp itself
-        counter_match = re.search(r"-\d{6}-\d{4}-(\d+)$", self.run_name or "")
-        counter_suffix = f"-{counter_match.group(1)}" if counter_match else ""
+        user_provided_run_name = bool(
+            (self.run_config or {}).get("user_provided_run_name")
+        )
 
-        # Format: [base]-[dataset]-[model]-[timestamp][-counter].csv
-        filename = f"{run_safe}-{task_safe}-{dataset_safe}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
+        if user_provided_run_name:
+            # Preserve explicit user-provided run_name exactly as the filename stem.
+            filename = f"{run_safe}.{extension}"
+        else:
+            # Extract counter suffix if present after timestamp (e.g., -YYMMDD-HHMM-1)
+            # Must follow the timestamp pattern to avoid matching the timestamp itself
+            counter_match = re.search(r"-\d{6}-\d{4}-(\d+)$", self.run_name or "")
+            counter_suffix = f"-{counter_match.group(1)}" if counter_match else ""
+
+            # For auto-generated run names, avoid repeating model/timestamp from run_name.
+            # Keep task+dataset context in filename while deriving timing/counter once.
+            base_name = _task_from_run(self.run_name, str(model_name))
+            base_safe = _sanitize_path_component(base_name)
+            if base_safe == task_safe:
+                filename = f"{base_safe}-{dataset_safe}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
+            else:
+                filename = f"{base_safe}-{task_safe}-{dataset_safe}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
 
         return str(
             Path(output_dir)
