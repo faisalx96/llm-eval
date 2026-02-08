@@ -599,9 +599,14 @@ class EvaluationResult:
             or (self.run_config.get("model") if isinstance(self.run_config, dict) else None)
             or "nomodel"
         )
-        task_name = _task_from_run(self.run_name, model_name) or "task"
+        task_name = None
+        if isinstance(self.run_metadata, dict):
+            task_name = self.run_metadata.get("task_name")
+        task_name = task_name or "task"
 
+        run_safe = _sanitize_path_component(self.run_name or "run")
         task_safe = _sanitize_path_component(task_name)
+        dataset_safe = _sanitize_path_component(str(self.dataset_name))
         model_safe = _sanitize_path_component(str(model_name))
 
         # Extract counter suffix if present after timestamp (e.g., -YYMMDD-HHMM-1)
@@ -610,7 +615,7 @@ class EvaluationResult:
         counter_suffix = f"-{counter_match.group(1)}" if counter_match else ""
 
         # Format: [base]-[dataset]-[model]-[timestamp][-counter].csv
-        filename = f"{task_safe}-{self.dataset_name}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
+        filename = f"{run_safe}-{task_safe}-{dataset_safe}-{model_safe}-{timestamp_str}{counter_suffix}.{extension}"
 
         return str(
             Path(output_dir)

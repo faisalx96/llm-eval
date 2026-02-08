@@ -154,7 +154,7 @@ qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
 qym --runs-config experiments.json
 
 # Resume a partially completed run
-qym resume --run-file qym_results/task/model/date/run-id.csv \
+qym resume --run-file qym_results/task/model/date/my-run-task-dataset-model-260127-1200.csv \
   --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 ```
 

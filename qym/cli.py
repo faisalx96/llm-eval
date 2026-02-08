@@ -438,8 +438,6 @@ Examples:
                 resume_state = load_checkpoint_state(args.resume_from)
                 if resume_state and resume_state.run_name:
                     config["run_name"] = resume_state.run_name
-        if "run_name" not in config:
-            config["run_name"] = args.task_function
         # Record CLI invocation for frontend run overview
         try:
             argv_str = ' '.join(shlex.quote(a) for a in sys.argv[1:])

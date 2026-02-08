@@ -96,7 +96,7 @@ def main():
         # model=["qwen/qwen3-235b-a22b-2507"]*2,
         # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={
-            "resume_from": "/Users/faisalbh/qym/qym_results/ragbench/gpt-oss-120b/2026-01-28/ragbench-ragbench-100-gpt-oss-120b-260128-1140.csv", 
+            "resume_from": "/Users/faisalbh/qym/qym_results/rag_qa_task/gpt-oss-120b/2026-01-28/ragbench-rag_qa_task-ragbench-100-gpt-oss-120b-260128-1140.csv",
             "max_concurrency": 10,
             "run_name": "ragbench",
         }

@@ -187,6 +187,8 @@ class Evaluator:
                 add_suffix=not user_provided_name
             )
         self.run_metadata = self.config.run_metadata
+        if self._task_name:
+            self.run_metadata["task_name"] = self._task_name
 
         if self.model_name:
             self.run_metadata.setdefault('model', self.model_name)
@@ -1450,7 +1452,7 @@ def _derive_task_name(task: Any) -> str:
     return "task"
 
 
-_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{8}-\d{6})(?:-.+)?$")
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{6}-\d{4})(?:-\d+)?$")
 
 
 def _strip_run_suffix(name: str) -> Tuple[str, bool]:

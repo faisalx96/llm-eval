@@ -786,7 +786,7 @@ qym --runs-config experiments.json
 If a run is interrupted, qym writes a checkpoint CSV as items complete. Resume by pointing to the checkpoint file:
 
 ```bash
-qym resume --run-file qym_results/my_task/my_model/2026-01-27/my_task-my_dataset-my_model-260127-1200.csv \
+qym resume --run-file qym_results/my_task/my_model/2026-01-27/my-run-my_task-my_dataset-my_model-260127-1200.csv \
   --task-file agent.py --task-function my_task \
   --dataset my-dataset --metrics exact_match
 ```
@@ -810,7 +810,7 @@ evaluator = Evaluator(
     dataset="my-dataset",
     metrics=["exact_match"],
     config={
-        "resume_from": "qym_results/.../run.csv",
+        "resume_from": "qym_results/.../my-run-my_task-my_dataset-my_model-260127-1200.csv",
     },
 )
 
@@ -962,10 +962,10 @@ The dashboard reads results from `qym_results/` directory in your **current work
 ```
 my-project/                    # Run from here!
 ├── qym_results/               # Results saved here
-│   └── {task}/
+│   └── {task_name}/
 │       └── {model}/
 │           └── {date}/
-│               └── {run_name}.csv
+│               └── {run_name}-{task_name}-{dataset}-{model}-{timestamp}.csv
 ├── my_task.py
 └── .env
 ```
@@ -1026,14 +1026,14 @@ By default, the dashboard uses a mock Confluence backend stored in `confluence_m
 
 ### Output Files
 
-Results are saved to `qym_results/{task}/{model}/{date}/` in your **current working directory**:
+Results are saved to `qym_results/{task_name}/{model}/{date}/` in your **current working directory**:
 
 ```
 qym_results/
 └── my_task/
     └── gpt-4/
         └── 2024-01-15/
-            └── my_task-qa-dataset-gpt-4-240115-1430.csv
+            └── my-run-my_task-qa-dataset-gpt-4-240115-1430.csv
 ```
 
 > **Tip**: Always run your evaluation scripts from your project root so results and dashboard stay in sync.
@@ -1095,8 +1095,8 @@ qym can persist **partial results** while a run is in progress and resume later 
 On Ctrl+C, qym prints a resume command with the checkpoint path:
 
 ```
-Partial results saved to qym_results/.../run.csv
-Resume with: qym resume --run-file qym_results/.../run.csv ...
+Partial results saved to qym_results/.../my-run-my_task-my_dataset-my_model-260127-1200.csv
+Resume with: qym resume --run-file qym_results/.../my-run-my_task-my_dataset-my_model-260127-1200.csv ...
 ```
 
 ### Configuration fields
@@ -1107,7 +1107,7 @@ config = {
     "checkpoint_format": "csv",
     "checkpoint_flush_each_item": True,
     "checkpoint_fsync": False,   # Set True for extra durability (slower)
-    "resume_from": "qym_results/.../run.csv",
+    "resume_from": "qym_results/.../my-run-my_task-my_dataset-my_model-260127-1200.csv",
     "interrupt_grace_seconds": 2.0,
 }
 ```
