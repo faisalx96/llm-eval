@@ -1525,8 +1525,8 @@
 
             for (const row of rows) {
               const v = (row.metric_values || [])[metricIdx];
-              const n = parseFloat(v);
-              if (!isNaN(n)) {
+              const n = window.QymMetrics.parseScoreValue(v);
+              if (n !== null) {
                 // Check if score is NOT 0 or 1 (with tolerance)
                 if (Math.abs(n) > 0.0001 && Math.abs(n - 1) > 0.0001) {
                   allBoolean = false;
@@ -2314,8 +2314,8 @@
             // Build inline metric scores (all metrics shown, selected one highlighted)
             const metricScoresHtml = metricNames.map((name, i) => {
               const score = metricVals[i];
-              const v = parseFloat(score);
-              if (isNaN(v)) return '';
+              const v = window.QymMetrics.parseScoreValue(score);
+              if (v === null) return '';
 
               const cls = getSuccessClass(v);
               const isSelected = name === selectedMetric;

@@ -27,6 +27,39 @@ function isErrorRow(row) {
  * @param {number} metricIdx - Index of the metric in metric_values array
  * @returns {{score: number|null, isError: boolean}} Score (0 for errors) and error flag
  */
+function parseScoreValue(metricValue) {
+  if (metricValue === undefined || metricValue === null) return null;
+  if (typeof metricValue === 'number') {
+    return Number.isFinite(metricValue) ? metricValue : null;
+  }
+  if (typeof metricValue === 'boolean') {
+    return metricValue ? 1 : 0;
+  }
+
+  const raw = String(metricValue).trim();
+  if (!raw) return null;
+
+  const lowered = raw.toLowerCase();
+  if (lowered === 'n/a' || lowered === 'na' || lowered === 'none' || lowered === 'null') {
+    return null;
+  }
+  if (raw === '✓' || lowered === 'true' || lowered === 'yes' || lowered === 'y') {
+    return 1;
+  }
+  if (raw === '✗' || lowered === 'false' || lowered === 'no' || lowered === 'n') {
+    return 0;
+  }
+
+  if (raw.endsWith('%')) {
+    const pct = parseFloat(raw.slice(0, -1).trim());
+    if (!isNaN(pct)) return pct / 100;
+  }
+
+  const score = parseFloat(raw);
+  if (isNaN(score)) return null;
+  return score;
+}
+
 function getRowScore(row, metricIdx) {
   if (!row) return { score: null, isError: false };
 
@@ -37,13 +70,8 @@ function getRowScore(row, metricIdx) {
 
   const metricValues = row?.metric_values || [];
   const metricValue = metricValues[metricIdx];
-
-  if (metricValue === undefined || metricValue === null || metricValue === '' || metricValue === 'N/A') {
-    return { score: null, isError: false };
-  }
-
-  const score = parseFloat(metricValue);
-  if (isNaN(score)) {
+  const score = parseScoreValue(metricValue);
+  if (score === null) {
     return { score: null, isError: false };
   }
 
@@ -290,6 +318,7 @@ if (typeof window !== 'undefined') {
     // Core error handling - USE THESE for consistent error treatment
     isErrorRow,
     getRowScore,
+    parseScoreValue,
     // Metrics calculation
     calculateItemLevelMetrics,
     // Formatting utilities

@@ -70,6 +70,47 @@ def normalize_metric_score(value: Any) -> Optional[str]:
     return f"{parsed:g}"
 
 
+def parse_run_metadata(raw_metadata: Any) -> Dict[str, Any]:
+    """Parse run_metadata payload into a dict."""
+    if isinstance(raw_metadata, dict):
+        return raw_metadata
+    if raw_metadata in (None, ""):
+        return {}
+    try:
+        parsed = json.loads(str(raw_metadata))
+        return parsed if isinstance(parsed, dict) else {}
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+
+
+def merge_run_metadata(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge run_metadata from rows, preferring the latest non-empty values."""
+    merged: Dict[str, Any] = {}
+    for row in rows:
+        metadata = parse_run_metadata(row.get("run_metadata", "{}"))
+        if not metadata:
+            continue
+        for key, value in metadata.items():
+            if value in (None, ""):
+                continue
+            merged[key] = value
+    return merged
+
+
+def parse_total_items(value: Any) -> Optional[int]:
+    """Parse a positive integer total_items value from metadata."""
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        try:
+            parsed = int(float(str(value)))
+        except (TypeError, ValueError):
+            return None
+    return parsed if parsed > 0 else None
+
+
 def is_error_row(row: Dict[str, Any], metrics: List[str]) -> bool:
     """Check if a row represents an error.
 
@@ -243,9 +284,9 @@ class RunDiscovery:
 
                 # Read all rows to count totals
                 rows = list(reader)
-                total_items = len(rows)
+                processed_items = len(rows)
 
-                if total_items == 0:
+                if processed_items == 0:
                     return None
 
                 # Get run info from first row
@@ -253,23 +294,17 @@ class RunDiscovery:
                 run_name = first_row.get("run_name", "")
                 dataset_name = first_row.get("dataset_name", "unknown")
 
-                # Try to get model and langfuse_url from run_metadata JSON
-                actual_model = strip_model_provider(model_name)
-                langfuse_url = None
-                langfuse_dataset_id = None
-                langfuse_run_id = None
-                try:
-                    metadata = json.loads(first_row.get("run_metadata", "{}"))
-                    if "model" in metadata:
-                        actual_model = strip_model_provider(metadata["model"])
-                    if "langfuse_url" in metadata:
-                        langfuse_url = metadata["langfuse_url"]
-                    if "langfuse_dataset_id" in metadata:
-                        langfuse_dataset_id = metadata["langfuse_dataset_id"]
-                    if "langfuse_run_id" in metadata:
-                        langfuse_run_id = metadata["langfuse_run_id"]
-                except (json.JSONDecodeError, TypeError):
-                    pass
+                # Merge run_metadata across rows, because incremental checkpoints
+                # may only include Langfuse IDs after the first few items finish.
+                metadata = merge_run_metadata(rows)
+                actual_model = strip_model_provider(
+                    str(metadata.get("model") or model_name)
+                )
+                langfuse_url = metadata.get("langfuse_url") or None
+                langfuse_dataset_id = metadata.get("langfuse_dataset_id") or None
+                langfuse_run_id = metadata.get("langfuse_run_id") or None
+                declared_total_items = parse_total_items(metadata.get("total_items"))
+                total_items = max(processed_items, declared_total_items or 0)
 
                 # Count successes vs errors and calculate metric averages
                 error_count = 0
@@ -305,7 +340,7 @@ class RunDiscovery:
                     except (ValueError, TypeError):
                         pass
 
-                success_count = total_items - error_count
+                success_count = processed_items - error_count
 
                 # Calculate metric averages
                 metric_averages = {}
@@ -391,30 +426,20 @@ class RunDiscovery:
                 if col.endswith("_score") and "__meta__" not in col
             ]
 
-            total_items = len(rows)
+            processed_items = len(rows)
             first_row = rows[0]
             run_name = str(first_row.get("run_name", "") or "")
             dataset_name = str(first_row.get("dataset_name", "unknown") or "unknown")
 
-            # Try to get model and langfuse_url from run_metadata JSON
-            actual_model = strip_model_provider(model_name)
-            langfuse_url = None
-            langfuse_dataset_id = None
-            langfuse_run_id = None
-            try:
-                metadata_str = first_row.get("run_metadata", "{}")
-                if metadata_str:
-                    metadata = json.loads(str(metadata_str))
-                    if "model" in metadata:
-                        actual_model = strip_model_provider(metadata["model"])
-                    if "langfuse_url" in metadata:
-                        langfuse_url = metadata["langfuse_url"]
-                    if "langfuse_dataset_id" in metadata:
-                        langfuse_dataset_id = metadata["langfuse_dataset_id"]
-                    if "langfuse_run_id" in metadata:
-                        langfuse_run_id = metadata["langfuse_run_id"]
-            except (json.JSONDecodeError, TypeError):
-                pass
+            metadata = merge_run_metadata(rows)
+            actual_model = strip_model_provider(
+                str(metadata.get("model") or model_name)
+            )
+            langfuse_url = metadata.get("langfuse_url") or None
+            langfuse_dataset_id = metadata.get("langfuse_dataset_id") or None
+            langfuse_run_id = metadata.get("langfuse_run_id") or None
+            declared_total_items = parse_total_items(metadata.get("total_items"))
+            total_items = max(processed_items, declared_total_items or 0)
 
             # Count successes vs errors and calculate metric averages
             error_count = 0
@@ -454,7 +479,7 @@ class RunDiscovery:
                 except (ValueError, TypeError):
                     pass
 
-            success_count = total_items - error_count
+            success_count = processed_items - error_count
 
             # Calculate metric averages
             metric_averages = {}

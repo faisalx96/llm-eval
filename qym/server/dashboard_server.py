@@ -117,6 +117,33 @@ def get_langfuse_project_id() -> str:
     return _langfuse_project_id_cache
 
 
+def rebuild_langfuse_urls(
+    payload: Dict[str, Any], langfuse_host: str, langfuse_project_id: str
+) -> None:
+    """Populate run-level langfuse_url fields from dataset/run IDs."""
+    if not langfuse_host or not langfuse_project_id:
+        return
+    tasks = payload.get("tasks", {})
+    if not isinstance(tasks, dict):
+        return
+    host = langfuse_host.rstrip("/")
+    for models in tasks.values():
+        if not isinstance(models, dict):
+            continue
+        for runs in models.values():
+            if not isinstance(runs, list):
+                continue
+            for run in runs:
+                if not isinstance(run, dict):
+                    continue
+                dataset_id = run.get("langfuse_dataset_id")
+                run_id = run.get("langfuse_run_id")
+                if dataset_id and run_id:
+                    run["langfuse_url"] = (
+                        f"{host}/project/{langfuse_project_id}/datasets/{dataset_id}/runs/{run_id}"
+                    )
+
+
 class DashboardServer:
     """HTTP server for the runs dashboard with auto-close on inactivity."""
 
@@ -283,12 +310,7 @@ class DashboardServer:
                     # Rebuild Langfuse URLs dynamically if we have the IDs
                     langfuse_host = os.environ.get("LANGFUSE_HOST", "").rstrip("/")
                     langfuse_project_id = get_langfuse_project_id()
-                    if langfuse_host and langfuse_project_id:
-                        for run in data.get("runs", []):
-                            dataset_id = run.get("langfuse_dataset_id")
-                            run_id = run.get("langfuse_run_id")
-                            if dataset_id and run_id:
-                                run["langfuse_url"] = f"{langfuse_host}/project/{langfuse_project_id}/datasets/{dataset_id}/runs/{run_id}"
+                    rebuild_langfuse_urls(data, langfuse_host, langfuse_project_id)
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(
                         json.dumps(data, ensure_ascii=False).encode("utf-8")

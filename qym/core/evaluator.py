@@ -578,6 +578,9 @@ class Evaluator:
         if not items:
             console.print("[yellow]Warning: Dataset is empty[/yellow]")
             return result
+        self.run_metadata["total_items"] = len(items)
+        if self._langfuse_dataset_id:
+            self.run_metadata["langfuse_dataset_id"] = self._langfuse_dataset_id
     
         run_info = self._build_run_info(result)
 
@@ -775,6 +778,17 @@ class Evaluator:
                         return val.get("score")
                 return val
 
+            def _checkpoint_run_metadata() -> Dict[str, Any]:
+                md = dict(self.run_metadata or {})
+                if self._langfuse_dataset_id:
+                    md["langfuse_dataset_id"] = self._langfuse_dataset_id
+                if self._langfuse_run_id:
+                    md["langfuse_run_id"] = self._langfuse_run_id
+                langfuse_url = self._build_langfuse_url()
+                if langfuse_url:
+                    md["langfuse_url"] = langfuse_url
+                return md
+
             async def _worker():
                 while True:
                     entry = await work_queue.get()
@@ -793,7 +807,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id="",
                             item_id=item_id,
@@ -817,7 +831,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("_trace_id") or "",
                             item_id=item_id,
@@ -843,7 +857,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("trace_id") or "",
                             item_id=item_id,
