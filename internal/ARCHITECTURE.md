@@ -1,9 +1,9 @@
-# Architecture (llm-eval platform)
+# Architecture (qym platform)
 
 ## Components
 
-- **SDK (`llm_eval/`)**: runs evaluations locally (TUI), streams events and/or uploads artifacts to the platform.
-- **Platform (`llm_eval_platform/`)**: FastAPI service + Postgres schema hosting:
+- **SDK (`packages/sdk/qym/`)**: runs evaluations locally (TUI), streams events and/or uploads artifacts to the platform.
+- **Platform (`packages/platform/qym_platform/`)**: FastAPI service + Postgres schema hosting:
   - historical dashboard (`/`)
   - run detail UI (`/run/<run_id>`)
   - ingestion APIs (`/v1/...`)

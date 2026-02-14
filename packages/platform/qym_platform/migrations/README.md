@@ -1,6 +1,6 @@
-Alembic migrations for the llm-eval platform.
+Alembic migrations for the qym platform.
 
 Run locally (dev):
-- `alembic -c llm_eval_platform/migrations/alembic.ini upgrade head`
+- `alembic -c qym_platform/migrations/alembic.ini upgrade head`
 
 

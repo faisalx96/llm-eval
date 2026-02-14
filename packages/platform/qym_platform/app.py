@@ -6,21 +6,21 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from llm_eval_platform.settings import PlatformSettings
-from llm_eval_platform.web import router as web_router
-from llm_eval_platform.runs_api import router as runs_router
-from llm_eval_platform.ingest_api import router as ingest_router
-from llm_eval_platform.org_api import router as org_router
+from qym_platform.settings import PlatformSettings
+from qym_platform.api.web import router as web_router
+from qym_platform.api.runs import router as runs_router
+from qym_platform.api.ingest import router as ingest_router
+from qym_platform.api.org import router as org_router
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     settings = settings or PlatformSettings()
 
-    app = FastAPI(title="llm-eval platform", version="0.1.0")
+    app = FastAPI(title="qym-platform", version="0.1.0")
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:
-        return JSONResponse({"ok": True, "service": "llm-eval-platform", "env": settings.environment})
+        return JSONResponse({"ok": True, "service": "qym-platform", "env": settings.environment})
 
     # Serve UI assets from the platform package (no longer from SDK)
     platform_static = Path(__file__).resolve().parent / "_static"

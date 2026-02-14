@@ -2,7 +2,7 @@
 
 ## Bootstrap First Admin
 
-1. Set `LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN` on the platform.
+1. Set `QYM_ADMIN_BOOTSTRAP_TOKEN` on the platform.
 2. Make a request with:
    - `X-Admin-Bootstrap: <token>`
    - `X-User-Email: <your email>`
@@ -67,10 +67,10 @@ The response includes the API key **token** once. Store it securely.
 
 ## Import Legacy Local Results
 
-Run from repo root (after setting `LLM_EVAL_DATABASE_URL`):
+Run from repo root (after setting `QYM_DATABASE_URL`):
 
 ```bash
-python -m llm_eval_platform.tools.import_local_results --owner-email you@company.com --results-dir llm-eval_results
+python -m qym_platform.tools.import_local_results --owner-email you@company.com --results-dir qym_results
 ```
 
 Note: This imports CSV/JSON results into the platform database. The raw files are parsed and ingested; raw artifacts are NOT stored persistently.

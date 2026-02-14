@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.auth import Principal, require_ui_principal
-from llm_eval_platform.db.models import (
+from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.db.models import (
     OrgUnit,
     OrgUnitClosure,
     OrgUnitType,
@@ -17,7 +17,7 @@ from llm_eval_platform.db.models import (
     User,
     UserRole,
 )
-from llm_eval_platform.deps import get_db
+from qym_platform.deps import get_db
 
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])

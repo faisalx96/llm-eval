@@ -1,8 +1,8 @@
 # DB Schema (MVP)
 
 Defined in:
-- `llm_eval_platform/db/models.py`
-- migrations: `llm_eval_platform/migrations/versions/0001_initial.py`
+- `packages/platform/qym_platform/db/models.py`
+- migrations: `packages/platform/qym_platform/migrations/versions/0001_initial.py`
 
 ## Core tables
 

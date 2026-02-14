@@ -6,9 +6,9 @@ import uvicorn
 
 
 def main() -> None:
-    host = os.environ.get("LLM_EVAL_PLATFORM_HOST", "0.0.0.0")
-    port = int(os.environ.get("LLM_EVAL_PLATFORM_PORT", "8000"))
-    uvicorn.run("llm_eval_platform.main:app", host=host, port=port, reload=False)
+    host = os.environ.get("QYM_PLATFORM_HOST", "0.0.0.0")
+    port = int(os.environ.get("QYM_PLATFORM_PORT", "8000"))
+    uvicorn.run("qym_platform.main:app", host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":

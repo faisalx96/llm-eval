@@ -22,7 +22,7 @@ def setup_test_database_url():
     """Set up a test database URL before any platform module imports."""
     import os
     # Use in-memory SQLite for tests
-    os.environ["LLM_EVAL_DATABASE_URL"] = "sqlite:///:memory:"
+    os.environ["QYM_DATABASE_URL"] = "sqlite:///:memory:"
     yield
     # Clean up (optional - environment persists in test session)
 
@@ -37,7 +37,7 @@ def mock_db():
 @pytest.fixture
 def sample_users(mock_db):
     """Create sample users for testing."""
-    from llm_eval_platform.db.models import User, UserRole, OrgUnit, OrgUnitType
+    from qym_platform.db.models import User, UserRole, OrgUnit, OrgUnitType
     
     # Create org structure
     sector = OrgUnit(id="sector-1", name="Tech Sector", type=OrgUnitType.SECTOR)
@@ -71,7 +71,7 @@ def sample_users(mock_db):
 @pytest.fixture
 def sample_runs(sample_users):
     """Create sample runs for testing."""
-    from llm_eval_platform.db.models import Run, RunWorkflowStatus
+    from qym_platform.db.models import Run, RunWorkflowStatus
     
     draft_run = Run(
         id="run-draft",
@@ -130,7 +130,7 @@ class TestOrgUnitVisibility:
     
     def test_admin_can_view_all(self, sample_users, sample_runs):
         """Admin users should be able to view all runs."""
-        from llm_eval_platform.auth import Principal
+        from qym_platform.auth import Principal
         
         principal = MagicMock(spec=Principal)
         principal.user = sample_users["admin"]
@@ -141,7 +141,7 @@ class TestOrgUnitVisibility:
     
     def test_employee_sees_own_runs_only(self, sample_users, sample_runs):
         """Employee users should only see their own runs."""
-        from llm_eval_platform.db.models import UserRole
+        from qym_platform.db.models import UserRole
         
         emp = sample_users["employee"]
         assert emp.role == UserRole.EMPLOYEE
@@ -153,7 +153,7 @@ class TestOrgUnitVisibility:
     
     def test_gm_vp_approved_only_rule(self, sample_users, sample_runs):
         """GM/VP users should only see approved runs when policy is enabled."""
-        from llm_eval_platform.db.models import UserRole, RunWorkflowStatus
+        from qym_platform.db.models import UserRole, RunWorkflowStatus
         
         gm = sample_users["gm"]
         vp = sample_users["vp"]
@@ -172,7 +172,7 @@ class TestManagerApproval:
     
     def test_manager_can_approve_team_runs(self, sample_users, sample_runs):
         """Manager should be able to approve runs from their team."""
-        from llm_eval_platform.db.models import UserRole
+        from qym_platform.db.models import UserRole
         
         manager = sample_users["manager"]
         employee = sample_users["employee"]
@@ -188,7 +188,7 @@ class TestManagerApproval:
     
     def test_manager_cannot_approve_other_team_runs(self, sample_users, sample_runs):
         """Manager should not be able to approve runs from other teams."""
-        from llm_eval_platform.db.models import UserRole
+        from qym_platform.db.models import UserRole
         
         manager = sample_users["manager"]
         other_emp = sample_users["other_emp"]
@@ -207,7 +207,7 @@ class TestOrgClosure:
     
     def test_closure_contains_self_reference(self):
         """Each org unit should have a self-reference in the closure table."""
-        from llm_eval_platform.db.models import OrgUnitClosure
+        from qym_platform.db.models import OrgUnitClosure
         
         # Self-reference has depth 0
         closure = OrgUnitClosure(ancestor_id="team-1", descendant_id="team-1", depth=0)
@@ -216,7 +216,7 @@ class TestOrgClosure:
     
     def test_closure_captures_hierarchy(self):
         """Closure table should capture full hierarchy."""
-        from llm_eval_platform.db.models import OrgUnitClosure
+        from qym_platform.db.models import OrgUnitClosure
         
         # Team -> Dept -> Sector
         closures = [
@@ -236,14 +236,14 @@ class TestPlatformSettings:
     
     def test_valid_settings(self):
         """Test that valid settings are accepted."""
-        from llm_eval_platform.org_api import VALID_SETTINGS
+        from qym_platform.api.org import VALID_SETTINGS
         
         assert "gm_vp_approved_only" in VALID_SETTINGS
         assert "manager_visibility_scope" in VALID_SETTINGS
     
     def test_setting_values(self):
         """Test setting value formats."""
-        from llm_eval_platform.db.models import PlatformSetting
+        from qym_platform.db.models import PlatformSetting
         
         setting = PlatformSetting(key="gm_vp_approved_only", value="true")
         assert setting.value.lower() == "true"
@@ -257,7 +257,7 @@ class TestUserRoles:
     
     def test_all_roles_defined(self):
         """All expected roles should be defined."""
-        from llm_eval_platform.db.models import UserRole
+        from qym_platform.db.models import UserRole
         
         roles = [r.value for r in UserRole]
         assert "EMPLOYEE" in roles
@@ -268,6 +268,6 @@ class TestUserRoles:
     
     def test_admin_role_exists(self):
         """ADMIN role should be available."""
-        from llm_eval_platform.db.models import UserRole
+        from qym_platform.db.models import UserRole
         
         assert UserRole.ADMIN.value == "ADMIN"

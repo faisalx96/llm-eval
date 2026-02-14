@@ -5,10 +5,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PlatformSettings(BaseSettings):
-    """Runtime configuration for the deployed llm-eval platform."""
+    """Runtime configuration for the deployed qym platform."""
 
     model_config = SettingsConfigDict(
-        env_prefix="LLM_EVAL_",
+        env_prefix="QYM_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",

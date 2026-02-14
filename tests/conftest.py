@@ -24,12 +24,22 @@ sys.modules["rich.progress_bar"] = MagicMock()
 sys.modules["rich.spinner"] = MagicMock()
 
 repo_root = Path(__file__).resolve().parents[1]
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
+sdk_root = repo_root / "packages" / "sdk"
+platform_root = repo_root / "packages" / "platform"
+for p in (str(sdk_root), str(platform_root), str(repo_root)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 mock_langfuse_pkg = MagicMock()
 mock_langfuse_pkg.__path__ = []
 sys.modules["langfuse"] = mock_langfuse_pkg
+
+# Mock other optional heavy deps that may not be installed in test env
+for _mod in ("arabic_reshaper", "bidi", "bidi.algorithm", "openpyxl"):
+    if _mod not in sys.modules:
+        _m = MagicMock()
+        _m.__path__ = []
+        sys.modules[_mod] = _m
 
 @pytest.fixture
 def mock_langfuse():

@@ -10,9 +10,9 @@ load_dotenv()  # Load .env file
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from llm_eval_platform.db.base import Base
-from llm_eval_platform.db import models  # noqa: F401  (import models for metadata)
-from llm_eval_platform.settings import PlatformSettings
+from qym_platform.db.base import Base
+from qym_platform.db import models  # noqa: F401  (import models for metadata)
+from qym_platform.settings import PlatformSettings
 
 
 config = context.config

@@ -9,10 +9,10 @@ __pycache__/
 .ipynb_checkpoints/
 
 # local artifacts / large data
-llm-eval_results/
+qym_results/
 artifacts/
 tui_debug.log
-llm_eval_platform.db
+qym_platform.db
 *.sqlite
 *.sqlite3
 

@@ -11,10 +11,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.auth import Principal, require_api_key_principal
-from llm_eval_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus
-from llm_eval_platform.deps import get_db
-from llm_eval_platform.events import (
+from qym_platform.auth import Principal, require_api_key_principal
+from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus
+from qym_platform.deps import get_db
+from qym_platform.events import (
     ItemCompletedPayload,
     ItemFailedPayload,
     ItemStartedPayload,
@@ -24,7 +24,7 @@ from llm_eval_platform.events import (
     RunEventV1,
     RunStartedPayload,
 )
-from llm_eval_platform.settings import PlatformSettings
+from qym_platform.settings import PlatformSettings
 
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])

@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from llm_eval_platform.settings import PlatformSettings
+from qym_platform.settings import PlatformSettings
 
 
 def _build_engine():

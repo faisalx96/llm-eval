@@ -7,8 +7,8 @@ from typing import Any, Dict, List
 from sqlalchemy.orm import Session
 
 from qym.core.run_discovery import RunDiscovery  # legacy parser
-from llm_eval_platform.db.session import SessionLocal
-from llm_eval_platform.db.models import Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
+from qym_platform.db.session import SessionLocal
+from qym_platform.db.models import Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
 
 
 def _flatten_index(index_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -37,8 +37,8 @@ def _ensure_owner(db: Session, email: str) -> User:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Import legacy llm-eval_results into the platform DB")
-    parser.add_argument("--results-dir", default="llm-eval_results", help="Path to llm-eval_results directory")
+    parser = argparse.ArgumentParser(description="Import legacy qym_results into the platform DB")
+    parser.add_argument("--results-dir", default="qym_results", help="Path to qym_results directory")
     parser.add_argument("--owner-email", required=True, help="Owner email to attach imported runs to")
     args = parser.parse_args()
 

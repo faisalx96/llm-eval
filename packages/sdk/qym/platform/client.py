@@ -12,8 +12,8 @@ from queue import Queue, Empty
 from typing import Any, Dict, Optional
 from urllib import request
 
-# Enable debug logging with LLM_EVAL_PLATFORM_DEBUG=1 or LLM_EVAL_PLATFORM_DEBUG=/path/to/file.log
-_DEBUG = os.environ.get("LLM_EVAL_PLATFORM_DEBUG", "")
+# Enable debug logging with QYM_PLATFORM_DEBUG=1 or QYM_PLATFORM_DEBUG=/path/to/file.log
+_DEBUG = os.environ.get("QYM_PLATFORM_DEBUG", "")
 _DEBUG_FILE = None
 if _DEBUG and _DEBUG.lower() not in ("0", "false", "no", ""):
     if _DEBUG.lower() in ("1", "true", "yes"):
@@ -87,7 +87,7 @@ class PlatformEventStream:
         self._q: "Queue[dict[str, Any]]" = Queue()
         self._stop = threading.Event()
         # Non-daemon thread ensures events are flushed before program exits
-        self._thread = threading.Thread(target=self._loop, name="llm-eval-platform-stream", daemon=False)
+        self._thread = threading.Thread(target=self._loop, name="qym-platform-stream", daemon=False)
         self._thread.start()
 
     def next_sequence(self) -> int:

@@ -4,13 +4,13 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: llm_eval
-      POSTGRES_PASSWORD: llm_eval
-      POSTGRES_DB: llm_eval
+      POSTGRES_USER: qym
+      POSTGRES_PASSWORD: qym
+      POSTGRES_DB: qym
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U llm_eval -d llm_eval"]
+      test: ["CMD-SHELL", "pg_isready -U qym -d qym"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -20,11 +20,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     environment:
-      LLM_EVAL_ENVIRONMENT: dev
-      LLM_EVAL_BASE_URL: http://localhost:8000
-      LLM_EVAL_DATABASE_URL: postgresql+psycopg2://llm_eval:llm_eval@db:5432/llm_eval
-      LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN: test
-      LLM_EVAL_AUTH_MODE: none
+      QYM_ENVIRONMENT: dev
+      QYM_BASE_URL: http://localhost:8000
+      QYM_DATABASE_URL: postgresql+psycopg2://qym:qym@db:5432/qym
+      QYM_ADMIN_BOOTSTRAP_TOKEN: test
+      QYM_AUTH_MODE: none
     ports:
       - "8000:8000"
     depends_on:

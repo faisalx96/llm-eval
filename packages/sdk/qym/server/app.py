@@ -77,7 +77,7 @@ class UIServer:
 
     def _resolve_static_dir(self) -> str:
         # Environment override first (useful in dev)
-        env_dir = os.getenv('LLM_EVAL_STATIC_DIR')
+        env_dir = os.getenv('QYM_STATIC_DIR')
         if env_dir and os.path.isdir(env_dir):
             return env_dir
         # Prefer local filesystem next (so changes in repo take effect in dev)

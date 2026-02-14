@@ -56,13 +56,13 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
-from ..platform_defaults import DEFAULT_PLATFORM_URL
+from ..platform.defaults import DEFAULT_PLATFORM_URL
 
 
 def _utc_now_str() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 try:
-    from ..platform_client import PlatformClient, PlatformEventStream  # type: ignore
+    from ..platform.client import PlatformClient, PlatformEventStream  # type: ignore
 except Exception:  # pragma: no cover
     PlatformClient = None  # type: ignore
     PlatformEventStream = None  # type: ignore
@@ -598,7 +598,7 @@ class Evaluator:
         # Local UIServer has been removed - all live viewing is via the platform
         html_url = None
         self._platform_stream = None
-        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("LLM_EVAL_API_KEY")
+        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("QYM_API_KEY")
         live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
 
         # Platform streaming is now required for live UI
@@ -606,7 +606,7 @@ class Evaluator:
             import warnings
             warnings.warn(
                 "live_mode='local' is deprecated - local UIServer has been removed. "
-                "Please configure platform streaming (LLM_EVAL_API_KEY) or use TUI only.",
+                "Please configure platform streaming (QYM_API_KEY) or use TUI only.",
                 DeprecationWarning,
                 stacklevel=2,
             )

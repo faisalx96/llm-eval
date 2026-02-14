@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.auth import Principal, require_ui_principal
-from llm_eval_platform.db.models import (
+from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     OrgUnit,
@@ -27,7 +27,7 @@ from llm_eval_platform.db.models import (
     User,
     UserRole,
 )
-from llm_eval_platform.deps import get_db
+from qym_platform.deps import get_db
 
 
 router = APIRouter()

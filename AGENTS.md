@@ -3,23 +3,40 @@
 This guide explains how to develop, test, and contribute to `qym` (قيِّم).
 
 ## Project Structure & Module Organization
-- `qym/`: Python package
+
+This is a monorepo with two independently-buildable packages under `packages/`:
+
+- `packages/sdk/qym/`: SDK Python package (`pip install qym`)
   - `core/`: evaluator orchestration (`Evaluator`, datasets, results)
   - `metrics/`: built-ins and registry for custom metrics
   - `adapters/`: task adapters (functions, LangChain/OpenAI)
+  - `platform/`: platform client and defaults
   - `utils/`: errors and HTML/HTTP frontend helpers
+  - `server/`: local UIServer + DashboardServer
   - `cli.py`: `qym` entry point
+  - `_static/`: UI and dashboard assets
+- `packages/platform/qym_platform/`: Platform Python package (`pip install qym-platform`)
+  - `api/`: FastAPI route modules (ingest, runs, org, web)
+  - `db/`: SQLAlchemy models and session
+  - `migrations/`: Alembic migrations
+  - `tools/`: import scripts
+  - `_static/`: platform-specific UI assets
+- `docker/`: Dockerfile, docker-compose, entrypoint
+- `tests/`: test suites
+  - `sdk/`: SDK unit tests
+  - `platform/`: platform unit tests
 - `docs/`: user guides (`USER_GUIDE.md`, `METRICS_GUIDE.md`)
 - `examples/`: runnable examples and notebooks
 - `internal/`: developer docs (error handling, requirements)
-- Generated: `build/`, `qym.egg-info/` (do not edit)
 
 ## Build, Test, and Development Commands
-- Setup (editable + dev tools): `pip install -e .[dev]`
+- Setup (editable + dev tools): `pip install -e packages/sdk[dev] -e packages/platform`
 - Run CLI: `qym --help`
 - Format: `black . && isort .`
-- Type check: `mypy qym`
+- Type check: `mypy packages/sdk/qym`
 - Tests: `pytest -q` (supports `pytest-asyncio`)
+- Build SDK wheel: `pip wheel packages/sdk/ --no-deps -w dist/`
+- Build platform Docker: `docker compose -f docker/docker-compose.yml build`
 
 Example local run:
 ```
@@ -27,6 +44,11 @@ qym --task-file examples/example.py \
   --task-function my_task --dataset my-set \
   --metrics exact_match,fuzzy_match
 ```
+
+## Environment Variables
+- SDK: `QYM_PLATFORM_URL`, `QYM_API_KEY`, `QYM_PLATFORM_DEBUG`
+- Platform: `QYM_ENVIRONMENT`, `QYM_DATABASE_URL`, `QYM_AUTH_MODE`, `QYM_ADMIN_BOOTSTRAP_TOKEN`, `QYM_BASE_URL`
+- Langfuse: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`
 
 ## Coding Style & Naming Conventions
 - Python 3.9+, PEP 8, 4-space indentation.
@@ -36,7 +58,7 @@ qym --task-file examples/example.py \
 
 ## Testing Guidelines
 - Framework: `pytest` with `pytest-asyncio` for async paths.
-- Place tests in `tests/` named `test_*.py`; mirror package layout (e.g., `tests/core/test_evaluator.py`).
+- Place SDK tests in `tests/sdk/` and platform tests in `tests/platform/`.
 - Include fast unit tests for metrics and adapters; add an integration test for CLI when practical.
 
 ## Commit & Pull Request Guidelines
@@ -54,5 +76,5 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 - `.env` is gitignored; never commit secrets.
 
 ## Extending the Framework
-- Metrics: add to `qym/metrics/builtin.py` or register dynamically via `metrics.registry.register_metric(name, func)`.
-- Adapters: add under `qym/adapters/` and wire into `auto_detect_task`.
+- Metrics: add to `packages/sdk/qym/metrics/builtin.py` or register dynamically via `metrics.registry.register_metric(name, func)`.
+- Adapters: add under `packages/sdk/qym/adapters/` and wire into `auto_detect_task`.

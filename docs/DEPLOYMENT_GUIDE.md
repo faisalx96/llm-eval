@@ -1,4 +1,4 @@
-# Deployment Guide (llm-eval platform)
+# Deployment Guide (qym platform)
 
 This guide covers deploying the **deployed web platform** (FastAPI + Postgres) that hosts:
 - the historical runs dashboard
@@ -17,9 +17,9 @@ The platform will be available at `http://localhost:8000`.
 ## Required environment variables
 
 Set these on the platform service (`api`):
-- `LLM_EVAL_DATABASE_URL`: SQLAlchemy URL (Postgres recommended)
-- `LLM_EVAL_BASE_URL`: public base URL used to generate `live_url`
-- `LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN`: one-time bootstrap token for first admin user
+- `QYM_DATABASE_URL`: SQLAlchemy URL (Postgres recommended)
+- `QYM_BASE_URL`: public base URL used to generate `live_url`
+- `QYM_ADMIN_BOOTSTRAP_TOKEN`: one-time bootstrap token for first admin user
 
 ## Health check
 
@@ -30,13 +30,13 @@ Set these on the platform service (`api`):
 The container entrypoint runs:
 
 ```bash
-alembic -c llm_eval_platform/migrations/alembic.ini upgrade head
+alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
 ```
 
 If you run migrations manually:
 
 ```bash
-alembic -c llm_eval_platform/migrations/alembic.ini upgrade head
+alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
 ```
 
 

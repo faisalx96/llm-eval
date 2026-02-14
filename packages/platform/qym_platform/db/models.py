@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from llm_eval_platform.db.base import Base
+from qym_platform.db.base import Base
 
 
 class UserRole(str, enum.Enum):

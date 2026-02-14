@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qym"
+version = "0.7.2"
+description = "Simple, automated LLM evaluation framework built on Langfuse"
+readme = "../../README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Faisal Bin Hussein", email = "faisalx96@yahoo.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "langfuse>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "rich>=13.0.0",
+    "python-dotenv>=0.19.0",
+    "python-bidi>=0.4.2",
+    "arabic-reshaper>=3.0.0",
+    "openpyxl>=3.0.0",
+]
+
+[project.optional-dependencies]
+deepeval = ["deepeval>=0.20.0"]
+openai = ["openai>=1.0.0"]
+langchain = ["langchain>=0.1.0"]
+langgraph = ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"]
+all = ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "mypy>=1.0.0",
+    "jupyter>=1.0.0",
+]
+
+[project.scripts]
+qym = "qym.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/faisalx96/qym"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.package-data]
+qym = ["_static/ui/*", "_static/dashboard/*"]

@@ -4,7 +4,7 @@ from typing import Generator
 
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.db.session import SessionLocal
+from qym_platform.db.session import SessionLocal
 
 
 def get_db() -> Generator[Session, None, None]:

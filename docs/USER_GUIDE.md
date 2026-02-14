@@ -855,20 +855,20 @@ There are two ways to access the Web UI:
 
 #### 0. Deployed Platform (remote live dashboard)
 
-In addition to the local web UI, `llm-eval` can stream run events to a **deployed platform** that hosts:
+In addition to the local web UI, `qym` can stream run events to a **deployed platform** that hosts:
 - a centralized historical runs dashboard
 - the live run UI (served by the platform, not your laptop)
 
 To enable streaming, provide the platform URL and API key (args or env vars):
-- `--platform-api-key` / `LLM_EVAL_API_KEY`
+- `--platform-api-key` / `QYM_API_KEY`
 
 The platform URL is treated as an internal default. For dev/test only, you can override it with:
-- `--platform-url` or `LLM_EVAL_PLATFORM_URL`
+- `--platform-url` or `QYM_PLATFORM_URL`
 
 Example:
 
 ```bash
-llm-eval --task-file examples/example.py --task-function my_task \
+qym --task-file examples/example.py --task-function my_task \
   --dataset-csv examples/my_dataset.csv \
   --metrics exact_match \
   --platform-url http://localhost:8000 \
@@ -878,7 +878,7 @@ llm-eval --task-file examples/example.py --task-function my_task \
 To upload a saved results artifact (offline/backfill):
 
 ```bash
-llm-eval submit --file path/to/results.csv \
+qym submit --file path/to/results.csv \
   --platform-url http://localhost:8000 \
   --api-key <YOUR_API_KEY> \
   --task my_task --dataset my_dataset --model my_model
@@ -916,8 +916,8 @@ qym dashboard
 This opens the platform dashboard in your browser where you can view, filter, compare, and analyze all runs.
 
 > **Note**: The local dashboard server has been deprecated. All dashboard functionality is now provided by the deployed platform. You'll need:
-> - `LLM_EVAL_PLATFORM_URL` (or use the built-in default)
-> - `LLM_EVAL_API_KEY` for uploading runs
+> - `QYM_PLATFORM_URL` (or use the built-in default)
+> - `QYM_API_KEY` for uploading runs
 
 #### Historical Runs View
 
@@ -989,7 +989,7 @@ Visualize model performance across all runs:
 
 ### Dashboard Data Storage
 
-The platform dashboard stores all runs in a central database. When you run evaluations with platform streaming enabled (`LLM_EVAL_API_KEY`), runs are automatically stored on the platform.
+The platform dashboard stores all runs in a central database. When you run evaluations with platform streaming enabled (`QYM_API_KEY`), runs are automatically stored on the platform.
 
 For local development, results are also saved to `qym_results/` directory in your **current working directory**:
 

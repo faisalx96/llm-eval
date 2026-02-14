@@ -1,6 +1,6 @@
 # Platform User Guide
 
-The llm-eval platform is the deployed web app that stores runs centrally and hosts the live run dashboard.
+The qym platform is the deployed web app that stores runs centrally and hosts the live run dashboard.
 
 ## Access Model
 
@@ -8,7 +8,7 @@ The platform identifies users via reverse-proxy headers:
 - `X-User-Email` (preferred) or `X-Email`
 
 First admin bootstrap:
-1. Set `LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN`
+1. Set `QYM_ADMIN_BOOTSTRAP_TOKEN`
 2. Send `X-Admin-Bootstrap: <token>` + `X-User-Email: you@company.com` on your first request
 
 ## Organization & Roles
@@ -62,18 +62,18 @@ Each user belongs to exactly one Team, which determines their visibility and app
 ### From the SDK (Live Streaming - Recommended)
 Run your evaluation with an API key:
 ```bash
-export LLM_EVAL_API_KEY=your-api-key
-llm-eval --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match
+export QYM_API_KEY=your-api-key
+qym --task-file my_task.py --task-function my_func --dataset my-dataset --metrics exact_match
 ```
 
-The platform URL is configured internally (override with `LLM_EVAL_PLATFORM_URL` for development).
+The platform URL is configured internally (override with `QYM_PLATFORM_URL` for development).
 
 **Note**: The local UI server has been deprecated. All live run viewing is through the platform dashboard.
 
 ### Upload a Saved Results File
 Use the CLI:
 ```bash
-llm-eval submit --file results.csv --task my_task --dataset my-dataset
+qym submit --file results.csv --task my_task --dataset my-dataset
 ```
 
 Or the API:
@@ -98,7 +98,7 @@ curl -X POST http://<platform>/v1/runs:upload \
 
 From the CLI:
 ```bash
-llm-eval dashboard
+qym dashboard
 ```
 
 This opens the platform dashboard in your browser.

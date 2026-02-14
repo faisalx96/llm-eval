@@ -6,10 +6,10 @@ from typing import Optional
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from llm_eval_platform.db.models import ApiKey, User, UserRole
-from llm_eval_platform.deps import get_db
-from llm_eval_platform.security import api_key_prefix, verify_api_key
-from llm_eval_platform.settings import PlatformSettings
+from qym_platform.db.models import ApiKey, User, UserRole
+from qym_platform.deps import get_db
+from qym_platform.security import api_key_prefix, verify_api_key
+from qym_platform.settings import PlatformSettings
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ def require_ui_principal(
     """UI auth for internal deployments.
 
     - Prefer reverse-proxy headers (X-User-Email / X-Email)
-    - Support first-admin bootstrap via X-Admin-Bootstrap == LLM_EVAL_ADMIN_BOOTSTRAP_TOKEN
+    - Support first-admin bootstrap via X-Admin-Bootstrap == QYM_ADMIN_BOOTSTRAP_TOKEN
     """
     settings = PlatformSettings()
 
