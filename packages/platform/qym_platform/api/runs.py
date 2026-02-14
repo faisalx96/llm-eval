@@ -54,7 +54,7 @@ def _extract_langfuse_ids(run_metadata: dict) -> tuple[str, str]:
 
 def _platform_static_dir() -> Path:
     """Return the platform static directory."""
-    return Path(__file__).resolve().parent / "_static"
+    return Path(__file__).resolve().parent.parent / "_static"
 
 
 def _platform_static_ui_index() -> Path:
