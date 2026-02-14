@@ -92,12 +92,12 @@ def main():
         task=rag_qa_task,
         dataset="ragbench-100",
         metrics=["correctness", "faithfulness"],  # Use metrics by name from registry
-        model=["openai/gpt-oss-120b"], #"meta-llama/llama-4-maverick", "qwen/qwen3-235b-a22b-2507"],
+        model=["openai/gpt-oss-120b", "meta-llama/llama-4-maverick", "qwen/qwen3-235b-a22b-2507"],
         # model=["qwen/qwen3-235b-a22b-2507"]*2,
         # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={
-            "resume_from": "/Users/faisalbh/qym/qym_results/ragbench/gpt-oss-120b/2026-01-28/ragbench-ragbench-100-gpt-oss-120b-260128-1140.csv", 
-            "max_concurrency": 10,
+            # "resume_from": "/Users/faisalbh/qym/qym_results/ragbench/gpt-oss-120b/2026-01-28/ragbench-ragbench-100-gpt-oss-120b-260128-1140.csv", 
+            "max_concurrency": 5,
             "run_name": "ragbench",
         }
     )

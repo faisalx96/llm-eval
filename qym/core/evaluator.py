@@ -1453,6 +1453,7 @@ class Evaluator:
                             "latency_ms": float(task_elapsed_time * 1000.0),
                             "trace_id": meta.get("trace_id"),
                             "trace_url": meta.get("trace_url"),
+                            "task_started_at_ms": task_started_at_ms,
                         },
                     )
             except Exception:

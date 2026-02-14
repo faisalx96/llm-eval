@@ -54,6 +54,7 @@ class ItemCompletedPayload(BaseModel):
     latency_ms: float = Field(ge=0)
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None
+    task_started_at_ms: Optional[int] = None  # Epoch ms when the task execution began
 
 
 class ItemFailedPayload(BaseModel):

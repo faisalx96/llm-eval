@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -30,6 +31,25 @@ from llm_eval_platform.deps import get_db
 
 
 router = APIRouter()
+
+_LANGFUSE_URL_RE = re.compile(r"(https?://[^/]+)/project/([^/]+)")
+
+
+def _extract_langfuse_ids(run_metadata: dict) -> tuple[str, str]:
+    """Extract (host, project_id) from langfuse_url stored in run metadata.
+
+    The SDK sends langfuse_url like ``https://cloud.langfuse.com/project/<id>/datasets/...``
+    but does NOT explicitly send ``langfuse_host`` or ``langfuse_project_id``.
+    """
+    langfuse_url = run_metadata.get("langfuse_url", "") if isinstance(run_metadata, dict) else ""
+    host = run_metadata.get("langfuse_host", "") if isinstance(run_metadata, dict) else ""
+    project_id = run_metadata.get("langfuse_project_id", "") if isinstance(run_metadata, dict) else ""
+    if langfuse_url and (not host or not project_id):
+        m = _LANGFUSE_URL_RE.match(langfuse_url)
+        if m:
+            host = host or m.group(1)
+            project_id = project_id or m.group(2)
+    return host, project_id
 
 
 def _platform_static_dir() -> Path:
@@ -335,10 +355,19 @@ def legacy_compare(
         if not data.get("error"):
             runs_data.append(data)
 
+    # Top-level Langfuse config from env vars
+    lf_host = os.getenv("LANGFUSE_HOST", "")
+    lf_project_id = os.getenv("LANGFUSE_PROJECT_ID", "")
+    # Fallback: extract from the first run's langfuse_url if env vars are incomplete
+    if (not lf_host or not lf_project_id) and runs_data:
+        first_run = runs_data[0].get("run", {})
+        lf_host = lf_host or first_run.get("langfuse_host", "")
+        lf_project_id = lf_project_id or first_run.get("langfuse_project_id", "")
+
     return {
         "runs": runs_data,
-        "langfuse_host": os.getenv("LANGFUSE_HOST", ""),
-        "langfuse_project_id": os.getenv("LANGFUSE_PROJECT_ID", ""),
+        "langfuse_host": lf_host,
+        "langfuse_project_id": lf_project_id,
     }
 
 
@@ -420,6 +449,25 @@ def legacy_run_data(
     for s in scores:
         by_item.setdefault(s.item_id, {})[s.metric_name] = s
 
+    # Fallback timestamps: for items missing task_started_at_ms in item_metadata,
+    # look up the item_started event's sent_at timestamp as an approximation.
+    _item_start_ts: Dict[str, int] = {}
+    need_ts = any(
+        not (isinstance(it.item_metadata, dict) and it.item_metadata.get("task_started_at_ms"))
+        for it in items
+    )
+    if need_ts:
+        started_events: List[RunEvent] = (
+            db.query(RunEvent)
+            .filter(RunEvent.run_id == run.id, RunEvent.type == "item_started")
+            .all()
+        )
+        for ev in started_events:
+            payload = ev.payload or {}
+            iid = payload.get("item_id")
+            if iid and ev.sent_at:
+                _item_start_ts[iid] = int(ev.sent_at.timestamp() * 1000)
+
     ui_rows = []
     stats = {"total": len(items), "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
     for it in items:
@@ -444,6 +492,11 @@ def legacy_run_data(
             if sc.meta:
                 metric_meta[m] = sc.meta
 
+        # Resolve task_started_at_ms: prefer item_metadata, then fallback to event timestamp
+        ts_ms = it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None
+        if not ts_ms:
+            ts_ms = _item_start_ts.get(it.item_id)
+
         ui_rows.append(
             {
                 "index": it.index,
@@ -459,13 +512,16 @@ def legacy_run_data(
                 "latency_ms": it.latency_ms or 0,
                 "trace_id": it.trace_id or "",
                 "trace_url": it.trace_url or "",
-                "task_started_at_ms": it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None,
+                "task_started_at_ms": ts_ms,
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
             }
         )
 
     stats["success_rate"] = (stats["completed"] / stats["total"] * 100.0) if stats["total"] else 0.0
+
+    # Extract Langfuse host/project_id from run metadata (langfuse_url fallback)
+    lf_host, lf_project_id = _extract_langfuse_ids(run.run_metadata or {})
 
     return {
         "run": {
@@ -476,8 +532,8 @@ def legacy_run_data(
             "config": run.run_config,
             "metadata": run.run_metadata,
             "status": run.status,
-            "langfuse_host": run.run_metadata.get("langfuse_host", "") if isinstance(run.run_metadata, dict) else "",
-            "langfuse_project_id": run.run_metadata.get("langfuse_project_id", "") if isinstance(run.run_metadata, dict) else "",
+            "langfuse_host": lf_host,
+            "langfuse_project_id": lf_project_id,
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
     }
@@ -571,7 +627,7 @@ def update_metric(
             metric_meta[m] = sc.meta
 
     is_error = bool(item.error)
-    status = "error" if is_error else "success"
+    status = "error" if is_error else "completed"
 
     row = {
         "index": item.index,

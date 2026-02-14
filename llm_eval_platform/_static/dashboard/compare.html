@@ -1367,11 +1367,11 @@
           state.runs = data.runs;
           state.langfuseHost = data.langfuse_host || '';
           state.langfuseProjectId = data.langfuse_project_id || '';
-          // Fallback: use per-run Langfuse config if top-level is empty
-          if (!state.langfuseHost && data.runs?.length) {
+          // Fallback: use per-run Langfuse config if top-level is incomplete
+          if ((!state.langfuseHost || !state.langfuseProjectId) && data.runs?.length) {
             const firstRun = data.runs[0]?.run || {};
-            state.langfuseHost = firstRun.langfuse_host || '';
-            state.langfuseProjectId = firstRun.langfuse_project_id || '';
+            state.langfuseHost = state.langfuseHost || firstRun.langfuse_host || '';
+            state.langfuseProjectId = state.langfuseProjectId || firstRun.langfuse_project_id || '';
           }
           processRuns();
           render();
@@ -2536,11 +2536,9 @@
       }
 
       function refreshComparisonStatsAfterEdit() {
-        if (state.selectedOverviewMetric) {
-          state.comparisonStats[state.selectedOverviewMetric] = calculateComparisonStatsForMetric(state.selectedOverviewMetric);
-        }
-        if (state.selectedItemsMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
-          state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
+        // Recalculate stats for ALL metrics (the edit may affect any of them)
+        for (const metricName of state.allMetrics) {
+          state.comparisonStats[metricName] = calculateComparisonStatsForMetric(metricName);
         }
         renderComparisonStats();
         renderMetricsTable();

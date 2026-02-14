@@ -180,6 +180,15 @@ async def ingest_events(
                 score.meta = payload.meta
 
         elif isinstance(payload, ItemCompletedPayload):
+            # Determine task_started_at_ms: prefer explicit value from SDK,
+            # fall back to event sent_at minus latency_ms for older SDKs.
+            ts_ms = payload.task_started_at_ms
+            if ts_ms is None and payload.latency_ms and evt.sent_at:
+                try:
+                    ts_ms = int(evt.sent_at.timestamp() * 1000 - payload.latency_ms)
+                except Exception:
+                    pass
+
             item = db.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == payload.item_id).first()
             if not item:
                 item = RunItem(
@@ -193,7 +202,7 @@ async def ingest_events(
                     latency_ms=payload.latency_ms,
                     trace_id=payload.trace_id,
                     trace_url=payload.trace_url,
-                    item_metadata={},
+                    item_metadata={"task_started_at_ms": ts_ms} if ts_ms else {},
                 )
                 db.add(item)
             else:
@@ -205,6 +214,11 @@ async def ingest_events(
                 item.latency_ms = payload.latency_ms
                 item.trace_id = payload.trace_id
                 item.trace_url = payload.trace_url
+                # Merge task_started_at_ms into item_metadata
+                if ts_ms:
+                    md = dict(item.item_metadata or {})
+                    md["task_started_at_ms"] = ts_ms
+                    item.item_metadata = md
 
         elif isinstance(payload, ItemFailedPayload):
             item = db.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == payload.item_id).first()
