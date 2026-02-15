@@ -2,8 +2,6 @@
   <img src="docs/images/qym_logo.png" alt="qym logo" width="400" />
 </p>
 
-<!-- <h1 align="center">qym</h1>
-<p align="center"><em>قيِّم • evaluate</em></p> -->
 ---
 
 <h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
@@ -13,216 +11,98 @@
   &nbsp;
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg" alt="Python 3.9+" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
-  <a href="docs/USER_GUIDE.md"><img src="https://img.shields.io/badge/Documentation-Guide-blue.svg" alt="Documentation" /></a>
 </p>
 
-<p align="center">
-  <a href="#overview">Overview</a> |
-  <a href="#quick-start">Installation</a> |
-  <a href="examples/">Examples</a> |
-  <a href="#features">Features</a> |
-  <a href="docs/USER_GUIDE.md">User Guide</a> |
-  <a href="#command-line-interface">CLI</a>
-</p>
+## Project Structure
 
-## 📖 Overview
+This is a monorepo with two packages:
 
-Evaluate your LLM applications with just 3 lines of code. qym is a fast, async evaluation framework for testing and benchmarking LLM applications. It provides a structured approach to evaluation, ensuring consistency and high-quality outputs while reducing the trial-and-error typically associated with manual testing.
+```
+packages/
+  sdk/        # qym — the Python SDK (pip install qym)
+  platform/   # qym_platform — the web dashboard (FastAPI + Postgres)
+docker/       # Docker Compose setup for the platform
+docs/         # Guides and documentation
+examples/     # Runnable example scripts
+```
 
-The framework supports [Langfuse](https://langfuse.com) datasets (with full tracing) or local CSV files, and includes 40+ built-in metrics for RAG, agents, safety, and more. Whether you're a researcher exploring LLM capabilities or a developer building production applications, qym provides a comprehensive solution for evaluation.
+| Package | Description | Install |
+|---------|-------------|---------|
+| **SDK** (`packages/sdk`) | Evaluation framework — task runner, metrics, CLI | `pip install qym` |
+| **Platform** (`packages/platform`) | Web dashboard — run history, comparison, admin | Docker Compose or `pip install -e packages/platform` |
 
-📚 **Documentation:** Comprehensive guides are available in the [User Guide](docs/USER_GUIDE.md) and [Metrics Guide](docs/METRICS_GUIDE.md).
+**End users:** See the [SDK README](packages/sdk/README.md) for installation and usage.
 
-## 🚀 Features
+## Development Setup
 
-- **Simple API** - Get started in minutes with a clean, Pythonic interface
-- **Async & Parallel** - Evaluate hundreds of items concurrently with 90%+ efficiency
-- **Multi-Model Support** - Compare GPT-4, Claude, Llama side-by-side in one run
-- **Real-Time Dashboard** - Terminal UI + Web UI with live progress, historical runs, model comparison, and charts
-- **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
-- **Flexible Datasets** - Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
-- **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
-- **Resume Runs** - Checkpoint partial results and resume interrupted evaluations
-
-## ⚡ Quick Start
-
-### 1. Install
+### SDK
 
 ```bash
-pip install qym
+pip install -e packages/sdk
 ```
 
-### 2. Set up Langfuse (optional for CSV datasets)
+### Platform
 
-Create a `.env` file with your [Langfuse](https://langfuse.com) credentials:
+**With Docker (recommended):**
 
 ```bash
-LANGFUSE_PUBLIC_KEY=pk-...
-LANGFUSE_SECRET_KEY=sk-...
-LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
+docker compose -f docker/docker-compose.yml up --build
 ```
 
-> **Using CSV datasets?** Langfuse credentials are optional. Without them, evaluations still run but without tracing.
+Platform available at http://localhost:8000.
 
-### 3. Run Evaluation
-
-You need three things:
-1. **[Task function](docs/USER_GUIDE.md#3-writing-your-task-function)** - Takes input (and optionally `model_name`), returns output
-2. **[Dataset](docs/USER_GUIDE.md#5-setting-up-your-dataset)** - Langfuse dataset name or a [local CSV file](docs/USER_GUIDE.md#csv-datasets-local)
-3. **[Metrics](docs/USER_GUIDE.md#4-using-metrics)** - Built-in (`exact_match`, `contains_expected`, `fuzzy_match`) or custom functions
-
-```python
-from qym import Evaluator
-
-# Your task: receives the 'input' field from each dataset item
-def my_llm_task(question):
-    return call_your_llm(question)
-
-# Run evaluation with a Langfuse dataset
-evaluator = Evaluator(
-    task=my_llm_task,
-    dataset="my-langfuse-dataset",  # Dataset name in Langfuse
-    metrics=["exact_match", "contains_expected"],
-)
-results = evaluator.run()
-```
-
-**Using a local CSV instead of Langfuse:**
-
-```python
-from qym import Evaluator, CsvDataset
-
-dataset = CsvDataset("qa.csv", input_col="question", expected_col="answer")
-
-evaluator = Evaluator(
-    task=my_llm_task,
-    dataset=dataset,
-    metrics=["exact_match"],
-)
-results = evaluator.run()
-```
-
-> CSV datasets work without Langfuse credentials. If credentials are set, traces are still recorded.
-
-## 🔄 Multi-Model Comparison
-
-Compare multiple models in parallel:
-
-```python
-from qym import Evaluator
-
-async def my_task(question, trace=None, model_name="gpt-4"):
-    # Use model_name to route to different models
-    return call_llm(model_name, question)
-
-evaluator = Evaluator(
-    task=my_task,
-    dataset="my-dataset",
-    metrics=["exact_match"],
-    model=["gpt-4", "gpt-3.5-turbo", "claude-3-sonnet"],  # Compare 3 models
-)
-
-results = evaluator.run()  # Runs all models in parallel
-```
-
-Or use `run_parallel` for different tasks:
-
-```python
-results = Evaluator.run_parallel(
-    runs=[
-        {"name": "QA Task", "task": qa_task, "dataset": "qa-set", "metrics": ["exact_match"], "models": ["gpt-4", "claude-3"]},
-        {"name": "Summary Task", "task": summarize, "dataset": "docs", "metrics": ["contains_expected"], "models": ["gpt-4"]},
-    ],
-    show_tui=True,
-    auto_save=True,
-    max_parallel_runs=2,  # Run 2 at a time (None=all at once, 1=sequential)
-)
-```
-
-## 💻 Command Line Interface
+**Without Docker:**
 
 ```bash
-# Single evaluation
-qym --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
-
-# Single evaluation from a local CSV (no Langfuse dataset required)
-qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
-  --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
-  --metrics exact_match
-
-# Multi-model from config
-qym --runs-config experiments.json
-
-# Resume a partially completed run
-qym resume --run-file qym_results/task/model/date/run-id.csv \
-  --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+pip install -e packages/platform
 ```
 
-## 📊 Dashboard
-
-qym provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
-
-### Terminal UI
-
-Track multiple parallel evaluations with real-time progress, latency histograms, and metrics:
-
-![Terminal UI](docs/images/tui-progress.png)
-
-### Web Dashboard
-
-#### Live Evaluation UI (Per-Run)
-
-A web interface is automatically launched for each evaluation run. Click the **"Open Web UI"** link printed at startup to monitor live progress:
-
-![Dashboard Live](docs/images/dashboard-live.png)
-
-#### Historical Dashboard
-
-Browse all past runs with the CLI command:
+Set environment variables:
 
 ```bash
-qym dashboard
+QYM_DATABASE_URL=postgresql+psycopg2://qym:qym@localhost:5432/qym
+QYM_ADMIN_BOOTSTRAP_TOKEN=test
+QYM_AUTH_MODE=none
 ```
 
-![Dashboard Runs](docs/images/dashboard-runs.png)
+Run migrations and start:
 
-**Features:**
-- Filter by task, model, dataset, or time range
-- Compare multiple runs side-by-side
-- View charts and metrics visualizations
-
-![Dashboard Compare](docs/images/dashboard-compare.png)
-
-![Dashboard Charts](docs/images/dashbaord-charts.png)
-
-## 📈 Built-in Metrics
-
-| Metric | Description |
-|--------|-------------|
-| `exact_match` | Exact string match between output and expected |
-| `contains_expected` | Check if output contains expected text |
-| `fuzzy_match` | Similarity score using sequence matching |
-
-Custom metrics are simple functions:
-
-```python
-def my_metric(output, expected):
-    score = evaluate_somehow(output, expected)
-    return {"score": score, "metadata": {"details": "..."}}
-
-evaluator = Evaluator(
-    task=my_task,
-    dataset="my-dataset",
-    metrics=[my_metric, "exact_match"],  # Mix custom and built-in
-)
+```bash
+alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
+qym-platform
 ```
 
-## 📚 Documentation
+### Environment Variables
 
-- [User Guide](docs/USER_GUIDE.md) - Tasks, metrics, datasets, configuration, and troubleshooting
-- [Metrics Guide](docs/METRICS_GUIDE.md) - 40+ metrics organized by use case (RAG, agents, safety, etc.)
-- [Examples](examples/) - Runnable scripts and Jupyter notebooks
+Copy the template and fill in your values:
 
-## 📄 License
+```bash
+cp .env.template .env
+```
+
+| Variable | Used By | Description |
+|----------|---------|-------------|
+| `LANGFUSE_PUBLIC_KEY` | SDK | Langfuse public key |
+| `LANGFUSE_SECRET_KEY` | SDK | Langfuse secret key |
+| `LANGFUSE_HOST` | SDK | Langfuse host URL |
+| `QYM_API_KEY` | SDK | API key for platform streaming |
+| `QYM_PLATFORM_URL` | SDK | Platform URL (default: `http://localhost:8000`) |
+| `QYM_DATABASE_URL` | Platform | PostgreSQL connection string |
+| `QYM_ADMIN_BOOTSTRAP_TOKEN` | Platform | One-time token for first admin user |
+| `QYM_AUTH_MODE` | Platform | `none` (default) or `proxy` |
+
+## Documentation
+
+**SDK (end users):**
+- [SDK README](packages/sdk/README.md) - Installation and usage
+- [User Guide](packages/sdk/docs/USER_GUIDE.md) - Tasks, metrics, datasets, configuration
+- [Metrics Guide](packages/sdk/docs/METRICS_GUIDE.md) - 40+ metrics by use case
+
+**Platform (operators):**
+- [Platform User Guide](docs/PLATFORM_USER_GUIDE.md) - Dashboard, roles, approval workflows
+- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Production deployment
+- [Admin Guide](docs/ADMIN_GUIDE.md) - User management, org structure, settings
+
+## License
 
 MIT

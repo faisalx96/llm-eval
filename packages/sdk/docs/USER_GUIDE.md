@@ -46,7 +46,28 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 > - It's in the same directory where you run your script
 > - You have `python-dotenv` installed (`pip install python-dotenv`)
 
-### Step 3: Verify setup
+### Step 3: Connect to the qym platform
+
+The qym platform at [qym.sa](https://qym.sa) is the central dashboard where all evaluation runs are stored, compared, and shared.
+
+To connect, you need an API key:
+
+1. Open [qym.sa](https://qym.sa) in your browser
+2. Go to your **Profile** page (`/profile`)
+3. Under **API Keys**, click **Create New Key**
+4. Give it a name and click **Create**
+5. Copy the generated token — it is shown only once
+
+Add the key to your `.env` file:
+
+```bash
+QYM_API_KEY=your-api-key
+QYM_PLATFORM_URL=https://qym.sa
+```
+
+When `QYM_API_KEY` is set, your evaluation runs are automatically streamed to the platform in real time — no code changes needed. You can watch runs live on the dashboard, browse history, and compare results across models.
+
+### Step 4: Verify setup
 
 ```python
 from langfuse import Langfuse
@@ -830,7 +851,7 @@ qym provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for 
 
 When you run an evaluation, the TUI shows real-time progress in your terminal:
 
-![Terminal UI](images/tui-progress.png)
+![Terminal UI](../../../docs/images/tui-progress.png)
 
 **Features:**
 - Multiple parallel evaluation tracking
@@ -851,50 +872,17 @@ results = evaluator.run(
 
 ### Web Dashboard
 
-There are two ways to access the Web UI:
-
-#### 0. Deployed Platform (remote live dashboard)
-
-In addition to the local web UI, `qym` can stream run events to a **deployed platform** that hosts:
-- a centralized historical runs dashboard
-- the live run UI (served by the platform, not your laptop)
-
-To enable streaming, provide the platform URL and API key (args or env vars):
-- `--platform-api-key` / `QYM_API_KEY`
-
-The platform URL is treated as an internal default. For dev/test only, you can override it with:
-- `--platform-url` or `QYM_PLATFORM_URL`
-
-Example:
-
-```bash
-qym --task-file examples/example.py --task-function my_task \
-  --dataset-csv examples/my_dataset.csv \
-  --metrics exact_match \
-  --platform-url http://localhost:8000 \
-  --platform-api-key <YOUR_API_KEY>
-```
-
-To upload a saved results artifact (offline/backfill):
-
-```bash
-qym submit --file path/to/results.csv \
-  --platform-url http://localhost:8000 \
-  --api-key <YOUR_API_KEY> \
-  --task my_task --dataset my_dataset --model my_model
-```
-
-#### 1. Live Evaluation UI (Per-Run)
+#### Live Evaluation UI (Per-Run)
 
 When you start an evaluation, a **live Web UI** is automatically launched for that run. You'll see a clickable link in the terminal output:
 
 ```
-🌐 Open Web UI: http://127.0.0.1:8000/
+Open Web UI: http://127.0.0.1:8000/
 ```
 
 Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard in your browser. This shows real-time progress for the current evaluation.
 
-![Dashboard Live](images/dashboard-live.png)
+![Dashboard Live](../../../docs/images/dashboard-live.png)
 
 **Features:**
 - Real-time progress tracking
@@ -905,25 +893,25 @@ Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard
 - Search and filter results
 - Export to CSV
 
-#### 2. Platform Dashboard (Recommended)
+##### Uploading a previous run
 
-To browse **all evaluation runs**, use the dashboard CLI command:
+If you ran an evaluation without platform streaming, you can upload it after the fact:
 
 ```bash
-qym dashboard
+qym submit --file qym_results/.../run.csv --task my_task --dataset my-dataset
 ```
 
-This opens the platform dashboard in your browser where you can view, filter, compare, and analyze all runs.
+##### Browsing runs
 
-> **Note**: The local dashboard server has been deprecated. All dashboard functionality is now provided by the deployed platform. You'll need:
-> - `QYM_PLATFORM_URL` (or use the built-in default)
-> - `QYM_API_KEY` for uploading runs
+```bash
+qym dashboard   # Opens the platform dashboard in your browser
+```
 
 #### Historical Runs View
 
 Browse all past evaluation runs with powerful filtering:
 
-![Dashboard Runs](images/dashboard-runs.png)
+![Dashboard Runs](../../../docs/images/dashboard-runs.png)
 
 **Features:**
 - Filter by task, model, dataset, or time range
@@ -936,7 +924,7 @@ Browse all past evaluation runs with powerful filtering:
 
 Compare multiple runs side-by-side to identify the best model:
 
-![Dashboard Compare](images/dashboard-compare.png)
+![Dashboard Compare](../../../docs/images/dashboard-compare.png)
 
 **How to compare:**
 1. In the Historical Runs view, check the boxes next to runs you want to compare
@@ -966,7 +954,7 @@ For metrics with scores between 0-100 (not just 0 or 1), a "Pass if ≥" slider 
 
 Drill down into individual items across runs:
 
-![Dashboard Compare Items](images/dashboard-compare-items.png)
+![Dashboard Compare Items](../../../docs/images/dashboard-compare-items.png)
 
 **Features:**
 - View each input with expected output
@@ -979,7 +967,7 @@ Drill down into individual items across runs:
 
 Visualize model performance across all runs:
 
-![Dashboard Charts](images/dashbaord-charts.png)
+![Dashboard Charts](../../../docs/images/dashbaord-charts.png)
 
 **Features:**
 - Bar chart comparison of accuracy by model
@@ -1307,4 +1295,4 @@ results = Evaluator.run_parallel(
 
 ---
 
-**Need help?** Check the [examples/](../examples/) directory for complete working scripts.
+**Need help?** Check the [examples/](../../../examples/) directory for complete working scripts.

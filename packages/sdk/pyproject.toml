@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "qym"
 version = "0.8.4"
 description = "Simple, automated LLM evaluation framework built on Langfuse"
+readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
