@@ -198,6 +198,8 @@ class Evaluator:
                 add_suffix=not user_provided_name
             )
         self.run_metadata = self.config.run_metadata
+        if self._task_name:
+            self.run_metadata["task_name"] = self._task_name
 
         if self.model_name:
             self.run_metadata.setdefault('model', self.model_name)
@@ -580,14 +582,21 @@ class Evaluator:
             run_name=self.run_name,
             metrics=list(self.metrics.keys()),
             run_metadata=self.run_metadata.copy(),
-            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout}
+            run_config={
+                "max_concurrency": self.max_concurrency,
+                "timeout": self.timeout,
+                "user_provided_run_name": bool(self.config.run_name),
+            }
         )
 
         items = self.dataset.get_items()
         if not items:
             console.print("[yellow]Warning: Dataset is empty[/yellow]")
             return result
-    
+        self.run_metadata["total_items"] = len(items)
+        if self._langfuse_dataset_id:
+            self.run_metadata["langfuse_dataset_id"] = self._langfuse_dataset_id
+
         run_info = self._build_run_info(result)
 
         # Initialize progress tracker
@@ -809,6 +818,17 @@ class Evaluator:
                         return val.get("score")
                 return val
 
+            def _checkpoint_run_metadata() -> Dict[str, Any]:
+                md = dict(self.run_metadata or {})
+                if self._langfuse_dataset_id:
+                    md["langfuse_dataset_id"] = self._langfuse_dataset_id
+                if self._langfuse_run_id:
+                    md["langfuse_run_id"] = self._langfuse_run_id
+                langfuse_url = self._build_langfuse_url()
+                if langfuse_url:
+                    md["langfuse_url"] = langfuse_url
+                return md
+
             async def _worker():
                 while True:
                     entry = await work_queue.get()
@@ -827,7 +847,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id="",
                             item_id=item_id,
@@ -851,7 +871,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("_trace_id") or "",
                             item_id=item_id,
@@ -877,7 +897,7 @@ class Evaluator:
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
-                            run_metadata=self.run_metadata,
+                            run_metadata=_checkpoint_run_metadata(),
                             run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("trace_id") or "",
                             item_id=item_id,
@@ -1609,7 +1629,7 @@ def _derive_task_name(task: Any) -> str:
     return "task"
 
 
-_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{8}-\d{6})(?:-.+)?$")
+_RUN_ID_RE = re.compile(r"^(?P<base>.+)-(?P<ts>\d{6}-\d{4})(?:-\d+)?$")
 
 
 def _strip_run_suffix(name: str) -> Tuple[str, bool]:

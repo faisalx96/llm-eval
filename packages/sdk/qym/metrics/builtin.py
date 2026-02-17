@@ -6,21 +6,21 @@ import re
 import string
 
 
-def exact_match(output: Any, expected: Any) -> float:
+def exact_match(output: Any, expected: Any) -> Dict[str, Any]:
     """
     Check if output exactly matches expected.
-    
+
     Returns:
         1.0 if exact match, 0.0 otherwise
     """
     if output is None or expected is None:
-        return False
-    
+        return {"score": 0.0, "metadata": {}}
+
     # Convert to strings for comparison
     output_str = str(output).strip()
     expected_str = str(expected).strip()
-    score = True if output_str == expected_str else False
-    return {"score": score, "metadata": {}} # {"contains": contains_expected(output, expected)}}
+    score = 1.0 if output_str == expected_str else 0.0
+    return {"score": score, "metadata": {}}
 
 
 def contains_expected(output: Any, expected: Any) -> float:
