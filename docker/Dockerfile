@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY packages/sdk /app/packages/sdk
 COPY packages/platform /app/packages/platform
 
-RUN pip install --no-cache-dir /app/packages/sdk /app/packages/platform
+RUN pip install --no-cache-dir /app/packages/sdk && \
+    pip install --no-cache-dir -e /app/packages/platform
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

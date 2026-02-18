@@ -49,13 +49,36 @@ def ai_assistant(question: str, model: Optional[str] = None, trace_id: Optional[
     time.sleep(delay)
     prefix = f"[{model}]" if model else "[default-model]"
     if "capital of france" in question_lower:
-        response = f"{prefix} Paris is the capital and largest city of France."
+        response = f"""{prefix} **Paris** is the capital and largest city of France.
+
+Key facts:
+- Population: ~2.1 million (city proper)
+- Known for the *Eiffel Tower* and Louvre Museum
+- Home to `Île de la Cité` and Notre-Dame"""
     elif "python" in question_lower:
-        response = f"{prefix} Python is a high-level, interpreted programming language known for its simplicity and readability."
+        response = f"""{prefix} ## Python Overview
+
+Python is a **high-level**, interpreted programming language. Key features:
+
+1. Readability via significant whitespace
+2. Dynamic typing and `print("hello")` simplicity
+3. Rich ecosystem (NumPy, Django, etc.)
+
+> "Simple is better than complex." — Zen of Python"""
     elif "hello" in question_lower or "hi" in question_lower:
-        response = f"{prefix} Hello! I'm an AI assistant. How can I help you today?"
+        response = f"""{prefix} *Hello!* I'm an AI assistant.
+
+**How can I help?**
+- Answer questions
+- Explain concepts
+- Provide `code` examples"""
     else:
-        response = f"{prefix} I'm not sure about that specific question, but I'd be happy to help with other topics."
+        response = f"""{prefix} I'm not sure about that specific question.
+
+**Suggestions:**
+1. Try rephrasing
+2. Ask about *capital cities* or *Python*
+3. Say **hello** for a greeting"""
 
     # End the span with output
     if span:
@@ -83,11 +106,11 @@ def main():
         dataset="saudi-qa-verification-v1",
         metrics=[
             # "answer_relevancy", # DeepEval metric
-            response_length_check,  # Custom metric
+            # response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ],
-        model=["gpt-4o-mini", "llama-3.1"],
-        # config={"run_name": "saudi qa"}
+        model=["gpt-4o-mini"], #, "llama-3.1"],
+        config={"task_name": "ai_assistant_single", "run_name": "first batch"}
     )
     
     results_mixed = evaluator_mixed.run(save_format="csv")

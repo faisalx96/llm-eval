@@ -929,7 +929,7 @@
     updateTableHeader();
 
     if (runs.length === 0) {
-      const colCount = 10 + metricsToShow.length; // base columns + metrics
+      const colCount = 11 + metricsToShow.length;
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -963,7 +963,8 @@
 
     let lastGroupKey = null;
     let groupCounter = 0;
-    const colCount = 10 + metricsToShow.length;
+    // 11 base columns + dynamic metric columns
+    const colCount = 11 + metricsToShow.length;
     tbody.innerHTML = runs.map((run, idx) => {
       const groupKey = runGroupKeys[idx];
       const isGrouped = groupKey && realGroups[groupKey];
@@ -975,10 +976,18 @@
         const groupId = `rg_${groupCounter}`;
         const members = realGroups[groupKey];
         const groupSize = members.length;
-        // Derive group title from run_config.run_name (user-provided) + task_name
+        // Derive group title: task_name is always available; show user-provided
+        // run_name only if it differs from the auto-generated task-model pattern
         const configRunName = (run.run_config || {}).run_name || '';
-        // Strip timestamp+counter suffix to get the user's base name
-        const userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
+        // Strip timestamp+counter suffix, then strip model suffix to get user's intent
+        let userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
+        // Collect all model names in this group to strip them from the base name
+        const groupModels = [...new Set(members.map(m => stripModelProvider(m.run.model_name || '')).filter(Boolean))];
+        for (const model of groupModels) {
+          if (userBaseName.endsWith('-' + model)) {
+            userBaseName = userBaseName.slice(0, -(model.length + 1));
+          }
+        }
         const taskName = run.task_name || '';
         let baseLabel;
         if (userBaseName && userBaseName !== taskName) {
@@ -1007,7 +1016,7 @@
             <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
             <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
             <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:8px;">${groupSize} runs</span>
-            <button class="group-compare-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;background:none;border:1px solid var(--accent-primary);color:var(--accent-primary);border-radius:4px;padding:1px 8px;font-size:var(--font-xs);cursor:pointer;">Compare All</button>
+            <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;">Compare</button>
           </td>
         </tr>`;
       }

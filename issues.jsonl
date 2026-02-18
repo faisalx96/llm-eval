@@ -1,0 +1,162 @@
+[
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 21,
+      "title": "clicking on the QYM logo should take the user back to homepage",
+      "updatedAt": "2026-02-17T17:01:52Z",
+      "url": "https://github.com/faisalx96/qym/issues/21"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 20,
+      "title": "Compare View: filter on partial greater than or less than a value (all questions answered 2 out of 6 or less and vice versa)",
+      "updatedAt": "2026-02-17T16:30:49Z",
+      "url": "https://github.com/faisalx96/qym/issues/20"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 19,
+      "title": "Compare View: search for a question",
+      "updatedAt": "2026-02-17T16:29:27Z",
+      "url": "https://github.com/faisalx96/qym/issues/19"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 18,
+      "title": "TUI: latency should show only the task duration and not metric",
+      "updatedAt": "2026-02-16T10:17:52Z",
+      "url": "https://github.com/faisalx96/qym/issues/18"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 17,
+      "title": "Model names that start with provider_name/model_name should always resolve to model_name. Some areas this is done correctly, and other areas it is not.",
+      "updatedAt": "2026-02-16T09:44:16Z",
+      "url": "https://github.com/faisalx96/qym/issues/17"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 16,
+      "title": "Compare View: per item comparison: quick copy button for all fields",
+      "updatedAt": "2026-02-16T09:42:47Z",
+      "url": "https://github.com/faisalx96/qym/issues/16"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 15,
+      "title": "add a task_name in the run config that can overwrite the task name",
+      "updatedAt": "2026-02-16T09:42:23Z",
+      "url": "https://github.com/faisalx96/qym/issues/15"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 14,
+      "title": "Models View: confirm model filter does not work",
+      "updatedAt": "2026-02-16T09:41:54Z",
+      "url": "https://github.com/faisalx96/qym/issues/14"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 13,
+      "title": "Charts View: Show run name",
+      "updatedAt": "2026-02-16T09:41:28Z",
+      "url": "https://github.com/faisalx96/qym/issues/13"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 12,
+      "title": "Compare View: Add a filter on items that were answered correctly partially.",
+      "updatedAt": "2026-02-16T09:40:59Z",
+      "url": "https://github.com/faisalx96/qym/issues/12"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 11,
+      "title": "Compare View: clicking on a segment in the winner breakdown or correct distribution bars should filter the item by item comparison.",
+      "updatedAt": "2026-02-16T09:40:22Z",
+      "url": "https://github.com/faisalx96/qym/issues/11"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 10,
+      "title": "Single Run View: OVerhaul it to match the paltform's style and design.",
+      "updatedAt": "2026-02-16T09:39:34Z",
+      "url": "https://github.com/faisalx96/qym/issues/10"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 9,
+      "title": "Model View: compare k-runs with other k-runs, utlilising the new unique run config id, and have a way to select it in the UI",
+      "updatedAt": "2026-02-16T09:39:09Z",
+      "url": "https://github.com/faisalx96/qym/issues/9"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 8,
+      "title": "Compare View: export item comparisons with active filters",
+      "updatedAt": "2026-02-16T09:38:10Z",
+      "url": "https://github.com/faisalx96/qym/issues/8"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 7,
+      "title": "Runs View: visually group by a unique run id when all configs (including timestamp) match and the config had multiple runs, and visually show it with an expandable drawer for the sub runs",
+      "updatedAt": "2026-02-16T09:37:32Z",
+      "url": "https://github.com/faisalx96/qym/issues/7"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 6,
+      "title": "Compare View: per item comparison: ability to select which item metadata to display",
+      "updatedAt": "2026-02-16T09:35:48Z",
+      "url": "https://github.com/faisalx96/qym/issues/6"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 5,
+      "title": "Compare View: per item comparison: show item metadata",
+      "updatedAt": "2026-02-16T09:35:13Z",
+      "url": "https://github.com/faisalx96/qym/issues/5"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 4,
+      "title": "Compare View: per item comparison: render markdown",
+      "updatedAt": "2026-02-16T09:34:33Z",
+      "url": "https://github.com/faisalx96/qym/issues/4"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 3,
+      "title": "Compare View: Parse \"complexity\" & \"domain\" item metadata with UI breakdown for their metrics.",
+      "updatedAt": "2026-02-16T09:34:04Z",
+      "url": "https://github.com/faisalx96/qym/issues/3"
+    },
+    {
+      "assignees": [],
+      "labels": [],
+      "number": 2,
+      "title": "Compare View: filter on item metadata",
+      "updatedAt": "2026-02-16T09:32:25Z",
+      "url": "https://github.com/faisalx96/qym/issues/2"
+    }
+  ]

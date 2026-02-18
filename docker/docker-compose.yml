@@ -27,6 +27,9 @@ services:
       QYM_AUTH_MODE: none
     ports:
       - "8000:8000"
+    volumes:
+      - ../packages/platform/qym_platform/_static:/app/packages/platform/qym_platform/_static
+      - ../packages/platform/qym_platform/api:/app/packages/platform/qym_platform/api
     depends_on:
       db:
         condition: service_healthy

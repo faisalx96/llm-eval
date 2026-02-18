@@ -532,6 +532,7 @@ def legacy_run_data(
                 "task_started_at_ms": ts_ms,
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
+                "item_metadata": it.item_metadata if isinstance(it.item_metadata, dict) else {},
             }
         )
 
@@ -663,6 +664,7 @@ def update_metric(
         "task_started_at_ms": item.item_metadata.get("task_started_at_ms") if isinstance(item.item_metadata, dict) else None,
         "metric_values": metric_values,
         "metric_meta": metric_meta,
+        "item_metadata": item.item_metadata if isinstance(item.item_metadata, dict) else {},
     }
 
     return {"ok": True, "row": row}

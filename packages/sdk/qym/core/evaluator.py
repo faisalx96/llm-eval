@@ -190,7 +190,8 @@ class Evaluator:
 
         # Model handling - strip provider prefix once, keep full name for user's task
         # e.g., "qwen/qwen3-235b" -> model_name="qwen3-235b", model_name_full="qwen/qwen3-235b"
-        self.model_name_full = self.config.model  # Original with provider (for user's task)
+        # Use model_full when set (multi-model runs pass provider-prefixed ID for API calls)
+        self.model_name_full = self.config.model_full or self.config.model  # Full ID for user's task (OpenRouter, etc.)
         self.model_name = _strip_model_provider(self.config.model)  # Stripped (for display, paths, IDs)
         self.models = [_strip_model_provider(m) for m in (self.config.models or [])]
         self.models_full = self.config.models or []  # Original list with providers

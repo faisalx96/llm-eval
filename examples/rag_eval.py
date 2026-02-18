@@ -92,7 +92,7 @@ def main():
         task=rag_qa_task,
         dataset="ragbench-100",
         metrics=["correctness", "faithfulness"],  # Use metrics by name from registry
-        model=["openai/gpt-oss-120b", "meta-llama/llama-4-maverick", "qwen/qwen3-235b-a22b-2507"],
+        model=["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b"],
         # model=["qwen/qwen3-235b-a22b-2507"]*2,
         # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={

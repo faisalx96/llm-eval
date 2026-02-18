@@ -12,6 +12,7 @@ class EvaluatorConfig(BaseModel):
     timeout: float = Field(default=30.0, gt=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     model: Optional[str] = None
+    model_full: Optional[str] = None  # Full provider-prefixed ID (e.g. qwen/qwen3.5-397b-a17b) for API calls
     models: Optional[List[str]] = None
     
     # Langfuse credentials (optional overrides)
