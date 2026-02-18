@@ -276,6 +276,169 @@
       margin-top: 2px;
     }
 
+    /* ── Metadata Breakdown cards ── */
+    .breakdown-section {
+      margin-bottom: var(--space-lg);
+    }
+
+    .breakdown-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+
+    .breakdown-icon {
+      font-size: var(--font-sm);
+      line-height: 1;
+    }
+
+    .breakdown-complexity .breakdown-icon,
+    .breakdown-complexity .breakdown-header {
+      color: #fb923c;
+    }
+
+    .breakdown-domain .breakdown-icon,
+    .breakdown-domain .breakdown-header {
+      color: #60a5fa;
+    }
+
+    .breakdown-metric {
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      font-weight: 400;
+      padding: 1px 6px;
+      background: var(--bg-elevated);
+      border-radius: 3px;
+      margin-left: 4px;
+    }
+
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: var(--space-sm);
+    }
+
+    .breakdown-card {
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      border: 1px solid var(--border-subtle);
+      transition: border-color 0.15s;
+    }
+
+    .breakdown-card:hover {
+      border-color: var(--border-default);
+    }
+
+    .breakdown-complexity .breakdown-card {
+      border-left: 3px solid rgba(249, 115, 22, 0.3);
+    }
+    .breakdown-complexity .breakdown-card.complexity-easy {
+      border-left-color: rgba(34, 197, 94, 0.5);
+    }
+    .breakdown-complexity .breakdown-card.complexity-easy .breakdown-card-label {
+      color: #4ade80;
+    }
+    .breakdown-complexity .breakdown-card.complexity-medium {
+      border-left-color: rgba(234, 179, 8, 0.5);
+    }
+    .breakdown-complexity .breakdown-card.complexity-medium .breakdown-card-label {
+      color: #facc15;
+    }
+    .breakdown-complexity .breakdown-card.complexity-hard {
+      border-left-color: rgba(239, 68, 68, 0.5);
+    }
+    .breakdown-complexity .breakdown-card.complexity-hard .breakdown-card-label {
+      color: #f87171;
+    }
+    .breakdown-complexity .breakdown-card.complexity-expert {
+      border-left-color: rgba(168, 85, 247, 0.5);
+    }
+    .breakdown-complexity .breakdown-card.complexity-expert .breakdown-card-label {
+      color: #c084fc;
+    }
+
+    .breakdown-domain .breakdown-card {
+      border-left: 3px solid rgba(96, 165, 250, 0.3);
+    }
+
+    .breakdown-card-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+
+    .breakdown-card-label {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+      text-transform: capitalize;
+    }
+
+    .breakdown-card-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      padding: 1px 8px;
+      flex-shrink: 0;
+      letter-spacing: 0.3px;
+    }
+    .breakdown-card-count strong {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .breakdown-card-score {
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 700;
+    }
+
+    .breakdown-card-score.score-5 { color: var(--score-5); }
+    .breakdown-card-score.score-4 { color: var(--score-4); }
+    .breakdown-card-score.score-3 { color: var(--score-3); }
+    .breakdown-card-score.score-2 { color: var(--score-2); }
+    .breakdown-card-score.score-1 { color: var(--score-1); }
+
+    .breakdown-card-details {
+      display: flex;
+      gap: var(--space-md);
+      margin-top: 2px;
+    }
+
+    .breakdown-detail {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .breakdown-detail-label {
+      font-family: var(--font-sans);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 500;
+    }
+
     /* Win/Loss bars */
     .win-loss-bar {
       display: flex;
@@ -483,20 +646,294 @@
       margin-bottom: var(--space-md);
     }
 
-    .items-filter {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
+    /* ── Filter Panel ── */
+    .filter-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      margin-bottom: var(--space-lg);
+      overflow: visible;
     }
 
-    .filter-count {
+    /* Row 1: Filter dropdowns + actions */
+    .fp-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+    }
+
+    .fp-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .fp-label {
+      font-size: 9px;
+      font-family: var(--font-sans);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 500;
+      line-height: 1;
+      padding-left: 1px;
+    }
+
+    .fp-group .filter-select {
+      min-width: unset;
+      max-width: unset;
+    }
+
+    .fp-pass-rate-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .fp-pass-rate-input {
+      width: 36px;
+      padding: var(--space-xs) 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-primary);
       font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+    .fp-pass-rate-input::-webkit-outer-spin-button,
+    .fp-pass-rate-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .fp-pass-rate-input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(0, 209, 178, 0.15);
+    }
+    .fp-pass-rate-suffix {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .fp-cat-group {
+      min-width: 0;
+    }
+
+    .fp-cat-group .multi-select-btn.has-selection {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    .fp-cat-group .multi-select-option .option-count {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    .fp-cat-group .multi-select-dropdown .ms-actions {
+      display: flex;
+      gap: 4px;
+      padding: 4px 8px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .fp-cat-group .multi-select-dropdown .ms-action-btn {
+      flex: 1;
+      padding: 4px 0;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+
+    .fp-cat-group .multi-select-dropdown .ms-action-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    /* Gear icon wrapper — aligns with dropdowns without a label */
+    .fp-gear-wrapper {
+      display: flex;
+      align-items: flex-end;
+    }
+
+    /* Gear button for metadata fields — overrides .metadata-fields-btn */
+    .fp-gear-btn.metadata-fields-btn {
+      padding: var(--space-xs) var(--space-sm);
+      padding-right: var(--space-sm);
+      background: var(--bg-surface);
+      background-image: none;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+
+    .fp-gear-btn.metadata-fields-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background-color: var(--bg-hover);
+    }
+
+    /* Push actions to the right */
+    .fp-actions-spacer {
+      flex: 1 1 0;
+    }
+
+    .fp-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+
+    .fp-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: var(--space-xs) var(--space-sm);
+      background: transparent;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .fp-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+
+    .fp-clear-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: var(--space-xs) var(--space-sm);
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 3px;
+      color: #f87171;
+      font-size: var(--font-xs);
+      font-family: var(--font-sans);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      visibility: hidden;
+    }
+    .fp-clear-btn.visible {
+      visibility: visible;
+    }
+    .fp-clear-btn:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .fp-clear-x {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .fp-clear-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .fp-btn.fp-export {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: var(--bg-void);
+    }
+
+    .fp-btn.fp-export:hover {
+      background: #00e6b8;
+      border-color: #00e6b8;
+      color: var(--bg-void);
+    }
+
+    /* Row 2: Search */
+    .fp-search-row {
+      padding: 0 var(--space-md) var(--space-sm);
+    }
+
+    .fp-search {
+      display: flex;
+      align-items: center;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      padding: 0 var(--space-sm);
+      transition: border-color 0.15s;
+    }
+
+    .fp-search:focus-within {
+      border-color: var(--accent-primary);
+    }
+
+    .fp-search-icon {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      flex-shrink: 0;
+      margin-right: 6px;
+      line-height: 1;
+    }
+
+    .fp-search input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      padding: var(--space-xs) 0;
+      outline: none;
+      min-width: 0;
+    }
+
+    .fp-search input::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Status bar */
+    .fp-status {
+      padding: var(--space-xs) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .fp-status .filter-count {
+      font-size: var(--font-xs);
       color: var(--text-muted);
       font-family: var(--font-mono);
     }
 
-    .filter-count .count-num {
+    .fp-status .filter-count .count-num {
       color: var(--accent-primary);
       font-weight: 600;
     }
@@ -1046,15 +1483,7 @@
       min-width: 40px;
     }
 
-    /* Metric selector for items */
-    .items-filter-row {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
-      flex-wrap: wrap;
-    }
-
+    /* (legacy .filter-label kept for any other usage) */
     .filter-label {
       font-size: var(--font-xs);
       color: var(--text-muted);
@@ -1120,69 +1549,7 @@
       border-top: 1px solid var(--border-subtle);
     }
 
-    /* Search input for items */
-    .items-search-input {
-      padding: 6px 10px;
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      font-size: var(--font-sm);
-      font-family: var(--font-mono);
-      min-width: 180px;
-      transition: border-color 0.15s;
-    }
-    .items-search-input::placeholder { color: var(--text-muted); }
-    .items-search-input:focus { outline: none; border-color: var(--accent-primary); }
-
-    /* Partial count filter */
-    .partial-count-filter {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .partial-count-filter select,
-    .partial-count-filter input {
-      padding: 4px 6px;
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      font-size: var(--font-xs);
-      font-family: var(--font-mono);
-    }
-    .partial-count-filter input[type="number"] {
-      width: 48px;
-      text-align: center;
-    }
-
-    /* Metadata filter */
-    .metadata-filter {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .metadata-filter select,
-    .metadata-filter input {
-      padding: 4px 6px;
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      font-size: var(--font-xs);
-      font-family: var(--font-mono);
-    }
-    .metadata-filter input { min-width: 100px; }
-    .metadata-filter input::placeholder { color: var(--text-muted); }
-
-    /* Second filter row */
-    .items-filter-row-2 {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
-      flex-wrap: wrap;
-    }
+    /* (old search/partial/metadata/filter-row-2 styles removed — now in filter-panel) */
 
     /* Clickable chart segments */
     .win-loss-bar .segment.clickable,
@@ -1219,16 +1586,82 @@
 
     /* Item metadata display */
     .item-metadata-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 6px var(--space-sm);
       background: var(--bg-elevated);
-      padding: var(--space-sm);
       border-radius: 4px;
-      border-left: 3px solid var(--accent-primary);
     }
-    .item-metadata-row .metadata-label {
+
+    /* Complexity & Domain — first-class badges */
+    .item-meta-badges {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .meta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
       font-size: var(--font-xs);
-      color: var(--accent-primary);
-      margin-bottom: 4px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      white-space: nowrap;
     }
+
+    .meta-badge .badge-icon {
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .meta-badge.badge-complexity {
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.25);
+      color: #fb923c;
+    }
+
+    /* Complexity value-specific colors */
+    .meta-badge.badge-complexity.complexity-easy {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.3);
+      color: #4ade80;
+    }
+    .meta-badge.badge-complexity.complexity-medium {
+      background: rgba(234, 179, 8, 0.12);
+      border-color: rgba(234, 179, 8, 0.3);
+      color: #facc15;
+    }
+    .meta-badge.badge-complexity.complexity-hard {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+    .meta-badge.badge-complexity.complexity-very-hard,
+    .meta-badge.badge-complexity.complexity-expert {
+      background: rgba(168, 85, 247, 0.12);
+      border-color: rgba(168, 85, 247, 0.3);
+      color: #c084fc;
+    }
+
+    .meta-badge.badge-domain {
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid rgba(96, 165, 250, 0.25);
+      color: #60a5fa;
+    }
+
+    /* Separator between badges and generic tags */
+    .item-meta-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border-default);
+      flex-shrink: 0;
+    }
+
+    /* Generic metadata tags */
     .item-metadata-tags {
       display: flex;
       flex-wrap: wrap;
@@ -1259,21 +1692,30 @@
       gap: 4px;
     }
     .metadata-fields-btn {
-      background: none;
+      background: transparent;
       border: 1px solid var(--border-default);
       color: var(--text-muted);
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-size: var(--font-xs);
+      border-radius: 3px;
+      padding: var(--space-xs) var(--space-sm);
+      padding-right: 24px;
+      font-size: var(--font-sm);
       cursor: pointer;
+      transition: all 0.15s;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239898a8' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
+      white-space: nowrap;
     }
     .metadata-fields-btn:hover {
-      background: var(--bg-hover);
+      background-color: var(--bg-hover);
+      border-color: var(--border-strong);
       color: var(--text-primary);
     }
     .metadata-fields-dropdown {
       display: none;
       position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
       background: var(--bg-elevated);
       border: 1px solid var(--border-default);
       border-radius: 6px;
@@ -1289,31 +1731,19 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 3px 0;
+      padding: 4px 6px;
       font-size: var(--font-xs);
       color: var(--text-secondary);
       cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.1s;
     }
     .metadata-fields-dropdown label:hover {
       color: var(--text-primary);
+      background: var(--bg-hover);
     }
 
-    /* Export button */
-    .export-btn {
-      background: none;
-      border: 1px solid var(--border-default);
-      color: var(--text-muted);
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-size: var(--font-xs);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .export-btn:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-      border-color: var(--accent-primary);
-    }
+    /* (export-btn styles now in .fp-btn.fp-export) */
   </style>
 </head>
 <body>
@@ -1391,53 +1821,84 @@
       <!-- Side-by-side items -->
       <div class="items-comparison">
         <h3>Item-by-Item Comparison</h3>
-        <div class="items-filter-row">
-          <span class="filter-label">Metric:</span>
-          <select id="items-metric-select" class="filter-select"></select>
-          <span class="filter-label">Filter:</span>
-          <select id="item-filter" class="filter-select">
-            <option value="all">All Items</option>
-            <option value="different">Different Outputs</option>
-            <option value="errors">With Errors</option>
-            <option value="all_correct">All Runs Correct</option>
-            <option value="all_wrong">No Run Correct</option>
-            <option value="partially_correct">Partially Correct</option>
-            <option value="rarely_solved">Rarely Solved (≤25%)</option>
-            <option value="unique_solve">Uniquely Solved (1 run only)</option>
-          </select>
-          <span class="filter-label">Winner:</span>
-          <select id="run-winner-filter" class="filter-select">
-            <option value="any">Any Winner</option>
-          </select>
-          <span class="filter-label">Correct:</span>
-          <div class="partial-count-filter">
-            <select id="partial-count-op" class="filter-select">
-              <option value="">Any</option>
-              <option value="lte">≤</option>
-              <option value="gte">≥</option>
-              <option value="eq">=</option>
-            </select>
-            <input type="number" id="partial-count-value" min="0" max="99" value="" placeholder="#" />
-            <span class="filter-label" style="text-transform:none;">of K</span>
+
+        <div class="filter-panel">
+          <div class="fp-filter-row">
+            <div class="fp-group">
+              <span class="fp-label">Metric</span>
+              <select id="items-metric-select" class="filter-select"></select>
+            </div>
+            <div class="fp-group">
+              <span class="fp-label">Show</span>
+              <select id="item-filter" class="filter-select">
+                <option value="all">All Items</option>
+                <option value="different">Different Outputs</option>
+                <option value="errors">With Errors</option>
+                <option value="all_correct">All Runs Correct</option>
+                <option value="all_wrong">No Run Correct</option>
+                <option value="partially_correct">Partially Correct</option>
+                <option value="rarely_solved">Rarely Solved (&le;25%)</option>
+                <option value="unique_solve">Uniquely Solved (1 run)</option>
+              </select>
+            </div>
+            <div class="fp-group">
+              <span class="fp-label">Winner</span>
+              <select id="run-winner-filter" class="filter-select">
+                <option value="any">Any Winner</option>
+              </select>
+            </div>
+            <div class="fp-group fp-pass-rate-group">
+              <span class="fp-label">Pass Rate</span>
+              <div class="fp-pass-rate-row">
+                <select id="pass-rate-op" class="filter-select">
+                  <option value="">Any</option>
+                  <option value="gte">&ge;</option>
+                  <option value="lte">&le;</option>
+                  <option value="eq">=</option>
+                </select>
+                <input type="number" id="pass-rate-value" class="fp-pass-rate-input" min="0" value="0" style="display:none;" />
+                <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
+              </div>
+            </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
+              <span class="fp-label">Complexity</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
+                <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
+              <span class="fp-label">Domain</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
+                <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
+              <div class="metadata-fields-selector" style="position:relative;">
+                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">&#9881;</button>
+                <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-actions-spacer"></div>
+            <div class="fp-actions">
+              <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
+                <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
+              </button>
+              <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+            </div>
           </div>
-          <span class="filter-count" id="filter-count"></span>
-          <button class="export-btn" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+          <div class="fp-search-row">
+            <div class="fp-search">
+              <span class="fp-search-icon">&#x2315;</span>
+              <input type="text" id="items-search" placeholder="Search questions / inputs..." />
+            </div>
+          </div>
+          <div class="fp-status">
+            <span class="filter-count" id="filter-count"></span>
+          </div>
         </div>
-        <div class="items-filter-row-2">
-          <span class="filter-label">Search:</span>
-          <input type="text" class="items-search-input" id="items-search" placeholder="Search questions / inputs..." />
-          <span class="filter-label">Metadata:</span>
-          <div class="metadata-filter">
-            <select id="metadata-key-select" class="filter-select">
-              <option value="">Any field</option>
-            </select>
-            <input type="text" id="metadata-value-input" placeholder="value..." />
-          </div>
-          <div class="metadata-fields-selector" style="position:relative;">
-            <button class="metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">Fields ▾</button>
-            <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
-          </div>
-        </div>
+
         <div class="items-grid" id="items-grid"></div>
         <div class="pagination" id="pagination"></div>
       </div>
@@ -1493,10 +1954,12 @@
         langfuseProjectId: '', // Langfuse project ID
         // Group A additions
         searchQuery: '',              // #19: search items by input text
-        metadataFilterKey: '',        // #2: metadata field to filter on
-        metadataFilterValue: '',      // #2: metadata value to match
-        partialCountOp: '',           // #20: '', 'lte', 'gte', 'eq'
-        partialCountValue: null,      // #20: number of runs correct
+        complexityFilter: null,       // #2: null = all (default), [] = none, [...] = specific values
+        domainFilter: null,           // #2: null = all (default), [] = none, [...] = specific values
+        complexityValues: [],         // unique complexity values found in data
+        domainValues: [],             // unique domain values found in data
+        passRateOp: '',               // #20: '' = any, 'gte' = at least, 'lte' = at most, 'eq' = exactly
+        passRateValue: 0,             // #20: the number for the pass rate filter
         allMetadataKeys: [],          // collected metadata keys across all items
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
       };
@@ -1629,6 +2092,16 @@
         el('run-count').textContent = state.runs.length;
         el('metric-count').textContent = state.allMetrics.length;
 
+        // Set up pass rate filter controls based on K
+        const K = state.runs.length;
+        const prValueInput = el('pass-rate-value');
+        if (prValueInput) {
+          prValueInput.max = K;
+          prValueInput.value = Math.ceil(K / 2);
+        }
+        const prKSpan = el('pass-rate-k');
+        if (prKSpan) prKSpan.textContent = K;
+
         // Calculate total items (use max across runs)
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
         el('total-items').textContent = maxItems;
@@ -1642,8 +2115,10 @@
           state.comparisonStats[metric] = calculateComparisonStatsForMetric(metric);
         }
 
-        // Collect all unique metadata keys across all items
+        // Collect all unique metadata keys and values for complexity/domain
         const metaKeySet = new Set();
+        const complexitySet = new Set();
+        const domainSet = new Set();
         for (const run of state.runs) {
           const rows = run.snapshot?.rows || [];
           for (const row of rows) {
@@ -1652,10 +2127,14 @@
               for (const k of Object.keys(md)) {
                 if (k !== 'task_started_at_ms') metaKeySet.add(k);
               }
+              if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
+              if (md.domain != null && md.domain !== '') domainSet.add(String(md.domain));
             }
           }
         }
         state.allMetadataKeys = Array.from(metaKeySet).sort();
+        state.complexityValues = Array.from(complexitySet).sort();
+        state.domainValues = Array.from(domainSet).sort();
 
         // Initialize visible metadata fields (all on by default)
         for (const k of state.allMetadataKeys) {
@@ -1664,12 +2143,8 @@
           }
         }
 
-        // Populate metadata key dropdown
-        const metaKeySelect = el('metadata-key-select');
-        if (metaKeySelect) {
-          metaKeySelect.innerHTML = '<option value="">Any field</option>' +
-            state.allMetadataKeys.map(k => `<option value="${escapeAttr(k)}">${escapeHtml(k)}</option>`).join('');
-        }
+        // Build complexity/domain multi-select dropdowns
+        buildCategoryDropdowns();
 
         // Populate metadata fields dropdown
         populateMetadataFieldsDropdown();
@@ -1696,6 +2171,7 @@
               tab.classList.add('active');
               updateThresholdControl();
               renderComparisonStats();
+              renderMetadataBreakdown();
             });
           });
         }
@@ -1719,6 +2195,7 @@
                 state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
               }
               renderComparisonStats();
+              renderMetadataBreakdown();
               renderItems();
             }
           });
@@ -2102,7 +2579,7 @@
         renderItems();
       }
 
-      // #3: Render complexity/domain metadata breakdown
+      // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
       function renderMetadataBreakdown() {
         // Look for 'complexity' and 'domain' keys in item metadata
         const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
@@ -2123,39 +2600,115 @@
         const selectedMetric = state.selectedOverviewMetric || state.allMetrics[0];
         if (!selectedMetric) return;
 
-        let html = '<h3>Metadata Breakdown</h3>';
+        const isBoolean = state.metricIsBoolean[selectedMetric];
+        const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
+        const K = state.runs.length;
+
+        let html = '<h3>Performance by Category</h3>';
 
         for (const bdKey of breakdownKeys) {
-          const groups = {};
-          for (const run of state.runs) {
+          // Collect per-item-id data grouped by the breakdown key value
+          // We need item-level aggregation (across runs) for consistency
+          const itemsByGroup = {}; // groupVal -> { itemId -> { scores: [], latencies: [] } }
+
+          for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
+            const run = state.runs[runIdx];
             const rows = run.snapshot?.rows || [];
             const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
             const mIdx = metricNames.indexOf(selectedMetric);
+
             for (const row of rows) {
               const md = row.item_metadata || {};
               const groupVal = String(md[bdKey] ?? 'unknown');
-              if (!groups[groupVal]) groups[groupVal] = { total: 0, scoreSum: 0 };
-              groups[groupVal].total++;
+              const itemId = row.item_id || String(row.index);
+
+              if (!itemsByGroup[groupVal]) itemsByGroup[groupVal] = {};
+              if (!itemsByGroup[groupVal][itemId]) itemsByGroup[groupVal][itemId] = { scores: [], latencies: [] };
+
               if (mIdx >= 0) {
                 const { score } = window.QymMetrics.getRowScore(row, mIdx);
-                if (score !== null) groups[groupVal].scoreSum += score;
+                if (score !== null) itemsByGroup[groupVal][itemId].scores.push(score);
+              }
+              if (row.latency_ms && row.status === 'completed') {
+                itemsByGroup[groupVal][itemId].latencies.push(row.latency_ms);
               }
             }
           }
 
-          const entries = Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
-          if (entries.length === 0) continue;
+          // Compute stats per group
+          const groupStats = [];
+          for (const [groupVal, items] of Object.entries(itemsByGroup)) {
+            const itemIds = Object.keys(items);
+            let totalScoreSum = 0, totalScoreCount = 0;
+            let totalLatSum = 0, totalLatCount = 0;
+            let consistencySum = 0, consistencyCount = 0;
 
-          html += `<div style="margin-bottom:var(--space-md);"><div class="stat-title" style="margin-bottom:var(--space-sm);">${escapeHtml(bdKey.charAt(0).toUpperCase() + bdKey.slice(1))} Breakdown (${escapeHtml(selectedMetric)})</div>`;
-          html += '<div class="stats-row">';
-          for (const [val, data] of entries) {
-            const avg = data.total > 0 ? data.scoreSum / data.total : 0;
-            html += `<div class="stat-box">
-              <div class="stat-title">${escapeHtml(val)}</div>
-              <div class="stat-main ${scoreColorClass(avg)}">${formatPercent(avg)}</div>
-              <div class="stat-detail">${data.total} items</div>
+            for (const itemId of itemIds) {
+              const { scores, latencies } = items[itemId];
+
+              // Avg score — flat across all run observations
+              for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
+
+              // Avg latency — flat across all run observations
+              for (const l of latencies) { totalLatSum += l; totalLatCount++; }
+
+              // Consistency: binary agreement (do runs agree on pass/fail?)
+              // Same formula as main stats: 2 * max(passCount, failCount) / K - 1
+              if (scores.length > 1) {
+                const numCorrect = scores.filter(s => s >= correctThreshold).length;
+                const numFail = scores.length - numCorrect;
+                const maxAgreement = Math.max(numCorrect, numFail);
+                const itemConsistency = (2 * maxAgreement / scores.length) - 1;
+                consistencySum += itemConsistency;
+                consistencyCount++;
+              }
+            }
+
+            const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
+            const avgLatency = totalLatCount > 0 ? totalLatSum / totalLatCount : null;
+            const consistency = consistencyCount > 0 ? consistencySum / consistencyCount : null;
+
+            groupStats.push({ groupVal, itemCount: itemIds.length, avgScore, avgLatency, consistency });
+          }
+
+          groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
+          if (groupStats.length === 0) continue;
+
+          const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : 'breakdown-domain';
+
+          html += `<div class="breakdown-section ${colorClass}">`;
+          html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(bdKey.charAt(0).toUpperCase() + bdKey.slice(1))} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
+          html += '<div class="breakdown-grid">';
+
+          for (const g of groupStats) {
+            const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
+            const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
+            const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
+
+            // Add value-specific class for complexity breakdown cards
+            let cardValClass = '';
+            if (bdKey === 'complexity') {
+              const cv = g.groupVal.toLowerCase().trim();
+              if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
+              else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
+              else if (['hard', 'difficult', 'advanced', 'high'].includes(cv)) cardValClass = ' complexity-hard';
+              else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
+            }
+
+            html += `<div class="breakdown-card${cardValClass}">
+              <div class="breakdown-card-top">
+                <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
+                <div class="breakdown-card-count"><strong>${g.itemCount}</strong> item${g.itemCount !== 1 ? 's' : ''}</div>
+              </div>
+              <div class="breakdown-card-score ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</div>
+              <div class="breakdown-card-details">
+                <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
+                <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
+              </div>
             </div>`;
           }
+
           html += '</div></div>';
         }
 
@@ -2317,12 +2870,12 @@
         container.querySelectorAll('.dist-segment.clickable[data-dist-count]').forEach(seg => {
           seg.addEventListener('click', () => {
             const count = seg.dataset.distCount;
-            state.partialCountOp = 'eq';
-            state.partialCountValue = count;
-            const opSelect = el('partial-count-op');
-            const valInput = el('partial-count-value');
-            if (opSelect) opSelect.value = 'eq';
-            if (valInput) valInput.value = count;
+            state.passRateOp = 'eq';
+            state.passRateValue = Number(count);
+            el('pass-rate-op').value = 'eq';
+            el('pass-rate-value').value = count;
+            el('pass-rate-value').style.display = '';
+            el('pass-rate-suffix').style.display = '';
             state.page = 1;
             renderItems(true);
           });
@@ -2537,21 +3090,20 @@
             if (!inputText.includes(q) && !expectedText.includes(q)) continue;
           }
 
-          // #2: Apply metadata filter
-          if (state.metadataFilterValue) {
-            const filterVal = state.metadataFilterValue.toLowerCase();
-            const filterKey = state.metadataFilterKey;
+          // #2: Apply complexity/domain category filters (null = all, array = explicit)
+          if (state.complexityFilter !== null || state.domainFilter !== null) {
             const inputRow = rowData.find(r => r);
-            const md = inputRow?.item_metadata || {};
-            let matched = false;
-            if (typeof md === 'object') {
-              if (filterKey) {
-                matched = String(md[filterKey] ?? '').toLowerCase().includes(filterVal);
-              } else {
-                matched = Object.values(md).some(v => String(v ?? '').toLowerCase().includes(filterVal));
-              }
+            const md = (typeof (inputRow?.item_metadata) === 'object') ? inputRow.item_metadata : {};
+            if (state.complexityFilter !== null) {
+              if (state.complexityFilter.length === 0) continue;
+              const val = String(md.complexity ?? '').toLowerCase();
+              if (!state.complexityFilter.some(f => f.toLowerCase() === val)) continue;
             }
-            if (!matched) continue;
+            if (state.domainFilter !== null) {
+              if (state.domainFilter.length === 0) continue;
+              const val = String(md.domain ?? '').toLowerCase();
+              if (!state.domainFilter.some(f => f.toLowerCase() === val)) continue;
+            }
           }
 
           // Apply item filter
@@ -2593,17 +3145,15 @@
             if (numCorrect === 0 || numCorrect === validScores.length || validScores.length < 2) continue;
           }
 
-          // #20: Apply partial count filter (correct runs >= / <= / == value)
-          if (state.partialCountOp && state.partialCountValue !== null && state.partialCountValue !== '') {
+          // #20: Apply pass rate filter
+          if (state.passRateOp) {
             const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
             const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
             const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
-            const target = Number(state.partialCountValue);
-            if (!isNaN(target)) {
-              if (state.partialCountOp === 'lte' && numCorrect > target) continue;
-              if (state.partialCountOp === 'gte' && numCorrect < target) continue;
-              if (state.partialCountOp === 'eq' && numCorrect !== target) continue;
-            }
+            const target = state.passRateValue;
+            if (state.passRateOp === 'lte' && numCorrect > target) continue;
+            if (state.passRateOp === 'gte' && numCorrect < target) continue;
+            if (state.passRateOp === 'eq' && numCorrect !== target) continue;
           }
 
           // Apply winner filter using item_id to index mapping
@@ -2639,8 +3189,9 @@
         const filterCountEl = el('filter-count');
         const items = getFilteredItems();
 
-        // Update filter count display
-        filterCountEl.innerHTML = `<span class="count-num">${items.length}</span> items`;
+        // Update filter count & clear button
+        filterCountEl.innerHTML = `Showing <span class="count-num">${items.length}</span> items`;
+        updateClearButton();
 
         // Set CSS variable for grid columns
         container.style.setProperty('--run-count', state.runs.length);
@@ -2819,23 +3370,49 @@
             displayItemId = `Item ${parseInt(itemMatch[1], 10) + 1}`;
           }
 
-          // #5/#6: Build item metadata row if any visible metadata exists
+          // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
           {
+            const SPECIAL_KEYS = ['complexity', 'domain'];
             const metaRow = rowData.find(r => r);
             const md = metaRow?.item_metadata || {};
             if (typeof md === 'object') {
-              const visibleEntries = Object.entries(md).filter(([k]) =>
-                k !== 'task_started_at_ms' && state.visibleMetadataFields[k] !== false
+              // Build special badges for complexity & domain
+              let badgesHtml = '';
+              for (const sk of SPECIAL_KEYS) {
+                if (md[sk] !== undefined && md[sk] !== null && md[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
+                  const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
+                  // Add value-specific color class for complexity
+                  let valClass = '';
+                  if (sk === 'complexity') {
+                    const v = String(md[sk]).toLowerCase().trim();
+                    if (['easy', 'simple', 'basic', 'low'].includes(v)) valClass = ' complexity-easy';
+                    else if (['medium', 'moderate', 'intermediate', 'mid'].includes(v)) valClass = ' complexity-medium';
+                    else if (['hard', 'difficult', 'advanced', 'high'].includes(v)) valClass = ' complexity-hard';
+                    else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(v)) valClass = ' complexity-expert';
+                  }
+                  badgesHtml += `<span class="meta-badge badge-${sk}${valClass}"><span class="badge-icon">${icon}</span>${escapeHtml(String(md[sk]))}</span>`;
+                }
+              }
+
+              // Build generic tags (everything except special keys and internal keys)
+              const genericEntries = Object.entries(md).filter(([k]) =>
+                k !== 'task_started_at_ms' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false
               );
-              if (visibleEntries.length > 0) {
-                const tags = visibleEntries.map(([k, v]) =>
+              let genericHtml = '';
+              if (genericEntries.length > 0) {
+                genericHtml = genericEntries.map(([k, v]) =>
                   `<span class="item-metadata-tag"><span class="meta-key">${escapeHtml(k)}:</span> <span class="meta-val">${escapeHtml(String(v))}</span></span>`
                 ).join('');
+              }
+
+              if (badgesHtml || genericHtml) {
+                const separator = badgesHtml && genericHtml ? '<span class="item-meta-sep"></span>' : '';
                 itemMetadataHtml = `
                   <div class="item-metadata-row">
-                    <div class="metadata-label">Metadata</div>
-                    <div class="item-metadata-tags">${tags}</div>
+                    ${badgesHtml ? `<div class="item-meta-badges">${badgesHtml}</div>` : ''}
+                    ${separator}
+                    ${genericHtml ? `<div class="item-metadata-tags">${genericHtml}</div>` : ''}
                   </div>`;
               }
             }
@@ -3346,6 +3923,50 @@
         return `<div class="formatted-object">${rows}</div>`;
       }
 
+      // ── Clear button counter ──
+      function countActiveFilters() {
+        let n = 0;
+        if (state.itemFilter !== 'all') n++;
+        if (state.winnerFilter !== 'any') n++;
+        if (state.searchQuery) n++;
+        if (state.complexityFilter !== null) n++;
+        if (state.domainFilter !== null) n++;
+        if (state.passRateOp) n++;
+        return n;
+      }
+
+      function updateClearButton() {
+        const clearBtn = el('clear-all-btn');
+        const countBadge = el('active-filter-count');
+        const n = countActiveFilters();
+        if (clearBtn) clearBtn.classList.toggle('visible', n > 0);
+        if (countBadge) countBadge.textContent = n;
+      }
+
+      function clearAllFilters() {
+        state.itemFilter = 'all';
+        state.winnerFilter = 'any';
+        state.searchQuery = '';
+        state.complexityFilter = null;
+        state.domainFilter = null;
+        state.passRateOp = '';
+        state.passRateValue = 0;
+        state.page = 1;
+
+        el('item-filter').value = 'all';
+        el('run-winner-filter').value = 'any';
+        el('items-search').value = '';
+        el('pass-rate-op').value = '';
+        el('pass-rate-value').style.display = 'none';
+        el('pass-rate-suffix').style.display = 'none';
+        syncMultiselectUI('complexity');
+        syncMultiselectUI('domain');
+
+        renderItems();
+      }
+
+      el('clear-all-btn').addEventListener('click', clearAllFilters);
+
       // Event listeners
       el('item-filter').addEventListener('change', (e) => {
         state.itemFilter = e.target.value;
@@ -3372,32 +3993,180 @@
         });
       }
 
-      // #2: Metadata filter
-      el('metadata-key-select').addEventListener('change', (e) => {
-        state.metadataFilterKey = e.target.value;
-        state.page = 1;
-        if (state.metadataFilterValue) renderItems();
-      });
-      {
-        let metaTimer = null;
-        el('metadata-value-input').addEventListener('input', (e) => {
-          clearTimeout(metaTimer);
-          metaTimer = setTimeout(() => {
-            state.metadataFilterValue = e.target.value.trim();
-            state.page = 1;
-            renderItems();
-          }, 250);
-        });
+      // #2: Category multi-select dropdowns for complexity & domain
+      function buildCategoryDropdowns() {
+        const hasComplexity = state.complexityValues.length > 0;
+        const hasDomain = state.domainValues.length > 0;
+        const hasMeta = hasComplexity || hasDomain;
+
+        el('fp-cat-complexity').style.display = hasComplexity ? '' : 'none';
+        el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
+        el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
+
+        if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
+        if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
       }
 
-      // #20: Partial count filter
-      el('partial-count-op').addEventListener('change', (e) => {
-        state.partialCountOp = e.target.value;
+      function buildMultiselectOptions(category, values) {
+        const dropdown = el(category + '-ms-dropdown');
+        if (!dropdown) return;
+
+        // Count unique items per value (from first run to avoid double-counting)
+        const itemCounts = {};
+        for (const v of values) itemCounts[v] = 0;
+        if (state.runs.length > 0) {
+          const rows = state.runs[0].snapshot?.rows || [];
+          for (const row of rows) {
+            const md = row.item_metadata || {};
+            const val = String(md[category] ?? '');
+            if (itemCounts[val] !== undefined) itemCounts[val]++;
+          }
+        }
+
+        let html = values.map(v =>
+          `<label class="multi-select-option" data-value="${escapeAttr(v)}">
+            <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="${escapeAttr(v)}" />
+            <span>${escapeHtml(v)}</span>
+            <span class="option-count">${itemCounts[v] || 0}</span>
+          </label>`
+        ).join('');
+
+        html += `<div class="ms-actions">
+          <button class="ms-action-btn" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
+          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">Clear</button>
+        </div>`;
+
+        dropdown.innerHTML = html;
+
+        // Wire up option clicks
+        dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const val = cb.dataset.val;
+            let filterArr = category === 'complexity' ? state.complexityFilter : state.domainFilter;
+            // If null (= all), expand to explicit list before toggling
+            if (filterArr === null) {
+              filterArr = [...values];
+              if (category === 'complexity') state.complexityFilter = filterArr;
+              else state.domainFilter = filterArr;
+            }
+            if (cb.checked) {
+              if (!filterArr.includes(val)) filterArr.push(val);
+            } else {
+              const idx = filterArr.indexOf(val);
+              if (idx >= 0) filterArr.splice(idx, 1);
+            }
+            syncMultiselectUI(category);
+            state.page = 1;
+            renderItems();
+          });
+        });
+
+        // Wire up actions
+        dropdown.querySelectorAll('.ms-action-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (btn.dataset.action === 'all') {
+              if (category === 'complexity') state.complexityFilter = null;
+              else state.domainFilter = null;
+            } else {
+              if (category === 'complexity') state.complexityFilter = [];
+              else state.domainFilter = [];
+            }
+            syncMultiselectUI(category);
+            state.page = 1;
+            renderItems();
+          });
+        });
+
+        syncMultiselectUI(category);
+      }
+
+      function syncMultiselectUI(category) {
+        const filterArr = category === 'complexity' ? state.complexityFilter : state.domainFilter;
+        const values = category === 'complexity' ? state.complexityValues : state.domainValues;
+        const defaultLabel = category === 'complexity' ? 'All Complexity' : 'All Domains';
+        const btn = el(category + '-ms-btn');
+        const dropdown = el(category + '-ms-dropdown');
+
+        // Normalize: explicitly selecting every value = reset to null (no filter)
+        if (filterArr !== null && filterArr.length === values.length) {
+          if (category === 'complexity') state.complexityFilter = null;
+          else state.domainFilter = null;
+        }
+
+        const effective = category === 'complexity' ? state.complexityFilter : state.domainFilter;
+
+        // Update button text
+        if (btn) {
+          if (effective === null) {
+            btn.textContent = defaultLabel;
+            btn.classList.remove('has-selection');
+          } else if (effective.length === 0) {
+            btn.textContent = 'None';
+            btn.classList.add('has-selection');
+          } else if (effective.length === 1) {
+            btn.textContent = effective[0];
+            btn.classList.add('has-selection');
+          } else {
+            btn.textContent = effective.length + ' selected';
+            btn.classList.add('has-selection');
+          }
+        }
+
+        // Sync checkboxes: null = all checked, array = only those in array
+        if (dropdown) {
+          dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+            cb.checked = effective === null || effective.includes(cb.dataset.val);
+          });
+        }
+      }
+
+      // Toggle dropdown open/close — reuse same pattern as index.html model filter
+      function setupCatDropdownToggle(category) {
+        const btn = el(category + '-ms-btn');
+        const dropdown = el(category + '-ms-dropdown');
+        if (!btn || !dropdown) return;
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Close other open dropdowns
+          document.querySelectorAll('.multi-select-dropdown.open').forEach(d => {
+            if (d !== dropdown) d.classList.remove('open');
+          });
+          dropdown.classList.toggle('open');
+        });
+
+        dropdown.addEventListener('click', (e) => e.stopPropagation());
+      }
+
+      setupCatDropdownToggle('complexity');
+      setupCatDropdownToggle('domain');
+
+      // Close dropdowns on outside click
+      document.addEventListener('click', () => {
+        document.querySelectorAll('.fp-cat-group .multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+      });
+
+      // #20: Pass rate filter — sentence-style controls
+      el('pass-rate-op').addEventListener('change', (e) => {
+        state.passRateOp = e.target.value;
+        const show = !!e.target.value;
+        el('pass-rate-value').style.display = show ? '' : 'none';
+        el('pass-rate-suffix').style.display = show ? '' : 'none';
+        if (show && !state.passRateValue) {
+          state.passRateValue = Math.ceil(state.runs.length / 2);
+          el('pass-rate-value').value = state.passRateValue;
+        }
         state.page = 1;
         renderItems();
       });
-      el('partial-count-value').addEventListener('change', (e) => {
-        state.partialCountValue = e.target.value;
+      el('pass-rate-value').addEventListener('input', (e) => {
+        const K = state.runs.length;
+        let v = parseInt(e.target.value, 10);
+        if (isNaN(v)) v = 0;
+        if (v < 0) v = 0;
+        if (v > K) v = K;
+        state.passRateValue = v;
         state.page = 1;
         renderItems();
       });
@@ -3452,11 +4221,11 @@
           const inputRow = rowData.find(r => r);
           const input = inputRow?.input_full || inputRow?.input || '';
           const expected = inputRow?.expected_full || inputRow?.expected || '';
-          const row = [csvEscape(itemId), csvEscape(String(input)), csvEscape(String(expected))];
+          const row = [csvEscape(itemId), csvEscape(stringify(input)), csvEscape(stringify(expected))];
           for (let ri = 0; ri < state.runs.length; ri++) {
             const rd = rowData[ri];
             const output = rd?.output_full || rd?.output || '';
-            row.push(csvEscape(String(output)));
+            row.push(csvEscape(stringify(output)));
             const run = state.runs[ri];
             const mNames = run.snapshot?.metric_names || run.run?.metric_names || [];
             for (const m of metricNames) {
@@ -3476,6 +4245,12 @@
         a.click();
         URL.revokeObjectURL(url);
       });
+
+      function stringify(val) {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        return String(val);
+      }
 
       function csvEscape(val) {
         if (val.includes(',') || val.includes('"') || val.includes('\n')) {
