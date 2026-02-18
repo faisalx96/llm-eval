@@ -1119,15 +1119,210 @@
       padding-top: var(--space-sm);
       border-top: 1px solid var(--border-subtle);
     }
+
+    /* Search input for items */
+    .items-search-input {
+      padding: 6px 10px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      min-width: 180px;
+      transition: border-color 0.15s;
+    }
+    .items-search-input::placeholder { color: var(--text-muted); }
+    .items-search-input:focus { outline: none; border-color: var(--accent-primary); }
+
+    /* Partial count filter */
+    .partial-count-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .partial-count-filter select,
+    .partial-count-filter input {
+      padding: 4px 6px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+    }
+    .partial-count-filter input[type="number"] {
+      width: 48px;
+      text-align: center;
+    }
+
+    /* Metadata filter */
+    .metadata-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .metadata-filter select,
+    .metadata-filter input {
+      padding: 4px 6px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+    }
+    .metadata-filter input { min-width: 100px; }
+    .metadata-filter input::placeholder { color: var(--text-muted); }
+
+    /* Second filter row */
+    .items-filter-row-2 {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    /* Clickable chart segments */
+    .win-loss-bar .segment.clickable,
+    .dist-segment.clickable {
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .win-loss-bar .segment.clickable:hover,
+    .dist-segment.clickable:hover {
+      opacity: 0.85;
+      transform: scaleY(1.08);
+    }
+
+    /* Copy button */
+    .copy-all-btn {
+      background: none;
+      border: 1px solid var(--border-default);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: var(--font-xs);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-all-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--accent-primary);
+    }
+    .copy-all-btn.copied {
+      color: var(--success);
+      border-color: var(--success);
+    }
+
+    /* Item metadata display */
+    .item-metadata-row {
+      background: var(--bg-elevated);
+      padding: var(--space-sm);
+      border-radius: 4px;
+      border-left: 3px solid var(--accent-primary);
+    }
+    .item-metadata-row .metadata-label {
+      font-size: var(--font-xs);
+      color: var(--accent-primary);
+      margin-bottom: 4px;
+    }
+    .item-metadata-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .item-metadata-tag {
+      display: inline-flex;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+    }
+    .item-metadata-tag .meta-key {
+      color: var(--text-muted);
+    }
+    .item-metadata-tag .meta-val {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    /* Metadata field selector */
+    .metadata-fields-selector {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .metadata-fields-btn {
+      background: none;
+      border: 1px solid var(--border-default);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: var(--font-xs);
+      cursor: pointer;
+    }
+    .metadata-fields-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .metadata-fields-dropdown {
+      display: none;
+      position: absolute;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-sm);
+      z-index: 100;
+      min-width: 180px;
+      max-height: 200px;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .metadata-fields-dropdown.open { display: block; }
+    .metadata-fields-dropdown label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .metadata-fields-dropdown label:hover {
+      color: var(--text-primary);
+    }
+
+    /* Export button */
+    .export-btn {
+      background: none;
+      border: 1px solid var(--border-default);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: var(--font-xs);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .export-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--accent-primary);
+    }
   </style>
 </head>
 <body>
   <!-- Minimal header -->
   <header class="stats-bar">
     <div class="stats-bar-left">
-      <div class="logo">
-        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" />
-      </div>
+      <a href="/" class="logo" style="text-decoration:none;">
+        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+      </a>
       <div class="stat-cells">
         <div class="stat-cell">
           <span class="stat-label">COMPARING</span>
@@ -1206,6 +1401,7 @@
             <option value="errors">With Errors</option>
             <option value="all_correct">All Runs Correct</option>
             <option value="all_wrong">No Run Correct</option>
+            <option value="partially_correct">Partially Correct</option>
             <option value="rarely_solved">Rarely Solved (≤25%)</option>
             <option value="unique_solve">Uniquely Solved (1 run only)</option>
           </select>
@@ -1213,7 +1409,34 @@
           <select id="run-winner-filter" class="filter-select">
             <option value="any">Any Winner</option>
           </select>
+          <span class="filter-label">Correct:</span>
+          <div class="partial-count-filter">
+            <select id="partial-count-op" class="filter-select">
+              <option value="">Any</option>
+              <option value="lte">≤</option>
+              <option value="gte">≥</option>
+              <option value="eq">=</option>
+            </select>
+            <input type="number" id="partial-count-value" min="0" max="99" value="" placeholder="#" />
+            <span class="filter-label" style="text-transform:none;">of K</span>
+          </div>
           <span class="filter-count" id="filter-count"></span>
+          <button class="export-btn" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+        </div>
+        <div class="items-filter-row-2">
+          <span class="filter-label">Search:</span>
+          <input type="text" class="items-search-input" id="items-search" placeholder="Search questions / inputs..." />
+          <span class="filter-label">Metadata:</span>
+          <div class="metadata-filter">
+            <select id="metadata-key-select" class="filter-select">
+              <option value="">Any field</option>
+            </select>
+            <input type="text" id="metadata-value-input" placeholder="value..." />
+          </div>
+          <div class="metadata-fields-selector" style="position:relative;">
+            <button class="metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">Fields ▾</button>
+            <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+          </div>
         </div>
         <div class="items-grid" id="items-grid"></div>
         <div class="pagination" id="pagination"></div>
@@ -1268,6 +1491,14 @@
         metricIsBoolean: {},   // Per-metric flag: true if all scores are 0 or 1
         langfuseHost: '',      // Langfuse host URL
         langfuseProjectId: '', // Langfuse project ID
+        // Group A additions
+        searchQuery: '',              // #19: search items by input text
+        metadataFilterKey: '',        // #2: metadata field to filter on
+        metadataFilterValue: '',      // #2: metadata value to match
+        partialCountOp: '',           // #20: '', 'lte', 'gte', 'eq'
+        partialCountValue: null,      // #20: number of runs correct
+        allMetadataKeys: [],          // collected metadata keys across all items
+        visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
       };
 
       const el = (id) => document.getElementById(id);
@@ -1322,7 +1553,7 @@
           const isZero = idx === 0;
           const isAll = idx === state.runs.length;
           const colorClass = isZero ? 'dist-zero' : isAll ? 'dist-all' : 'dist-partial';
-          return `<div class="dist-segment ${colorClass}" style="flex: ${count}" title="${idx}/${state.runs.length} correct: ${count} items (${pct}%)">
+          return `<div class="dist-segment ${colorClass} clickable" style="flex: ${count}" data-dist-count="${idx}" title="${idx}/${state.runs.length} correct: ${count} items (${pct}%) — Click to filter">
             <span class="dist-label">${idx}</span>
             <span class="dist-count">${count}</span>
           </div>`;
@@ -1410,6 +1641,38 @@
         for (const metric of state.allMetrics) {
           state.comparisonStats[metric] = calculateComparisonStatsForMetric(metric);
         }
+
+        // Collect all unique metadata keys across all items
+        const metaKeySet = new Set();
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            const md = row.item_metadata || {};
+            if (typeof md === 'object') {
+              for (const k of Object.keys(md)) {
+                if (k !== 'task_started_at_ms') metaKeySet.add(k);
+              }
+            }
+          }
+        }
+        state.allMetadataKeys = Array.from(metaKeySet).sort();
+
+        // Initialize visible metadata fields (all on by default)
+        for (const k of state.allMetadataKeys) {
+          if (state.visibleMetadataFields[k] === undefined) {
+            state.visibleMetadataFields[k] = true;
+          }
+        }
+
+        // Populate metadata key dropdown
+        const metaKeySelect = el('metadata-key-select');
+        if (metaKeySelect) {
+          metaKeySelect.innerHTML = '<option value="">Any field</option>' +
+            state.allMetadataKeys.map(k => `<option value="${escapeAttr(k)}">${escapeHtml(k)}</option>`).join('');
+        }
+
+        // Populate metadata fields dropdown
+        populateMetadataFieldsDropdown();
 
         // Populate metric selectors
         populateMetricSelectors();
@@ -1834,8 +2097,69 @@
 
         renderSummaries();
         renderComparisonStats();
+        renderMetadataBreakdown();
         renderMetricsTable();
         renderItems();
+      }
+
+      // #3: Render complexity/domain metadata breakdown
+      function renderMetadataBreakdown() {
+        // Look for 'complexity' and 'domain' keys in item metadata
+        const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
+        if (breakdownKeys.length === 0) return;
+
+        let existingSection = document.getElementById('metadata-breakdown');
+        if (!existingSection) {
+          existingSection = document.createElement('div');
+          existingSection.id = 'metadata-breakdown';
+          existingSection.className = 'comparison-stats';
+          existingSection.style.marginBottom = 'var(--space-xl)';
+          const statsEl = el('comparison-stats');
+          if (statsEl && statsEl.parentNode) {
+            statsEl.parentNode.insertBefore(existingSection, statsEl.nextSibling);
+          }
+        }
+
+        const selectedMetric = state.selectedOverviewMetric || state.allMetrics[0];
+        if (!selectedMetric) return;
+
+        let html = '<h3>Metadata Breakdown</h3>';
+
+        for (const bdKey of breakdownKeys) {
+          const groups = {};
+          for (const run of state.runs) {
+            const rows = run.snapshot?.rows || [];
+            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+            const mIdx = metricNames.indexOf(selectedMetric);
+            for (const row of rows) {
+              const md = row.item_metadata || {};
+              const groupVal = String(md[bdKey] ?? 'unknown');
+              if (!groups[groupVal]) groups[groupVal] = { total: 0, scoreSum: 0 };
+              groups[groupVal].total++;
+              if (mIdx >= 0) {
+                const { score } = window.QymMetrics.getRowScore(row, mIdx);
+                if (score !== null) groups[groupVal].scoreSum += score;
+              }
+            }
+          }
+
+          const entries = Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+          if (entries.length === 0) continue;
+
+          html += `<div style="margin-bottom:var(--space-md);"><div class="stat-title" style="margin-bottom:var(--space-sm);">${escapeHtml(bdKey.charAt(0).toUpperCase() + bdKey.slice(1))} Breakdown (${escapeHtml(selectedMetric)})</div>`;
+          html += '<div class="stats-row">';
+          for (const [val, data] of entries) {
+            const avg = data.total > 0 ? data.scoreSum / data.total : 0;
+            html += `<div class="stat-box">
+              <div class="stat-title">${escapeHtml(val)}</div>
+              <div class="stat-main ${scoreColorClass(avg)}">${formatPercent(avg)}</div>
+              <div class="stat-detail">${data.total} items</div>
+            </div>`;
+          }
+          html += '</div></div>';
+        }
+
+        existingSection.innerHTML = html;
       }
 
       // Helper to create info icon with tooltip
@@ -1867,10 +2191,10 @@
           const color = COLORS[idx % COLORS.length];
           const count = stats.wins[idx];
           if (count === 0) return '';
-          return `<div class="segment" style="flex: ${count}; background: ${color}">${count}</div>`;
+          return `<div class="segment clickable" style="flex: ${count}; background: ${color}" data-winner-filter="win_${idx}" title="Click to filter items won by this run">${count}</div>`;
         }).join('');
         const tieSegment = stats.ties > 0
-          ? `<div class="segment tie" style="flex: ${stats.ties}">${stats.ties}</div>`
+          ? `<div class="segment tie clickable" style="flex: ${stats.ties}" data-winner-filter="tie" title="Click to filter ties">${stats.ties}</div>`
           : '';
 
         // Build legend
@@ -1974,6 +2298,35 @@
             </div>
           </div>
         `;
+
+        // #11: Wire click handlers on winner breakdown segments
+        container.querySelectorAll('.segment.clickable[data-winner-filter]').forEach(seg => {
+          seg.addEventListener('click', () => {
+            const val = seg.dataset.winnerFilter;
+            state.winnerFilter = val;
+            const winnerSelect = el('run-winner-filter');
+            if (winnerSelect && winnerSelect.querySelector(`option[value="${val}"]`)) {
+              winnerSelect.value = val;
+            }
+            state.page = 1;
+            renderItems(true);
+          });
+        });
+
+        // #11: Wire click handlers on distribution bar segments
+        container.querySelectorAll('.dist-segment.clickable[data-dist-count]').forEach(seg => {
+          seg.addEventListener('click', () => {
+            const count = seg.dataset.distCount;
+            state.partialCountOp = 'eq';
+            state.partialCountValue = count;
+            const opSelect = el('partial-count-op');
+            const valInput = el('partial-count-value');
+            if (opSelect) opSelect.value = 'eq';
+            if (valInput) valInput.value = count;
+            state.page = 1;
+            renderItems(true);
+          });
+        });
       }
 
       function renderSummaries() {
@@ -2175,6 +2528,32 @@
           });
           const validScores = scores.filter(s => s !== null);
 
+          // #19: Apply search query filter (on input/expected text)
+          if (state.searchQuery) {
+            const q = state.searchQuery.toLowerCase();
+            const inputRow = rowData.find(r => r);
+            const inputText = String(inputRow?.input_full || inputRow?.input || '').toLowerCase();
+            const expectedText = String(inputRow?.expected_full || inputRow?.expected || '').toLowerCase();
+            if (!inputText.includes(q) && !expectedText.includes(q)) continue;
+          }
+
+          // #2: Apply metadata filter
+          if (state.metadataFilterValue) {
+            const filterVal = state.metadataFilterValue.toLowerCase();
+            const filterKey = state.metadataFilterKey;
+            const inputRow = rowData.find(r => r);
+            const md = inputRow?.item_metadata || {};
+            let matched = false;
+            if (typeof md === 'object') {
+              if (filterKey) {
+                matched = String(md[filterKey] ?? '').toLowerCase().includes(filterVal);
+              } else {
+                matched = Object.values(md).some(v => String(v ?? '').toLowerCase().includes(filterVal));
+              }
+            }
+            if (!matched) continue;
+          }
+
           // Apply item filter
           if (state.itemFilter === 'different') {
             const outputs = rowData.map(r => r?.output_full || r?.output || '').filter(o => o);
@@ -2206,6 +2585,25 @@
             const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
             const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
             if (numCorrect !== 1) continue;
+          } else if (state.itemFilter === 'partially_correct') {
+            // #12: Some but not all runs met threshold
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
+            if (numCorrect === 0 || numCorrect === validScores.length || validScores.length < 2) continue;
+          }
+
+          // #20: Apply partial count filter (correct runs >= / <= / == value)
+          if (state.partialCountOp && state.partialCountValue !== null && state.partialCountValue !== '') {
+            const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+            const correctThreshold = isBoolean ? 0.9999 : state.metricThresholds[state.selectedItemsMetric];
+            const numCorrect = scores.filter(s => s !== null && s >= correctThreshold).length;
+            const target = Number(state.partialCountValue);
+            if (!isNaN(target)) {
+              if (state.partialCountOp === 'lte' && numCorrect > target) continue;
+              if (state.partialCountOp === 'gte' && numCorrect < target) continue;
+              if (state.partialCountOp === 'eq' && numCorrect !== target) continue;
+            }
           }
 
           // Apply winner filter using item_id to index mapping
@@ -2401,23 +2799,15 @@
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges">${startBadge}${latencyBadge}${traceLink}</span>
+                  <span class="output-badges"><button class="copy-all-btn" data-copy-run-output="${escapeAttr(output)}" title="Copy output">Copy</button>${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
-                <div class="output-text ${status === 'error' ? 'low' : ''}">${formatValue(output)}</div>
+                <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${metricEditHtml}
                 ${metricDetailsHtml}
               </div>
             `;
           }).join('');
-
-          // Only show expected row if there's expected output
-          const expectedRow = expected ? `
-              <div class="item-expected-row">
-                <div class="expected-label">Expected Output</div>
-                <div class="expected-text">${formatValue(expected)}</div>
-              </div>
-          ` : '';
 
           // Build shared metric details section (all runs' metadata in one expandable area)
           const metricDetailsHtml = buildMetricDetailsSection(itemId, rowData);
@@ -2429,16 +2819,44 @@
             displayItemId = `Item ${parseInt(itemMatch[1], 10) + 1}`;
           }
 
+          // #5/#6: Build item metadata row if any visible metadata exists
+          let itemMetadataHtml = '';
+          {
+            const metaRow = rowData.find(r => r);
+            const md = metaRow?.item_metadata || {};
+            if (typeof md === 'object') {
+              const visibleEntries = Object.entries(md).filter(([k]) =>
+                k !== 'task_started_at_ms' && state.visibleMetadataFields[k] !== false
+              );
+              if (visibleEntries.length > 0) {
+                const tags = visibleEntries.map(([k, v]) =>
+                  `<span class="item-metadata-tag"><span class="meta-key">${escapeHtml(k)}:</span> <span class="meta-val">${escapeHtml(String(v))}</span></span>`
+                ).join('');
+                itemMetadataHtml = `
+                  <div class="item-metadata-row">
+                    <div class="metadata-label">Metadata</div>
+                    <div class="item-metadata-tags">${tags}</div>
+                  </div>`;
+              }
+            }
+          }
+
           return `
             <div class="item-comparison-row">
               <div class="item-header">
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
+                <button class="copy-all-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields to clipboard">Copy All</button>
               </div>
               <div class="item-input-row">
                 <div class="input-label">Input</div>
-                <div class="input-text">${formatValue(input)}</div>
+                <div class="input-text">${renderMarkdownSafe(input)}</div>
               </div>
-              ${expectedRow}
+              ${expected ? `
+              <div class="item-expected-row">
+                <div class="expected-label">Expected Output</div>
+                <div class="expected-text">${renderMarkdownSafe(expected)}</div>
+              </div>` : ''}
+              ${itemMetadataHtml}
               <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
                 ${outputCells}
               </div>
@@ -2464,6 +2882,73 @@
 
         wireMetricEditHandlers();
         alignOutputHeights();
+
+        // #16: Wire copy-all buttons (per item)
+        container.querySelectorAll('.copy-all-btn[data-item-id]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.itemId;
+            const item = getFilteredItems().find(it => it.itemId === id);
+            if (!item) return;
+            const inputRow = item.rowData.find(r => r);
+            const parts = [];
+            parts.push('Input: ' + String(inputRow?.input_full || inputRow?.input || ''));
+            const exp = inputRow?.expected_full || inputRow?.expected || '';
+            if (exp) parts.push('Expected: ' + String(exp));
+            item.rowData.forEach((rd, ri) => {
+              const rName = state.runs[ri]?.run?.run_name || `Run ${ri + 1}`;
+              const out = rd?.output_full || rd?.output || '';
+              parts.push(`${rName} Output: ${out}`);
+            });
+            navigator.clipboard.writeText(parts.join('\n\n')).then(() => {
+              btn.textContent = 'Copied!';
+              btn.classList.add('copied');
+              setTimeout(() => { btn.textContent = 'Copy All'; btn.classList.remove('copied'); }, 1500);
+            });
+          });
+        });
+
+        // #16: Wire per-run copy buttons
+        container.querySelectorAll('.copy-all-btn[data-copy-run-output]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const text = btn.dataset.copyRunOutput;
+            navigator.clipboard.writeText(text).then(() => {
+              btn.textContent = 'Copied!';
+              btn.classList.add('copied');
+              setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+            });
+          });
+        });
+      }
+
+      // #4: Safe markdown rendering (basic inline markdown: bold, italic, code, links)
+      function renderMarkdownSafe(value) {
+        if (value === null || value === undefined) return '—';
+        if (typeof value === 'object') return formatObjectAsHtml(value);
+        const str = String(value);
+        // Check if it looks like a structured object first
+        const trimmed = str.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+            (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (typeof parsed === 'object' && parsed !== null) return formatObjectAsHtml(parsed);
+          } catch {}
+          const parsed = parsePythonDict(trimmed);
+          if (parsed !== null) return formatObjectAsHtml(parsed);
+        }
+        // Apply basic markdown transforms (safe subset - no raw HTML)
+        let html = escapeHtml(str);
+        // Code blocks (triple backtick)
+        html = html.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--bg-elevated);padding:4px 8px;border-radius:4px;overflow-x:auto;margin:4px 0;">$1</pre>');
+        // Inline code
+        html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-elevated);padding:1px 4px;border-radius:3px;">$1</code>');
+        // Bold
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // Italic
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        // Links
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent-primary);">$1</a>');
+        return html;
       }
 
       function escapeHtml(text) {
@@ -2873,6 +3358,131 @@
         state.page = 1;
         renderItems();
       });
+
+      // #19: Search input with debounce
+      {
+        let searchTimer = null;
+        el('items-search').addEventListener('input', (e) => {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            state.searchQuery = e.target.value.trim();
+            state.page = 1;
+            renderItems();
+          }, 250);
+        });
+      }
+
+      // #2: Metadata filter
+      el('metadata-key-select').addEventListener('change', (e) => {
+        state.metadataFilterKey = e.target.value;
+        state.page = 1;
+        if (state.metadataFilterValue) renderItems();
+      });
+      {
+        let metaTimer = null;
+        el('metadata-value-input').addEventListener('input', (e) => {
+          clearTimeout(metaTimer);
+          metaTimer = setTimeout(() => {
+            state.metadataFilterValue = e.target.value.trim();
+            state.page = 1;
+            renderItems();
+          }, 250);
+        });
+      }
+
+      // #20: Partial count filter
+      el('partial-count-op').addEventListener('change', (e) => {
+        state.partialCountOp = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+      el('partial-count-value').addEventListener('change', (e) => {
+        state.partialCountValue = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      // #6: Metadata fields selector toggle
+      el('metadata-fields-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dropdown = el('metadata-fields-dropdown');
+        dropdown.classList.toggle('open');
+      });
+      document.addEventListener('click', () => {
+        el('metadata-fields-dropdown').classList.remove('open');
+      });
+      el('metadata-fields-dropdown').addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+
+      function populateMetadataFieldsDropdown() {
+        const dropdown = el('metadata-fields-dropdown');
+        if (!dropdown || state.allMetadataKeys.length === 0) {
+          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metadata fields found</div>';
+          return;
+        }
+        dropdown.innerHTML = state.allMetadataKeys.map(k => {
+          const checked = state.visibleMetadataFields[k] ? 'checked' : '';
+          return `<label><input type="checkbox" ${checked} data-meta-key="${escapeAttr(k)}" /> ${escapeHtml(k)}</label>`;
+        }).join('');
+        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            state.visibleMetadataFields[cb.dataset.metaKey] = cb.checked;
+            renderItems();
+          });
+        });
+      }
+
+      // #8: Export filtered items as CSV
+      el('export-filtered-btn').addEventListener('click', () => {
+        const items = getFilteredItems();
+        if (items.length === 0) return;
+        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+        const metricNames = state.allMetrics;
+        // Build CSV header
+        let header = ['item_id', 'input', 'expected'];
+        for (let ri = 0; ri < state.runs.length; ri++) {
+          header.push(`${runNames[ri]}_output`);
+          for (const m of metricNames) {
+            header.push(`${runNames[ri]}_${m}`);
+          }
+        }
+        const csvRows = [header.join(',')];
+        for (const { itemId, rowData } of items) {
+          const inputRow = rowData.find(r => r);
+          const input = inputRow?.input_full || inputRow?.input || '';
+          const expected = inputRow?.expected_full || inputRow?.expected || '';
+          const row = [csvEscape(itemId), csvEscape(String(input)), csvEscape(String(expected))];
+          for (let ri = 0; ri < state.runs.length; ri++) {
+            const rd = rowData[ri];
+            const output = rd?.output_full || rd?.output || '';
+            row.push(csvEscape(String(output)));
+            const run = state.runs[ri];
+            const mNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+            for (const m of metricNames) {
+              const mIdx = mNames.indexOf(m);
+              const score = mIdx >= 0 ? (rd?.metric_values || [])[mIdx] : '';
+              row.push(csvEscape(String(score ?? '')));
+            }
+          }
+          csvRows.push(row.join(','));
+        }
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'compare_export.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      function csvEscape(val) {
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          return '"' + val.replace(/"/g, '""') + '"';
+        }
+        return val;
+      }
 
       // Initialize
       loadComparisonData();

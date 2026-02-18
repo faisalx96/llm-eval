@@ -331,6 +331,7 @@
       // Store individual run data for display
       combos[key].models[model].runsList.push({
         run_id: run.run_id,
+        run_name: run.run_name || '',
         external_run_id: run.external_run_id,
         file_path: run.file_path,
         timestamp: run.timestamp,
@@ -654,6 +655,7 @@
           allRuns.push({
             model,
             run_id: run.run_id,
+            run_name: run.run_name || '',
             external_run_id: run.external_run_id,
             file_path: run.file_path,
             timestamp: run.timestamp,
@@ -706,8 +708,9 @@
         const latencyStr = latency > 0 ? formatLatency(latency) : '—';
         const dt = formatDate(timestamp);
 
-        // Format run label: always show model name + date
+        // Format run label: show model name + run name + date (#13)
         const displayModel = stripModelProvider(model);
+        const runNameLabel = runData.run_name ? ` (${runData.run_name})` : '';
         let displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span>`;
         // Try to extract date from run_id pattern
         const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
@@ -718,10 +721,10 @@
           const day = parseInt(dd, 10);
           const timeStr = `${hh}:${min}`;
           const counterStr = counter ? ` #${counter}` : '';
-          displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
+          displayHtml = `<span class="model-name-text" title="${model}${runNameLabel}">${displayModel}${runNameLabel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
         } else {
           // Fallback: use formatted timestamp from run data
-          displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
+          displayHtml = `<span class="model-name-text" title="${model}${runNameLabel}">${displayModel}${runNameLabel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
         }
         const tooltipText = `${run_id}\n${dt.full}\nClick to view details`;
 
@@ -891,6 +894,32 @@
     });
   }
 
+  // #7: Compute a stable grouping key from run_config (exclude ephemeral fields)
+  function computeRunConfigGroupKey(run) {
+    const config = run.run_config || {};
+    const ephemeral = new Set(['run_name', 'resume_from', 'cli_invocation']);
+    const stableEntries = Object.entries(config)
+      .filter(([k]) => !ephemeral.has(k))
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (stableEntries.length === 0) return null;
+    try {
+      return JSON.stringify(stableEntries);
+    } catch {
+      return null;
+    }
+  }
+
+  // #7: Extract base timestamp from run name/id for grouping.
+  // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
+  // Runs with the same task + base timestamp belong together.
+  function extractRunTimestampGroup(run) {
+    const name = run.run_name || run.external_run_id || '';
+    // Match YYMMDD-HHMM (optionally followed by -N counter)
+    const m = name.match(/(\d{6}-\d{4})(?:-\d+)?$/);
+    if (!m) return null;
+    return `${run.task_name}|||${m[1]}`;
+  }
+
   function renderTableView() {
     const runs = state.filteredRuns;
     const tbody = el('runs-tbody');
@@ -911,7 +940,83 @@
       return;
     }
 
+    // #7: Group runs by task + base timestamp (same batch = same task, same YYMMDD-HHMM)
+    const groupMap = {};  // groupKey -> { runs: [{run, idx}], ... }
+    const runGroupKeys = [];
+    runs.forEach((r, idx) => {
+      const key = extractRunTimestampGroup(r);
+      runGroupKeys.push(key);
+      if (key) {
+        if (!groupMap[key]) groupMap[key] = [];
+        groupMap[key].push({ run: r, idx });
+      }
+    });
+
+    // Only groups with >1 run are real groups
+    const realGroups = {};
+    for (const [key, members] of Object.entries(groupMap)) {
+      if (members.length > 1) realGroups[key] = members;
+    }
+
+    // Track which groups are collapsed (default: collapsed)
+    if (!state._collapsedGroups) state._collapsedGroups = {};
+
+    let lastGroupKey = null;
+    let groupCounter = 0;
+    const colCount = 10 + metricsToShow.length;
     tbody.innerHTML = runs.map((run, idx) => {
+      const groupKey = runGroupKeys[idx];
+      const isGrouped = groupKey && realGroups[groupKey];
+      const isFirstInGroup = isGrouped && groupKey !== lastGroupKey;
+      let groupHeaderHtml = '';
+
+      if (isFirstInGroup) {
+        groupCounter++;
+        const groupId = `rg_${groupCounter}`;
+        const members = realGroups[groupKey];
+        const groupSize = members.length;
+        // Derive group title from run_config.run_name (user-provided) + task_name
+        const configRunName = (run.run_config || {}).run_name || '';
+        // Strip timestamp+counter suffix to get the user's base name
+        const userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
+        const taskName = run.task_name || '';
+        let baseLabel;
+        if (userBaseName && userBaseName !== taskName) {
+          baseLabel = `${userBaseName} · ${taskName}`;
+        } else {
+          baseLabel = taskName || userBaseName || 'Group';
+        }
+        // Extract timestamp for display
+        const tsSource = run.run_name || run.external_run_id || '';
+        const tsMatch = tsSource.match(/(\d{6})-(\d{4})(?:-\d+)?$/);
+        let tsLabel = '';
+        if (tsMatch) {
+          const [, yymmdd, hhmm] = tsMatch;
+          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const mm = yymmdd.slice(2,4); const dd = yymmdd.slice(4,6);
+          const monthName = months[parseInt(mm, 10) - 1] || mm;
+          tsLabel = ` · ${monthName} ${parseInt(dd, 10)} · ${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
+        }
+        const isCollapsed = state._collapsedGroups[groupKey] === true; // default expanded
+        const arrow = isCollapsed ? '▶' : '▼';
+        const memberFilePaths = members.map(m => m.run.file_path);
+
+        groupHeaderHtml = `<tr class="run-group-header" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
+          <td colspan="${colCount}" style="padding:6px 12px;background:var(--bg-elevated);border-bottom:1px solid var(--border-strong);cursor:pointer;user-select:none;">
+            <span class="group-toggle-arrow" style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;margin-right:4px;">${arrow}</span>
+            <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
+            <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
+            <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:8px;">${groupSize} runs</span>
+            <button class="group-compare-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;background:none;border:1px solid var(--accent-primary);color:var(--accent-primary);border-radius:4px;padding:1px 8px;font-size:var(--font-xs);cursor:pointer;">Compare All</button>
+          </td>
+        </tr>`;
+      }
+      lastGroupKey = groupKey;
+
+      // If this run belongs to a collapsed group, hide it (header row stays visible)
+      const isCollapsed = isGrouped && state._collapsedGroups[groupKey] === true;
+      const hiddenAttr = (isGrouped && isCollapsed) ? 'style="display:none;"' : '';
+      const groupDataAttr = isGrouped ? `data-member-of="${escapeHtml(groupKey)}"` : '';
       const dt = formatDate(run.timestamp);
       const completedRate = run.completion_rate ?? 0;
       const successRate = run.success_on_completed_rate;
@@ -956,9 +1061,9 @@
         }
       }
 
-      return `
-        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
-            class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''}">
+      return `${groupHeaderHtml}
+        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}" ${groupDataAttr} ${hiddenAttr}
+            class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${isGrouped ? 'grouped-run' : ''}">
           <td class="col-select" onclick="event.stopPropagation()">
             <label class="custom-checkbox">
               <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
@@ -1148,6 +1253,37 @@
 
       tr.addEventListener('dblclick', () => {
         openRun(filePath);
+      });
+    });
+
+    // #7: Wire group header click to toggle collapse
+    // Convention: state._collapsedGroups[key] === true means collapsed; absent/false means expanded
+    tbody.querySelectorAll('.run-group-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const groupKey = header.dataset.groupKey;
+        if (!groupKey) return;
+        const wasCollapsed = state._collapsedGroups[groupKey] === true;
+        state._collapsedGroups[groupKey] = !wasCollapsed;
+        const nowExpanded = !state._collapsedGroups[groupKey];
+        const arrow = header.querySelector('.group-toggle-arrow');
+        if (arrow) arrow.textContent = nowExpanded ? '▼' : '▶';
+        tbody.querySelectorAll(`tr[data-member-of="${groupKey}"]`).forEach(row => {
+          row.style.display = nowExpanded ? '' : 'none';
+        });
+      });
+    });
+
+    // #7: Wire "Compare All" buttons on group headers
+    tbody.querySelectorAll('.group-compare-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        try {
+          const files = JSON.parse(btn.dataset.groupFiles);
+          if (Array.isArray(files) && files.length >= 2) {
+            sessionStorage.setItem('compareRuns', JSON.stringify(files));
+            window.location.href = './compare';
+          }
+        } catch {}
       });
     });
   }
@@ -1430,10 +1566,16 @@
 
     if (modelsEmpty) modelsEmpty.style.display = 'none';
 
-    // Get runs matching task+dataset
-    const matchingRuns = state.flatRuns.filter(r =>
-      r.task_name === selectedTask && r.dataset_name === selectedDataset
-    );
+    // Get runs matching task+dataset (and model filter if active)
+    const matchingRuns = state.flatRuns.filter(r => {
+      if (r.task_name !== selectedTask || r.dataset_name !== selectedDataset) return false;
+      // #14: Apply global model filter to Models View
+      if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
+        if (!state.filterModels.has(r.model_name)) return false;
+      }
+      if (state.filterModels.has('__none__')) return false;
+      return true;
+    });
 
     if (matchingRuns.length === 0) {
       if (modelsGrid) modelsGrid.innerHTML = '<div class="models-empty"><h3>No runs found</h3><p>No runs match the selected task and dataset</p></div>';
@@ -1862,33 +2004,54 @@
     // Track selection count
     let selectionCount = 0;
 
-    // Render run list
+    // #9: Group runs by config for K-vs-K comparison
+    const configGroups = {};
+    allRuns.forEach(run => {
+      const key = computeRunConfigGroupKey(run) || '__ungrouped__';
+      if (!configGroups[key]) configGroups[key] = [];
+      configGroups[key].push(run);
+    });
+    const hasMultipleGroups = Object.keys(configGroups).length > 1;
+
+    // Render run list with config group labels
+    let runListHtml = '';
+    let runFlatIdx = 0;
+    for (const [groupKey, groupRuns] of Object.entries(configGroups)) {
+      if (hasMultipleGroups && groupKey !== '__ungrouped__') {
+        const groupLabel = groupRuns[0]?.run_name || `Config ${Object.keys(configGroups).indexOf(groupKey) + 1}`;
+        runListHtml += `<div style="padding:6px 8px;font-size:10px;color:var(--accent-primary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-default);">${escapeHtml(groupLabel)} (${groupRuns.length} runs)</div>`;
+      }
+      for (const run of groupRuns) {
+        const idx = runFlatIdx++;
+        const isSelected = currentSelection.length > 0
+          ? currentSelection.includes(run.file_path)
+          : idx < globalK;
+        if (isSelected) selectionCount++;
+        const dt = formatDate(run.timestamp);
+        const metric = mvs.selectedMetric;
+        const score = run.metric_averages?.[metric];
+        const scoreClass = score !== undefined ? getSuccessClass(score) : '';
+
+        runListHtml += `
+          <label class="run-selection-item ${isSelected ? 'selected' : ''}">
+            <input type="checkbox" data-file="${run.file_path}" ${isSelected ? 'checked' : ''} />
+            <div class="run-info">
+              <div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</div>
+              <div class="run-date">${dt.full}</div>
+            </div>
+            ${score !== undefined ? `<span class="run-score ${scoreClass}">${formatPercent(score)}</span>` : ''}
+          </label>
+        `;
+      }
+    }
+
     listEl.innerHTML = `
       <div class="run-selection-header">
         <span class="selection-counter"><span id="selection-count">0</span> / ${globalK} selected</span>
+        ${hasMultipleGroups ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px;">${Object.keys(configGroups).length} config groups</span>` : ''}
       </div>
       <div class="run-selection-items">
-        ${allRuns.map((run, idx) => {
-          const isSelected = currentSelection.length > 0
-            ? currentSelection.includes(run.file_path)
-            : idx < globalK;  // Default: first K runs
-          if (isSelected) selectionCount++;
-          const dt = formatDate(run.timestamp);
-          const metric = mvs.selectedMetric;
-          const score = run.metric_averages?.[metric];
-          const scoreClass = score !== undefined ? getSuccessClass(score) : '';
-
-          return `
-            <label class="run-selection-item ${isSelected ? 'selected' : ''}">
-              <input type="checkbox" data-file="${run.file_path}" ${isSelected ? 'checked' : ''} />
-              <div class="run-info">
-                <div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</div>
-                <div class="run-date">${dt.full}</div>
-              </div>
-              ${score !== undefined ? `<span class="run-score ${scoreClass}">${formatPercent(score)}</span>` : ''}
-            </label>
-          `;
-        }).join('')}
+        ${runListHtml}
       </div>
     `;
 

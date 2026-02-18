@@ -49,6 +49,19 @@ def _strip_model_provider(model_name: Optional[str]) -> str:
     return model_name[slash_idx + 1:] if slash_idx > 0 else model_name
 
 
+def _compute_run_config_id(config: Dict[str, Any]) -> str:
+    """Compute a stable hash from run config, excluding ephemeral fields.
+
+    Used by platform to group runs with identical configurations.
+    """
+    import hashlib
+    import json
+    ephemeral = {'run_name', 'resume_from', 'cli_invocation', 'run_metadata'}
+    stable = {k: v for k, v in sorted(config.items()) if k not in ephemeral}
+    raw = json.dumps(stable, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
 # UIServer has been removed - platform streaming is now required
 # from ..server.app import UIServer  # DEPRECATED
@@ -128,7 +141,7 @@ class Evaluator:
             self.config = config
         else:
             self.config = EvaluatorConfig(**(config or {}))
-        self._task_name = _derive_task_name(task)
+        self._task_name = self.config.task_name or _derive_task_name(task)
             
         # Override model if provided explicitly
         if model is not None:
@@ -635,7 +648,13 @@ class Evaluator:
                 model=self.model_name,
                 metrics=list(self.metrics.keys()),
                 run_metadata=start_metadata,
-                run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                run_config={
+                    "max_concurrency": self.max_concurrency,
+                    "timeout": self.timeout,
+                    "run_name": self.run_name,
+                    "task_name": self._task_name,
+                    "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                },
             )
             html_url = handle.live_url
             self._platform_stream = PlatformEventStream(platform_url=platform_url, api_key=platform_api_key, run_id=handle.run_id)
@@ -651,7 +670,13 @@ class Evaluator:
                         "metrics": list(self.metrics.keys()),
                         "total_items": int(self.total_items),
                         "run_metadata": dict(self.run_metadata or {}),
-                        "run_config": {"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                        "run_config": {
+                            "max_concurrency": self.max_concurrency,
+                            "timeout": self.timeout,
+                            "run_name": self.run_name,
+                            "task_name": self._task_name,
+                            "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                        },
                         "started_at": _utc_now_str(),
                     },
                 )
@@ -1159,7 +1184,8 @@ class Evaluator:
         # Iterate over both stripped and full model names
         for idx, (model_name, model_name_full) in enumerate(zip(self.models, self.models_full), start=1):
             run_config = copy.deepcopy(base_config_dict)
-            run_config['model'] = model_name_full  # Full name for user's task
+            run_config['model'] = model_name  # #17: Stripped name for consistent platform display
+            run_config['model_full'] = model_name_full  # Full name preserved for user's task
 
             run_metadata = dict(self.run_metadata or {})
             run_metadata['model'] = model_name  # Stripped name for display/metadata
@@ -1485,6 +1511,7 @@ class Evaluator:
                 result={
                     "output": output,
                     "scores": scores,
+                    "task_time": task_elapsed_time,  # #18: task-only duration (excludes metric compute)
                 },
             )
 

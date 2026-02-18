@@ -7,6 +7,7 @@ class EvaluatorConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     run_name: Optional[str] = None
+    task_name: Optional[str] = None  # #15: Override the auto-derived task name
     max_concurrency: int = Field(default=10, ge=1)
     timeout: float = Field(default=30.0, gt=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -19,8 +20,6 @@ class EvaluatorConfig(BaseModel):
     langfuse_host: Optional[str] = None
     langfuse_project_id: Optional[str] = None
     
-    # UI settings
-    ui_port: int = 0
     # UI settings
     ui_port: int = 0
     cli_invocation: Optional[str] = None

@@ -35,6 +35,14 @@ router = APIRouter()
 _LANGFUSE_URL_RE = re.compile(r"(https?://[^/]+)/project/([^/]+)")
 
 
+def _strip_model_provider(model_name: str) -> str:
+    """Normalize 'provider/model' -> 'model' for consistent display."""
+    if not model_name:
+        return model_name
+    idx = model_name.find("/")
+    return model_name[idx + 1:] if idx > 0 else model_name
+
+
 def _extract_langfuse_ids(run_metadata: dict) -> tuple[str, str]:
     """Extract (host, project_id) from langfuse_url stored in run metadata.
 
@@ -192,11 +200,19 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
             "comment": approval.comment or "",
         }
 
+    # Derive run_name: prefer run_config.run_name, then external_run_id, then run.id
+    run_name = ""
+    if isinstance(run.run_config, dict):
+        run_name = run.run_config.get("run_name", "")
+    if not run_name:
+        run_name = run.external_run_id or ""
+
     return {
         "run_id": run.id,
+        "run_name": run_name,
         "external_run_id": run.external_run_id or "",
         "task_name": run.task,
-        "model_name": run.model or "",
+        "model_name": _strip_model_provider(run.model or ""),
         "dataset_name": run.dataset,
         "timestamp": _iso(run.started_at or run.created_at),
         "file_path": run.id,  # legacy UI uses file_path as opaque identifier
@@ -215,6 +231,7 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
         "langfuse_dataset_id": run.run_metadata.get("langfuse_dataset_id") if isinstance(run.run_metadata, dict) else None,
         "langfuse_run_id": run.run_metadata.get("langfuse_run_id") if isinstance(run.run_metadata, dict) else None,
         "status": run.status,
+        "run_config": run.run_config if isinstance(run.run_config, dict) else {},
         "owner": owner_info,
         "approval": approval_info,
     }

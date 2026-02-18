@@ -371,6 +371,11 @@ Examples:
         "--model",
         help="Model name or comma-separated list of models to evaluate"
     )
+    parser.add_argument(
+        "--task-name",
+        default=None,
+        help="Override the auto-derived task name for display and file paths"
+    )
     
     # Optional arguments
     parser.add_argument(
@@ -549,6 +554,10 @@ Examples:
             config['ui_port'] = int(args.ui_port)
         except Exception:
             config['ui_port'] = 0
+        # #15: task_name override
+        if args.task_name:
+            config["task_name"] = args.task_name
+
         # Platform preferences
         if args.platform_url:
             config["platform_url"] = args.platform_url

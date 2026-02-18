@@ -643,17 +643,21 @@ class _DashboardObserver(EvaluationObserver):
 
     def on_item_complete(self, **kwargs: Any) -> None:
         item_index = kwargs.get("item_index")
-        elapsed = 0.0
-        if item_index is not None:
+        result = kwargs.get("result") or {}
+
+        # #18: Prefer task-only time (excludes metric computation) from evaluator
+        elapsed = float(result.get("task_time") or 0.0)
+
+        # Fallback: wall-clock from observer start tracking (includes metrics)
+        if elapsed <= 0.0 and item_index is not None:
             start = self._item_starts.pop(item_index, None)
             if start:
                 elapsed = time.time() - start
-        
-        # Fallback if time provided in result (unlikely based on investigation)
-        if elapsed == 0.0:
-            result = kwargs.get("result") or {}
+
+        # Fallback: legacy "time" field
+        if elapsed <= 0.0:
             elapsed = float(result.get("time") or 0.0)
-            
+
         self.dashboard.record_item_complete(self.run_id, elapsed)
 
     def on_item_error(self, **kwargs: Any) -> None:
