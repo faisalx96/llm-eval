@@ -3,19 +3,19 @@
 */
 
 :root {
-  /* Darker, higher contrast palette */
-  --bg-void: #0a0a0f;
-  --bg-base: #0d0d14;
-  --bg-surface: #12121c;
-  --bg-elevated: #181824;
-  --bg-hover: #1e1e2e;
-  --bg-active: #252536;
+  /* Dark palette with better surface separation */
+  --bg-void: #101018;
+  --bg-base: #14141e;
+  --bg-surface: #1a1a28;
+  --bg-elevated: #222232;
+  --bg-hover: #2a2a3c;
+  --bg-active: #323244;
 
-  /* Text hierarchy */
-  --text-primary: #e8e8ed;
-  --text-secondary: #9898a8;
-  --text-muted: #5a5a6e;
-  --text-dim: #3a3a4a;
+  /* Text hierarchy — improved contrast */
+  --text-primary: #ededf0;
+  --text-secondary: #a8a8ba;
+  --text-muted: #7a7a90;
+  --text-dim: #50505e;
 
   /* Accent colors */
   --accent-primary: #00d4aa;
@@ -45,24 +45,24 @@
   --chart-4: #f472b6;
   --chart-5: #fbbf24;
 
-  /* Borders */
-  --border-subtle: #1a1a28;
-  --border-default: #252536;
-  --border-strong: #3a3a4e;
+  /* Borders — more visible */
+  --border-subtle: #252536;
+  --border-default: #333348;
+  --border-strong: #4a4a60;
 
-  /* Spacing */
+  /* Spacing — more breathing room */
   --space-xs: 4px;
   --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 24px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 32px;
 
-  /* Type scale */
-  --font-xs: 10px;
-  --font-sm: 11px;
-  --font-base: 12px;
-  --font-md: 13px;
-  --font-lg: 14px;
+  /* Type scale — bumped for readability */
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-base: 13px;
+  --font-md: 14px;
+  --font-lg: 16px;
 
   /* Mono font for data */
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;

@@ -146,14 +146,11 @@
       margin-bottom: var(--space-xl);
     }
 
-    .comparison-stats h3 {
-      font-size: var(--font-md);
+    .section-title {
+      font-size: var(--font-lg);
       font-weight: 600;
       color: var(--text-primary);
       margin-bottom: var(--space-md);
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
     }
 
     .stats-grid {
@@ -639,10 +636,7 @@
       margin-bottom: var(--space-xl);
     }
 
-    .items-comparison h3 {
-      font-size: var(--font-md);
-      font-weight: 600;
-      color: var(--text-primary);
+    .items-comparison .section-title {
       margin-bottom: var(--space-md);
     }
 
@@ -870,6 +864,8 @@
       background: var(--accent-primary);
       border-color: var(--accent-primary);
       color: var(--bg-void);
+      font-size: var(--font-sm);
+      font-weight: 500;
     }
 
     .fp-btn.fp-export:hover {
@@ -941,7 +937,7 @@
     .items-grid {
       display: flex;
       flex-direction: column;
-      gap: var(--space-md);
+      gap: var(--space-xl);
     }
 
     .item-comparison-row {
@@ -978,6 +974,9 @@
 
     .item-input-row .input-label,
     .item-expected-row .expected-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       font-size: var(--font-xs);
       color: var(--text-muted);
       margin-bottom: 4px;
@@ -1563,25 +1562,46 @@
       transform: scaleY(1.08);
     }
 
-    /* Copy button */
-    .copy-all-btn {
+    /* Copy button — icon only */
+    .copy-btn {
       background: none;
-      border: 1px solid var(--border-default);
-      color: var(--text-muted);
-      border-radius: 4px;
-      padding: 2px 8px;
-      font-size: var(--font-xs);
+      border: none;
       cursor: pointer;
+      padding: 2px;
+      line-height: 1;
+      opacity: 0.4;
       transition: all 0.15s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
     }
-    .copy-all-btn:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-      border-color: var(--accent-primary);
+    .copy-btn svg { width: 14px; height: 14px; }
+    .copy-btn:hover {
+      opacity: 1;
     }
-    .copy-all-btn.copied {
-      color: var(--success);
-      border-color: var(--success);
+    .copy-btn:hover svg { stroke: var(--accent-primary); }
+    .copy-btn.copied svg { stroke: var(--success); }
+    .copy-btn.copied {
+      opacity: 1;
+    }
+    /* Per-field copy on formatted rows */
+    .formatted-row {
+      position: relative;
+    }
+    .formatted-row > .copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 4px;
+      opacity: 0;
+    }
+    .formatted-row:hover > .copy-btn {
+      opacity: 0.4;
+    }
+    .formatted-row:hover > .copy-btn:hover {
+      opacity: 1;
+    }
+    .formatted-row > .copy-btn.copied {
+      opacity: 1;
     }
 
     /* Item metadata display */
@@ -1805,8 +1825,8 @@
       </div>
 
       <!-- Comparison Statistics -->
+      <h3 class="section-title">Comparison Overview</h3>
       <div class="comparison-stats" id="comparison-stats">
-        <h3>Comparison Overview</h3>
         <div class="metric-tabs-row">
           <div class="metric-tabs" id="overview-metric-tabs"></div>
           <div class="threshold-control" id="threshold-control" style="display: none;">
@@ -1820,7 +1840,7 @@
 
       <!-- Side-by-side items -->
       <div class="items-comparison">
-        <h3>Item-by-Item Comparison</h3>
+        <h3 class="section-title">Item-by-Item Comparison</h3>
 
         <div class="filter-panel">
           <div class="fp-filter-row">
@@ -2133,7 +2153,12 @@
           }
         }
         state.allMetadataKeys = Array.from(metaKeySet).sort();
-        state.complexityValues = Array.from(complexitySet).sort();
+        const complexityOrder = ['easy', 'medium', 'hard'];
+        state.complexityValues = Array.from(complexitySet).sort((a, b) => {
+          const ai = complexityOrder.indexOf(a.toLowerCase());
+          const bi = complexityOrder.indexOf(b.toLowerCase());
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        });
         state.domainValues = Array.from(domainSet).sort();
 
         // Initialize visible metadata fields (all on by default)
@@ -2157,23 +2182,30 @@
       }
 
       function populateMetricSelectors() {
-        // Overview metric tabs
+        const singleMetric = state.allMetrics.length <= 1;
+
+        // Overview metric tabs — hide when single metric
         const tabsContainer = el('overview-metric-tabs');
         if (tabsContainer) {
-          tabsContainer.innerHTML = state.allMetrics.map(metric =>
-            `<button class="metric-tab ${metric === state.selectedOverviewMetric ? 'active' : ''}" data-metric="${metric}">${metric}</button>`
-          ).join('');
+          if (singleMetric) {
+            tabsContainer.style.display = 'none';
+          } else {
+            tabsContainer.style.display = '';
+            tabsContainer.innerHTML = state.allMetrics.map(metric =>
+              `<button class="metric-tab ${metric === state.selectedOverviewMetric ? 'active' : ''}" data-metric="${metric}">${metric}</button>`
+            ).join('');
 
-          tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-              state.selectedOverviewMetric = tab.dataset.metric;
-              tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
-              tab.classList.add('active');
-              updateThresholdControl();
-              renderComparisonStats();
-              renderMetadataBreakdown();
+            tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
+              tab.addEventListener('click', () => {
+                state.selectedOverviewMetric = tab.dataset.metric;
+                tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                updateThresholdControl();
+                renderComparisonStats();
+                renderMetadataBreakdown();
+              });
             });
-          });
+          }
         }
 
         // Threshold slider (only for continuous metrics)
@@ -2204,20 +2236,30 @@
         // Initial threshold control visibility
         updateThresholdControl();
 
-        // Items metric selector dropdown
+        // Items metric selector dropdown — hide when single metric
         const itemsMetricSelect = el('items-metric-select');
         if (itemsMetricSelect) {
-          itemsMetricSelect.innerHTML = state.allMetrics.map(metric =>
-            `<option value="${metric}" ${metric === state.selectedItemsMetric ? 'selected' : ''}>${metric}</option>`
-          ).join('');
+          const metricGroup = itemsMetricSelect.closest('.fp-group');
+          if (singleMetric) {
+            if (metricGroup) metricGroup.style.display = 'none';
+          } else {
+            if (metricGroup) metricGroup.style.display = '';
+            itemsMetricSelect.innerHTML = state.allMetrics.map(metric =>
+              `<option value="${metric}" ${metric === state.selectedItemsMetric ? 'selected' : ''}>${metric}</option>`
+            ).join('');
 
-          itemsMetricSelect.addEventListener('change', (e) => {
-            state.selectedItemsMetric = e.target.value;
-            state.page = 1;
-            populateWinnerFilter();
-            renderItems();
-          });
+            itemsMetricSelect.addEventListener('change', (e) => {
+              state.selectedItemsMetric = e.target.value;
+              state.page = 1;
+              populateWinnerFilter();
+              renderItems();
+            });
+          }
         }
+
+        // Metrics Averages table — hide when single metric
+        const metricsSection = document.querySelector('.metrics-comparison');
+        if (metricsSection) metricsSection.style.display = singleMetric ? 'none' : '';
       }
 
       // Show/hide threshold control based on metric type
@@ -2589,7 +2631,6 @@
         if (!existingSection) {
           existingSection = document.createElement('div');
           existingSection.id = 'metadata-breakdown';
-          existingSection.className = 'comparison-stats';
           existingSection.style.marginBottom = 'var(--space-xl)';
           const statsEl = el('comparison-stats');
           if (statsEl && statsEl.parentNode) {
@@ -2604,7 +2645,7 @@
         const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
         const K = state.runs.length;
 
-        let html = '<h3>Performance by Category</h3>';
+        let html = '<h3 class="section-title">Performance by Category</h3><div class="comparison-stats">';
 
         for (const bdKey of breakdownKeys) {
           // Collect per-item-id data grouped by the breakdown key value
@@ -2671,7 +2712,16 @@
             groupStats.push({ groupVal, itemCount: itemIds.length, avgScore, avgLatency, consistency });
           }
 
-          groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
+          if (bdKey === 'complexity') {
+            const cOrder = ['easy', 'medium', 'hard'];
+            groupStats.sort((a, b) => {
+              const ai = cOrder.indexOf(a.groupVal.toLowerCase().trim());
+              const bi = cOrder.indexOf(b.groupVal.toLowerCase().trim());
+              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            });
+          } else {
+            groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
+          }
           if (groupStats.length === 0) continue;
 
           const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
@@ -2712,6 +2762,7 @@
           html += '</div></div>';
         }
 
+        html += '</div>';
         existingSection.innerHTML = html;
       }
 
@@ -3350,7 +3401,7 @@
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges"><button class="copy-all-btn" data-copy-run-output="${escapeAttr(output)}" title="Copy output">Copy</button>${startBadge}${latencyBadge}${traceLink}</span>
+                  <span class="output-badges"><button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
@@ -3422,15 +3473,15 @@
             <div class="item-comparison-row">
               <div class="item-header">
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
-                <button class="copy-all-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields to clipboard">Copy All</button>
+                <button class="copy-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
               </div>
               <div class="item-input-row">
-                <div class="input-label">Input</div>
+                <div class="input-label">Input <button class="copy-btn" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
                 <div class="input-text">${renderMarkdownSafe(input)}</div>
               </div>
               ${expected ? `
               <div class="item-expected-row">
-                <div class="expected-label">Expected Output</div>
+                <div class="expected-label">Expected Output <button class="copy-btn" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
                 <div class="expected-text">${renderMarkdownSafe(expected)}</div>
               </div>` : ''}
               ${itemMetadataHtml}
@@ -3460,38 +3511,39 @@
         wireMetricEditHandlers();
         alignOutputHeights();
 
-        // #16: Wire copy-all buttons (per item)
-        container.querySelectorAll('.copy-all-btn[data-item-id]').forEach(btn => {
+        // #16: Wire copy-all buttons (per item — header icon)
+        container.querySelectorAll('.copy-btn[data-item-id]').forEach(btn => {
           btn.addEventListener('click', () => {
             const id = btn.dataset.itemId;
             const item = getFilteredItems().find(it => it.itemId === id);
             if (!item) return;
             const inputRow = item.rowData.find(r => r);
             const parts = [];
-            parts.push('Input: ' + String(inputRow?.input_full || inputRow?.input || ''));
+            const inp = inputRow?.input_full || inputRow?.input || '';
+            parts.push('Input: ' + (typeof inp === 'object' ? JSON.stringify(inp, null, 2) : String(inp)));
             const exp = inputRow?.expected_full || inputRow?.expected || '';
-            if (exp) parts.push('Expected: ' + String(exp));
+            if (exp) parts.push('Expected: ' + (typeof exp === 'object' ? JSON.stringify(exp, null, 2) : String(exp)));
             item.rowData.forEach((rd, ri) => {
               const rName = state.runs[ri]?.run?.run_name || `Run ${ri + 1}`;
               const out = rd?.output_full || rd?.output || '';
-              parts.push(`${rName} Output: ${out}`);
+              parts.push(`${rName} Output: ${typeof out === 'object' ? JSON.stringify(out, null, 2) : String(out)}`);
             });
             navigator.clipboard.writeText(parts.join('\n\n')).then(() => {
-              btn.textContent = 'Copied!';
+              btn.innerHTML = CHECK_ICON;
               btn.classList.add('copied');
-              setTimeout(() => { btn.textContent = 'Copy All'; btn.classList.remove('copied'); }, 1500);
+              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
             });
           });
         });
 
-        // #16: Wire per-run copy buttons
-        container.querySelectorAll('.copy-all-btn[data-copy-run-output]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const text = btn.dataset.copyRunOutput;
-            navigator.clipboard.writeText(text).then(() => {
-              btn.textContent = 'Copied!';
+        // #16: Wire all data-copy-text buttons (input, expected, output, per-field)
+        container.querySelectorAll('.copy-btn[data-copy-text]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(btn.dataset.copyText).then(() => {
+              btn.innerHTML = CHECK_ICON;
               btn.classList.add('copied');
-              setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
             });
           });
         });
@@ -3533,6 +3585,9 @@
         div.textContent = text || '';
         return div.innerHTML;
       }
+      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#9898a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
       function escapeAttr(text) {
         return String(text ?? '')
           .replace(/&/g, '&amp;')
@@ -3917,7 +3972,8 @@
           } else {
             formattedVal = escapeHtml(String(val));
           }
-          return `<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}</div>`;
+          const copyVal = String(val ?? '');
+          return `<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}<button class="copy-btn" data-copy-text="${escapeAttr(copyVal)}" title="Copy ${escapeHtml(key)}">${COPY_ICON}</button></div>`;
         }).join('');
 
         return `<div class="formatted-object">${rows}</div>`;
