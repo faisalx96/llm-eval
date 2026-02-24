@@ -108,6 +108,7 @@ class RunDashboard:
         self._auto_refresh_stop: Optional[threading.Event] = None
         self._auto_refresh_thread: Optional[threading.Thread] = None
         self._last_refresh_time: float = 0.0  # PERF: Track last refresh for debouncing
+        self._warnings: List[str] = []
 
         for entry in runs:
             run_id = entry.get("run_id")
@@ -133,6 +134,12 @@ class RunDashboard:
 
     def create_observer(self, run_id: str) -> EvaluationObserver:
         return _DashboardObserver(self, run_id)
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning to the TUI. Deduplicated by message text."""
+        if message not in self._warnings:
+            self._warnings.append(message)
+            self.refresh()
 
     def initialize_run(
         self,
@@ -273,11 +280,21 @@ class RunDashboard:
         self._auto_refresh_thread = None
 
     def render(self) -> RenderableType:
-        return Group(
-            self._render_header(),
-            self._render_main(),
-            self._render_footer(),
-        )
+        parts: List[RenderableType] = [self._render_header()]
+        if self._warnings:
+            parts.append(self._render_warnings())
+        parts.append(self._render_main())
+        parts.append(self._render_footer())
+        return Group(*parts)
+
+    def _render_warnings(self) -> RenderableType:
+        lines = Text()
+        for i, msg in enumerate(self._warnings):
+            if i > 0:
+                lines.append("\n")
+            lines.append("⚠ ", style="bold yellow")
+            lines.append(msg, style="yellow")
+        return Panel(lines, border_style="yellow", box=box.ROUNDED, padding=(0, 1))
 
     def _render_header(self) -> RenderableType:
         # Calculate global stats
@@ -663,6 +680,11 @@ class _DashboardObserver(EvaluationObserver):
     def on_item_error(self, **kwargs: Any) -> None:
         error = kwargs.get("error", "error")
         self.dashboard.record_item_error(self.run_id, str(error))
+
+    def on_warning(self, **kwargs: Any) -> None:
+        message = kwargs.get("message", "")
+        if message:
+            self.dashboard.add_warning(message)
 
     def on_run_complete(self, **kwargs: Any) -> None:
         self.dashboard.mark_run_complete(self.run_id)

@@ -35,6 +35,17 @@ router = APIRouter()
 _LANGFUSE_URL_RE = re.compile(r"(https?://[^/]+)/project/([^/]+)")
 
 
+def _stringify(val: Any) -> str:
+    """Convert a value to a display string; dicts/lists become pretty JSON."""
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (dict, list)):
+        return json.dumps(val, indent=2, ensure_ascii=False)
+    return str(val)
+
+
 def _strip_model_provider(model_name: str) -> str:
     """Normalize 'provider/model' -> 'model' for consistent display."""
     if not model_name:
@@ -519,12 +530,12 @@ def legacy_run_data(
                 "index": it.index,
                 "item_id": it.item_id,
                 "status": status,
-                "input": it.input,
-                "input_full": it.input,
-                "output": it.output if not is_error else f"ERROR: {it.error}",
-                "output_full": it.output if not is_error else f"ERROR: {it.error}",
-                "expected": it.expected,
-                "expected_full": it.expected,
+                "input": _stringify(it.input),
+                "input_full": _stringify(it.input),
+                "output": _stringify(it.output) if not is_error else f"ERROR: {it.error}",
+                "output_full": _stringify(it.output) if not is_error else f"ERROR: {it.error}",
+                "expected": _stringify(it.expected),
+                "expected_full": _stringify(it.expected),
                 "time": "" if it.latency_ms is None else f"{(it.latency_ms or 0)/1000.0:.3f}",
                 "latency_ms": it.latency_ms or 0,
                 "trace_id": it.trace_id or "",

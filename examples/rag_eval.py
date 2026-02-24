@@ -19,7 +19,7 @@ import os
 from dotenv import load_dotenv
 from qym import Evaluator
 from typing import Optional
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
 load_dotenv()
 
@@ -87,12 +87,51 @@ Answer:"""
     return response.choices[0].message.content.strip()
 
 
+judge_client = AsyncOpenAI(
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1"
+)
+
+async def llm_judge(output, expected, input_data):
+    """LLM-as-judge metric: scores answer quality on a 0-1 scale."""
+    question = input_data.get("question", "") if isinstance(input_data, dict) else str(input_data)
+    context = input_data.get("context", "") if isinstance(input_data, dict) else ""
+
+    prompt = f"""You are an expert evaluator for a RAG system. Score the answer on a scale of 0 to 1.
+
+Question: {question}
+Context: {context}
+Expected Answer: {expected}
+Actual Answer: {output}
+
+Evaluate based on:
+1. Correctness: Does the answer match the expected answer in meaning?
+2. Completeness: Does it cover all key points?
+3. Faithfulness: Is it grounded in the provided context?
+
+Respond with ONLY a JSON object: {{"score": <float 0-1>, "reason": "<brief explanation>"}}"""
+
+    response = await judge_client.chat.completions.create(
+        model="openai/gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        max_tokens=150,
+    )
+
+    import json
+    try:
+        result = json.loads(response.choices[0].message.content.strip())
+        return {"score": float(result["score"]), "metadata": {"reason": result.get("reason", "")}}
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return {"score": 0.5, "metadata": {"reason": "Failed to parse judge response"}}
+
+
 def main():
     evaluator = Evaluator(
         task=rag_qa_task,
         dataset="ragbench-100",
-        metrics=["correctness", "faithfulness"],  # Use metrics by name from registry
-        model=["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.6"],
+        metrics=["correctness", "faithfulness", llm_judge],
+        model=["qwen/qwen3-coder-next"], #["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.6"],
         # model=["qwen/qwen3-235b-a22b-2507"]*2,
         # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={

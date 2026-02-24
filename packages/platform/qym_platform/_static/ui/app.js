@@ -59,6 +59,14 @@
     return `${s}s`;
   };
 
+  // Convert any value to a display string (handles objects/arrays that would show as [object Object])
+  const toStr = (v) => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') return JSON.stringify(v, null, 2);
+    return String(v);
+  };
+
   // Best-effort metric name discovery from a snapshot
   function deriveMetricNamesFromSnapshot(snap){
     try {
@@ -120,9 +128,9 @@
     let rows = Array.isArray(state.snapshot.rows) ? state.snapshot.rows.slice() : [];
     if (q) {
       rows = rows.filter(r =>
-        (r.input_full || '').toLowerCase().includes(q) ||
-        (r.output_full || '').toLowerCase().includes(q) ||
-        (r.expected_full || '').toLowerCase().includes(q)
+        toStr(r.input_full || r.input).toLowerCase().includes(q) ||
+        toStr(r.output_full || r.output).toLowerCase().includes(q) ||
+        toStr(r.expected_full || r.expected).toLowerCase().includes(q)
       );
     }
     if (status !== 'all') {
@@ -463,9 +471,9 @@
       const tds = visible.map(c => {
         if (c.key==='index') return `<td>${(r.index||0)+1}</td>`;
         if (c.key==='status') return `<td><span class="badge ${st}">${st.replace('_',' ')}</span></td>`;
-        if (c.key==='input') return `<td class="ellipsis" title="${r.input_full||''}">${r.input||''}</td>`;
-        if (c.key==='output') return `<td class="ellipsis" title="${r.output_full||''}">${r.output||''}</td>`;
-        if (c.key==='expected') return `<td class="ellipsis" title="${r.expected_full||''}">${r.expected||''}</td>`;
+        if (c.key==='input') return `<td class="ellipsis" title="${toStr(r.input_full||r.input)}">${toStr(r.input)}</td>`;
+        if (c.key==='output') return `<td class="ellipsis" title="${toStr(r.output_full||r.output)}">${toStr(r.output)}</td>`;
+        if (c.key==='expected') return `<td class="ellipsis" title="${toStr(r.expected_full||r.expected)}">${toStr(r.expected)}</td>`;
         if (c.key==='time') return `<td>${r.time||''}</td>`;
         if (c.key.startsWith('metric:')) {
           const parts = c.key.split(':');
@@ -599,15 +607,15 @@
     qs('#drawer-title').textContent = `Row ${(Number(row.index)||0)+1}`;
     const $in = el('drawer-input'), $out = el('drawer-output'), $exp = el('drawer-expected');
     const setRaw = () => {
-      $in.textContent = stripMarkup(row.input_full || row.input || '');
+      $in.textContent = stripMarkup(toStr(row.input_full || row.input));
       $out.classList.remove('diff');
       $exp.classList.remove('diff');
-      $out.textContent = stripMarkup(row.output_full || row.output || '');
-      $exp.textContent = stripMarkup(row.expected_full || row.expected || '');
+      $out.textContent = stripMarkup(toStr(row.output_full || row.output));
+      $exp.textContent = stripMarkup(toStr(row.expected_full || row.expected));
     };
     const setDiff = () => {
-      const d = diffWords(row.output_full || row.output || '', row.expected_full || row.expected || '');
-      $in.textContent = stripMarkup(row.input_full || row.input || '');
+      const d = diffWords(toStr(row.output_full || row.output), toStr(row.expected_full || row.expected));
+      $in.textContent = stripMarkup(toStr(row.input_full || row.input));
       $out.innerHTML = d.a; $out.classList.add('diff');
       $exp.innerHTML = d.b; $exp.classList.add('diff');
     };
@@ -631,9 +639,9 @@
         setTimeout(()=>{ b.textContent = prev; }, 900);
       };
     }
-    wireCopy('copy-input', () => stripMarkup(row.input_full || row.input || ''));
-    wireCopy('copy-output', () => stripMarkup(row.output_full || row.output || ''));
-    wireCopy('copy-expected', () => stripMarkup(row.expected_full || row.expected || ''));
+    wireCopy('copy-input', () => stripMarkup(toStr(row.input_full || row.input)));
+    wireCopy('copy-output', () => stripMarkup(toStr(row.output_full || row.output)));
+    wireCopy('copy-expected', () => stripMarkup(toStr(row.expected_full || row.expected)));
     wireCopy('copy-trace', () => {
       const tid = row.trace_id || '';
       let turl = row.trace_url || '';
@@ -793,9 +801,9 @@
         const cells = cols.map(c => {
           if (c.key==='index') return (Number(r.index)||0)+1;
           if (c.key==='status') return r.status||'';
-          if (c.key==='input') return r.input_full || r.input || '';
-          if (c.key==='output') return r.output_full || r.output || '';
-          if (c.key==='expected') return r.expected_full || r.expected || '';
+          if (c.key==='input') return toStr(r.input_full || r.input);
+          if (c.key==='output') return toStr(r.output_full || r.output);
+          if (c.key==='expected') return toStr(r.expected_full || r.expected);
           if (c.key==='time') return r.time || (r.latency_ms!=null? `${r.latency_ms}ms` : '');
           if (c.key.startsWith('metric:')) {
             const parts = c.key.split(':');

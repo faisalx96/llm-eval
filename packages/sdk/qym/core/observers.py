@@ -51,6 +51,13 @@ class EvaluationObserver:
     ) -> None:
         """Called when an item fails."""
 
+    def on_warning(
+        self,
+        run_id: str,
+        message: str,
+    ) -> None:
+        """Called when a performance warning is detected."""
+
     def on_run_complete(
         self,
         run_id: str,
@@ -102,6 +109,9 @@ class CompositeEvaluationObserver(EvaluationObserver):
 
     def on_item_error(self, **kwargs: Any) -> None:
         self._call("on_item_error", **kwargs)
+
+    def on_warning(self, **kwargs: Any) -> None:
+        self._call("on_warning", **kwargs)
 
     def on_run_complete(self, **kwargs: Any) -> None:
         self._call("on_run_complete", **kwargs)

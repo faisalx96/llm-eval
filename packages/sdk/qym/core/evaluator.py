@@ -121,7 +121,11 @@ class Evaluator:
     """
     Simple evaluator for LLM tasks using Langfuse datasets.
     """
-    
+
+    # One-shot probe: track async metric functions already checked for blocking.
+    _metric_blocking_probed: Set[int] = set()
+    _metric_blocking_warned: Set[int] = set()
+
     def __init__(
         self,
         task: Any,
@@ -183,9 +187,13 @@ class Evaluator:
         
         # Prepare task adapter
         self.task_adapter = auto_detect_task(task, self.client)
-        
+        self.task_adapter._warning_callback = lambda msg: self._notify_observer(
+            "on_warning", message=msg,
+        )
+
         # Configuration shortcuts
         self.max_concurrency = self.config.max_concurrency
+        self.max_metric_concurrency = self.config.max_metric_concurrency
         self.timeout = self.config.timeout
 
         # Model handling - strip provider prefix once, keep full name for user's task
@@ -351,6 +359,7 @@ class Evaluator:
             "run_name": self.run_name,
             "config": {
                 "max_concurrency": self.max_concurrency,
+                "max_metric_concurrency": self.max_metric_concurrency,
                 "timeout": self.timeout,
                 "run_metadata": self.run_metadata,
             },
@@ -598,6 +607,7 @@ class Evaluator:
             run_metadata=self.run_metadata.copy(),
             run_config={
                 "max_concurrency": self.max_concurrency,
+                "max_metric_concurrency": self.max_metric_concurrency,
                 "timeout": self.timeout,
                 "user_provided_run_name": bool(self.config.run_name),
             }
@@ -651,10 +661,11 @@ class Evaluator:
                 run_metadata=start_metadata,
                 run_config={
                     "max_concurrency": self.max_concurrency,
+                    "max_metric_concurrency": self.max_metric_concurrency,
                     "timeout": self.timeout,
                     "run_name": self.run_name,
                     "task_name": self._task_name,
-                    "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                    "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
                 },
             )
             html_url = handle.live_url
@@ -673,10 +684,11 @@ class Evaluator:
                         "run_metadata": dict(self.run_metadata or {}),
                         "run_config": {
                             "max_concurrency": self.max_concurrency,
+                            "max_metric_concurrency": self.max_metric_concurrency,
                             "timeout": self.timeout,
                             "run_name": self.run_name,
                             "task_name": self._task_name,
-                            "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                            "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
                         },
                         "started_at": _utc_now_str(),
                     },
@@ -700,6 +712,7 @@ class Evaluator:
                     "model": self.model_name,
                     "config": {
                         "max_concurrency": self.max_concurrency,
+                        "max_metric_concurrency": self.max_metric_concurrency,
                         "timeout": self.timeout,
                         "run_metadata": self.run_metadata,
                     },
@@ -874,7 +887,7 @@ class Evaluator:
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
                             trace_id="",
                             item_id=item_id,
                             item_input=item.input,
@@ -898,7 +911,7 @@ class Evaluator:
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("_trace_id") or "",
                             item_id=item_id,
                             item_input=item.input,
@@ -924,7 +937,7 @@ class Evaluator:
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "timeout": self.timeout},
+                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
                             trace_id=eval_result.get("trace_id") or "",
                             item_id=item_id,
                             item_input=item.input,
@@ -1314,8 +1327,15 @@ class Evaluator:
             # Create parent span for all metrics evaluation
             eval_metrics_span = span.start_span(name="eval_metrics")
 
-            for m_name, m_func in self.metrics.items():
-                # Create child span for this metric
+            # Bound concurrent metrics per item to avoid executor/API burst.
+            _metric_sem = asyncio.Semaphore(self.max_metric_concurrency)
+
+            async def _run_metric(m_name: str, m_func: Callable) -> Tuple[str, Any]:
+                """Run a single metric with its full span lifecycle."""
+                async with _metric_sem:
+                    return await _run_metric_inner(m_name, m_func)
+
+            async def _run_metric_inner(m_name: str, m_func: Callable) -> Tuple[str, Any]:
                 metric_span = eval_metrics_span.start_span(
                     name=f"metric_{m_name}",
                     input={"output": output, "expected": expected_output}
@@ -1323,11 +1343,64 @@ class Evaluator:
                 try:
                     # Compute metric (async or sync)
                     if asyncio.iscoroutinefunction(m_func):
-                        score = await self._compute_metric(
-                            m_func, output,
-                            expected_output,
-                            item.input
-                        )
+                        func_id = id(m_func)
+                        should_probe = func_id not in Evaluator._metric_blocking_probed
+
+                        if not should_probe:
+                            score = await self._compute_metric(
+                                m_func, output,
+                                expected_output,
+                                item.input
+                            )
+                        else:
+                            # One-shot heartbeat probe for this metric function.
+                            Evaluator._metric_blocking_probed.add(func_id)
+                            _hb_ticks = 0
+                            _hb_stop = False
+
+                            async def _hb():
+                                nonlocal _hb_ticks
+                                while not _hb_stop:
+                                    await asyncio.sleep(0.1)
+                                    _hb_ticks += 1
+
+                            hb_task = asyncio.create_task(_hb())
+                            _t0 = time.monotonic()
+                            try:
+                                score = await self._compute_metric(
+                                    m_func, output,
+                                    expected_output,
+                                    item.input
+                                )
+                            finally:
+                                _hb_stop = True
+                                _elapsed = time.monotonic() - _t0
+                                hb_task.cancel()
+                                try:
+                                    await hb_task
+                                except asyncio.CancelledError:
+                                    pass
+
+                                if _elapsed > 1.0 and _hb_ticks < 2:
+                                    if func_id not in Evaluator._metric_blocking_warned:
+                                        Evaluator._metric_blocking_warned.add(func_id)
+                                        _fname = getattr(m_func, '__name__', m_name)
+                                        warning_msg = (
+                                            f"Async metric '{_fname}' appears to block "
+                                            f"the event loop ({_elapsed:.1f}s elapsed, "
+                                            f"{_hb_ticks} event-loop ticks). Common "
+                                            f"causes: using OpenAI() instead of "
+                                            f"AsyncOpenAI(), requests.get(), or "
+                                            f"synchronous DB calls inside an async def. "
+                                            f"Fix: remove 'async' from your metric "
+                                            f"function so qym runs it in a thread pool "
+                                            f"automatically, or switch to async I/O "
+                                            f"(e.g. httpx, aiohttp, AsyncOpenAI)."
+                                        )
+                                        logger.warning(warning_msg)
+                                        self._notify_observer(
+                                            "on_warning", message=warning_msg,
+                                        )
                     else:
                         # Run sync metrics in thread pool to avoid blocking
                         score = await asyncio.to_thread(
@@ -1355,8 +1428,6 @@ class Evaluator:
                         )
                     except Exception:
                         pass
-
-                    scores[m_name] = score
 
                     # Platform: metric scored
                     try:
@@ -1386,13 +1457,23 @@ class Evaluator:
                             )
                     except Exception:
                         pass
+
+                    return m_name, score
                 except Exception as e:
                     logger.error(f"Metric {m_name} failed: {e}")
                     error_tb = traceback.format_exc()
-                    scores[m_name] = {"score": 0, "error": error_tb}
                     # Update metric span with error
                     metric_span.update(output={"error": error_tb}, level="ERROR")
                     metric_span.end()
+                    return m_name, {"score": 0, "error": error_tb}
+
+            # Run all metrics concurrently — LLM-judge metrics benefit most
+            # since their I/O waits overlap instead of serializing.
+            metric_results = await asyncio.gather(*[
+                _run_metric(m_name, m_func)
+                for m_name, m_func in self.metrics.items()
+            ])
+            scores = dict(metric_results)
 
             # End the eval_metrics parent span
             eval_metrics_span.end()

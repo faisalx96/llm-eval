@@ -2,9 +2,13 @@
 
 import asyncio
 import inspect
+import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Callable, Dict, Tuple, List
 from langfuse import Langfuse
+
+logger = logging.getLogger(__name__)
 
 
 class TaskAdapter(ABC):
@@ -13,6 +17,7 @@ class TaskAdapter(ABC):
     def __init__(self, task: Any, client: Optional[Langfuse]):
         self.task = task
         self.client = client
+        self._warning_callback: Optional[Callable[[str], None]] = None
     
     @abstractmethod
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
@@ -27,9 +32,20 @@ class TaskAdapter(ABC):
 class FunctionAdapter(TaskAdapter):
     """Adapter for regular Python functions with smart argument resolution."""
 
+    # Class-level set to avoid spamming the same warning for the same function.
+    _blocking_warned: set = set()
+
+    # Probe the first N calls, then re-probe every Nth call after that.
+    # This catches late-onset blocking (connection pool exhaustion, cache
+    # expiry) while keeping steady-state overhead near zero.
+    _PROBE_INITIAL = 3
+    _PROBE_INTERVAL = 50
+
     def __init__(self, task: Any, client: Langfuse):
         super().__init__(task, client)
         self._is_async = inspect.iscoroutinefunction(self.task)
+        self._call_count = 0
+        self._clean_streak = 0  # consecutive clean probes
         self.sig = inspect.signature(self.task)
         
         # Analyze parameters
@@ -151,9 +167,67 @@ class FunctionAdapter(TaskAdapter):
 
         loop = asyncio.get_event_loop()
         try:
-            # Check if function is async
             if self._is_async:
-                output = await self.task(*args, **kwargs)
+                self._call_count += 1
+                # Probe during initial calls, then periodically after that.
+                should_probe = (
+                    self._clean_streak < self._PROBE_INITIAL
+                    or (self._call_count % self._PROBE_INTERVAL) == 0
+                )
+                if not should_probe:
+                    output = await self.task(*args, **kwargs)
+                else:
+                    # Heartbeat-based blocking detection.  A lightweight
+                    # coroutine ticks every 0.1s.  If the user's function
+                    # blocks the event loop (e.g. requests.get inside async
+                    # def), the heartbeat can't tick and we emit a warning.
+                    _hb_ticks = 0
+                    _hb_stop = False
+
+                    async def _heartbeat():
+                        nonlocal _hb_ticks
+                        while not _hb_stop:
+                            await asyncio.sleep(0.1)
+                            _hb_ticks += 1
+
+                    hb_task = asyncio.create_task(_heartbeat())
+                    start = time.monotonic()
+                    try:
+                        output = await self.task(*args, **kwargs)
+                    finally:
+                        _hb_stop = True
+                        elapsed = time.monotonic() - start
+                        hb_task.cancel()
+                        try:
+                            await hb_task
+                        except asyncio.CancelledError:
+                            pass
+
+                        if elapsed > 1.0 and _hb_ticks < 2:
+                            # Blocking detected — warn once per function.
+                            func_id = id(self.task)
+                            if func_id not in FunctionAdapter._blocking_warned:
+                                FunctionAdapter._blocking_warned.add(func_id)
+                                func_name = getattr(self.task, '__name__', '<unknown>')
+                                warning_msg = (
+                                    f"Async task '{func_name}' appears to block the "
+                                    f"event loop ({elapsed:.1f}s elapsed, {_hb_ticks} "
+                                    f"event-loop ticks). Common causes: using OpenAI() "
+                                    f"instead of AsyncOpenAI(), requests.get(), or "
+                                    f"synchronous DB calls inside an async def. "
+                                    f"Fix: remove 'async' from your function definition "
+                                    f"so qym runs it in a thread pool automatically, "
+                                    f"or switch to async I/O (e.g. httpx, aiohttp, "
+                                    f"AsyncOpenAI)."
+                                )
+                                logger.warning(warning_msg)
+                                if self._warning_callback:
+                                    self._warning_callback(warning_msg)
+                            # Reset streak so we keep probing on every call
+                            # until the function stops blocking.
+                            self._clean_streak = 0
+                        else:
+                            self._clean_streak += 1
             else:
                 # Run sync function in thread pool to avoid blocking
                 output = await loop.run_in_executor(None, lambda: self.task(*args, **kwargs))
