@@ -99,8 +99,8 @@ function calculateItemLevelMetrics(options) {
     passAtK: 0,
     passHatK: 0,
     maxAtK: 0,
-    consistency: 0,
-    reliability: 0,
+    consistency: null,
+    reliability: null,
     avgScore: 0,
     avgLatency: 0,
     totalItems: 0,
@@ -232,10 +232,10 @@ function calculateItemLevelMetrics(options) {
   result.passAtK = itemsWithData > 0 ? passAtKCount / itemsWithData : 0;
   result.passHatK = itemsWithData > 0 ? passHatKCount / itemsWithData : 0;
   result.maxAtK = itemsWithData > 0 ? maxScoreSum / itemsWithData : 0;
-  // Consistency = average of per-item binary agreement scores
-  result.consistency = itemsWithMultipleRuns > 0 ? totalConsistencySum / itemsWithMultipleRuns : 0;
-  // Reliability = average pass rate for items that CAN be solved (at least one pass)
-  result.reliability = itemsWithAtLeastOnePass > 0 ? totalReliabilitySum / itemsWithAtLeastOnePass : 0;
+  // Consistency = average of per-item binary agreement scores (requires K > 1)
+  result.consistency = itemsWithMultipleRuns > 0 ? totalConsistencySum / itemsWithMultipleRuns : null;
+  // Reliability = average pass rate for items that CAN be solved (requires K > 1)
+  result.reliability = itemsWithAtLeastOnePass > 0 ? totalReliabilitySum / itemsWithAtLeastOnePass : null;
   result.avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
   result.avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
   result.totalScoreSum = totalScoreSum;

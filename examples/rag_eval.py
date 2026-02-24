@@ -92,7 +92,7 @@ def main():
         task=rag_qa_task,
         dataset="ragbench-100",
         metrics=["correctness", "faithfulness"],  # Use metrics by name from registry
-        model=["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b"],
+        model=["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.6"],
         # model=["qwen/qwen3-235b-a22b-2507"]*2,
         # model=[ "qwen/qwen3-235b-a22b-2507",  "qwen/qwen3-235b-a22b-2507"],
         config={

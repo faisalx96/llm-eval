@@ -2859,12 +2859,16 @@
 
             <div class="stat-box">
               <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
-              <div class="stat-main ${scoreColorClass(stats.itemsWithMultipleRuns > 0 ? stats.totalConsistencySum / stats.itemsWithMultipleRuns : 0)}">${formatPercent(stats.itemsWithMultipleRuns > 0 ? stats.totalConsistencySum / stats.itemsWithMultipleRuns : 0)}</div>
+              ${stats.itemsWithMultipleRuns > 0
+                ? `<div class="stat-main ${scoreColorClass(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}">${formatPercent(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}</div>`
+                : `<div class="stat-main">NA</div>`}
             </div>
 
             <div class="stat-box">
               <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
-              <div class="stat-main ${scoreColorClass(stats.itemsWithAtLeastOnePass > 0 ? stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass : 0)}">${formatPercent(stats.itemsWithAtLeastOnePass > 0 ? stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass : 0)}</div>
+              ${stats.itemsWithAtLeastOnePass > 0
+                ? `<div class="stat-main ${scoreColorClass(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}">${formatPercent(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}</div>`
+                : `<div class="stat-main">NA</div>`}
             </div>
 
             <div class="stat-box">

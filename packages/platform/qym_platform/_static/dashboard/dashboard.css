@@ -1511,6 +1511,11 @@ main {
   outline-offset: -1px;
 }
 
+/* Group header row in Runs view */
+.runs-table tbody tr.run-group-header td {
+  border-top: 1.5px solid var(--border-strong);
+}
+
 /* Column-specific styles */
 .col-select {
   width: 40px;

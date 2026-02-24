@@ -433,7 +433,11 @@
       runs = runs.filter(r => r.task_name === state.filterTask);
     }
     if (state.filterModels.size > 0) {
-      runs = runs.filter(r => state.filterModels.has(r.model_name));
+      if (state.filterModels.has('__none__')) {
+        runs = [];
+      } else {
+        runs = runs.filter(r => state.filterModels.has(r.model_name));
+      }
     }
     if (state.filterDataset) {
       runs = runs.filter(r => r.dataset_name === state.filterDataset);
@@ -1011,7 +1015,7 @@
         const memberFilePaths = members.map(m => m.run.file_path);
 
         groupHeaderHtml = `<tr class="run-group-header" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
-          <td colspan="${colCount}" style="padding:6px 12px;background:var(--bg-elevated);border-bottom:1px solid var(--border-strong);cursor:pointer;user-select:none;">
+          <td colspan="${colCount}" style="padding:6px 12px;background:var(--bg-elevated);cursor:pointer;user-select:none;">
             <span class="group-toggle-arrow" style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;margin-right:4px;">${arrow}</span>
             <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
             <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
@@ -1412,9 +1416,29 @@
     const filtered = state.filteredRuns.length;
     const selected = state.selectedRuns.size;
 
+    const hasFilters = state.searchQuery
+      || state.quickFilter !== 'all'
+      || state.filterTask
+      || (state.filterModels.size > 0)
+      || state.filterDataset
+      || state.filterPublishStatus;
+
     let filterText = 'Showing all runs';
-    if (state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus) {
-      filterText = `Showing ${filtered} of ${total} runs`;
+    if (hasFilters) {
+      const parts = [];
+      if (state.filterTask) parts.push(`task: ${state.filterTask}`);
+      if (state.filterDataset) parts.push(`dataset: ${state.filterDataset}`);
+      if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
+        const names = [...state.filterModels].map(m => m.length > 20 ? m.slice(0, 20) + '…' : m);
+        parts.push(`model: ${names.join(', ')}`);
+      } else if (state.filterModels.has('__none__')) {
+        parts.push('model: none');
+      }
+      if (state.filterPublishStatus) parts.push(`status: ${state.filterPublishStatus}`);
+      if (state.quickFilter === 'today') parts.push('today');
+      if (state.quickFilter === 'week') parts.push('last 7d');
+      if (state.searchQuery) parts.push(`"${state.searchQuery}"`);
+      filterText = `Showing ${filtered} of ${total} runs` + (parts.length > 0 ? ` — ${parts.join(', ')}` : '');
     }
 
     el('status-filter').textContent = filterText;
@@ -1895,11 +1919,11 @@
           <div class="model-stats-row">
             <div class="model-stat-box">
               <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
-              <div class="stat-main ${getSuccessClass(stats.consistency)}">${formatPercent(stats.consistency)}</div>
+              <div class="stat-main ${stats.consistency !== null ? getSuccessClass(stats.consistency) : ''}">${stats.consistency !== null ? formatPercent(stats.consistency) : 'NA'}</div>
             </div>
             <div class="model-stat-box">
               <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
-              <div class="stat-main ${getSuccessClass(stats.reliability)}">${formatPercent(stats.reliability)}</div>
+              <div class="stat-main ${stats.reliability !== null ? getSuccessClass(stats.reliability) : ''}">${stats.reliability !== null ? formatPercent(stats.reliability) : 'NA'}</div>
             </div>
             <div class="model-stat-box">
               <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
