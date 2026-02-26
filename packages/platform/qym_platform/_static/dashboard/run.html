@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Run Detail</title>
+  <link rel="icon" type="image/png" href="../static/qym_icon.png">
+  <link rel="stylesheet" href="../static/dashboard.css">
+  <script src="../static/metrics.js"></script>
+  <style>
+    .run-container {
+      padding: var(--space-lg);
+      overflow-y: auto;
+      height: calc(100vh - 100px);
+    }
+    .run-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-lg);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--border-default);
+    }
+    .run-title {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .run-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .back-link {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-size: var(--font-sm);
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    /* Summary card */
+    .run-summary {
+      margin-bottom: var(--space-xl);
+    }
+    .run-summary-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+    }
+    .run-summary-card .run-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+    .run-summary-card .run-name {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      color: var(--text-primary);
+      word-break: break-all;
+    }
+    .run-summary-card .run-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+    .run-summary-card .stats-row {
+      display: flex;
+      justify-content: space-between;
+      padding: var(--space-xs) 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .run-summary-card .stats-row:last-child { border-bottom: none; }
+    .run-summary-card .stat-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .run-summary-card .stat-val {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+    }
+    .run-summary-card .stat-val.score-5 { color: var(--score-5); }
+    .run-summary-card .stat-val.score-4 { color: var(--score-4); }
+    .run-summary-card .stat-val.score-3 { color: var(--score-3); }
+    .run-summary-card .stat-val.score-2 { color: var(--score-2); }
+    .run-summary-card .stat-val.score-1 { color: var(--score-1); }
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .config-item {
+      font-size: var(--font-sm);
+    }
+    .config-key {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .config-val {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+
+    /* Stats section */
+    .comparison-stats {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-xl);
+    }
+    .section-title {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-md);
+    }
+    .stats-grid {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+    .stats-row-flex {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .stat-box {
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      flex: 1;
+      min-width: 120px;
+    }
+    .stat-box.wide {
+      flex: 100%;
+      padding: var(--space-md);
+    }
+    .stat-box .stat-title {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat-info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      color: var(--bg-primary);
+      font-size: 10px;
+      font-weight: 700;
+      font-style: italic;
+      font-family: Georgia, serif;
+      cursor: help;
+      position: relative;
+      text-transform: lowercase;
+      flex-shrink: 0;
+    }
+    .stat-info-icon:hover {
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      transform: scale(1.1);
+    }
+    .stat-info-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 10px 12px;
+      width: 240px;
+      font-size: var(--font-sm);
+      font-weight: 400;
+      font-style: normal;
+      font-family: var(--font-sans);
+      color: var(--text-secondary);
+      text-transform: none;
+      letter-spacing: normal;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 1000;
+      text-align: left;
+    }
+    .stat-info-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 12px;
+      border: 6px solid transparent;
+      border-top-color: var(--border-default);
+    }
+    .stat-info-icon:hover .stat-info-tooltip { display: block; }
+    .stat-box .stat-main {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .stat-box.wide .stat-main { font-size: var(--font-lg); }
+    .stat-box .stat-main.score-5 { color: var(--score-5); }
+    .stat-box .stat-main.score-4 { color: var(--score-4); }
+    .stat-box .stat-main.score-3 { color: var(--score-3); }
+    .stat-box .stat-main.score-2 { color: var(--score-2); }
+    .stat-box .stat-main.score-1 { color: var(--score-1); }
+    .stat-box .stat-detail {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Latency distribution */
+    .latency-dist-bar {
+      display: flex;
+      height: 40px;
+      border-radius: 4px;
+      overflow: hidden;
+      gap: 2px;
+      margin-top: var(--space-sm);
+    }
+    .latency-dist-segment {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 2px 6px;
+      color: #fff;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .latency-dist-segment:hover {
+      opacity: 0.85;
+      transform: scaleY(1.08);
+    }
+    .latency-dist-segment .lat-count { font-weight: 700; font-size: var(--font-sm); }
+    .latency-dist-segment .lat-label { font-size: 9px; opacity: 0.9; }
+    .latency-dist-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .latency-dist-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .latency-dist-legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .latency-dist-stats {
+      display: flex;
+      gap: var(--space-md);
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .latency-dist-stat {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .latency-dist-stat .lat-stat-label {
+      font-family: var(--font-sans);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 500;
+    }
+
+    /* Score distribution bar */
+    .score-dist-bar {
+      display: flex;
+      height: 36px;
+      border-radius: 4px;
+      overflow: hidden;
+      gap: 2px;
+      margin-top: var(--space-sm);
+    }
+    .score-dist-segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 2px 4px;
+      color: #fff;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .score-dist-segment:hover {
+      opacity: 0.85;
+      transform: scaleY(1.08);
+    }
+    .score-dist-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .score-dist-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .score-dist-legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+
+    /* Metric tabs */
+    .metric-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg-elevated);
+      padding: 3px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+    .metric-tab {
+      padding: 6px 16px;
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .metric-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+    .metric-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .metric-tabs-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .threshold-control {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .threshold-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .threshold-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 6px;
+      background: var(--bg-elevated);
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .threshold-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: var(--accent-primary);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .threshold-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 3px 10px rgba(0, 212, 170, 0.5);
+    }
+    .threshold-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      background: var(--accent-primary);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+    }
+    .threshold-slider::-moz-range-track {
+      background: var(--bg-elevated);
+      height: 6px;
+      border-radius: 3px;
+    }
+    .threshold-value {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--accent-primary);
+      min-width: 40px;
+    }
+
+    /* Metadata Breakdown cards */
+    .breakdown-section { margin-bottom: var(--space-lg); }
+    .breakdown-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+    .breakdown-icon { font-size: var(--font-sm); line-height: 1; }
+    .breakdown-complexity .breakdown-icon,
+    .breakdown-complexity .breakdown-header { color: #fb923c; }
+    .breakdown-domain .breakdown-icon,
+    .breakdown-domain .breakdown-header { color: #60a5fa; }
+    .breakdown-root-cause .breakdown-icon,
+    .breakdown-root-cause .breakdown-header { color: #f472b6; }
+    .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(244, 114, 182, 0.3); }
+    .breakdown-metric {
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      font-weight: 400;
+      padding: 1px 6px;
+      background: var(--bg-elevated);
+      border-radius: 3px;
+      margin-left: 4px;
+    }
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: var(--space-sm);
+    }
+    .breakdown-card {
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      border: 1px solid var(--border-subtle);
+      transition: border-color 0.15s;
+    }
+    .breakdown-card:hover { border-color: var(--border-default); }
+    .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(249, 115, 22, 0.3); }
+    .breakdown-complexity .breakdown-card.complexity-easy { border-left-color: rgba(34, 197, 94, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-easy .breakdown-card-label { color: #4ade80; }
+    .breakdown-complexity .breakdown-card.complexity-medium { border-left-color: rgba(234, 179, 8, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-medium .breakdown-card-label { color: #facc15; }
+    .breakdown-complexity .breakdown-card.complexity-hard { border-left-color: rgba(239, 68, 68, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-hard .breakdown-card-label { color: #f87171; }
+    .breakdown-complexity .breakdown-card.complexity-expert { border-left-color: rgba(168, 85, 247, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-expert .breakdown-card-label { color: #c084fc; }
+    .breakdown-domain .breakdown-card { border-left: 3px solid rgba(96, 165, 250, 0.3); }
+    .breakdown-card-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+    .breakdown-card-label {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+      text-transform: capitalize;
+    }
+    .breakdown-card-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      padding: 1px 8px;
+      flex-shrink: 0;
+      letter-spacing: 0.3px;
+    }
+    .breakdown-card-count strong { color: var(--text-secondary); font-weight: 600; }
+    .breakdown-card-score {
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 700;
+    }
+    .breakdown-card-score.score-5 { color: var(--score-5); }
+    .breakdown-card-score.score-4 { color: var(--score-4); }
+    .breakdown-card-score.score-3 { color: var(--score-3); }
+    .breakdown-card-score.score-2 { color: var(--score-2); }
+    .breakdown-card-score.score-1 { color: var(--score-1); }
+    .breakdown-card-details {
+      display: flex;
+      gap: var(--space-md);
+      margin-top: 2px;
+    }
+    .breakdown-detail {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .breakdown-detail-label {
+      font-family: var(--font-sans);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 500;
+    }
+
+    /* Filter panel */
+    .filter-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      margin-bottom: var(--space-lg);
+      overflow: visible;
+    }
+    .fp-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+    }
+    .fp-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .fp-label {
+      font-size: 9px;
+      font-family: var(--font-sans);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 500;
+      line-height: 1;
+      padding-left: 1px;
+    }
+    .fp-group .filter-select { min-width: unset; max-width: unset; }
+    .fp-cat-group .multi-select-btn.has-selection {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+    .fp-cat-group .multi-select-option .option-count {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    .fp-cat-group .multi-select-dropdown .ms-actions {
+      display: flex;
+      gap: 4px;
+      padding: 4px 8px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .fp-cat-group .multi-select-dropdown .ms-action-btn {
+      flex: 1;
+      padding: 4px 0;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      cursor: pointer;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    .fp-cat-group .multi-select-dropdown .ms-action-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+    .fp-gear-wrapper { display: flex; align-items: flex-end; }
+    .fp-gear-btn.metadata-fields-btn {
+      padding: var(--space-xs) var(--space-sm);
+      padding-right: var(--space-sm);
+      background: var(--bg-surface);
+      background-image: none;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+    .fp-gear-btn.metadata-fields-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background-color: var(--bg-hover);
+    }
+    .fp-actions-spacer { flex: 1 1 0; }
+    .fp-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+    .fp-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: var(--space-xs) var(--space-sm);
+      background: transparent;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .fp-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+    .fp-clear-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: var(--space-xs) var(--space-sm);
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 3px;
+      color: #f87171;
+      font-size: var(--font-xs);
+      font-family: var(--font-sans);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      visibility: hidden;
+    }
+    .fp-clear-btn.visible { visibility: visible; }
+    .fp-clear-btn:hover {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .fp-clear-x { font-size: 13px; font-weight: 600; line-height: 1; }
+    .fp-clear-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .fp-btn.fp-export {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: var(--bg-void);
+      font-size: var(--font-sm);
+      font-weight: 500;
+    }
+    .fp-btn.fp-export:hover {
+      background: #00e6b8;
+      border-color: #00e6b8;
+      color: var(--bg-void);
+    }
+    .fp-search-row { padding: 0 var(--space-md) var(--space-sm); }
+    .fp-search {
+      display: flex;
+      align-items: center;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      padding: 0 var(--space-sm);
+      transition: border-color 0.15s;
+    }
+    .fp-search:focus-within { border-color: var(--accent-primary); }
+    .fp-search-icon {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      flex-shrink: 0;
+      margin-right: 6px;
+      line-height: 1;
+    }
+    .fp-search input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      padding: var(--space-xs) 0;
+      outline: none;
+      min-width: 0;
+    }
+    .fp-search input::placeholder { color: var(--text-muted); }
+    .fp-status {
+      padding: var(--space-xs) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .fp-status .filter-count {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .fp-status .filter-count .count-num {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    /* Items grid */
+    .items-grid {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+    .item-card {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-md);
+    }
+    .item-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .item-index {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .item-input-row,
+    .item-expected-row {
+      background: var(--bg-elevated);
+      padding: var(--space-sm);
+      border-radius: 4px;
+    }
+    .item-input-row .input-label,
+    .item-expected-row .expected-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .item-input-row .input-text,
+    .item-expected-row .expected-text {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .item-expected-row {
+      background: var(--success-dim);
+      border-left: 3px solid var(--success);
+    }
+    .item-expected-row .expected-label { color: var(--success); }
+
+    /* Single run output (full width) */
+    .item-run-output {
+      border-left: 3px solid var(--accent-primary);
+      padding-left: var(--space-sm);
+      background: var(--bg-elevated);
+      border-radius: 0 4px 4px 0;
+      padding: var(--space-sm);
+    }
+    .item-run-output .output-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-xs);
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .item-run-output .run-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .item-run-output .output-badges {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+    .item-run-output .metric-badge,
+    .item-run-output .latency-badge {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+    }
+    .item-run-output .metric-badge.score-5 { background: var(--success-dim); color: var(--score-5); }
+    .item-run-output .metric-badge.score-4 { background: rgba(132, 204, 22, 0.15); color: var(--score-4); }
+    .item-run-output .metric-badge.score-3 { background: rgba(234, 179, 8, 0.15); color: var(--score-3); }
+    .item-run-output .metric-badge.score-2 { background: rgba(249, 115, 22, 0.15); color: var(--score-2); }
+    .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
+    .item-run-output .latency-badge { color: var(--text-muted); }
+    .item-run-output .start-badge {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+    }
+    .item-run-output .trace-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      background: rgba(225, 29, 72, 0.15);
+      color: #e11d48;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .item-run-output .trace-link:hover { background: rgba(225, 29, 72, 0.25); }
+    .item-run-output .output-text {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* Metric edit */
+    .metric-edit-block {
+      margin-top: 6px;
+      padding: 6px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+    }
+    .metric-edit-title { font-size: var(--font-xs); color: var(--text-muted); margin-bottom: 4px; }
+    .metric-edit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-xs);
+    }
+    .metric-edit-controls { display: flex; gap: 6px; align-items: center; }
+    .metric-edit-controls.hidden { display: none; }
+    .metric-edit-block.hidden { display: none; }
+    .metric-edit-input {
+      width: 90px;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save {
+      background: transparent;
+      border: 1px solid var(--border-default);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: var(--font-xs);
+    }
+    .metric-edit-save:disabled { opacity: 0.6; cursor: default; }
+    .metric-edit-status { font-size: var(--font-xs); color: var(--text-muted); }
+    .metric-edit-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      background: rgba(34,197,94,0.15);
+      color: var(--success);
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .metric-edit-badge::before { content: "\25CF"; font-size: 7px; margin-right: 4px; }
+    .metric-edit-open {
+      background: #1f2430;
+      border: none;
+      color: #a7b0c0;
+      border-radius: 6px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-left: 6px;
+      line-height: 1;
+      opacity: 0.95;
+    }
+    .metric-edit-open:hover { opacity: 1; background: #222a36; color: #c3c9d6; }
+    .metric-edit-meta { margin-top: 4px; font-size: var(--font-xs); color: var(--text-muted); }
+
+    .metric-score-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      padding: 2px 0;
+    }
+    .metric-score-meta { display: inline-flex; align-items: center; gap: 6px; }
+    .metric-score-row.highlighted {
+      background: var(--bg-hover);
+      margin: 0 -4px;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .metric-score-name { font-size: var(--font-xs); color: var(--text-muted); min-width: 80px; }
+    .metric-score-value { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 600; }
+    .metric-scores-inline {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .passfail-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .passfail-badge.pass { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .passfail-badge.fail { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+    /* Root cause */
+    .root-cause-row {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .root-cause-assign-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-default);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .root-cause-assign-btn:hover {
+      border-color: #f472b6;
+      color: #f472b6;
+      background: rgba(244, 114, 182, 0.05);
+    }
+    .root-cause-dropdown {
+      position: fixed;
+      z-index: 200;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-sm);
+      min-width: 220px;
+      max-height: 320px;
+      overflow-y: auto;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .root-cause-dropdown .rc-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.1s;
+    }
+    .root-cause-dropdown .rc-option:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .root-cause-dropdown .rc-option.active { color: #f472b6; font-weight: 600; }
+    .root-cause-dropdown .rc-option .rc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .root-cause-dropdown .rc-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
+    .root-cause-dropdown .rc-custom-input { display: flex; gap: 4px; padding: 6px; }
+    .root-cause-dropdown .rc-custom-input input {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      padding: 4px 8px;
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+    .root-cause-dropdown .rc-custom-input input:focus { outline: none; border-color: var(--accent-primary); }
+    .root-cause-dropdown .rc-custom-input button {
+      padding: 4px 10px;
+      background: var(--accent-primary);
+      color: var(--bg-primary);
+      border: none;
+      border-radius: 3px;
+      font-size: var(--font-xs);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    /* Metadata badges */
+    .item-metadata-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 6px var(--space-sm);
+      background: var(--bg-elevated);
+      border-radius: 4px;
+    }
+    .item-meta-badges { display: flex; gap: 6px; flex-shrink: 0; }
+    .meta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .meta-badge .badge-icon { font-size: 10px; line-height: 1; }
+    .meta-badge.badge-complexity {
+      background: rgba(249, 115, 22, 0.1);
+      border: 1px solid rgba(249, 115, 22, 0.25);
+      color: #fb923c;
+    }
+    .meta-badge.badge-complexity.complexity-easy { background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3); color: #4ade80; }
+    .meta-badge.badge-complexity.complexity-medium { background: rgba(234, 179, 8, 0.12); border-color: rgba(234, 179, 8, 0.3); color: #facc15; }
+    .meta-badge.badge-complexity.complexity-hard { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); color: #f87171; }
+    .meta-badge.badge-complexity.complexity-very-hard,
+    .meta-badge.badge-complexity.complexity-expert { background: rgba(168, 85, 247, 0.12); border-color: rgba(168, 85, 247, 0.3); color: #c084fc; }
+    .meta-badge.badge-domain {
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid rgba(96, 165, 250, 0.25);
+      color: #60a5fa;
+    }
+    .meta-badge.badge-root-cause {
+      background: rgba(244, 114, 182, 0.1);
+      border: 1px solid rgba(244, 114, 182, 0.25);
+      color: #f472b6;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .meta-badge.badge-root-cause:hover {
+      background: rgba(244, 114, 182, 0.2);
+      border-color: rgba(244, 114, 182, 0.4);
+    }
+    .item-meta-sep { width: 1px; height: 16px; background: var(--border-default); flex-shrink: 0; }
+    .item-metadata-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .item-metadata-tag {
+      display: inline-flex;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+    }
+    .item-metadata-tag .meta-key { color: var(--text-muted); }
+    .item-metadata-tag .meta-val { color: var(--text-secondary); font-weight: 600; }
+
+    /* Metadata field selector */
+    .metadata-fields-selector { display: inline-flex; align-items: center; gap: 4px; }
+    .metadata-fields-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-sm);
+      z-index: 100;
+      min-width: 180px;
+      max-height: 200px;
+      overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .metadata-fields-dropdown.open { display: block; }
+    .metadata-fields-dropdown label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 3px;
+      transition: background 0.1s;
+    }
+    .metadata-fields-dropdown label:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+    /* Metric details toggle */
+    .item-metric-details-toggle {
+      margin-top: var(--space-md);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .metric-details-toggle {
+      font-size: var(--font-sm);
+      color: var(--accent-primary);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+    }
+    .metric-details-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
+    .run-metric-details {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+      display: none;
+    }
+    .run-metric-details.expanded { display: block; }
+    .metric-detail-row { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+    .metric-detail-row:last-child { border-bottom: none; }
+    .metric-detail-name { font-size: var(--font-sm); color: #f472b6; font-weight: 600; margin-bottom: 6px; display: block; }
+    .metric-detail-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    /* Formatted objects */
+    .formatted-object, .formatted-array { font-family: var(--font-mono); font-size: var(--font-sm); line-height: 1.6; }
+    .formatted-row {
+      padding: 6px 0;
+      padding-left: var(--space-md);
+      border-left: 2px solid var(--border-subtle);
+      margin-left: 2px;
+      margin-bottom: 4px;
+      position: relative;
+    }
+    .formatted-row:hover { background: var(--bg-hover); border-left-color: var(--accent-primary); }
+    .formatted-key { color: #f472b6; font-weight: 600; display: block; margin-bottom: 4px; text-transform: uppercase; font-size: var(--font-xs); letter-spacing: 0.5px; }
+    .formatted-string { color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; display: block; line-height: 1.5; }
+    .formatted-number { color: #fbbf24; font-weight: 600; }
+    .formatted-boolean { color: #a855f7; font-weight: 600; }
+    .formatted-null { color: var(--text-muted); font-style: italic; }
+    .formatted-array-item {
+      padding: 6px 0;
+      padding-left: var(--space-md);
+      border-left: 2px solid var(--border-subtle);
+      margin-left: 2px;
+      margin-bottom: 4px;
+    }
+    .formatted-array-item:hover { background: var(--bg-hover); border-left-color: var(--accent-primary); }
+    .formatted-index { color: #60a5fa; font-size: var(--font-xs); margin-right: 4px; font-weight: 600; }
+
+    /* Copy button */
+    .copy-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      line-height: 1;
+      opacity: 0.4;
+      transition: all 0.15s;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+    }
+    .copy-btn svg { width: 14px; height: 14px; }
+    .copy-btn:hover { opacity: 1; }
+    .copy-btn:hover svg { stroke: var(--accent-primary); }
+    .copy-btn.copied svg { stroke: var(--success); }
+    .copy-btn.copied { opacity: 1; }
+    .formatted-row > .copy-btn { position: absolute; top: 6px; right: 4px; opacity: 0; }
+    .formatted-row:hover > .copy-btn { opacity: 0.4; }
+    .formatted-row:hover > .copy-btn:hover { opacity: 1; }
+    .formatted-row > .copy-btn.copied { opacity: 1; }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-lg);
+    }
+    .pagination button {
+      padding: var(--space-xs) var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .pagination button:hover:not(:disabled) { background: var(--bg-hover); }
+    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pagination .page-info { display: flex; align-items: center; font-size: var(--font-sm); color: var(--text-muted); }
+
+    /* Loading/empty */
+    .run-loading, .run-empty, .run-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      color: var(--text-muted);
+    }
+    .run-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border-default);
+      border-top-color: var(--accent-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: var(--space-md);
+    }
+
+    /* Status badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-badge.completed { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .status-badge.failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .status-badge.running { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+    .status-badge.pending { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+    .status-badge.submitted { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+
+    .langfuse-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      background: rgba(225, 29, 72, 0.1);
+      color: #e11d48;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .langfuse-link:hover { background: rgba(225, 29, 72, 0.2); }
+  </style>
+</head>
+<body>
+  <header class="stats-bar">
+    <div class="stats-bar-left">
+      <a href="/" class="logo" id="logo-link" style="text-decoration:none;">
+        <img src="../static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+      </a>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">RUN</span>
+          <span class="stat-value" id="hdr-run-name">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">STATUS</span>
+          <span class="stat-value" id="hdr-status">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">DATASET</span>
+          <span class="stat-value" id="hdr-dataset">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">MODEL</span>
+          <span class="stat-value" id="hdr-model">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">TOTAL ITEMS</span>
+          <span class="stat-value" id="hdr-total">—</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">METRICS</span>
+          <span class="stat-value" id="hdr-metrics">—</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="run-container">
+    <div class="run-loading" id="loading">
+      <div class="spinner"></div>
+      <span>Loading run data...</span>
+    </div>
+
+    <div class="run-error" id="error-state" style="display:none;">
+      <div style="font-size:48px;margin-bottom:var(--space-md);">!</div>
+      <h2 id="error-title">Error</h2>
+      <p id="error-message">Could not load run data.</p>
+      <a href="" class="back-link" id="back-link-error" style="margin-top:var(--space-md);">&larr; Back to Dashboard</a>
+    </div>
+
+    <div class="run-empty" id="empty" style="display:none;">
+      <div style="font-size:48px;margin-bottom:var(--space-md);">&empty;</div>
+      <h2>Run not found</h2>
+      <p>The requested run could not be found.</p>
+      <a href="" class="back-link" id="back-link-empty" style="margin-top:var(--space-md);">&larr; Back to Dashboard</a>
+    </div>
+
+    <div id="run-content" style="display:none;">
+      <div class="run-header-bar">
+        <div>
+          <div class="run-title">Run Detail</div>
+          <div class="run-subtitle" id="run-subtitle">—</div>
+        </div>
+        <a href="" class="back-link" id="back-link-header">&larr; Back to Dashboard</a>
+      </div>
+
+      <div class="run-summary" id="run-summary"></div>
+
+      <h3 class="section-title">Overview Analytics</h3>
+      <div class="comparison-stats" id="overview-stats">
+        <div class="metric-tabs-row">
+          <div class="metric-tabs" id="overview-metric-tabs"></div>
+          <div class="threshold-control" id="threshold-control" style="display:none;">
+            <span class="threshold-label">Pass if &ge;</span>
+            <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+            <span class="threshold-value" id="threshold-value">80%</span>
+          </div>
+        </div>
+        <div class="stats-grid" id="stats-grid"></div>
+      </div>
+
+      <div id="score-dist-section" style="display:none;">
+        <h3 class="section-title">Score Distribution</h3>
+        <div class="comparison-stats" id="score-dist-container"></div>
+      </div>
+
+      <div id="latency-dist-section" style="display:none;">
+        <h3 class="section-title">Latency Distribution</h3>
+        <div class="comparison-stats" id="latency-dist-container"></div>
+      </div>
+
+      <div id="error-analysis-section" style="display:none;">
+        <h3 class="section-title">Error Analysis</h3>
+        <div class="comparison-stats" id="error-analysis-container"></div>
+      </div>
+
+      <div id="metadata-breakdown"></div>
+
+      <div class="items-comparison">
+        <h3 class="section-title">Item-by-Item Detail</h3>
+        <div class="filter-panel">
+          <div class="fp-filter-row">
+            <div class="fp-group" id="fp-metric-group">
+              <span class="fp-label">Metric</span>
+              <select id="items-metric-select" class="filter-select"></select>
+            </div>
+            <div class="fp-group">
+              <span class="fp-label">Show</span>
+              <select id="item-filter" class="filter-select">
+                <option value="all">All Items</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="errors">With Errors</option>
+              </select>
+            </div>
+            <div class="fp-group">
+              <span class="fp-label">Sort</span>
+              <select id="sort-select" class="filter-select">
+                <option value="index">Index</option>
+                <option value="score_asc">Score &uarr;</option>
+                <option value="score_desc">Score &darr;</option>
+                <option value="latency_asc">Latency &uarr;</option>
+                <option value="latency_desc">Latency &darr;</option>
+              </select>
+            </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
+              <span class="fp-label">Complexity</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
+                <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
+              <span class="fp-label">Domain</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
+                <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
+              <span class="fp-label">Root Cause</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
+                <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
+              <div class="metadata-fields-selector" style="position:relative;">
+                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">&#9881;</button>
+                <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-actions-spacer"></div>
+            <div class="fp-actions">
+              <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
+                <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
+              </button>
+              <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+            </div>
+          </div>
+          <div class="fp-search-row">
+            <div class="fp-search">
+              <span class="fp-search-icon">&#x2315;</span>
+              <input type="text" id="items-search" placeholder="Search inputs / outputs..." />
+            </div>
+          </div>
+          <div class="fp-status">
+            <span class="filter-count" id="filter-count"></span>
+          </div>
+        </div>
+        <div class="items-grid" id="items-grid"></div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const BASE_URL = (() => {
+        const path = window.location.pathname;
+        const runIdx = path.indexOf('/run/');
+        if (runIdx >= 0) {
+          const base = path.substring(0, runIdx + 1);
+          return window.location.origin + base;
+        }
+        let base = path;
+        if (!base.endsWith('/')) base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+        return window.location.origin + base;
+      })();
+
+      const RUN_ID = (() => {
+        const path = window.location.pathname;
+        const runIdx = path.indexOf('/run/');
+        return runIdx >= 0 ? path.substring(runIdx + 5) : null;
+      })();
+
+      function apiUrl(path) {
+        return BASE_URL + path.replace(/^\.?\/?/, '');
+      }
+
+      // Fix back links and logo link
+      try {
+        const backUrl = apiUrl('');
+        document.getElementById('back-link-header').href = backUrl;
+        document.getElementById('back-link-error').href = backUrl;
+        document.getElementById('back-link-empty').href = backUrl;
+        document.getElementById('logo-link').href = backUrl;
+      } catch {}
+
+      const ROOT_CAUSE_PRESETS = [
+        'Hallucination', 'Incomplete Answer', 'Wrong Format', 'Context Missing',
+        'Reasoning Error', 'Tool Use Error', 'Instruction Following', 'Knowledge Gap',
+      ];
+      const ROOT_CAUSE_COLORS = {
+        'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
+        'Wrong Format': '#eab308', 'Context Missing': '#3b82f6',
+        'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
+        'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
+      };
+
+      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#9898a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      const formatPercent = window.QymMetrics.formatPercent;
+      const formatLatency = window.QymMetrics.formatLatency;
+
+      const state = {
+        run: null,
+        snapshot: null,
+        allMetrics: [],
+        selectedMetric: null,
+        itemFilter: 'all',
+        sortBy: 'index',
+        page: 1,
+        pageSize: 20,
+        searchQuery: '',
+        metricThresholds: {},
+        metricIsBoolean: {},
+        scoreDistFilter: null,
+        latencyDistFilter: null,
+        complexityFilter: null,
+        domainFilter: null,
+        rootCauseFilter: null,
+        complexityValues: [],
+        domainValues: [],
+        rootCauseValues: [],
+        allMetadataKeys: [],
+        visibleMetadataFields: {},
+        langfuseHost: '',
+        langfuseProjectId: '',
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      // ── Utility functions ──
+
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+      }
+
+      function escapeAttr(text) {
+        return String(text ?? '')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function scoreColorClass(value) {
+        if (value >= 0.9) return 'score-5';
+        if (value >= 0.75) return 'score-4';
+        if (value >= 0.6) return 'score-3';
+        if (value >= 0.4) return 'score-2';
+        return 'score-1';
+      }
+
+      function getSuccessClass(rate) {
+        if (rate >= 0.9) return 'score-5';
+        if (rate >= 0.75) return 'score-4';
+        if (rate >= 0.6) return 'score-3';
+        if (rate >= 0.4) return 'score-2';
+        return 'score-1';
+      }
+
+      function infoIcon(tooltip) {
+        return '<span class="stat-info-icon">i<span class="stat-info-tooltip">' + tooltip + '</span></span>';
+      }
+
+      function formatTaskStart(ms) {
+        if (!ms || ms <= 0) return null;
+        try {
+          const d = new Date(ms);
+          const pad = (n) => String(n).padStart(2, '0');
+          return { ts: d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) };
+        } catch { return null; }
+      }
+
+      function buildLangfuseTraceUrl(traceId) {
+        if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
+        const host = state.langfuseHost.replace(/\/$/, '');
+        return host + '/project/' + state.langfuseProjectId + '/traces/' + traceId;
+      }
+
+      function csvEscape(val) {
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          return '"' + val.replace(/"/g, '""') + '"';
+        }
+        return val;
+      }
+
+      function stringify(val) {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        return String(val);
+      }
+
+      function computePercentiles(values, percentiles) {
+        if (!values.length) return percentiles.map(() => 0);
+        const sorted = [...values].sort((a, b) => a - b);
+        return percentiles.map(p => {
+          const idx = (p / 100) * (sorted.length - 1);
+          const lo = Math.floor(idx);
+          const hi = Math.ceil(idx);
+          if (lo === hi) return sorted[lo];
+          return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+        });
+      }
+
+      function renderMarkdownSafe(value) {
+        if (value === null || value === undefined) return '&mdash;';
+        if (typeof value === 'object') return formatObjectAsHtml(value);
+        const str = String(value);
+        const trimmed = str.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try { const p = JSON.parse(trimmed); if (typeof p === 'object' && p !== null) return formatObjectAsHtml(p); } catch {}
+          const p = parsePythonDict(trimmed);
+          if (p !== null) return formatObjectAsHtml(p);
+        }
+        let html = escapeHtml(str);
+        html = html.replace(/```([\s\S]*?)```/g, '<pre style="background:var(--bg-elevated);padding:4px 8px;border-radius:4px;overflow-x:auto;margin:4px 0;">$1</pre>');
+        html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg-elevated);padding:1px 4px;border-radius:3px;">$1</code>');
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent-primary);">$1</a>');
+        return html;
+      }
+
+      function parsePythonDict(str) {
+        try {
+          let i = 0; const len = str.length;
+          function skip() { while (i < len && /\s/.test(str[i])) i++; }
+          function parseVal() {
+            skip(); if (i >= len) return undefined;
+            const ch = str[i];
+            if (ch === "'" || ch === '"') return parseStr(ch);
+            if (ch === '{') return parseObj();
+            if (ch === '[') return parseArr();
+            return parseLit();
+          }
+          function parseStr(q) {
+            i++; let r = '';
+            while (i < len) {
+              if (str[i] === '\\' && i+1 < len) { const n = str[i+1]; if (n==='n'){r+='\n';i+=2;} else if(n==='t'){r+='\t';i+=2;} else if(n==='\\'){r+='\\';i+=2;} else if(n===q){r+=q;i+=2;} else {r+=str[i];i++;} }
+              else if (str[i] === q) { i++; return r; }
+              else { r += str[i]; i++; }
+            }
+            return r;
+          }
+          function parseObj() {
+            i++; const o = {}; skip(); if (str[i]==='}'){i++;return o;}
+            while (i<len) { skip(); const k=parseVal(); if (typeof k!=='string') return null; skip(); if(str[i]!==':') return null; i++; o[k]=parseVal(); skip(); if(str[i]==='}'){i++;return o;} if(str[i]===','){i++;continue;} return null; }
+            return o;
+          }
+          function parseArr() {
+            i++; const a=[]; skip(); if(str[i]===']'){i++;return a;}
+            while (i<len) { a.push(parseVal()); skip(); if(str[i]===']'){i++;return a;} if(str[i]===','){i++;continue;} return null; }
+            return a;
+          }
+          function parseLit() {
+            if (str.slice(i,i+4)==='True'){i+=4;return true;}
+            if (str.slice(i,i+5)==='False'){i+=5;return false;}
+            if (str.slice(i,i+4)==='None'){i+=4;return null;}
+            let n=''; while(i<len && /[0-9.\-+eE]/.test(str[i])){n+=str[i];i++;}
+            if(n){const v=parseFloat(n);if(!isNaN(v))return v;}
+            return undefined;
+          }
+          return parseVal();
+        } catch { return null; }
+      }
+
+      function formatObjectAsHtml(obj) {
+        if (Array.isArray(obj)) {
+          if (!obj.length) return '<span class="formatted-array">[]</span>';
+          return '<div class="formatted-array">' + obj.map((item, idx) => {
+            let f; if (item===null||item===undefined) f='<span class="formatted-null">null</span>'; else if (typeof item==='object') f=formatObjectAsHtml(item); else if (typeof item==='string') f='<span class="formatted-string">'+escapeHtml(item)+'</span>'; else f=escapeHtml(String(item));
+            return '<div class="formatted-array-item"><span class="formatted-index">['+idx+']</span> '+f+'</div>';
+          }).join('') + '</div>';
+        }
+        const entries = Object.entries(obj);
+        if (!entries.length) return '<span class="formatted-object">{}</span>';
+        return '<div class="formatted-object">' + entries.map(([k,v]) => {
+          let f; if(v===null||v===undefined) f='<span class="formatted-null">null</span>'; else if(typeof v==='object') f=formatObjectAsHtml(v); else if(typeof v==='string') f='<span class="formatted-string">'+escapeHtml(v)+'</span>'; else if(typeof v==='number') f='<span class="formatted-number">'+v+'</span>'; else if(typeof v==='boolean') f='<span class="formatted-boolean">'+v+'</span>'; else f=escapeHtml(String(v));
+          return '<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>';
+        }).join('') + '</div>';
+      }
+
+      function formatFieldName(name) {
+        return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
+
+      // ── Data loading ──
+
+      async function loadRunData() {
+        if (!RUN_ID) { showEmpty(); return; }
+        try {
+          const res = await fetch(apiUrl('api/runs/' + RUN_ID));
+          if (!res.ok) { showError('HTTP ' + res.status, 'Could not load run data.'); return; }
+          const data = await res.json();
+          if (data.error) { showError('Error', data.error); return; }
+          if (!data.run || !data.snapshot) { showEmpty(); return; }
+          state.run = data.run;
+          state.snapshot = data.snapshot;
+          state.langfuseHost = data.run.langfuse_host || '';
+          state.langfuseProjectId = data.run.langfuse_project_id || '';
+          processRun();
+          render();
+        } catch (err) {
+          console.error('Failed to load run:', err);
+          showError('Network Error', 'Could not connect to the server.');
+        }
+      }
+
+      function processRun() {
+        const run = state.run;
+        const snap = state.snapshot;
+        state.allMetrics = snap.metric_names || run.metric_names || [];
+        if (state.allMetrics.length > 0 && !state.selectedMetric) {
+          state.selectedMetric = state.allMetrics[0];
+        }
+
+        // Detect metric types
+        for (const metricName of state.allMetrics) {
+          let allBoolean = true;
+          const mIdx = state.allMetrics.indexOf(metricName);
+          for (const row of (snap.rows || [])) {
+            const v = (row.metric_values || [])[mIdx];
+            const n = window.QymMetrics.parseScoreValue(v);
+            if (n !== null && Math.abs(n) > 0.0001 && Math.abs(n - 1) > 0.0001) {
+              allBoolean = false; break;
+            }
+          }
+          state.metricIsBoolean[metricName] = allBoolean;
+          if (!state.metricThresholds[metricName]) {
+            state.metricThresholds[metricName] = 0.8;
+          }
+        }
+
+        // Collect metadata
+        const metaKeySet = new Set();
+        const complexitySet = new Set();
+        const domainSet = new Set();
+        const rootCauseSet = new Set();
+        for (const row of (snap.rows || [])) {
+          const md = row.item_metadata || {};
+          if (typeof md === 'object') {
+            for (const k of Object.keys(md)) { if (k !== 'task_started_at_ms') metaKeySet.add(k); }
+            if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
+            if (md.domain != null && md.domain !== '') domainSet.add(String(md.domain));
+            if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
+          }
+        }
+        state.allMetadataKeys = Array.from(metaKeySet).sort();
+        const cOrder = ['easy', 'medium', 'hard'];
+        state.complexityValues = Array.from(complexitySet).sort((a, b) => {
+          const ai = cOrder.indexOf(a.toLowerCase()); const bi = cOrder.indexOf(b.toLowerCase());
+          return (ai===-1?999:ai) - (bi===-1?999:bi);
+        });
+        state.domainValues = Array.from(domainSet).sort();
+        state.rootCauseValues = Array.from(rootCauseSet).sort();
+
+        for (const k of state.allMetadataKeys) {
+          if (state.visibleMetadataFields[k] === undefined) state.visibleMetadataFields[k] = true;
+        }
+
+        // Update header
+        const config = run.config || {};
+        el('hdr-run-name').textContent = run.run_name || '—';
+        el('hdr-dataset').textContent = run.dataset_name || '—';
+        el('hdr-model').textContent = config.model || config.model_name || '—';
+        el('hdr-total').textContent = (snap.stats || {}).total || (snap.rows || []).length;
+        el('hdr-metrics').textContent = state.allMetrics.length;
+
+        const statusText = (run.status || 'unknown').toUpperCase();
+        const statusEl = el('hdr-status');
+        statusEl.textContent = statusText;
+
+        document.title = '\u0642\u064A\u0651\u0650\u0645 \u2022 ' + (run.run_name || 'Run Detail');
+      }
+
+      function showEmpty() {
+        el('loading').style.display = 'none';
+        el('empty').style.display = 'flex';
+        el('run-content').style.display = 'none';
+      }
+
+      function showError(title, msg) {
+        el('loading').style.display = 'none';
+        el('error-state').style.display = 'flex';
+        el('error-title').textContent = title;
+        el('error-message').textContent = msg;
+        el('run-content').style.display = 'none';
+      }
+
+      // ── Rendering ──
+
+      function render() {
+        el('loading').style.display = 'none';
+        el('empty').style.display = 'none';
+        el('error-state').style.display = 'none';
+        el('run-content').style.display = 'block';
+
+        renderSummary();
+        populateMetricSelectors();
+        renderOverviewStats();
+        renderScoreDistribution();
+        renderLatencyDistribution();
+        renderErrorAnalysis();
+        renderMetadataBreakdown();
+        buildCategoryDropdowns();
+        populateMetadataFieldsDropdown();
+        renderItems();
+      }
+
+      function renderSummary() {
+        const run = state.run;
+        const snap = state.snapshot;
+        const stats = snap.stats || {};
+        const config = run.config || {};
+        const metadata = run.metadata || {};
+        const successRate = (stats.completed || 0) / (stats.total || 1);
+
+        el('run-subtitle').textContent = run.run_name || '—';
+
+        let configHtml = '';
+        if (config && typeof config === 'object' && Object.keys(config).length > 0) {
+          const entries = Object.entries(config).filter(([k]) => k !== 'run_name');
+          if (entries.length > 0) {
+            configHtml = '<div class="config-grid">' + entries.map(([k,v]) =>
+              '<div class="config-item"><div class="config-key">' + escapeHtml(k) + '</div><div class="config-val">' + escapeHtml(String(v ?? '')) + '</div></div>'
+            ).join('') + '</div>';
+          }
+        }
+
+        let langfuseHtml = '';
+        const lfUrl = metadata?.langfuse_url;
+        if (lfUrl) {
+          langfuseHtml = '<a href="' + escapeAttr(lfUrl) + '" target="_blank" class="langfuse-link">Langfuse &#8599;</a>';
+        } else if (state.langfuseHost && state.langfuseProjectId) {
+          const url = state.langfuseHost.replace(/\/$/, '') + '/project/' + state.langfuseProjectId;
+          langfuseHtml = '<a href="' + escapeAttr(url) + '" target="_blank" class="langfuse-link">Langfuse &#8599;</a>';
+        }
+
+        const statusClass = (run.status || '').toLowerCase();
+
+        el('run-summary').innerHTML = '<div class="run-summary-card">' +
+          '<div class="run-header"><div class="run-name">' + escapeHtml(run.run_name || '—') + '</div></div>' +
+          '<div class="run-meta">' +
+            '<span class="tag task">' + escapeHtml(run.dataset_name || '—') + '</span>' +
+            '<span class="status-badge ' + statusClass + '">' + escapeHtml((run.status || 'unknown').toUpperCase()) + '</span>' +
+            langfuseHtml +
+          '</div>' +
+          '<div class="stats-row"><span class="stat-label">Total Items</span><span class="stat-val">' + (stats.total || 0) + '</span></div>' +
+          '<div class="stats-row"><span class="stat-label">Completed</span><span class="stat-val">' + (stats.completed || 0) + '</span></div>' +
+          '<div class="stats-row"><span class="stat-label">Failed</span><span class="stat-val ' + (stats.failed > 0 ? 'score-1' : '') + '">' + (stats.failed || 0) + '</span></div>' +
+          '<div class="stats-row"><span class="stat-label">Success Rate</span><span class="stat-val ' + getSuccessClass(successRate) + '">' + formatPercent(successRate) + '</span></div>' +
+          configHtml +
+        '</div>';
+      }
+
+      function populateMetricSelectors() {
+        const singleMetric = state.allMetrics.length <= 1;
+
+        // Overview metric tabs
+        const tabsContainer = el('overview-metric-tabs');
+        if (tabsContainer) {
+          if (singleMetric) {
+            tabsContainer.style.display = 'none';
+          } else {
+            tabsContainer.style.display = '';
+            tabsContainer.innerHTML = state.allMetrics.map(m =>
+              '<button class="metric-tab ' + (m === state.selectedMetric ? 'active' : '') + '" data-metric="' + escapeAttr(m) + '">' + escapeHtml(m) + '</button>'
+            ).join('');
+            tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
+              tab.addEventListener('click', () => {
+                state.selectedMetric = tab.dataset.metric;
+                state.scoreDistFilter = null;
+                tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                updateThresholdControl();
+                renderOverviewStats();
+                renderScoreDistribution();
+                renderMetadataBreakdown();
+                state.page = 1;
+                renderItems();
+              });
+            });
+          }
+        }
+
+        // Threshold slider
+        const thresholdSlider = el('threshold-slider');
+        if (thresholdSlider) {
+          thresholdSlider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value);
+            el('threshold-value').textContent = v + '%';
+          });
+          thresholdSlider.addEventListener('change', (e) => {
+            const v = parseFloat(e.target.value);
+            if (!isNaN(v) && v >= 0 && v <= 100) {
+              state.metricThresholds[state.selectedMetric] = v / 100;
+              renderOverviewStats();
+              renderScoreDistribution();
+              renderMetadataBreakdown();
+              state.page = 1;
+              renderItems();
+            }
+          });
+        }
+        updateThresholdControl();
+
+        // Items metric select
+        const sel = el('items-metric-select');
+        const grp = el('fp-metric-group');
+        if (sel) {
+          if (singleMetric) {
+            if (grp) grp.style.display = 'none';
+          } else {
+            if (grp) grp.style.display = '';
+            sel.innerHTML = state.allMetrics.map(m =>
+              '<option value="' + escapeAttr(m) + '" ' + (m === state.selectedMetric ? 'selected' : '') + '>' + escapeHtml(m) + '</option>'
+            ).join('');
+            sel.addEventListener('change', (e) => {
+              state.selectedMetric = e.target.value;
+              state.scoreDistFilter = null;
+              state.page = 1;
+              updateThresholdControl();
+              renderOverviewStats();
+              renderScoreDistribution();
+              renderMetadataBreakdown();
+              renderItems();
+            });
+          }
+        }
+      }
+
+      function updateThresholdControl() {
+        const tc = el('threshold-control');
+        const ts = el('threshold-slider');
+        const tv = el('threshold-value');
+        if (!tc || !ts) return;
+        const metric = state.selectedMetric;
+        if (!metric) { tc.style.display = 'none'; return; }
+        if (state.metricIsBoolean[metric]) {
+          tc.style.display = 'none';
+        } else {
+          tc.style.display = 'flex';
+          const pct = Math.round((state.metricThresholds[metric] ?? 0.8) * 100);
+          ts.value = pct;
+          if (tv) tv.textContent = pct + '%';
+        }
+      }
+
+      function renderOverviewStats() {
+        const container = el('stats-grid');
+        if (!container || !state.snapshot) return;
+        const rows = state.snapshot.rows || [];
+        const metric = state.selectedMetric;
+        const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
+
+        // Compute per-metric averages
+        const metricStats = {};
+        for (const m of state.allMetrics) {
+          const mi = state.allMetrics.indexOf(m);
+          let sum = 0, cnt = 0;
+          for (const row of rows) {
+            const { score } = window.QymMetrics.getRowScore(row, mi);
+            if (score !== null) { sum += score; cnt++; }
+          }
+          metricStats[m] = cnt > 0 ? sum / cnt : 0;
+        }
+
+        // Success rate
+        const stats = state.snapshot.stats || {};
+        const total = stats.total || rows.length;
+        const completed = stats.completed || 0;
+        const failed = stats.failed || 0;
+        const successRate = total > 0 ? completed / total : 0;
+
+        // Latency
+        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
+        const avgLat = latencies.length > 0 ? latencies.reduce((a,b)=>a+b,0) / latencies.length : 0;
+        const [p50, p90, p99] = computePercentiles(latencies, [50, 90, 99]);
+
+        // Build metric stat boxes
+        let metricBoxes = state.allMetrics.map(m => {
+          const v = metricStats[m];
+          return '<div class="stat-box">' +
+            '<div class="stat-title">' + escapeHtml(m) + ' ' + infoIcon('Average score for <strong>' + escapeHtml(m) + '</strong> across all items.') + '</div>' +
+            '<div class="stat-main ' + scoreColorClass(v) + '">' + formatPercent(v) + '</div>' +
+          '</div>';
+        }).join('');
+
+        container.innerHTML =
+          '<div class="stats-row-flex">' + metricBoxes + '</div>' +
+          '<div class="stats-row-flex">' +
+            '<div class="stat-box"><div class="stat-title">Success Rate ' + infoIcon('Percentage of items that completed without errors.') + '</div><div class="stat-main ' + scoreColorClass(successRate) + '">' + formatPercent(successRate) + '</div><div class="stat-detail">' + completed + ' / ' + total + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">Total Items ' + infoIcon('Total number of evaluation items in this run.') + '</div><div class="stat-main">' + total + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">Errors ' + infoIcon('Number of items that threw an error. Errors are scored as 0%.') + '</div><div class="stat-main ' + (failed > 0 ? 'score-1' : '') + '">' + failed + '</div></div>' +
+          '</div>' +
+          '<div class="stats-row-flex">' +
+            '<div class="stat-box"><div class="stat-title">Avg Latency ' + infoIcon('Mean response time across all completed items.') + '</div><div class="stat-main">' + formatLatency(avgLat) + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">P50 Latency ' + infoIcon('Median response time (50th percentile).') + '</div><div class="stat-main">' + formatLatency(p50) + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">P90 Latency ' + infoIcon('90th percentile response time. 90% of items responded faster.') + '</div><div class="stat-main">' + formatLatency(p90) + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">P99 Latency ' + infoIcon('99th percentile response time. Only 1% of items were slower.') + '</div><div class="stat-main">' + formatLatency(p99) + '</div></div>' +
+          '</div>';
+      }
+
+      function computeScoreDistribution(metric) {
+        const rows = state.snapshot.rows || [];
+        const mIdx = state.allMetrics.indexOf(metric);
+        if (mIdx < 0) return [];
+        const buckets = new Array(11).fill(0); // 0%, 10%, 20%, ..., 100%
+        for (const row of rows) {
+          const { score } = window.QymMetrics.getRowScore(row, mIdx);
+          if (score === null) continue;
+          const pct = Math.round(score * 100);
+          const bucket = Math.min(10, Math.floor(pct / 10));
+          buckets[bucket]++;
+        }
+        return buckets;
+      }
+
+      function getDistSegmentColor(bucketIdx) {
+        // 0-3 -> score-1 (red), 4-5 -> score-2 (orange), 6-7 -> score-3 (yellow), 8 -> score-4 (lime), 9-10 -> score-5 (green)
+        const pct = bucketIdx * 10;
+        if (pct < 40) return 'var(--score-1)';
+        if (pct < 60) return 'var(--score-2)';
+        if (pct < 75) return 'var(--score-3)';
+        if (pct < 90) return 'var(--score-4)';
+        return 'var(--score-5)';
+      }
+
+      function renderScoreDistribution() {
+        const section = el('score-dist-section');
+        const container = el('score-dist-container');
+        if (!section || !container) return;
+        const metric = state.selectedMetric;
+        if (!metric) { section.style.display = 'none'; return; }
+
+        const buckets = computeScoreDistribution(metric);
+        const totalWithScores = buckets.reduce((a,b) => a+b, 0);
+        if (totalWithScores === 0) { section.style.display = 'none'; return; }
+
+        section.style.display = '';
+        const isBoolean = state.metricIsBoolean[metric];
+        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+
+        let barHtml = '<div class="score-dist-bar">';
+        let legendHtml = '<div class="score-dist-legend">';
+        for (let b = 0; b <= 10; b++) {
+          if (buckets[b] === 0) continue;
+          const pct = ((buckets[b] / totalWithScores) * 100).toFixed(0);
+          const color = getDistSegmentColor(b);
+          const label = (b * 10) + '%';
+          const rangeMin = b / 10;
+          const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
+          barHtml += '<div class="score-dist-segment" style="flex:' + buckets[b] + ';background:' + color + ';" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + buckets[b] + ' items (' + pct + '%)">' + buckets[b] + '</div>';
+          legendHtml += '<div class="score-dist-legend-item"><div class="score-dist-legend-dot" style="background:' + color + ';"></div><span>' + label + ': <strong style="color:var(--text-secondary);">' + buckets[b] + '</strong> (' + pct + '%)</span></div>';
+        }
+        barHtml += '</div>';
+        legendHtml += '</div>';
+
+        container.innerHTML = barHtml + legendHtml;
+
+        // Wire click handlers
+        container.querySelectorAll('.score-dist-segment').forEach(seg => {
+          seg.addEventListener('click', () => {
+            const min = parseFloat(seg.dataset.bucketMin);
+            const max = parseFloat(seg.dataset.bucketMax);
+            state.scoreDistFilter = { min, max };
+            state.page = 1;
+            renderItems();
+          });
+        });
+      }
+
+      function renderLatencyDistribution() {
+        const section = el('latency-dist-section');
+        const container = el('latency-dist-container');
+        if (!section || !container) return;
+        const rows = state.snapshot.rows || [];
+        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
+        if (latencies.length === 0) { section.style.display = 'none'; return; }
+        section.style.display = '';
+
+        const buckets = [
+          { label: '<100ms', min: 0, max: 100, color: 'var(--score-5)' },
+          { label: '100-500ms', min: 100, max: 500, color: 'var(--score-4)' },
+          { label: '0.5-1s', min: 500, max: 1000, color: 'var(--score-3)' },
+          { label: '1-2s', min: 1000, max: 2000, color: 'var(--score-3)' },
+          { label: '2-5s', min: 2000, max: 5000, color: 'var(--score-2)' },
+          { label: '5-10s', min: 5000, max: 10000, color: 'var(--score-2)' },
+          { label: '10s+', min: 10000, max: Infinity, color: 'var(--score-1)' },
+        ];
+
+        const counts = buckets.map(() => 0);
+        for (const lat of latencies) {
+          for (let i = 0; i < buckets.length; i++) {
+            if (lat >= buckets[i].min && lat < buckets[i].max) { counts[i]++; break; }
+            if (i === buckets.length - 1) counts[i]++;
+          }
+        }
+
+        const total = latencies.length;
+        const sorted = [...latencies].sort((a, b) => a - b);
+        const minLat = sorted[0];
+        const maxLat = sorted[sorted.length - 1];
+        const medianLat = sorted[Math.floor(sorted.length / 2)];
+        const meanLat = latencies.reduce((a, b) => a + b, 0) / total;
+
+        let barHtml = '<div class="latency-dist-bar">';
+        let legendHtml = '<div class="latency-dist-legend">';
+        for (let i = 0; i < buckets.length; i++) {
+          if (counts[i] === 0) continue;
+          const pct = ((counts[i] / total) * 100).toFixed(0);
+          barHtml += '<div class="latency-dist-segment" style="flex:' + counts[i] + ';background:' + buckets[i].color + ';" data-lat-idx="' + i + '" title="' + buckets[i].label + ': ' + counts[i] + ' items (' + pct + '%)"><span class="lat-count">' + counts[i] + '</span><span class="lat-label">' + buckets[i].label + '</span></div>';
+          legendHtml += '<div class="latency-dist-legend-item"><div class="latency-dist-legend-dot" style="background:' + buckets[i].color + ';"></div><span>' + buckets[i].label + ': <strong style="color:var(--text-secondary);">' + counts[i] + '</strong> (' + pct + '%)</span></div>';
+        }
+        barHtml += '</div>';
+        legendHtml += '</div>';
+
+        const statsHtml = '<div class="latency-dist-stats">' +
+          '<div class="latency-dist-stat"><span class="lat-stat-label">Min</span>' + formatLatency(minLat) + '</div>' +
+          '<div class="latency-dist-stat"><span class="lat-stat-label">Median</span>' + formatLatency(medianLat) + '</div>' +
+          '<div class="latency-dist-stat"><span class="lat-stat-label">Mean</span>' + formatLatency(meanLat) + '</div>' +
+          '<div class="latency-dist-stat"><span class="lat-stat-label">Max</span>' + formatLatency(maxLat) + '</div>' +
+        '</div>';
+
+        container.innerHTML = barHtml + legendHtml + statsHtml;
+
+        // Wire click handlers for filtering
+        container.querySelectorAll('.latency-dist-segment').forEach(seg => {
+          seg.addEventListener('click', () => {
+            const idx = parseInt(seg.dataset.latIdx, 10);
+            const bucket = buckets[idx];
+            state.latencyDistFilter = { min: bucket.min, max: bucket.max };
+            state.page = 1;
+            renderItems();
+          });
+        });
+      }
+
+      function renderErrorAnalysis() {
+        const section = el('error-analysis-section');
+        const container = el('error-analysis-container');
+        if (!section || !container) return;
+        const rows = state.snapshot.rows || [];
+        const stats = state.snapshot.stats || {};
+        const total = stats.total || rows.length;
+        const failed = stats.failed || 0;
+
+        if (failed === 0) { section.style.display = 'none'; return; }
+        section.style.display = '';
+
+        let timeout = 0, runtime = 0, unknown = 0;
+        for (const row of rows) {
+          if (window.QymMetrics.isErrorRow(row)) {
+            const output = (row.output_full || row.output || '').toLowerCase();
+            if (output.includes('timeout')) timeout++;
+            else if (output.includes('error')) runtime++;
+            else unknown++;
+          }
+        }
+
+        const pct = total > 0 ? ((failed / total) * 100).toFixed(1) : '0.0';
+
+        container.innerHTML =
+          '<div class="stats-row-flex">' +
+            '<div class="stat-box"><div class="stat-title">Total Errors</div><div class="stat-main score-1">' + failed + ' / ' + total + '</div><div class="stat-detail">' + pct + '% error rate</div></div>' +
+            '<div class="stat-box"><div class="stat-title">Timeout</div><div class="stat-main ' + (timeout > 0 ? 'score-1' : '') + '">' + timeout + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">Runtime</div><div class="stat-main ' + (runtime > 0 ? 'score-1' : '') + '">' + runtime + '</div></div>' +
+            '<div class="stat-box"><div class="stat-title">Unknown</div><div class="stat-main ' + (unknown > 0 ? 'score-2' : '') + '">' + unknown + '</div></div>' +
+          '</div>';
+      }
+
+      function renderMetadataBreakdown() {
+        const breakdownKeys = ['complexity', 'domain', 'root_cause'].filter(k => state.allMetadataKeys.includes(k));
+        const section = el('metadata-breakdown');
+        if (!section) return;
+        if (breakdownKeys.length === 0) { section.innerHTML = ''; return; }
+
+        const metric = state.selectedMetric || state.allMetrics[0];
+        if (!metric) return;
+        const mIdx = state.allMetrics.indexOf(metric);
+        const isBoolean = state.metricIsBoolean[metric];
+        const rows = state.snapshot.rows || [];
+
+        let html = '<h3 class="section-title">Performance by Category</h3><div class="comparison-stats">';
+
+        for (const bdKey of breakdownKeys) {
+          const groups = {};
+          for (const row of rows) {
+            const md = row.item_metadata || {};
+            const groupVal = String(md[bdKey] ?? '');
+            if (bdKey === 'root_cause' && !groupVal) continue;
+            const effective = groupVal || 'unknown';
+            if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
+            groups[effective].count++;
+            if (mIdx >= 0) {
+              const { score } = window.QymMetrics.getRowScore(row, mIdx);
+              if (score !== null) groups[effective].scores.push(score);
+            }
+            if (row.latency_ms && row.status === 'completed') {
+              groups[effective].latencies.push(row.latency_ms);
+            }
+          }
+
+          const groupStats = Object.entries(groups).map(([gv, g]) => ({
+            groupVal: gv,
+            itemCount: g.count,
+            avgScore: g.scores.length > 0 ? g.scores.reduce((a,b)=>a+b,0) / g.scores.length : 0,
+            avgLatency: g.latencies.length > 0 ? g.latencies.reduce((a,b)=>a+b,0) / g.latencies.length : null,
+          }));
+
+          if (bdKey === 'complexity') {
+            const co = ['easy','medium','hard'];
+            groupStats.sort((a,b) => {
+              const ai = co.indexOf(a.groupVal.toLowerCase().trim());
+              const bi = co.indexOf(b.groupVal.toLowerCase().trim());
+              return (ai===-1?999:ai) - (bi===-1?999:bi);
+            });
+          } else if (bdKey === 'root_cause') {
+            groupStats.sort((a,b) => b.itemCount - a.itemCount);
+          } else {
+            groupStats.sort((a,b) => a.groupVal.localeCompare(b.groupVal));
+          }
+
+          if (groupStats.length === 0) continue;
+
+          const icon = bdKey === 'complexity' ? '\u2666' : bdKey === 'root_cause' ? '\u26A0' : '\u25C6';
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : bdKey === 'root_cause' ? 'breakdown-root-cause' : 'breakdown-domain';
+          const displayName = bdKey === 'root_cause' ? 'Root Cause' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
+
+          html += '<div class="breakdown-section ' + colorClass + '">';
+          if (bdKey === 'root_cause') {
+            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + '</div>';
+          } else {
+            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
+          }
+          html += '<div class="breakdown-grid">';
+
+          for (const g of groupStats) {
+            if (bdKey === 'root_cause') {
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
+              html += '<div class="breakdown-card"><div class="breakdown-card-top"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div></div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Items</span> ' + g.itemCount + '</span></div></div>';
+            } else {
+              const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
+              let cardValClass = '';
+              if (bdKey === 'complexity') {
+                const cv = g.groupVal.toLowerCase().trim();
+                if (['easy','simple','basic','low'].includes(cv)) cardValClass = ' complexity-easy';
+                else if (['medium','moderate','intermediate','mid'].includes(cv)) cardValClass = ' complexity-medium';
+                else if (['hard','difficult','advanced','high'].includes(cv)) cardValClass = ' complexity-hard';
+                else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
+              }
+              html += '<div class="breakdown-card' + cardValClass + '"><div class="breakdown-card-top"><div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-count"><strong>' + g.itemCount + '</strong> item' + (g.itemCount !== 1 ? 's' : '') + '</div></div><div class="breakdown-card-score ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
+            }
+          }
+          html += '</div></div>';
+        }
+
+        html += '</div>';
+        section.innerHTML = html;
+      }
+
+      // ── Filtering & Items ──
+
+      function getFilteredItems() {
+        const rows = state.snapshot.rows || [];
+        const metric = state.selectedMetric;
+        const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
+        const isBoolean = metric ? state.metricIsBoolean[metric] : false;
+        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+        let items = [];
+
+        for (const row of rows) {
+          // Search filter
+          if (state.searchQuery) {
+            const q = state.searchQuery.toLowerCase();
+            const inp = String(row.input_full || row.input || '').toLowerCase();
+            const exp = String(row.expected_full || row.expected || '').toLowerCase();
+            const out = String(row.output_full || row.output || '').toLowerCase();
+            if (!inp.includes(q) && !exp.includes(q) && !out.includes(q)) continue;
+          }
+
+          // Category filters
+          const md = (typeof row.item_metadata === 'object') ? row.item_metadata : {};
+          if (state.complexityFilter !== null) {
+            if (state.complexityFilter.length === 0) continue;
+            const val = String(md.complexity ?? '').toLowerCase();
+            if (!state.complexityFilter.some(f => f.toLowerCase() === val)) continue;
+          }
+          if (state.domainFilter !== null) {
+            if (state.domainFilter.length === 0) continue;
+            const val = String(md.domain ?? '').toLowerCase();
+            if (!state.domainFilter.some(f => f.toLowerCase() === val)) continue;
+          }
+          if (state.rootCauseFilter !== null) {
+            if (state.rootCauseFilter.length === 0) continue;
+            const val = String(md.root_cause ?? '').toLowerCase();
+            if (!state.rootCauseFilter.some(f => f.toLowerCase() === val)) continue;
+          }
+
+          // Score for this metric
+          let score = null;
+          if (mIdx >= 0) {
+            const result = window.QymMetrics.getRowScore(row, mIdx);
+            score = result.score;
+          }
+
+          // Item filter
+          if (state.itemFilter === 'passed') {
+            if (score === null || score < threshold) continue;
+          } else if (state.itemFilter === 'failed') {
+            if (score === null || score >= threshold) continue;
+          } else if (state.itemFilter === 'errors') {
+            if (!window.QymMetrics.isErrorRow(row)) continue;
+          }
+
+          // Score distribution filter
+          if (state.scoreDistFilter) {
+            if (score === null) continue;
+            if (score < state.scoreDistFilter.min || score >= state.scoreDistFilter.max) continue;
+          }
+
+          // Latency distribution filter
+          if (state.latencyDistFilter) {
+            const lat = row.latency_ms || 0;
+            if (lat < state.latencyDistFilter.min || lat >= state.latencyDistFilter.max) continue;
+          }
+
+          items.push({ row, score });
+        }
+
+        // Sorting
+        if (state.sortBy === 'score_asc') {
+          items.sort((a, b) => (a.score ?? -1) - (b.score ?? -1));
+        } else if (state.sortBy === 'score_desc') {
+          items.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+        } else if (state.sortBy === 'latency_asc') {
+          items.sort((a, b) => (a.row.latency_ms || 0) - (b.row.latency_ms || 0));
+        } else if (state.sortBy === 'latency_desc') {
+          items.sort((a, b) => (b.row.latency_ms || 0) - (a.row.latency_ms || 0));
+        }
+        // default: index order (already sorted)
+
+        return items;
+      }
+
+      function renderItems(scrollToTop) {
+        const container = el('items-grid');
+        const paginationEl = el('pagination');
+        const filterCountEl = el('filter-count');
+        const items = getFilteredItems();
+        const metric = state.selectedMetric;
+        const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
+        const isBoolean = metric ? state.metricIsBoolean[metric] : false;
+        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+
+        filterCountEl.innerHTML = 'Showing <span class="count-num">' + items.length + '</span> items';
+        updateClearButton();
+
+        const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+        if (state.page > totalPages) state.page = totalPages;
+        const start = (state.page - 1) * state.pageSize;
+        const pageItems = items.slice(start, start + state.pageSize);
+
+        if (items.length === 0) {
+          container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
+          paginationEl.innerHTML = '';
+          return;
+        }
+
+        container.innerHTML = pageItems.map(({ row }) => {
+          const input = row.input_full || row.input || '\u2014';
+          const expected = row.expected_full || row.expected || '';
+          const output = row.output_full || row.output || '\u2014';
+          const status = row.status || 'pending';
+          const latencyMs = row.latency_ms;
+          const taskStartedAtMs = row.task_started_at_ms;
+          const traceId = row.trace_id;
+          const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId);
+          const metricVals = row.metric_values || [];
+          const metricMeta = row.metric_meta || {};
+          const itemId = row.item_id || String(row.index);
+          const safeId = btoa(itemId).replace(/[+/=]/g, '_');
+
+          // Display item ID
+          let displayItemId = itemId;
+          const itemMatch = itemId.match(/^item_(\d+)$/);
+          if (itemMatch) displayItemId = 'Item ' + (parseInt(itemMatch[1], 10) + 1);
+
+          // Metric scores inline
+          const metricScoresHtml = state.allMetrics.map((name, i) => {
+            const sv = metricVals[i];
+            const v = window.QymMetrics.parseScoreValue(sv);
+            if (v === null) return '';
+            const cls = getSuccessClass(v);
+            const isSelected = name === metric;
+            const meta = metricMeta[name] || {};
+            const editBtn = '<button class="metric-edit-open" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit">\u270E</button>';
+            const editedBadge = String(meta.modified || '').toLowerCase() === 'true' ? '<span class="metric-edit-badge">Edited</span>' : '';
+            return '<div class="metric-score-row ' + (isSelected ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-meta"><span class="metric-score-value ' + cls + '">' + formatPercent(v) + '</span>' + editBtn + editedBadge + '</span></div>';
+          }).join('');
+
+          // Metric edit blocks
+          let metricEditHtml = state.allMetrics.map((name, i) => {
+            const rawScore = metricVals[i];
+            const rawValue = (rawScore == null || rawScore === '') ? '' : String(rawScore);
+            const meta = metricMeta[name] || {};
+            const originalRaw = meta.original_score;
+            const hasOriginal = !(originalRaw == null || originalRaw === '');
+            const modifiedNote = hasOriginal ? '<div class="metric-edit-meta">Original: ' + escapeHtml(String(originalRaw)) + '</div>' : '';
+            return '<div class="metric-edit-block hidden" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '"><div class="metric-edit-title">Edit ' + escapeHtml(name) + '_score</div><div class="metric-edit-controls"><input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" /><button class="metric-edit-save" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '">Save</button><span class="metric-edit-status"></span></div>' + modifiedNote + '</div>';
+          }).join('');
+
+          // Latency badge
+          const latencyBadge = latencyMs ? '<span class="latency-badge">\u23F1' + formatLatency(latencyMs) + '</span>' : '';
+          // Start badge
+          const startInfo = formatTaskStart(taskStartedAtMs);
+          const startBadge = startInfo ? '<span class="start-badge" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
+          // Trace link
+          const traceLink = traceUrl ? '<a href="' + escapeAttr(traceUrl) + '" target="_blank" class="trace-link">Langfuse \u2197</a>' : '';
+
+          // Pass/fail badge
+          let passfailBadge = '';
+          if (status === 'error') {
+            passfailBadge = '<span class="passfail-badge fail">Fail</span>';
+          } else if (metric && mIdx >= 0) {
+            const pfVal = window.QymMetrics.parseScoreValue(metricVals[mIdx]);
+            if (pfVal !== null) {
+              passfailBadge = pfVal >= threshold ? '<span class="passfail-badge pass">Pass</span>' : '<span class="passfail-badge fail">Fail</span>';
+            }
+          }
+
+          // Root cause
+          let rootCauseHtml = '';
+          const rowRc = row.item_metadata?.root_cause || '';
+          if (rowRc) {
+            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span></div>';
+          } else {
+            rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
+          }
+
+          // Metric details
+          let metricDetailsHtml = '';
+          const hasMetricMeta = Object.keys(metricMeta).length > 0;
+          if (hasMetricMeta) {
+            const detailRows = state.allMetrics.map(name => {
+              const meta = metricMeta[name] || {};
+              const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k));
+              if (!metaKeys.length) return '';
+              return metaKeys.map(key => {
+                const val = meta[key];
+                if (val === undefined || val === null || val === '') return '';
+                return '<div class="metric-detail-row"><span class="metric-detail-name">' + escapeHtml(name) + ' \u00B7 ' + formatFieldName(key) + '</span><span class="metric-detail-value">' + escapeHtml(String(val)) + '</span></div>';
+              }).join('');
+            }).join('');
+            if (detailRows) {
+              metricDetailsHtml = '<div class="run-metric-details" data-item="' + safeId + '">' + detailRows + '</div>';
+            }
+          }
+          const toggleHtml = metricDetailsHtml ? '<div class="item-metric-details-toggle"><button class="metric-details-toggle" onclick="window._toggleDetails(\'' + safeId + '\')"><span class="toggle-icon" id="toggle-icon-' + safeId + '">\u25B6</span> Metric Details</button></div>' : '';
+
+          // Item metadata badges
+          let itemMetadataHtml = '';
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause'];
+          const itemMd = row.item_metadata || {};
+          if (typeof itemMd === 'object') {
+            let badgesHtml = '';
+            for (const sk of SPECIAL_KEYS) {
+              if (sk === 'root_cause') continue;
+              if (itemMd[sk] != null && itemMd[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
+                const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
+                let valClass = '';
+                if (sk === 'complexity') {
+                  const v = String(itemMd[sk]).toLowerCase().trim();
+                  if (['easy','simple','basic','low'].includes(v)) valClass = ' complexity-easy';
+                  else if (['medium','moderate','intermediate','mid'].includes(v)) valClass = ' complexity-medium';
+                  else if (['hard','difficult','advanced','high'].includes(v)) valClass = ' complexity-hard';
+                  else if (['very hard','very_hard','expert','extreme'].includes(v)) valClass = ' complexity-expert';
+                }
+                badgesHtml += '<span class="meta-badge badge-' + sk + valClass + '"><span class="badge-icon">' + icon + '</span>' + escapeHtml(String(itemMd[sk])) + '</span>';
+              }
+            }
+            const genericEntries = Object.entries(itemMd).filter(([k]) => k !== 'task_started_at_ms' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false);
+            let genericHtml = genericEntries.map(([k,v]) => '<span class="item-metadata-tag"><span class="meta-key">' + escapeHtml(k) + ':</span> <span class="meta-val">' + escapeHtml(String(v)) + '</span></span>').join('');
+            if (badgesHtml || genericHtml) {
+              const sep = badgesHtml && genericHtml ? '<span class="item-meta-sep"></span>' : '';
+              itemMetadataHtml = '<div class="item-metadata-row">' + (badgesHtml ? '<div class="item-meta-badges">' + badgesHtml + '</div>' : '') + sep + (genericHtml ? '<div class="item-metadata-tags">' + genericHtml + '</div>' : '') + '</div>';
+            }
+          }
+
+          return '<div class="item-card">' +
+            '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
+            '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
+            (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text">' + renderMarkdownSafe(expected) + '</div></div>' : '') +
+            itemMetadataHtml +
+            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + metricDetailsHtml + rootCauseHtml + '</div>' +
+            toggleHtml +
+          '</div>';
+        }).join('');
+
+        // Pagination
+        paginationEl.innerHTML = '<button id="prev-page" ' + (state.page <= 1 ? 'disabled' : '') + '>&larr; Prev</button><span class="page-info">Page ' + state.page + ' of ' + totalPages + '</span><button id="next-page" ' + (state.page >= totalPages ? 'disabled' : '') + '>Next &rarr;</button>';
+        el('prev-page').onclick = () => { state.page--; renderItems(true); };
+        el('next-page').onclick = () => { state.page++; renderItems(true); };
+
+        if (scrollToTop) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        wireMetricEditHandlers();
+        wireRootCauseHandlers();
+        wireCopyHandlers();
+      }
+
+      // ── Metric edit handlers ──
+
+      async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+        const res = await fetch(apiUrl('api/runs/update_metric'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file_path: filePath, row_index: rowIndex, metric_name: metricName, new_score: newScore }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to update metric');
+        return data;
+      }
+
+      function applyUpdatedRow(updatedRow) {
+        try {
+          const rows = state.snapshot.rows || [];
+          const idx = Number(updatedRow.index) || 0;
+          if (idx >= 0 && idx < rows.length) { rows[idx] = updatedRow; }
+          else { const pos = rows.findIndex(r => Number(r.index) === idx); if (pos >= 0) rows[pos] = updatedRow; }
+        } catch {}
+      }
+
+      function wireMetricEditHandlers() {
+        document.querySelectorAll('.metric-edit-open').forEach(btn => {
+          btn.onclick = () => {
+            const rowIndex = btn.dataset.rowIndex;
+            const metric = btn.dataset.metric;
+            const block = document.querySelector('.metric-edit-block[data-row-index="' + rowIndex + '"][data-metric="' + metric + '"]');
+            if (!block) return;
+            const isHidden = block.classList.contains('hidden');
+            block.classList.toggle('hidden');
+            btn.textContent = isHidden ? '\u2715' : '\u270E';
+          };
+        });
+        document.querySelectorAll('.metric-edit-save').forEach(btn => {
+          btn.onclick = async () => {
+            const rowIndex = Number(btn.dataset.rowIndex);
+            const metricName = btn.dataset.metric || '';
+            const controls = btn.closest('.metric-edit-controls');
+            const input = controls ? controls.querySelector('.metric-edit-input') : null;
+            const statusEl = controls ? controls.querySelector('.metric-edit-status') : null;
+            const filePath = state.run?.file_path || '';
+            if (!filePath || !metricName || !input) { if (statusEl) statusEl.textContent = 'Unavailable'; return; }
+            btn.disabled = true;
+            if (statusEl) statusEl.textContent = 'Saving...';
+            try {
+              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value);
+              if (result && result.row) {
+                applyUpdatedRow(result.row);
+                renderOverviewStats();
+                renderScoreDistribution();
+                renderMetadataBreakdown();
+                renderItems();
+              }
+            } catch (err) {
+              if (statusEl) statusEl.textContent = 'Error';
+            } finally {
+              btn.disabled = false;
+              if (statusEl && statusEl.textContent === 'Saving...') statusEl.textContent = '';
+            }
+          };
+        });
+      }
+
+      // ── Root cause handlers ──
+
+      function wireRootCauseHandlers() {
+        document.querySelectorAll('[data-rc-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showRootCauseDropdown(trigger.dataset.rcItem, trigger);
+          });
+        });
+      }
+
+      function showRootCauseDropdown(itemId, anchorEl) {
+        document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentRC = row?.item_metadata?.root_cause || '';
+        const allOptions = [...ROOT_CAUSE_PRESETS];
+        for (const v of state.rootCauseValues) { if (!allOptions.includes(v)) allOptions.push(v); }
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown';
+        let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        html += '<div class="rc-divider"></div>';
+        for (const opt of allOptions) {
+          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
+          html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
+        }
+        html += '<div class="rc-divider"></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>';
+        dropdown.innerHTML = html;
+
+        const rect = anchorEl.getBoundingClientRect();
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+        dropdown.style.left = rect.left + 'px';
+        document.body.appendChild(dropdown);
+
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveRootCause(itemId, opt.dataset.rcValue);
+            dropdown.remove();
+          });
+        });
+
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        customBtn.addEventListener('click', async () => {
+          const val = customInput.value.trim();
+          if (val) { await saveRootCause(itemId, val); dropdown.remove(); }
+        });
+        customInput.addEventListener('keydown', async (e) => {
+          if (e.key === 'Enter') {
+            const val = customInput.value.trim();
+            if (val) { await saveRootCause(itemId, val); dropdown.remove(); }
+          }
+        });
+
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', closeHandler); }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+      }
+
+      async function saveRootCause(itemId, rootCause) {
+        const runId = state.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
+
+          const rows = state.snapshot.rows || [];
+          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (rootCause) { row.item_metadata.root_cause = rootCause; } else { delete row.item_metadata.root_cause; }
+          }
+          if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
+          if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
+
+          renderMetadataBreakdown();
+          buildCategoryDropdowns();
+          renderItems();
+        } catch (err) { console.error('Error saving root cause:', err); }
+      }
+
+      // ── Copy handlers ──
+
+      function wireCopyHandlers() {
+        const container = el('items-grid');
+        container.querySelectorAll('.copy-btn[data-item-id]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.itemId;
+            const rows = state.snapshot.rows || [];
+            const row = rows.find(r => (r.item_id || String(r.index)) === id);
+            if (!row) return;
+            const parts = [];
+            parts.push('Input: ' + (typeof row.input_full === 'object' ? JSON.stringify(row.input_full,null,2) : String(row.input_full || row.input || '')));
+            const exp = row.expected_full || row.expected || '';
+            if (exp) parts.push('Expected: ' + (typeof exp === 'object' ? JSON.stringify(exp,null,2) : String(exp)));
+            parts.push('Output: ' + (typeof row.output_full === 'object' ? JSON.stringify(row.output_full,null,2) : String(row.output_full || row.output || '')));
+            navigator.clipboard.writeText(parts.join('\n\n')).then(() => {
+              btn.innerHTML = CHECK_ICON; btn.classList.add('copied');
+              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
+            });
+          });
+        });
+        container.querySelectorAll('.copy-btn[data-copy-text]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(btn.dataset.copyText).then(() => {
+              btn.innerHTML = CHECK_ICON; btn.classList.add('copied');
+              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
+            });
+          });
+        });
+      }
+
+      // ── Metric details toggle ──
+
+      window._toggleDetails = function(safeId) {
+        const details = document.querySelectorAll('.run-metric-details[data-item="' + safeId + '"]');
+        const icon = document.getElementById('toggle-icon-' + safeId);
+        if (!details.length) return;
+        const isExpanded = details[0].classList.contains('expanded');
+        details.forEach(d => { if (isExpanded) d.classList.remove('expanded'); else d.classList.add('expanded'); });
+        if (icon) icon.textContent = isExpanded ? '\u25B6' : '\u25BC';
+      };
+
+      // ── Category dropdowns ──
+
+      function buildCategoryDropdowns() {
+        const hasComplexity = state.complexityValues.length > 0;
+        const hasDomain = state.domainValues.length > 0;
+        const hasRootCause = state.rootCauseValues.length > 0;
+        const hasMeta = hasComplexity || hasDomain || hasRootCause;
+        el('fp-cat-complexity').style.display = hasComplexity ? '' : 'none';
+        el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
+        el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
+        el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
+        if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
+        if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
+        if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
+      }
+
+      function buildMultiselectOptions(category, values) {
+        const dropdown = el(category + '-ms-dropdown');
+        if (!dropdown) return;
+        const itemCounts = {};
+        for (const v of values) itemCounts[v] = 0;
+        const rows = state.snapshot.rows || [];
+        for (const row of rows) {
+          const md = row.item_metadata || {};
+          const val = String(md[category] ?? '');
+          if (itemCounts[val] !== undefined) itemCounts[val]++;
+        }
+        let html = values.map(v =>
+          '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(v) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
+        ).join('');
+        html += '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
+        dropdown.innerHTML = html;
+
+        dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            let filterArr = getCatFilter(category);
+            if (filterArr === null) { filterArr = [...values]; setCatFilter(category, filterArr); }
+            if (cb.checked) { if (!filterArr.includes(cb.dataset.val)) filterArr.push(cb.dataset.val); }
+            else { const idx = filterArr.indexOf(cb.dataset.val); if (idx >= 0) filterArr.splice(idx, 1); }
+            syncMultiselectUI(category);
+            state.page = 1;
+            renderItems();
+          });
+        });
+        dropdown.querySelectorAll('.ms-action-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (btn.dataset.action === 'all') setCatFilter(category, null);
+            else setCatFilter(category, []);
+            syncMultiselectUI(category);
+            state.page = 1;
+            renderItems();
+          });
+        });
+        syncMultiselectUI(category);
+      }
+
+      function getCatFilter(cat) {
+        if (cat === 'complexity') return state.complexityFilter;
+        if (cat === 'domain') return state.domainFilter;
+        if (cat === 'root_cause') return state.rootCauseFilter;
+        return null;
+      }
+      function setCatFilter(cat, val) {
+        if (cat === 'complexity') state.complexityFilter = val;
+        else if (cat === 'domain') state.domainFilter = val;
+        else if (cat === 'root_cause') state.rootCauseFilter = val;
+      }
+      function getCatValues(cat) {
+        if (cat === 'complexity') return state.complexityValues;
+        if (cat === 'domain') return state.domainValues;
+        if (cat === 'root_cause') return state.rootCauseValues;
+        return [];
+      }
+      function getCatDefaultLabel(cat) {
+        if (cat === 'complexity') return 'All Complexity';
+        if (cat === 'domain') return 'All Domains';
+        if (cat === 'root_cause') return 'All Root Causes';
+        return 'All';
+      }
+
+      function syncMultiselectUI(category) {
+        const filterArr = getCatFilter(category);
+        const values = getCatValues(category);
+        const defaultLabel = getCatDefaultLabel(category);
+        const btn = el(category + '-ms-btn');
+        const dropdown = el(category + '-ms-dropdown');
+
+        if (filterArr !== null && filterArr.length === values.length) setCatFilter(category, null);
+        const effective = getCatFilter(category);
+
+        if (btn) {
+          if (effective === null) { btn.textContent = defaultLabel; btn.classList.remove('has-selection'); }
+          else if (effective.length === 0) { btn.textContent = 'None'; btn.classList.add('has-selection'); }
+          else if (effective.length === 1) { btn.textContent = effective[0]; btn.classList.add('has-selection'); }
+          else { btn.textContent = effective.length + ' selected'; btn.classList.add('has-selection'); }
+        }
+        if (dropdown) {
+          dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+            cb.checked = effective === null || effective.includes(cb.dataset.val);
+          });
+        }
+      }
+
+      function setupCatDropdownToggle(category) {
+        const btn = el(category + '-ms-btn');
+        const dropdown = el(category + '-ms-dropdown');
+        if (!btn || !dropdown) return;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.querySelectorAll('.multi-select-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
+          dropdown.classList.toggle('open');
+        });
+        dropdown.addEventListener('click', (e) => e.stopPropagation());
+      }
+
+      setupCatDropdownToggle('complexity');
+      setupCatDropdownToggle('domain');
+      setupCatDropdownToggle('root_cause');
+      document.addEventListener('click', () => {
+        document.querySelectorAll('.fp-cat-group .multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+      });
+
+      // ── Metadata fields selector ──
+
+      el('metadata-fields-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        el('metadata-fields-dropdown').classList.toggle('open');
+      });
+      document.addEventListener('click', () => { el('metadata-fields-dropdown').classList.remove('open'); });
+      el('metadata-fields-dropdown').addEventListener('click', (e) => e.stopPropagation());
+
+      function populateMetadataFieldsDropdown() {
+        const dropdown = el('metadata-fields-dropdown');
+        if (!dropdown || state.allMetadataKeys.length === 0) {
+          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metadata fields found</div>';
+          return;
+        }
+        dropdown.innerHTML = state.allMetadataKeys.map(k => {
+          const checked = state.visibleMetadataFields[k] ? 'checked' : '';
+          return '<label><input type="checkbox" ' + checked + ' data-meta-key="' + escapeAttr(k) + '" /> ' + escapeHtml(k) + '</label>';
+        }).join('');
+        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            state.visibleMetadataFields[cb.dataset.metaKey] = cb.checked;
+            renderItems();
+          });
+        });
+      }
+
+      // ── Clear filters ──
+
+      function countActiveFilters() {
+        let n = 0;
+        if (state.itemFilter !== 'all') n++;
+        if (state.sortBy !== 'index') n++;
+        if (state.searchQuery) n++;
+        if (state.complexityFilter !== null) n++;
+        if (state.domainFilter !== null) n++;
+        if (state.rootCauseFilter !== null) n++;
+        if (state.scoreDistFilter) n++;
+        if (state.latencyDistFilter) n++;
+        return n;
+      }
+
+      function updateClearButton() {
+        const clearBtn = el('clear-all-btn');
+        const countBadge = el('active-filter-count');
+        const n = countActiveFilters();
+        if (clearBtn) clearBtn.classList.toggle('visible', n > 0);
+        if (countBadge) countBadge.textContent = n;
+      }
+
+      function clearAllFilters() {
+        state.itemFilter = 'all';
+        state.sortBy = 'index';
+        state.searchQuery = '';
+        state.complexityFilter = null;
+        state.domainFilter = null;
+        state.rootCauseFilter = null;
+        state.scoreDistFilter = null;
+        state.latencyDistFilter = null;
+        state.page = 1;
+        el('item-filter').value = 'all';
+        el('sort-select').value = 'index';
+        el('items-search').value = '';
+        syncMultiselectUI('complexity');
+        syncMultiselectUI('domain');
+        syncMultiselectUI('root_cause');
+        renderItems();
+      }
+
+      el('clear-all-btn').addEventListener('click', clearAllFilters);
+
+      // ── Event listeners ──
+
+      el('item-filter').addEventListener('change', (e) => {
+        state.itemFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('sort-select').addEventListener('change', (e) => {
+        state.sortBy = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      {
+        let searchTimer = null;
+        el('items-search').addEventListener('input', (e) => {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => {
+            state.searchQuery = e.target.value.trim();
+            state.page = 1;
+            renderItems();
+          }, 250);
+        });
+      }
+
+      // ── Export CSV ──
+
+      el('export-filtered-btn').addEventListener('click', () => {
+        const items = getFilteredItems();
+        if (items.length === 0) return;
+        let header = ['item_id', 'input', 'expected', 'output', 'status', 'latency_ms'];
+        for (const m of state.allMetrics) header.push(m);
+        const csvRows = [header.join(',')];
+        for (const { row } of items) {
+          const r = [
+            csvEscape(row.item_id || String(row.index)),
+            csvEscape(stringify(row.input_full || row.input)),
+            csvEscape(stringify(row.expected_full || row.expected)),
+            csvEscape(stringify(row.output_full || row.output)),
+            csvEscape(row.status || ''),
+            csvEscape(String(row.latency_ms || '')),
+          ];
+          for (let mi = 0; mi < state.allMetrics.length; mi++) {
+            r.push(csvEscape(String((row.metric_values || [])[mi] ?? '')));
+          }
+          csvRows.push(r.join(','));
+        }
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (state.run?.run_name || 'run') + '_export.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      // ── Initialize ──
+      loadRunData();
+    })();
+  </script>
+</body>
+</html>

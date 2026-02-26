@@ -1523,6 +1523,24 @@
       font-weight: 500;
     }
 
+    .passfail-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .passfail-badge.pass {
+      background: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+
+    .passfail-badge.fail {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+
     .metric-score-row.highlighted {
       background: var(--bg-hover);
       margin: 0 -4px;
@@ -1671,6 +1689,129 @@
       background: rgba(96, 165, 250, 0.1);
       border: 1px solid rgba(96, 165, 250, 0.25);
       color: #60a5fa;
+    }
+
+    /* Root cause badge */
+    .meta-badge.badge-root-cause {
+      background: rgba(244, 114, 182, 0.1);
+      border: 1px solid rgba(244, 114, 182, 0.25);
+      color: #f472b6;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .meta-badge.badge-root-cause:hover {
+      background: rgba(244, 114, 182, 0.2);
+      border-color: rgba(244, 114, 182, 0.4);
+    }
+
+    /* Root cause row inside each run output */
+    .root-cause-row {
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Root cause assign button */
+    .root-cause-assign-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-default);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .root-cause-assign-btn:hover {
+      border-color: #f472b6;
+      color: #f472b6;
+      background: rgba(244, 114, 182, 0.05);
+    }
+
+    /* Root cause dropdown */
+    .root-cause-dropdown {
+      position: fixed;
+      z-index: 200;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-sm);
+      min-width: 220px;
+      max-height: 320px;
+      overflow-y: auto;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .root-cause-dropdown .rc-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.1s;
+    }
+    .root-cause-dropdown .rc-option:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .root-cause-dropdown .rc-option.active {
+      color: #f472b6;
+      font-weight: 600;
+    }
+    .root-cause-dropdown .rc-option .rc-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .root-cause-dropdown .rc-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 4px 0;
+    }
+    .root-cause-dropdown .rc-custom-input {
+      display: flex;
+      gap: 4px;
+      padding: 6px;
+    }
+    .root-cause-dropdown .rc-custom-input input {
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      padding: 4px 8px;
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+    .root-cause-dropdown .rc-custom-input input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+    }
+    .root-cause-dropdown .rc-custom-input button {
+      padding: 4px 10px;
+      background: var(--accent-primary);
+      color: var(--bg-primary);
+      border: none;
+      border-radius: 3px;
+      font-size: var(--font-xs);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    /* Root cause breakdown section */
+    .breakdown-root-cause .breakdown-card {
+      border-left: 3px solid rgba(244, 114, 182, 0.3);
+    }
+    .breakdown-root-cause .breakdown-icon,
+    .breakdown-root-cause .breakdown-header {
+      color: #f472b6;
     }
 
     /* Separator between badges and generic tags */
@@ -1894,6 +2035,13 @@
                 <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
               </div>
             </div>
+            <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
+              <span class="fp-label">Root Cause</span>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
+                <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
+              </div>
+            </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
                 <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">&#9881;</button>
@@ -1958,6 +2106,28 @@
         '#fbbf24', '#60a5fa', '#34d399', '#fb923c'
       ];
 
+      const ROOT_CAUSE_PRESETS = [
+        'Hallucination',
+        'Incomplete Answer',
+        'Wrong Format',
+        'Context Missing',
+        'Reasoning Error',
+        'Tool Use Error',
+        'Instruction Following',
+        'Knowledge Gap',
+      ];
+
+      const ROOT_CAUSE_COLORS = {
+        'Hallucination': '#ef4444',
+        'Incomplete Answer': '#f97316',
+        'Wrong Format': '#eab308',
+        'Context Missing': '#3b82f6',
+        'Reasoning Error': '#a855f7',
+        'Tool Use Error': '#ec4899',
+        'Instruction Following': '#14b8a6',
+        'Knowledge Gap': '#6366f1',
+      };
+
       const state = {
         runs: [],
         allMetrics: [],
@@ -1982,6 +2152,8 @@
         passRateValue: 0,             // #20: the number for the pass rate filter
         allMetadataKeys: [],          // collected metadata keys across all items
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
+        rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
+        rootCauseValues: [],          // unique root cause values found in data
       };
 
       const el = (id) => document.getElementById(id);
@@ -2139,6 +2311,7 @@
         const metaKeySet = new Set();
         const complexitySet = new Set();
         const domainSet = new Set();
+        const rootCauseSet = new Set();
         for (const run of state.runs) {
           const rows = run.snapshot?.rows || [];
           for (const row of rows) {
@@ -2149,6 +2322,7 @@
               }
               if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
               if (md.domain != null && md.domain !== '') domainSet.add(String(md.domain));
+              if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
             }
           }
         }
@@ -2160,6 +2334,7 @@
           return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
         });
         state.domainValues = Array.from(domainSet).sort();
+        state.rootCauseValues = Array.from(rootCauseSet).sort();
 
         // Initialize visible metadata fields (all on by default)
         for (const k of state.allMetadataKeys) {
@@ -2624,7 +2799,7 @@
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
       function renderMetadataBreakdown() {
         // Look for 'complexity' and 'domain' keys in item metadata
-        const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
+        const breakdownKeys = ['complexity', 'domain', 'root_cause'].filter(k => state.allMetadataKeys.includes(k));
         if (breakdownKeys.length === 0) return;
 
         let existingSection = document.getElementById('metadata-breakdown');
@@ -2650,7 +2825,7 @@
         for (const bdKey of breakdownKeys) {
           // Collect per-item-id data grouped by the breakdown key value
           // We need item-level aggregation (across runs) for consistency
-          const itemsByGroup = {}; // groupVal -> { itemId -> { scores: [], latencies: [] } }
+          const itemsByGroup = {}; // groupVal -> { itemId -> { scores: [], latencies: [], runCount: number } }
 
           for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
             const run = state.runs[runIdx];
@@ -2660,18 +2835,22 @@
 
             for (const row of rows) {
               const md = row.item_metadata || {};
-              const groupVal = String(md[bdKey] ?? 'unknown');
+              const groupVal = String(md[bdKey] ?? '');
+              // Skip unassigned items for root_cause breakdown
+              if (bdKey === 'root_cause' && !groupVal) continue;
+              const effectiveGroup = groupVal || 'unknown';
               const itemId = row.item_id || String(row.index);
 
-              if (!itemsByGroup[groupVal]) itemsByGroup[groupVal] = {};
-              if (!itemsByGroup[groupVal][itemId]) itemsByGroup[groupVal][itemId] = { scores: [], latencies: [] };
+              if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
+              if (!itemsByGroup[effectiveGroup][itemId]) itemsByGroup[effectiveGroup][itemId] = { scores: [], latencies: [], runCount: 0 };
+              itemsByGroup[effectiveGroup][itemId].runCount++;
 
               if (mIdx >= 0) {
                 const { score } = window.QymMetrics.getRowScore(row, mIdx);
-                if (score !== null) itemsByGroup[groupVal][itemId].scores.push(score);
+                if (score !== null) itemsByGroup[effectiveGroup][itemId].scores.push(score);
               }
               if (row.latency_ms && row.status === 'completed') {
-                itemsByGroup[groupVal][itemId].latencies.push(row.latency_ms);
+                itemsByGroup[effectiveGroup][itemId].latencies.push(row.latency_ms);
               }
             }
           }
@@ -2683,9 +2862,11 @@
             let totalScoreSum = 0, totalScoreCount = 0;
             let totalLatSum = 0, totalLatCount = 0;
             let consistencySum = 0, consistencyCount = 0;
+            let totalAssignments = 0; // total run-level assignments (for root_cause)
 
             for (const itemId of itemIds) {
-              const { scores, latencies } = items[itemId];
+              const { scores, latencies, runCount } = items[itemId];
+              totalAssignments += runCount; // count each run-item as an assignment
 
               // Avg score — flat across all run observations
               for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
@@ -2709,7 +2890,7 @@
             const avgLatency = totalLatCount > 0 ? totalLatSum / totalLatCount : null;
             const consistency = consistencyCount > 0 ? consistencySum / consistencyCount : null;
 
-            groupStats.push({ groupVal, itemCount: itemIds.length, avgScore, avgLatency, consistency });
+            groupStats.push({ groupVal, itemCount: itemIds.length, totalAssignments, avgScore, avgLatency, consistency });
           }
 
           if (bdKey === 'complexity') {
@@ -2719,44 +2900,66 @@
               const bi = cOrder.indexOf(b.groupVal.toLowerCase().trim());
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
+          } else if (bdKey === 'root_cause') {
+            // Sort root causes by item count descending (most common first)
+            groupStats.sort((a, b) => b.itemCount - a.itemCount);
           } else {
             groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
           }
           if (groupStats.length === 0) continue;
 
-          const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : 'breakdown-domain';
+          const icon = bdKey === 'complexity' ? '\u2666' : bdKey === 'root_cause' ? '\u26A0' : '\u25C6';
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : bdKey === 'root_cause' ? 'breakdown-root-cause' : 'breakdown-domain';
+          const displayName = bdKey === 'root_cause' ? 'Root Cause' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
 
           html += `<div class="breakdown-section ${colorClass}">`;
-          html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(bdKey.charAt(0).toUpperCase() + bdKey.slice(1))} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
+          if (bdKey === 'root_cause') {
+            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)}</div>`;
+          } else {
+            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
+          }
           html += '<div class="breakdown-grid">';
 
           for (const g of groupStats) {
-            const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
-            const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
-            const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
+            if (bdKey === 'root_cause') {
+              // Root cause cards: compact — label + assignments / distinct items
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
+              html += `<div class="breakdown-card">
+                <div class="breakdown-card-top">
+                  <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
+                </div>
+                <div class="breakdown-card-details">
+                  <span class="breakdown-detail"><span class="breakdown-detail-label">Total</span> ${g.totalAssignments}</span>
+                  <span class="breakdown-detail"><span class="breakdown-detail-label">Unique</span> ${g.itemCount}</span>
+                </div>
+              </div>`;
+            } else {
+              const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
+              const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
+              const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
 
-            // Add value-specific class for complexity breakdown cards
-            let cardValClass = '';
-            if (bdKey === 'complexity') {
-              const cv = g.groupVal.toLowerCase().trim();
-              if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
-              else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
-              else if (['hard', 'difficult', 'advanced', 'high'].includes(cv)) cardValClass = ' complexity-hard';
-              else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
+              // Add value-specific class for complexity breakdown cards
+              let cardValClass = '';
+              if (bdKey === 'complexity') {
+                const cv = g.groupVal.toLowerCase().trim();
+                if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
+                else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
+                else if (['hard', 'difficult', 'advanced', 'high'].includes(cv)) cardValClass = ' complexity-hard';
+                else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
+              }
+
+              html += `<div class="breakdown-card${cardValClass}">
+                <div class="breakdown-card-top">
+                  <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
+                  <div class="breakdown-card-count"><strong>${g.itemCount}</strong> item${g.itemCount !== 1 ? 's' : ''}</div>
+                </div>
+                <div class="breakdown-card-score ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</div>
+                <div class="breakdown-card-details">
+                  <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
+                  <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
+                </div>
+              </div>`;
             }
-
-            html += `<div class="breakdown-card${cardValClass}">
-              <div class="breakdown-card-top">
-                <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
-                <div class="breakdown-card-count"><strong>${g.itemCount}</strong> item${g.itemCount !== 1 ? 's' : ''}</div>
-              </div>
-              <div class="breakdown-card-score ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</div>
-              <div class="breakdown-card-details">
-                <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
-              </div>
-            </div>`;
           }
 
           html += '</div></div>';
@@ -3145,8 +3348,8 @@
             if (!inputText.includes(q) && !expectedText.includes(q)) continue;
           }
 
-          // #2: Apply complexity/domain category filters (null = all, array = explicit)
-          if (state.complexityFilter !== null || state.domainFilter !== null) {
+          // #2: Apply complexity/domain/root_cause category filters (null = all, array = explicit)
+          if (state.complexityFilter !== null || state.domainFilter !== null || state.rootCauseFilter !== null) {
             const inputRow = rowData.find(r => r);
             const md = (typeof (inputRow?.item_metadata) === 'object') ? inputRow.item_metadata : {};
             if (state.complexityFilter !== null) {
@@ -3158,6 +3361,11 @@
               if (state.domainFilter.length === 0) continue;
               const val = String(md.domain ?? '').toLowerCase();
               if (!state.domainFilter.some(f => f.toLowerCase() === val)) continue;
+            }
+            if (state.rootCauseFilter !== null) {
+              if (state.rootCauseFilter.length === 0) continue;
+              const val = String(md.root_cause ?? '').toLowerCase();
+              if (!state.rootCauseFilter.some(f => f.toLowerCase() === val)) continue;
             }
           }
 
@@ -3401,16 +3609,48 @@
             }
 
             const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
+
+            // Pass/fail badge based on selected metric threshold
+            let passfailBadge = '';
+            if (status === 'error') {
+              passfailBadge = '<span class="passfail-badge fail">Fail</span>';
+            } else if (selectedMetric) {
+              const mIdx = metricNames.indexOf(selectedMetric);
+              if (mIdx !== -1) {
+                const pfScore = metricVals[mIdx];
+                const pfVal = window.QymMetrics.parseScoreValue(pfScore);
+                if (pfVal !== null) {
+                  const pfBoolean = state.metricIsBoolean[selectedMetric];
+                  const pfThreshold = pfBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
+                  passfailBadge = pfVal >= pfThreshold
+                    ? '<span class="passfail-badge pass">Pass</span>'
+                    : '<span class="passfail-badge fail">Fail</span>';
+                }
+              }
+            }
+
+            // Root cause badge or assign button (per-run)
+            let rootCauseHtml = '';
+            const rowRc = row.item_metadata?.root_cause || '';
+            const runFilePath = runInfo.file_path || '';
+            if (rowRc) {
+              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+              rootCauseHtml = `<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Root cause: ${escapeAttr(rowRc)}. Click to change."><span class="badge-icon">\u26A0</span>${escapeHtml(rowRc)}</span></div>`;
+            } else {
+              rootCauseHtml = `<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>`;
+            }
+
             return `
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges"><button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${startBadge}${latencyBadge}${traceLink}</span>
+                  <span class="output-badges">${passfailBadge}<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${metricEditHtml}
                 ${metricDetailsHtml}
+                ${rootCauseHtml}
               </div>
             `;
           }).join('');
@@ -3428,13 +3668,14 @@
           // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
           {
-            const SPECIAL_KEYS = ['complexity', 'domain'];
+            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause'];
             const metaRow = rowData.find(r => r);
             const md = metaRow?.item_metadata || {};
             if (typeof md === 'object') {
               // Build special badges for complexity & domain
               let badgesHtml = '';
               for (const sk of SPECIAL_KEYS) {
+                if (sk === 'root_cause') continue; // root cause is per-run, rendered in output columns
                 if (md[sk] !== undefined && md[sk] !== null && md[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                   const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
                   // Add value-specific color class for complexity
@@ -3513,6 +3754,7 @@
         }
 
         wireMetricEditHandlers();
+        wireRootCauseHandlers();
         alignOutputHeights();
 
         // #16: Wire copy-all buttons (per item — header icon)
@@ -3707,6 +3949,145 @@
             }
           };
         });
+      }
+
+      // ── Root cause assignment handlers ──
+
+      function wireRootCauseHandlers() {
+        document.querySelectorAll('[data-rc-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const runIdx = parseInt(trigger.dataset.rcRunIdx, 10);
+            showRootCauseDropdown(trigger.dataset.rcItem, runIdx, trigger);
+          });
+        });
+      }
+
+      function showRootCauseDropdown(itemId, runIdx, anchorEl) {
+        // Remove any existing dropdown
+        document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
+
+        // Get current root cause for this specific run's item
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentRC = row?.item_metadata?.root_cause || '';
+
+        // Build options: predefined + any custom values already in data
+        const allOptions = [...ROOT_CAUSE_PRESETS];
+        for (const v of state.rootCauseValues) {
+          if (!allOptions.includes(v)) allOptions.push(v);
+        }
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown';
+
+        let html = '';
+        html += `<div class="rc-option ${!currentRC ? 'active' : ''}" data-rc-value=""><span class="rc-dot" style="background: var(--text-muted);"></span> None (clear)</div>`;
+        html += '<div class="rc-divider"></div>';
+
+        for (const opt of allOptions) {
+          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
+          const isActive = opt === currentRC;
+          html += `<div class="rc-option ${isActive ? 'active' : ''}" data-rc-value="${escapeAttr(opt)}"><span class="rc-dot" style="background: ${color};"></span> ${escapeHtml(opt)}</div>`;
+        }
+
+        html += '<div class="rc-divider"></div>';
+        html += `<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>`;
+
+        dropdown.innerHTML = html;
+
+        // Position near the anchor element
+        const rect = anchorEl.getBoundingClientRect();
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+        dropdown.style.left = rect.left + 'px';
+        document.body.appendChild(dropdown);
+
+        // Wire option clicks
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveRootCause(itemId, runIdx, opt.dataset.rcValue);
+            dropdown.remove();
+          });
+        });
+
+        // Wire custom input
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        customBtn.addEventListener('click', async () => {
+          const val = customInput.value.trim();
+          if (val) {
+            await saveRootCause(itemId, runIdx, val);
+            dropdown.remove();
+          }
+        });
+        customInput.addEventListener('keydown', async (e) => {
+          if (e.key === 'Enter') {
+            const val = customInput.value.trim();
+            if (val) {
+              await saveRootCause(itemId, runIdx, val);
+              dropdown.remove();
+            }
+          }
+        });
+
+        // Close on outside click
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) {
+            dropdown.remove();
+            document.removeEventListener('click', closeHandler);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+      }
+
+      async function saveRootCause(itemId, runIdx, rootCause) {
+        const runId = state.runs[runIdx]?.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) {
+            console.error('Failed to save root cause:', data.error);
+            return;
+          }
+
+          // Update local state: set root_cause only on this run's item
+          const run = state.runs[runIdx];
+          const rows = run?.snapshot?.rows || [];
+          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (rootCause) {
+              row.item_metadata.root_cause = rootCause;
+            } else {
+              delete row.item_metadata.root_cause;
+            }
+          }
+
+          // Update root cause values set
+          if (rootCause && !state.rootCauseValues.includes(rootCause)) {
+            state.rootCauseValues.push(rootCause);
+            state.rootCauseValues.sort();
+          }
+
+          // Ensure root_cause is in allMetadataKeys
+          if (rootCause && !state.allMetadataKeys.includes('root_cause')) {
+            state.allMetadataKeys.push('root_cause');
+            state.allMetadataKeys.sort();
+          }
+
+          // Re-render affected UI
+          renderMetadataBreakdown();
+          buildCategoryDropdowns();
+          renderItems();
+        } catch (err) {
+          console.error('Error saving root cause:', err);
+        }
       }
 
       // Global function for toggling all metric details for an item
@@ -3991,6 +4372,7 @@
         if (state.searchQuery) n++;
         if (state.complexityFilter !== null) n++;
         if (state.domainFilter !== null) n++;
+        if (state.rootCauseFilter !== null) n++;
         if (state.passRateOp) n++;
         return n;
       }
@@ -4009,6 +4391,7 @@
         state.searchQuery = '';
         state.complexityFilter = null;
         state.domainFilter = null;
+        state.rootCauseFilter = null;
         state.passRateOp = '';
         state.passRateValue = 0;
         state.page = 1;
@@ -4021,6 +4404,7 @@
         el('pass-rate-suffix').style.display = 'none';
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
+        syncMultiselectUI('root_cause');
 
         renderItems();
       }
@@ -4053,18 +4437,21 @@
         });
       }
 
-      // #2: Category multi-select dropdowns for complexity & domain
+      // #2: Category multi-select dropdowns for complexity, domain & root cause
       function buildCategoryDropdowns() {
         const hasComplexity = state.complexityValues.length > 0;
         const hasDomain = state.domainValues.length > 0;
-        const hasMeta = hasComplexity || hasDomain;
+        const hasRootCause = state.rootCauseValues.length > 0;
+        const hasMeta = hasComplexity || hasDomain || hasRootCause;
 
         el('fp-cat-complexity').style.display = hasComplexity ? '' : 'none';
         el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
+        el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
 
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
+        if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
       }
 
       function buildMultiselectOptions(category, values) {
@@ -4102,12 +4489,11 @@
         dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
           cb.addEventListener('change', () => {
             const val = cb.dataset.val;
-            let filterArr = category === 'complexity' ? state.complexityFilter : state.domainFilter;
+            let filterArr = getCatFilter(category);
             // If null (= all), expand to explicit list before toggling
             if (filterArr === null) {
               filterArr = [...values];
-              if (category === 'complexity') state.complexityFilter = filterArr;
-              else state.domainFilter = filterArr;
+              setCatFilter(category, filterArr);
             }
             if (cb.checked) {
               if (!filterArr.includes(val)) filterArr.push(val);
@@ -4126,11 +4512,9 @@
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (btn.dataset.action === 'all') {
-              if (category === 'complexity') state.complexityFilter = null;
-              else state.domainFilter = null;
+              setCatFilter(category, null);
             } else {
-              if (category === 'complexity') state.complexityFilter = [];
-              else state.domainFilter = [];
+              setCatFilter(category, []);
             }
             syncMultiselectUI(category);
             state.page = 1;
@@ -4141,20 +4525,44 @@
         syncMultiselectUI(category);
       }
 
+      // Category filter helpers (complexity, domain, root_cause)
+      function getCatFilter(cat) {
+        if (cat === 'complexity') return state.complexityFilter;
+        if (cat === 'domain') return state.domainFilter;
+        if (cat === 'root_cause') return state.rootCauseFilter;
+        return null;
+      }
+      function setCatFilter(cat, val) {
+        if (cat === 'complexity') state.complexityFilter = val;
+        else if (cat === 'domain') state.domainFilter = val;
+        else if (cat === 'root_cause') state.rootCauseFilter = val;
+      }
+      function getCatValues(cat) {
+        if (cat === 'complexity') return state.complexityValues;
+        if (cat === 'domain') return state.domainValues;
+        if (cat === 'root_cause') return state.rootCauseValues;
+        return [];
+      }
+      function getCatDefaultLabel(cat) {
+        if (cat === 'complexity') return 'All Complexity';
+        if (cat === 'domain') return 'All Domains';
+        if (cat === 'root_cause') return 'All Root Causes';
+        return 'All';
+      }
+
       function syncMultiselectUI(category) {
-        const filterArr = category === 'complexity' ? state.complexityFilter : state.domainFilter;
-        const values = category === 'complexity' ? state.complexityValues : state.domainValues;
-        const defaultLabel = category === 'complexity' ? 'All Complexity' : 'All Domains';
+        const filterArr = getCatFilter(category);
+        const values = getCatValues(category);
+        const defaultLabel = getCatDefaultLabel(category);
         const btn = el(category + '-ms-btn');
         const dropdown = el(category + '-ms-dropdown');
 
         // Normalize: explicitly selecting every value = reset to null (no filter)
         if (filterArr !== null && filterArr.length === values.length) {
-          if (category === 'complexity') state.complexityFilter = null;
-          else state.domainFilter = null;
+          setCatFilter(category, null);
         }
 
-        const effective = category === 'complexity' ? state.complexityFilter : state.domainFilter;
+        const effective = getCatFilter(category);
 
         // Update button text
         if (btn) {
@@ -4201,6 +4609,7 @@
 
       setupCatDropdownToggle('complexity');
       setupCatDropdownToggle('domain');
+      setupCatDropdownToggle('root_cause');
 
       // Close dropdowns on outside click
       document.addEventListener('click', () => {

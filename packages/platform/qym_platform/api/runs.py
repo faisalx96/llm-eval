@@ -96,6 +96,10 @@ def _platform_static_admin_index() -> Path:
     return _platform_static_dir() / "dashboard" / "admin.html"
 
 
+def _platform_static_dashboard_run() -> Path:
+    return _platform_static_dir() / "dashboard" / "run.html"
+
+
 def _get_setting(db: Session, key: str, default: str = "") -> str:
     """Get a platform setting value."""
     row = db.query(PlatformSetting).filter(PlatformSetting.key == key).first()
@@ -290,8 +294,7 @@ def admin_index() -> FileResponse:
 
 @router.get("/run/{run_id:path}")
 def run_ui(run_id: str) -> FileResponse:
-    # Serve the existing run UI index; it will call /api/runs/{run_id} in dashboard-mode.
-    idx = _platform_static_ui_index()
+    idx = _platform_static_dashboard_run()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Run UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
@@ -679,6 +682,43 @@ def update_metric(
     }
 
     return {"ok": True, "row": row}
+
+
+@router.post("/api/runs/update_root_cause")
+def update_root_cause(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Update root_cause in item_metadata for a single run's item."""
+    item_id = request.get("item_id")
+    root_cause = (request.get("root_cause") or "").strip()
+    run_id = request.get("run_id")
+
+    if not item_id or not run_id:
+        raise HTTPException(status_code=400, detail="item_id and run_id required")
+
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run.id, RunItem.item_id == item_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+    if root_cause:
+        meta["root_cause"] = root_cause
+    else:
+        meta.pop("root_cause", None)
+    item.item_metadata = meta
+
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/api/runs/delete")
