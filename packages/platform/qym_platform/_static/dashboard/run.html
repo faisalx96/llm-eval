@@ -17,19 +17,19 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: var(--space-lg);
-      padding-bottom: var(--space-md);
-      border-bottom: 1px solid var(--border-default);
+      margin-bottom: var(--space-sm);
+      padding-bottom: 0;
+      border-bottom: none;
     }
     .run-title {
-      font-size: var(--font-lg);
-      font-weight: 600;
-      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
     }
     .run-subtitle {
-      font-size: var(--font-sm);
-      color: var(--text-muted);
-      margin-top: 4px;
+      display: none;
     }
     .back-link {
       display: flex;
@@ -41,76 +41,173 @@
     }
     .back-link:hover { text-decoration: underline; }
 
-    /* Summary card */
+    /* ─── Hero Summary Card ─── */
     .run-summary {
       margin-bottom: var(--space-xl);
     }
     .run-summary-card {
-      background: var(--bg-surface);
+      position: relative;
+      background:
+        radial-gradient(ellipse at 10% 0%, rgba(0, 212, 170, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 100%, rgba(168, 85, 247, 0.04) 0%, transparent 50%),
+        var(--bg-surface);
       border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-lg);
+      border-radius: 10px;
+      padding: 0;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
     }
-    .run-summary-card .run-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
+    .run-summary-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg,
+        var(--accent-primary) 0%,
+        var(--accent-secondary) 45%,
+        var(--accent-tertiary) 75%,
+        transparent 100%);
+      z-index: 1;
     }
-    .run-summary-card .run-name {
-      font-family: var(--font-mono);
-      font-size: var(--font-md);
-      color: var(--text-primary);
-      word-break: break-all;
-    }
-    .run-summary-card .run-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
-    }
-    .run-summary-card .stats-row {
+
+    /* Hero top: identity + status */
+    .hero-top {
+      padding: var(--space-lg) var(--space-lg) var(--space-md);
       display: flex;
       justify-content: space-between;
-      padding: var(--space-xs) 0;
-      border-bottom: 1px solid var(--border-subtle);
+      align-items: flex-start;
+      gap: var(--space-lg);
     }
-    .run-summary-card .stats-row:last-child { border-bottom: none; }
-    .run-summary-card .stat-label {
+    .hero-identity {
+      flex: 1;
+      min-width: 0;
+    }
+    .hero-run-name {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+      word-break: break-all;
+      line-height: 1.35;
+      letter-spacing: -0.2px;
+    }
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: 10px;
+    }
+
+    /* Hero status pill */
+    .hero-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 16px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 2px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-default);
+    }
+    .hero-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--text-muted);
+    }
+    .hero-status.completed {
+      background: rgba(168, 85, 247, 0.1);
+      color: #c084fc;
+      border-color: rgba(168, 85, 247, 0.25);
+    }
+    .hero-status.completed .hero-status-dot {
+      background: #a855f7;
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+    }
+    .hero-status.running {
+      background: rgba(0, 168, 255, 0.1);
+      color: #60b8ff;
+      border-color: rgba(0, 168, 255, 0.25);
+    }
+    .hero-status.running .hero-status-dot {
+      background: var(--accent-secondary);
+      box-shadow: 0 0 8px rgba(0, 168, 255, 0.6);
+      animation: hero-pulse 2s ease-in-out infinite;
+    }
+    .hero-status.failed {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+    .hero-status.failed .hero-status-dot {
+      background: var(--error);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+    }
+    @keyframes hero-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.6); }
+    }
+
+    /* Config strip */
+    .hero-config {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 1px;
+      background: var(--border-subtle);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .config-cell {
+      background: rgba(26, 26, 40, 0.7);
+      padding: 10px var(--space-md);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: background 0.15s;
+    }
+    .config-cell:hover {
+      background: var(--bg-elevated);
+    }
+    .config-cell-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+    .config-cell-text {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .config-cell-key {
+      font-size: 9px;
       color: var(--text-muted);
-      font-size: var(--font-sm);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 500;
+      line-height: 1;
     }
-    .run-summary-card .stat-val {
+    .config-cell-val {
       font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-primary);
-    }
-    .run-summary-card .stat-val.score-5 { color: var(--score-5); }
-    .run-summary-card .stat-val.score-4 { color: var(--score-4); }
-    .run-summary-card .stat-val.score-3 { color: var(--score-3); }
-    .run-summary-card .stat-val.score-2 { color: var(--score-2); }
-    .run-summary-card .stat-val.score-1 { color: var(--score-1); }
-    .config-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: var(--space-sm);
-      margin-top: var(--space-md);
-      padding-top: var(--space-md);
-      border-top: 1px solid var(--border-subtle);
-    }
-    .config-item {
-      font-size: var(--font-sm);
-    }
-    .config-key {
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .config-val {
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      word-break: break-all;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.3;
     }
 
     /* Stats section */
@@ -127,26 +224,23 @@
       color: var(--text-primary);
       margin-bottom: var(--space-md);
     }
-    .stats-grid {
+    .overview-kpis {
       display: flex;
-      flex-direction: column;
-      gap: var(--space-md);
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
     }
     .stats-row-flex {
       display: flex;
       gap: var(--space-sm);
       flex-wrap: wrap;
     }
+    .stats-row-flex .stat-box { flex: 1; min-width: 100px; }
     .stat-box {
-      background: var(--bg-elevated);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
       border-radius: 6px;
       padding: var(--space-sm) var(--space-md);
-      flex: 1;
-      min-width: 120px;
-    }
-    .stat-box.wide {
-      flex: 100%;
-      padding: var(--space-md);
     }
     .stat-box .stat-title {
       font-size: var(--font-xs);
@@ -218,7 +312,6 @@
       font-weight: 600;
       color: var(--text-primary);
     }
-    .stat-box.wide .stat-main { font-size: var(--font-lg); }
     .stat-box .stat-main.score-5 { color: var(--score-5); }
     .stat-box .stat-main.score-4 { color: var(--score-4); }
     .stat-box .stat-main.score-3 { color: var(--score-3); }
@@ -230,61 +323,51 @@
       margin-top: 2px;
     }
 
-    /* Latency distribution */
-    .latency-dist-bar {
+    /* Distribution bar charts (shared) */
+    .dist-chart {
       display: flex;
-      height: 40px;
-      border-radius: 4px;
-      overflow: hidden;
-      gap: 2px;
-      margin-top: var(--space-sm);
+      align-items: flex-end;
+      gap: 4px;
     }
-    .latency-dist-segment {
+    .dist-chart-col {
+      flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      min-width: 0;
-      padding: 2px 6px;
-      color: #fff;
-      font-size: var(--font-xs);
-      font-weight: 600;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+      justify-content: flex-end;
+      gap: 2px;
       cursor: pointer;
-      transition: opacity 0.15s, transform 0.15s;
+      transition: opacity 0.15s;
     }
-    .latency-dist-segment:hover {
-      opacity: 0.85;
-      transform: scaleY(1.08);
+    .dist-chart-col:hover { opacity: 0.8; }
+    .dist-chart-col .bar-count {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      line-height: 1;
     }
-    .latency-dist-segment .lat-count { font-weight: 700; font-size: var(--font-sm); }
-    .latency-dist-segment .lat-label { font-size: 9px; opacity: 0.9; }
-    .latency-dist-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-      margin-top: var(--space-sm);
-      font-size: var(--font-xs);
-      color: var(--text-muted);
+    .dist-chart-col .bar-fill {
+      width: 100%;
+      border-radius: 3px 3px 0 0;
     }
-    .latency-dist-legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
+    .dist-chart-col .bar-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-align: center;
+      white-space: nowrap;
+      line-height: 1;
     }
-    .latency-dist-legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-    }
-    .latency-dist-stats {
+    .dist-summary-stats {
       display: flex;
       gap: var(--space-md);
       margin-top: var(--space-sm);
       padding-top: var(--space-sm);
       border-top: 1px solid var(--border-subtle);
     }
-    .latency-dist-stat {
+    .dist-summary-stat {
       font-family: var(--font-mono);
       font-size: var(--font-sm);
       color: var(--text-secondary);
@@ -292,7 +375,7 @@
       flex-direction: column;
       gap: 1px;
     }
-    .latency-dist-stat .lat-stat-label {
+    .dist-summary-stat .dst-label {
       font-family: var(--font-sans);
       font-size: 9px;
       color: var(--text-muted);
@@ -301,87 +384,212 @@
       font-weight: 500;
     }
 
-    /* Score distribution bar */
-    .score-dist-bar {
-      display: flex;
-      height: 36px;
-      border-radius: 4px;
-      overflow: hidden;
-      gap: 2px;
-      margin-top: var(--space-sm);
+    /* Distributions grid */
+    .distributions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: var(--space-md);
+      margin-bottom: var(--space-xl);
     }
-    .score-dist-segment {
+    .dist-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-md);
+    }
+    .dist-card-title {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .dist-section-desc {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-bottom: var(--space-md);
+      line-height: 1.5;
+    }
+
+    /* ─── Overview Redesign ─── */
+    .overview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: var(--space-lg);
+      gap: var(--space-md);
+    }
+    .overview-header .section-title {
+      margin-bottom: 0;
+    }
+    .overview-header-hint {
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      margin-top: 3px;
+      letter-spacing: 0.2px;
+    }
+    .overview-summary-pills {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .summary-pill {
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 4px 12px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+    .summary-pill.pill-success {
+      color: var(--score-5);
+      border-color: rgba(16, 185, 129, 0.2);
+      background: rgba(16, 185, 129, 0.06);
+    }
+    .summary-pill.pill-warn {
+      color: var(--score-3);
+      border-color: rgba(234, 179, 8, 0.2);
+      background: rgba(234, 179, 8, 0.06);
+    }
+    .summary-pill.pill-error {
+      color: var(--score-1);
+      border-color: rgba(239, 68, 68, 0.2);
+      background: rgba(239, 68, 68, 0.06);
+    }
+
+    .metric-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: var(--space-md);
+      margin-bottom: var(--space-xl);
+    }
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .metric-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+    }
+    .metric-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .metric-card-gauge {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+    .gauge-ring {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.25s;
+    }
+    .metric-card:hover .gauge-ring {
+      transform: scale(1.08);
+    }
+    .gauge-ring-inner {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--bg-surface);
+    }
+    .metric-card-info {
       min-width: 0;
-      padding: 2px 4px;
-      color: #fff;
-      font-size: var(--font-xs);
-      font-weight: 600;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-      cursor: pointer;
-      transition: opacity 0.15s, transform 0.15s;
     }
-    .score-dist-segment:hover {
-      opacity: 0.85;
-      transform: scaleY(1.08);
+    .metric-card-value {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
     }
-    .score-dist-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-      margin-top: var(--space-sm);
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-    }
-    .score-dist-legend-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .score-dist-legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
-    }
-
-    /* Metric tabs */
-    .metric-tabs {
-      display: flex;
-      gap: 2px;
-      background: var(--bg-elevated);
-      padding: 3px;
-      border-radius: 6px;
-      width: fit-content;
-    }
-    .metric-tab {
-      padding: 6px 16px;
+    .metric-card-value.score-5 { color: var(--score-5); }
+    .metric-card-value.score-4 { color: var(--score-4); }
+    .metric-card-value.score-3 { color: var(--score-3); }
+    .metric-card-value.score-2 { color: var(--score-2); }
+    .metric-card-value.score-1 { color: var(--score-1); }
+    .metric-card-name {
       font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-top: 3px;
+      text-transform: capitalize;
+      letter-spacing: 0.2px;
+    }
+    .metric-card-badge {
+      font-size: 10px;
       font-family: var(--font-mono);
       color: var(--text-muted);
-      background: transparent;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: all 0.15s;
+      background: var(--bg-elevated);
+      padding: 3px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border-subtle);
+      white-space: nowrap;
+      flex-shrink: 0;
+      align-self: flex-start;
     }
-    .metric-tab:hover {
-      color: var(--text-secondary);
-      background: var(--bg-hover);
-    }
-    .metric-tab.active {
-      color: var(--text-primary);
-      background: var(--bg-surface);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-    }
-    .metric-tabs-row {
+
+    /* Latency badge (replaces gauge ring for latency card) */
+    .latency-badge {
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
-      gap: var(--space-lg);
-      margin-bottom: var(--space-md);
-      flex-wrap: wrap;
+      justify-content: center;
+      border-radius: 10px;
+      background: rgba(0, 168, 255, 0.08);
+      border: 1.5px solid rgba(0, 168, 255, 0.2);
+      flex-shrink: 0;
+      transition: transform 0.25s;
     }
+    .metric-card:hover .latency-badge {
+      transform: scale(1.08);
+    }
+    .latency-badge-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    /* Compact latency stats in card header */
+    .latency-stats-compact {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      align-self: center;
+    }
+    .latency-stats-compact span {
+      font-size: 10px;
+      font-weight: 500;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      color: var(--text-muted);
+    }
+    .latency-stats-compact span b {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
     .threshold-control {
       display: flex;
       align-items: center;
@@ -1380,28 +1588,7 @@
 
       <div class="run-summary" id="run-summary"></div>
 
-      <h3 class="section-title">Overview Analytics</h3>
-      <div class="comparison-stats" id="overview-stats">
-        <div class="metric-tabs-row">
-          <div class="metric-tabs" id="overview-metric-tabs"></div>
-          <div class="threshold-control" id="threshold-control" style="display:none;">
-            <span class="threshold-label">Pass if &ge;</span>
-            <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-            <span class="threshold-value" id="threshold-value">80%</span>
-          </div>
-        </div>
-        <div class="stats-grid" id="stats-grid"></div>
-      </div>
-
-      <div id="score-dist-section" style="display:none;">
-        <h3 class="section-title">Score Distribution</h3>
-        <div class="comparison-stats" id="score-dist-container"></div>
-      </div>
-
-      <div id="latency-dist-section" style="display:none;">
-        <h3 class="section-title">Latency Distribution</h3>
-        <div class="comparison-stats" id="latency-dist-container"></div>
-      </div>
+      <div id="overview-section"></div>
 
       <div id="error-analysis-section" style="display:none;">
         <h3 class="section-title">Error Analysis</h3>
@@ -1426,6 +1613,13 @@
                 <option value="failed">Failed</option>
                 <option value="errors">With Errors</option>
               </select>
+            </div>
+            <div class="fp-group" id="fp-threshold-group" style="display:none;">
+              <span class="fp-label">Pass if &ge;</span>
+              <div class="threshold-control" id="threshold-control">
+                <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+                <span class="threshold-value" id="threshold-value">80%</span>
+              </div>
             </div>
             <div class="fp-group">
               <span class="fp-label">Sort</span>
@@ -1529,7 +1723,7 @@
       ];
       const ROOT_CAUSE_COLORS = {
         'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
-        'Wrong Format': '#eab308', 'Context Missing': '#3b82f6',
+        'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
         'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
         'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
       };
@@ -1837,9 +2031,7 @@
 
         renderSummary();
         populateMetricSelectors();
-        renderOverviewStats();
-        renderScoreDistribution();
-        renderLatencyDistribution();
+        renderOverview();
         renderErrorAnalysis();
         renderMetadataBreakdown();
         buildCategoryDropdowns();
@@ -1849,21 +2041,26 @@
 
       function renderSummary() {
         const run = state.run;
-        const snap = state.snapshot;
-        const stats = snap.stats || {};
         const config = run.config || {};
         const metadata = run.metadata || {};
-        const successRate = (stats.completed || 0) / (stats.total || 1);
 
         el('run-subtitle').textContent = run.run_name || '—';
 
+        const configColors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
         let configHtml = '';
         if (config && typeof config === 'object' && Object.keys(config).length > 0) {
           const entries = Object.entries(config).filter(([k]) => k !== 'run_name');
           if (entries.length > 0) {
-            configHtml = '<div class="config-grid">' + entries.map(([k,v]) =>
-              '<div class="config-item"><div class="config-key">' + escapeHtml(k) + '</div><div class="config-val">' + escapeHtml(String(v ?? '')) + '</div></div>'
-            ).join('') + '</div>';
+            configHtml = '<div class="hero-config">' + entries.map(([k,v], i) => {
+              const color = configColors[i % configColors.length];
+              return '<div class="config-cell">' +
+                '<span class="config-cell-dot" style="background:' + color + '"></span>' +
+                '<div class="config-cell-text">' +
+                  '<div class="config-cell-key">' + escapeHtml(k) + '</div>' +
+                  '<div class="config-cell-val" title="' + escapeAttr(String(v ?? '')) + '">' + escapeHtml(String(v ?? '')) + '</div>' +
+                '</div>' +
+              '</div>';
+            }).join('') + '</div>';
           }
         }
 
@@ -1877,18 +2074,35 @@
         }
 
         const statusClass = (run.status || '').toLowerCase();
+        const statusText = escapeHtml((run.status || 'unknown').toUpperCase());
+
+        // Summary pills (items, success rate, errors) for the hero card
+        let summaryPills = '';
+        const snap = state.snapshot || {};
+        const snapStats = snap.stats || {};
+        const total = snapStats.total || (snap.rows || []).length;
+        const completed = snapStats.completed || 0;
+        const failed = snapStats.failed || 0;
+        const successRate = total > 0 ? completed / total : 0;
+        if (total > 0) {
+          summaryPills += '<span class="summary-pill">' + total + ' items</span>';
+          const srClass = successRate >= 0.95 ? ' pill-success' : (successRate >= 0.8 ? ' pill-warn' : ' pill-error');
+          summaryPills += '<span class="summary-pill' + srClass + '">' + formatPercent(successRate) + ' success</span>';
+          if (failed > 0) summaryPills += '<span class="summary-pill pill-error">' + failed + ' error' + (failed !== 1 ? 's' : '') + '</span>';
+        }
 
         el('run-summary').innerHTML = '<div class="run-summary-card">' +
-          '<div class="run-header"><div class="run-name">' + escapeHtml(run.run_name || '—') + '</div></div>' +
-          '<div class="run-meta">' +
-            '<span class="tag task">' + escapeHtml(run.dataset_name || '—') + '</span>' +
-            '<span class="status-badge ' + statusClass + '">' + escapeHtml((run.status || 'unknown').toUpperCase()) + '</span>' +
-            langfuseHtml +
+          '<div class="hero-top">' +
+            '<div class="hero-identity">' +
+              '<div class="hero-run-name">' + escapeHtml(run.run_name || '—') + '</div>' +
+              '<div class="hero-tags">' +
+                '<span class="tag task">' + escapeHtml(run.dataset_name || '—') + '</span>' +
+                langfuseHtml +
+                summaryPills +
+              '</div>' +
+            '</div>' +
+            '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText + '</div>' +
           '</div>' +
-          '<div class="stats-row"><span class="stat-label">Total Items</span><span class="stat-val">' + (stats.total || 0) + '</span></div>' +
-          '<div class="stats-row"><span class="stat-label">Completed</span><span class="stat-val">' + (stats.completed || 0) + '</span></div>' +
-          '<div class="stats-row"><span class="stat-label">Failed</span><span class="stat-val ' + (stats.failed > 0 ? 'score-1' : '') + '">' + (stats.failed || 0) + '</span></div>' +
-          '<div class="stats-row"><span class="stat-label">Success Rate</span><span class="stat-val ' + getSuccessClass(successRate) + '">' + formatPercent(successRate) + '</span></div>' +
           configHtml +
         '</div>';
       }
@@ -1896,34 +2110,7 @@
       function populateMetricSelectors() {
         const singleMetric = state.allMetrics.length <= 1;
 
-        // Overview metric tabs
-        const tabsContainer = el('overview-metric-tabs');
-        if (tabsContainer) {
-          if (singleMetric) {
-            tabsContainer.style.display = 'none';
-          } else {
-            tabsContainer.style.display = '';
-            tabsContainer.innerHTML = state.allMetrics.map(m =>
-              '<button class="metric-tab ' + (m === state.selectedMetric ? 'active' : '') + '" data-metric="' + escapeAttr(m) + '">' + escapeHtml(m) + '</button>'
-            ).join('');
-            tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
-              tab.addEventListener('click', () => {
-                state.selectedMetric = tab.dataset.metric;
-                state.scoreDistFilter = null;
-                tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                updateThresholdControl();
-                renderOverviewStats();
-                renderScoreDistribution();
-                renderMetadataBreakdown();
-                state.page = 1;
-                renderItems();
-              });
-            });
-          }
-        }
-
-        // Threshold slider
+        // Threshold slider (in filter panel)
         const thresholdSlider = el('threshold-slider');
         if (thresholdSlider) {
           thresholdSlider.addEventListener('input', (e) => {
@@ -1934,8 +2121,7 @@
             const v = parseFloat(e.target.value);
             if (!isNaN(v) && v >= 0 && v <= 100) {
               state.metricThresholds[state.selectedMetric] = v / 100;
-              renderOverviewStats();
-              renderScoreDistribution();
+              renderOverview();
               renderMetadataBreakdown();
               state.page = 1;
               renderItems();
@@ -1960,8 +2146,6 @@
               state.scoreDistFilter = null;
               state.page = 1;
               updateThresholdControl();
-              renderOverviewStats();
-              renderScoreDistribution();
               renderMetadataBreakdown();
               renderItems();
             });
@@ -1970,28 +2154,24 @@
       }
 
       function updateThresholdControl() {
-        const tc = el('threshold-control');
+        const tg = el('fp-threshold-group');
         const ts = el('threshold-slider');
         const tv = el('threshold-value');
-        if (!tc || !ts) return;
+        if (!tg || !ts) return;
         const metric = state.selectedMetric;
-        if (!metric) { tc.style.display = 'none'; return; }
-        if (state.metricIsBoolean[metric]) {
-          tc.style.display = 'none';
+        if (!metric || state.metricIsBoolean[metric]) {
+          tg.style.display = 'none';
         } else {
-          tc.style.display = 'flex';
+          tg.style.display = '';
           const pct = Math.round((state.metricThresholds[metric] ?? 0.8) * 100);
           ts.value = pct;
           if (tv) tv.textContent = pct + '%';
         }
       }
 
-      function renderOverviewStats() {
-        const container = el('stats-grid');
-        if (!container || !state.snapshot) return;
+      function buildKpiHtml() {
+        if (!state.snapshot) return '';
         const rows = state.snapshot.rows || [];
-        const metric = state.selectedMetric;
-        const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
 
         // Compute per-metric averages
         const metricStats = {};
@@ -2005,40 +2185,22 @@
           metricStats[m] = cnt > 0 ? sum / cnt : 0;
         }
 
-        // Success rate
         const stats = state.snapshot.stats || {};
         const total = stats.total || rows.length;
         const completed = stats.completed || 0;
         const failed = stats.failed || 0;
         const successRate = total > 0 ? completed / total : 0;
 
-        // Latency
-        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
-        const avgLat = latencies.length > 0 ? latencies.reduce((a,b)=>a+b,0) / latencies.length : 0;
-        const [p50, p90, p99] = computePercentiles(latencies, [50, 90, 99]);
-
-        // Build metric stat boxes
-        let metricBoxes = state.allMetrics.map(m => {
+        let boxes = state.allMetrics.map(m => {
           const v = metricStats[m];
-          return '<div class="stat-box">' +
-            '<div class="stat-title">' + escapeHtml(m) + ' ' + infoIcon('Average score for <strong>' + escapeHtml(m) + '</strong> across all items.') + '</div>' +
-            '<div class="stat-main ' + scoreColorClass(v) + '">' + formatPercent(v) + '</div>' +
-          '</div>';
+          return '<div class="stat-box"><div class="stat-title">' + escapeHtml(m) + '</div><div class="stat-main ' + scoreColorClass(v) + '">' + formatPercent(v) + '</div></div>';
         }).join('');
 
-        container.innerHTML =
-          '<div class="stats-row-flex">' + metricBoxes + '</div>' +
-          '<div class="stats-row-flex">' +
-            '<div class="stat-box"><div class="stat-title">Success Rate ' + infoIcon('Percentage of items that completed without errors.') + '</div><div class="stat-main ' + scoreColorClass(successRate) + '">' + formatPercent(successRate) + '</div><div class="stat-detail">' + completed + ' / ' + total + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">Total Items ' + infoIcon('Total number of evaluation items in this run.') + '</div><div class="stat-main">' + total + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">Errors ' + infoIcon('Number of items that threw an error. Errors are scored as 0%.') + '</div><div class="stat-main ' + (failed > 0 ? 'score-1' : '') + '">' + failed + '</div></div>' +
-          '</div>' +
-          '<div class="stats-row-flex">' +
-            '<div class="stat-box"><div class="stat-title">Avg Latency ' + infoIcon('Mean response time across all completed items.') + '</div><div class="stat-main">' + formatLatency(avgLat) + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">P50 Latency ' + infoIcon('Median response time (50th percentile).') + '</div><div class="stat-main">' + formatLatency(p50) + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">P90 Latency ' + infoIcon('90th percentile response time. 90% of items responded faster.') + '</div><div class="stat-main">' + formatLatency(p90) + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">P99 Latency ' + infoIcon('99th percentile response time. Only 1% of items were slower.') + '</div><div class="stat-main">' + formatLatency(p99) + '</div></div>' +
-          '</div>';
+        boxes += '<div class="stat-box"><div class="stat-title">Success Rate</div><div class="stat-main ' + scoreColorClass(successRate) + '">' + formatPercent(successRate) + '</div><div class="stat-detail">' + completed + ' / ' + total + '</div></div>';
+        boxes += '<div class="stat-box"><div class="stat-title">Items</div><div class="stat-main">' + total + '</div></div>';
+        if (failed > 0) boxes += '<div class="stat-box"><div class="stat-title">Errors</div><div class="stat-main score-1">' + failed + '</div></div>';
+
+        return '<div class="overview-kpis">' + boxes + '</div>';
       }
 
       function computeScoreDistribution(metric) {
@@ -2057,119 +2219,253 @@
       }
 
       function getDistSegmentColor(bucketIdx) {
-        // 0-3 -> score-1 (red), 4-5 -> score-2 (orange), 6-7 -> score-3 (yellow), 8 -> score-4 (lime), 9-10 -> score-5 (green)
-        const pct = bucketIdx * 10;
-        if (pct < 40) return 'var(--score-1)';
-        if (pct < 60) return 'var(--score-2)';
-        if (pct < 75) return 'var(--score-3)';
-        if (pct < 90) return 'var(--score-4)';
-        return 'var(--score-5)';
+        // Per-bucket gradient using qym score palette (0%=red -> 100%=green)
+        const colors = [
+          'var(--score-1)',    // 0%
+          'var(--score-1)',    // 10%
+          '#f97316',           // 20%
+          'var(--score-2)',    // 30%
+          '#d4a017',           // 40%
+          'var(--score-3)',    // 50%
+          '#a3b818',           // 60%
+          'var(--score-4)',    // 70%
+          'var(--score-4)',    // 80%
+          'var(--score-5)',    // 90%
+          'var(--accent-primary)', // 100%
+        ];
+        return colors[Math.min(bucketIdx, colors.length - 1)];
       }
 
-      function renderScoreDistribution() {
-        const section = el('score-dist-section');
-        const container = el('score-dist-container');
-        if (!section || !container) return;
-        const metric = state.selectedMetric;
-        if (!metric) { section.style.display = 'none'; return; }
-
-        const buckets = computeScoreDistribution(metric);
-        const totalWithScores = buckets.reduce((a,b) => a+b, 0);
-        if (totalWithScores === 0) { section.style.display = 'none'; return; }
-
-        section.style.display = '';
-        const isBoolean = state.metricIsBoolean[metric];
-        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
-
-        let barHtml = '<div class="score-dist-bar">';
-        let legendHtml = '<div class="score-dist-legend">';
-        for (let b = 0; b <= 10; b++) {
-          if (buckets[b] === 0) continue;
-          const pct = ((buckets[b] / totalWithScores) * 100).toFixed(0);
-          const color = getDistSegmentColor(b);
-          const label = (b * 10) + '%';
-          const rangeMin = b / 10;
-          const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
-          barHtml += '<div class="score-dist-segment" style="flex:' + buckets[b] + ';background:' + color + ';" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + buckets[b] + ' items (' + pct + '%)">' + buckets[b] + '</div>';
-          legendHtml += '<div class="score-dist-legend-item"><div class="score-dist-legend-dot" style="background:' + color + ';"></div><span>' + label + ': <strong style="color:var(--text-secondary);">' + buckets[b] + '</strong> (' + pct + '%)</span></div>';
+      function buildLatencyBuckets(latencies) {
+        if (!latencies || latencies.length === 0) return [];
+        const sorted = [...latencies].sort((a, b) => a - b);
+        const minMs = sorted[0];
+        const maxMs = sorted[sorted.length - 1];
+        if (maxMs - minMs < 1) {
+          return [{ label: formatLatBucketLabel(0, null), min: 0, max: Infinity, color: 'var(--accent-primary)' }];
         }
-        barHtml += '</div>';
-        legendHtml += '</div>';
 
-        container.innerHTML = barHtml + legendHtml;
+        // Use percentile-based boundaries to ensure bars are well-distributed
+        // Target ~6 buckets using p10, p25, p50, p75, p90 as boundaries
+        const pctls = [0, 15, 35, 55, 75, 90, 100];
+        const rawEdges = pctls.map(p => {
+          const idx = (p / 100) * (sorted.length - 1);
+          const lo = Math.floor(idx), hi = Math.ceil(idx);
+          return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+        });
 
-        // Wire click handlers
-        container.querySelectorAll('.score-dist-segment').forEach(seg => {
-          seg.addEventListener('click', () => {
-            const min = parseFloat(seg.dataset.bucketMin);
-            const max = parseFloat(seg.dataset.bucketMax);
+        // Snap to nice round numbers
+        const snap = (ms) => {
+          if (ms <= 100) return Math.round(ms / 10) * 10;
+          if (ms <= 1000) return Math.round(ms / 50) * 50;
+          if (ms <= 5000) return Math.round(ms / 250) * 250;
+          if (ms <= 30000) return Math.round(ms / 1000) * 1000;
+          if (ms <= 120000) return Math.round(ms / 5000) * 5000;
+          return Math.round(ms / 10000) * 10000;
+        };
+
+        // Build unique edges, dedup after snapping
+        const edges = [0]; // always start at 0
+        for (let i = 1; i < rawEdges.length - 1; i++) {
+          const snapped = snap(rawEdges[i]);
+          if (snapped > edges[edges.length - 1]) edges.push(snapped);
+        }
+
+        const buckets = [];
+        for (let i = 0; i < edges.length; i++) {
+          const min = edges[i];
+          const max = i < edges.length - 1 ? edges[i + 1] : Infinity;
+          buckets.push({ min, max, label: formatLatBucketLabel(min, max === Infinity ? null : max) });
+        }
+        if (buckets.length === 0) {
+          buckets.push({ min: 0, max: Infinity, label: 'all' });
+        }
+
+        // Assign colors: gradient green → red
+        const colorStops = ['var(--score-5)', 'var(--score-4)', 'var(--score-3)', 'var(--score-2)', 'var(--score-1)'];
+        for (let i = 0; i < buckets.length; i++) {
+          const t = buckets.length > 1 ? i / (buckets.length - 1) : 0;
+          const ci = Math.min(colorStops.length - 1, Math.round(t * (colorStops.length - 1)));
+          buckets[i].color = colorStops[ci];
+        }
+        return buckets;
+      }
+
+      function formatLatBucketLabel(minMs, maxMs) {
+        const fmt = (ms) => {
+          if (ms >= 60000) return (ms / 60000).toFixed(ms % 60000 === 0 ? 0 : 1) + 'm';
+          if (ms >= 1000) return (ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1) + 's';
+          return ms + 'ms';
+        };
+        if (maxMs === null) return fmt(minMs) + '+';
+        return fmt(minMs) + '-' + fmt(maxMs);
+      }
+
+      function renderOverview() {
+        const section = el('overview-section');
+        if (!section || !state.snapshot) { if (section) section.innerHTML = ''; return; }
+        const rows = state.snapshot.rows || [];
+        const stats = state.snapshot.stats || {};
+        const total = stats.total || rows.length;
+        const completed = stats.completed || 0;
+        const failed = stats.failed || 0;
+        const successRate = total > 0 ? completed / total : 0;
+
+        // ── Gauge color (hex for conic-gradient) ──
+        function gaugeColorHex(score) {
+          if (score >= 0.9) return '#10b981';
+          if (score >= 0.75) return '#84cc16';
+          if (score >= 0.6) return '#eab308';
+          if (score >= 0.4) return '#f97316';
+          return '#ef4444';
+        }
+
+        function buildGaugeRing(score) {
+          const color = gaugeColorHex(score);
+          const deg = (score * 360).toFixed(1);
+          return '<div class="gauge-ring" style="background:conic-gradient(' + color + ' 0deg ' + deg + 'deg, #252536 ' + deg + 'deg 360deg);">' +
+            '<div class="gauge-ring-inner"></div>' +
+          '</div>';
+        }
+
+        // ── Metric cards (gauge + histogram) ──
+        let cards = '';
+        const MAX_BAR_PX = 100;
+
+        for (const metric of state.allMetrics) {
+          const mIdx = state.allMetrics.indexOf(metric);
+          let sum = 0, cnt = 0;
+          for (const row of rows) {
+            const { score } = window.QymMetrics.getRowScore(row, mIdx);
+            if (score !== null) { sum += score; cnt++; }
+          }
+          const avg = cnt > 0 ? sum / cnt : 0;
+
+          const buckets = computeScoreDistribution(metric);
+          const totalWithScores = buckets.reduce((a,b) => a+b, 0);
+          if (totalWithScores === 0) continue;
+
+          const maxCount = Math.max(...buckets);
+          let barsHtml = '<div class="dist-chart">';
+          for (let b = 0; b <= 10; b++) {
+            const count = buckets[b];
+            const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
+            const color = getDistSegmentColor(b);
+            const label = (b * 10) + '%';
+            const rangeMin = b / 10;
+            const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
+            const pct = totalWithScores > 0 ? ((count / totalWithScores) * 100).toFixed(0) : '0';
+            barsHtml += '<div class="dist-chart-col" data-metric="' + escapeAttr(metric) + '" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + count + ' items (' + pct + '%)">' +
+              '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
+              '<div class="bar-fill" style="height:' + barH + 'px;background:' + color + ';"></div>' +
+              '<span class="bar-label">' + label + '</span>' +
+            '</div>';
+          }
+          barsHtml += '</div>';
+
+          cards += '<div class="metric-card">' +
+            '<div class="metric-card-header">' +
+              '<div class="metric-card-gauge">' +
+                buildGaugeRing(avg) +
+                '<div class="metric-card-info">' +
+                  '<div class="metric-card-value ' + scoreColorClass(avg) + '">' + formatPercent(avg) + '</div>' +
+                  '<div class="metric-card-name">' + escapeHtml(metric) + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<span class="metric-card-badge">' + totalWithScores + ' scored</span>' +
+            '</div>' +
+            barsHtml +
+          '</div>';
+        }
+
+        // ── Latency card ──
+        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
+        if (latencies.length > 0) {
+          const sorted = [...latencies].sort((a, b) => a - b);
+          const minLat = sorted[0];
+          const maxLat = sorted[sorted.length - 1];
+          const latTotal = latencies.length;
+          const [p50, p90, p99] = computePercentiles(latencies, [50, 90, 99]);
+          const meanLat = latencies.reduce((a, b) => a + b, 0) / latTotal;
+
+          const latBuckets = buildLatencyBuckets(latencies);
+          const counts = latBuckets.map(() => 0);
+          for (const lat of latencies) {
+            for (let i = 0; i < latBuckets.length; i++) {
+              if (lat >= latBuckets[i].min && lat < latBuckets[i].max) { counts[i]++; break; }
+              if (i === latBuckets.length - 1) counts[i]++;
+            }
+          }
+          const maxCount = Math.max(...counts);
+
+          let barsHtml = '<div class="dist-chart">';
+          for (let i = 0; i < latBuckets.length; i++) {
+            const count = counts[i];
+            const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
+            const pct = latTotal > 0 ? ((count / latTotal) * 100).toFixed(0) : '0';
+            barsHtml += '<div class="dist-chart-col" data-lat-min="' + latBuckets[i].min + '" data-lat-max="' + latBuckets[i].max + '" title="' + latBuckets[i].label + ': ' + count + ' items (' + pct + '%)">' +
+              '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
+              '<div class="bar-fill" style="height:' + barH + 'px;background:' + latBuckets[i].color + ';"></div>' +
+              '<span class="bar-label">' + latBuckets[i].label + '</span>' +
+            '</div>';
+          }
+          barsHtml += '</div>';
+
+          cards += '<div class="metric-card">' +
+            '<div class="metric-card-header">' +
+              '<div class="metric-card-gauge">' +
+                '<div class="latency-badge"><span class="latency-badge-icon">\u23F1</span></div>' +
+                '<div class="metric-card-info">' +
+                  '<div class="metric-card-value" style="color:var(--accent-secondary);">' + formatLatency(p50) + '</div>' +
+                  '<div class="metric-card-name">Latency \u00B7 P50</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="latency-stats-compact">' +
+                '<span>Min <b>' + formatLatency(minLat) + '</b></span>' +
+                '<span>Mean <b>' + formatLatency(meanLat) + '</b></span>' +
+                '<span>P90 <b>' + formatLatency(p90) + '</b></span>' +
+                '<span>P99 <b>' + formatLatency(p99) + '</b></span>' +
+                '<span>Max <b>' + formatLatency(maxLat) + '</b></span>' +
+              '</div>' +
+            '</div>' +
+            barsHtml +
+          '</div>';
+        }
+
+        // ── Assemble ──
+        section.innerHTML =
+          '<div class="overview-header">' +
+            '<div><h3 class="section-title">Overview</h3>' +
+            '<div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div></div>' +
+          '</div>' +
+          (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '');
+
+        // ── Wire click handlers ──
+        const grid = section.querySelector('.metric-cards-grid');
+        if (!grid) return;
+
+        grid.querySelectorAll('.dist-chart-col[data-bucket-min]').forEach(col => {
+          col.addEventListener('click', () => {
+            const metric = col.dataset.metric;
+            const min = parseFloat(col.dataset.bucketMin);
+            const max = parseFloat(col.dataset.bucketMax);
+            if (metric && metric !== state.selectedMetric) {
+              state.selectedMetric = metric;
+              const sel = el('items-metric-select');
+              if (sel) sel.value = metric;
+              updateThresholdControl();
+            }
             state.scoreDistFilter = { min, max };
             state.page = 1;
             renderItems();
           });
         });
-      }
 
-      function renderLatencyDistribution() {
-        const section = el('latency-dist-section');
-        const container = el('latency-dist-container');
-        if (!section || !container) return;
-        const rows = state.snapshot.rows || [];
-        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
-        if (latencies.length === 0) { section.style.display = 'none'; return; }
-        section.style.display = '';
-
-        const buckets = [
-          { label: '<100ms', min: 0, max: 100, color: 'var(--score-5)' },
-          { label: '100-500ms', min: 100, max: 500, color: 'var(--score-4)' },
-          { label: '0.5-1s', min: 500, max: 1000, color: 'var(--score-3)' },
-          { label: '1-2s', min: 1000, max: 2000, color: 'var(--score-3)' },
-          { label: '2-5s', min: 2000, max: 5000, color: 'var(--score-2)' },
-          { label: '5-10s', min: 5000, max: 10000, color: 'var(--score-2)' },
-          { label: '10s+', min: 10000, max: Infinity, color: 'var(--score-1)' },
-        ];
-
-        const counts = buckets.map(() => 0);
-        for (const lat of latencies) {
-          for (let i = 0; i < buckets.length; i++) {
-            if (lat >= buckets[i].min && lat < buckets[i].max) { counts[i]++; break; }
-            if (i === buckets.length - 1) counts[i]++;
-          }
-        }
-
-        const total = latencies.length;
-        const sorted = [...latencies].sort((a, b) => a - b);
-        const minLat = sorted[0];
-        const maxLat = sorted[sorted.length - 1];
-        const medianLat = sorted[Math.floor(sorted.length / 2)];
-        const meanLat = latencies.reduce((a, b) => a + b, 0) / total;
-
-        let barHtml = '<div class="latency-dist-bar">';
-        let legendHtml = '<div class="latency-dist-legend">';
-        for (let i = 0; i < buckets.length; i++) {
-          if (counts[i] === 0) continue;
-          const pct = ((counts[i] / total) * 100).toFixed(0);
-          barHtml += '<div class="latency-dist-segment" style="flex:' + counts[i] + ';background:' + buckets[i].color + ';" data-lat-idx="' + i + '" title="' + buckets[i].label + ': ' + counts[i] + ' items (' + pct + '%)"><span class="lat-count">' + counts[i] + '</span><span class="lat-label">' + buckets[i].label + '</span></div>';
-          legendHtml += '<div class="latency-dist-legend-item"><div class="latency-dist-legend-dot" style="background:' + buckets[i].color + ';"></div><span>' + buckets[i].label + ': <strong style="color:var(--text-secondary);">' + counts[i] + '</strong> (' + pct + '%)</span></div>';
-        }
-        barHtml += '</div>';
-        legendHtml += '</div>';
-
-        const statsHtml = '<div class="latency-dist-stats">' +
-          '<div class="latency-dist-stat"><span class="lat-stat-label">Min</span>' + formatLatency(minLat) + '</div>' +
-          '<div class="latency-dist-stat"><span class="lat-stat-label">Median</span>' + formatLatency(medianLat) + '</div>' +
-          '<div class="latency-dist-stat"><span class="lat-stat-label">Mean</span>' + formatLatency(meanLat) + '</div>' +
-          '<div class="latency-dist-stat"><span class="lat-stat-label">Max</span>' + formatLatency(maxLat) + '</div>' +
-        '</div>';
-
-        container.innerHTML = barHtml + legendHtml + statsHtml;
-
-        // Wire click handlers for filtering
-        container.querySelectorAll('.latency-dist-segment').forEach(seg => {
-          seg.addEventListener('click', () => {
-            const idx = parseInt(seg.dataset.latIdx, 10);
-            const bucket = buckets[idx];
-            state.latencyDistFilter = { min: bucket.min, max: bucket.max };
+        grid.querySelectorAll('.dist-chart-col[data-lat-min]').forEach(col => {
+          col.addEventListener('click', () => {
+            const min = parseFloat(col.dataset.latMin);
+            const max = col.dataset.latMax === 'Infinity' ? Infinity : parseFloat(col.dataset.latMax);
+            state.latencyDistFilter = { min, max };
             state.page = 1;
             renderItems();
           });
@@ -2277,8 +2573,8 @@
 
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
-              html += '<div class="breakdown-card"><div class="breakdown-card-top"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div></div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Items</span> ' + g.itemCount + '</span></div></div>';
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#94a3b8';
+              html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
               let cardValClass = '';
@@ -2289,7 +2585,7 @@
                 else if (['hard','difficult','advanced','high'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
-              html += '<div class="breakdown-card' + cardValClass + '"><div class="breakdown-card-top"><div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-count"><strong>' + g.itemCount + '</strong> item' + (g.itemCount !== 1 ? 's' : '') + '</div></div><div class="breakdown-card-score ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
+              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-top"><div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-count"><strong>' + g.itemCount + '</strong> item' + (g.itemCount !== 1 ? 's' : '') + '</div></div><div class="breakdown-card-score ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
             }
           }
           html += '</div></div>';
@@ -2297,6 +2593,24 @@
 
         html += '</div>';
         section.innerHTML = html;
+
+        // Wire breakdown card click-to-filter
+        section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+          card.addEventListener('click', () => {
+            const cat = card.dataset.bdCategory;
+            const val = card.dataset.bdValue;
+            const current = getCatFilter(cat);
+            // Toggle: if already filtering to just this value, clear the filter
+            if (current !== null && current.length === 1 && current[0] === val) {
+              setCatFilter(cat, null);
+            } else {
+              setCatFilter(cat, [val]);
+            }
+            syncMultiselectUI(cat);
+            state.page = 1;
+            renderItems();
+          });
+        });
       }
 
       // ── Filtering & Items ──
@@ -2473,7 +2787,7 @@
           let rootCauseHtml = '';
           const rowRc = row.item_metadata?.root_cause || '';
           if (rowRc) {
-            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#94a3b8';
             rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span></div>';
           } else {
             rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
@@ -2599,8 +2913,7 @@
               const result = await updateMetricScore(filePath, rowIndex, metricName, input.value);
               if (result && result.row) {
                 applyUpdatedRow(result.row);
-                renderOverviewStats();
-                renderScoreDistribution();
+                renderOverview();
                 renderMetadataBreakdown();
                 renderItems();
               }
@@ -2638,7 +2951,7 @@
         let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
-          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
+          const color = ROOT_CAUSE_COLORS[opt] || '#94a3b8';
           html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
         }
         html += '<div class="rc-divider"></div>';

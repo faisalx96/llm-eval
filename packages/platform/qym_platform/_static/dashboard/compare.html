@@ -2924,7 +2924,7 @@
             if (bdKey === 'root_cause') {
               // Root cause cards: compact — label + assignments / distinct items
               const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
-              html += `<div class="breakdown-card">
+              html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
                 <div class="breakdown-card-top">
                   <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
                 </div>
@@ -2948,7 +2948,7 @@
                 else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
 
-              html += `<div class="breakdown-card${cardValClass}">
+              html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
                 <div class="breakdown-card-top">
                   <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
                   <div class="breakdown-card-count"><strong>${g.itemCount}</strong> item${g.itemCount !== 1 ? 's' : ''}</div>
@@ -2967,6 +2967,24 @@
 
         html += '</div>';
         existingSection.innerHTML = html;
+
+        // Wire breakdown card click-to-filter
+        existingSection.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+          card.addEventListener('click', () => {
+            const cat = card.dataset.bdCategory;
+            const val = card.dataset.bdValue;
+            const current = getCatFilter(cat);
+            // Toggle: if already filtering to just this value, clear the filter
+            if (current !== null && current.length === 1 && current[0] === val) {
+              setCatFilter(cat, null);
+            } else {
+              setCatFilter(cat, [val]);
+            }
+            syncMultiselectUI(cat);
+            state.page = 1;
+            renderItems();
+          });
+        });
       }
 
       // Helper to create info icon with tooltip
@@ -3364,8 +3382,14 @@
             }
             if (state.rootCauseFilter !== null) {
               if (state.rootCauseFilter.length === 0) continue;
-              const val = String(md.root_cause ?? '').toLowerCase();
-              if (!state.rootCauseFilter.some(f => f.toLowerCase() === val)) continue;
+              // Check root_cause across ALL runs — different models may fail for different reasons
+              const matchesRootCause = rowData.some(r => {
+                if (!r) return false;
+                const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
+                const val = String(rmd.root_cause ?? '').toLowerCase();
+                return state.rootCauseFilter.some(f => f.toLowerCase() === val);
+              });
+              if (!matchesRootCause) continue;
             }
           }
 
