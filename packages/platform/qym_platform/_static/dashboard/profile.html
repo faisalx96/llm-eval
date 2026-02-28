@@ -465,6 +465,41 @@
       </div>
     </div>
 
+    <!-- LLM Configuration Section -->
+    <div class="section">
+      <div class="section-title">LLM Configuration</div>
+      <div class="keys-section">
+        <div class="keys-header">
+          <div class="keys-header-title">Auto Root-Cause Analysis Provider</div>
+        </div>
+        <div style="padding: var(--space-lg);">
+          <p style="font-size:var(--font-sm);color:var(--text-muted);margin:0 0 var(--space-md) 0;">
+            Configure an OpenAI-compatible LLM provider to enable automated root cause analysis on evaluation runs.
+          </p>
+          <div class="form-group">
+            <label class="form-label" for="llm-base-url">Base URL</label>
+            <input type="text" class="form-input" id="llm-base-url" placeholder="https://api.openai.com/v1">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="llm-api-key">API Key</label>
+            <div style="display:flex;gap:var(--space-sm);align-items:center;">
+              <input type="password" class="form-input" id="llm-api-key" placeholder="sk-..." style="flex:1;">
+              <button class="btn btn-sm" id="llm-key-toggle" type="button" title="Show/Hide">Show</button>
+            </div>
+            <div id="llm-key-hint" style="font-size:var(--font-xs);color:var(--text-muted);margin-top:4px;"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="llm-model">Model</label>
+            <input type="text" class="form-input" id="llm-model" placeholder="gpt-4o-mini">
+          </div>
+          <div style="display:flex;gap:var(--space-sm);justify-content:flex-end;margin-top:var(--space-md);">
+            <button class="btn" id="llm-test-btn">Test Connection</button>
+            <button class="btn primary" id="llm-save-btn">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- API Keys Section -->
     <div class="section">
       <div class="section-title">API Keys</div>
@@ -808,7 +843,123 @@
         }
       });
 
-      Promise.all([loadMe(), loadKeys()]).catch(err => {
+      // ── Toast notifications ──────────────────────────────────
+      function showToast(type, title, message) {
+        const container = el('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+          <div class="toast-icon">${type === 'success' ? '✓' : '✗'}</div>
+          <div class="toast-content">
+            <div class="toast-title">${escapeHtml(title)}</div>
+            <div class="toast-message">${escapeHtml(message)}</div>
+          </div>
+          <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+        `;
+        container.appendChild(toast);
+        setTimeout(() => {
+          toast.classList.add('toast-exit');
+          setTimeout(() => toast.remove(), 300);
+        }, 4000);
+      }
+
+      // ── LLM Configuration ──────────────────────────────────
+      async function loadLLMConfig() {
+        try {
+          const res = await fetch(apiUrl('v1/me/llm-config'));
+          if (!res.ok) return;
+          const cfg = await res.json();
+          el('llm-base-url').value = cfg.llm_base_url || '';
+          el('llm-model').value = cfg.llm_model || '';
+          el('llm-api-key').value = '';
+          const hint = el('llm-key-hint');
+          if (cfg.llm_api_key_set) {
+            hint.textContent = 'Current key: ' + cfg.llm_api_key_hint;
+          } else {
+            hint.textContent = 'No API key configured';
+          }
+          el('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
+        } catch (err) {
+          console.error('Failed to load LLM config:', err);
+        }
+      }
+
+      el('llm-key-toggle').addEventListener('click', () => {
+        const input = el('llm-api-key');
+        const btn = el('llm-key-toggle');
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.textContent = 'Hide';
+        } else {
+          input.type = 'password';
+          btn.textContent = 'Show';
+        }
+      });
+
+      el('llm-save-btn').addEventListener('click', async () => {
+        const btn = el('llm-save-btn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try {
+          // If key field is blank and a key was already set, fetch current to preserve it
+          let apiKey = el('llm-api-key').value.trim();
+          if (!apiKey) {
+            // Fetch current config to check if key exists
+            const checkRes = await fetch(apiUrl('v1/me/llm-config'));
+            const checkCfg = await checkRes.json();
+            if (!checkCfg.llm_api_key_set) {
+              showToast('error', 'Missing API Key', 'Please enter an API key');
+              return;
+            }
+            // Key is already set, send a sentinel so the backend knows to keep it
+            apiKey = '__KEEP__';
+          }
+          const body = {
+            llm_base_url: el('llm-base-url').value.trim() || 'https://api.openai.com/v1',
+            llm_api_key: apiKey,
+            llm_model: el('llm-model').value.trim() || 'gpt-4o-mini',
+          };
+          const res = await fetch(apiUrl('v1/me/llm-config'), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast('error', 'Save Failed', err.detail || 'Could not save LLM configuration');
+            return;
+          }
+          showToast('success', 'Saved', 'LLM configuration updated');
+          await loadLLMConfig();
+        } catch (err) {
+          showToast('error', 'Error', err.message || 'Failed to save');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save';
+        }
+      });
+
+      el('llm-test-btn').addEventListener('click', async () => {
+        const btn = el('llm-test-btn');
+        btn.disabled = true;
+        btn.textContent = 'Testing...';
+        try {
+          const res = await fetch(apiUrl('v1/me/llm-config/test'), { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast('error', 'Connection Failed', data.detail || 'Could not connect to LLM provider');
+            return;
+          }
+          showToast('success', 'Connection OK', 'Successfully connected to ' + (data.model || 'LLM'));
+        } catch (err) {
+          showToast('error', 'Error', err.message || 'Connection test failed');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Test Connection';
+        }
+      });
+
+      Promise.all([loadMe(), loadKeys(), loadLLMConfig()]).catch(err => {
         console.error(err);
         showAuthError();
       });

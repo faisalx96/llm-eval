@@ -194,6 +194,84 @@ def revoke_api_key(
     return {"ok": True, "id": key_id}
 
 
+# ── LLM Configuration ──────────────────────────────────────────
+
+
+class LLMConfigRequest(BaseModel):
+    llm_base_url: str = Field(default="https://api.openai.com/v1")
+    llm_api_key: str = Field(default="")
+    llm_model: str = Field(default="gpt-4o-mini")
+
+
+@router.get("/v1/me/llm-config")
+def get_llm_config(
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return the current user's LLM configuration (API key masked)."""
+    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
+    raw_key = cfg.get("llm_api_key", "")
+    return {
+        "llm_base_url": cfg.get("llm_base_url", "https://api.openai.com/v1"),
+        "llm_model": cfg.get("llm_model", "gpt-4o-mini"),
+        "llm_api_key_set": bool(raw_key),
+        "llm_api_key_hint": ("••••" + raw_key[-4:]) if len(raw_key) >= 4 else "",
+    }
+
+
+@router.put("/v1/me/llm-config")
+def update_llm_config(
+    req: LLMConfigRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Save LLM configuration for the current user."""
+    user = db.query(User).filter(User.id == principal.user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Preserve existing API key if sentinel value is sent
+    existing = user.llm_config if isinstance(user.llm_config, dict) else {}
+    api_key = req.llm_api_key.strip()
+    if api_key == "__KEEP__":
+        api_key = existing.get("llm_api_key", "")
+
+    user.llm_config = {
+        "llm_base_url": req.llm_base_url.strip().rstrip("/"),
+        "llm_api_key": api_key,
+        "llm_model": req.llm_model.strip(),
+    }
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/v1/me/llm-config/test")
+async def test_llm_config(
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Test the user's LLM connection with a lightweight call."""
+    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
+    api_key = cfg.get("llm_api_key", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No API key configured")
+
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        base_url=cfg.get("llm_base_url", "https://api.openai.com/v1"),
+        api_key=api_key,
+    )
+    model = cfg.get("llm_model", "gpt-4o-mini")
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            max_tokens=4,
+        )
+        return {"ok": True, "model": model, "response": resp.choices[0].message.content}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"LLM connection failed: {e}")
+
+
 class CreateUserRequest(BaseModel):
     email: str
     display_name: str = ""

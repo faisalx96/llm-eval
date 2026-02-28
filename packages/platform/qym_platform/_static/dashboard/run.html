@@ -1902,9 +1902,121 @@
       background: #00e6b8;
       border-color: #00e6b8;
     }
+    /* ── Auto-Analyze UI ── */
+    .auto-analyze-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(0, 168, 255, 0.15));
+        border: 1px solid rgba(168, 85, 247, 0.3);
+        border-radius: 6px;
+        color: #c084fc;
+        font-size: var(--font-sm);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .auto-analyze-btn:hover {
+        background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(0, 168, 255, 0.25));
+        border-color: rgba(168, 85, 247, 0.5);
+        transform: translateY(-1px);
+    }
+    .auto-analyze-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .auto-analyze-btn .ai-icon { font-size: 14px; }
+
+    .analyze-panel {
+        background: var(--bg-surface);
+        border: 1px solid rgba(168, 85, 247, 0.2);
+        border-radius: 8px;
+        padding: var(--space-md);
+        margin-bottom: var(--space-lg);
+        display: none;
+    }
+    .analyze-panel.visible { display: block; }
+    .analyze-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    .analyze-panel-title {
+        font-size: var(--font-md);
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .analyze-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+        align-items: center;
+        margin-bottom: var(--space-md);
+    }
+    .analyze-filters .fp-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .analyze-progress {
+        display: none;
+        padding: var(--space-sm);
+        background: var(--bg-elevated);
+        border-radius: 6px;
+        margin-bottom: var(--space-sm);
+    }
+    .analyze-progress.visible { display: block; }
+    .analyze-progress-bar {
+        height: 4px;
+        background: var(--border-subtle);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 6px;
+    }
+    .analyze-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #a855f7, #00a8ff);
+        border-radius: 2px;
+        transition: width 0.3s;
+        animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer {
+        0% { opacity: 1; }
+        50% { opacity: 0.7; }
+        100% { opacity: 1; }
+    }
+    .analyze-stats {
+        font-size: var(--font-sm);
+        color: var(--text-muted);
+    }
+    .analyze-stat-val { font-weight: 600; color: var(--text-primary); }
+
+    /* AI-suggested root cause badge styling */
+    .badge-root-cause.ai-suggested {
+        border-style: dashed !important;
+    }
+    .badge-root-cause .ai-indicator {
+        font-size: 11px;
+        margin-right: 2px;
+    }
+    .badge-root-cause .confidence-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
   </style>
 </head>
 <body>
+  <div class="toast-container" id="toast-container"></div>
   <header class="stats-bar">
     <div class="stats-bar-left">
       <a href="/" class="logo" id="logo-link" style="text-decoration:none;">
@@ -1978,6 +2090,50 @@
       </div>
 
       <div id="metadata-breakdown"></div>
+
+      <div id="analyze-panel" class="analyze-panel">
+          <div class="analyze-panel-header">
+              <span class="analyze-panel-title">
+                  <span class="ai-icon">🤖</span> Auto Root Cause Analysis
+              </span>
+              <button id="analyze-panel-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" title="Close">&times;</button>
+          </div>
+          <div class="analyze-filters">
+              <div class="fp-group">
+                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Analyze</span>
+                  <select id="analyze-item-filter" class="filter-select" style="padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);">
+                      <option value="all">All Items</option>
+                      <option value="failed" selected>Failed Items</option>
+                      <option value="passed">Passed Items</option>
+                      <option value="errors">Error Items</option>
+                  </select>
+              </div>
+              <div class="fp-group">
+                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Score below</span>
+                  <input type="number" id="analyze-max-score" style="width:65px;padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);" min="0" max="1" step="0.1" value="0.8" />
+              </div>
+              <div class="fp-group">
+                  <label style="display:flex;align-items:center;gap:4px;font-size:var(--font-xs);color:var(--text-secondary);cursor:pointer;">
+                      <input type="checkbox" id="analyze-only-new" checked />
+                      Skip already analyzed
+                  </label>
+              </div>
+              <div class="fp-group" style="margin-left:auto;">
+                  <button id="run-analysis-btn" class="auto-analyze-btn">
+                      <span class="ai-icon">🤖</span> Run Analysis
+                  </button>
+              </div>
+          </div>
+          <div id="analyze-progress" class="analyze-progress">
+              <div class="analyze-stats">
+                  Analyzing <span class="analyze-stat-val" id="analyze-count">0</span> items...
+              </div>
+              <div class="analyze-progress-bar">
+                  <div class="analyze-progress-fill" id="analyze-progress-fill" style="width:0%"></div>
+              </div>
+          </div>
+          <div id="analyze-results" style="display:none;"></div>
+      </div>
 
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Detail</h3>
@@ -2365,6 +2521,26 @@
         return escapeHtml(String(val));
       }
 
+      function showToast(type, title, message) {
+          const container = el('toast-container');
+          if (!container) return;
+          const toast = document.createElement('div');
+          toast.className = `toast toast-${type}`;
+          toast.innerHTML = `
+              <div class="toast-icon">${type === 'success' ? '✓' : '✗'}</div>
+              <div class="toast-content">
+                  <div class="toast-title">${escapeHtml(title)}</div>
+                  <div class="toast-message">${escapeHtml(message)}</div>
+              </div>
+              <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+          `;
+          container.appendChild(toast);
+          setTimeout(() => {
+              toast.classList.add('toast-exit');
+              setTimeout(() => toast.remove(), 300);
+          }, 4000);
+      }
+
       // ── Data loading ──
 
       async function loadRunData() {
@@ -2503,6 +2679,7 @@
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
         renderItems();
+        initAnalyzePanel();
       }
 
       function renderSummary() {
@@ -2972,7 +3149,8 @@
       }
 
       function renderMetadataBreakdown() {
-        const breakdownKeys = ['complexity', 'domain', 'root_cause'].filter(k => state.allMetadataKeys.includes(k));
+        const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
+        breakdownKeys.push('root_cause');
         const section = el('metadata-breakdown');
         if (!section) return;
         if (breakdownKeys.length === 0) { section.innerHTML = ''; return; }
@@ -3034,15 +3212,16 @@
             groupStats.sort((a,b) => a.groupVal.localeCompare(b.groupVal));
           }
 
-          if (groupStats.length === 0) continue;
+          if (groupStats.length === 0 && bdKey !== 'root_cause') continue;
 
           const icon = bdKey === 'complexity' ? '\u2666' : bdKey === 'root_cause' ? '\u26A0' : '\u25C6';
           const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : bdKey === 'root_cause' ? 'breakdown-root-cause' : 'breakdown-domain';
-          const displayName = bdKey === 'root_cause' ? 'Root Cause' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
+          const displayName = bdKey === 'root_cause' ? 'Root Cause Analysis' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
 
           html += '<div class="breakdown-section ' + colorClass + '">';
           if (bdKey === 'root_cause') {
-            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + '</div>';
+            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">🤖</span> Auto-Analyze</button></div>';
+            html += '<div id="analyze-panel-slot"></div>';
           } else {
             html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
           }
@@ -3091,6 +3270,14 @@
             renderItems();
           });
         });
+
+        // Move analyze panel into the root cause section
+        const slot = document.getElementById('analyze-panel-slot');
+        const panel = el('analyze-panel');
+        if (slot && panel) slot.appendChild(panel);
+
+        // Re-wire auto-analyze button after re-render
+        if (_analyzeConfigCache) wireAnalyzeButton(_analyzeConfigCache);
       }
 
       // ── Filtering & Items ──
@@ -3278,7 +3465,17 @@
               ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
               : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
             const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
-            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span>' + feedbackHtml + '</div>';
+            const rcSource = row.item_metadata?.root_cause_source || '';
+            const rcConfidence = row.item_metadata?.root_cause_confidence;
+            const isAi = rcSource === 'ai';
+            const aiClass = isAi ? ' ai-suggested' : '';
+            const sourceIcon = isAi ? '<span class="ai-indicator">🤖</span>' : '<span class="badge-icon">✓</span>';
+            let confidenceDot = '';
+            if (isAi && rcConfidence != null) {
+              const dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
+              confidenceDot = '<span class="confidence-dot" style="background:' + dotColor + ';" title="Confidence: ' + (rcConfidence * 100).toFixed(0) + '%"></span>';
+            }
+            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause' + aiClass + '" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + (isAi ? ' (AI-suggested)' : '') + '. Click to change.">' + sourceIcon + escapeHtml(rowRc) + confidenceDot + '</span>' + feedbackHtml + '</div>';
           } else if (!itemPassed) {
             rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
           }
@@ -3305,12 +3502,12 @@
 
           // Item metadata badges
           let itemMetadataHtml = '';
-          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause'];
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_note', 'root_cause_source', 'root_cause_confidence'];
           const itemMd = row.item_metadata || {};
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
             for (const sk of SPECIAL_KEYS) {
-              if (sk === 'root_cause') continue;
+              if (sk.startsWith('root_cause')) continue;
               if (itemMd[sk] != null && itemMd[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                 const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
                 const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(itemMd[sk]) : [String(itemMd[sk])];
@@ -3577,7 +3774,7 @@
           const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
-            if (rootCause) { row.item_metadata.root_cause = rootCause; } else { delete row.item_metadata.root_cause; }
+            if (rootCause) { row.item_metadata.root_cause = rootCause; row.item_metadata.root_cause_source = 'human'; delete row.item_metadata.root_cause_confidence; } else { delete row.item_metadata.root_cause; delete row.item_metadata.root_cause_source; delete row.item_metadata.root_cause_confidence; }
           }
           if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
           if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
@@ -4156,6 +4353,122 @@
         var groups = discoverExportColumns(_exportItems);
         renderExportModal(groups);
       });
+
+      // ── Auto-Analyze ──────────────────────────────────────────
+      let _analyzeConfigCache = null;
+
+      function initAnalyzePanel() {
+          const runId = state.run?.file_path || state.run?.id;
+          if (!runId) return;
+
+          fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/analysis-config'))
+              .then(r => r.json())
+              .then(config => {
+                  _analyzeConfigCache = config;
+                  // Wire up the auto-analyze button (added in renderSummary)
+                  wireAnalyzeButton(config);
+              })
+              .catch(err => console.warn('Analysis config unavailable:', err));
+
+          const closeBtn = el('analyze-panel-close');
+          if (closeBtn) closeBtn.addEventListener('click', () => {
+              el('analyze-panel').classList.remove('visible');
+          });
+
+          const runBtn = el('run-analysis-btn');
+          if (runBtn) runBtn.addEventListener('click', runAnalysis);
+      }
+
+      function wireAnalyzeButton(config) {
+          const btn = document.getElementById('auto-analyze-btn');
+          if (!btn) return;
+          if (!config.llm_configured) {
+              btn.disabled = true;
+              btn.title = 'LLM not configured — set it up in your Profile';
+              btn.addEventListener('click', () => {
+                  showToast('error', 'LLM Not Configured', 'Go to Profile → LLM Configuration to set up your provider.');
+              });
+          } else {
+              btn.addEventListener('click', () => {
+                  el('analyze-panel').classList.toggle('visible');
+              });
+          }
+      }
+
+      async function runAnalysis() {
+          const runId = state.run?.file_path || state.run?.id;
+          if (!runId) return;
+
+          const btn = el('run-analysis-btn');
+          btn.disabled = true;
+          btn.textContent = 'Analyzing...';
+
+          el('analyze-progress').classList.add('visible');
+          el('analyze-progress-fill').style.width = '30%';
+          el('analyze-results').style.display = 'none';
+
+          const body = {
+              metric: state.selectedMetric,
+              item_filter: el('analyze-item-filter').value,
+              max_score: parseFloat(el('analyze-max-score').value) || undefined,
+              only_unanalyzed: el('analyze-only-new').checked,
+              threshold: 0.8,
+          };
+
+          try {
+              const res = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/analyze'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+              });
+              el('analyze-progress-fill').style.width = '90%';
+              const data = await res.json();
+
+              if (!res.ok) {
+                  showToast('error', 'Analysis Failed', data.detail || 'Unknown error');
+                  return;
+              }
+
+              el('analyze-count').textContent = data.total_analyzed;
+              el('analyze-progress-fill').style.width = '100%';
+
+              // Update local state with new root causes
+              const rows = state.snapshot?.rows || [];
+              for (const result of (data.results || [])) {
+                  const row = rows.find(r => r.item_id === result.item_id);
+                  if (row) {
+                      if (!row.item_metadata) row.item_metadata = {};
+                      row.item_metadata.root_cause = result.root_cause;
+                      row.item_metadata.root_cause_note = result.root_cause_note;
+                      row.item_metadata.root_cause_source = 'ai';
+                      row.item_metadata.root_cause_confidence = result.confidence;
+                  }
+              }
+
+              // Show results summary
+              el('analyze-results').style.display = 'block';
+              el('analyze-results').innerHTML = '<div style="font-size:var(--font-sm);color:var(--text-secondary);padding:8px 0;">' +
+                  'Analyzed <strong>' + data.total_analyzed + '</strong> items' +
+                  (data.errors > 0 ? ' (<span style="color:#ef4444;">' + data.errors + ' errors</span>)' : '') +
+                  '</div>';
+
+              showToast('success', 'Analysis Complete', data.total_analyzed + ' items analyzed');
+
+              // Re-render
+              if (typeof renderMetadataBreakdown === 'function') renderMetadataBreakdown();
+              if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
+              renderItems();
+          } catch (err) {
+              console.error('Analysis error:', err);
+              showToast('error', 'Analysis Failed', err.message);
+          } finally {
+              btn.disabled = false;
+              btn.innerHTML = '<span class="ai-icon">🤖</span> Run Analysis';
+              setTimeout(() => {
+                  el('analyze-progress').classList.remove('visible');
+              }, 2000);
+          }
+      }
 
       // ── Initialize ──
       loadRunData();

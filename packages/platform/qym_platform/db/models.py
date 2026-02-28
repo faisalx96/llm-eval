@@ -64,6 +64,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Each user belongs to exactly one TEAM org unit (nullable during bootstrap/migration)
     team_unit_id: Mapped[Optional[str]] = mapped_column(ForeignKey("org_units.id"), nullable=True, index=True)
+    # Per-user LLM provider config for auto root-cause analysis
+    llm_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -268,6 +270,41 @@ class RunEvent(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "event_id", name="uq_run_event_event_id"),
         UniqueConstraint("run_id", "sequence", name="uq_run_event_sequence"),
+    )
+
+
+class ReviewCorrection(Base):
+    """Stores human corrections to AI-suggested root causes for few-shot retrieval."""
+
+    __tablename__ = "review_corrections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    item_id: Mapped[str] = mapped_column(String(200), index=True)
+    task: Mapped[str] = mapped_column(String(200), index=True)
+
+    # Snapshot of item context at correction time (avoids joins for retrieval)
+    input_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
+    expected_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
+    output_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
+    scores_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    # What the AI suggested
+    ai_root_cause: Mapped[str] = mapped_column(String(200))
+    ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
+    ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # What the human corrected to
+    human_root_cause: Mapped[str] = mapped_column(String(200))
+    human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
+
+    corrected_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_review_corrections_task_created", "task", "created_at"),
     )
 
 

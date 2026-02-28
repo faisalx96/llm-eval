@@ -19,6 +19,7 @@ from qym_platform.db.models import (
     OrgUnitClosure,
     OrgUnitType,
     PlatformSetting,
+    ReviewCorrection,
     Run,
     RunEvent,
     RunItem,
@@ -711,7 +712,9 @@ def update_root_cause(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+    old_meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+    meta = dict(old_meta)
+
     if root_cause:
         meta["root_cause"] = root_cause
     else:
@@ -723,6 +726,47 @@ def update_root_cause(
             meta["root_cause_note"] = note
         else:
             meta.pop("root_cause_note", None)
+
+    # Record every human root cause assignment in the correction bank
+    old_source = old_meta.get("root_cause_source")
+    old_rc = old_meta.get("root_cause", "")
+    old_note = old_meta.get("root_cause_note", "")
+    old_confidence = old_meta.get("root_cause_confidence")
+
+    if root_cause:
+        item_scores = (
+            db.query(RunItemScore)
+            .filter(RunItemScore.run_id == run.id, RunItemScore.item_id == item.item_id)
+            .all()
+        )
+        scores_snap = {}
+        for s in item_scores:
+            scores_snap[s.metric_name] = s.score_numeric if s.score_numeric is not None else s.score_raw
+
+        correction = ReviewCorrection(
+            run_id=run.id,
+            item_id=item.item_id,
+            task=run.task,
+            input_snapshot=item.input,
+            expected_snapshot=item.expected,
+            output_snapshot=item.output,
+            scores_snapshot=scores_snap,
+            ai_root_cause=old_rc if old_source == "ai" else "Unanalyzed",
+            ai_root_cause_note=old_note if old_source == "ai" else "",
+            ai_confidence=old_confidence if old_source == "ai" else None,
+            human_root_cause=root_cause,
+            human_root_cause_note=str(root_cause_note or "").strip(),
+            corrected_by_user_id=principal.user.id if principal.auth_type != "none" else None,
+        )
+        db.add(correction)
+
+    # Track provenance
+    if root_cause:
+        if old_source == "ai":
+            meta["root_cause_source"] = "human"
+            meta.pop("root_cause_confidence", None)
+        else:
+            meta["root_cause_source"] = "human"
 
     item.item_metadata = meta
 
