@@ -1,3 +1,20 @@
+# 🚀 qym v0.9.0 — Release Notes
+
+**📅 March 2026**
+
+---
+
+## 🤖 Auto Root Cause Analysis
+
+- 🤖 **LLM-powered auto-analyze** — one-click "Auto-Analyze" button on run and compare views pre-populates root causes using an LLM, with configurable filters (pass/fail, score threshold, skip already analyzed)
+- 🔄 **Correction bank** — every human root cause assignment (with feedback notes) is stored and used as few-shot examples for future analyses, so the LLM improves over time as reviewers correct it
+- ⚙️ **Per-user LLM configuration** — configure any OpenAI-compatible provider (OpenAI, OpenRouter, Azure, Ollama, vLLM) from the Profile page with connection testing
+- 🧠 **Reasoning model support** — handles reasoning models like Kimi K2.5 and DeepSeek-R1 that separate thinking from output
+- 🏷️ **AI vs Human badges** — AI-suggested root causes show a 🤖 prefix with confidence indicator; human-confirmed ones show ✓
+- 💬 **Toast notifications** — clear guidance when LLM is not configured, directing users to the Profile page
+
+---
+
 # 🚀 qym v0.8.5 — Release Notes
 
 **📅 February 2026**
