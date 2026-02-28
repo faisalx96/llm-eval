@@ -295,7 +295,7 @@
 
     .breakdown-complexity .breakdown-icon,
     .breakdown-complexity .breakdown-header {
-      color: #fb923c;
+      color: #fbbf24;
     }
 
     .breakdown-domain .breakdown-icon,
@@ -336,7 +336,7 @@
     }
 
     .breakdown-complexity .breakdown-card {
-      border-left: 3px solid rgba(249, 115, 22, 0.3);
+      border-left: 3px solid rgba(251, 191, 36, 0.3);
     }
     .breakdown-complexity .breakdown-card.complexity-easy {
       border-left-color: rgba(34, 197, 94, 0.5);
@@ -1330,7 +1330,7 @@
     }
 
     .formatted-key {
-      color: #f472b6;
+      color: #60a5fa;
       font-weight: 600;
       display: block;
       margin-bottom: 4px;
@@ -1383,12 +1383,6 @@
     }
 
     /* Shared toggle button for metric details */
-    .item-metric-details-toggle {
-      margin-top: var(--space-md);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
-    }
-
     .metric-details-toggle {
       font-size: var(--font-sm);
       color: var(--accent-primary);
@@ -1407,16 +1401,15 @@
       border-color: var(--accent-primary);
     }
 
-    /* Per-run metric details (inside each run output) */
+    /* Per-run metric details (grid matches run output columns) */
+    .run-metric-details-grid { gap: var(--space-sm); margin-top: var(--space-sm); }
     .run-metric-details {
-      margin-top: var(--space-sm);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
       display: none;
-    }
-
-    .run-metric-details.expanded {
-      display: block;
+      border-left: 3px solid var(--border-default);
+      padding-left: var(--space-sm);
+      background: var(--bg-elevated);
+      border-radius: 0 4px 4px 0;
+      padding: var(--space-sm);
     }
 
     .metric-detail-row {
@@ -1430,7 +1423,7 @@
 
     .metric-detail-name {
       font-size: var(--font-sm);
-      color: #f472b6;
+      color: var(--text-secondary);
       font-weight: 600;
       margin-bottom: 6px;
       display: block;
@@ -1782,9 +1775,9 @@
     }
 
     .meta-badge.badge-complexity {
-      background: rgba(249, 115, 22, 0.1);
-      border: 1px solid rgba(249, 115, 22, 0.25);
-      color: #fb923c;
+      background: rgba(251, 191, 36, 0.1);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      color: #fbbf24;
     }
 
     /* Complexity value-specific colors */
@@ -1818,15 +1811,15 @@
 
     /* Root cause badge */
     .meta-badge.badge-root-cause {
-      background: rgba(244, 114, 182, 0.1);
-      border: 1px solid rgba(244, 114, 182, 0.25);
-      color: #f472b6;
+      background: rgba(224, 122, 95, 0.1);
+      border: 1px solid rgba(224, 122, 95, 0.25);
+      color: #e07a5f;
       cursor: pointer;
       transition: all 0.15s;
     }
     .meta-badge.badge-root-cause:hover {
-      background: rgba(244, 114, 182, 0.2);
-      border-color: rgba(244, 114, 182, 0.4);
+      background: rgba(224, 122, 95, 0.2);
+      border-color: rgba(224, 122, 95, 0.4);
     }
 
     /* Root cause row inside each run output */
@@ -1949,9 +1942,9 @@
       transition: all 0.15s;
     }
     .root-cause-assign-btn:hover {
-      border-color: #f472b6;
-      color: #f472b6;
-      background: rgba(244, 114, 182, 0.05);
+      border-color: #e07a5f;
+      color: #e07a5f;
+      background: rgba(224, 122, 95, 0.05);
     }
 
     /* Root cause dropdown */
@@ -1983,7 +1976,7 @@
       color: var(--text-primary);
     }
     .root-cause-dropdown .rc-option.active {
-      color: #f472b6;
+      color: #e07a5f;
       font-weight: 600;
     }
     .root-cause-dropdown .rc-option .rc-dot {
@@ -2029,11 +2022,11 @@
 
     /* Root cause breakdown section */
     .breakdown-root-cause .breakdown-card {
-      border-left: 3px solid rgba(244, 114, 182, 0.3);
+      border-left: 3px solid rgba(224, 122, 95, 0.3);
     }
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header {
-      color: #f472b6;
+      color: #e07a5f;
     }
 
     .rc-mode-toggle {
@@ -2060,7 +2053,7 @@
       color: var(--text-primary);
     }
     .rc-mode-toggle button.active {
-      background: #f472b6;
+      background: #e07a5f;
       color: #fff;
     }
 
@@ -2453,8 +2446,14 @@
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
-                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">&#9881;</button>
+                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
                 <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
+              <div class="metadata-fields-selector" style="position:relative;">
+                <button class="fp-gear-btn metadata-fields-btn" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
               </div>
             </div>
             <div class="fp-actions-spacer"></div>
@@ -2561,6 +2560,8 @@
         passRateValue: 0,             // #20: the number for the pass rate filter
         allMetadataKeys: [],          // collected metadata keys across all items
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
+        allMetricMetaKeys: [],
+        visibleMetricMetaFields: {},
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
         rootCauseValues: [],          // unique root cause values found in data
         rcCountMode: 'total',         // 'total' or 'unique' for root cause breakdown cards
@@ -2755,11 +2756,30 @@
           }
         }
 
+        // Collect metric metadata keys
+        const mmKeySet = new Set();
+        for (const run of state.runs) {
+          for (const row of (run?.snapshot?.rows || [])) {
+            const mm = row.metric_meta || {};
+            for (const metricName of Object.keys(mm)) {
+              const meta = mm[metricName] || {};
+              for (const k of Object.keys(meta)) {
+                if (!['modified', 'original_score'].includes(k)) mmKeySet.add(k);
+              }
+            }
+          }
+        }
+        state.allMetricMetaKeys = Array.from(mmKeySet).sort();
+        for (const k of state.allMetricMetaKeys) {
+          if (state.visibleMetricMetaFields[k] === undefined) state.visibleMetricMetaFields[k] = true;
+        }
+
         // Build complexity/domain multi-select dropdowns
         buildCategoryDropdowns();
 
-        // Populate metadata fields dropdown
+        // Populate metadata fields dropdowns
         populateMetadataFieldsDropdown();
+        populateMetricMetaFieldsDropdown();
 
         // Populate metric selectors
         populateMetricSelectors();
@@ -3345,7 +3365,7 @@
 
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
               const rcCount = state.rcCountMode === 'unique' ? g.itemCount : g.totalAssignments;
               html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
                 <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
@@ -3362,7 +3382,7 @@
                 const cv = g.groupVal.toLowerCase().trim();
                 if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
                 else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
-                else if (['hard', 'difficult', 'advanced', 'high'].includes(cv)) cardValClass = ' complexity-hard';
+                else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
 
@@ -3950,11 +3970,13 @@
           // Use a safe ID for DOM elements by encoding the itemId
           const safeId = btoa(itemId).replace(/[+/=]/g, '_');
 
+          const perRunDetails = [];
           const outputCells = rowData.map((row, runIdx) => {
             const color = COLORS[runIdx % COLORS.length];
             const runInfo = state.runs[runIdx]?.run || {};
 
             if (!row) {
+              perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
               return `
                 <div class="item-run-output" style="border-left-color: ${color}">
                   <div class="output-header">
@@ -4048,14 +4070,13 @@
             // Langfuse trace link
             const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
 
-            // Build metric details for this run (hidden by default, controlled by shared toggle)
-            let metricDetailsHtml = '';
+            // Build metric details for this run (collected, rendered after toggle)
             const hasMetricMeta = Object.keys(metricMeta).length > 0;
 
             if (hasMetricMeta) {
               const detailRows = metricNames.map((name) => {
                 const meta = metricMeta[name] || {};
-                const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k));
+                const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k) && state.visibleMetricMetaFields[k] !== false);
                 if (metaKeys.length === 0) return '';
 
                 return metaKeys.map(key => {
@@ -4070,12 +4091,12 @@
               }).join('');
 
               if (detailRows) {
-                metricDetailsHtml = `
-                  <div class="run-metric-details" data-item="${safeId}">
-                    ${detailRows}
-                  </div>
-                `;
+                perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}">${detailRows}</div>`);
+              } else {
+                perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
               }
+            } else {
+              perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
             }
 
             const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
@@ -4110,7 +4131,7 @@
               const feedbackHtml = rowRcNote
                 ? `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to edit feedback">${feedbackIcon}<span class="feedback-text">${escapeHtml(rowRcNote)}</span></div></div>`
                 : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
-              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
               rootCauseHtml = `<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Root cause: ${escapeAttr(rowRc)}. Click to change."><span class="badge-icon">\u26A0</span>${escapeHtml(rowRc)}</span>${feedbackHtml}</div>`;
             } else if (!itemPassed) {
               rootCauseHtml = `<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>`;
@@ -4126,13 +4147,11 @@
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${metricEditHtml}
                 ${rootCauseHtml}
-                ${metricDetailsHtml}
               </div>
             `;
           }).join('');
-
-          // Build shared metric details section (all runs' metadata in one expandable area)
-          const metricDetailsHtml = buildMetricDetailsSection(itemId, rowData);
+          const perRunDetailsHtml = perRunDetails.join('');
+          const hasAnyMetricDetails = perRunDetails.some(h => !h.endsWith('"></div>'));
 
           // Format item ID for display (e.g., "item_5" -> "Item 6", or keep original if not matching pattern)
           let displayItemId = itemId;
@@ -4161,7 +4180,7 @@
                       const lv = v.toLowerCase().trim();
                       if (['easy', 'simple', 'basic', 'low'].includes(lv)) valClass = ' complexity-easy';
                       else if (['medium', 'moderate', 'intermediate', 'mid'].includes(lv)) valClass = ' complexity-medium';
-                      else if (['hard', 'difficult', 'advanced', 'high'].includes(lv)) valClass = ' complexity-hard';
+                      else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(lv)) valClass = ' complexity-hard';
                       else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(lv)) valClass = ' complexity-expert';
                     }
                     badgesHtml += `<span class="meta-badge badge-${sk}${valClass}"><span class="badge-icon">${icon}</span>${escapeHtml(v)}</span>`;
@@ -4212,7 +4231,10 @@
               <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
                 ${outputCells}
               </div>
-              ${metricDetailsHtml}
+              ${hasAnyMetricDetails ? `<div class="item-outputs-row run-metric-details-grid" style="--run-count: ${state.runs.length}" data-item="${safeId}">
+                <button class="metric-details-toggle" style="grid-column:1/-1;" onclick="toggleItemMetricDetails('${safeId}')"><span class="toggle-icon" id="toggle-icon-${safeId}">\u25B6</span> Metric Details</button>
+                ${perRunDetailsHtml}
+              </div>` : ''}
             </div>
           `;
         }).join('');
@@ -4276,10 +4298,16 @@
       }
 
       // #4: Safe markdown rendering (basic inline markdown: bold, italic, code, links)
+      function isRTL(text) {
+        var rtlChars = (text.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
+        var latinChars = (text.match(/[A-Za-z]/g) || []).length;
+        return rtlChars > latinChars;
+      }
+
       function renderMarkdownSafe(value) {
         if (value === null || value === undefined) return '—';
         if (typeof value === 'object') return formatObjectAsHtml(value);
-        const str = String(value);
+        const str = String(value).replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
         // Check if it looks like a structured object first
         const trimmed = str.trim();
         if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
@@ -4303,6 +4331,7 @@
         html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
         // Links
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent-primary);">$1</a>');
+        if (isRTL(str)) html = '<div dir="rtl" style="text-align:right;">' + html + '</div>';
         return html;
       }
 
@@ -4562,7 +4591,7 @@
         html += '<div class="rc-divider"></div>';
 
         for (const opt of allOptions) {
-          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
+          const color = ROOT_CAUSE_COLORS[opt] || '#e07a5f';
           const isActive = opt === currentRC;
           html += `<div class="rc-option ${isActive ? 'active' : ''}" data-rc-value="${escapeAttr(opt)}"><span class="rc-dot" style="background: ${color};"></span> ${escapeHtml(opt)}</div>`;
         }
@@ -4683,24 +4712,14 @@
 
       // Global function for toggling all metric details for an item
       window.toggleItemMetricDetails = function(itemIndex) {
-        const details = document.querySelectorAll(`.run-metric-details[data-item="${itemIndex}"]`);
+        const grid = document.querySelector(`.run-metric-details-grid[data-item="${itemIndex}"]`);
         const icon = document.getElementById(`toggle-icon-${itemIndex}`);
+        if (!grid) return;
 
-        if (details.length === 0) return;
-
-        const isExpanded = details[0].classList.contains('expanded');
-
-        details.forEach(detail => {
-          if (isExpanded) {
-            detail.classList.remove('expanded');
-          } else {
-            detail.classList.add('expanded');
-          }
-        });
-
-        if (icon) {
-          icon.textContent = isExpanded ? '▶' : '▼';
-        }
+        const details = grid.querySelectorAll('.run-metric-details');
+        const isExpanded = details.length > 0 && details[0].style.display === 'block';
+        details.forEach(d => d.style.display = isExpanded ? 'none' : 'block');
+        if (icon) icon.textContent = isExpanded ? '▶' : '▼';
       };
 
       // Format field names to be more readable
@@ -4709,32 +4728,6 @@
         return name
           .replace(/_/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase());
-      }
-
-      // Build shared toggle button for metric details (controls all runs' details for this item)
-      function buildMetricDetailsSection(itemId, rowData) {
-        // Check if any run has metadata
-        const hasAnyMeta = rowData.some(row => {
-          if (!row) return false;
-          const metricMeta = row.metric_meta || {};
-          return Object.keys(metricMeta).some(metric => {
-            const meta = metricMeta[metric] || {};
-            return Object.keys(meta).length > 0;
-          });
-        });
-
-        if (!hasAnyMeta) return '';
-
-        // Use a safe ID for DOM elements by encoding the itemId
-        const safeId = btoa(itemId).replace(/[+/=]/g, '_');
-
-        return `
-          <div class="item-metric-details-toggle">
-            <button class="metric-details-toggle" onclick="toggleItemMetricDetails('${safeId}')">
-              <span class="toggle-icon" id="toggle-icon-${safeId}">▶</span> Metric Details
-            </button>
-          </div>
-        `;
       }
 
       function formatValue(value) {
@@ -4908,6 +4901,11 @@
         }
       }
 
+      function fmtStr(s) {
+        var escaped = escapeHtml(s);
+        return isRTL(s) ? '<span class="formatted-string" dir="rtl" style="text-align:right;display:block;">' + escaped + '</span>' : '<span class="formatted-string">' + escaped + '</span>';
+      }
+
       function formatObjectAsHtml(obj) {
         if (Array.isArray(obj)) {
           // Format arrays
@@ -4919,7 +4917,7 @@
             } else if (typeof item === 'object') {
               formattedItem = formatObjectAsHtml(item);
             } else if (typeof item === 'string') {
-              formattedItem = `<span class="formatted-string">${escapeHtml(item)}</span>`;
+              formattedItem = fmtStr(item);
             } else {
               formattedItem = escapeHtml(String(item));
             }
@@ -4939,8 +4937,7 @@
           } else if (typeof val === 'object') {
             formattedVal = formatObjectAsHtml(val);
           } else if (typeof val === 'string') {
-            // Show full string without quotes
-            formattedVal = `<span class="formatted-string">${escapeHtml(val)}</span>`;
+            formattedVal = fmtStr(val);
           } else if (typeof val === 'number') {
             formattedVal = `<span class="formatted-number">${val}</span>`;
           } else if (typeof val === 'boolean') {
@@ -5078,6 +5075,7 @@
         el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
         el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
+        el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
 
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
@@ -5124,18 +5122,17 @@
           <div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>`;
         }
 
-        let html = extraOptions + values.map(v =>
+        let html = `<div class="ms-actions">
+          <button class="ms-action-btn" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
+          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">Clear</button>
+        </div>`;
+        html += extraOptions + values.map(v =>
           `<label class="multi-select-option" data-value="${escapeAttr(v)}">
             <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="${escapeAttr(v)}" />
             <span>${escapeHtml(v)}</span>
             <span class="option-count">${itemCounts[v] || 0}</span>
           </label>`
         ).join('');
-
-        html += `<div class="ms-actions">
-          <button class="ms-action-btn" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
-          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">Clear</button>
-        </div>`;
 
         dropdown.innerHTML = html;
 
@@ -5258,6 +5255,8 @@
           document.querySelectorAll('.multi-select-dropdown.open').forEach(d => {
             if (d !== dropdown) d.classList.remove('open');
           });
+          el('metadata-fields-dropdown').classList.remove('open');
+          el('metric-meta-fields-dropdown').classList.remove('open');
           dropdown.classList.toggle('open');
         });
 
@@ -5298,16 +5297,21 @@
       });
 
       // #6: Metadata fields selector toggle
-      el('metadata-fields-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        const dropdown = el('metadata-fields-dropdown');
-        dropdown.classList.toggle('open');
+      el('metadata-fields-btn').addEventListener('click', () => {
+        el('metric-meta-fields-dropdown').classList.remove('open');
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+        el('metadata-fields-dropdown').classList.toggle('open');
       });
-      document.addEventListener('click', () => {
+      el('metric-meta-fields-btn').addEventListener('click', () => {
         el('metadata-fields-dropdown').classList.remove('open');
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+        el('metric-meta-fields-dropdown').classList.toggle('open');
       });
-      el('metadata-fields-dropdown').addEventListener('click', (e) => {
-        e.stopPropagation();
+      document.addEventListener('click', (e) => {
+        const metaDd = el('metadata-fields-dropdown'), metaBtn = el('metadata-fields-btn');
+        const mmDd = el('metric-meta-fields-dropdown'), mmBtn = el('metric-meta-fields-btn');
+        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) metaDd.classList.remove('open');
+        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) mmDd.classList.remove('open');
       });
 
       function populateMetadataFieldsDropdown() {
@@ -5323,6 +5327,24 @@
         dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
           cb.addEventListener('change', () => {
             state.visibleMetadataFields[cb.dataset.metaKey] = cb.checked;
+            renderItems();
+          });
+        });
+      }
+
+      function populateMetricMetaFieldsDropdown() {
+        const dropdown = el('metric-meta-fields-dropdown');
+        if (!dropdown || state.allMetricMetaKeys.length === 0) {
+          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metric metadata fields found</div>';
+          return;
+        }
+        dropdown.innerHTML = state.allMetricMetaKeys.map(k => {
+          const checked = state.visibleMetricMetaFields[k] !== false ? 'checked' : '';
+          return `<label><input type="checkbox" ${checked} data-mm-key="${escapeAttr(k)}" /> ${escapeHtml(formatFieldName(k))}</label>`;
+        }).join('');
+        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            state.visibleMetricMetaFields[cb.dataset.mmKey] = cb.checked;
             renderItems();
           });
         });

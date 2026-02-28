@@ -661,12 +661,12 @@
     }
     .breakdown-icon { font-size: var(--font-sm); line-height: 1; }
     .breakdown-complexity .breakdown-icon,
-    .breakdown-complexity .breakdown-header { color: #fb923c; }
+    .breakdown-complexity .breakdown-header { color: #fbbf24; }
     .breakdown-domain .breakdown-icon,
     .breakdown-domain .breakdown-header { color: #60a5fa; }
     .breakdown-root-cause .breakdown-icon,
-    .breakdown-root-cause .breakdown-header { color: #f472b6; }
-    .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(244, 114, 182, 0.3); }
+    .breakdown-root-cause .breakdown-header { color: #e07a5f; }
+    .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
     .breakdown-metric {
       font-size: var(--font-xs);
       font-family: var(--font-mono);
@@ -693,7 +693,7 @@
       transition: border-color 0.15s;
     }
     .breakdown-card:hover { border-color: var(--border-default); }
-    .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(249, 115, 22, 0.3); }
+    .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(251, 191, 36, 0.3); }
     .breakdown-complexity .breakdown-card.complexity-easy { border-left-color: rgba(34, 197, 94, 0.5); }
     .breakdown-complexity .breakdown-card.complexity-easy .breakdown-card-label { color: #4ade80; }
     .breakdown-complexity .breakdown-card.complexity-medium { border-left-color: rgba(234, 179, 8, 0.5); }
@@ -1389,9 +1389,9 @@
       transition: all 0.15s;
     }
     .root-cause-assign-btn:hover {
-      border-color: #f472b6;
-      color: #f472b6;
-      background: rgba(244, 114, 182, 0.05);
+      border-color: #e07a5f;
+      color: #e07a5f;
+      background: rgba(224, 122, 95, 0.05);
     }
     .root-cause-dropdown {
       position: fixed;
@@ -1417,7 +1417,7 @@
       transition: background 0.1s;
     }
     .root-cause-dropdown .rc-option:hover { background: var(--bg-hover); color: var(--text-primary); }
-    .root-cause-dropdown .rc-option.active { color: #f472b6; font-weight: 600; }
+    .root-cause-dropdown .rc-option.active { color: #e07a5f; font-weight: 600; }
     .root-cause-dropdown .rc-option .rc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .root-cause-dropdown .rc-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
     .root-cause-dropdown .rc-custom-input { display: flex; gap: 4px; padding: 6px; }
@@ -1466,9 +1466,9 @@
     }
     .meta-badge .badge-icon { font-size: 10px; line-height: 1; }
     .meta-badge.badge-complexity {
-      background: rgba(249, 115, 22, 0.1);
-      border: 1px solid rgba(249, 115, 22, 0.25);
-      color: #fb923c;
+      background: rgba(251, 191, 36, 0.1);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      color: #fbbf24;
     }
     .meta-badge.badge-complexity.complexity-easy { background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3); color: #4ade80; }
     .meta-badge.badge-complexity.complexity-medium { background: rgba(234, 179, 8, 0.12); border-color: rgba(234, 179, 8, 0.3); color: #facc15; }
@@ -1481,15 +1481,15 @@
       color: #60a5fa;
     }
     .meta-badge.badge-root-cause {
-      background: rgba(244, 114, 182, 0.1);
-      border: 1px solid rgba(244, 114, 182, 0.25);
-      color: #f472b6;
+      background: rgba(224, 122, 95, 0.1);
+      border: 1px solid rgba(224, 122, 95, 0.25);
+      color: #e07a5f;
       cursor: pointer;
       transition: all 0.15s;
     }
     .meta-badge.badge-root-cause:hover {
-      background: rgba(244, 114, 182, 0.2);
-      border-color: rgba(244, 114, 182, 0.4);
+      background: rgba(224, 122, 95, 0.2);
+      border-color: rgba(224, 122, 95, 0.4);
     }
     .item-meta-sep { width: 1px; height: 16px; background: var(--border-default); flex-shrink: 0; }
     .item-metadata-tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1537,12 +1537,7 @@
     }
     .metadata-fields-dropdown label:hover { color: var(--text-primary); background: var(--bg-hover); }
 
-    /* Metric details toggle */
-    .item-metric-details-toggle {
-      margin-top: var(--space-md);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
-    }
+    /* Metric details toggle + content */
     .metric-details-toggle {
       font-size: var(--font-sm);
       color: var(--accent-primary);
@@ -1554,18 +1549,17 @@
       border-radius: 4px;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
+      margin-top: var(--space-sm);
     }
     .metric-details-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
     .run-metric-details {
       margin-top: var(--space-sm);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
       display: none;
     }
     .run-metric-details.expanded { display: block; }
     .metric-detail-row { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
     .metric-detail-row:last-child { border-bottom: none; }
-    .metric-detail-name { font-size: var(--font-sm); color: #f472b6; font-weight: 600; margin-bottom: 6px; display: block; }
+    .metric-detail-name { font-size: var(--font-sm); color: var(--text-secondary); font-weight: 600; margin-bottom: 6px; display: block; }
     .metric-detail-value {
       font-family: var(--font-mono);
       font-size: var(--font-sm);
@@ -1638,7 +1632,7 @@
       position: relative;
     }
     .formatted-row:hover { background: var(--bg-hover); border-left-color: var(--accent-primary); }
-    .formatted-key { color: #f472b6; font-weight: 600; display: block; margin-bottom: 4px; text-transform: uppercase; font-size: var(--font-xs); letter-spacing: 0.5px; }
+    .formatted-key { color: #60a5fa; font-weight: 600; display: block; margin-bottom: 4px; text-transform: uppercase; font-size: var(--font-xs); letter-spacing: 0.5px; }
     .formatted-string { color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; display: block; line-height: 1.5; }
     .formatted-number { color: #fbbf24; font-weight: 600; }
     .formatted-boolean { color: #a855f7; font-weight: 600; }
@@ -2042,8 +2036,14 @@
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
-                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which metadata fields to display">&#9881;</button>
+                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
                 <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+              </div>
+            </div>
+            <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
+              <div class="metadata-fields-selector" style="position:relative;">
+                <button class="fp-gear-btn metadata-fields-btn" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
               </div>
             </div>
             <div class="fp-actions-spacer"></div>
@@ -2144,6 +2144,8 @@
         rootCauseValues: [],
         allMetadataKeys: [],
         visibleMetadataFields: {},
+        visibleMetricMetaFields: {},
+        allMetricMetaKeys: [],
         langfuseHost: '',
         langfuseProjectId: '',
       };
@@ -2235,10 +2237,16 @@
         });
       }
 
+      function isRTL(text) {
+        var rtlChars = (text.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
+        var latinChars = (text.match(/[A-Za-z]/g) || []).length;
+        return rtlChars > latinChars;
+      }
+
       function renderMarkdownSafe(value) {
         if (value === null || value === undefined) return '&mdash;';
         if (typeof value === 'object') return formatObjectAsHtml(value);
-        const str = String(value);
+        const str = String(value).replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
         const trimmed = str.trim();
         if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
           try { const p = JSON.parse(trimmed); if (typeof p === 'object' && p !== null) return formatObjectAsHtml(p); } catch {}
@@ -2251,6 +2259,7 @@
         html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent-primary);">$1</a>');
+        if (isRTL(str)) html = '<div dir="rtl" style="text-align:right;">' + html + '</div>';
         return html;
       }
 
@@ -2297,18 +2306,23 @@
         } catch { return null; }
       }
 
+      function fmtStr(s) {
+        var escaped = escapeHtml(s);
+        return isRTL(s) ? '<span class="formatted-string" dir="rtl" style="text-align:right;display:block;">' + escaped + '</span>' : '<span class="formatted-string">' + escaped + '</span>';
+      }
+
       function formatObjectAsHtml(obj) {
         if (Array.isArray(obj)) {
           if (!obj.length) return '<span class="formatted-array">[]</span>';
           return '<div class="formatted-array">' + obj.map((item, idx) => {
-            let f; if (item===null||item===undefined) f='<span class="formatted-null">null</span>'; else if (typeof item==='object') f=formatObjectAsHtml(item); else if (typeof item==='string') f='<span class="formatted-string">'+escapeHtml(item)+'</span>'; else f=escapeHtml(String(item));
+            let f; if (item===null||item===undefined) f='<span class="formatted-null">null</span>'; else if (typeof item==='object') f=formatObjectAsHtml(item); else if (typeof item==='string') f=fmtStr(item); else f=escapeHtml(String(item));
             return '<div class="formatted-array-item"><span class="formatted-index">['+idx+']</span> '+f+'</div>';
           }).join('') + '</div>';
         }
         const entries = Object.entries(obj);
         if (!entries.length) return '<span class="formatted-object">{}</span>';
         return '<div class="formatted-object">' + entries.map(([k,v]) => {
-          let f; if(v===null||v===undefined) f='<span class="formatted-null">null</span>'; else if(typeof v==='object') f=formatObjectAsHtml(v); else if(typeof v==='string') f='<span class="formatted-string">'+escapeHtml(v)+'</span>'; else if(typeof v==='number') f='<span class="formatted-number">'+v+'</span>'; else if(typeof v==='boolean') f='<span class="formatted-boolean">'+v+'</span>'; else f=escapeHtml(String(v));
+          let f; if(v===null||v===undefined) f='<span class="formatted-null">null</span>'; else if(typeof v==='object') f=formatObjectAsHtml(v); else if(typeof v==='string') f=fmtStr(v); else if(typeof v==='number') f='<span class="formatted-number">'+v+'</span>'; else if(typeof v==='boolean') f='<span class="formatted-boolean">'+v+'</span>'; else f=escapeHtml(String(v));
           return '<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>';
         }).join('') + '</div>';
       }
@@ -2427,6 +2441,22 @@
           if (state.visibleMetadataFields[k] === undefined) state.visibleMetadataFields[k] = true;
         }
 
+        // Collect metric metadata keys
+        const mmKeySet = new Set();
+        for (const row of (snap.rows || [])) {
+          const mm = row.metric_meta || {};
+          for (const metricName of Object.keys(mm)) {
+            const meta = mm[metricName] || {};
+            for (const k of Object.keys(meta)) {
+              if (!['modified', 'original_score'].includes(k)) mmKeySet.add(k);
+            }
+          }
+        }
+        state.allMetricMetaKeys = Array.from(mmKeySet).sort();
+        for (const k of state.allMetricMetaKeys) {
+          if (state.visibleMetricMetaFields[k] === undefined) state.visibleMetricMetaFields[k] = true;
+        }
+
         // Update header
         const config = run.config || {};
         el('hdr-run-name').textContent = run.run_name || '—';
@@ -2471,6 +2501,7 @@
         renderMetadataBreakdown();
         buildCategoryDropdowns();
         populateMetadataFieldsDropdown();
+        populateMetricMetaFieldsDropdown();
         renderItems();
       }
 
@@ -3019,7 +3050,7 @@
 
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
               html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
@@ -3028,7 +3059,7 @@
                 const cv = g.groupVal.toLowerCase().trim();
                 if (['easy','simple','basic','low'].includes(cv)) cardValClass = ' complexity-easy';
                 else if (['medium','moderate','intermediate','mid'].includes(cv)) cardValClass = ' complexity-medium';
-                else if (['hard','difficult','advanced','high'].includes(cv)) cardValClass = ' complexity-hard';
+                else if (['hard','difficult','advanced','high','complex'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
               html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;">' +
@@ -3246,7 +3277,7 @@
             var feedbackHtml = rowRcNote
               ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
               : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
-            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
             rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span>' + feedbackHtml + '</div>';
           } else if (!itemPassed) {
             rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
@@ -3258,7 +3289,7 @@
           if (hasMetricMeta) {
             const detailRows = state.allMetrics.map(name => {
               const meta = metricMeta[name] || {};
-              const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k));
+              const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k) && state.visibleMetricMetaFields[k] !== false);
               if (!metaKeys.length) return '';
               return metaKeys.map(key => {
                 const val = meta[key];
@@ -3270,7 +3301,7 @@
               metricDetailsHtml = '<div class="run-metric-details" data-item="' + safeId + '">' + detailRows + '</div>';
             }
           }
-          const toggleHtml = metricDetailsHtml ? '<div class="item-metric-details-toggle"><button class="metric-details-toggle" onclick="window._toggleDetails(\'' + safeId + '\')"><span class="toggle-icon" id="toggle-icon-' + safeId + '">\u25B6</span> Metric Details</button></div>' : '';
+          const toggleHtml = metricDetailsHtml ? '<button class="metric-details-toggle" onclick="window._toggleDetails(\'' + safeId + '\')"><span class="toggle-icon" id="toggle-icon-' + safeId + '">\u25B6</span> Metric Details</button>' : '';
 
           // Item metadata badges
           let itemMetadataHtml = '';
@@ -3289,7 +3320,7 @@
                     const lv = v.toLowerCase().trim();
                     if (['easy','simple','basic','low'].includes(lv)) valClass = ' complexity-easy';
                     else if (['medium','moderate','intermediate','mid'].includes(lv)) valClass = ' complexity-medium';
-                    else if (['hard','difficult','advanced','high'].includes(lv)) valClass = ' complexity-hard';
+                    else if (['hard','difficult','advanced','high','complex'].includes(lv)) valClass = ' complexity-hard';
                     else if (['very hard','very_hard','expert','extreme'].includes(lv)) valClass = ' complexity-expert';
                   }
                   badgesHtml += '<span class="meta-badge badge-' + sk + valClass + '"><span class="badge-icon">' + icon + '</span>' + escapeHtml(v) + '</span>';
@@ -3309,8 +3340,7 @@
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + metricDetailsHtml + '</div>' +
-            toggleHtml +
+            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 
@@ -3474,7 +3504,7 @@
         let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
-          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
+          const color = ROOT_CAUSE_COLORS[opt] || '#e07a5f';
           html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
         }
         html += '<div class="rc-divider"></div>';
@@ -3626,6 +3656,7 @@
         el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
         el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
+        el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
         if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
@@ -3651,10 +3682,10 @@
           }
           extraOptions = '<label class="multi-select-option" data-value="__none__"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="__none__" /><span style="font-style:italic;">(No Root Cause)</span><span class="option-count">' + noRcCount + '</span></label><div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>';
         }
-        let html = extraOptions + values.map(v =>
+        let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
+        html += extraOptions + values.map(v =>
           '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(v) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
         ).join('');
-        html += '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
         dropdown.innerHTML = html;
 
         dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
@@ -3736,6 +3767,8 @@
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           document.querySelectorAll('.multi-select-dropdown.open').forEach(d => { if (d !== dropdown) d.classList.remove('open'); });
+          el('metadata-fields-dropdown').classList.remove('open');
+          el('metric-meta-fields-dropdown').classList.remove('open');
           dropdown.classList.toggle('open');
         });
         dropdown.addEventListener('click', (e) => e.stopPropagation());
@@ -3750,12 +3783,22 @@
 
       // ── Metadata fields selector ──
 
-      el('metadata-fields-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
+      el('metadata-fields-btn').addEventListener('click', () => {
+        el('metric-meta-fields-dropdown').classList.remove('open');
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
         el('metadata-fields-dropdown').classList.toggle('open');
       });
-      document.addEventListener('click', () => { el('metadata-fields-dropdown').classList.remove('open'); });
-      el('metadata-fields-dropdown').addEventListener('click', (e) => e.stopPropagation());
+      el('metric-meta-fields-btn').addEventListener('click', () => {
+        el('metadata-fields-dropdown').classList.remove('open');
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+        el('metric-meta-fields-dropdown').classList.toggle('open');
+      });
+      document.addEventListener('click', (e) => {
+        var metaDd = el('metadata-fields-dropdown'), metaBtn = el('metadata-fields-btn');
+        var mmDd = el('metric-meta-fields-dropdown'), mmBtn = el('metric-meta-fields-btn');
+        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) metaDd.classList.remove('open');
+        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) mmDd.classList.remove('open');
+      });
 
       function populateMetadataFieldsDropdown() {
         const dropdown = el('metadata-fields-dropdown');
@@ -3770,6 +3813,24 @@
         dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
           cb.addEventListener('change', () => {
             state.visibleMetadataFields[cb.dataset.metaKey] = cb.checked;
+            renderItems();
+          });
+        });
+      }
+
+      function populateMetricMetaFieldsDropdown() {
+        const dropdown = el('metric-meta-fields-dropdown');
+        if (!dropdown || state.allMetricMetaKeys.length === 0) {
+          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metric metadata fields found</div>';
+          return;
+        }
+        dropdown.innerHTML = state.allMetricMetaKeys.map(k => {
+          const checked = state.visibleMetricMetaFields[k] !== false ? 'checked' : '';
+          return '<label><input type="checkbox" ' + checked + ' data-mm-key="' + escapeAttr(k) + '" /> ' + escapeHtml(formatFieldName(k)) + '</label>';
+        }).join('');
+        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            state.visibleMetricMetaFields[cb.dataset.mmKey] = cb.checked;
             renderItems();
           });
         });
