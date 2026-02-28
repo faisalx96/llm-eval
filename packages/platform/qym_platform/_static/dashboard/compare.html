@@ -379,7 +379,47 @@
       font-weight: 600;
       color: var(--text-primary);
       text-transform: capitalize;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1;
     }
+
+    .breakdown-card-score-row {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+    }
+
+    .breakdown-card-scores {
+      display: flex;
+      gap: var(--space-md);
+      margin: 2px 0;
+    }
+    .breakdown-card-scores .score-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .breakdown-card-scores .score-col-label {
+      font-family: var(--font-sans);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 500;
+    }
+    .breakdown-card-scores .score-col-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 700;
+    }
+    .breakdown-card-scores .score-col-value.score-5 { color: var(--score-5); }
+    .breakdown-card-scores .score-col-value.score-4 { color: var(--score-4); }
+    .breakdown-card-scores .score-col-value.score-3 { color: var(--score-3); }
+    .breakdown-card-scores .score-col-value.score-2 { color: var(--score-2); }
+    .breakdown-card-scores .score-col-value.score-1 { color: var(--score-1); }
 
     .breakdown-card-count {
       display: inline-flex;
@@ -1001,6 +1041,37 @@
       color: var(--success);
     }
 
+    .item-expected-row .expected-text.collapsed {
+      max-height: 100px;
+      overflow: hidden;
+      position: relative;
+    }
+    .item-expected-row .expected-text.collapsed::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--success-dim));
+      pointer-events: none;
+    }
+    .expected-toggle {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--success);
+      cursor: pointer;
+      font-weight: 600;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: var(--font-sans);
+    }
+    .expected-toggle:hover {
+      text-decoration: underline;
+    }
+
     .item-outputs-row {
       display: grid;
       grid-template-columns: repeat(var(--run-count, 2), 1fr);
@@ -1374,6 +1445,60 @@
       line-height: 1.6;
     }
 
+    .metric-detail-value .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0;
+      font-size: var(--font-xs);
+      white-space: nowrap;
+    }
+    .metric-detail-value .meta-table th,
+    .metric-detail-value .meta-table td {
+      padding: 3px 10px;
+      border: 1px solid var(--border-subtle);
+      text-align: start;
+    }
+    .metric-detail-value .meta-table th {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .metric-detail-value .meta-table td {
+      color: var(--text-secondary);
+    }
+    .metric-detail-value .meta-table tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    .meta-table-wrapper {
+      position: relative;
+    }
+    .meta-table-wrapper.collapsed {
+      max-height: 180px;
+      overflow: hidden;
+    }
+    .meta-table-wrapper.collapsed::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--bg-primary));
+      pointer-events: none;
+    }
+    .meta-table-toggle {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--accent-primary);
+      cursor: pointer;
+      font-weight: 600;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: var(--font-sans);
+    }
+    .meta-table-toggle:hover { text-decoration: underline; }
+
     /* Metric tabs */
     .metric-tabs {
       display: flex;
@@ -1711,6 +1836,103 @@
       border-top: 1px solid var(--border-subtle);
     }
 
+    /* ── Feedback section (formerly "root cause notes") ── */
+    .feedback-section {
+      margin-top: 6px;
+      background: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .feedback-section:hover { border-color: var(--border-default); }
+    .feedback-display {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      min-height: 34px;
+    }
+    .feedback-display:hover { background: var(--bg-surface); }
+    .feedback-icon {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      margin-top: 1px;
+      color: var(--text-dim);
+      transition: color 0.15s;
+    }
+    .feedback-display:hover .feedback-icon { color: var(--text-muted); }
+    .feedback-text {
+      flex: 1;
+      font-size: var(--font-xs);
+      line-height: 1.5;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .feedback-placeholder {
+      color: var(--text-dim);
+      font-style: italic;
+      transition: color 0.15s;
+    }
+    .feedback-display:hover .feedback-placeholder { color: var(--text-muted); }
+    .feedback-edit {
+      padding: 8px;
+    }
+    .feedback-edit textarea {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: var(--font-xs);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      resize: vertical;
+      min-height: 48px;
+      max-height: 120px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    .feedback-edit textarea:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 1px rgba(0,212,170,0.15); }
+    .feedback-edit textarea::placeholder { color: var(--text-dim); }
+    .feedback-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .feedback-btn {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .feedback-btn-cancel {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-default);
+    }
+    .feedback-btn-cancel:hover { background: var(--bg-hover); color: var(--text-secondary); }
+    .feedback-btn-save {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .feedback-btn-save:hover { background: #00e6b8; }
+    .feedback-section.feedback-saved {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 1px rgba(0,212,170,0.15);
+    }
+
     /* Root cause assign button */
     .root-cause-assign-btn {
       display: inline-flex;
@@ -1814,6 +2036,34 @@
       color: #f472b6;
     }
 
+    .rc-mode-toggle {
+      display: inline-flex;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-left: 8px;
+      font-size: var(--font-xs);
+    }
+    .rc-mode-toggle button {
+      background: none;
+      border: none;
+      padding: 2px 10px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .rc-mode-toggle button:hover {
+      color: var(--text-primary);
+    }
+    .rc-mode-toggle button.active {
+      background: #f472b6;
+      color: #fff;
+    }
+
     /* Separator between badges and generic tags */
     .item-meta-sep {
       width: 1px;
@@ -1904,7 +2154,166 @@
       background: var(--bg-hover);
     }
 
-    /* (export-btn styles now in .fp-btn.fp-export) */
+    /* Export Column Selector Modal */
+    .export-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .export-modal-overlay.open { display: flex; }
+    .export-modal {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      width: 520px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .export-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .export-modal-header h3 {
+      margin: 0;
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .export-modal-actions-top {
+      display: flex;
+      gap: 4px;
+    }
+    .export-modal-actions-top button {
+      background: none;
+      border: 1px solid var(--border-default);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      padding: 2px 10px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    .export-modal-actions-top button:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .export-modal-body {
+      overflow-y: auto;
+      padding: var(--space-xs) 0;
+      flex: 1;
+    }
+    .export-group {
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .export-group:last-child { border-bottom: none; }
+    .export-group-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .export-group-header:hover { background: var(--bg-hover); }
+    .export-group-header .group-toggle {
+      font-size: 10px;
+      color: var(--text-muted);
+      width: 12px;
+      transition: transform 0.15s;
+    }
+    .export-group-header .group-toggle.collapsed { transform: rotate(-90deg); }
+    .export-group-header .group-name {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .export-group-header .group-check {
+      margin-left: auto;
+      width: 12px;
+      height: 12px;
+      accent-color: var(--accent-primary);
+    }
+    .export-group-items {
+      padding-left: 0;
+    }
+    .export-group-items.collapsed { display: none; }
+    .export-col-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-xs) var(--space-md);
+      padding-left: calc(var(--space-md) + 12px + var(--space-sm));
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .export-col-item:hover { background: var(--bg-hover); }
+    .export-col-item.indent {
+      padding-left: calc(var(--space-md) + 12px + var(--space-sm) + 16px);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .export-col-item input[type="checkbox"] {
+      flex-shrink: 0;
+      width: 12px;
+      height: 12px;
+      accent-color: var(--accent-primary);
+      pointer-events: none;
+    }
+    .export-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .export-modal-footer .export-cancel {
+      padding: var(--space-xs) var(--space-sm);
+      background: none;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .export-modal-footer .export-cancel:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .export-modal-footer .export-confirm {
+      padding: var(--space-xs) var(--space-md);
+      background: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+      border-radius: 3px;
+      color: var(--bg-void);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .export-modal-footer .export-confirm:hover {
+      background: #00e6b8;
+      border-color: #00e6b8;
+    }
   </style>
 </head>
 <body>
@@ -2154,6 +2563,7 @@
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
         rootCauseValues: [],          // unique root cause values found in data
+        rcCountMode: 'total',         // 'total' or 'unique' for root cause breakdown cards
       };
 
       const el = (id) => document.getElementById(id);
@@ -2321,7 +2731,9 @@
                 if (k !== 'task_started_at_ms') metaKeySet.add(k);
               }
               if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
-              if (md.domain != null && md.domain !== '') domainSet.add(String(md.domain));
+              if (md.domain != null && md.domain !== '') {
+                for (const d of parseMetaList(md.domain)) domainSet.add(d);
+              }
               if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
             }
           }
@@ -2835,22 +3247,27 @@
 
             for (const row of rows) {
               const md = row.item_metadata || {};
-              const groupVal = String(md[bdKey] ?? '');
-              // Skip unassigned items for root_cause breakdown
-              if (bdKey === 'root_cause' && !groupVal) continue;
-              const effectiveGroup = groupVal || 'unknown';
-              const itemId = row.item_id || String(row.index);
+              const rawVal = md[bdKey] ?? '';
+              const groupVals = (bdKey === 'domain' || bdKey === 'patterns')
+                ? parseMetaList(rawVal)
+                : [String(rawVal)];
+              if (groupVals.length === 0) groupVals.push('');
+              for (const groupVal of groupVals) {
+                if (bdKey === 'root_cause' && !groupVal) continue;
+                const effectiveGroup = groupVal || 'unknown';
+                const itemId = row.item_id || String(row.index);
 
-              if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
-              if (!itemsByGroup[effectiveGroup][itemId]) itemsByGroup[effectiveGroup][itemId] = { scores: [], latencies: [], runCount: 0 };
-              itemsByGroup[effectiveGroup][itemId].runCount++;
+                if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
+                if (!itemsByGroup[effectiveGroup][itemId]) itemsByGroup[effectiveGroup][itemId] = { scores: [], latencies: [], runCount: 0 };
+                itemsByGroup[effectiveGroup][itemId].runCount++;
 
-              if (mIdx >= 0) {
-                const { score } = window.QymMetrics.getRowScore(row, mIdx);
-                if (score !== null) itemsByGroup[effectiveGroup][itemId].scores.push(score);
-              }
-              if (row.latency_ms && row.status === 'completed') {
-                itemsByGroup[effectiveGroup][itemId].latencies.push(row.latency_ms);
+                if (mIdx >= 0) {
+                  const { score } = window.QymMetrics.getRowScore(row, mIdx);
+                  if (score !== null) itemsByGroup[effectiveGroup][itemId].scores.push(score);
+                }
+                if (row.latency_ms && row.status === 'completed') {
+                  itemsByGroup[effectiveGroup][itemId].latencies.push(row.latency_ms);
+                }
               }
             }
           }
@@ -2864,18 +3281,18 @@
             let consistencySum = 0, consistencyCount = 0;
             let totalAssignments = 0; // total run-level assignments (for root_cause)
 
+            let passAtKCount = 0;
+
             for (const itemId of itemIds) {
               const { scores, latencies, runCount } = items[itemId];
-              totalAssignments += runCount; // count each run-item as an assignment
+              totalAssignments += runCount;
 
-              // Avg score — flat across all run observations
               for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
-
-              // Avg latency — flat across all run observations
               for (const l of latencies) { totalLatSum += l; totalLatCount++; }
 
-              // Consistency: binary agreement (do runs agree on pass/fail?)
-              // Same formula as main stats: 2 * max(passCount, failCount) / K - 1
+              // pass@k: did this item pass in at least one run?
+              if (scores.some(s => s >= correctThreshold)) passAtKCount++;
+
               if (scores.length > 1) {
                 const numCorrect = scores.filter(s => s >= correctThreshold).length;
                 const numFail = scores.length - numCorrect;
@@ -2889,8 +3306,9 @@
             const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
             const avgLatency = totalLatCount > 0 ? totalLatSum / totalLatCount : null;
             const consistency = consistencyCount > 0 ? consistencySum / consistencyCount : null;
+            const passAtK = itemIds.length > 0 ? passAtKCount / itemIds.length : 0;
 
-            groupStats.push({ groupVal, itemCount: itemIds.length, totalAssignments, avgScore, avgLatency, consistency });
+            groupStats.push({ groupVal, itemCount: itemIds.length, totalAssignments, avgScore, passAtK, avgLatency, consistency });
           }
 
           if (bdKey === 'complexity') {
@@ -2901,8 +3319,8 @@
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
           } else if (bdKey === 'root_cause') {
-            // Sort root causes by item count descending (most common first)
-            groupStats.sort((a, b) => b.itemCount - a.itemCount);
+            const rcKey = state.rcCountMode === 'unique' ? 'itemCount' : 'totalAssignments';
+            groupStats.sort((a, b) => b[rcKey] - a[rcKey]);
           } else {
             groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
           }
@@ -2914,7 +3332,12 @@
 
           html += `<div class="breakdown-section ${colorClass}">`;
           if (bdKey === 'root_cause') {
-            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)}</div>`;
+            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)}
+              <span class="rc-mode-toggle">
+                <button class="${state.rcCountMode === 'total' ? 'active' : ''}" data-rc-mode="total" title="Count across all runs (same item in multiple runs counted separately)">All Runs</button>
+                <button class="${state.rcCountMode === 'unique' ? 'active' : ''}" data-rc-mode="unique" title="Count unique items only (deduplicated across runs)">Unique Items</button>
+              </span>
+            </div>`;
           } else {
             html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
           }
@@ -2922,16 +3345,11 @@
 
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              // Root cause cards: compact — label + assignments / distinct items
               const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
+              const rcCount = state.rcCountMode === 'unique' ? g.itemCount : g.totalAssignments;
               html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
-                <div class="breakdown-card-top">
-                  <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
-                </div>
-                <div class="breakdown-card-details">
-                  <span class="breakdown-detail"><span class="breakdown-detail-label">Total</span> ${g.totalAssignments}</span>
-                  <span class="breakdown-detail"><span class="breakdown-detail-label">Unique</span> ${g.itemCount}</span>
-                </div>
+                <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
+                <div class="breakdown-card-score" style="color: ${rcColor};">${rcCount}</div>
               </div>`;
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
@@ -2948,12 +3366,25 @@
                 else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
 
+              const passAtKStr = formatPercent(g.passAtK);
+              const passAtKClass = scoreColorClass(g.passAtK);
+
               html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
-                <div class="breakdown-card-top">
-                  <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
-                  <div class="breakdown-card-count"><strong>${g.itemCount}</strong> item${g.itemCount !== 1 ? 's' : ''}</div>
+                <div class="breakdown-card-label" title="${escapeAttr(g.groupVal)}">${escapeHtml(g.groupVal)}</div>
+                <div class="breakdown-card-scores">
+                  <div class="score-col">
+                    <span class="score-col-label">Avg@${K}</span>
+                    <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</span>
+                  </div>
+                  <div class="score-col">
+                    <span class="score-col-label">Pass@${K}</span>
+                    <span class="score-col-value ${passAtKClass}">${passAtKStr}</span>
+                  </div>
+                  <div class="score-col" style="margin-left:auto;">
+                    <span class="score-col-label">Items</span>
+                    <span class="score-col-value" style="color:var(--text-muted);">${g.itemCount}</span>
+                  </div>
                 </div>
-                <div class="breakdown-card-score ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</div>
                 <div class="breakdown-card-details">
                   <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
                   <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
@@ -2974,7 +3405,6 @@
             const cat = card.dataset.bdCategory;
             const val = card.dataset.bdValue;
             const current = getCatFilter(cat);
-            // Toggle: if already filtering to just this value, clear the filter
             if (current !== null && current.length === 1 && current[0] === val) {
               setCatFilter(cat, null);
             } else {
@@ -2983,6 +3413,15 @@
             syncMultiselectUI(cat);
             state.page = 1;
             renderItems();
+          });
+        });
+
+        // Wire root cause Total/Unique toggle
+        existingSection.querySelectorAll('.rc-mode-toggle button[data-rc-mode]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            state.rcCountMode = btn.dataset.rcMode;
+            renderMetadataBreakdown();
           });
         });
       }
@@ -3377,19 +3816,26 @@
             }
             if (state.domainFilter !== null) {
               if (state.domainFilter.length === 0) continue;
-              const val = String(md.domain ?? '').toLowerCase();
-              if (!state.domainFilter.some(f => f.toLowerCase() === val)) continue;
+              const domainVals = parseMetaList(md.domain).map(v => v.toLowerCase());
+              if (!state.domainFilter.some(f => domainVals.includes(f.toLowerCase()))) continue;
             }
             if (state.rootCauseFilter !== null) {
               if (state.rootCauseFilter.length === 0) continue;
-              // Check root_cause across ALL runs — different models may fail for different reasons
-              const matchesRootCause = rowData.some(r => {
+              const wantNone = state.rootCauseFilter.includes('__none__');
+              const namedFilters = state.rootCauseFilter.filter(f => f !== '__none__');
+              const hasAnyRc = rowData.some(r => {
+                if (!r) return false;
+                const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
+                return !!(rmd.root_cause);
+              });
+              const matchesNamed = namedFilters.length > 0 && rowData.some(r => {
                 if (!r) return false;
                 const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
                 const val = String(rmd.root_cause ?? '').toLowerCase();
-                return state.rootCauseFilter.some(f => f.toLowerCase() === val);
+                return namedFilters.some(f => f.toLowerCase() === val);
               });
-              if (!matchesRootCause) continue;
+              const matchesNone = wantNone && !hasAnyRc;
+              if (!matchesNamed && !matchesNone) continue;
             }
           }
 
@@ -3618,7 +4064,7 @@
                   const displayName = formatFieldName(key);
                   return `<div class="metric-detail-row">
                     <span class="metric-detail-name">${escapeHtml(name)} · ${displayName}</span>
-                    <span class="metric-detail-value">${escapeHtml(String(val))}</span>
+                    <span class="metric-detail-value">${formatMetaValue(val)}</span>
                   </div>`;
                 }).join('');
               }).join('');
@@ -3653,14 +4099,20 @@
               }
             }
 
-            // Root cause badge or assign button (per-run)
+            // Root cause badge or assign button (per-run) + feedback (only for failed items)
             let rootCauseHtml = '';
+            const itemPassed = passfailBadge.includes('badge pass"');
             const rowRc = row.item_metadata?.root_cause || '';
+            const rowRcNote = row.item_metadata?.root_cause_note || '';
             const runFilePath = runInfo.file_path || '';
             if (rowRc) {
+              const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
+              const feedbackHtml = rowRcNote
+                ? `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to edit feedback">${feedbackIcon}<span class="feedback-text">${escapeHtml(rowRcNote)}</span></div></div>`
+                : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
               const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
-              rootCauseHtml = `<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Root cause: ${escapeAttr(rowRc)}. Click to change."><span class="badge-icon">\u26A0</span>${escapeHtml(rowRc)}</span></div>`;
-            } else {
+              rootCauseHtml = `<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Root cause: ${escapeAttr(rowRc)}. Click to change."><span class="badge-icon">\u26A0</span>${escapeHtml(rowRc)}</span>${feedbackHtml}</div>`;
+            } else if (!itemPassed) {
               rootCauseHtml = `<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>`;
             }
 
@@ -3673,8 +4125,8 @@
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${metricEditHtml}
-                ${metricDetailsHtml}
                 ${rootCauseHtml}
+                ${metricDetailsHtml}
               </div>
             `;
           }).join('');
@@ -3699,19 +4151,21 @@
               // Build special badges for complexity & domain
               let badgesHtml = '';
               for (const sk of SPECIAL_KEYS) {
-                if (sk === 'root_cause') continue; // root cause is per-run, rendered in output columns
+                if (sk === 'root_cause') continue;
                 if (md[sk] !== undefined && md[sk] !== null && md[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                   const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
-                  // Add value-specific color class for complexity
-                  let valClass = '';
-                  if (sk === 'complexity') {
-                    const v = String(md[sk]).toLowerCase().trim();
-                    if (['easy', 'simple', 'basic', 'low'].includes(v)) valClass = ' complexity-easy';
-                    else if (['medium', 'moderate', 'intermediate', 'mid'].includes(v)) valClass = ' complexity-medium';
-                    else if (['hard', 'difficult', 'advanced', 'high'].includes(v)) valClass = ' complexity-hard';
-                    else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(v)) valClass = ' complexity-expert';
+                  const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(md[sk]) : [String(md[sk])];
+                  for (const v of vals) {
+                    let valClass = '';
+                    if (sk === 'complexity') {
+                      const lv = v.toLowerCase().trim();
+                      if (['easy', 'simple', 'basic', 'low'].includes(lv)) valClass = ' complexity-easy';
+                      else if (['medium', 'moderate', 'intermediate', 'mid'].includes(lv)) valClass = ' complexity-medium';
+                      else if (['hard', 'difficult', 'advanced', 'high'].includes(lv)) valClass = ' complexity-hard';
+                      else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(lv)) valClass = ' complexity-expert';
+                    }
+                    badgesHtml += `<span class="meta-badge badge-${sk}${valClass}"><span class="badge-icon">${icon}</span>${escapeHtml(v)}</span>`;
                   }
-                  badgesHtml += `<span class="meta-badge badge-${sk}${valClass}"><span class="badge-icon">${icon}</span>${escapeHtml(String(md[sk]))}</span>`;
                 }
               }
 
@@ -3751,7 +4205,8 @@
               ${expected ? `
               <div class="item-expected-row">
                 <div class="expected-label">Expected Output <button class="copy-btn" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
-                <div class="expected-text">${renderMarkdownSafe(expected)}</div>
+                <div class="expected-text collapsed">${renderMarkdownSafe(expected)}</div>
+                <button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle('collapsed'); this.textContent = this.previousElementSibling.classList.contains('collapsed') ? 'Show more \u25BC' : 'Show less \u25B2';">Show more \u25BC</button>
               </div>` : ''}
               ${itemMetadataHtml}
               <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
@@ -3779,6 +4234,7 @@
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();
+        initExpectedToggles();
         alignOutputHeights();
 
         // #16: Wire copy-all buttons (per item — header icon)
@@ -3850,6 +4306,24 @@
         return html;
       }
 
+      function parseMetaList(val) {
+        if (val == null || val === '') return [];
+        if (Array.isArray(val)) return val.filter(v => v != null && v !== 'null' && v !== '').map(String);
+        const s = String(val).trim();
+        if (s.startsWith('[') && s.endsWith(']')) {
+          try {
+            const parsed = JSON.parse(s);
+            if (Array.isArray(parsed)) return parsed.filter(v => v != null).map(String);
+          } catch {}
+          try {
+            const fixed = s.replace(/'/g, '"').replace(/"null"/g, 'null');
+            const parsed = JSON.parse(fixed);
+            if (Array.isArray(parsed)) return parsed.filter(v => v != null).map(String);
+          } catch {}
+        }
+        return [s];
+      }
+
       function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
@@ -3865,6 +4339,20 @@
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#39;');
+      }
+
+      function initExpectedToggles() {
+        document.querySelectorAll('.item-expected-row').forEach(row => {
+          const text = row.querySelector('.expected-text');
+          const btn = row.querySelector('.expected-toggle');
+          if (!text || !btn) return;
+          if (text.scrollHeight <= 100) {
+            text.classList.remove('collapsed');
+            btn.style.display = 'none';
+          } else {
+            btn.style.display = '';
+          }
+        });
       }
 
       function alignOutputHeights() {
@@ -3975,16 +4463,79 @@
         });
       }
 
-      // ── Root cause assignment handlers ──
+      // ── Root cause + feedback handlers ──
 
       function wireRootCauseHandlers() {
-        document.querySelectorAll('[data-rc-item]').forEach(trigger => {
+        document.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             const runIdx = parseInt(trigger.dataset.rcRunIdx, 10);
             showRootCauseDropdown(trigger.dataset.rcItem, runIdx, trigger);
           });
         });
+        document.querySelectorAll('[data-feedback-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const itemId = trigger.dataset.feedbackItem;
+            const runIdx = parseInt(trigger.dataset.feedbackRunIdx, 10);
+            const run = state.runs[runIdx];
+            const rows = run?.snapshot?.rows || [];
+            const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+            const currentNote = row?.item_metadata?.root_cause_note || '';
+            const section = trigger.closest('.feedback-section');
+            if (!section) return;
+            section.innerHTML = '<div class="feedback-edit"><textarea placeholder="Add feedback\u2026">' + escapeHtml(currentNote) + '</textarea><div class="feedback-edit-actions"><button class="feedback-btn feedback-btn-cancel">Cancel</button><button class="feedback-btn feedback-btn-save">Save</button></div></div>';
+            const textarea = section.querySelector('textarea');
+            const saveBtn = section.querySelector('.feedback-btn-save');
+            const cancelBtn = section.querySelector('.feedback-btn-cancel');
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            saveBtn.addEventListener('click', async () => {
+              await saveFeedback(itemId, runIdx, textarea.value.trim());
+            });
+            cancelBtn.addEventListener('click', () => {
+              renderItems();
+            });
+            textarea.addEventListener('keydown', async (ev) => {
+              if (ev.key === 'Enter' && !ev.shiftKey) {
+                ev.preventDefault();
+                await saveFeedback(itemId, runIdx, textarea.value.trim());
+              }
+              if (ev.key === 'Escape') { renderItems(); }
+            });
+          });
+        });
+      }
+
+      async function saveFeedback(itemId, runIdx, note) {
+        const runId = state.runs[runIdx]?.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause_note: note, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
+          const run = state.runs[runIdx];
+          const rows = run?.snapshot?.rows || [];
+          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (note) row.item_metadata.root_cause_note = note;
+            else delete row.item_metadata.root_cause_note;
+          }
+          renderItems();
+          // Flash success indicator
+          setTimeout(() => {
+            const saved = document.querySelector('[data-feedback-item="' + itemId + '"][data-feedback-run-idx="' + runIdx + '"]');
+            if (saved) {
+              const sec = saved.closest('.feedback-section');
+              if (sec) { sec.classList.add('feedback-saved'); setTimeout(() => sec.classList.remove('feedback-saved'), 800); }
+            }
+          }, 50);
+        } catch (err) { console.error('Error saving feedback:', err); }
       }
 
       function showRootCauseDropdown(itemId, runIdx, anchorEl) {
@@ -4021,11 +4572,19 @@
 
         dropdown.innerHTML = html;
 
-        // Position near the anchor element
-        const rect = anchorEl.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + 4) + 'px';
-        dropdown.style.left = rect.left + 'px';
+        // Position near the anchor element, flipping above if it would clip the bottom
         document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
 
         // Wire option clicks
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
@@ -4055,14 +4614,22 @@
           }
         });
 
-        // Close on outside click
-        const closeHandler = (e) => {
-          if (!dropdown.contains(e.target)) {
-            dropdown.remove();
-            document.removeEventListener('click', closeHandler);
-          }
+        // Close on outside click or scroll (but not scroll within the dropdown itself)
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
         };
-        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
       }
 
       async function saveRootCause(itemId, runIdx, rootCause) {
@@ -4388,6 +4955,45 @@
         return `<div class="formatted-object">${rows}</div>`;
       }
 
+      function formatMetaValue(val) {
+        if (val === undefined || val === null || val === '') return '';
+        if (typeof val === 'boolean') return escapeHtml(String(val));
+        if (typeof val === 'number') return escapeHtml(String(val));
+        if (typeof val === 'string') return escapeHtml(val);
+
+        if (Array.isArray(val)) {
+          if (val.length === 0) return '[]';
+          const isTabular = val.every(r => Array.isArray(r));
+          if (isTabular) {
+            const colCount = Math.max(...val.map(r => r.length));
+            const headerRow = colCount <= 10
+              ? '<tr>' + Array.from({length: colCount}, (_, i) => `<th>Col ${i + 1}</th>`).join('') + '</tr>'
+              : '';
+            const bodyRows = val.map(r => {
+              const cells = Array.from({length: colCount}, (_, i) => {
+                const c = i < r.length ? r[i] : '';
+                return `<td>${escapeHtml(String(c ?? ''))}</td>`;
+              }).join('');
+              return `<tr>${cells}</tr>`;
+            }).join('');
+            const tableHtml = `<table class="meta-table">${headerRow ? '<thead>' + headerRow + '</thead>' : ''}<tbody>${bodyRows}</tbody></table>`;
+            if (val.length > 5) {
+              const uid = 'mt_' + Math.random().toString(36).slice(2, 8);
+              return `<div class="meta-table-wrapper collapsed" id="${uid}">${tableHtml}</div><button class="meta-table-toggle" onclick="var w=document.getElementById('${uid}');w.classList.toggle('collapsed');this.textContent=w.classList.contains('collapsed')?'Show all ${val.length} rows \u25BC':'Show less \u25B2';">Show all ${val.length} rows \u25BC</button>`;
+            }
+            return tableHtml;
+          }
+          const isFlatPrimitive = val.every(v => v === null || typeof v !== 'object');
+          if (isFlatPrimitive) {
+            return escapeHtml(val.map(v => String(v ?? '')).join(', '));
+          }
+          return formatObjectAsHtml(val);
+        }
+
+        if (typeof val === 'object') return formatObjectAsHtml(val);
+        return escapeHtml(String(val));
+      }
+
       // ── Clear button counter ──
       function countActiveFilters() {
         let n = 0;
@@ -4494,7 +5100,31 @@
           }
         }
 
-        let html = values.map(v =>
+        // For root_cause, add a "(No Root Cause)" option to find unassigned items
+        let extraOptions = '';
+        if (category === 'root_cause') {
+          let noRcCount = 0;
+          if (state.runs.length > 0) {
+            const rows = state.runs[0].snapshot?.rows || [];
+            for (const row of rows) {
+              const md = row.item_metadata || {};
+              const hasRc = state.runs.some(run => {
+                const rRows = run.snapshot?.rows || [];
+                const rRow = rRows.find(r => (r.item_id || String(r.index)) === (row.item_id || String(row.index)));
+                return rRow && rRow.item_metadata?.root_cause;
+              });
+              if (!hasRc) noRcCount++;
+            }
+          }
+          extraOptions = `<label class="multi-select-option" data-value="__none__">
+            <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="__none__" />
+            <span style="font-style:italic;">(No Root Cause)</span>
+            <span class="option-count">${noRcCount}</span>
+          </label>
+          <div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>`;
+        }
+
+        let html = extraOptions + values.map(v =>
           `<label class="multi-select-option" data-value="${escapeAttr(v)}">
             <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="${escapeAttr(v)}" />
             <span>${escapeHtml(v)}</span>
@@ -4517,6 +5147,7 @@
             // If null (= all), expand to explicit list before toggling
             if (filterArr === null) {
               filterArr = [...values];
+              if (category === 'root_cause') filterArr.push('__none__');
               setCatFilter(category, filterArr);
             }
             if (cb.checked) {
@@ -4582,7 +5213,9 @@
         const dropdown = el(category + '-ms-dropdown');
 
         // Normalize: explicitly selecting every value = reset to null (no filter)
-        if (filterArr !== null && filterArr.length === values.length) {
+        // For root_cause, "all" means all named values + __none__
+        const allCount = category === 'root_cause' ? values.length + 1 : values.length;
+        if (filterArr !== null && filterArr.length >= allCount) {
           setCatFilter(category, null);
         }
 
@@ -4597,7 +5230,7 @@
             btn.textContent = 'None';
             btn.classList.add('has-selection');
           } else if (effective.length === 1) {
-            btn.textContent = effective[0];
+            btn.textContent = effective[0] === '__none__' ? '(No Root Cause)' : effective[0];
             btn.classList.add('has-selection');
           } else {
             btn.textContent = effective.length + ' selected';
@@ -4695,48 +5328,267 @@
         });
       }
 
-      // #8: Export filtered items as CSV
-      el('export-filtered-btn').addEventListener('click', () => {
-        const items = getFilteredItems();
-        if (items.length === 0) return;
-        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
-        const metricNames = state.allMetrics;
-        // Build CSV header
-        let header = ['item_id', 'input', 'expected'];
-        for (let ri = 0; ri < state.runs.length; ri++) {
-          header.push(`${runNames[ri]}_output`);
-          for (const m of metricNames) {
-            header.push(`${runNames[ri]}_${m}`);
+      // #8: Export filtered items as CSV with column selector
+
+      var _exportItems = null;
+
+      function tryParseObj(val) {
+        if (val && typeof val === 'object' && !Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          const s = val.trim();
+          if (s.startsWith('{') && s.endsWith('}')) {
+            try { const p = JSON.parse(s); if (p && typeof p === 'object' && !Array.isArray(p)) return p; } catch {}
+            try { const f = s.replace(/'/g, '"').replace(/True/g, 'true').replace(/False/g, 'false').replace(/None/g, 'null'); const p2 = JSON.parse(f); if (p2 && typeof p2 === 'object' && !Array.isArray(p2)) return p2; } catch {}
           }
         }
-        const csvRows = [header.join(',')];
-        for (const { itemId, rowData } of items) {
+        return null;
+      }
+
+      function discoverExportColumns(items) {
+        const groups = [];
+        const metricNames = state.allMetrics;
+        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+
+        const inputKeys = new Set(), expectedKeys = new Set(), outputKeys = new Set();
+        for (const { rowData } of items) {
+          for (const rd of rowData) {
+            if (!rd) continue;
+            const inpObj = tryParseObj(rd.input_full || rd.input);
+            if (inpObj) { for (const k of Object.keys(inpObj)) inputKeys.add(k); }
+            const expObj = tryParseObj(rd.expected_full || rd.expected);
+            if (expObj) { for (const k of Object.keys(expObj)) expectedKeys.add(k); }
+            const outObj = tryParseObj(rd.output_full || rd.output);
+            if (outObj) { for (const k of Object.keys(outObj)) outputKeys.add(k); }
+          }
+        }
+
+        const coreCols = [
+          { key: 'item_id', label: 'Item ID', checked: true },
+          { key: 'input', label: inputKeys.size > 0 ? 'Input (raw)' : 'Input', checked: inputKeys.size === 0 },
+          { key: 'expected', label: expectedKeys.size > 0 ? 'Expected Output (raw)' : 'Expected Output', checked: expectedKeys.size === 0 },
+        ];
+        groups.push({ group: 'Shared Fields', columns: coreCols });
+
+        if (inputKeys.size > 0) {
+          groups.push({ group: 'Input Fields', columns: Array.from(inputKeys).sort().map(k =>
+            ({ key: 'input.' + k, label: k, checked: true })
+          ) });
+        }
+        if (expectedKeys.size > 0) {
+          groups.push({ group: 'Expected Output Fields', columns: Array.from(expectedKeys).sort().map(k =>
+            ({ key: 'expected.' + k, label: k, checked: true })
+          ) });
+        }
+
+        // Item metadata (shared)
+        const metaKeySet = new Set();
+        for (const { rowData } of items) {
           const inputRow = rowData.find(r => r);
-          const input = inputRow?.input_full || inputRow?.input || '';
-          const expected = inputRow?.expected_full || inputRow?.expected || '';
-          const row = [csvEscape(itemId), csvEscape(stringify(input)), csvEscape(stringify(expected))];
-          for (let ri = 0; ri < state.runs.length; ri++) {
-            const rd = rowData[ri];
-            const output = rd?.output_full || rd?.output || '';
-            row.push(csvEscape(stringify(output)));
-            const run = state.runs[ri];
-            const mNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+          const md = inputRow?.item_metadata || {};
+          if (typeof md === 'object') {
+            for (const k of Object.keys(md)) { if (k !== 'task_started_at_ms') metaKeySet.add(k); }
+          }
+        }
+        if (metaKeySet.size > 0) {
+          groups.push({ group: 'Item Metadata', columns: Array.from(metaKeySet).sort().map(k =>
+            ({ key: 'meta:' + k, label: k, checked: true })
+          ) });
+        }
+
+        // Collect metric_meta keys per metric
+        const metricMetaKeys = {};
+        for (const m of metricNames) metricMetaKeys[m] = new Set();
+        for (const { rowData } of items) {
+          for (const rd of rowData) {
+            if (!rd) continue;
+            const mm = rd.metric_meta || {};
             for (const m of metricNames) {
-              const mIdx = mNames.indexOf(m);
-              const score = mIdx >= 0 ? (rd?.metric_values || [])[mIdx] : '';
-              row.push(csvEscape(String(score ?? '')));
+              const meta = mm[m] || {};
+              for (const k of Object.keys(meta)) {
+                if (!['modified', 'original_score'].includes(k)) metricMetaKeys[m].add(k);
+              }
             }
           }
-          csvRows.push(row.join(','));
         }
-        const csvContent = csvRows.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv' });
+
+        // Per-run groups
+        for (let ri = 0; ri < state.runs.length; ri++) {
+          const rn = runNames[ri];
+          const runCols = [
+            { key: 'run:' + ri + ':output', label: outputKeys.size > 0 ? 'Output (raw)' : 'Output', checked: outputKeys.size === 0 },
+          ];
+          for (const k of Array.from(outputKeys).sort()) {
+            runCols.push({ key: 'run:' + ri + ':output.' + k, label: 'Output > ' + k, checked: true });
+          }
+          runCols.push({ key: 'run:' + ri + ':status', label: 'Status', checked: true });
+          runCols.push({ key: 'run:' + ri + ':root_cause', label: 'Root Cause', checked: true });
+          for (const m of metricNames) {
+            runCols.push({ key: 'run:' + ri + ':' + m + '_score', label: m + ' Score', checked: true });
+            for (const k of Array.from(metricMetaKeys[m]).sort()) {
+              runCols.push({ key: 'run:' + ri + ':' + m + ':' + k, label: m + ' > ' + k, checked: true });
+            }
+          }
+          runCols.push({ key: 'run:' + ri + ':latency_ms', label: 'Latency (ms)', checked: true });
+          runCols.push({ key: 'run:' + ri + ':trace_url', label: 'Trace URL', checked: true });
+          groups.push({ group: rn, columns: runCols });
+        }
+
+        return groups;
+      }
+
+      function renderExportModal(groups) {
+        let overlay = document.getElementById('export-modal-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'export-modal-overlay';
+          overlay.className = 'export-modal-overlay';
+          document.body.appendChild(overlay);
+        }
+        let html = '<div class="export-modal"><div class="export-modal-header"><h3>Select Export Columns</h3><div class="export-modal-actions-top"><button id="export-select-all">Select All</button><button id="export-deselect-all">Deselect All</button></div></div><div class="export-modal-body">';
+        for (let gi = 0; gi < groups.length; gi++) {
+          const g = groups[gi];
+          html += `<div class="export-group"><div class="export-group-header" data-group="${gi}"><span class="group-toggle">\u25BC</span><span class="group-name">${escapeHtml(g.group)}</span><input type="checkbox" class="group-check" data-group="${gi}" checked /></div><div class="export-group-items" data-group="${gi}">`;
+          for (let ci = 0; ci < g.columns.length; ci++) {
+            const col = g.columns[ci];
+            const chk = col.checked ? ' checked' : '';
+            const cls = col.indent ? ' indent' : '';
+            html += `<label class="export-col-item${cls}"><input type="checkbox" data-group="${gi}" data-col="${ci}"${chk} /> ${escapeHtml(col.label)}</label>`;
+          }
+          html += '</div></div>';
+        }
+        html += `</div><div class="export-modal-footer"><span style="flex:1;font-size:var(--font-xs);color:var(--text-muted);font-family:var(--font-mono);">${_exportItems.length} item${_exportItems.length !== 1 ? 's' : ''}</span><button class="export-cancel" id="export-modal-cancel">Cancel</button><button class="export-confirm" id="export-modal-confirm">Export</button></div></div>`;
+        overlay.innerHTML = html;
+
+        overlay.querySelectorAll('.export-group-header').forEach(hdr => {
+          hdr.addEventListener('click', e => {
+            if (e.target.type === 'checkbox') return;
+            const gi = hdr.dataset.group;
+            const items = overlay.querySelector('.export-group-items[data-group="' + gi + '"]');
+            const toggle = hdr.querySelector('.group-toggle');
+            items.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+          });
+        });
+
+        overlay.querySelectorAll('.group-check').forEach(gc => {
+          gc.addEventListener('change', () => {
+            overlay.querySelectorAll('input[data-group="' + gc.dataset.group + '"][data-col]').forEach(cb => { cb.checked = gc.checked; });
+          });
+        });
+
+        document.getElementById('export-select-all').addEventListener('click', () => {
+          overlay.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; });
+        });
+        document.getElementById('export-deselect-all').addEventListener('click', () => {
+          overlay.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+        });
+
+        document.getElementById('export-modal-cancel').addEventListener('click', () => { overlay.classList.remove('open'); });
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+        document.getElementById('export-modal-confirm').addEventListener('click', () => {
+          const selectedCols = [];
+          for (let gi = 0; gi < groups.length; gi++) {
+            for (let ci = 0; ci < groups[gi].columns.length; ci++) {
+              const cb = overlay.querySelector(`input[data-group="${gi}"][data-col="${ci}"]`);
+              if (cb && cb.checked) selectedCols.push(groups[gi].columns[ci]);
+            }
+          }
+          overlay.classList.remove('open');
+          if (selectedCols.length > 0) performExport(_exportItems, selectedCols);
+        });
+
+        overlay.classList.add('open');
+      }
+
+      function getCompareExportCellValue(itemId, rowData, colKey) {
+        const inputRow = rowData.find(r => r);
+
+        if (colKey === 'item_id') return itemId;
+        if (colKey === 'input') return stringify(inputRow?.input_full || inputRow?.input || '');
+        if (colKey === 'expected') return stringify(inputRow?.expected_full || inputRow?.expected || '');
+
+        if (colKey.startsWith('input.')) {
+          const obj = tryParseObj(inputRow?.input_full || inputRow?.input);
+          return obj ? stringify(obj[colKey.slice(6)]) : '';
+        }
+        if (colKey.startsWith('expected.')) {
+          const obj = tryParseObj(inputRow?.expected_full || inputRow?.expected);
+          return obj ? stringify(obj[colKey.slice(9)]) : '';
+        }
+
+        if (colKey.startsWith('meta:')) {
+          const md = inputRow?.item_metadata || {};
+          const val = md[colKey.slice(5)];
+          return val == null ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+        }
+
+        // Per-run columns: run:INDEX:field
+        const runMatch = colKey.match(/^run:(\d+):(.+)$/);
+        if (runMatch) {
+          const ri = parseInt(runMatch[1]);
+          const field = runMatch[2];
+          const rd = rowData[ri];
+          if (!rd) return '';
+
+          if (field === 'output') return stringify(rd.output_full || rd.output || '');
+          if (field.startsWith('output.')) {
+            const obj = tryParseObj(rd.output_full || rd.output);
+            return obj ? stringify(obj[field.slice(7)]) : '';
+          }
+          if (field === 'status') return rd.status || '';
+          if (field === 'root_cause') return String((rd.item_metadata || {}).root_cause || '');
+          if (field === 'latency_ms') return String(rd.latency_ms || '');
+          if (field === 'trace_url') return rd.trace_url || '';
+
+          if (field.endsWith('_score')) {
+            const m = field.slice(0, -6);
+            const run = state.runs[ri];
+            const mNames = run?.snapshot?.metric_names || run?.run?.metric_names || [];
+            const mIdx = mNames.indexOf(m);
+            return mIdx >= 0 ? String((rd.metric_values || [])[mIdx] ?? '') : '';
+          }
+
+          // metric:metakey
+          const cIdx = field.indexOf(':');
+          if (cIdx > 0) {
+            const m = field.slice(0, cIdx);
+            const k = field.slice(cIdx + 1);
+            const mm = rd.metric_meta || {};
+            const val = (mm[m] || {})[k];
+            return val == null ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+          }
+        }
+
+        return '';
+      }
+
+      function performExport(items, selectedCols) {
+        const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
+        const header = selectedCols.map(c => {
+          const runMatch = c.key.match(/^run:(\d+):(.+)$/);
+          if (runMatch) return runNames[parseInt(runMatch[1])] + ' / ' + c.label;
+          return c.key;
+        });
+        const csvRows = [header.map(h => csvEscape(h)).join(',')];
+        for (const { itemId, rowData } of items) {
+          const r = selectedCols.map(c => csvEscape(getCompareExportCellValue(itemId, rowData, c.key)));
+          csvRows.push(r.join(','));
+        }
+        const blob = new Blob(['\ufeff' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = 'compare_export.csv';
         a.click();
         URL.revokeObjectURL(url);
+      }
+
+      el('export-filtered-btn').addEventListener('click', () => {
+        _exportItems = getFilteredItems();
+        if (_exportItems.length === 0) return;
+        const groups = discoverExportColumns(_exportItems);
+        renderExportModal(groups);
       });
 
       function stringify(val) {

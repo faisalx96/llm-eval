@@ -1,3 +1,37 @@
+# 🚀 qym v0.8.5 — Release Notes
+
+**📅 February 2026**
+
+---
+
+## 📊 Compare View
+
+- 📊 **Avg@K & Pass@K breakdown** — Performance by Category cards now show both average score and pass-at-K as big color-coded numbers, with a count toggle for root causes (All Runs vs Unique Items)
+- 🏷️ **Multi-value domains** — list-valued fields like domain are unnested into individual badges, breakdown cards, and filter entries
+- 💬 **Feedback on root causes** — add free-text feedback to any root cause assignment with inline editing, cancel/save actions, and visual save confirmation
+- 🔍 **(No Root Cause) filter** — find items that haven't been triaged yet
+- 📥 **Column selector on export** — a modal lets you pick which columns to include, with object fields (input, output, expected) expanded into selectable sub-fields
+
+---
+
+## 🖥️ Single & Compare Views
+
+- 📊 **Tabular data rendering** — list-of-lists in metric metadata render as HTML tables with "Show all N rows" for large ones
+- 📐 **Collapsible expected output** — long expected outputs start collapsed with a "Show more" toggle
+- 🔧 **Smarter root cause dropdown** — flips above when near the page bottom, dismisses on scroll, stays open when scrolling within it
+- 📥 **Richer CSV exports** — now include item metadata, metric metadata, root causes with feedback, trace URLs, and per-run status
+
+---
+
+## 🌐 Platform — CSV Upload
+
+- 📋 **Full metadata ingestion** — `item_metadata` and `{metric}__meta__json` columns are now properly parsed and stored, so uploaded CSVs display metadata in the dashboard just like live runs
+- 🔧 **Robustness fixes** — large fields (>128KB) and `NaN` values in metric metadata no longer cause upload failures
+
+---
+
+---
+
 # 🚀 qym v0.8.4 — Release Notes
 
 **📅 December 2025 – February 2026**
@@ -54,6 +88,7 @@
 - ✅ Pass/Fail badges — each item shows a clear green Pass or red Fail indicator based on the selected metric's threshold
 - 🔬 Root cause analysis — assign root causes to underperforming items directly from the compare view, with built-in categories (Hallucination, Reasoning Error, Context Missing, Knowledge Gap, and more) or custom values
 - 📊 Root cause breakdown — aggregate cards show root cause distribution across runs, with a dedicated filter to drill down by cause
+- 📊 Results and metadata are rendered as readable HTML tables when they are list-of-lists
 
 ---
 

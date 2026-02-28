@@ -3,8 +3,23 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
+import sys
+
+csv.field_size_limit(sys.maxsize)
 from datetime import datetime
 from typing import Any, Dict, Optional
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """Replace NaN/Infinity with None so PostgreSQL JSON accepts the data."""
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -397,6 +412,11 @@ async def upload_run(
             item_id = str(row.get("item_id") or f"row_{idx:06d}")
             output = str(row.get("output") or "")
             is_error = output.startswith("ERROR:")
+            raw_meta = row.get("item_metadata") or ""
+            try:
+                parsed_meta = json.loads(raw_meta) if raw_meta else {}
+            except (json.JSONDecodeError, TypeError):
+                parsed_meta = {}
             item = RunItem(
                 run_id=run.id,
                 item_id=item_id,
@@ -405,7 +425,7 @@ async def upload_run(
                 expected=row.get("expected_output"),
                 output=None if is_error else row.get("output"),
                 error=(output[6:].strip() if is_error else None),
-                item_metadata={},
+                item_metadata=parsed_meta if isinstance(parsed_meta, dict) else {},
                 latency_ms=(float(row.get("time") or 0.0) * 1000.0),
                 trace_id=row.get("trace_id") or None,
                 trace_url=None,
@@ -427,7 +447,19 @@ async def upload_run(
                 for col in fieldnames:
                     if col.startswith(f"{m}__meta__"):
                         k = col[len(f"{m}__meta__") :]
-                        meta[k] = row.get(col)
+                        if k == "json":
+                            raw_json = row.get(col, "")
+                            if raw_json:
+                                try:
+                                    parsed = json.loads(raw_json)
+                                    if isinstance(parsed, dict):
+                                        meta.update(_sanitize_for_json(parsed))
+                                    else:
+                                        meta[k] = raw_json
+                                except (json.JSONDecodeError, TypeError):
+                                    meta[k] = raw_json
+                        else:
+                            meta[k] = row.get(col)
                 db.add(
                     RunItemScore(
                         run_id=run.id,

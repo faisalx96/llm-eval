@@ -714,7 +714,45 @@
       font-weight: 600;
       color: var(--text-primary);
       text-transform: capitalize;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1;
     }
+    .breakdown-card-score-row {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+    }
+    .breakdown-card-scores {
+      display: flex;
+      gap: var(--space-md);
+      margin: 2px 0;
+    }
+    .breakdown-card-scores .score-col {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .breakdown-card-scores .score-col-label {
+      font-family: var(--font-sans);
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 500;
+    }
+    .breakdown-card-scores .score-col-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 700;
+    }
+    .breakdown-card-scores .score-col-value.score-5 { color: var(--score-5); }
+    .breakdown-card-scores .score-col-value.score-4 { color: var(--score-4); }
+    .breakdown-card-scores .score-col-value.score-3 { color: var(--score-3); }
+    .breakdown-card-scores .score-col-value.score-2 { color: var(--score-2); }
+    .breakdown-card-scores .score-col-value.score-1 { color: var(--score-1); }
     .breakdown-card-count {
       display: inline-flex;
       align-items: center;
@@ -1022,6 +1060,32 @@
       border-left: 3px solid var(--success);
     }
     .item-expected-row .expected-label { color: var(--success); }
+    .item-expected-row .expected-text.collapsed {
+      max-height: 100px;
+      overflow: hidden;
+      position: relative;
+    }
+    .item-expected-row .expected-text.collapsed::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--success-dim));
+      pointer-events: none;
+    }
+    .expected-toggle {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--success);
+      cursor: pointer;
+      font-weight: 600;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: var(--font-sans);
+    }
+    .expected-toggle:hover { text-decoration: underline; }
 
     /* Single run output (full width) */
     .item-run-output {
@@ -1064,7 +1128,15 @@
     .item-run-output .metric-badge.score-3 { background: rgba(234, 179, 8, 0.15); color: var(--score-3); }
     .item-run-output .metric-badge.score-2 { background: rgba(249, 115, 22, 0.15); color: var(--score-2); }
     .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
-    .item-run-output .latency-badge { color: var(--text-muted); }
+    .item-run-output .latency-badge {
+      display: inline;
+      color: var(--text-muted);
+      width: auto;
+      height: auto;
+      border: none;
+      background: var(--bg-surface);
+      border-radius: 3px;
+    }
     .item-run-output .start-badge {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
@@ -1198,6 +1270,109 @@
       margin-top: var(--space-sm);
       padding-top: var(--space-sm);
       border-top: 1px solid var(--border-subtle);
+    }
+
+    /* ── Feedback section (formerly "root cause notes") ── */
+    .feedback-section {
+      margin-top: 6px;
+      background: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .feedback-section:hover { border-color: var(--border-default); }
+
+    /* Display state */
+    .feedback-display {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      min-height: 34px;
+    }
+    .feedback-display:hover { background: var(--bg-surface); }
+    .feedback-icon {
+      flex-shrink: 0;
+      width: 14px;
+      height: 14px;
+      margin-top: 1px;
+      color: var(--text-dim);
+      transition: color 0.15s;
+    }
+    .feedback-display:hover .feedback-icon { color: var(--text-muted); }
+    .feedback-text {
+      flex: 1;
+      font-size: var(--font-xs);
+      line-height: 1.5;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .feedback-placeholder {
+      color: var(--text-dim);
+      font-style: italic;
+      transition: color 0.15s;
+    }
+    .feedback-display:hover .feedback-placeholder { color: var(--text-muted); }
+
+    /* Edit state */
+    .feedback-edit {
+      padding: 8px;
+    }
+    .feedback-edit textarea {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: var(--font-xs);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      resize: vertical;
+      min-height: 48px;
+      max-height: 120px;
+      line-height: 1.5;
+      transition: border-color 0.15s;
+    }
+    .feedback-edit textarea:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 1px rgba(0,212,170,0.15); }
+    .feedback-edit textarea::placeholder { color: var(--text-dim); }
+    .feedback-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .feedback-btn {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      font-family: var(--font-sans);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .feedback-btn-cancel {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border-default);
+    }
+    .feedback-btn-cancel:hover { background: var(--bg-hover); color: var(--text-secondary); }
+    .feedback-btn-save {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .feedback-btn-save:hover { background: #00e6b8; }
+
+    /* Save success flash */
+    .feedback-section.feedback-saved {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 1px rgba(0,212,170,0.15);
     }
     .root-cause-assign-btn {
       display: inline-flex;
@@ -1399,6 +1574,58 @@
       word-break: break-word;
       line-height: 1.6;
     }
+    .metric-detail-value .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0;
+      font-size: var(--font-xs);
+      white-space: nowrap;
+    }
+    .metric-detail-value .meta-table th,
+    .metric-detail-value .meta-table td {
+      padding: 3px 10px;
+      border: 1px solid var(--border-subtle);
+      text-align: start;
+    }
+    .metric-detail-value .meta-table th {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .metric-detail-value .meta-table td {
+      color: var(--text-secondary);
+    }
+    .metric-detail-value .meta-table tr:hover td {
+      background: var(--bg-hover);
+    }
+    .meta-table-wrapper {
+      position: relative;
+    }
+    .meta-table-wrapper.collapsed {
+      max-height: 180px;
+      overflow: hidden;
+    }
+    .meta-table-wrapper.collapsed::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--bg-primary));
+      pointer-events: none;
+    }
+    .meta-table-toggle {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: var(--font-xs);
+      color: var(--accent-primary);
+      cursor: pointer;
+      font-weight: 600;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: var(--font-sans);
+    }
+    .meta-table-toggle:hover { text-decoration: underline; }
 
     /* Formatted objects */
     .formatted-object, .formatted-array { font-family: var(--font-mono); font-size: var(--font-sm); line-height: 1.6; }
@@ -1520,6 +1747,167 @@
       transition: background 0.15s;
     }
     .langfuse-link:hover { background: rgba(225, 29, 72, 0.2); }
+
+    /* Export Column Selector Modal */
+    .export-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .export-modal-overlay.open { display: flex; }
+    .export-modal {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      width: 520px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .export-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .export-modal-header h3 {
+      margin: 0;
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .export-modal-actions-top {
+      display: flex;
+      gap: 4px;
+    }
+    .export-modal-actions-top button {
+      background: none;
+      border: 1px solid var(--border-default);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      padding: 2px 10px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    .export-modal-actions-top button:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .export-modal-body {
+      overflow-y: auto;
+      padding: var(--space-xs) 0;
+      flex: 1;
+    }
+    .export-group {
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .export-group:last-child { border-bottom: none; }
+    .export-group-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .export-group-header:hover { background: var(--bg-hover); }
+    .export-group-header .group-toggle {
+      font-size: 10px;
+      color: var(--text-muted);
+      width: 12px;
+      transition: transform 0.15s;
+    }
+    .export-group-header .group-toggle.collapsed { transform: rotate(-90deg); }
+    .export-group-header .group-name {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .export-group-header .group-check {
+      margin-left: auto;
+      width: 12px;
+      height: 12px;
+      accent-color: var(--accent-primary);
+    }
+    .export-group-items {
+      padding-left: 0;
+    }
+    .export-group-items.collapsed { display: none; }
+    .export-col-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-xs) var(--space-md);
+      padding-left: calc(var(--space-md) + 12px + var(--space-sm));
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .export-col-item:hover { background: var(--bg-hover); }
+    .export-col-item.indent {
+      padding-left: calc(var(--space-md) + 12px + var(--space-sm) + 16px);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .export-col-item input[type="checkbox"] {
+      flex-shrink: 0;
+      width: 12px;
+      height: 12px;
+      accent-color: var(--accent-primary);
+      pointer-events: none;
+    }
+    .export-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .export-modal-footer .export-cancel {
+      padding: var(--space-xs) var(--space-sm);
+      background: none;
+      border: 1px solid var(--border-default);
+      border-radius: 3px;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .export-modal-footer .export-cancel:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .export-modal-footer .export-confirm {
+      padding: var(--space-xs) var(--space-md);
+      background: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+      border-radius: 3px;
+      color: var(--bg-void);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .export-modal-footer .export-confirm:hover {
+      background: #00e6b8;
+      border-color: #00e6b8;
+    }
   </style>
 </head>
 <body>
@@ -1764,6 +2152,17 @@
 
       // ── Utility functions ──
 
+      function parseMetaList(val) {
+        if (val == null || val === '') return [];
+        if (Array.isArray(val)) return val.filter(v => v != null && v !== 'null' && v !== '').map(String);
+        var s = String(val).trim();
+        if (s.startsWith('[') && s.endsWith(']')) {
+          try { var p = JSON.parse(s); if (Array.isArray(p)) return p.filter(v => v != null).map(String); } catch {}
+          try { var f = s.replace(/'/g, '"').replace(/"null"/g, 'null'); var p2 = JSON.parse(f); if (Array.isArray(p2)) return p2.filter(v => v != null).map(String); } catch {}
+        }
+        return [s];
+      }
+
       function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text || '';
@@ -1918,6 +2317,40 @@
         return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       }
 
+      function formatMetaValue(val) {
+        if (val === undefined || val === null || val === '') return '';
+        if (typeof val === 'boolean') return escapeHtml(String(val));
+        if (typeof val === 'number') return escapeHtml(String(val));
+        if (typeof val === 'string') return escapeHtml(val);
+        if (Array.isArray(val)) {
+          if (val.length === 0) return '[]';
+          var isTabular = val.every(function(r) { return Array.isArray(r); });
+          if (isTabular) {
+            var colCount = Math.max.apply(null, val.map(function(r) { return r.length; }));
+            var headerRow = colCount <= 10
+              ? '<tr>' + Array.from({length: colCount}, function(_, i) { return '<th>Col ' + (i + 1) + '</th>'; }).join('') + '</tr>'
+              : '';
+            var bodyRows = val.map(function(r) {
+              return '<tr>' + Array.from({length: colCount}, function(_, i) {
+                var c = i < r.length ? r[i] : '';
+                return '<td>' + escapeHtml(String(c == null ? '' : c)) + '</td>';
+              }).join('') + '</tr>';
+            }).join('');
+            var tableHtml = '<table class="meta-table">' + (headerRow ? '<thead>' + headerRow + '</thead>' : '') + '<tbody>' + bodyRows + '</tbody></table>';
+            if (val.length > 5) {
+              var uid = 'mt_' + Math.random().toString(36).slice(2, 8);
+              return '<div class="meta-table-wrapper collapsed" id="' + uid + '">' + tableHtml + '</div><button class="meta-table-toggle" onclick="var w=document.getElementById(\'' + uid + '\');w.classList.toggle(\'collapsed\');this.textContent=w.classList.contains(\'collapsed\')?\'Show all ' + val.length + ' rows \u25BC\':\'Show less \u25B2\';">Show all ' + val.length + ' rows \u25BC</button>';
+            }
+            return tableHtml;
+          }
+          var isFlatPrimitive = val.every(function(v) { return v === null || typeof v !== 'object'; });
+          if (isFlatPrimitive) return escapeHtml(val.map(function(v) { return String(v == null ? '' : v); }).join(', '));
+          return formatObjectAsHtml(val);
+        }
+        if (typeof val === 'object') return formatObjectAsHtml(val);
+        return escapeHtml(String(val));
+      }
+
       // ── Data loading ──
 
       async function loadRunData() {
@@ -1975,7 +2408,9 @@
           if (typeof md === 'object') {
             for (const k of Object.keys(md)) { if (k !== 'task_started_at_ms') metaKeySet.add(k); }
             if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
-            if (md.domain != null && md.domain !== '') domainSet.add(String(md.domain));
+            if (md.domain != null && md.domain !== '') {
+              for (const d of parseMetaList(md.domain)) domainSet.add(d);
+            }
             if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
           }
         }
@@ -2523,26 +2958,37 @@
           const groups = {};
           for (const row of rows) {
             const md = row.item_metadata || {};
-            const groupVal = String(md[bdKey] ?? '');
-            if (bdKey === 'root_cause' && !groupVal) continue;
-            const effective = groupVal || 'unknown';
-            if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
-            groups[effective].count++;
-            if (mIdx >= 0) {
-              const { score } = window.QymMetrics.getRowScore(row, mIdx);
-              if (score !== null) groups[effective].scores.push(score);
-            }
-            if (row.latency_ms && row.status === 'completed') {
-              groups[effective].latencies.push(row.latency_ms);
+            const rawVal = md[bdKey] ?? '';
+            const groupVals = (bdKey === 'domain' || bdKey === 'patterns')
+              ? parseMetaList(rawVal)
+              : [String(rawVal)];
+            if (groupVals.length === 0) groupVals.push('');
+            for (const groupVal of groupVals) {
+              if (bdKey === 'root_cause' && !groupVal) continue;
+              const effective = groupVal || 'unknown';
+              if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
+              groups[effective].count++;
+              if (mIdx >= 0) {
+                const { score } = window.QymMetrics.getRowScore(row, mIdx);
+                if (score !== null) groups[effective].scores.push(score);
+              }
+              if (row.latency_ms && row.status === 'completed') {
+                groups[effective].latencies.push(row.latency_ms);
+              }
             }
           }
 
-          const groupStats = Object.entries(groups).map(([gv, g]) => ({
-            groupVal: gv,
-            itemCount: g.count,
-            avgScore: g.scores.length > 0 ? g.scores.reduce((a,b)=>a+b,0) / g.scores.length : 0,
-            avgLatency: g.latencies.length > 0 ? g.latencies.reduce((a,b)=>a+b,0) / g.latencies.length : null,
-          }));
+          const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+          const groupStats = Object.entries(groups).map(([gv, g]) => {
+            const passCount = g.scores.filter(s => s >= threshold).length;
+            return {
+              groupVal: gv,
+              itemCount: g.count,
+              avgScore: g.scores.length > 0 ? g.scores.reduce((a,b)=>a+b,0) / g.scores.length : 0,
+              passRate: g.scores.length > 0 ? passCount / g.scores.length : 0,
+              avgLatency: g.latencies.length > 0 ? g.latencies.reduce((a,b)=>a+b,0) / g.latencies.length : null,
+            };
+          });
 
           if (bdKey === 'complexity') {
             const co = ['easy','medium','hard'];
@@ -2573,7 +3019,7 @@
 
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#94a3b8';
+              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#f472b6';
               html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
@@ -2585,7 +3031,10 @@
                 else if (['hard','difficult','advanced','high'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
-              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-top"><div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-count"><strong>' + g.itemCount + '</strong> item' + (g.itemCount !== 1 ? 's' : '') + '</div></div><div class="breakdown-card-score ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</div><div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
+              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;">' +
+                '<div class="breakdown-card-label" title="' + escapeAttr(g.groupVal) + '">' + escapeHtml(g.groupVal) + '</div>' +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
+                '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
             }
           }
           html += '</div></div>';
@@ -2642,13 +3091,17 @@
           }
           if (state.domainFilter !== null) {
             if (state.domainFilter.length === 0) continue;
-            const val = String(md.domain ?? '').toLowerCase();
-            if (!state.domainFilter.some(f => f.toLowerCase() === val)) continue;
+            const domainVals = parseMetaList(md.domain).map(v => v.toLowerCase());
+            if (!state.domainFilter.some(f => domainVals.includes(f.toLowerCase()))) continue;
           }
           if (state.rootCauseFilter !== null) {
             if (state.rootCauseFilter.length === 0) continue;
-            const val = String(md.root_cause ?? '').toLowerCase();
-            if (!state.rootCauseFilter.some(f => f.toLowerCase() === val)) continue;
+            const rcVal = String(md.root_cause ?? '');
+            const wantNone = state.rootCauseFilter.includes('__none__');
+            const namedFilters = state.rootCauseFilter.filter(f => f !== '__none__');
+            const matchesNamed = namedFilters.length > 0 && namedFilters.some(f => f.toLowerCase() === rcVal.toLowerCase());
+            const matchesNone = wantNone && !rcVal;
+            if (!matchesNamed && !matchesNone) continue;
           }
 
           // Score for this metric
@@ -2783,13 +3236,19 @@
             }
           }
 
-          // Root cause
+          // Root cause + feedback (only for failed items)
           let rootCauseHtml = '';
+          const itemPassed = passfailBadge.includes('badge pass"');
           const rowRc = row.item_metadata?.root_cause || '';
+          const rowRcNote = row.item_metadata?.root_cause_note || '';
           if (rowRc) {
-            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#94a3b8';
-            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span></div>';
-          } else {
+            const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
+            var feedbackHtml = rowRcNote
+              ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
+              : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
+            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#f472b6';
+            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + '. Click to change."><span class="badge-icon">\u26A0</span>' + escapeHtml(rowRc) + '</span>' + feedbackHtml + '</div>';
+          } else if (!itemPassed) {
             rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
           }
 
@@ -2804,7 +3263,7 @@
               return metaKeys.map(key => {
                 const val = meta[key];
                 if (val === undefined || val === null || val === '') return '';
-                return '<div class="metric-detail-row"><span class="metric-detail-name">' + escapeHtml(name) + ' \u00B7 ' + formatFieldName(key) + '</span><span class="metric-detail-value">' + escapeHtml(String(val)) + '</span></div>';
+                return '<div class="metric-detail-row"><span class="metric-detail-name">' + escapeHtml(name) + ' \u00B7 ' + formatFieldName(key) + '</span><span class="metric-detail-value">' + formatMetaValue(val) + '</span></div>';
               }).join('');
             }).join('');
             if (detailRows) {
@@ -2823,15 +3282,18 @@
               if (sk === 'root_cause') continue;
               if (itemMd[sk] != null && itemMd[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                 const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
-                let valClass = '';
-                if (sk === 'complexity') {
-                  const v = String(itemMd[sk]).toLowerCase().trim();
-                  if (['easy','simple','basic','low'].includes(v)) valClass = ' complexity-easy';
-                  else if (['medium','moderate','intermediate','mid'].includes(v)) valClass = ' complexity-medium';
-                  else if (['hard','difficult','advanced','high'].includes(v)) valClass = ' complexity-hard';
-                  else if (['very hard','very_hard','expert','extreme'].includes(v)) valClass = ' complexity-expert';
+                const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(itemMd[sk]) : [String(itemMd[sk])];
+                for (const v of vals) {
+                  let valClass = '';
+                  if (sk === 'complexity') {
+                    const lv = v.toLowerCase().trim();
+                    if (['easy','simple','basic','low'].includes(lv)) valClass = ' complexity-easy';
+                    else if (['medium','moderate','intermediate','mid'].includes(lv)) valClass = ' complexity-medium';
+                    else if (['hard','difficult','advanced','high'].includes(lv)) valClass = ' complexity-hard';
+                    else if (['very hard','very_hard','expert','extreme'].includes(lv)) valClass = ' complexity-expert';
+                  }
+                  badgesHtml += '<span class="meta-badge badge-' + sk + valClass + '"><span class="badge-icon">' + icon + '</span>' + escapeHtml(v) + '</span>';
                 }
-                badgesHtml += '<span class="meta-badge badge-' + sk + valClass + '"><span class="badge-icon">' + icon + '</span>' + escapeHtml(String(itemMd[sk])) + '</span>';
               }
             }
             const genericEntries = Object.entries(itemMd).filter(([k]) => k !== 'task_started_at_ms' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false);
@@ -2845,9 +3307,9 @@
           return '<div class="item-card">' +
             '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
-            (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text">' + renderMarkdownSafe(expected) + '</div></div>' : '') +
+            (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + metricDetailsHtml + rootCauseHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + metricDetailsHtml + '</div>' +
             toggleHtml +
           '</div>';
         }).join('');
@@ -2862,6 +3324,7 @@
         wireMetricEditHandlers();
         wireRootCauseHandlers();
         wireCopyHandlers();
+        initExpectedToggles();
       }
 
       // ── Metric edit handlers ──
@@ -2927,15 +3390,75 @@
         });
       }
 
-      // ── Root cause handlers ──
+      // ── Root cause + feedback handlers ──
 
       function wireRootCauseHandlers() {
-        document.querySelectorAll('[data-rc-item]').forEach(trigger => {
+        document.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             showRootCauseDropdown(trigger.dataset.rcItem, trigger);
           });
         });
+        document.querySelectorAll('[data-feedback-item]').forEach(trigger => {
+          trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var itemId = trigger.dataset.feedbackItem;
+            var rows = state.snapshot.rows || [];
+            var row = rows.find(function(r) { return (r.item_id || String(r.index)) === itemId; });
+            var currentNote = row?.item_metadata?.root_cause_note || '';
+            var section = trigger.closest('.feedback-section');
+            if (!section) return;
+            section.innerHTML = '<div class="feedback-edit"><textarea placeholder="Add feedback\u2026">' + escapeHtml(currentNote) + '</textarea><div class="feedback-edit-actions"><button class="feedback-btn feedback-btn-cancel">Cancel</button><button class="feedback-btn feedback-btn-save">Save</button></div></div>';
+            var textarea = section.querySelector('textarea');
+            var saveBtn = section.querySelector('.feedback-btn-save');
+            var cancelBtn = section.querySelector('.feedback-btn-cancel');
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            saveBtn.addEventListener('click', async function() {
+              await saveFeedback(itemId, textarea.value.trim());
+            });
+            cancelBtn.addEventListener('click', function() {
+              renderItems();
+            });
+            textarea.addEventListener('keydown', async function(ev) {
+              if (ev.key === 'Enter' && !ev.shiftKey) {
+                ev.preventDefault();
+                await saveFeedback(itemId, textarea.value.trim());
+              }
+              if (ev.key === 'Escape') { renderItems(); }
+            });
+          });
+        });
+      }
+
+      async function saveFeedback(itemId, note) {
+        var runId = state.run?.file_path;
+        if (!runId) return;
+        try {
+          var res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause_note: note, run_id: runId }),
+          });
+          var data = await res.json().catch(function() { return {}; });
+          if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
+          var rows = state.snapshot.rows || [];
+          var row = rows.find(function(r) { return (r.item_id || String(r.index)) === itemId; });
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (note) row.item_metadata.root_cause_note = note;
+            else delete row.item_metadata.root_cause_note;
+          }
+          renderItems();
+          // Flash success indicator on the feedback section
+          setTimeout(function() {
+            var saved = document.querySelector('[data-feedback-item="' + itemId + '"]');
+            if (saved) {
+              var sec = saved.closest('.feedback-section');
+              if (sec) { sec.classList.add('feedback-saved'); setTimeout(function() { sec.classList.remove('feedback-saved'); }, 800); }
+            }
+          }, 50);
+        } catch (err) { console.error('Error saving feedback:', err); }
       }
 
       function showRootCauseDropdown(itemId, anchorEl) {
@@ -2951,17 +3474,25 @@
         let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
-          const color = ROOT_CAUSE_COLORS[opt] || '#94a3b8';
+          const color = ROOT_CAUSE_COLORS[opt] || '#f472b6';
           html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
         }
         html += '<div class="rc-divider"></div>';
         html += '<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>';
         dropdown.innerHTML = html;
 
-        const rect = anchorEl.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + 4) + 'px';
-        dropdown.style.left = rect.left + 'px';
         document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
@@ -2983,10 +3514,21 @@
           }
         });
 
-        const closeHandler = (e) => {
-          if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', closeHandler); }
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
         };
-        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
       }
 
       async function saveRootCause(itemId, rootCause) {
@@ -3014,6 +3556,20 @@
           buildCategoryDropdowns();
           renderItems();
         } catch (err) { console.error('Error saving root cause:', err); }
+      }
+
+      function initExpectedToggles() {
+        document.querySelectorAll('.item-expected-row').forEach(function(row) {
+          var text = row.querySelector('.expected-text');
+          var btn = row.querySelector('.expected-toggle');
+          if (!text || !btn) return;
+          if (text.scrollHeight <= 100) {
+            text.classList.remove('collapsed');
+            btn.style.display = 'none';
+          } else {
+            btn.style.display = '';
+          }
+        });
       }
 
       // ── Copy handlers ──
@@ -3086,7 +3642,16 @@
           const val = String(md[category] ?? '');
           if (itemCounts[val] !== undefined) itemCounts[val]++;
         }
-        let html = values.map(v =>
+        var extraOptions = '';
+        if (category === 'root_cause') {
+          var noRcCount = 0;
+          for (var ri = 0; ri < rows.length; ri++) {
+            var rmd = rows[ri].item_metadata || {};
+            if (!rmd.root_cause) noRcCount++;
+          }
+          extraOptions = '<label class="multi-select-option" data-value="__none__"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="__none__" /><span style="font-style:italic;">(No Root Cause)</span><span class="option-count">' + noRcCount + '</span></label><div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>';
+        }
+        let html = extraOptions + values.map(v =>
           '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(v) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
         ).join('');
         html += '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
@@ -3095,7 +3660,7 @@
         dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
           cb.addEventListener('change', () => {
             let filterArr = getCatFilter(category);
-            if (filterArr === null) { filterArr = [...values]; setCatFilter(category, filterArr); }
+            if (filterArr === null) { filterArr = [...values]; if (category === 'root_cause') filterArr.push('__none__'); setCatFilter(category, filterArr); }
             if (cb.checked) { if (!filterArr.includes(cb.dataset.val)) filterArr.push(cb.dataset.val); }
             else { const idx = filterArr.indexOf(cb.dataset.val); if (idx >= 0) filterArr.splice(idx, 1); }
             syncMultiselectUI(category);
@@ -3147,13 +3712,14 @@
         const btn = el(category + '-ms-btn');
         const dropdown = el(category + '-ms-dropdown');
 
-        if (filterArr !== null && filterArr.length === values.length) setCatFilter(category, null);
+        const allCount = category === 'root_cause' ? values.length + 1 : values.length;
+        if (filterArr !== null && filterArr.length >= allCount) setCatFilter(category, null);
         const effective = getCatFilter(category);
 
         if (btn) {
           if (effective === null) { btn.textContent = defaultLabel; btn.classList.remove('has-selection'); }
           else if (effective.length === 0) { btn.textContent = 'None'; btn.classList.add('has-selection'); }
-          else if (effective.length === 1) { btn.textContent = effective[0]; btn.classList.add('has-selection'); }
+          else if (effective.length === 1) { btn.textContent = effective[0] === '__none__' ? '(No Root Cause)' : effective[0]; btn.classList.add('has-selection'); }
           else { btn.textContent = effective.length + ' selected'; btn.classList.add('has-selection'); }
         }
         if (dropdown) {
@@ -3279,35 +3845,255 @@
         });
       }
 
-      // ── Export CSV ──
+      // ── Export CSV with Column Selector ──
 
-      el('export-filtered-btn').addEventListener('click', () => {
-        const items = getFilteredItems();
-        if (items.length === 0) return;
-        let header = ['item_id', 'input', 'expected', 'output', 'status', 'latency_ms'];
-        for (const m of state.allMetrics) header.push(m);
-        const csvRows = [header.join(',')];
-        for (const { row } of items) {
-          const r = [
-            csvEscape(row.item_id || String(row.index)),
-            csvEscape(stringify(row.input_full || row.input)),
-            csvEscape(stringify(row.expected_full || row.expected)),
-            csvEscape(stringify(row.output_full || row.output)),
-            csvEscape(row.status || ''),
-            csvEscape(String(row.latency_ms || '')),
-          ];
-          for (let mi = 0; mi < state.allMetrics.length; mi++) {
-            r.push(csvEscape(String((row.metric_values || [])[mi] ?? '')));
+      var _exportItems = null;
+      var _exportColumns = null;
+
+      function tryParseObj(val) {
+        if (val && typeof val === 'object' && !Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+          var s = val.trim();
+          if (s.startsWith('{') && s.endsWith('}')) {
+            try { var p = JSON.parse(s); if (p && typeof p === 'object' && !Array.isArray(p)) return p; } catch {}
+            try { var f = s.replace(/'/g, '"').replace(/True/g, 'true').replace(/False/g, 'false').replace(/None/g, 'null'); var p2 = JSON.parse(f); if (p2 && typeof p2 === 'object' && !Array.isArray(p2)) return p2; } catch {}
           }
+        }
+        return null;
+      }
+
+      function discoverExportColumns(items) {
+        var groups = [];
+        var outputKeys = new Set();
+        var inputKeys = new Set();
+        var expectedKeys = new Set();
+        for (var i = 0; i < items.length; i++) {
+          var r = items[i].row;
+          var outObj = tryParseObj(r.output_full || r.output);
+          if (outObj) { for (var k of Object.keys(outObj)) outputKeys.add(k); }
+          var inpObj = tryParseObj(r.input_full || r.input);
+          if (inpObj) { for (var k of Object.keys(inpObj)) inputKeys.add(k); }
+          var expObj = tryParseObj(r.expected_full || r.expected);
+          if (expObj) { for (var k of Object.keys(expObj)) expectedKeys.add(k); }
+        }
+
+        var coreColumns = [
+          { key: '#', label: '# (row number)', checked: true },
+          { key: 'item_id', label: 'Item ID', checked: true },
+          { key: 'status', label: 'Status', checked: true },
+          { key: 'input', label: inputKeys.size > 0 ? 'Input (raw)' : 'Input', checked: inputKeys.size === 0 },
+          { key: 'expected', label: expectedKeys.size > 0 ? 'Expected Output (raw)' : 'Expected Output', checked: expectedKeys.size === 0 },
+          { key: 'output', label: outputKeys.size > 0 ? 'Output (raw)' : 'Output', checked: outputKeys.size === 0 },
+        ];
+        groups.push({ group: 'Core Fields', columns: coreColumns });
+
+        if (inputKeys.size > 0) {
+          groups.push({ group: 'Input Fields', columns: Array.from(inputKeys).sort().map(function(k) {
+            return { key: 'input.' + k, label: k, checked: true };
+          }) });
+        }
+        if (expectedKeys.size > 0) {
+          groups.push({ group: 'Expected Output Fields', columns: Array.from(expectedKeys).sort().map(function(k) {
+            return { key: 'expected.' + k, label: k, checked: true };
+          }) });
+        }
+        if (outputKeys.size > 0) {
+          groups.push({ group: 'Output Fields', columns: Array.from(outputKeys).sort().map(function(k) {
+            return { key: 'output.' + k, label: k, checked: true };
+          }) });
+        }
+
+        // Item metadata
+        var metaKeySet = new Set();
+        for (var i = 0; i < items.length; i++) {
+          var md = items[i].row.item_metadata || {};
+          if (typeof md === 'object') {
+            for (var k of Object.keys(md)) { if (k !== 'task_started_at_ms') metaKeySet.add(k); }
+          }
+        }
+        if (metaKeySet.size > 0) {
+          groups.push({ group: 'Item Metadata', columns: Array.from(metaKeySet).sort().map(function(k) {
+            return { key: 'meta:' + k, label: k, checked: true };
+          }) });
+        }
+
+        // Per-metric groups
+        var metricMetaKeys = {};
+        for (var m of state.allMetrics) metricMetaKeys[m] = new Set();
+        for (var i = 0; i < items.length; i++) {
+          var mm = items[i].row.metric_meta || {};
+          for (var m of state.allMetrics) {
+            var meta = mm[m] || {};
+            for (var k of Object.keys(meta)) {
+              if (!['modified', 'original_score'].includes(k)) metricMetaKeys[m].add(k);
+            }
+          }
+        }
+        for (var m of state.allMetrics) {
+          var cols = [{ key: m + '_score', label: 'Score', checked: true }];
+          for (var k of Array.from(metricMetaKeys[m]).sort()) {
+            cols.push({ key: m + ':' + k, label: k, checked: true });
+          }
+          groups.push({ group: 'Metric: ' + m, columns: cols });
+        }
+
+        // Trace & Timing
+        groups.push({ group: 'Trace & Timing', columns: [
+          { key: 'latency_ms', label: 'Latency (ms)', checked: true },
+          { key: 'trace_id', label: 'Trace ID', checked: true },
+          { key: 'trace_url', label: 'Trace URL', checked: true },
+        ] });
+
+        return groups;
+      }
+
+      function renderExportModal(groups) {
+        var overlay = document.getElementById('export-modal-overlay');
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.id = 'export-modal-overlay';
+          overlay.className = 'export-modal-overlay';
+          document.body.appendChild(overlay);
+        }
+        var html = '<div class="export-modal"><div class="export-modal-header"><h3>Select Export Columns</h3><div class="export-modal-actions-top"><button id="export-select-all">Select All</button><button id="export-deselect-all">Deselect All</button></div></div><div class="export-modal-body">';
+        for (var gi = 0; gi < groups.length; gi++) {
+          var g = groups[gi];
+          html += '<div class="export-group"><div class="export-group-header" data-group="' + gi + '"><span class="group-toggle">\u25BC</span><span class="group-name">' + escapeHtml(g.group) + '</span><input type="checkbox" class="group-check" data-group="' + gi + '" checked /></div><div class="export-group-items" data-group="' + gi + '">';
+          for (var ci = 0; ci < g.columns.length; ci++) {
+            var col = g.columns[ci];
+            var chk = col.checked ? ' checked' : '';
+            var cls = col.indent ? ' indent' : '';
+            html += '<label class="export-col-item' + cls + '"><input type="checkbox" data-group="' + gi + '" data-col="' + ci + '"' + chk + ' /> ' + escapeHtml(col.label) + '</label>';
+          }
+          html += '</div></div>';
+        }
+        html += '</div><div class="export-modal-footer"><span style="flex:1;font-size:var(--font-xs);color:var(--text-muted);font-family:var(--font-mono);">' + _exportItems.length + ' item' + (_exportItems.length !== 1 ? 's' : '') + '</span><button class="export-cancel" id="export-modal-cancel">Cancel</button><button class="export-confirm" id="export-modal-confirm">Export</button></div></div>';
+        overlay.innerHTML = html;
+
+        // Wire group header toggle (collapse/expand)
+        overlay.querySelectorAll('.export-group-header').forEach(function(hdr) {
+          hdr.addEventListener('click', function(e) {
+            if (e.target.type === 'checkbox') return;
+            var gi = hdr.dataset.group;
+            var items = overlay.querySelector('.export-group-items[data-group="' + gi + '"]');
+            var toggle = hdr.querySelector('.group-toggle');
+            items.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+          });
+        });
+
+        // Wire group checkbox (check/uncheck all in group)
+        overlay.querySelectorAll('.group-check').forEach(function(gc) {
+          gc.addEventListener('change', function() {
+            var gi = gc.dataset.group;
+            overlay.querySelectorAll('input[data-group="' + gi + '"][data-col]').forEach(function(cb) { cb.checked = gc.checked; });
+          });
+        });
+
+        // Select All / Deselect All
+        document.getElementById('export-select-all').addEventListener('click', function() {
+          overlay.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = true; });
+        });
+        document.getElementById('export-deselect-all').addEventListener('click', function() {
+          overlay.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
+        });
+
+        // Cancel
+        document.getElementById('export-modal-cancel').addEventListener('click', function() { overlay.classList.remove('open'); });
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.classList.remove('open'); });
+
+        // Confirm export
+        document.getElementById('export-modal-confirm').addEventListener('click', function() {
+          var selectedCols = [];
+          for (var gi = 0; gi < groups.length; gi++) {
+            for (var ci = 0; ci < groups[gi].columns.length; ci++) {
+              var cb = overlay.querySelector('input[data-group="' + gi + '"][data-col="' + ci + '"]');
+              if (cb && cb.checked) selectedCols.push(groups[gi].columns[ci]);
+            }
+          }
+          overlay.classList.remove('open');
+          if (selectedCols.length > 0) performExport(_exportItems, selectedCols);
+        });
+
+        overlay.classList.add('open');
+      }
+
+      function getExportCellValue(row, colKey) {
+        if (colKey === '#') return String(row.index + 1);
+        if (colKey === 'item_id') return row.item_id || String(row.index);
+        if (colKey === 'status') return row.status || '';
+        if (colKey === 'input') return stringify(row.input_full || row.input);
+        if (colKey === 'expected') return stringify(row.expected_full || row.expected);
+        if (colKey === 'output') return stringify(row.output_full || row.output);
+        if (colKey === 'latency_ms') return String(row.latency_ms || '');
+        if (colKey === 'trace_id') return row.trace_id || '';
+        if (colKey === 'trace_url') return row.trace_url || buildLangfuseTraceUrl(row.trace_id) || '';
+
+        if (colKey.startsWith('input.')) {
+          var obj = tryParseObj(row.input_full || row.input);
+          return obj ? stringify(obj[colKey.slice(6)]) : '';
+        }
+        if (colKey.startsWith('expected.')) {
+          var obj = tryParseObj(row.expected_full || row.expected);
+          return obj ? stringify(obj[colKey.slice(9)]) : '';
+        }
+        if (colKey.startsWith('output.')) {
+          var obj = tryParseObj(row.output_full || row.output);
+          return obj ? stringify(obj[colKey.slice(7)]) : '';
+        }
+
+        // meta:key
+        if (colKey.startsWith('meta:')) {
+          var k = colKey.slice(5);
+          var md = row.item_metadata || {};
+          var val = md[k];
+          return val == null ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+        }
+
+        // metric_score
+        if (colKey.endsWith('_score')) {
+          var m = colKey.slice(0, -6);
+          var mi = state.allMetrics.indexOf(m);
+          if (mi >= 0) return String((row.metric_values || [])[mi] ?? '');
+          return '';
+        }
+
+        // metric:metakey
+        var colonIdx = colKey.indexOf(':');
+        if (colonIdx > 0) {
+          var m = colKey.slice(0, colonIdx);
+          var k = colKey.slice(colonIdx + 1);
+          var mm = row.metric_meta || {};
+          var meta = mm[m] || {};
+          var val = meta[k];
+          return val == null ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
+        }
+
+        return '';
+      }
+
+      function performExport(items, selectedCols) {
+        var header = selectedCols.map(function(c) { return c.key; });
+        var csvRows = [header.map(function(h) { return csvEscape(h); }).join(',')];
+        for (var i = 0; i < items.length; i++) {
+          var row = items[i].row;
+          var r = selectedCols.map(function(c) { return csvEscape(getExportCellValue(row, c.key)); });
           csvRows.push(r.join(','));
         }
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
+        var blob = new Blob(['\ufeff' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
         a.href = url;
         a.download = (state.run?.run_name || 'run') + '_export.csv';
         a.click();
         URL.revokeObjectURL(url);
+      }
+
+      el('export-filtered-btn').addEventListener('click', function() {
+        _exportItems = getFilteredItems();
+        if (_exportItems.length === 0) return;
+        var groups = discoverExportColumns(_exportItems);
+        renderExportModal(groups);
       });
 
       // ── Initialize ──

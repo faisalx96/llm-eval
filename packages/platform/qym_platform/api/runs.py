@@ -690,9 +690,10 @@ def update_root_cause(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update root_cause in item_metadata for a single run's item."""
+    """Update root_cause and feedback (root_cause_note) in item_metadata for a single run's item."""
     item_id = request.get("item_id")
     root_cause = (request.get("root_cause") or "").strip()
+    root_cause_note = request.get("root_cause_note")
     run_id = request.get("run_id")
 
     if not item_id or not run_id:
@@ -715,6 +716,14 @@ def update_root_cause(
         meta["root_cause"] = root_cause
     else:
         meta.pop("root_cause", None)
+
+    if root_cause_note is not None:
+        note = str(root_cause_note).strip()
+        if note:
+            meta["root_cause_note"] = note
+        else:
+            meta.pop("root_cause_note", None)
+
     item.item_metadata = meta
 
     db.commit()
