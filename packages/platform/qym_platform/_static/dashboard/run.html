@@ -42,6 +42,36 @@
     }
     .back-link:hover { text-decoration: underline; }
 
+    .export-html-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      font-size: var(--font-sm);
+      font-weight: 500;
+      font-family: var(--font-sans);
+      color: var(--bg-void);
+      background: var(--accent-primary);
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .export-html-btn:hover {
+      background: #00e8bb;
+      transform: translateY(-1px);
+    }
+    .export-html-btn:active { transform: translateY(0); }
+    .export-html-btn svg { flex-shrink: 0; }
+    .export-html-download {
+      background: transparent;
+      color: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+    }
+    .export-html-download:hover {
+      background: rgba(0, 212, 170, 0.12);
+    }
     /* ─── Hero Summary Card ─── */
     .run-summary {
       margin-bottom: var(--space-xl);
@@ -2010,7 +2040,17 @@
           <div class="run-title">Run Detail</div>
           <div class="run-subtitle" id="run-subtitle">—</div>
         </div>
-        <a href="" class="back-link" id="back-link-header">&larr; Back to Dashboard</a>
+        <div style="display:flex;align-items:center;gap:var(--space-sm);">
+          <button class="export-html-btn export-html-download" id="export-download-btn" style="display:none;" title="Download a new file with your edits baked in">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download with Changes
+          </button>
+          <button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+          </button>
+          <a href="" class="back-link" id="back-link-header">&larr; Back to Dashboard</a>
+        </div>
       </div>
 
       <div class="run-summary" id="run-summary"></div>
@@ -2183,6 +2223,7 @@
         latencyDistFilter: null,
         complexityFilter: null,
         domainFilter: null,
+        domainExclusive: new Set(),  // domains that must be sole value
         rootCauseFilter: null,
         complexityValues: [],
         domainValues: [],
@@ -2194,6 +2235,8 @@
         langfuseHost: '',
         langfuseProjectId: '',
       };
+
+      const IS_EXPORT = !!window.__QYM_EXPORT__;
 
       const el = (id) => document.getElementById(id);
 
@@ -2433,6 +2476,24 @@
       // ── Data loading ──
 
       async function loadRunData() {
+        if (window.__QYM_EXPORT_DATA__) {
+          var data = window.__QYM_EXPORT_DATA__;
+          // Check localStorage for saved edits
+          var storageKey = 'qym_export_' + (data.run.file_path || 'unknown');
+          try {
+            var saved = localStorage.getItem(storageKey);
+            if (saved) data = JSON.parse(saved);
+          } catch (e) {}
+          state.run = data.run;
+          state.snapshot = data.snapshot;
+          state.langfuseHost = data.run.langfuse_host || '';
+          state.langfuseProjectId = data.run.langfuse_project_id || '';
+          state._exportStorageKey = storageKey;
+          processRun();
+          render();
+          if (IS_EXPORT) applyExportMode();
+          return;
+        }
         if (!RUN_ID) { showEmpty(); return; }
         try {
           const res = await fetch(apiUrl('api/runs/' + RUN_ID));
@@ -2563,7 +2624,6 @@
         populateMetricSelectors();
         renderOverview();
         renderErrorAnalysis();
-        renderMetadataBreakdown();
         buildCategoryDropdowns();
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
@@ -2653,7 +2713,6 @@
             if (!isNaN(v) && v >= 0 && v <= 100) {
               state.metricThresholds[state.selectedMetric] = v / 100;
               renderOverview();
-              renderMetadataBreakdown();
               state.page = 1;
               renderItems();
             }
@@ -2677,7 +2736,6 @@
               state.scoreDistFilter = null;
               state.page = 1;
               updateThresholdControl();
-              renderMetadataBreakdown();
               renderItems();
             });
           }
@@ -2886,7 +2944,7 @@
             const rangeMin = b / 10;
             const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
             const pct = totalWithScores > 0 ? ((count / totalWithScores) * 100).toFixed(0) : '0';
-            barsHtml += '<div class="dist-chart-col" data-metric="' + escapeAttr(metric) + '" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + count + ' items (' + pct + '%)">' +
+            barsHtml += '<div class="dist-chart-col" data-metric="' + escapeAttr(metric) + '" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + count + ' items (' + pct + '%) — Click to filter">' +
               '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
               '<div class="bar-fill" style="height:' + barH + 'px;background:' + color + ';"></div>' +
               '<span class="bar-label">' + label + '</span>' +
@@ -2934,7 +2992,7 @@
             const count = counts[i];
             const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
             const pct = latTotal > 0 ? ((count / latTotal) * 100).toFixed(0) : '0';
-            barsHtml += '<div class="dist-chart-col" data-lat-min="' + latBuckets[i].min + '" data-lat-max="' + latBuckets[i].max + '" title="' + latBuckets[i].label + ': ' + count + ' items (' + pct + '%)">' +
+            barsHtml += '<div class="dist-chart-col" data-lat-min="' + latBuckets[i].min + '" data-lat-max="' + latBuckets[i].max + '" title="' + latBuckets[i].label + ': ' + count + ' items (' + pct + '%) — Click to filter">' +
               '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
               '<div class="bar-fill" style="height:' + barH + 'px;background:' + latBuckets[i].color + ';"></div>' +
               '<span class="bar-label">' + latBuckets[i].label + '</span>' +
@@ -3049,18 +3107,33 @@
         const isBoolean = state.metricIsBoolean[metric];
         const rows = state.snapshot.rows || [];
 
+        // Get filtered item IDs so breakdown only shows items matching current filters
+        const filteredItems = getFilteredItems();
+        const filteredItemIds = new Set(filteredItems.map(item => {
+          const r = item.row;
+          return r.item_id || String(r.index);
+        }));
+
         let html = '<h3 class="section-title">Performance by Category</h3><div class="comparison-stats">';
 
         for (const bdKey of breakdownKeys) {
           const groups = {};
           for (const row of rows) {
+            // Only include items that pass the current filters
+            const itemId = row.item_id || String(row.index);
+            if (!filteredItemIds.has(itemId)) continue;
             const md = row.item_metadata || {};
             const rawVal = md[bdKey] ?? '';
             const groupVals = (bdKey === 'domain' || bdKey === 'patterns')
               ? parseMetaList(rawVal)
               : [String(rawVal)];
             if (groupVals.length === 0) groupVals.push('');
+            // When a domain filter is active, for filtered domains only count items
+            // where that domain is the sole value (not multi-tagged)
+            const domainIsSole = (bdKey === 'domain' || bdKey === 'patterns') && groupVals.length === 1;
             for (const groupVal of groupVals) {
+              if ((bdKey === 'domain' || bdKey === 'patterns') && state.domainFilter !== null
+                  && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
               if (bdKey === 'root_cause' && !groupVal) continue;
               const effective = groupVal || 'unknown';
               if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
@@ -3097,7 +3170,7 @@
           } else if (bdKey === 'root_cause') {
             groupStats.sort((a,b) => b.itemCount - a.itemCount);
           } else {
-            groupStats.sort((a,b) => a.groupVal.localeCompare(b.groupVal));
+            groupStats.sort((a,b) => b.avgScore - a.avgScore);
           }
 
           if (groupStats.length === 0 && bdKey !== 'root_cause') continue;
@@ -3117,7 +3190,7 @@
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
               const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
-              html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
+              html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
               let cardValClass = '';
@@ -3128,8 +3201,8 @@
                 else if (['hard','difficult','advanced','high','complex'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
-              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;">' +
-                '<div class="breakdown-card-label" title="' + escapeAttr(g.groupVal) + '">' + escapeHtml(g.groupVal) + '</div>' +
+              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '">' +
+                '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
                 '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
                 '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
             }
@@ -3146,8 +3219,18 @@
             const cat = card.dataset.bdCategory;
             const val = card.dataset.bdValue;
             const current = getCatFilter(cat);
-            // Toggle: if already filtering to just this value, clear the filter
-            if (current !== null && current.length === 1 && current[0] === val) {
+            if (cat === 'domain') {
+              // Domain drill-down: 1st click = filter, 2nd click = exclusive (sole value only)
+              if (current === null) {
+                state.domainExclusive.delete(val);
+                setCatFilter(cat, [val]);
+              } else if (current.includes(val) && !state.domainExclusive.has(val)) {
+                state.domainExclusive.add(val);
+              } else if (!current.includes(val)) {
+                state.domainExclusive.delete(val);
+                setCatFilter(cat, current.concat(val));
+              }
+            } else if (current !== null && current.length === 1 && current[0] === val) {
               setCatFilter(cat, null);
             } else {
               setCatFilter(cat, [val]);
@@ -3193,7 +3276,15 @@
           if (state.domainFilter !== null) {
             if (state.domainFilter.length === 0) continue;
             const domainVals = parseMetaList(md.domain).map(v => v.toLowerCase());
-            if (!state.domainFilter.some(f => domainVals.includes(f.toLowerCase()))) continue;
+            // AND logic: item must contain ALL selected domains
+            if (!state.domainFilter.every(f => domainVals.includes(f.toLowerCase()))) continue;
+            // Exclusive domains: item must have ONLY that domain (sole value)
+            if (state.domainExclusive.size > 0) {
+              for (const ex of state.domainExclusive) {
+                if (domainVals.includes(ex.toLowerCase()) && domainVals.length > 1) { domainVals.length = 0; break; }
+              }
+              if (domainVals.length === 0) continue;
+            }
           }
           if (state.rootCauseFilter !== null) {
             if (state.rootCauseFilter.length === 0) continue;
@@ -3252,6 +3343,9 @@
       }
 
       function renderItems(scrollToTop) {
+        // Keep Performance by Category in sync with the current filters
+        renderMetadataBreakdown();
+
         const container = el('items-grid');
         const paginationEl = el('pagination');
         const filterCountEl = el('filter-count');
@@ -3440,6 +3534,19 @@
       // ── Metric edit handlers ──
 
       async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+        if (IS_EXPORT) {
+          const rows = state.snapshot.rows || [];
+          const row = rows.find(r => Number(r.index) === rowIndex);
+          if (row) {
+            const metricIdx = state.allMetrics.indexOf(metricName);
+            if (metricIdx >= 0 && row.metric_values) {
+              var parsed = parseFloat(newScore);
+              row.metric_values[metricIdx] = isNaN(parsed) ? newScore : parsed;
+            }
+          }
+          autoSaveExport();
+          return { row: row };
+        }
         const res = await fetch(apiUrl('api/runs/update_metric'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3487,7 +3594,6 @@
               if (result && result.row) {
                 applyUpdatedRow(result.row);
                 renderOverview();
-                renderMetadataBreakdown();
                 renderItems();
               }
             } catch (err) {
@@ -3542,6 +3648,20 @@
       }
 
       async function saveFeedback(itemId, note) {
+        var rows = state.snapshot.rows || [];
+        var row = rows.find(function(r) { return (r.item_id || String(r.index)) === itemId; });
+
+        if (IS_EXPORT) {
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (note) row.item_metadata.root_cause_note = note;
+            else delete row.item_metadata.root_cause_note;
+          }
+          autoSaveExport();
+          renderItems();
+          return;
+        }
+
         var runId = state.run?.file_path;
         if (!runId) return;
         try {
@@ -3552,8 +3672,6 @@
           });
           var data = await res.json().catch(function() { return {}; });
           if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
-          var rows = state.snapshot.rows || [];
-          var row = rows.find(function(r) { return (r.item_id || String(r.index)) === itemId; });
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
             if (note) row.item_metadata.root_cause_note = note;
@@ -3642,6 +3760,26 @@
       }
 
       async function saveRootCause(itemId, rootCause) {
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+
+        function applyLocally() {
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (rootCause) { row.item_metadata.root_cause = rootCause; row.item_metadata.root_cause_source = 'human'; delete row.item_metadata.root_cause_confidence; } else { delete row.item_metadata.root_cause; delete row.item_metadata.root_cause_source; delete row.item_metadata.root_cause_confidence; }
+          }
+          if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
+          if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
+          buildCategoryDropdowns();
+          renderItems();
+        }
+
+        if (IS_EXPORT) {
+          applyLocally();
+          autoSaveExport();
+          return;
+        }
+
         const runId = state.run?.file_path;
         if (!runId) return;
         try {
@@ -3652,19 +3790,7 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
-
-          const rows = state.snapshot.rows || [];
-          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-          if (row) {
-            if (!row.item_metadata) row.item_metadata = {};
-            if (rootCause) { row.item_metadata.root_cause = rootCause; row.item_metadata.root_cause_source = 'human'; delete row.item_metadata.root_cause_confidence; } else { delete row.item_metadata.root_cause; delete row.item_metadata.root_cause_source; delete row.item_metadata.root_cause_confidence; }
-          }
-          if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
-          if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
-
-          renderMetadataBreakdown();
-          buildCategoryDropdowns();
-          renderItems();
+          applyLocally();
         } catch (err) { console.error('Error saving root cause:', err); }
       }
 
@@ -3800,7 +3926,7 @@
       }
       function setCatFilter(cat, val) {
         if (cat === 'complexity') state.complexityFilter = val;
-        else if (cat === 'domain') state.domainFilter = val;
+        else if (cat === 'domain') { state.domainFilter = val; if (val === null) state.domainExclusive.clear(); }
         else if (cat === 'root_cause') state.rootCauseFilter = val;
       }
       function getCatValues(cat) {
@@ -3945,6 +4071,7 @@
         state.searchQuery = '';
         state.complexityFilter = null;
         state.domainFilter = null;
+        state.domainExclusive.clear();
         state.rootCauseFilter = null;
         state.scoreDistFilter = null;
         state.latencyDistFilter = null;
@@ -4238,47 +4365,123 @@
       });
 
       // ── AI Evaluator Playground ──────────────────────────────
-      QymPlayground.init({
-          apiUrl: apiUrl,
-          getRunId: function () { return state.run?.file_path || state.run?.id; },
-          getRows: function () {
-              return (state.snapshot?.rows || []).map(function (r) {
-                  return {
-                      item_id: r.item_id,
-                      index: r.index,
-                      input: r.input,
-                      output: r.output,
-                      expected: r.expected,
-                      error: r.error,
-                      item_metadata: r.item_metadata,
-                      scores: r.scores || {},
-                      metric_score: r[state.selectedMetric] != null ? parseFloat(r[state.selectedMetric]) : null,
-                  };
-              });
-          },
-          getMetric: function () { return state.selectedMetric; },
-          getThreshold: function () { return state.metricThresholds?.[state.selectedMetric] || 0.8; },
-          onAnalysisComplete: function (data) {
-              // Update local state with new root causes
-              var rows = state.snapshot?.rows || [];
-              for (var i = 0; i < (data.results || []).length; i++) {
-                  var result = data.results[i];
-                  var row = rows.find(function (r) { return r.item_id === result.item_id; });
-                  if (row) {
-                      if (!row.item_metadata) row.item_metadata = {};
-                      row.item_metadata.root_cause = result.root_cause;
-                      row.item_metadata.root_cause_note = result.root_cause_note;
-                      row.item_metadata.root_cause_source = 'ai';
-                      row.item_metadata.root_cause_confidence = result.confidence;
-                  }
-              }
-              if (typeof renderMetadataBreakdown === 'function') renderMetadataBreakdown();
-              if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
-              renderItems();
-          },
-          showToast: showToast,
-          escapeHtml: escapeHtml,
-      });
+      if (!IS_EXPORT && typeof QymPlayground !== 'undefined') {
+        QymPlayground.init({
+            apiUrl: apiUrl,
+            getRunId: function () { return state.run?.file_path || state.run?.id; },
+            getRows: function () {
+                return (state.snapshot?.rows || []).map(function (r) {
+                    return {
+                        item_id: r.item_id,
+                        index: r.index,
+                        input: r.input,
+                        output: r.output,
+                        expected: r.expected,
+                        error: r.error,
+                        item_metadata: r.item_metadata,
+                        scores: r.scores || {},
+                        metric_score: r[state.selectedMetric] != null ? parseFloat(r[state.selectedMetric]) : null,
+                    };
+                });
+            },
+            getMetric: function () { return state.selectedMetric; },
+            getThreshold: function () { return state.metricThresholds?.[state.selectedMetric] || 0.8; },
+            onAnalysisComplete: function (data) {
+                // Update local state with new root causes
+                var rows = state.snapshot?.rows || [];
+                for (var i = 0; i < (data.results || []).length; i++) {
+                    var result = data.results[i];
+                    var row = rows.find(function (r) { return r.item_id === result.item_id; });
+                    if (row) {
+                        if (!row.item_metadata) row.item_metadata = {};
+                        row.item_metadata.root_cause = result.root_cause;
+                        row.item_metadata.root_cause_note = result.root_cause_note;
+                        row.item_metadata.root_cause_source = 'ai';
+                        row.item_metadata.root_cause_confidence = result.confidence;
+                    }
+                }
+                if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
+                renderItems();
+            },
+            showToast: showToast,
+            escapeHtml: escapeHtml,
+        });
+      }
+
+      // ── Export mode: hide mutation UI ──
+      function applyExportMode() {
+        // Add warning banner
+        var container = document.querySelector('.run-container');
+        if (container) {
+          var warning = document.createElement('div');
+          warning.className = 'export-banner export-banner-warning';
+          warning.innerHTML = '<span class="export-banner-icon">&#9888;</span> The original file is not modified. To share your annotations with others, click <strong>Download with Changes</strong> to get an updated file.';
+          container.insertBefore(warning, container.firstChild);
+          var info = document.createElement('div');
+          info.className = 'export-banner export-banner-info';
+          info.innerHTML = '<span class="export-banner-icon">&#9432;</span> <strong>Exported view</strong> — You can edit root causes, feedback, and scores. Edits are saved in your browser and persist on refresh.';
+          container.insertBefore(info, container.firstChild);
+        }
+        // Hide auto-analyze button
+        var aaBtn = el('auto-analyze-btn');
+        if (aaBtn) aaBtn.style.display = 'none';
+        // Hide Share button (user already has the file)
+        var shareBtn = el('export-share-btn');
+        if (shareBtn) shareBtn.style.display = 'none';
+        // Show Download with Changes button
+        var dlBtn = el('export-download-btn');
+        if (dlBtn) {
+          dlBtn.style.display = '';
+          dlBtn.addEventListener('click', downloadExportHtml);
+        }
+        // Hide back link (no server)
+        var backLink = el('back-link-header');
+        if (backLink) backLink.style.display = 'none';
+      }
+
+      function autoSaveExport() {
+        var key = state._exportStorageKey;
+        if (!key) return;
+        try {
+          var data = { run: state.run, snapshot: state.snapshot };
+          localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {}
+      }
+
+      function downloadExportHtml() {
+        var updatedData = { run: state.run, snapshot: state.snapshot };
+        var dataJson = JSON.stringify(updatedData);
+        dataJson = dataJson.replace(/<\//g, '<\\/');
+
+        var html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        html = html.replace(
+          /window\.__QYM_EXPORT_DATA__\s*=\s*.*?;\s*\n/,
+          'window.__QYM_EXPORT_DATA__ = ' + dataJson + ';\n'
+        );
+
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (state.run?.run_name || 'run') + '_annotated.html';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('success', 'Downloaded', 'File with your annotations is ready to share');
+      }
+
+
+
+      // ── Share button (live mode — server export) ──
+      if (!IS_EXPORT) {
+        var shareBtn = el('export-share-btn');
+        if (shareBtn) {
+          shareBtn.addEventListener('click', function() {
+            var runId = state.run?.file_path || RUN_ID;
+            if (!runId) return;
+            window.open(apiUrl('api/runs/' + runId + '/export-html'), '_blank');
+          });
+        }
+      }
 
       // ── Initialize ──
       loadRunData();

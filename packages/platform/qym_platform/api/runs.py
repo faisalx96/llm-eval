@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -460,18 +460,8 @@ def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
     return owner.team_unit_id in managed_team_ids
 
 
-@router.get("/api/runs/{run_id:path}")
-def legacy_run_data(
-    run_id: str,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
-) -> Dict[str, Any]:
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        return {"error": "Run not found"}
-    if not _can_view_run(db, principal, run):
-        return {"error": "Access denied"}
-
+def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
+    """Build the run + snapshot data dict used by the UI."""
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
     metrics = list(run.metrics or [])
 
@@ -570,6 +560,91 @@ def legacy_run_data(
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
     }
+
+
+@router.get("/api/runs/{run_id:path}/export-html")
+def export_run_html(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> HTMLResponse:
+    """Export a run page as a self-contained HTML file with all assets inlined."""
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not _can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    data = _build_run_data(db, run)
+    dashboard_dir = _platform_static_dir() / "dashboard"
+
+    # Read source files
+    run_html = (dashboard_dir / "run.html").read_text(encoding="utf-8")
+    css_content = (dashboard_dir / "dashboard.css").read_text(encoding="utf-8")
+    metrics_js = (dashboard_dir / "metrics.js").read_text(encoding="utf-8")
+
+    # Inline dashboard.css
+    run_html = run_html.replace(
+        '<link rel="stylesheet" href="../static/dashboard.css">',
+        f"<style>\n{css_content}\n</style>",
+    )
+
+    # Inline metrics.js
+    run_html = run_html.replace(
+        '<script src="../static/metrics.js"></script>',
+        f"<script>\n{metrics_js}\n</script>",
+    )
+
+    # Remove playground.js (not needed in export)
+    run_html = run_html.replace('<script src="../static/playground.js"></script>', "")
+
+    # Remove favicon (would be a broken link)
+    run_html = run_html.replace(
+        '<link rel="icon" type="image/png" href="../static/qym_icon.png">', ""
+    )
+
+    # Serialize data — escape </script> sequences in JSON to prevent premature tag closing
+    data_json = json.dumps(data, ensure_ascii=False, default=str)
+    data_json = data_json.replace("</", "<\\/")
+
+    # Inject export flag + data before the main inline <script> block
+    export_script = (
+        "<script>\n"
+        "window.__QYM_EXPORT__ = true;\n"
+        f"window.__QYM_EXPORT_DATA__ = {data_json};\n"
+        "</script>\n"
+    )
+    # Insert just before the main <script> that starts the app
+    run_html = run_html.replace(
+        "  <script>\n    (() => {",
+        f"{export_script}  <script>\n    (() => {{",
+        1,
+    )
+
+    run_name = data["run"].get("run_name", run_id)
+    # Sanitize filename
+    safe_name = re.sub(r'[^\w\-.]', '_', str(run_name))[:80]
+    filename = f"qym-run-{safe_name}.html"
+
+    return HTMLResponse(
+        content=run_html,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/api/runs/{run_id:path}")
+def legacy_run_data(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        return {"error": "Run not found"}
+    if not _can_view_run(db, principal, run):
+        return {"error": "Access denied"}
+
+    return _build_run_data(db, run)
 
 
 @router.post("/api/runs/update_metric")

@@ -2587,6 +2587,7 @@
         searchQuery: '',              // #19: search items by input text
         complexityFilter: null,       // #2: null = all (default), [] = none, [...] = specific values
         domainFilter: null,           // #2: null = all (default), [] = none, [...] = specific values
+        domainExclusive: new Set(),  // domains that must be sole value
         complexityValues: [],         // unique complexity values found in data
         domainValues: [],             // unique domain values found in data
         passRateOp: '',               // #20: '' = any, 'gte' = at least, 'lte' = at most, 'eq' = exactly
@@ -2867,7 +2868,6 @@
                 state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
               }
               renderComparisonStats();
-              renderMetadataBreakdown();
               renderItems();
             }
           });
@@ -3256,7 +3256,6 @@
 
         renderSummaries();
         renderComparisonStats();
-        renderMetadataBreakdown();
         renderMetricsTable();
         renderItems();
       }
@@ -3285,6 +3284,10 @@
         const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
         const K = state.runs.length;
 
+        // Get filtered item IDs so breakdown only shows items matching current filters
+        const filteredItems = getFilteredItems();
+        const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
+
         let html = '<h3 class="section-title">Performance by Category</h3><div class="comparison-stats">';
 
         for (const bdKey of breakdownKeys) {
@@ -3299,16 +3302,24 @@
             const mIdx = metricNames.indexOf(selectedMetric);
 
             for (const row of rows) {
+              const itemId = row.item_id || String(row.index);
+              // Only include items that pass the current Item-by-Item filters
+              if (!filteredItemIds.has(itemId)) continue;
+
               const md = row.item_metadata || {};
               const rawVal = md[bdKey] ?? '';
               const groupVals = (bdKey === 'domain' || bdKey === 'patterns')
                 ? parseMetaList(rawVal)
                 : [String(rawVal)];
               if (groupVals.length === 0) groupVals.push('');
+              // When a domain filter is active, for filtered domains only count items
+              // where that domain is the sole value (not multi-tagged)
+              const domainIsSole = (bdKey === 'domain' || bdKey === 'patterns') && groupVals.length === 1;
               for (const groupVal of groupVals) {
+                if ((bdKey === 'domain' || bdKey === 'patterns') && state.domainFilter !== null
+                    && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
                 if (bdKey === 'root_cause' && !groupVal) continue;
                 const effectiveGroup = groupVal || 'unknown';
-                const itemId = row.item_id || String(row.index);
 
                 if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
                 if (!itemsByGroup[effectiveGroup][itemId]) itemsByGroup[effectiveGroup][itemId] = { scores: [], latencies: [], runCount: 0 };
@@ -3375,7 +3386,7 @@
             const rcKey = state.rcCountMode === 'unique' ? 'itemCount' : 'totalAssignments';
             groupStats.sort((a, b) => b[rcKey] - a[rcKey]);
           } else {
-            groupStats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
+            groupStats.sort((a, b) => b.avgScore - a.avgScore);
           }
           if (groupStats.length === 0 && bdKey !== 'root_cause') continue;
 
@@ -3401,7 +3412,7 @@
             if (bdKey === 'root_cause') {
               const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
               const rcCount = state.rcCountMode === 'unique' ? g.itemCount : g.totalAssignments;
-              html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
+              html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
                 <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
                 <div class="breakdown-card-score" style="color: ${rcColor};">${rcCount}</div>
               </div>`;
@@ -3423,8 +3434,8 @@
               const passAtKStr = formatPercent(g.passAtK);
               const passAtKClass = scoreColorClass(g.passAtK);
 
-              html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;">
-                <div class="breakdown-card-label" title="${escapeAttr(g.groupVal)}">${escapeHtml(g.groupVal)}</div>
+              html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
+                <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
                 <div class="breakdown-card-scores">
                   <div class="score-col">
                     <span class="score-col-label">Avg@${K}</span>
@@ -3459,7 +3470,18 @@
             const cat = card.dataset.bdCategory;
             const val = card.dataset.bdValue;
             const current = getCatFilter(cat);
-            if (current !== null && current.length === 1 && current[0] === val) {
+            if (cat === 'domain') {
+              // Domain drill-down: 1st click = filter, 2nd click = exclusive (sole value only)
+              if (current === null) {
+                state.domainExclusive.delete(val);
+                setCatFilter(cat, [val]);
+              } else if (current.includes(val) && !state.domainExclusive.has(val)) {
+                state.domainExclusive.add(val);
+              } else if (!current.includes(val)) {
+                state.domainExclusive.delete(val);
+                setCatFilter(cat, current.concat(val));
+              }
+            } else if (current !== null && current.length === 1 && current[0] === val) {
               setCatFilter(cat, null);
             } else {
               setCatFilter(cat, [val]);
@@ -3875,7 +3897,16 @@
             if (state.domainFilter !== null) {
               if (state.domainFilter.length === 0) continue;
               const domainVals = parseMetaList(md.domain).map(v => v.toLowerCase());
-              if (!state.domainFilter.some(f => domainVals.includes(f.toLowerCase()))) continue;
+              // AND logic: item must contain ALL selected domains
+              if (!state.domainFilter.every(f => domainVals.includes(f.toLowerCase()))) continue;
+              // Exclusive domains: item must have ONLY that domain (sole value)
+              if (state.domainExclusive.size > 0) {
+                let excluded = false;
+                for (const ex of state.domainExclusive) {
+                  if (domainVals.includes(ex.toLowerCase()) && domainVals.length > 1) { excluded = true; break; }
+                }
+                if (excluded) continue;
+              }
             }
             if (state.rootCauseFilter !== null) {
               if (state.rootCauseFilter.length === 0) continue;
@@ -3976,6 +4007,9 @@
       }
 
       function renderItems(scrollToTop = false) {
+        // Keep Performance by Category in sync with the current Item-by-Item filters
+        renderMetadataBreakdown();
+
         const container = el('items-grid');
         const paginationEl = el('pagination');
         const filterCountEl = el('filter-count');
@@ -4775,7 +4809,6 @@
           }
 
           // Re-render affected UI
-          renderMetadataBreakdown();
           buildCategoryDropdowns();
           renderItems();
         } catch (err) {
@@ -5091,6 +5124,7 @@
         state.searchQuery = '';
         state.complexityFilter = null;
         state.domainFilter = null;
+        state.domainExclusive.clear();
         state.rootCauseFilter = null;
         state.passRateOp = '';
         state.passRateValue = 0;
@@ -5259,7 +5293,7 @@
       }
       function setCatFilter(cat, val) {
         if (cat === 'complexity') state.complexityFilter = val;
-        else if (cat === 'domain') state.domainFilter = val;
+        else if (cat === 'domain') { state.domainFilter = val; if (val === null) state.domainExclusive.clear(); }
         else if (cat === 'root_cause') state.rootCauseFilter = val;
       }
       function getCatValues(cat) {
@@ -5753,7 +5787,6 @@
                   }
               }
               state.rootCauseValues.sort();
-              if (typeof renderMetadataBreakdown === 'function') renderMetadataBreakdown();
               if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
               renderItems();
           },
