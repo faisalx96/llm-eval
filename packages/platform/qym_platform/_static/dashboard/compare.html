@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
   <script src="./static/metrics.js"></script>
+  <script src="./static/playground.js"></script>
   <style>
     /* Compare-specific styles */
     .compare-container {
@@ -2330,71 +2331,6 @@
     .auto-analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .auto-analyze-btn .ai-icon { font-size: 14px; }
 
-    .analyze-panel {
-        background: var(--bg-surface);
-        border: 1px solid rgba(168, 85, 247, 0.2);
-        border-radius: 8px;
-        padding: var(--space-md);
-        margin-bottom: var(--space-lg);
-        display: none;
-    }
-    .analyze-panel.visible { display: block; }
-    .analyze-panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: var(--space-md);
-    }
-    .analyze-panel-title {
-        font-size: var(--font-md);
-        font-weight: 600;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .analyze-filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-        align-items: center;
-        margin-bottom: var(--space-md);
-    }
-    .analyze-filters .fp-group {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .analyze-progress {
-        display: none;
-        padding: var(--space-sm);
-        background: var(--bg-elevated);
-        border-radius: 6px;
-        margin-bottom: var(--space-sm);
-    }
-    .analyze-progress.visible { display: block; }
-    .analyze-progress-bar {
-        height: 4px;
-        background: var(--border-subtle);
-        border-radius: 2px;
-        overflow: hidden;
-        margin-top: 6px;
-    }
-    .analyze-progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #a855f7, #00a8ff);
-        border-radius: 2px;
-        transition: width 0.3s;
-        animation: shimmer 1.5s infinite;
-    }
-    @keyframes shimmer {
-        0% { opacity: 1; }
-        50% { opacity: 0.7; }
-        100% { opacity: 1; }
-    }
-    .analyze-stats { font-size: var(--font-sm); color: var(--text-muted); }
-    .analyze-stat-val { font-weight: 600; color: var(--text-primary); }
-
     .badge-root-cause.ai-suggested { border-style: dashed !important; }
     .badge-root-cause .ai-indicator { font-size: 11px; margin-right: 2px; }
     .badge-root-cause .confidence-dot {
@@ -2479,53 +2415,6 @@
       </div>
 
       <!-- Side-by-side items -->
-      <div id="analyze-panel" class="analyze-panel">
-          <div class="analyze-panel-header">
-              <span class="analyze-panel-title">
-                  <span class="ai-icon">&#x1F916;</span> Auto Root Cause Analysis
-              </span>
-              <button id="analyze-panel-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" title="Close">&times;</button>
-          </div>
-          <div class="analyze-filters">
-              <div class="fp-group">
-                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Run</span>
-                  <select id="analyze-run-select" style="padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);max-width:200px;"></select>
-              </div>
-              <div class="fp-group">
-                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Analyze</span>
-                  <select id="analyze-item-filter" style="padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);">
-                      <option value="all">All Items</option>
-                      <option value="failed" selected>Failed Items</option>
-                      <option value="passed">Passed Items</option>
-                      <option value="errors">Error Items</option>
-                  </select>
-              </div>
-              <div class="fp-group">
-                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Score below</span>
-                  <input type="number" id="analyze-max-score" style="width:65px;padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);" min="0" max="1" step="0.1" value="0.8" />
-              </div>
-              <div class="fp-group">
-                  <label style="display:flex;align-items:center;gap:4px;font-size:var(--font-xs);color:var(--text-secondary);cursor:pointer;">
-                      <input type="checkbox" id="analyze-only-new" checked />
-                      Skip already analyzed
-                  </label>
-              </div>
-              <div class="fp-group" style="margin-left:auto;">
-                  <button id="run-analysis-btn" class="auto-analyze-btn">
-                      <span class="ai-icon">&#x1F916;</span> Run Analysis
-                  </button>
-              </div>
-          </div>
-          <div id="analyze-progress" class="analyze-progress">
-              <div class="analyze-stats">
-                  Analyzing <span class="analyze-stat-val" id="analyze-count">0</span> items...
-              </div>
-              <div class="analyze-progress-bar">
-                  <div class="analyze-progress-fill" id="analyze-progress-fill" style="width:0%"></div>
-              </div>
-          </div>
-          <div id="analyze-results" style="display:none;"></div>
-      </div>
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Comparison</h3>
 
@@ -3370,7 +3259,6 @@
         renderMetadataBreakdown();
         renderMetricsTable();
         renderItems();
-        initAnalyzePanel();
       }
 
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
@@ -3504,7 +3392,6 @@
                 <button class="${state.rcCountMode === 'unique' ? 'active' : ''}" data-rc-mode="unique" title="Count unique items only (deduplicated across runs)">Unique Items</button>
               </span>
             </div>`;
-            html += '<div id="analyze-panel-slot"></div>';
           } else {
             html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
           }
@@ -3592,13 +3479,9 @@
           });
         });
 
-        // Move analyze panel into the root cause section
-        const slot = document.getElementById('analyze-panel-slot');
-        const panel = el('analyze-panel');
-        if (slot && panel) slot.appendChild(panel);
-
-        // Re-wire auto-analyze button after re-render
-        if (_analyzeConfigCache[0]) wireAnalyzeButton(_analyzeConfigCache[0]);
+        // Wire auto-analyze button to open playground
+        var aaBtn = document.getElementById('auto-analyze-btn');
+        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
       }
 
       // Helper to create info icon with tooltip
@@ -3998,18 +3881,19 @@
               if (state.rootCauseFilter.length === 0) continue;
               const wantNone = state.rootCauseFilter.includes('__none__');
               const namedFilters = state.rootCauseFilter.filter(f => f !== '__none__');
-              const hasAnyRc = rowData.some(r => {
-                if (!r) return false;
-                const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
-                return !!(rmd.root_cause);
-              });
               const matchesNamed = namedFilters.length > 0 && rowData.some(r => {
                 if (!r) return false;
                 const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
                 const val = String(rmd.root_cause ?? '').toLowerCase();
                 return namedFilters.some(f => f.toLowerCase() === val);
               });
-              const matchesNone = wantNone && !hasAnyRc;
+              // Show row if ANY run has no root cause (partial match)
+              const hasAnyWithoutRc = rowData.some(r => {
+                if (!r) return true;
+                const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
+                return !rmd.root_cause;
+              });
+              const matchesNone = wantNone && hasAnyWithoutRc;
               if (!matchesNamed && !matchesNone) continue;
             }
           }
@@ -5294,13 +5178,13 @@
           if (state.runs.length > 0) {
             const rows = state.runs[0].snapshot?.rows || [];
             for (const row of rows) {
-              const md = row.item_metadata || {};
-              const hasRc = state.runs.some(run => {
+              // Count items where ANY run has no root cause (partial)
+              const anyMissingRc = state.runs.some(run => {
                 const rRows = run.snapshot?.rows || [];
                 const rRow = rRows.find(r => (r.item_id || String(r.index)) === (row.item_id || String(row.index)));
-                return rRow && rRow.item_metadata?.root_cause;
+                return !rRow || !rRow.item_metadata?.root_cause;
               });
-              if (!hasRc) noRcCount++;
+              if (anyMissingRc) noRcCount++;
             }
           }
           extraOptions = `<label class="multi-select-option" data-value="__none__">
@@ -5815,101 +5699,44 @@
         return val;
       }
 
-      // ── Auto-Analyze (compare view) ──────────────────────────
-      let _analyzeConfigCache = {};
-
-      function initAnalyzePanel() {
-          if (!state.runs || state.runs.length === 0) return;
-
-          // Populate run selector
-          const runSelect = el('analyze-run-select');
-          if (runSelect) {
-              runSelect.innerHTML = state.runs.map((r, i) =>
-                  '<option value="' + i + '">' + escapeHtml((r.run?.run_name || 'Run') + ' \u2014 ' + (r.run?.file_path || r.id || '').slice(-8)) + '</option>'
-              ).join('');
-          }
-
-          // Check LLM config for first run
-          const firstRunId = state.runs[0]?.run?.file_path || state.runs[0]?.id;
-          if (firstRunId) {
-              fetch(apiUrl('api/runs/' + encodeURIComponent(firstRunId) + '/analysis-config'))
-                  .then(r => r.json())
-                  .then(config => {
-                      _analyzeConfigCache[0] = config;
-                      wireAnalyzeButton(config);
-                  })
-                  .catch(err => console.warn('Analysis config unavailable:', err));
-          }
-
-          const closeBtn = el('analyze-panel-close');
-          if (closeBtn) closeBtn.addEventListener('click', () => {
-              el('analyze-panel').classList.remove('visible');
-          });
-
-          const runBtn = el('run-analysis-btn');
-          if (runBtn) runBtn.addEventListener('click', runAnalysis);
-      }
-
-      function wireAnalyzeButton(config) {
-          const btn = document.getElementById('auto-analyze-btn');
-          if (!btn) return;
-          if (!config.llm_configured) {
-              btn.disabled = true;
-              btn.title = 'LLM not configured \u2014 set it up in your Profile';
-              btn.addEventListener('click', () => {
-                  showToast('error', 'LLM Not Configured', 'Go to Profile \u2192 LLM Configuration to set up your provider.');
+      // ── AI Evaluator Playground (compare view) ──────────────
+      QymPlayground.init({
+          apiUrl: apiUrl,
+          getRunId: function () {
+              // Use first run by default in compare mode
+              if (!state.runs || state.runs.length === 0) return null;
+              return state.runs[0]?.run?.file_path || state.runs[0]?.id;
+          },
+          getRows: function () {
+              if (!state.runs || state.runs.length === 0) return [];
+              var rows = state.runs[0]?.snapshot?.rows || [];
+              var metric = state.selectedItemsMetric || state.selectedOverviewMetric;
+              return rows.map(function (r) {
+                  return {
+                      item_id: r.item_id,
+                      index: r.index,
+                      input: r.input,
+                      output: r.output,
+                      expected: r.expected,
+                      error: r.error,
+                      item_metadata: r.item_metadata,
+                      scores: r.scores || {},
+                      metric_score: metric && r[metric] != null ? parseFloat(r[metric]) : null,
+                  };
               });
-          } else {
-              btn.addEventListener('click', () => {
-                  el('analyze-panel').classList.toggle('visible');
-              });
-          }
-      }
-
-      async function runAnalysis() {
-          const runIdx = parseInt(el('analyze-run-select')?.value || '0', 10);
-          const run = state.runs[runIdx];
-          if (!run) return;
-          const runId = run.run?.file_path || run.id;
-
-          const btn = el('run-analysis-btn');
-          btn.disabled = true;
-          btn.textContent = 'Analyzing...';
-
-          el('analyze-progress').classList.add('visible');
-          el('analyze-progress-fill').style.width = '30%';
-          el('analyze-results').style.display = 'none';
-
-          const body = {
-              metric: state.selectedItemsMetric || state.selectedOverviewMetric,
-              item_filter: el('analyze-item-filter').value,
-              max_score: parseFloat(el('analyze-max-score').value) || undefined,
-              only_unanalyzed: el('analyze-only-new').checked,
-              threshold: state.metricThresholds[state.selectedItemsMetric || state.selectedOverviewMetric] || 0.8,
-          };
-
-          try {
-              const res = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/analyze'), {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(body),
-              });
-              el('analyze-progress-fill').style.width = '90%';
-              const data = await res.json();
-
-              if (!res.ok) {
-                  showToast('error', 'Analysis Failed', data.detail || 'Unknown error');
-                  return;
-              }
-
-              el('analyze-count').textContent = data.total_analyzed;
-              el('analyze-progress-fill').style.width = '100%';
-
-              // Update local state for the specific run
-              const snapshot = run.snapshot || {};
-              const rows = snapshot.rows || [];
-              for (const result of (data.results || [])) {
-                  const row = rows.find(r => r.item_id === result.item_id);
+          },
+          getMetric: function () { return state.selectedItemsMetric || state.selectedOverviewMetric; },
+          getThreshold: function () {
+              var m = state.selectedItemsMetric || state.selectedOverviewMetric;
+              return state.metricThresholds[m] || 0.8;
+          },
+          onAnalysisComplete: function (data) {
+              if (!state.runs || state.runs.length === 0) return;
+              var snapshot = state.runs[0]?.snapshot || {};
+              var rows = snapshot.rows || [];
+              for (var i = 0; i < (data.results || []).length; i++) {
+                  var result = data.results[i];
+                  var row = rows.find(function (r) { return r.item_id === result.item_id; });
                   if (row) {
                       if (!row.item_metadata) row.item_metadata = {};
                       row.item_metadata.root_cause = result.root_cause;
@@ -5918,37 +5745,21 @@
                       row.item_metadata.root_cause_confidence = result.confidence;
                   }
               }
-
-              el('analyze-results').style.display = 'block';
-              el('analyze-results').innerHTML = '<div style="font-size:var(--font-sm);color:var(--text-secondary);padding:8px 0;">' +
-                  'Analyzed <strong>' + data.total_analyzed + '</strong> items' +
-                  (data.errors > 0 ? ' (<span style="color:#ef4444;">' + data.errors + ' errors</span>)' : '') +
-                  '</div>';
-
-              showToast('success', 'Analysis Complete', data.total_analyzed + ' items analyzed');
-
-              // Update root cause values if new ones appeared
-              for (const result of (data.results || [])) {
-                  if (result.root_cause && !state.rootCauseValues.includes(result.root_cause)) {
-                      state.rootCauseValues.push(result.root_cause);
+              // Update root cause values
+              for (var j = 0; j < (data.results || []).length; j++) {
+                  var res = data.results[j];
+                  if (res.root_cause && !state.rootCauseValues.includes(res.root_cause)) {
+                      state.rootCauseValues.push(res.root_cause);
                   }
               }
               state.rootCauseValues.sort();
-
               if (typeof renderMetadataBreakdown === 'function') renderMetadataBreakdown();
               if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
               renderItems();
-          } catch (err) {
-              console.error('Analysis error:', err);
-              showToast('error', 'Analysis Failed', err.message);
-          } finally {
-              btn.disabled = false;
-              btn.innerHTML = '<span class="ai-icon">\u{1F916}</span> Run Analysis';
-              setTimeout(() => {
-                  el('analyze-progress').classList.remove('visible');
-              }, 2000);
-          }
-      }
+          },
+          showToast: showToast,
+          escapeHtml: escapeHtml,
+      });
 
       // Initialize
       loadComparisonData();

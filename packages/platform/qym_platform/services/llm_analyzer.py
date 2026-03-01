@@ -25,6 +25,34 @@ ROOT_CAUSE_CATEGORIES = [
     "Knowledge Gap",
 ]
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are an expert LLM evaluation analyst. Your job is to analyze evaluation results "
+    "and determine the root cause of failures or low-quality outputs.\n\n"
+    "Given an evaluation item with its input, expected output, actual output, and metric scores, "
+    "determine the most likely root cause category.\n\n"
+    "Available root cause categories:\n"
+    "{categories}\n\n"
+    "You may also suggest a custom category if none of the above fit.\n\n"
+    "Respond ONLY with valid JSON in this exact format:\n"
+    "{{\n"
+    '  "root_cause": "<category name>",\n'
+    '  "confidence": <float 0.0-1.0>,\n'
+    '  "root_cause_note": "<1-2 sentences: what went wrong and why>"\n'
+    "}}\n\n"
+    "IMPORTANT: Keep root_cause_note brief and direct — 1-2 sentences max. "
+    "State the specific failure, not general observations."
+)
+
+# Default fields to include in item context
+DEFAULT_INCLUDE_FIELDS = {
+    "input": True,
+    "expected": True,
+    "output": True,
+    "error": True,
+    "scores": True,
+    "metadata": True,
+}
+
 
 @dataclass
 class AnalysisResult:
@@ -58,11 +86,24 @@ def get_few_shot_examples(
     )
 
 
+def _resolve_source(item: RunItem, source: str) -> Any:
+    """Resolve 'field' or 'field.key' to a value from the RunItem."""
+    parts = source.split(".", 1)
+    field_name = parts[0]
+    raw = getattr(item, field_name, None)
+    if len(parts) > 1 and isinstance(raw, dict):
+        return raw.get(parts[1], raw)  # fallback to full dict if key missing
+    return raw
+
+
 def _format_item_context(
     item: RunItem,
     scores: dict[str, RunItemScore],
+    include_fields: dict[str, bool] | None = None,
+    field_mapping: dict[str, str] | None = None,
 ) -> str:
     """Format a single item's context for the LLM prompt."""
+    fields = include_fields or DEFAULT_INCLUDE_FIELDS
     parts: list[str] = []
 
     def _dump(val: Any) -> str:
@@ -70,38 +111,64 @@ def _format_item_context(
             return json.dumps(val, indent=2, ensure_ascii=False)
         return str(val or "")
 
-    parts.append(f"INPUT:\n{_dump(item.input)}")
-    if item.expected is not None:
-        parts.append(f"EXPECTED OUTPUT:\n{_dump(item.expected)}")
-    if item.output is not None:
-        parts.append(f"ACTUAL OUTPUT:\n{_dump(item.output)}")
-    if item.error:
+    if field_mapping:
+        # Use custom field mapping for input/expected/output
+        if "input" in field_mapping:
+            val = _resolve_source(item, field_mapping["input"])
+            if val is not None:
+                parts.append(f"INPUT:\n{_dump(val)}")
+        elif fields.get("input", True):
+            parts.append(f"INPUT:\n{_dump(item.input)}")
+
+        if "expected" in field_mapping:
+            val = _resolve_source(item, field_mapping["expected"])
+            if val is not None:
+                parts.append(f"EXPECTED OUTPUT:\n{_dump(val)}")
+        elif fields.get("expected", True) and item.expected is not None:
+            parts.append(f"EXPECTED OUTPUT:\n{_dump(item.expected)}")
+
+        if "output" in field_mapping:
+            val = _resolve_source(item, field_mapping["output"])
+            if val is not None:
+                parts.append(f"ACTUAL OUTPUT:\n{_dump(val)}")
+        elif fields.get("output", True) and item.output is not None:
+            parts.append(f"ACTUAL OUTPUT:\n{_dump(item.output)}")
+    else:
+        if fields.get("input", True):
+            parts.append(f"INPUT:\n{_dump(item.input)}")
+        if fields.get("expected", True) and item.expected is not None:
+            parts.append(f"EXPECTED OUTPUT:\n{_dump(item.expected)}")
+        if fields.get("output", True) and item.output is not None:
+            parts.append(f"ACTUAL OUTPUT:\n{_dump(item.output)}")
+    if fields.get("error", True) and item.error:
         parts.append(f"ERROR:\n{item.error}")
 
     # Include metric scores
-    score_lines: list[str] = []
-    for metric_name, score in scores.items():
-        val = score.score_numeric if score.score_numeric is not None else score.score_raw
-        score_lines.append(f"  {metric_name}: {val}")
-        if score.meta:
-            for k, v in score.meta.items():
-                if k in ("reason", "explanation", "feedback") and v:
-                    score_lines.append(f"    {k}: {v}")
-    if score_lines:
-        parts.append("METRIC SCORES:\n" + "\n".join(score_lines))
+    if fields.get("scores", True):
+        score_lines: list[str] = []
+        for metric_name, score in scores.items():
+            val = score.score_numeric if score.score_numeric is not None else score.score_raw
+            score_lines.append(f"  {metric_name}: {val}")
+            if score.meta:
+                for k, v in score.meta.items():
+                    if k in ("reason", "explanation", "feedback") and v:
+                        score_lines.append(f"    {k}: {v}")
+        if score_lines:
+            parts.append("METRIC SCORES:\n" + "\n".join(score_lines))
 
     # Include relevant item metadata (exclude root-cause fields)
-    md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-    skip_keys = {
-        "task_started_at_ms",
-        "root_cause",
-        "root_cause_note",
-        "root_cause_source",
-        "root_cause_confidence",
-    }
-    relevant = {k: v for k, v in md.items() if k not in skip_keys}
-    if relevant:
-        parts.append(f"METADATA:\n{json.dumps(relevant, indent=2, ensure_ascii=False)}")
+    if fields.get("metadata", True):
+        md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+        skip_keys = {
+            "task_started_at_ms",
+            "root_cause",
+            "root_cause_note",
+            "root_cause_source",
+            "root_cause_confidence",
+        }
+        relevant = {k: v for k, v in md.items() if k not in skip_keys}
+        if relevant:
+            parts.append(f"METADATA:\n{json.dumps(relevant, indent=2, ensure_ascii=False)}")
 
     return "\n\n".join(parts)
 
@@ -149,38 +216,51 @@ def build_analysis_prompt(
     item: RunItem,
     scores: dict[str, RunItemScore],
     corrections: list[ReviewCorrection],
+    config: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Build the full chat messages for root cause analysis."""
+    """Build the full chat messages for root cause analysis.
 
-    system_prompt = (
-        "You are an expert LLM evaluation analyst. Your job is to analyze evaluation results "
-        "and determine the root cause of failures or low-quality outputs.\n\n"
-        "Given an evaluation item with its input, expected output, actual output, and metric scores, "
-        "determine the most likely root cause category and provide a detailed explanation.\n\n"
-        "Available root cause categories:\n"
-        + "\n".join(f"- {cat}" for cat in ROOT_CAUSE_CATEGORIES)
-        + "\n\nYou may also suggest a custom category if none of the above fit.\n\n"
-        "Respond ONLY with valid JSON in this exact format:\n"
-        "{\n"
-        '  "root_cause": "<category name>",\n'
-        '  "confidence": <float 0.0-1.0>,\n'
-        '  "root_cause_note": "<detailed explanation of why this root cause was identified>"\n'
-        "}"
-    )
+    config keys:
+      - system_prompt: overrides DEFAULT_SYSTEM_PROMPT
+      - root_cause_categories: overrides ROOT_CAUSE_CATEGORIES
+      - include_fields: dict controlling which sections to include
+      - correction_ids: filter which corrections to use by id
+      - corrections_enabled: False to skip all corrections
+    """
+    cfg = config or {}
+
+    categories = cfg.get("root_cause_categories") or ROOT_CAUSE_CATEGORIES
+    categories_text = "\n".join(f"- {cat}" for cat in categories)
+
+    raw_prompt = cfg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
+    system_prompt = raw_prompt.format(categories=categories_text)
+
+    include_fields = cfg.get("include_fields")
+    field_mapping = cfg.get("field_mapping")
+
+    # Filter corrections
+    corrections_enabled = cfg.get("corrections_enabled", True)
+    if not corrections_enabled:
+        active_corrections: list[ReviewCorrection] = []
+    elif cfg.get("correction_ids") is not None:
+        allowed_ids = set(cfg["correction_ids"])
+        active_corrections = [c for c in corrections if c.id in allowed_ids]
+    else:
+        active_corrections = list(corrections)
 
     # Build few-shot examples section
     examples_section = ""
-    if corrections:
+    if active_corrections:
         examples_section = (
             "\n\nHere are examples of past corrections where a human reviewer corrected "
             "the AI's initial assessment. Learn from these to improve your analysis:\n\n"
-            + "\n\n".join(_format_correction_example(c) for c in corrections)
+            + "\n\n".join(_format_correction_example(c) for c in active_corrections)
             + "\n\nPlease learn from the patterns in these corrections. "
             "Pay special attention to cases where the AI's initial judgment was wrong "
             "and understand why the human chose a different root cause."
         )
 
-    item_context = _format_item_context(item, scores)
+    item_context = _format_item_context(item, scores, include_fields, field_mapping)
 
     user_message = (
         f"{examples_section}\n\n"
@@ -266,15 +346,18 @@ async def analyze_single_item(
     item: RunItem,
     scores: dict[str, RunItemScore],
     corrections: list[ReviewCorrection],
+    config: dict[str, Any] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> AnalysisResult:
     """Analyze a single item using the LLM."""
-    messages = build_analysis_prompt(item, scores, corrections)
+    messages = build_analysis_prompt(item, scores, corrections, config=config)
     try:
         kwargs: dict[str, Any] = dict(
             model=model,
             messages=messages,
-            temperature=0.2,
-            max_tokens=16384,
+            temperature=temperature if temperature is not None else 0.2,
+            max_tokens=max_tokens if max_tokens is not None else 16384,
         )
         # Use JSON response format when supported (OpenAI, compatible providers)
         try:
@@ -345,13 +428,19 @@ async def analyze_items_batch(
     items: list[tuple[RunItem, dict[str, RunItemScore]]],
     corrections: list[ReviewCorrection],
     concurrency: int = 5,
+    config: dict[str, Any] | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> list[AnalysisResult]:
     """Analyze multiple items with concurrency control."""
     semaphore = asyncio.Semaphore(concurrency)
 
     async def _bounded(item: RunItem, scores: dict[str, RunItemScore]) -> AnalysisResult:
         async with semaphore:
-            return await analyze_single_item(client, model, item, scores, corrections)
+            return await analyze_single_item(
+                client, model, item, scores, corrections,
+                config=config, temperature=temperature, max_tokens=max_tokens,
+            )
 
     tasks = [_bounded(item, scores) for item, scores in items]
     return await asyncio.gather(*tasks)

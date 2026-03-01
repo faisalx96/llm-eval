@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="../static/qym_icon.png">
   <link rel="stylesheet" href="../static/dashboard.css">
   <script src="../static/metrics.js"></script>
+  <script src="../static/playground.js"></script>
   <style>
     .run-container {
       padding: var(--space-lg);
@@ -1929,74 +1930,6 @@
     }
     .auto-analyze-btn .ai-icon { font-size: 14px; }
 
-    .analyze-panel {
-        background: var(--bg-surface);
-        border: 1px solid rgba(168, 85, 247, 0.2);
-        border-radius: 8px;
-        padding: var(--space-md);
-        margin-bottom: var(--space-lg);
-        display: none;
-    }
-    .analyze-panel.visible { display: block; }
-    .analyze-panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: var(--space-md);
-    }
-    .analyze-panel-title {
-        font-size: var(--font-md);
-        font-weight: 600;
-        color: var(--text-primary);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .analyze-filters {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-        align-items: center;
-        margin-bottom: var(--space-md);
-    }
-    .analyze-filters .fp-group {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .analyze-progress {
-        display: none;
-        padding: var(--space-sm);
-        background: var(--bg-elevated);
-        border-radius: 6px;
-        margin-bottom: var(--space-sm);
-    }
-    .analyze-progress.visible { display: block; }
-    .analyze-progress-bar {
-        height: 4px;
-        background: var(--border-subtle);
-        border-radius: 2px;
-        overflow: hidden;
-        margin-top: 6px;
-    }
-    .analyze-progress-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #a855f7, #00a8ff);
-        border-radius: 2px;
-        transition: width 0.3s;
-        animation: shimmer 1.5s infinite;
-    }
-    @keyframes shimmer {
-        0% { opacity: 1; }
-        50% { opacity: 0.7; }
-        100% { opacity: 1; }
-    }
-    .analyze-stats {
-        font-size: var(--font-sm);
-        color: var(--text-muted);
-    }
-    .analyze-stat-val { font-weight: 600; color: var(--text-primary); }
-
     /* AI-suggested root cause badge styling */
     .badge-root-cause.ai-suggested {
         border-style: dashed !important;
@@ -2090,50 +2023,6 @@
       </div>
 
       <div id="metadata-breakdown"></div>
-
-      <div id="analyze-panel" class="analyze-panel">
-          <div class="analyze-panel-header">
-              <span class="analyze-panel-title">
-                  <span class="ai-icon">🤖</span> Auto Root Cause Analysis
-              </span>
-              <button id="analyze-panel-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" title="Close">&times;</button>
-          </div>
-          <div class="analyze-filters">
-              <div class="fp-group">
-                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Analyze</span>
-                  <select id="analyze-item-filter" class="filter-select" style="padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);">
-                      <option value="all">All Items</option>
-                      <option value="failed" selected>Failed Items</option>
-                      <option value="passed">Passed Items</option>
-                      <option value="errors">Error Items</option>
-                  </select>
-              </div>
-              <div class="fp-group">
-                  <span class="fp-label" style="font-size:var(--font-xs);color:var(--text-muted);">Score below</span>
-                  <input type="number" id="analyze-max-score" style="width:65px;padding:4px 8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:4px;color:var(--text-primary);font-size:var(--font-xs);" min="0" max="1" step="0.1" value="0.8" />
-              </div>
-              <div class="fp-group">
-                  <label style="display:flex;align-items:center;gap:4px;font-size:var(--font-xs);color:var(--text-secondary);cursor:pointer;">
-                      <input type="checkbox" id="analyze-only-new" checked />
-                      Skip already analyzed
-                  </label>
-              </div>
-              <div class="fp-group" style="margin-left:auto;">
-                  <button id="run-analysis-btn" class="auto-analyze-btn">
-                      <span class="ai-icon">🤖</span> Run Analysis
-                  </button>
-              </div>
-          </div>
-          <div id="analyze-progress" class="analyze-progress">
-              <div class="analyze-stats">
-                  Analyzing <span class="analyze-stat-val" id="analyze-count">0</span> items...
-              </div>
-              <div class="analyze-progress-bar">
-                  <div class="analyze-progress-fill" id="analyze-progress-fill" style="width:0%"></div>
-              </div>
-          </div>
-          <div id="analyze-results" style="display:none;"></div>
-      </div>
 
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Detail</h3>
@@ -2679,7 +2568,6 @@
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
         renderItems();
-        initAnalyzePanel();
       }
 
       function renderSummary() {
@@ -3221,7 +3109,6 @@
           html += '<div class="breakdown-section ' + colorClass + '">';
           if (bdKey === 'root_cause') {
             html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">🤖</span> Auto-Analyze</button></div>';
-            html += '<div id="analyze-panel-slot"></div>';
           } else {
             html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
           }
@@ -3271,13 +3158,9 @@
           });
         });
 
-        // Move analyze panel into the root cause section
-        const slot = document.getElementById('analyze-panel-slot');
-        const panel = el('analyze-panel');
-        if (slot && panel) slot.appendChild(panel);
-
-        // Re-wire auto-analyze button after re-render
-        if (_analyzeConfigCache) wireAnalyzeButton(_analyzeConfigCache);
+        // Wire auto-analyze button to open playground
+        var aaBtn = document.getElementById('auto-analyze-btn');
+        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
       }
 
       // ── Filtering & Items ──
@@ -4354,88 +4237,33 @@
         renderExportModal(groups);
       });
 
-      // ── Auto-Analyze ──────────────────────────────────────────
-      let _analyzeConfigCache = null;
-
-      function initAnalyzePanel() {
-          const runId = state.run?.file_path || state.run?.id;
-          if (!runId) return;
-
-          fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/analysis-config'))
-              .then(r => r.json())
-              .then(config => {
-                  _analyzeConfigCache = config;
-                  // Wire up the auto-analyze button (added in renderSummary)
-                  wireAnalyzeButton(config);
-              })
-              .catch(err => console.warn('Analysis config unavailable:', err));
-
-          const closeBtn = el('analyze-panel-close');
-          if (closeBtn) closeBtn.addEventListener('click', () => {
-              el('analyze-panel').classList.remove('visible');
-          });
-
-          const runBtn = el('run-analysis-btn');
-          if (runBtn) runBtn.addEventListener('click', runAnalysis);
-      }
-
-      function wireAnalyzeButton(config) {
-          const btn = document.getElementById('auto-analyze-btn');
-          if (!btn) return;
-          if (!config.llm_configured) {
-              btn.disabled = true;
-              btn.title = 'LLM not configured — set it up in your Profile';
-              btn.addEventListener('click', () => {
-                  showToast('error', 'LLM Not Configured', 'Go to Profile → LLM Configuration to set up your provider.');
+      // ── AI Evaluator Playground ──────────────────────────────
+      QymPlayground.init({
+          apiUrl: apiUrl,
+          getRunId: function () { return state.run?.file_path || state.run?.id; },
+          getRows: function () {
+              return (state.snapshot?.rows || []).map(function (r) {
+                  return {
+                      item_id: r.item_id,
+                      index: r.index,
+                      input: r.input,
+                      output: r.output,
+                      expected: r.expected,
+                      error: r.error,
+                      item_metadata: r.item_metadata,
+                      scores: r.scores || {},
+                      metric_score: r[state.selectedMetric] != null ? parseFloat(r[state.selectedMetric]) : null,
+                  };
               });
-          } else {
-              btn.addEventListener('click', () => {
-                  el('analyze-panel').classList.toggle('visible');
-              });
-          }
-      }
-
-      async function runAnalysis() {
-          const runId = state.run?.file_path || state.run?.id;
-          if (!runId) return;
-
-          const btn = el('run-analysis-btn');
-          btn.disabled = true;
-          btn.textContent = 'Analyzing...';
-
-          el('analyze-progress').classList.add('visible');
-          el('analyze-progress-fill').style.width = '30%';
-          el('analyze-results').style.display = 'none';
-
-          const body = {
-              metric: state.selectedMetric,
-              item_filter: el('analyze-item-filter').value,
-              max_score: parseFloat(el('analyze-max-score').value) || undefined,
-              only_unanalyzed: el('analyze-only-new').checked,
-              threshold: 0.8,
-          };
-
-          try {
-              const res = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/analyze'), {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(body),
-              });
-              el('analyze-progress-fill').style.width = '90%';
-              const data = await res.json();
-
-              if (!res.ok) {
-                  showToast('error', 'Analysis Failed', data.detail || 'Unknown error');
-                  return;
-              }
-
-              el('analyze-count').textContent = data.total_analyzed;
-              el('analyze-progress-fill').style.width = '100%';
-
+          },
+          getMetric: function () { return state.selectedMetric; },
+          getThreshold: function () { return state.metricThresholds?.[state.selectedMetric] || 0.8; },
+          onAnalysisComplete: function (data) {
               // Update local state with new root causes
-              const rows = state.snapshot?.rows || [];
-              for (const result of (data.results || [])) {
-                  const row = rows.find(r => r.item_id === result.item_id);
+              var rows = state.snapshot?.rows || [];
+              for (var i = 0; i < (data.results || []).length; i++) {
+                  var result = data.results[i];
+                  var row = rows.find(function (r) { return r.item_id === result.item_id; });
                   if (row) {
                       if (!row.item_metadata) row.item_metadata = {};
                       row.item_metadata.root_cause = result.root_cause;
@@ -4444,31 +4272,13 @@
                       row.item_metadata.root_cause_confidence = result.confidence;
                   }
               }
-
-              // Show results summary
-              el('analyze-results').style.display = 'block';
-              el('analyze-results').innerHTML = '<div style="font-size:var(--font-sm);color:var(--text-secondary);padding:8px 0;">' +
-                  'Analyzed <strong>' + data.total_analyzed + '</strong> items' +
-                  (data.errors > 0 ? ' (<span style="color:#ef4444;">' + data.errors + ' errors</span>)' : '') +
-                  '</div>';
-
-              showToast('success', 'Analysis Complete', data.total_analyzed + ' items analyzed');
-
-              // Re-render
               if (typeof renderMetadataBreakdown === 'function') renderMetadataBreakdown();
               if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
               renderItems();
-          } catch (err) {
-              console.error('Analysis error:', err);
-              showToast('error', 'Analysis Failed', err.message);
-          } finally {
-              btn.disabled = false;
-              btn.innerHTML = '<span class="ai-icon">🤖</span> Run Analysis';
-              setTimeout(() => {
-                  el('analyze-progress').classList.remove('visible');
-              }, 2000);
-          }
-      }
+          },
+          showToast: showToast,
+          escapeHtml: escapeHtml,
+      });
 
       // ── Initialize ──
       loadRunData();
