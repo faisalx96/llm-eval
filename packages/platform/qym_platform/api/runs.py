@@ -769,7 +769,10 @@ def update_root_cause(
     """Update root_cause and feedback (root_cause_note) in item_metadata for a single run's item."""
     item_id = request.get("item_id")
     root_cause = (request.get("root_cause") or "").strip()
+    root_cause_detail = (request.get("root_cause_detail") or "").strip()
     root_cause_note = request.get("root_cause_note")
+    solution = (request.get("solution") or "").strip()
+    solution_note = request.get("solution_note")
     run_id = request.get("run_id")
 
     if not item_id or not run_id:
@@ -795,12 +798,33 @@ def update_root_cause(
     else:
         meta.pop("root_cause", None)
 
+    if root_cause_detail:
+        meta["root_cause_detail"] = root_cause_detail
+    elif root_cause:
+        meta.pop("root_cause_detail", None)
+    else:
+        meta.pop("root_cause_detail", None)
+
     if root_cause_note is not None:
         note = str(root_cause_note).strip()
         if note:
             meta["root_cause_note"] = note
         else:
             meta.pop("root_cause_note", None)
+
+    if solution:
+        meta["solution"] = solution
+        meta["solution_source"] = "human"
+    elif "solution" in request:
+        meta.pop("solution", None)
+        meta.pop("solution_source", None)
+
+    if solution_note is not None:
+        snote = str(solution_note).strip()
+        if snote:
+            meta["solution_note"] = snote
+        else:
+            meta.pop("solution_note", None)
 
     # Record every human root cause assignment in the correction bank
     old_source = old_meta.get("root_cause_source")
@@ -829,8 +853,12 @@ def update_root_cause(
             ai_root_cause=old_rc if old_source == "ai" else "Unanalyzed",
             ai_root_cause_note=old_note if old_source == "ai" else "",
             ai_confidence=old_confidence if old_source == "ai" else None,
+            ai_solution=old_meta.get("solution", "") if old_source == "ai" else "",
+            ai_solution_note=old_meta.get("solution_note", "") if old_source == "ai" else "",
             human_root_cause=root_cause,
             human_root_cause_note=str(root_cause_note or "").strip(),
+            human_solution=solution,
+            human_solution_note=str(solution_note or "").strip(),
             corrected_by_user_id=principal.user.id if principal.auth_type != "none" else None,
         )
         db.add(correction)

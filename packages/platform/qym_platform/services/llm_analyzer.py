@@ -25,22 +25,40 @@ ROOT_CAUSE_CATEGORIES = [
     "Knowledge Gap",
 ]
 
+SOLUTION_CATEGORIES = [
+    "Improve Retrieval Context",
+    "Add Guardrails",
+    "Refine Prompt Instructions",
+    "Expand Training Data",
+    "Fix Tool Configuration",
+    "Add Output Validation",
+    "Restructure Chain-of-Thought",
+    "Update Knowledge Base",
+]
+
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert LLM evaluation analyst. Your job is to analyze evaluation results "
-    "and determine the root cause of failures or low-quality outputs.\n\n"
+    "and determine the root cause of failures or low-quality outputs, and suggest a solution.\n\n"
     "Given an evaluation item with its input, expected output, actual output, and metric scores, "
-    "determine the most likely root cause category.\n\n"
+    "determine the most likely root cause category and suggest the most appropriate solution.\n\n"
     "Available root cause categories:\n"
     "{categories}\n\n"
+    "Available solution categories:\n"
+    "{solution_categories}\n\n"
     "You may also suggest a custom category if none of the above fit.\n\n"
     "Respond ONLY with valid JSON in this exact format:\n"
     "{{\n"
     '  "root_cause": "<category name>",\n'
+    '  "root_cause_detail": "<specific issue — a short label for the exact failure>",\n'
     '  "confidence": <float 0.0-1.0>,\n'
-    '  "root_cause_note": "<1-2 sentences: what went wrong and why>"\n'
+    '  "root_cause_note": "<1-2 sentences: what went wrong and why>",\n'
+    '  "solution": "<solution category name>",\n'
+    '  "solution_note": "<1-2 sentences: what specific action to take>"\n'
     "}}\n\n"
-    "IMPORTANT: Keep root_cause_note brief and direct — 1-2 sentences max. "
-    "State the specific failure, not general observations."
+    "IMPORTANT: root_cause is a broad category. root_cause_detail is the specific sub-issue "
+    "(e.g. root_cause='Context Missing', root_cause_detail='Out of Scope Query'). "
+    "Keep root_cause_note and solution_note brief and direct — 1-2 sentences max. "
+    "State the specific failure and proposed fix, not general observations."
 )
 
 # Default fields to include in item context
@@ -60,6 +78,9 @@ class AnalysisResult:
     root_cause: str
     root_cause_note: str
     confidence: float
+    root_cause_detail: str = ""
+    solution: str = ""
+    solution_note: str = ""
     error: Optional[str] = None
 
 
@@ -162,9 +183,13 @@ def _format_item_context(
         skip_keys = {
             "task_started_at_ms",
             "root_cause",
+            "root_cause_detail",
             "root_cause_note",
             "root_cause_source",
             "root_cause_confidence",
+            "solution",
+            "solution_note",
+            "solution_source",
         }
         relevant = {k: v for k, v in md.items() if k not in skip_keys}
         if relevant:
@@ -204,6 +229,14 @@ def _format_correction_example(correction: ReviewCorrection) -> str:
     if correction.human_root_cause_note:
         answer_parts.append(f"Human feedback: {correction.human_root_cause_note}")
 
+    # Solution corrections
+    if correction.ai_solution and correction.ai_solution != "":
+        answer_parts.append(f"AI suggested solution: {correction.ai_solution}")
+    if correction.human_solution:
+        answer_parts.append(f"CORRECT solution: {correction.human_solution}")
+    if correction.human_solution_note:
+        answer_parts.append(f"Human solution feedback: {correction.human_solution_note}")
+
     return (
         f"--- Example ---\n"
         f"{context}\n\n"
@@ -232,8 +265,35 @@ def build_analysis_prompt(
     categories = cfg.get("root_cause_categories") or ROOT_CAUSE_CATEGORIES
     categories_text = "\n".join(f"- {cat}" for cat in categories)
 
+    solution_cats = cfg.get("solution_categories") or SOLUTION_CATEGORIES
+    solution_categories_text = "\n".join(f"- {cat}" for cat in solution_cats)
+
     raw_prompt = cfg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
-    system_prompt = raw_prompt.format(categories=categories_text)
+    try:
+        system_prompt = raw_prompt.format(
+            categories=categories_text,
+            solution_categories=solution_categories_text,
+        )
+    except (KeyError, IndexError):
+        system_prompt = raw_prompt.replace("{categories}", categories_text)
+        system_prompt = system_prompt.replace("{solution_categories}", solution_categories_text)
+
+    # Append additional instructions (with variable resolution)
+    additional = cfg.get("additional_instructions", "")
+    if additional:
+        custom_map = cfg.get("custom_variable_mapping") or {}
+        resolved = additional
+        for var_name, source in custom_map.items():
+            val = _resolve_source(item, source)
+            if val is not None:
+                if isinstance(val, (dict, list)):
+                    dump = json.dumps(val, indent=2, ensure_ascii=False)
+                else:
+                    dump = str(val)
+            else:
+                dump = "(not available)"
+            resolved = resolved.replace("{" + var_name + "}", dump)
+        system_prompt += "\n\nAdditional Instructions:\n" + resolved
 
     include_fields = cfg.get("include_fields")
     field_mapping = cfg.get("field_mapping")
@@ -266,7 +326,7 @@ def build_analysis_prompt(
         f"{examples_section}\n\n"
         f"Now analyze this evaluation item:\n\n"
         f"{item_context}\n\n"
-        f"Determine the root cause category and provide your analysis as JSON."
+        f"Determine the root cause category and suggest a solution. Provide your analysis as JSON."
     )
 
     return [
@@ -297,6 +357,9 @@ def parse_llm_response(response_text: str, item_id: str) -> AnalysisResult:
             root_cause=str(data.get("root_cause", "Unknown")),
             root_cause_note=str(data.get("root_cause_note", "")),
             confidence=float(data.get("confidence", 0.5)),
+            root_cause_detail=str(data.get("root_cause_detail", "")),
+            solution=str(data.get("solution", "")),
+            solution_note=str(data.get("solution_note", "")),
         )
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.warning("Failed to parse LLM response for item %s: %s", item_id, e)

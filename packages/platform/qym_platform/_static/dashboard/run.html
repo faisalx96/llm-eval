@@ -698,6 +698,69 @@
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header { color: #e07a5f; }
     .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
+    .rc-category-card {
+      border-left: none !important;
+      padding: var(--space-sm);
+      overflow: hidden;
+    }
+    .rc-category-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid;
+      font-weight: 600;
+      font-size: var(--font-sm);
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .rc-category-pill-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .rc-category-pill-count {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .rc-subcauses {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rc-subcause-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      transition: background 0.1s;
+    }
+    .rc-subcause-item:hover {
+      background: var(--bg-secondary);
+    }
+    .rc-subcause-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rc-subcause-count {
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
     .breakdown-metric {
       font-size: var(--font-xs);
       font-family: var(--font-mono);
@@ -710,7 +773,7 @@
     }
     .breakdown-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: var(--space-sm);
     }
     .breakdown-card {
@@ -1296,7 +1359,59 @@
     .passfail-badge.pass { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
     .passfail-badge.fail { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 
-    /* Root cause */
+    /* Root cause + Solution side-by-side */
+    .rc-sol-row {
+      display: flex;
+      gap: 12px;
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .rc-group {
+      display: flex;
+      gap: 8px;
+      flex: 2;
+      min-width: 0;
+    }
+    .rc-sol-cell {
+      flex: 1;
+      min-width: 0;
+    }
+    .rc-sol-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      margin-bottom: 4px;
+    }
+    .rc-label {
+      color: #e07a5f;
+    }
+    .sol-label {
+      color: #60a5fa;
+    }
+    .sol-note-text {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      margin-top: 3px;
+    }
+    .rc-cat-cell {
+      flex: 1;
+      min-width: 0;
+    }
+    .rc-cat-label {
+      color: #e07a5f;
+      opacity: 0.75;
+    }
+    .badge-rc-detail {
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+      font-weight: 500;
+    }
+    .badge-rc-detail:hover { border-color: var(--text-muted); }
+    /* Legacy compat */
     .root-cause-row {
       margin-top: var(--space-sm);
       padding-top: var(--space-sm);
@@ -1450,6 +1565,22 @@
     .root-cause-dropdown .rc-option:hover { background: var(--bg-hover); color: var(--text-primary); }
     .root-cause-dropdown .rc-option.active { color: #e07a5f; font-weight: 600; }
     .root-cause-dropdown .rc-option .rc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .rc-delete-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 14px;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity 0.1s, background 0.1s, color 0.1s;
+    }
+    .rc-option:hover .rc-delete-btn { opacity: 1; }
+    .rc-delete-btn:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
     .root-cause-dropdown .rc-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
     .root-cause-dropdown .rc-custom-input { display: flex; gap: 4px; padding: 6px; }
     .root-cause-dropdown .rc-custom-input input {
@@ -1976,6 +2107,102 @@
         margin-left: 4px;
         vertical-align: middle;
     }
+
+    /* Solution badges */
+    .meta-badge.badge-solution {
+        cursor: pointer;
+        transition: filter 0.15s;
+    }
+    .meta-badge.badge-solution:hover {
+        filter: brightness(1.2);
+    }
+    .badge-solution.ai-suggested {
+        border-style: dashed !important;
+    }
+    .badge-solution .ai-indicator {
+        font-size: 11px;
+        margin-right: 2px;
+    }
+    .solution-assign-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-default);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .solution-assign-btn:hover {
+      border-color: #60a5fa;
+      color: #60a5fa;
+      background: rgba(96, 165, 250, 0.05);
+    }
+
+    /* Sankey Flow Diagram */
+    .sankey-container {
+      position: relative;
+      margin: 16px 0 8px;
+      min-height: 120px;
+    }
+    .sankey-header {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sankey-header-icon { color: #a78bfa; }
+    .sankey-body {
+      position: relative;
+      width: 100%;
+    }
+    .sankey-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .sankey-svg path {
+      pointer-events: stroke;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .sankey-col {
+      position: absolute;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sankey-col-rc { left: 0; width: 180px; }
+    .sankey-col-sol { right: 0; width: 200px; }
+    .sankey-node {
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: var(--font-xs);
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, filter 0.2s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sankey-node-count {
+      font-weight: 400;
+      opacity: 0.7;
+      margin-left: 4px;
+    }
+    .sankey-dimmed { opacity: 0.15; }
+    .sankey-highlighted { opacity: 1; }
   </style>
 </head>
 <body>
@@ -2199,6 +2426,17 @@
         'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
         'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
         'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
+      };
+      const SOLUTION_PRESETS = [
+        'Improve Retrieval Context', 'Add Guardrails', 'Refine Prompt Instructions',
+        'Expand Training Data', 'Fix Tool Configuration', 'Add Output Validation',
+        'Restructure Chain-of-Thought', 'Update Knowledge Base',
+      ];
+      const SOLUTION_COLORS = {
+        'Improve Retrieval Context': '#3b82f6', 'Add Guardrails': '#ef4444',
+        'Refine Prompt Instructions': '#f97316', 'Expand Training Data': '#10b981',
+        'Fix Tool Configuration': '#ec4899', 'Add Output Validation': '#00d4aa',
+        'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
       };
 
       const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#9898a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -3094,6 +3332,243 @@
           '</div>';
       }
 
+      function renderSankeyDiagram(rows, filteredItemIds) {
+        const container = document.getElementById('sankey-diagram-container');
+        if (!container) return;
+
+        // Compute root cause -> solution mapping
+        const links = {};
+        const rcCounts = {};
+        const solCounts = {};
+        for (const row of rows) {
+          const itemId = row.item_id || String(row.index);
+          if (!filteredItemIds.has(itemId)) continue;
+          const md = row.item_metadata || {};
+          const rc = md.root_cause || '';
+          const sol = md.solution || '';
+          if (!rc || !sol) continue;
+          const key = rc + '|||' + sol;
+          links[key] = (links[key] || 0) + 1;
+          rcCounts[rc] = (rcCounts[rc] || 0) + 1;
+          solCounts[sol] = (solCounts[sol] || 0) + 1;
+        }
+
+        const linkEntries = Object.entries(links);
+        if (linkEntries.length === 0) { container.innerHTML = ''; return; }
+
+        // Sort by count descending
+        const rcList = Object.entries(rcCounts).sort((a, b) => b[1] - a[1]);
+        const solList = Object.entries(solCounts).sort((a, b) => b[1] - a[1]);
+
+        // Layout constants
+        const nodeH = 32;
+        const nodeGap = 8;
+        const colWidth = 190;
+        const svgPad = 20;
+        const totalLeftH = rcList.length * nodeH + (rcList.length - 1) * nodeGap;
+        const totalRightH = solList.length * nodeH + (solList.length - 1) * nodeGap;
+        const diagramH = Math.max(totalLeftH, totalRightH) + svgPad * 2;
+
+        // Compute node y positions (centered vertically)
+        const leftOffsetY = svgPad + (diagramH - svgPad * 2 - totalLeftH) / 2;
+        const rightOffsetY = svgPad + (diagramH - svgPad * 2 - totalRightH) / 2;
+        const rcPositions = {};
+        rcList.forEach(([rc], i) => {
+          rcPositions[rc] = leftOffsetY + i * (nodeH + nodeGap) + nodeH / 2;
+        });
+        const solPositions = {};
+        solList.forEach(([sol], i) => {
+          solPositions[sol] = rightOffsetY + i * (nodeH + nodeGap) + nodeH / 2;
+        });
+
+        // Build HTML
+        let html = '<div class="sankey-header"><span class="sankey-header-icon">\u2192</span> Root Cause \u2192 Solution Flow</div>';
+        html += '<div class="sankey-body" style="height:' + diagramH + 'px;">';
+
+        // SVG paths placeholder
+        html += '<svg class="sankey-svg" viewBox="0 0 100 ' + diagramH + '" preserveAspectRatio="none" id="sankey-svg"></svg>';
+
+        // Left column (root causes)
+        html += '<div class="sankey-col sankey-col-rc" style="width:' + colWidth + 'px;">';
+        rcList.forEach(([rc, count], i) => {
+          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+          const y = leftOffsetY + i * (nodeH + nodeGap);
+          html += '<div class="sankey-node" data-sankey-rc="' + escapeAttr(rc) + '" style="background:' + color + '15;border:1px solid ' + color + '40;color:' + color + ';height:' + nodeH + 'px;line-height:' + nodeH + 'px;" title="' + escapeAttr(rc) + ' (' + count + ')">' + escapeHtml(rc) + '<span class="sankey-node-count">' + count + '</span></div>';
+        });
+        html += '</div>';
+
+        // Right column (solutions)
+        html += '<div class="sankey-col sankey-col-sol" style="width:' + colWidth + 'px;">';
+        solList.forEach(([sol, count], i) => {
+          const color = SOLUTION_COLORS[sol] || '#60a5fa';
+          const y = rightOffsetY + i * (nodeH + nodeGap);
+          html += '<div class="sankey-node" data-sankey-sol="' + escapeAttr(sol) + '" style="background:' + color + '15;border:1px solid ' + color + '40;color:' + color + ';height:' + nodeH + 'px;line-height:' + nodeH + 'px;" title="' + escapeAttr(sol) + ' (' + count + ')">' + escapeHtml(sol) + '<span class="sankey-node-count">' + count + '</span></div>';
+        });
+        html += '</div>';
+
+        html += '</div>'; // .sankey-body
+        container.innerHTML = html;
+
+        // Now draw SVG paths after DOM insertion
+        requestAnimationFrame(function () {
+          drawSankeyPaths(container, linkEntries, rcPositions, solPositions, colWidth);
+          wireSankeyHover(container);
+        });
+      }
+
+      function drawSankeyPaths(container, linkEntries, rcPositions, solPositions, colWidth) {
+        const svg = container.querySelector('#sankey-svg');
+        if (!svg) return;
+        const body = container.querySelector('.sankey-body');
+        if (!body) return;
+        const bodyRect = body.getBoundingClientRect();
+        const bodyW = bodyRect.width;
+
+        // Update SVG viewBox to match actual width
+        svg.setAttribute('viewBox', '0 0 ' + bodyW + ' ' + svg.parentElement.clientHeight);
+        svg.style.width = bodyW + 'px';
+
+        // Compute actual node Y positions from DOM
+        const rcNodes = container.querySelectorAll('[data-sankey-rc]');
+        const solNodes = container.querySelectorAll('[data-sankey-sol]');
+        const rcActual = {};
+        rcNodes.forEach(n => {
+          const r = n.getBoundingClientRect();
+          rcActual[n.dataset.sankeyRc] = r.top - bodyRect.top + r.height / 2;
+        });
+        const solActual = {};
+        solNodes.forEach(n => {
+          const r = n.getBoundingClientRect();
+          solActual[n.dataset.sankeySol] = r.top - bodyRect.top + r.height / 2;
+        });
+
+        // Max count for stroke width scaling
+        const maxCount = Math.max(...linkEntries.map(([, c]) => c));
+        const minStroke = 2;
+        const maxStroke = 16;
+
+        let paths = '';
+        for (const [key, count] of linkEntries) {
+          const [rc, sol] = key.split('|||');
+          const y1 = rcActual[rc];
+          const y2 = solActual[sol];
+          if (y1 == null || y2 == null) continue;
+
+          const x1 = colWidth + 8;
+          const x2 = bodyW - colWidth - 8;
+          const cx = (x1 + x2) / 2;
+          const sw = minStroke + (count / maxCount) * (maxStroke - minStroke);
+          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+
+          paths += '<path d="M ' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + y2 + ', ' + x2 + ' ' + y2 + '" ' +
+            'fill="none" stroke="' + color + '" stroke-opacity="0.35" stroke-width="' + sw.toFixed(1) + '" ' +
+            'data-sankey-link-rc="' + escapeAttr(rc) + '" data-sankey-link-sol="' + escapeAttr(sol) + '" ' +
+            'data-sankey-count="' + count + '"/>';
+        }
+        svg.innerHTML = paths;
+      }
+
+      // Module-level Sankey state for cleanup
+      var _sankeyResizeObserver = null;
+      var _sankeyResizeTimeout = null;
+
+      function wireSankeyHover(container) {
+        // Bind hover handlers using event delegation on the container
+        // Remove old delegation handler if any, then add fresh one
+        if (container._sankeyMouseHandler) {
+          container.removeEventListener('mouseenter', container._sankeyMouseHandler, true);
+          container.removeEventListener('mouseleave', container._sankeyMouseHandler, true);
+        }
+
+        function getHoverTarget(el) {
+          while (el && el !== container) {
+            if (el.classList && el.classList.contains('sankey-node')) return { rc: el.dataset.sankeyRc || '', sol: el.dataset.sankeySol || '' };
+            if (el.dataset && el.dataset.sankeyLinkRc) return { rc: el.dataset.sankeyLinkRc, sol: el.dataset.sankeyLinkSol };
+            el = el.parentElement;
+          }
+          return null;
+        }
+
+        function highlight(rc, sol) {
+          const allPaths = container.querySelectorAll('[data-sankey-link-rc]');
+          const allNodes = container.querySelectorAll('.sankey-node');
+          // Build connected set for fast lookup
+          const connectedRc = new Set();
+          const connectedSol = new Set();
+          allPaths.forEach(p => {
+            const pRc = p.dataset.sankeyLinkRc;
+            const pSol = p.dataset.sankeyLinkSol;
+            if ((rc && pRc === rc) || (sol && pSol === sol)) {
+              connectedRc.add(pRc);
+              connectedSol.add(pSol);
+              p.classList.add('sankey-highlighted');
+              p.classList.remove('sankey-dimmed');
+              p.setAttribute('stroke-opacity', '0.7');
+            } else {
+              p.classList.add('sankey-dimmed');
+              p.classList.remove('sankey-highlighted');
+              p.setAttribute('stroke-opacity', '0.08');
+            }
+          });
+          allNodes.forEach(n => {
+            const connected = (n.dataset.sankeyRc && connectedRc.has(n.dataset.sankeyRc)) ||
+                              (n.dataset.sankeySol && connectedSol.has(n.dataset.sankeySol));
+            if (connected) { n.classList.add('sankey-highlighted'); n.classList.remove('sankey-dimmed'); }
+            else { n.classList.add('sankey-dimmed'); n.classList.remove('sankey-highlighted'); }
+          });
+        }
+
+        function clearHighlight() {
+          container.querySelectorAll('[data-sankey-link-rc]').forEach(p => {
+            p.classList.remove('sankey-highlighted', 'sankey-dimmed');
+            p.setAttribute('stroke-opacity', '0.35');
+          });
+          container.querySelectorAll('.sankey-node').forEach(n => n.classList.remove('sankey-highlighted', 'sankey-dimmed'));
+        }
+
+        function handler(e) {
+          if (e.type === 'mouseenter') {
+            const target = getHoverTarget(e.target);
+            if (target) highlight(target.rc, target.sol);
+          } else {
+            const target = getHoverTarget(e.target);
+            if (target) clearHighlight();
+          }
+        }
+        container._sankeyMouseHandler = handler;
+        container.addEventListener('mouseenter', handler, true);
+        container.addEventListener('mouseleave', handler, true);
+
+        // Resize observer — disconnect old one first, no recursion
+        if (_sankeyResizeObserver) {
+          _sankeyResizeObserver.disconnect();
+          _sankeyResizeObserver = null;
+        }
+        clearTimeout(_sankeyResizeTimeout);
+
+        if (typeof ResizeObserver !== 'undefined') {
+          const body = container.querySelector('.sankey-body');
+          if (body) {
+            _sankeyResizeObserver = new ResizeObserver(() => {
+              clearTimeout(_sankeyResizeTimeout);
+              _sankeyResizeTimeout = setTimeout(() => {
+                // Guard: if container was detached from DOM, stop
+                if (!container.isConnected) { if (_sankeyResizeObserver) _sankeyResizeObserver.disconnect(); return; }
+                const existingPaths = container.querySelectorAll('[data-sankey-link-rc]');
+                const entries = [];
+                existingPaths.forEach(p => {
+                  entries.push([p.dataset.sankeyLinkRc + '|||' + p.dataset.sankeyLinkSol, parseInt(p.dataset.sankeyCount) || 1]);
+                });
+                if (entries.length > 0) {
+                  drawSankeyPaths(container, entries, {}, {}, 190);
+                }
+              }, 150);
+            });
+            _sankeyResizeObserver.observe(body);
+          }
+        }
+      }
+
       function renderMetadataBreakdown() {
         const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
         breakdownKeys.push('root_cause');
@@ -3187,10 +3662,58 @@
           }
           html += '<div class="breakdown-grid">';
 
+          // For root_cause: build hierarchical categories from root_cause + root_cause_detail
+          // Also auto-parse "Category - Subcause" format from flat root_cause values
+          if (bdKey === 'root_cause') {
+            const rcCategories = {};  // { category: { count, subcauses: { name: count } } }
+            for (const row of rows) {
+              const itemId = row.item_id || String(row.index);
+              if (!filteredItemIds.has(itemId)) continue;
+              const md = row.item_metadata || {};
+              const rcRaw = String(md.root_cause || '');
+              if (!rcRaw) continue;
+              const rcDetail = md.root_cause_detail || '';
+
+              const category = rcRaw;
+              const subcause = rcDetail;
+
+              if (!rcCategories[category]) rcCategories[category] = { count: 0, subcauses: {} };
+              rcCategories[category].count++;
+              if (subcause) {
+                rcCategories[category].subcauses[subcause] = (rcCategories[category].subcauses[subcause] || 0) + 1;
+              }
+            }
+
+            const catStats = Object.entries(rcCategories)
+              .map(([cat, data]) => ({ category: cat, count: data.count, subcauses: data.subcauses }))
+              .sort((a, b) => b.count - a.count);
+
+            for (const cat of catStats) {
+              const rcColor = ROOT_CAUSE_COLORS[cat.category] || '#e07a5f';
+              const subcauseList = Object.entries(cat.subcauses).sort((a, b) => b[1] - a[1]);
+              let subcauseHtml = '';
+              if (subcauseList.length > 0) {
+                subcauseHtml = '<div class="rc-subcauses">' + subcauseList.map(function(sc) {
+                  return '<div class="rc-subcause-item" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="' + escapeAttr(sc[0]) + '">' +
+                    '<span class="rc-subcause-name">' + escapeHtml(sc[0]) + '</span>' +
+                    '<span class="rc-subcause-count">' + sc[1] + '</span>' +
+                  '</div>';
+                }).join('') + '</div>';
+              }
+              html += '<div class="breakdown-card rc-category-card" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(cat.category) + '">' +
+                '<div class="rc-category-pill" style="background:' + rcColor + '20;border-color:' + rcColor + '40;color:' + rcColor + ';">' +
+                  '<span class="rc-category-pill-name">' + escapeHtml(cat.category) + '</span>' +
+                  '<span class="rc-category-pill-count" style="background:' + rcColor + '30;">' + cat.count + '</span>' +
+                '</div>' +
+                subcauseHtml +
+              '</div>';
+            }
+          }
+
           for (const g of groupStats) {
             if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
-              html += '<div class="breakdown-card" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '"><div class="breakdown-card-label" style="color:' + rcColor + ';">' + escapeHtml(g.groupVal) + '</div><div class="breakdown-card-score" style="color:' + rcColor + ';">' + g.itemCount + '</div></div>';
+              // Already rendered above with hierarchical categories
+              continue;
             } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
               let cardValClass = '';
@@ -3211,7 +3734,11 @@
         }
 
         html += '</div>';
+        html += '<div id="sankey-diagram-container"></div>';
         section.innerHTML = html;
+
+        // Render Sankey diagram if we have both root cause and solution data
+        renderSankeyDiagram(rows, filteredItemIds);
 
         // Wire breakdown card click-to-filter
         section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
@@ -3342,9 +3869,15 @@
         return items;
       }
 
+      var _breakdownTimer = null;
+      function scheduleBreakdownRender() {
+        clearTimeout(_breakdownTimer);
+        _breakdownTimer = setTimeout(renderMetadataBreakdown, 80);
+      }
+
       function renderItems(scrollToTop) {
-        // Keep Performance by Category in sync with the current filters
-        renderMetadataBreakdown();
+        // Keep Performance by Category in sync with the current filters (debounced)
+        scheduleBreakdownRender();
 
         const container = el('items-grid');
         const paginationEl = el('pagination');
@@ -3431,30 +3964,91 @@
             }
           }
 
-          // Root cause + feedback (only for failed items)
+          // Root cause + Solution (side by side for failed items)
           let rootCauseHtml = '';
           const itemPassed = passfailBadge.includes('badge pass"');
           const rowRc = row.item_metadata?.root_cause || '';
+          const rowRcDetail = row.item_metadata?.root_cause_detail || '';
           const rowRcNote = row.item_metadata?.root_cause_note || '';
-          if (rowRc) {
+          const rowSol = row.item_metadata?.solution || '';
+          const rowSolNote = row.item_metadata?.solution_note || '';
+
+          // Build root cause cell (specific issue)
+          let rcCellHtml = '';
+          const rcSource = row.item_metadata?.root_cause_source || '';
+          const rcConfidence = row.item_metadata?.root_cause_confidence;
+          const isAi = rcSource === 'ai';
+
+          // Build root cause category cell (broad preset)
+          let rcCatCellHtml = '';
+
+          if (rowRc || rowRcDetail || !itemPassed) {
             const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
-            var feedbackHtml = rowRcNote
-              ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
-              : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
-            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
-            const rcSource = row.item_metadata?.root_cause_source || '';
-            const rcConfidence = row.item_metadata?.root_cause_confidence;
-            const isAi = rcSource === 'ai';
-            const aiClass = isAi ? ' ai-suggested' : '';
-            const sourceIcon = isAi ? '<span class="ai-indicator">🤖</span>' : '<span class="badge-icon">✓</span>';
-            let confidenceDot = '';
-            if (isAi && rcConfidence != null) {
-              const dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
-              confidenceDot = '<span class="confidence-dot" style="background:' + dotColor + ';" title="Confidence: ' + (rcConfidence * 100).toFixed(0) + '%"></span>';
+
+            // Root cause cell (specific issue)
+            let rcDetailBadge = '';
+            if (rowRcDetail) {
+              const aiClass = isAi ? ' ai-suggested' : '';
+              const sourceIcon = isAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '<span class="badge-icon">\u2713</span>';
+              rcDetailBadge = '<span class="meta-badge badge-rc-detail' + aiClass + '" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Root cause: ' + escapeAttr(rowRcDetail) + '. Click to change.">' + sourceIcon + escapeHtml(rowRcDetail) + '</span>';
+            } else if (!itemPassed) {
+              rcDetailBadge = '<button class="root-cause-assign-btn" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>';
             }
-            rootCauseHtml = '<div class="root-cause-row"><span class="meta-badge badge-root-cause' + aiClass + '" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRc) + (isAi ? ' (AI-suggested)' : '') + '. Click to change.">' + sourceIcon + escapeHtml(rowRc) + confidenceDot + '</span>' + feedbackHtml + '</div>';
-          } else if (!itemPassed) {
-            rootCauseHtml = '<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>';
+            var feedbackHtml = '';
+            if (rowRc || rowRcDetail) {
+              feedbackHtml = rowRcNote
+                ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
+                : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
+            }
+            rcCellHtml = '<div class="rc-sol-cell rc-cell">' +
+              '<span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>' +
+              rcDetailBadge +
+              feedbackHtml +
+            '</div>';
+
+            // Root cause category cell (broad preset)
+            let rcCategoryBadge = '';
+            if (rowRc) {
+              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
+              const aiClass = isAi ? ' ai-suggested' : '';
+              let confidenceDot = '';
+              if (isAi && rcConfidence != null) {
+                const dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
+                confidenceDot = '<span class="confidence-dot" style="background:' + dotColor + ';" title="Confidence: ' + (rcConfidence * 100).toFixed(0) + '%"></span>';
+              }
+              rcCategoryBadge = '<span class="meta-badge badge-root-cause' + aiClass + '" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Category: ' + escapeAttr(rowRc) + '. Click to change.">' + escapeHtml(rowRc) + confidenceDot + '</span>';
+            } else if (!itemPassed) {
+              rcCategoryBadge = '<button class="root-cause-assign-btn rc-category-assign" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>';
+            }
+            rcCatCellHtml = '<div class="rc-sol-cell rc-cat-cell">' +
+              '<span class="rc-sol-label rc-cat-label">\uD83D\uDCC2 ROOT CAUSE CATEGORY</span>' +
+              rcCategoryBadge +
+            '</div>';
+          }
+
+          // Build solution cell
+          let solCellHtml = '';
+          if (rowSol) {
+            const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
+            const solSource = row.item_metadata?.solution_source || '';
+            const solIsAi = solSource === 'ai';
+            const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '<span class="badge-icon">\uD83D\uDCA1</span>';
+            solCellHtml = '<div class="rc-sol-cell sol-cell">' +
+              '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
+              '<span class="meta-badge badge-solution' + (solIsAi ? ' ai-suggested' : '') + '" data-sol-item="' + escapeAttr(itemId) + '" style="border-color:' + solColor + '40;color:' + solColor + ';background:' + solColor + '15;" title="Solution: ' + escapeAttr(rowSol) + '. Click to change.">' + solIcon + escapeHtml(rowSol) + '</span>' +
+              (rowSolNote ? '<div class="sol-note-text">' + escapeHtml(rowSolNote) + '</div>' : '') +
+            '</div>';
+          } else if ((rowRc || rowRcDetail) && !itemPassed) {
+            solCellHtml = '<div class="rc-sol-cell sol-cell">' +
+              '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
+              '<button class="solution-assign-btn" data-sol-item="' + escapeAttr(itemId) + '" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>' +
+            '</div>';
+          }
+
+          // Combine into horizontal layout
+          if (rcCellHtml || rcCatCellHtml || solCellHtml) {
+            const rcGroup = (rcCellHtml || rcCatCellHtml) ? '<div class="rc-group">' + rcCellHtml + rcCatCellHtml + '</div>' : '';
+            rootCauseHtml = '<div class="rc-sol-row">' + rcGroup + solCellHtml + '</div>';
           }
 
           // Metric details
@@ -3479,7 +4073,7 @@
 
           // Item metadata badges
           let itemMetadataHtml = '';
-          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_note', 'root_cause_source', 'root_cause_confidence'];
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
           const itemMd = row.item_metadata || {};
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
@@ -3527,6 +4121,7 @@
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();
+        wireSolutionHandlers();
         wireCopyHandlers();
         initExpectedToggles();
       }
@@ -3615,6 +4210,12 @@
             showRootCauseDropdown(trigger.dataset.rcItem, trigger);
           });
         });
+        document.querySelectorAll('[data-rcdetail-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showRcDetailDropdown(trigger.dataset.rcdetailItem, trigger);
+          });
+        });
         document.querySelectorAll('[data-feedback-item]').forEach(trigger => {
           trigger.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -3643,6 +4244,15 @@
               }
               if (ev.key === 'Escape') { renderItems(); }
             });
+          });
+        });
+      }
+
+      function wireSolutionHandlers() {
+        document.querySelectorAll('[data-sol-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showSolutionDropdown(trigger.dataset.solItem, trigger);
           });
         });
       }
@@ -3703,10 +4313,13 @@
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
           const color = ROOT_CAUSE_COLORS[opt] || '#e07a5f';
-          html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
+          const isCustom = !ROOT_CAUSE_PRESETS.includes(opt);
+          html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) +
+            (isCustom ? '<span class="rc-delete-btn" data-rc-delete="' + escapeAttr(opt) + '" title="Delete this category">\u00D7</span>' : '') +
+          '</div>';
         }
         html += '<div class="rc-divider"></div>';
-        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom category..." /><button>Add</button></div>';
         dropdown.innerHTML = html;
 
         document.body.appendChild(dropdown);
@@ -3721,6 +4334,34 @@
         }
         dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
         dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+
+        // Delete buttons — clear value from all items, remove from list
+        dropdown.querySelectorAll('.rc-delete-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const val = btn.dataset.rcDelete;
+            if (!confirm('Delete category "' + val + '"? This will clear it from all items that have it.')) return;
+            const rows = state.snapshot.rows || [];
+            const runId = state.run?.file_path;
+            for (const r of rows) {
+              if (r.item_metadata?.root_cause === val) {
+                const rid = r.item_id || String(r.index);
+                if (!IS_EXPORT && runId) {
+                  await fetch(apiUrl('api/runs/update_root_cause'), {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: rid, root_cause: '', root_cause_detail: '', run_id: runId }),
+                  }).catch(() => {});
+                }
+                if (r.item_metadata) { delete r.item_metadata.root_cause; delete r.item_metadata.root_cause_source; delete r.item_metadata.root_cause_confidence; delete r.item_metadata.root_cause_detail; }
+              }
+            }
+            const idx = state.rootCauseValues.indexOf(val);
+            if (idx >= 0) state.rootCauseValues.splice(idx, 1);
+            dropdown.remove();
+            buildCategoryDropdowns();
+            renderItems();
+          });
+        });
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
@@ -3759,14 +4400,125 @@
         }, 0);
       }
 
+      function showRcDetailDropdown(itemId, anchorEl) {
+        document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentDetail = row?.item_metadata?.root_cause_detail || '';
+
+        // Collect existing detail values for quick-pick
+        const detailValues = [];
+        for (const r of rows) {
+          const d = r.item_metadata?.root_cause_detail;
+          if (d && !detailValues.includes(d)) detailValues.push(d);
+        }
+        detailValues.sort();
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown rc-detail-dropdown';
+        let html = '<div class="rc-option" data-rcdetail-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        if (detailValues.length > 0) {
+          html += '<div class="rc-divider"></div>';
+          for (const dv of detailValues) {
+            html += '<div class="rc-option' + (dv === currentDetail ? ' active' : '') + '" data-rcdetail-value="' + escapeAttr(dv) + '">' + escapeHtml(dv) +
+              '<span class="rc-delete-btn" data-rcdetail-delete="' + escapeAttr(dv) + '" title="Delete this root cause">\u00D7</span>' +
+            '</div>';
+          }
+        }
+        html += '<div class="rc-divider"></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Describe the specific issue..." value="' + escapeAttr(currentDetail) + '" /><button>Save</button></div>';
+        dropdown.innerHTML = html;
+
+        document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+
+        // Delete buttons — clear detail from all items that have it
+        dropdown.querySelectorAll('.rc-delete-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const val = btn.dataset.rcdetailDelete;
+            if (!confirm('Delete root cause "' + val + '"? This will clear it from all items that have it.')) return;
+            const allRows = state.snapshot.rows || [];
+            const runId = state.run?.file_path;
+            for (const r of allRows) {
+              if (r.item_metadata?.root_cause_detail === val) {
+                const rid = r.item_id || String(r.index);
+                if (!IS_EXPORT && runId) {
+                  await fetch(apiUrl('api/runs/update_root_cause'), {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: rid, root_cause: r.item_metadata?.root_cause || '', root_cause_detail: '', run_id: runId }),
+                  }).catch(() => {});
+                }
+                if (r.item_metadata) delete r.item_metadata.root_cause_detail;
+              }
+            }
+            dropdown.remove();
+            renderItems();
+          });
+        });
+
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue);
+            dropdown.remove();
+          });
+        });
+
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        const doSave = async () => {
+          const val = customInput.value.trim();
+          await saveRootCauseDetail(itemId, val);
+          dropdown.remove();
+        };
+        customBtn.addEventListener('click', doSave);
+        customInput.addEventListener('keydown', async (e) => { if (e.key === 'Enter') doSave(); });
+        setTimeout(() => { customInput.focus(); customInput.setSelectionRange(customInput.value.length, customInput.value.length); }, 0);
+
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
+        };
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
+      }
+
       async function saveRootCause(itemId, rootCause) {
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const existingDetail = row?.item_metadata?.root_cause_detail || '';
 
         function applyLocally() {
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
-            if (rootCause) { row.item_metadata.root_cause = rootCause; row.item_metadata.root_cause_source = 'human'; delete row.item_metadata.root_cause_confidence; } else { delete row.item_metadata.root_cause; delete row.item_metadata.root_cause_source; delete row.item_metadata.root_cause_confidence; }
+            if (rootCause) {
+              row.item_metadata.root_cause = rootCause;
+              row.item_metadata.root_cause_source = 'human';
+              delete row.item_metadata.root_cause_confidence;
+            } else {
+              delete row.item_metadata.root_cause;
+              delete row.item_metadata.root_cause_source;
+              delete row.item_metadata.root_cause_confidence;
+            }
           }
           if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
           if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
@@ -3786,12 +4538,151 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, run_id: runId }),
+            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, root_cause_detail: existingDetail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
           applyLocally();
         } catch (err) { console.error('Error saving root cause:', err); }
+      }
+
+      async function saveRootCauseDetail(itemId, detail) {
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const existingCategory = row?.item_metadata?.root_cause || '';
+
+        function applyLocally() {
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (detail) { row.item_metadata.root_cause_detail = detail; } else { delete row.item_metadata.root_cause_detail; }
+          }
+          renderItems();
+        }
+
+        if (IS_EXPORT) {
+          applyLocally();
+          autoSaveExport();
+          return;
+        }
+
+        const runId = state.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
+          applyLocally();
+        } catch (err) { console.error('Error saving root cause detail:', err); }
+      }
+
+      function showSolutionDropdown(itemId, anchorEl) {
+        document.querySelectorAll('.solution-dropdown').forEach(d => d.remove());
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentSol = row?.item_metadata?.solution || '';
+        const allOptions = [...SOLUTION_PRESETS];
+        // Add any dynamic solution values from the dataset
+        for (const r of rows) {
+          const s = r.item_metadata?.solution;
+          if (s && !allOptions.includes(s)) allOptions.push(s);
+        }
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown solution-dropdown';
+        let html = '<div class="rc-option ' + (!currentSol ? 'active' : '') + '" data-sol-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        html += '<div class="rc-divider"></div>';
+        for (const opt of allOptions) {
+          const color = SOLUTION_COLORS[opt] || '#60a5fa';
+          html += '<div class="rc-option ' + (opt === currentSol ? 'active' : '') + '" data-sol-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
+        }
+        html += '<div class="rc-divider"></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom solution..." /><button>Add</button></div>';
+        dropdown.innerHTML = html;
+
+        document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveSolution(itemId, opt.dataset.solValue);
+            dropdown.remove();
+          });
+        });
+
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        customBtn.addEventListener('click', async () => {
+          const val = customInput.value.trim();
+          if (val) { await saveSolution(itemId, val); dropdown.remove(); }
+        });
+        customInput.addEventListener('keydown', async (e) => {
+          if (e.key === 'Enter') {
+            const val = customInput.value.trim();
+            if (val) { await saveSolution(itemId, val); dropdown.remove(); }
+          }
+        });
+
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
+        };
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
+      }
+
+      async function saveSolution(itemId, solution) {
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+
+        function applyLocally() {
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (solution) { row.item_metadata.solution = solution; row.item_metadata.solution_source = 'human'; } else { delete row.item_metadata.solution; delete row.item_metadata.solution_source; delete row.item_metadata.solution_note; }
+          }
+          renderItems();
+        }
+
+        if (IS_EXPORT) {
+          applyLocally();
+          autoSaveExport();
+          return;
+        }
+
+        const runId = state.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause: row?.item_metadata?.root_cause || '', root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save solution:', data.error); return; }
+          applyLocally();
+        } catch (err) { console.error('Error saving solution:', err); }
       }
 
       function initExpectedToggles() {
@@ -4375,8 +5266,11 @@
                         item_id: r.item_id,
                         index: r.index,
                         input: r.input,
+                        input_full: r.input_full,
                         output: r.output,
+                        output_full: r.output_full,
                         expected: r.expected,
+                        expected_full: r.expected_full,
                         error: r.error,
                         item_metadata: r.item_metadata,
                         scores: r.scores || {},
@@ -4395,9 +5289,15 @@
                     if (row) {
                         if (!row.item_metadata) row.item_metadata = {};
                         row.item_metadata.root_cause = result.root_cause;
+                        row.item_metadata.root_cause_detail = result.root_cause_detail || '';
                         row.item_metadata.root_cause_note = result.root_cause_note;
                         row.item_metadata.root_cause_source = 'ai';
                         row.item_metadata.root_cause_confidence = result.confidence;
+                        if (result.solution) {
+                            row.item_metadata.solution = result.solution;
+                            row.item_metadata.solution_note = result.solution_note || '';
+                            row.item_metadata.solution_source = 'ai';
+                        }
                     }
                 }
                 if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();

@@ -12,6 +12,7 @@ from qym_platform.deps import get_db
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
     ROOT_CAUSE_CATEGORIES,
+    SOLUTION_CATEGORIES,
     AnalysisResult,
     analyze_items_batch,
     analyze_single_item,
@@ -27,7 +28,10 @@ class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
     system_prompt: Optional[str] = None
+    additional_instructions: Optional[str] = None
+    custom_variable_mapping: Optional[Dict[str, str]] = None
     root_cause_categories: Optional[List[str]] = None
+    solution_categories: Optional[List[str]] = None
     include_fields: Optional[Dict[str, bool]] = None
     correction_ids: Optional[List[int]] = None
     corrections_enabled: bool = True
@@ -86,6 +90,8 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
         cfg["root_cause_categories"] = pg.root_cause_categories
+    if pg.solution_categories is not None:
+        cfg["solution_categories"] = pg.solution_categories
     if pg.include_fields is not None:
         cfg["include_fields"] = pg.include_fields
     if pg.correction_ids is not None:
@@ -93,6 +99,10 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
     cfg["corrections_enabled"] = pg.corrections_enabled
     if pg.field_mapping is not None:
         cfg["field_mapping"] = pg.field_mapping
+    if pg.additional_instructions is not None:
+        cfg["additional_instructions"] = pg.additional_instructions
+    if pg.custom_variable_mapping is not None:
+        cfg["custom_variable_mapping"] = pg.custom_variable_mapping
     return cfg if cfg else None
 
 
@@ -113,7 +123,7 @@ def _load_run_items_and_scores(
     return all_items, scores_by_item
 
 
-@router.post("/api/runs/{run_id}/analyze")
+@router.post("/api/runs/{run_id:path}/analyze")
 async def analyze_run_items(
     run_id: str,
     request: AnalyzeRequest,
@@ -232,17 +242,24 @@ async def analyze_run_items(
 
         meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         meta["root_cause"] = result.root_cause
+        meta["root_cause_detail"] = result.root_cause_detail
         meta["root_cause_note"] = result.root_cause_note
         meta["root_cause_source"] = "ai"
         meta["root_cause_confidence"] = result.confidence
+        meta["solution"] = result.solution
+        meta["solution_note"] = result.solution_note
+        meta["solution_source"] = "ai"
         item.item_metadata = meta
 
         response_results.append(
             {
                 "item_id": result.item_id,
                 "root_cause": result.root_cause,
+                "root_cause_detail": result.root_cause_detail,
                 "root_cause_note": result.root_cause_note,
                 "confidence": result.confidence,
+                "solution": result.solution,
+                "solution_note": result.solution_note,
                 "error": result.error,
             }
         )
@@ -256,7 +273,7 @@ async def analyze_run_items(
     }
 
 
-@router.post("/api/runs/{run_id}/analyze-preview")
+@router.post("/api/runs/{run_id:path}/analyze-preview")
 def analyze_preview(
     run_id: str,
     request: PreviewRequest,
@@ -290,7 +307,7 @@ def analyze_preview(
     return {"messages": messages}
 
 
-@router.post("/api/runs/{run_id}/analyze-test")
+@router.post("/api/runs/{run_id:path}/analyze-test")
 async def analyze_test(
     run_id: str,
     request: TestRequest,
@@ -352,8 +369,11 @@ async def analyze_test(
         results.append({
             "item_id": result.item_id,
             "root_cause": result.root_cause,
+            "root_cause_detail": result.root_cause_detail,
             "root_cause_note": result.root_cause_note,
             "confidence": result.confidence,
+            "solution": result.solution,
+            "solution_note": result.solution_note,
             "error": result.error,
             "messages": messages,
         })
@@ -361,7 +381,7 @@ async def analyze_test(
     return {"results": results}
 
 
-@router.get("/api/runs/{run_id}/corrections")
+@router.get("/api/runs/{run_id:path}/corrections")
 def get_corrections(
     run_id: str,
     db: Session = Depends(get_db),
@@ -389,6 +409,13 @@ def get_corrections(
                 "human_root_cause_note": c.human_root_cause_note,
                 "ai_root_cause": c.ai_root_cause,
                 "ai_root_cause_note": c.ai_root_cause_note,
+                "ai_confidence": c.ai_confidence,
+                "ai_solution": c.ai_solution,
+                "human_solution": c.human_solution,
+                "human_solution_note": c.human_solution_note,
+                "input_snapshot": c.input_snapshot,
+                "expected_snapshot": c.expected_snapshot,
+                "output_snapshot": c.output_snapshot,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in corrections
@@ -396,7 +423,7 @@ def get_corrections(
     }
 
 
-@router.get("/api/runs/{run_id}/analysis-config")
+@router.get("/api/runs/{run_id:path}/analysis-config")
 def get_analysis_config(
     run_id: str,
     db: Session = Depends(get_db),
@@ -437,4 +464,5 @@ def get_analysis_config(
         "correction_bank_size": correction_count,
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
         "default_categories": ROOT_CAUSE_CATEGORIES,
+        "default_solution_categories": SOLUTION_CATEGORIES,
     }

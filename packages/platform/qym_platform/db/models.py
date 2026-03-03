@@ -293,10 +293,14 @@ class ReviewCorrection(Base):
     ai_root_cause: Mapped[str] = mapped_column(String(200))
     ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ai_solution: Mapped[str] = mapped_column(String(200), default="")
+    ai_solution_note: Mapped[str] = mapped_column(Text, default="")
 
     # What the human corrected to
     human_root_cause: Mapped[str] = mapped_column(String(200))
     human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
+    human_solution: Mapped[str] = mapped_column(String(200), default="")
+    human_solution_note: Mapped[str] = mapped_column(Text, default="")
 
     corrected_by_user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
