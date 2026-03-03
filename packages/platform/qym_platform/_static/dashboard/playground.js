@@ -120,14 +120,11 @@ window.QymPlayground = (function () {
     // Highlight CORRECT answer: lines
     escaped = escaped.replace(/^(CORRECT answer:.*)/gm,
       '<span class="pg-hl-correct">$1</span>');
-    // Highlight category list items (root cause and solution categories)
-    escaped = escaped.replace(/^(- (?:Hallucination|Incomplete Answer|Wrong Format|Context Missing|Reasoning Error|Tool Use Error|Instruction Following|Knowledge Gap|Improve Retrieval Context|Add Guardrails|Refine Prompt Instructions|Expand Training Data|Fix Tool Configuration|Add Output Validation|Restructure Chain-of-Thought|Update Knowledge Base)\b.*)/gm,
+    // Highlight bulleted list items (root cause categories and details)
+    escaped = escaped.replace(/^(- .+)$/gm,
       '<span class="pg-hl-category">$1</span>');
-    // Highlight CORRECT solution: lines
-    escaped = escaped.replace(/^(CORRECT solution:.*)/gm,
-      '<span class="pg-hl-correct">$1</span>');
     // Highlight JSON response format hints
-    escaped = escaped.replace(/(&quot;root_cause&quot;|&quot;root_cause_detail&quot;|&quot;root_cause_note&quot;|&quot;confidence&quot;|&quot;solution&quot;|&quot;solution_note&quot;)/g,
+    escaped = escaped.replace(/(&quot;root_cause&quot;|&quot;root_cause_detail&quot;|&quot;root_cause_note&quot;|&quot;confidence&quot;)/g,
       '<span class="pg-hl-json-key">$1</span>');
     return escaped;
   }
@@ -173,18 +170,20 @@ window.QymPlayground = (function () {
 
   function _getMatchedItems() {
     var rows = _getRows();
-    var filterEl = document.getElementById('pg-filter-select');
     var maxScoreEl = document.getElementById('pg-max-score');
     var skipEl = document.getElementById('pg-skip-analyzed');
 
-    var itemFilter = filterEl ? filterEl.value : 'failed';
-    var maxScore = maxScoreEl ? parseFloat(maxScoreEl.value) : NaN;
+    var itemFilter = 'failed';
+    var maxScore = maxScoreEl ? parseFloat(maxScoreEl.value) / 100 : NaN;
     var skipAnalyzed = skipEl ? skipEl.checked : true;
+    var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
+    var allowHumanOverwrite = humanOverwriteEl ? humanOverwriteEl.checked : false;
     var threshold = _opts.getThreshold ? _opts.getThreshold() : 0.8;
 
     return rows.filter(function (r) {
+      var md = r.item_metadata;
+      if (!allowHumanOverwrite && md && typeof md === 'object' && md.root_cause_source === 'human') return false;
       if (skipAnalyzed) {
-        var md = r.item_metadata;
         if (md && typeof md === 'object' && md.root_cause) return false;
       }
       var isError = !!r.error;
@@ -279,7 +278,8 @@ window.QymPlayground = (function () {
   function _section(title, body, opts) {
     var o = opts || {};
     var open = o.open !== false ? ' open' : '';
-    var badge = o.badge ? '<span class="pg-section-badge">' + o.badge + '</span>' : '';
+    var badgeId = o.badgeId ? ' id="' + o.badgeId + '"' : '';
+    var badge = o.badge ? '<span class="pg-section-badge"' + badgeId + '>' + o.badge + '</span>' : '';
     var extra = o.extraSummary || '';
     return '<details class="pg-section"' + open + '>' +
       '<summary class="pg-section-summary">' +
@@ -320,6 +320,23 @@ window.QymPlayground = (function () {
     '</div>';
     html += _section('Root Cause Categories', catBody, { open: false, badge: String(cats.length) });
 
+    // ── Root Cause Details ──
+    var details = (_config && _config.existing_details) || [];
+    var detBody = '';
+    detBody += '<div id="pg-details-list">';
+    for (var di = 0; di < details.length; di++) {
+      detBody += '<div class="pg-category-item" data-detail="' + _escAttr(details[di]) + '">' +
+        '<span class="pg-category-name">' + _esc(details[di]) + '</span>' +
+        '<button class="pg-detail-remove" title="Remove">&times;</button>' +
+      '</div>';
+    }
+    detBody += '</div>';
+    detBody += '<div class="pg-add-category">' +
+      '<input type="text" id="pg-new-detail" placeholder="New detail (sub-issue)..." class="pg-add-input" />' +
+      '<button id="pg-add-detail-btn" class="pg-add-btn">+ Add</button>' +
+    '</div>';
+    html += _section('Root Cause Details', detBody, { open: false, badge: String(details.length) });
+
     // ── Variable Mapping ──
     html += _buildVariableMapping();
 
@@ -331,24 +348,19 @@ window.QymPlayground = (function () {
     var filterBody = '';
     filterBody += '<div class="pg-filter-row">';
     filterBody += '<div class="pg-filter-group">';
-    filterBody += '<label class="pg-filter-label">Show</label>';
-    filterBody += '<select id="pg-filter-select" class="pg-select">' +
-      '<option value="all">All Items</option>' +
-      '<option value="failed" selected>Failed Items</option>' +
-      '<option value="passed">Passed Items</option>' +
-      '<option value="errors">Error Items</option>' +
-    '</select>';
-    filterBody += '</div>';
-    filterBody += '<div class="pg-filter-group">';
     filterBody += '<label class="pg-filter-label">Max Score</label>';
-    filterBody += '<input type="number" id="pg-max-score" value="0.8" min="0" max="1" step="0.1" class="pg-number-input pg-filter-score" />';
+    filterBody += '<div class="pg-slider-control">';
+    filterBody += '<input type="range" id="pg-max-score" class="pg-score-slider" min="0" max="100" step="5" value="80" />';
+    filterBody += '<span class="pg-slider-value" id="pg-max-score-value">80%</span>';
+    filterBody += '</div>';
     filterBody += '</div>';
     filterBody += '<label class="pg-filter-check"><input type="checkbox" id="pg-skip-analyzed" checked /> <span>Skip analyzed</span></label>';
+    filterBody += '<label class="pg-filter-check"><input type="checkbox" id="pg-allow-human-overwrite" /> <span>Re-analyze human labels</span></label>';
     filterBody += '</div>';
     filterBody += '<div id="pg-matched-section">';
     filterBody += _buildMatchedItemsTable();
     filterBody += '</div>';
-    html += _section('Filter & Items', filterBody, { badge: String(matchedCount) });
+    html += _section('Filter & Items', filterBody, { badge: String(matchedCount), badgeId: 'pg-filter-badge' });
 
     // ── Prompt Preview ──
     var previewBody = '';
@@ -530,6 +542,13 @@ window.QymPlayground = (function () {
 
   // ── Matched Items Table ──
 
+  var _RC_COLORS = {
+    'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
+    'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
+    'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
+    'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
+  };
+
   function _buildMatchedItemsTable() {
     var matched = _getMatchedItems();
     var threshold = _opts.getThreshold ? _opts.getThreshold() : 0.8;
@@ -542,30 +561,45 @@ window.QymPlayground = (function () {
 
     html += '<div class="pg-items-list">';
     for (var i = 0; i < matched.length; i++) {
-      var r = visible[i];
+      var r = matched[i];
       var scoreNum = r.metric_score;
       var scoreStr = scoreNum != null ? scoreNum.toFixed(2) : '\u2014';
       var status = r.error ? 'error' : (scoreNum != null ? (scoreNum < threshold ? 'failed' : 'passed') : 'none');
       var isSelected = r.item_id === _selectedItemId;
       var md = r.item_metadata && typeof r.item_metadata === 'object' ? r.item_metadata : {};
       var rc = md.root_cause || '';
+      var rcDetail = md.root_cause_detail || '';
       var rcSource = md.root_cause_source || '';
-      var sol = md.solution || '';
-
+      var rcConfidence = md.root_cause_confidence;
+      var isAi = rcSource === 'ai';
+      var rcColor = _RC_COLORS[rc] || '#e07a5f';
       html += '<div class="pg-item-card' + (isSelected ? ' pg-item-selected' : '') + '" data-item-id="' + _escAttr(r.item_id) + '">';
 
-      // Top row: index, score, status, root cause, solution
+      // Top row: index, score, status
       html += '<div class="pg-item-top">';
       html += '<span class="pg-item-idx">#' + (r.index != null ? r.index : i) + '</span>';
       if (scoreNum != null) html += '<span class="pg-item-score pg-status-' + status + '">' + scoreStr + '</span>';
       html += '<span class="pg-status-badge pg-status-' + status + '">' + (status === 'none' ? 'no score' : status) + '</span>';
-      var rcDetail = md.root_cause_detail || '';
-      if (rcDetail) html += '<span class="pg-rc-tag pg-rc-' + rcSource + '">' + _esc(rcDetail) + '</span>';
-      if (rc) html += '<span class="pg-rc-tag pg-rc-category" style="opacity:0.7;font-size:10px;">' + _esc(rc) + '</span>';
-      if (sol) html += '<span class="pg-sol-tag">' + _esc(sol) + '</span>';
       html += '</div>';
 
-      // Input + output on one line
+      // Root cause row (matching item-by-item style)
+      if (rc || rcDetail) {
+        html += '<div class="pg-item-rc-row">';
+        if (rcDetail) {
+          html += '<span class="pg-item-rc-detail' + (isAi ? ' pg-item-rc-ai' : '') + '">' + _esc(rcDetail) + '</span>';
+        }
+        if (rc) {
+          var confDot = '';
+          if (isAi && rcConfidence != null) {
+            var dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
+            confDot = '<span class="pg-item-rc-conf" style="background:' + dotColor + ';" title="Confidence: ' + Math.round(rcConfidence * 100) + '%"></span>';
+          }
+          html += '<span class="pg-item-rc-cat" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;">' + _esc(rc) + confDot + '</span>';
+        }
+        html += '</div>';
+      }
+
+      // Input preview
       html += '<div class="pg-item-preview">';
       html += '<span class="pg-item-text">' + _esc(_truncate(r.input, 100)) + '</span>';
       html += '</div>';
@@ -599,6 +633,14 @@ window.QymPlayground = (function () {
       var cats = [];
       catItems.forEach(function (el) { cats.push(el.dataset.cat); });
       cfg.root_cause_categories = cats;
+    }
+
+    // Details
+    var detItems = document.querySelectorAll('#pg-details-list .pg-category-item');
+    if (detItems.length > 0) {
+      var dets = [];
+      detItems.forEach(function (el) { dets.push(el.dataset.detail); });
+      cfg.root_cause_details = dets;
     }
 
     // Include fields
@@ -719,6 +761,36 @@ window.QymPlayground = (function () {
       addInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') addCat(); });
     }
 
+    // Remove detail
+    var detList = document.getElementById('pg-details-list');
+    if (detList) detList.addEventListener('click', function (e) {
+      var removeBtn = e.target.closest('.pg-detail-remove');
+      if (removeBtn) {
+        var item = removeBtn.closest('.pg-category-item');
+        if (item) { item.remove(); _scheduleAutoPreview(); }
+      }
+    });
+
+    // Add detail
+    var addDetBtn = document.getElementById('pg-add-detail-btn');
+    var addDetInput = document.getElementById('pg-new-detail');
+    if (addDetBtn && addDetInput) {
+      var addDet = function () {
+        var val = addDetInput.value.trim();
+        if (!val) return;
+        var div = document.createElement('div');
+        div.className = 'pg-category-item';
+        div.dataset.detail = val;
+        div.innerHTML = '<span class="pg-category-name">' + _esc(val) + '</span>' +
+          '<button class="pg-detail-remove" title="Remove">&times;</button>';
+        detList.appendChild(div);
+        addDetInput.value = '';
+        _scheduleAutoPreview();
+      };
+      addDetBtn.addEventListener('click', addDet);
+      addDetInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') addDet(); });
+    }
+
     // Variable mapping field change
     _overlay.querySelectorAll('.pg-mapping-select:not(.pg-customvar-field)').forEach(function (sel) {
       sel.addEventListener('change', function () {
@@ -756,12 +828,18 @@ window.QymPlayground = (function () {
     }
 
     // Filter changes
-    var filterSelect = document.getElementById('pg-filter-select');
     var maxScore = document.getElementById('pg-max-score');
     var skipAnalyzed = document.getElementById('pg-skip-analyzed');
-    if (filterSelect) filterSelect.addEventListener('change', _onFilterChange);
-    if (maxScore) { maxScore.addEventListener('change', _onFilterChange); maxScore.addEventListener('input', _onFilterChange); }
+    if (maxScore) {
+      maxScore.addEventListener('input', function () {
+        var valEl = document.getElementById('pg-max-score-value');
+        if (valEl) valEl.textContent = maxScore.value + '%';
+        _onFilterChange();
+      });
+    }
     if (skipAnalyzed) skipAnalyzed.addEventListener('change', _onFilterChange);
+    var humanOverwrite = document.getElementById('pg-allow-human-overwrite');
+    if (humanOverwrite) humanOverwrite.addEventListener('change', _onFilterChange);
 
     // Row selection
     _wireRowSelection();
@@ -827,14 +905,8 @@ window.QymPlayground = (function () {
     _refreshMatchedTable();
     _updateFooterCount();
     // Update badge on Filter section
-    var filterSection = document.getElementById('pg-matched-section');
-    if (filterSection) {
-      var badge = filterSection.closest('.pg-section');
-      if (badge) {
-        var b = badge.querySelector('.pg-section-badge');
-        if (b) b.textContent = String(matched.length);
-      }
-    }
+    var filterBadge = document.getElementById('pg-filter-badge');
+    if (filterBadge) filterBadge.textContent = String(matched.length);
     _scheduleAutoPreview();
   }
 
@@ -1101,13 +1173,6 @@ window.QymPlayground = (function () {
       'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
       'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
     };
-    var SOL_COLORS = {
-      'Improve Retrieval Context': '#3b82f6', 'Add Guardrails': '#ef4444',
-      'Refine Prompt Instructions': '#f97316', 'Expand Training Data': '#10b981',
-      'Fix Tool Configuration': '#ec4899', 'Add Output Validation': '#00d4aa',
-      'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
-    };
-
     container.innerHTML = _testResults.map(function (r) {
       var color = RC_COLORS[r.root_cause] || '#e07a5f';
       var confPct = Math.round((r.confidence || 0) * 100);
@@ -1173,15 +1238,6 @@ window.QymPlayground = (function () {
         }
       }
 
-      var solHtml = '';
-      if (r.solution) {
-        var solColor = SOL_COLORS[r.solution] || '#60a5fa';
-        solHtml = '<div class="pg-result-solution" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--modal-border, #333);">' +
-          '<span style="color:var(--text-muted, #888);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Solution</span>' +
-          '<div style="color:' + solColor + ';font-weight:600;margin-top:2px;">' + _esc(r.solution) + '</div>' +
-          (r.solution_note ? '<div class="pg-result-note" style="margin-top:2px;">' + _esc(r.solution_note) + '</div>' : '') +
-        '</div>';
-      }
 
       return '<div class="pg-test-result-card">' +
         '<div class="pg-result-header">' +
@@ -1194,7 +1250,6 @@ window.QymPlayground = (function () {
           '<span class="pg-confidence-val">' + (r.confidence != null ? r.confidence.toFixed(2) : '?') + '</span>' +
         '</div>' +
         '<div class="pg-result-note">' + _esc(r.root_cause_note || '') + '</div>' +
-        solHtml +
         errorHtml +
         fieldsBadgesHtml +
         inputSectionHtml +
@@ -1214,15 +1269,16 @@ window.QymPlayground = (function () {
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var cfg = _buildConfigPayload();
 
-    var filterEl = document.getElementById('pg-filter-select');
     var maxScoreEl = document.getElementById('pg-max-score');
     var skipEl = document.getElementById('pg-skip-analyzed');
+    var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
 
     var body = {
       metric: _opts.getMetric ? _opts.getMetric() : null,
-      item_filter: filterEl ? filterEl.value : 'failed',
-      max_score: maxScoreEl ? parseFloat(maxScoreEl.value) || undefined : undefined,
+      item_filter: 'failed',
+      max_score: maxScoreEl ? (parseFloat(maxScoreEl.value) / 100) || undefined : undefined,
       only_unanalyzed: skipEl ? skipEl.checked : true,
+      allow_human_overwrite: humanOverwriteEl ? humanOverwriteEl.checked : false,
       threshold: _opts.getThreshold ? _opts.getThreshold() : 0.8,
       config: cfg,
     };

@@ -4445,6 +4445,102 @@ main {
   justify-content: space-between;
   margin-bottom: var(--space-sm);
 }
+/* Slider control for max score filter */
+.pg-slider-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pg-score-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 6px;
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+.pg-score-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--accent-primary, #00d4aa);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.pg-score-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(0, 212, 170, 0.5);
+}
+.pg-score-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: var(--accent-primary, #00d4aa);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+}
+.pg-score-slider::-moz-range-track {
+  background: var(--bg-elevated);
+  height: 6px;
+  border-radius: 3px;
+}
+.pg-slider-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 32px;
+}
+
+/* Item card root cause row */
+.pg-item-rc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.pg-item-rc-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.pg-item-rc-detail.pg-item-rc-ai {
+  border-color: rgba(168, 85, 247, 0.3);
+  background: rgba(168, 85, 247, 0.06);
+}
+.pg-item-rc-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid;
+}
+.pg-item-rc-conf {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Legacy — keep for backwards compat */
 .pg-rc-tag {
   display: inline-block;
   padding: 1px 6px;

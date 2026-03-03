@@ -766,13 +766,13 @@ def update_root_cause(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update root_cause and feedback (root_cause_note) in item_metadata for a single run's item."""
+    """Update root_cause and feedback (root_cause_note) in item_metadata for a single run's item.
+
+    Each field is only modified when its key is explicitly present in the request.
+    This prevents partial saves (e.g. saving only root_cause_note) from erasing
+    unrelated fields like root_cause or root_cause_detail.
+    """
     item_id = request.get("item_id")
-    root_cause = (request.get("root_cause") or "").strip()
-    root_cause_detail = (request.get("root_cause_detail") or "").strip()
-    root_cause_note = request.get("root_cause_note")
-    solution = (request.get("solution") or "").strip()
-    solution_note = request.get("solution_note")
     run_id = request.get("run_id")
 
     if not item_id or not run_id:
@@ -793,18 +793,29 @@ def update_root_cause(
     old_meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
     meta = dict(old_meta)
 
-    if root_cause:
-        meta["root_cause"] = root_cause
-    else:
-        meta.pop("root_cause", None)
+    # --- root_cause: only modify when explicitly present in request ---
+    root_cause_provided = "root_cause" in request
+    if root_cause_provided:
+        root_cause = (request["root_cause"] or "").strip()
+        if root_cause:
+            meta["root_cause"] = root_cause
+        else:
+            meta.pop("root_cause", None)
+            # Clean up orphaned provenance/child keys when clearing root cause
+            meta.pop("root_cause_source", None)
+            meta.pop("root_cause_confidence", None)
+            meta.pop("root_cause_detail", None)
 
-    if root_cause_detail:
-        meta["root_cause_detail"] = root_cause_detail
-    elif root_cause:
-        meta.pop("root_cause_detail", None)
-    else:
-        meta.pop("root_cause_detail", None)
+    # --- root_cause_detail: only modify when explicitly present in request ---
+    if "root_cause_detail" in request:
+        root_cause_detail = (request["root_cause_detail"] or "").strip()
+        if root_cause_detail:
+            meta["root_cause_detail"] = root_cause_detail
+        else:
+            meta.pop("root_cause_detail", None)
 
+    # --- root_cause_note: only modify when present (None = absent) ---
+    root_cause_note = request.get("root_cause_note")
     if root_cause_note is not None:
         note = str(root_cause_note).strip()
         if note:
@@ -812,13 +823,18 @@ def update_root_cause(
         else:
             meta.pop("root_cause_note", None)
 
-    if solution:
-        meta["solution"] = solution
-        meta["solution_source"] = "human"
-    elif "solution" in request:
-        meta.pop("solution", None)
-        meta.pop("solution_source", None)
+    # --- solution: only modify when explicitly present in request ---
+    if "solution" in request:
+        solution = (request["solution"] or "").strip()
+        if solution:
+            meta["solution"] = solution
+            meta["solution_source"] = "human"
+        else:
+            meta.pop("solution", None)
+            meta.pop("solution_source", None)
 
+    # --- solution_note: only modify when present (None = absent) ---
+    solution_note = request.get("solution_note")
     if solution_note is not None:
         snote = str(solution_note).strip()
         if snote:
@@ -826,13 +842,15 @@ def update_root_cause(
         else:
             meta.pop("solution_note", None)
 
-    # Record every human root cause assignment in the correction bank
+    # Record correction only when a human is explicitly changing root_cause from an AI suggestion
     old_source = old_meta.get("root_cause_source")
+    root_cause_val = meta.get("root_cause", "")
     old_rc = old_meta.get("root_cause", "")
-    old_note = old_meta.get("root_cause_note", "")
-    old_confidence = old_meta.get("root_cause_confidence")
 
-    if root_cause:
+    if root_cause_provided and root_cause_val and old_source == "ai" and root_cause_val != old_rc:
+        old_note = old_meta.get("root_cause_note", "")
+        old_confidence = old_meta.get("root_cause_confidence")
+
         item_scores = (
             db.query(RunItemScore)
             .filter(RunItemScore.run_id == run.id, RunItemScore.item_id == item.item_id)
@@ -842,34 +860,67 @@ def update_root_cause(
         for s in item_scores:
             scores_snap[s.metric_name] = s.score_numeric if s.score_numeric is not None else s.score_raw
 
-        correction = ReviewCorrection(
-            run_id=run.id,
-            item_id=item.item_id,
-            task=run.task,
-            input_snapshot=item.input,
-            expected_snapshot=item.expected,
-            output_snapshot=item.output,
-            scores_snapshot=scores_snap,
-            ai_root_cause=old_rc if old_source == "ai" else "Unanalyzed",
-            ai_root_cause_note=old_note if old_source == "ai" else "",
-            ai_confidence=old_confidence if old_source == "ai" else None,
-            ai_solution=old_meta.get("solution", "") if old_source == "ai" else "",
-            ai_solution_note=old_meta.get("solution_note", "") if old_source == "ai" else "",
-            human_root_cause=root_cause,
-            human_root_cause_note=str(root_cause_note or "").strip(),
-            human_solution=solution,
-            human_solution_note=str(solution_note or "").strip(),
-            corrected_by_user_id=principal.user.id if principal.auth_type != "none" else None,
-        )
-        db.add(correction)
+        # Use post-update meta for human correction values (captures final state)
+        human_detail = meta.get("root_cause_detail", "")
+        human_note = meta.get("root_cause_note", "")
+        human_solution = meta.get("solution", "")
+        human_solution_note = meta.get("solution_note", "")
 
-    # Track provenance
-    if root_cause:
-        if old_source == "ai":
-            meta["root_cause_source"] = "human"
-            meta.pop("root_cause_confidence", None)
+        # Upsert: update existing correction for same item, or create new
+        existing = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == run.id,
+                ReviewCorrection.item_id == item.item_id,
+            )
+            .first()
+        )
+        if existing:
+            existing.ai_root_cause = old_rc
+            existing.ai_root_cause_detail = old_meta.get("root_cause_detail", "")
+            existing.ai_root_cause_note = old_note
+            existing.ai_confidence = old_confidence
+            existing.ai_solution = old_meta.get("solution", "")
+            existing.ai_solution_note = old_meta.get("solution_note", "")
+            existing.human_root_cause = root_cause_val
+            existing.human_root_cause_detail = human_detail
+            existing.human_root_cause_note = human_note
+            existing.human_solution = human_solution
+            existing.human_solution_note = human_solution_note
+            existing.input_snapshot = item.input
+            existing.expected_snapshot = item.expected
+            existing.output_snapshot = item.output
+            existing.scores_snapshot = scores_snap
+            existing.corrected_by_user_id = principal.user.id if principal.auth_type != "none" else None
+            existing.created_at = datetime.utcnow()
         else:
-            meta["root_cause_source"] = "human"
+            correction = ReviewCorrection(
+                run_id=run.id,
+                item_id=item.item_id,
+                task=run.task,
+                input_snapshot=item.input,
+                expected_snapshot=item.expected,
+                output_snapshot=item.output,
+                scores_snapshot=scores_snap,
+                ai_root_cause=old_rc,
+                ai_root_cause_detail=old_meta.get("root_cause_detail", ""),
+                ai_root_cause_note=old_note,
+                ai_confidence=old_confidence,
+                ai_solution=old_meta.get("solution", ""),
+                ai_solution_note=old_meta.get("solution_note", ""),
+                human_root_cause=root_cause_val,
+                human_root_cause_detail=human_detail,
+                human_root_cause_note=human_note,
+                human_solution=human_solution,
+                human_solution_note=human_solution_note,
+                corrected_by_user_id=principal.user.id if principal.auth_type != "none" else None,
+            )
+            db.add(correction)
+
+    # Track provenance — only when root_cause actually changed
+    if root_cause_provided and root_cause_val and root_cause_val != old_rc:
+        meta["root_cause_source"] = "human"
+        meta.pop("root_cause_confidence", None)
 
     item.item_metadata = meta
 

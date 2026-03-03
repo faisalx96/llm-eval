@@ -696,7 +696,7 @@
     .breakdown-domain .breakdown-icon,
     .breakdown-domain .breakdown-header { color: #60a5fa; }
     .breakdown-root-cause .breakdown-icon,
-    .breakdown-root-cause .breakdown-header { color: #e07a5f; }
+    .breakdown-root-cause .breakdown-header { color: var(--text-primary); }
     .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
     .rc-category-card {
       border-left: none !important;
@@ -704,7 +704,7 @@
       overflow: hidden;
     }
     .rc-category-pill {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
@@ -716,6 +716,7 @@
       box-sizing: border-box;
     }
     .rc-category-pill-name {
+      flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1155,7 +1156,7 @@
     }
     .item-expected-row .expected-label { color: var(--success); }
     .item-expected-row .expected-text.collapsed {
-      max-height: 100px;
+      max-height: 300px;
       overflow: hidden;
       position: relative;
     }
@@ -1259,7 +1260,7 @@
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
     }
 
@@ -1359,58 +1360,56 @@
     .passfail-badge.pass { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
     .passfail-badge.fail { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 
-    /* Root cause + Solution side-by-side */
+    /* Root cause + Category + Solution unified row */
     .rc-sol-row {
-      display: flex;
-      gap: 12px;
       margin-top: var(--space-sm);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
-    }
-    .rc-group {
-      display: flex;
-      gap: 8px;
-      flex: 2;
-      min-width: 0;
-    }
-    .rc-sol-cell {
-      flex: 1;
-      min-width: 0;
+      padding: var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
     }
     .rc-sol-label {
       display: block;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.8px;
-      margin-bottom: 4px;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      opacity: 0.6;
     }
     .rc-label {
-      color: #e07a5f;
+      color: var(--text-secondary);
     }
     .sol-label {
-      color: #60a5fa;
+      color: var(--text-secondary);
     }
     .sol-note-text {
       color: var(--text-muted);
       font-size: var(--font-xs);
-      margin-top: 3px;
+      margin-top: 4px;
     }
-    .rc-cat-cell {
-      flex: 1;
+    .rc-badges-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .rc-badge-group {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
       min-width: 0;
     }
-    .rc-cat-label {
-      color: #e07a5f;
-      opacity: 0.75;
+    .rc-badges-sep {
+      display: none;
     }
     .badge-rc-detail {
+      border: 1px solid transparent;
       cursor: pointer;
-      border: 1px solid var(--border-subtle);
-      color: var(--text-primary);
-      background: var(--bg-secondary);
-      font-weight: 500;
+      transition: all 0.15s;
     }
-    .badge-rc-detail:hover { border-color: var(--text-muted); }
+    .badge-rc-detail:hover { filter: brightness(1.2); }
+    .badge-rc-detail.ai-suggested { border-style: dashed !important; }
     /* Legacy compat */
     .root-cause-row {
       margin-top: var(--space-sm);
@@ -1420,24 +1419,28 @@
 
     /* ── Feedback section (formerly "root cause notes") ── */
     .feedback-section {
-      margin-top: 6px;
+      margin-top: 8px;
       background: var(--bg-base);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-default);
       border-radius: 6px;
       overflow: hidden;
-      transition: border-color 0.2s;
+      transition: all 0.2s ease;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
     }
-    .feedback-section:hover { border-color: var(--border-default); }
+    .feedback-section:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-surface);
+    }
 
     /* Display state */
     .feedback-display {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
-      padding: 8px 10px;
-      cursor: pointer;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: text;
       transition: background 0.15s;
-      min-height: 34px;
+      min-height: 38px;
     }
     .feedback-display:hover { background: var(--bg-surface); }
     .feedback-icon {
@@ -1650,8 +1653,7 @@
       transition: all 0.15s;
     }
     .meta-badge.badge-root-cause:hover {
-      background: rgba(224, 122, 95, 0.2);
-      border-color: rgba(224, 122, 95, 0.4);
+      filter: brightness(1.2);
     }
     .item-meta-sep { width: 1px; height: 16px; background: var(--border-default); flex-shrink: 0; }
     .item-metadata-tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1681,7 +1683,7 @@
       padding: var(--space-sm);
       z-index: 100;
       min-width: 180px;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
@@ -2110,8 +2112,9 @@
 
     /* Solution badges */
     .meta-badge.badge-solution {
+        border: 1px solid transparent;
         cursor: pointer;
-        transition: filter 0.15s;
+        transition: all 0.15s;
     }
     .meta-badge.badge-solution:hover {
         filter: brightness(1.2);
@@ -2186,20 +2189,33 @@
     .sankey-col-rc { left: 0; width: 180px; }
     .sankey-col-sol { right: 0; width: 200px; }
     .sankey-node {
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: var(--font-xs);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: var(--font-sm);
       font-weight: 600;
       cursor: pointer;
       transition: opacity 0.2s, filter 0.2s;
-      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid;
+      box-sizing: border-box;
+    }
+    .sankey-node-label {
+      flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
     .sankey-node-count {
-      font-weight: 400;
-      opacity: 0.7;
-      margin-left: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+      flex-shrink: 0;
     }
     .sankey-dimmed { opacity: 0.15; }
     .sankey-highlighted { opacity: 1; }
@@ -2290,6 +2306,8 @@
       </div>
 
       <div id="metadata-breakdown"></div>
+
+      <div id="root-cause-section"></div>
 
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Detail</h3>
@@ -2433,8 +2451,8 @@
         'Restructure Chain-of-Thought', 'Update Knowledge Base',
       ];
       const SOLUTION_COLORS = {
-        'Improve Retrieval Context': '#3b82f6', 'Add Guardrails': '#ef4444',
-        'Refine Prompt Instructions': '#f97316', 'Expand Training Data': '#10b981',
+        'Improve Retrieval Context': '#3b82f6', 'Add Guardrails': '#10b981',
+        'Refine Prompt Instructions': '#f97316', 'Expand Training Data': '#0ea5e9',
         'Fix Tool Configuration': '#ec4899', 'Add Output Validation': '#00d4aa',
         'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
       };
@@ -3382,7 +3400,7 @@
         });
 
         // Build HTML
-        let html = '<div class="sankey-header"><span class="sankey-header-icon">\u2192</span> Root Cause \u2192 Solution Flow</div>';
+        let html = '<div class="breakdown-header" style="color:var(--text-primary);margin-top:var(--space-md);"><span class="breakdown-icon">\u2666</span> Failure to Fix Flow</div>';
         html += '<div class="sankey-body" style="height:' + diagramH + 'px;">';
 
         // SVG paths placeholder
@@ -3393,7 +3411,7 @@
         rcList.forEach(([rc, count], i) => {
           const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
           const y = leftOffsetY + i * (nodeH + nodeGap);
-          html += '<div class="sankey-node" data-sankey-rc="' + escapeAttr(rc) + '" style="background:' + color + '15;border:1px solid ' + color + '40;color:' + color + ';height:' + nodeH + 'px;line-height:' + nodeH + 'px;" title="' + escapeAttr(rc) + ' (' + count + ')">' + escapeHtml(rc) + '<span class="sankey-node-count">' + count + '</span></div>';
+          html += '<div class="sankey-node" data-sankey-rc="' + escapeAttr(rc) + '" style="background:' + color + '15;border-color:' + color + '40;color:' + color + ';" title="' + escapeAttr(rc) + ' (' + count + ')"><span class="sankey-node-label">' + escapeHtml(rc) + '</span><span class="sankey-node-count" style="background:' + color + '30;">' + count + '</span></div>';
         });
         html += '</div>';
 
@@ -3402,7 +3420,7 @@
         solList.forEach(([sol, count], i) => {
           const color = SOLUTION_COLORS[sol] || '#60a5fa';
           const y = rightOffsetY + i * (nodeH + nodeGap);
-          html += '<div class="sankey-node" data-sankey-sol="' + escapeAttr(sol) + '" style="background:' + color + '15;border:1px solid ' + color + '40;color:' + color + ';height:' + nodeH + 'px;line-height:' + nodeH + 'px;" title="' + escapeAttr(sol) + ' (' + count + ')">' + escapeHtml(sol) + '<span class="sankey-node-count">' + count + '</span></div>';
+          html += '<div class="sankey-node" data-sankey-sol="' + escapeAttr(sol) + '" style="background:' + color + '15;border-color:' + color + '40;color:' + color + ';" title="' + escapeAttr(sol) + ' (' + count + ')"><span class="sankey-node-label">' + escapeHtml(sol) + '</span><span class="sankey-node-count" style="background:' + color + '30;">' + count + '</span></div>';
         });
         html += '</div>';
 
@@ -3571,7 +3589,6 @@
 
       function renderMetadataBreakdown() {
         const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
-        breakdownKeys.push('root_cause');
         const section = el('metadata-breakdown');
         if (!section) return;
         if (breakdownKeys.length === 0) { section.innerHTML = ''; return; }
@@ -3609,7 +3626,6 @@
             for (const groupVal of groupVals) {
               if ((bdKey === 'domain' || bdKey === 'patterns') && state.domainFilter !== null
                   && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
-              if (bdKey === 'root_cause' && !groupVal) continue;
               const effective = groupVal || 'unknown';
               if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
               groups[effective].count++;
@@ -3642,79 +3658,21 @@
               const bi = co.indexOf(b.groupVal.toLowerCase().trim());
               return (ai===-1?999:ai) - (bi===-1?999:bi);
             });
-          } else if (bdKey === 'root_cause') {
-            groupStats.sort((a,b) => b.itemCount - a.itemCount);
           } else {
             groupStats.sort((a,b) => b.avgScore - a.avgScore);
           }
 
-          if (groupStats.length === 0 && bdKey !== 'root_cause') continue;
+          if (groupStats.length === 0) continue;
 
-          const icon = bdKey === 'complexity' ? '\u2666' : bdKey === 'root_cause' ? '\u26A0' : '\u25C6';
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : bdKey === 'root_cause' ? 'breakdown-root-cause' : 'breakdown-domain';
-          const displayName = bdKey === 'root_cause' ? 'Root Cause Analysis' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
+          const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : 'breakdown-domain';
+          const displayName = bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
 
           html += '<div class="breakdown-section ' + colorClass + '">';
-          if (bdKey === 'root_cause') {
-            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">🤖</span> Auto-Analyze</button></div>';
-          } else {
-            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
-          }
+          html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
           html += '<div class="breakdown-grid">';
 
-          // For root_cause: build hierarchical categories from root_cause + root_cause_detail
-          // Also auto-parse "Category - Subcause" format from flat root_cause values
-          if (bdKey === 'root_cause') {
-            const rcCategories = {};  // { category: { count, subcauses: { name: count } } }
-            for (const row of rows) {
-              const itemId = row.item_id || String(row.index);
-              if (!filteredItemIds.has(itemId)) continue;
-              const md = row.item_metadata || {};
-              const rcRaw = String(md.root_cause || '');
-              if (!rcRaw) continue;
-              const rcDetail = md.root_cause_detail || '';
-
-              const category = rcRaw;
-              const subcause = rcDetail;
-
-              if (!rcCategories[category]) rcCategories[category] = { count: 0, subcauses: {} };
-              rcCategories[category].count++;
-              if (subcause) {
-                rcCategories[category].subcauses[subcause] = (rcCategories[category].subcauses[subcause] || 0) + 1;
-              }
-            }
-
-            const catStats = Object.entries(rcCategories)
-              .map(([cat, data]) => ({ category: cat, count: data.count, subcauses: data.subcauses }))
-              .sort((a, b) => b.count - a.count);
-
-            for (const cat of catStats) {
-              const rcColor = ROOT_CAUSE_COLORS[cat.category] || '#e07a5f';
-              const subcauseList = Object.entries(cat.subcauses).sort((a, b) => b[1] - a[1]);
-              let subcauseHtml = '';
-              if (subcauseList.length > 0) {
-                subcauseHtml = '<div class="rc-subcauses">' + subcauseList.map(function(sc) {
-                  return '<div class="rc-subcause-item" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="' + escapeAttr(sc[0]) + '">' +
-                    '<span class="rc-subcause-name">' + escapeHtml(sc[0]) + '</span>' +
-                    '<span class="rc-subcause-count">' + sc[1] + '</span>' +
-                  '</div>';
-                }).join('') + '</div>';
-              }
-              html += '<div class="breakdown-card rc-category-card" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(cat.category) + '">' +
-                '<div class="rc-category-pill" style="background:' + rcColor + '20;border-color:' + rcColor + '40;color:' + rcColor + ';">' +
-                  '<span class="rc-category-pill-name">' + escapeHtml(cat.category) + '</span>' +
-                  '<span class="rc-category-pill-count" style="background:' + rcColor + '30;">' + cat.count + '</span>' +
-                '</div>' +
-                subcauseHtml +
-              '</div>';
-            }
-          }
-
           for (const g of groupStats) {
-            if (bdKey === 'root_cause') {
-              // Already rendered above with hierarchical categories
-              continue;
-            } else {
               const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
               let cardValClass = '';
               if (bdKey === 'complexity') {
@@ -3728,17 +3686,12 @@
                 '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
                 '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
                 '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
-            }
           }
           html += '</div></div>';
         }
 
         html += '</div>';
-        html += '<div id="sankey-diagram-container"></div>';
         section.innerHTML = html;
-
-        // Render Sankey diagram if we have both root cause and solution data
-        renderSankeyDiagram(rows, filteredItemIds);
 
         // Wire breakdown card click-to-filter
         section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
@@ -3768,8 +3721,146 @@
           });
         });
 
-        // Wire auto-analyze button to open playground
-        var aaBtn = document.getElementById('auto-analyze-btn');
+      }
+
+      function renderRootCauseSection() {
+        const section = el('root-cause-section');
+        if (!section) return;
+
+        const rows = state.snapshot.rows || [];
+        const filteredItems = getFilteredItems();
+        const filteredItemIds = new Set(filteredItems.map(item => {
+          const r = item.row;
+          return r.item_id || String(r.index);
+        }));
+
+        // Build hierarchical root cause categories
+        const rcCategories = {};
+        for (const row of rows) {
+          const itemId = row.item_id || String(row.index);
+          if (!filteredItemIds.has(itemId)) continue;
+          const md = row.item_metadata || {};
+          const rcRaw = String(md.root_cause || '');
+          if (!rcRaw) continue;
+          const rcDetail = md.root_cause_detail || '';
+          if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
+          rcCategories[rcRaw].count++;
+          if (rcDetail) {
+            rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+          }
+        }
+
+        const catStats = Object.entries(rcCategories)
+          .map(([cat, data]) => ({ category: cat, count: data.count, subcauses: data.subcauses }))
+          .sort((a, b) => b.count - a.count);
+
+        // Empty state if no root cause data
+        if (catStats.length === 0) {
+          section.innerHTML = '<h3 class="section-title">Root Cause Analysis</h3>' +
+            '<div class="comparison-stats"><div style="padding:32px 24px;text-align:center;">' +
+              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">No root causes assigned yet. Run Auto-Analyze to identify failure patterns.</div>' +
+              '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>' +
+            '</div></div>';
+          var aaBtn0 = section.querySelector('#auto-analyze-btn');
+          if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
+          return;
+        }
+
+        let html = '<h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>';
+        html += '<div class="comparison-stats"><div class="breakdown-section breakdown-root-cause">';
+        html += '<div class="breakdown-header"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</div>';
+        html += '<div class="breakdown-grid">';
+
+        for (const cat of catStats) {
+          const rcColor = ROOT_CAUSE_COLORS[cat.category] || '#e07a5f';
+          const subcauseList = Object.entries(cat.subcauses).sort((a, b) => b[1] - a[1]);
+          let subcauseHtml = '';
+          if (subcauseList.length > 0) {
+            subcauseHtml = '<div class="rc-subcauses">' + subcauseList.map(function(sc) {
+              return '<div class="rc-subcause-item" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="' + escapeAttr(sc[0]) + '">' +
+                '<span class="rc-subcause-name">' + escapeHtml(sc[0]) + '</span>' +
+                '<span class="rc-subcause-count">' + sc[1] + '</span>' +
+              '</div>';
+            }).join('') + '</div>';
+          }
+          html += '<div class="breakdown-card rc-category-card" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(cat.category) + '">' +
+            '<div class="rc-category-pill" style="background:' + rcColor + '20;border-color:' + rcColor + '40;color:' + rcColor + ';">' +
+              '<span class="rc-category-pill-name">' + escapeHtml(cat.category) + '</span>' +
+              '<span class="rc-category-pill-count" style="background:' + rcColor + '30;">' + cat.count + '</span>' +
+            '</div>' +
+            subcauseHtml +
+          '</div>';
+        }
+
+        html += '</div></div>';
+        html += '<div id="sankey-diagram-container"></div>';
+        html += '</div>';
+        section.innerHTML = html;
+
+        // Render Sankey diagram
+        renderSankeyDiagram(rows, filteredItemIds);
+
+        // Sankey highlight helpers scoped to this section
+        var sankeyContainer = section.querySelector('#sankey-diagram-container');
+        function highlightSankey(rc) {
+          if (!sankeyContainer) return;
+          var allPaths = sankeyContainer.querySelectorAll('[data-sankey-link-rc]');
+          var allNodes = sankeyContainer.querySelectorAll('.sankey-node');
+          var connectedSol = new Set();
+          allPaths.forEach(function (p) {
+            if (p.dataset.sankeyLinkRc === rc) {
+              connectedSol.add(p.dataset.sankeyLinkSol);
+              p.classList.add('sankey-highlighted');
+              p.classList.remove('sankey-dimmed');
+              p.setAttribute('stroke-opacity', '0.7');
+            } else {
+              p.classList.add('sankey-dimmed');
+              p.classList.remove('sankey-highlighted');
+              p.setAttribute('stroke-opacity', '0.08');
+            }
+          });
+          allNodes.forEach(function (n) {
+            var connected = (n.dataset.sankeyRc && n.dataset.sankeyRc === rc) ||
+                            (n.dataset.sankeySol && connectedSol.has(n.dataset.sankeySol));
+            if (connected) { n.classList.add('sankey-highlighted'); n.classList.remove('sankey-dimmed'); }
+            else { n.classList.add('sankey-dimmed'); n.classList.remove('sankey-highlighted'); }
+          });
+        }
+        function clearSankeyHighlight() {
+          if (!sankeyContainer) return;
+          sankeyContainer.querySelectorAll('[data-sankey-link-rc]').forEach(function (p) {
+            p.classList.remove('sankey-highlighted', 'sankey-dimmed');
+            p.setAttribute('stroke-opacity', '0.35');
+          });
+          sankeyContainer.querySelectorAll('.sankey-node').forEach(function (n) {
+            n.classList.remove('sankey-highlighted', 'sankey-dimmed');
+          });
+        }
+
+        // Wire click-to-filter and hover-to-highlight on root cause cards
+        section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+          card.addEventListener('click', () => {
+            const val = card.dataset.bdValue;
+            const current = getCatFilter('root_cause');
+            if (current !== null && current.length === 1 && current[0] === val) {
+              setCatFilter('root_cause', null);
+            } else {
+              setCatFilter('root_cause', [val]);
+            }
+            syncMultiselectUI('root_cause');
+            state.page = 1;
+            renderItems();
+          });
+          card.addEventListener('mouseenter', function () {
+            highlightSankey(card.dataset.bdValue);
+          });
+          card.addEventListener('mouseleave', function () {
+            clearSankeyHighlight();
+          });
+        });
+
+        // Wire auto-analyze button
+        var aaBtn = section.querySelector('#auto-analyze-btn');
         if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
       }
 
@@ -3872,7 +3963,10 @@
       var _breakdownTimer = null;
       function scheduleBreakdownRender() {
         clearTimeout(_breakdownTimer);
-        _breakdownTimer = setTimeout(renderMetadataBreakdown, 80);
+        _breakdownTimer = setTimeout(function () {
+          renderMetadataBreakdown();
+          renderRootCauseSection();
+        }, 80);
       }
 
       function renderItems(scrollToTop) {
@@ -3973,43 +4067,29 @@
           const rowSol = row.item_metadata?.solution || '';
           const rowSolNote = row.item_metadata?.solution_note || '';
 
-          // Build root cause cell (specific issue)
-          let rcCellHtml = '';
+          // Build root cause group (detail + category badges + shared feedback)
+          let rcGroupHtml = '';
           const rcSource = row.item_metadata?.root_cause_source || '';
           const rcConfidence = row.item_metadata?.root_cause_confidence;
           const isAi = rcSource === 'ai';
 
-          // Build root cause category cell (broad preset)
-          let rcCatCellHtml = '';
-
           if (rowRc || rowRcDetail || !itemPassed) {
             const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
 
-            // Root cause cell (specific issue)
+            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
+
+            // Detail badge (specific issue) — uses same color as category
             let rcDetailBadge = '';
             if (rowRcDetail) {
               const aiClass = isAi ? ' ai-suggested' : '';
-              const sourceIcon = isAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '<span class="badge-icon">\u2713</span>';
-              rcDetailBadge = '<span class="meta-badge badge-rc-detail' + aiClass + '" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Root cause: ' + escapeAttr(rowRcDetail) + '. Click to change.">' + sourceIcon + escapeHtml(rowRcDetail) + '</span>';
+              rcDetailBadge = '<span class="meta-badge badge-rc-detail' + aiClass + '" data-rcdetail-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;" title="Root cause: ' + escapeAttr(rowRcDetail) + '. Click to change.">' + escapeHtml(rowRcDetail) + '</span>';
             } else if (!itemPassed) {
               rcDetailBadge = '<button class="root-cause-assign-btn" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>';
             }
-            var feedbackHtml = '';
-            if (rowRc || rowRcDetail) {
-              feedbackHtml = rowRcNote
-                ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
-                : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
-            }
-            rcCellHtml = '<div class="rc-sol-cell rc-cell">' +
-              '<span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>' +
-              rcDetailBadge +
-              feedbackHtml +
-            '</div>';
 
-            // Root cause category cell (broad preset)
+            // Category badge (broad preset)
             let rcCategoryBadge = '';
             if (rowRc) {
-              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
               const aiClass = isAi ? ' ai-suggested' : '';
               let confidenceDot = '';
               if (isAi && rcConfidence != null) {
@@ -4020,35 +4100,51 @@
             } else if (!itemPassed) {
               rcCategoryBadge = '<button class="root-cause-assign-btn rc-category-assign" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>';
             }
-            rcCatCellHtml = '<div class="rc-sol-cell rc-cat-cell">' +
-              '<span class="rc-sol-label rc-cat-label">\uD83D\uDCC2 ROOT CAUSE CATEGORY</span>' +
-              rcCategoryBadge +
-            '</div>';
-          }
 
-          // Build solution cell
-          let solCellHtml = '';
-          if (rowSol) {
-            const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
-            const solSource = row.item_metadata?.solution_source || '';
-            const solIsAi = solSource === 'ai';
-            const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '<span class="badge-icon">\uD83D\uDCA1</span>';
-            solCellHtml = '<div class="rc-sol-cell sol-cell">' +
-              '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-              '<span class="meta-badge badge-solution' + (solIsAi ? ' ai-suggested' : '') + '" data-sol-item="' + escapeAttr(itemId) + '" style="border-color:' + solColor + '40;color:' + solColor + ';background:' + solColor + '15;" title="Solution: ' + escapeAttr(rowSol) + '. Click to change.">' + solIcon + escapeHtml(rowSol) + '</span>' +
-              (rowSolNote ? '<div class="sol-note-text">' + escapeHtml(rowSolNote) + '</div>' : '') +
-            '</div>';
-          } else if ((rowRc || rowRcDetail) && !itemPassed) {
-            solCellHtml = '<div class="rc-sol-cell sol-cell">' +
-              '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-              '<button class="solution-assign-btn" data-sol-item="' + escapeAttr(itemId) + '" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>' +
-            '</div>';
-          }
+            // Feedback (shared across both badges)
+            var feedbackHtml = '';
+            if (rowRc || rowRcDetail) {
+              feedbackHtml = rowRcNote
+                ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
+                : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
+            }
 
-          // Combine into horizontal layout
-          if (rcCellHtml || rcCatCellHtml || solCellHtml) {
-            const rcGroup = (rcCellHtml || rcCatCellHtml) ? '<div class="rc-group">' + rcCellHtml + rcCatCellHtml + '</div>' : '';
-            rootCauseHtml = '<div class="rc-sol-row">' + rcGroup + solCellHtml + '</div>';
+            // Solution badge group
+            let solBadgeHtml = '';
+            if (rowSol) {
+              const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
+              const solSource = row.item_metadata?.solution_source || '';
+              const solIsAi = solSource === 'ai';
+              const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '';
+              solBadgeHtml = '<div class="rc-badge-group">' +
+                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
+                '<span class="meta-badge badge-solution' + (solIsAi ? ' ai-suggested' : '') + '" data-sol-item="' + escapeAttr(itemId) + '" style="border-color:' + solColor + '40;color:' + solColor + ';background:' + solColor + '15;" title="Solution: ' + escapeAttr(rowSol) + '. Click to change.">' + solIcon + escapeHtml(rowSol) + '</span>' +
+                (rowSolNote ? '<div class="sol-note-text">' + escapeHtml(rowSolNote) + '</div>' : '') +
+              '</div>';
+            } else if (!itemPassed) {
+              solBadgeHtml = '<div class="rc-badge-group">' +
+                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
+                '<button class="solution-assign-btn" data-sol-item="' + escapeAttr(itemId) + '" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>' +
+              '</div>';
+            }
+
+            // Combine all badge groups + feedback
+            var solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
+            rootCauseHtml = '<div class="rc-sol-row">' +
+              '<div class="rc-badges-row">' +
+                '<div class="rc-badge-group">' +
+                  '<span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>' +
+                  rcDetailBadge +
+                '</div>' +
+                '<div class="rc-badge-group">' +
+                  '<span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>' +
+                  rcCategoryBadge +
+                '</div>' +
+                solSep +
+                solBadgeHtml +
+              '</div>' +
+              feedbackHtml +
+            '</div>';
           }
 
           // Metric details
@@ -4078,7 +4174,7 @@
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
             for (const sk of SPECIAL_KEYS) {
-              if (sk.startsWith('root_cause')) continue;
+              if (sk.startsWith('root_cause') || sk.startsWith('solution')) continue;
               if (itemMd[sk] != null && itemMd[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                 const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
                 const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(itemMd[sk]) : [String(itemMd[sk])];
@@ -4690,7 +4786,7 @@
           var text = row.querySelector('.expected-text');
           var btn = row.querySelector('.expected-toggle');
           if (!text || !btn) return;
-          if (text.scrollHeight <= 100) {
+          if (text.scrollHeight <= 300) {
             text.classList.remove('collapsed');
             btn.style.display = 'none';
           } else {
@@ -5274,7 +5370,11 @@
                         error: r.error,
                         item_metadata: r.item_metadata,
                         scores: r.scores || {},
-                        metric_score: r[state.selectedMetric] != null ? parseFloat(r[state.selectedMetric]) : null,
+                        metric_score: (function() {
+                            var mIdx = state.allMetrics.indexOf(state.selectedMetric);
+                            var v = mIdx >= 0 ? (r.metric_values || [])[mIdx] : null;
+                            return v != null ? parseFloat(v) : null;
+                        })(),
                     };
                 });
             },

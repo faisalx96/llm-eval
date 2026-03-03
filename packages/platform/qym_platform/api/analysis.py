@@ -31,6 +31,7 @@ class PlaygroundConfig(BaseModel):
     additional_instructions: Optional[str] = None
     custom_variable_mapping: Optional[Dict[str, str]] = None
     root_cause_categories: Optional[List[str]] = None
+    root_cause_details: Optional[List[str]] = None
     solution_categories: Optional[List[str]] = None
     include_fields: Optional[Dict[str, bool]] = None
     correction_ids: Optional[List[int]] = None
@@ -48,6 +49,7 @@ class AnalyzeRequest(BaseModel):
     item_filter: str = "all"  # all | failed | passed | errors
     threshold: float = 0.8
     only_unanalyzed: bool = True
+    allow_human_overwrite: bool = False
     complexity: Optional[List[str]] = None
     domain: Optional[List[str]] = None
     root_cause: Optional[List[str]] = None
@@ -90,6 +92,8 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
         cfg["root_cause_categories"] = pg.root_cause_categories
+    if pg.root_cause_details is not None:
+        cfg["root_cause_details"] = pg.root_cause_details
     if pg.solution_categories is not None:
         cfg["solution_categories"] = pg.solution_categories
     if pg.include_fields is not None:
@@ -150,6 +154,10 @@ async def analyze_run_items(
         if request.item_ids and item.item_id not in request.item_ids:
             continue
 
+        # Never overwrite human labels unless explicitly allowed
+        if md.get("root_cause_source") == "human" and not request.allow_human_overwrite:
+            continue
+
         # Skip already-analyzed items if requested
         if request.only_unanalyzed and md.get("root_cause"):
             continue
@@ -204,16 +212,17 @@ async def analyze_run_items(
     if not filtered_items:
         return {"total_analyzed": 0, "results": [], "errors": 0}
 
+    # Convert playground config
+    analyzer_config = _playground_config_to_analyzer(request.config)
+
     # Get few-shot examples from correction bank
-    corrections = get_few_shot_examples(db, task=run.task, limit=5)
+    cfg_ids = (analyzer_config or {}).get("correction_ids")
+    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
 
     # Build items list with their scores
     items_with_scores = [
         (item, scores_by_item.get(item.item_id, {})) for item in filtered_items
     ]
-
-    # Convert playground config
-    analyzer_config = _playground_config_to_analyzer(request.config)
 
     # Run async LLM analysis
     client = build_client(llm_config)
@@ -237,18 +246,22 @@ async def analyze_run_items(
         if not item:
             continue
 
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+
         if result.error:
             error_count += 1
+            meta["analysis_error"] = result.error
+        else:
+            meta.pop("analysis_error", None)
+            meta["root_cause"] = result.root_cause
+            meta["root_cause_detail"] = result.root_cause_detail
+            meta["root_cause_note"] = result.root_cause_note
+            meta["root_cause_source"] = "ai"
+            meta["root_cause_confidence"] = result.confidence
+            meta["solution"] = result.solution
+            meta["solution_note"] = result.solution_note
+            meta["solution_source"] = "ai"
 
-        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-        meta["root_cause"] = result.root_cause
-        meta["root_cause_detail"] = result.root_cause_detail
-        meta["root_cause_note"] = result.root_cause_note
-        meta["root_cause_source"] = "ai"
-        meta["root_cause_confidence"] = result.confidence
-        meta["solution"] = result.solution
-        meta["solution_note"] = result.solution_note
-        meta["solution_source"] = "ai"
         item.item_metadata = meta
 
         response_results.append(
@@ -300,8 +313,9 @@ def analyze_preview(
     )
     scores = {s.metric_name: s for s in scores_list}
 
-    corrections = get_few_shot_examples(db, task=run.task, limit=5)
     analyzer_config = _playground_config_to_analyzer(request.config)
+    cfg_ids = (analyzer_config or {}).get("correction_ids")
+    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
     messages = build_analysis_prompt(item, scores, corrections, config=analyzer_config)
 
     return {"messages": messages}
@@ -341,8 +355,9 @@ async def analyze_test(
     for s in all_scores:
         scores_by_item.setdefault(s.item_id, {})[s.metric_name] = s
 
-    corrections = get_few_shot_examples(db, task=run.task, limit=5)
     analyzer_config = _playground_config_to_analyzer(request.config)
+    cfg_ids = (analyzer_config or {}).get("correction_ids")
+    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
 
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
@@ -406,8 +421,10 @@ def get_corrections(
                 "id": c.id,
                 "item_id": c.item_id,
                 "human_root_cause": c.human_root_cause,
+                "human_root_cause_detail": c.human_root_cause_detail,
                 "human_root_cause_note": c.human_root_cause_note,
                 "ai_root_cause": c.ai_root_cause,
+                "ai_root_cause_detail": c.ai_root_cause_detail,
                 "ai_root_cause_note": c.ai_root_cause_note,
                 "ai_confidence": c.ai_confidence,
                 "ai_solution": c.ai_solution,
@@ -454,6 +471,24 @@ def get_analysis_config(
         db.query(ReviewCorrection).filter(ReviewCorrection.task == run.task).count()
     )
 
+    # Collect existing root_cause values from items and merge with defaults
+    existing_categories = {
+        str(i.item_metadata.get("root_cause", ""))
+        for i in items
+        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause")
+    }
+    # Defaults first, then any custom categories from the run (sorted)
+    all_categories = list(ROOT_CAUSE_CATEGORIES) + sorted(
+        existing_categories - set(ROOT_CAUSE_CATEGORIES)
+    )
+
+    # Collect existing root_cause_detail values from items
+    existing_details = sorted({
+        str(i.item_metadata.get("root_cause_detail", ""))
+        for i in items
+        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause_detail")
+    })
+
     return {
         "llm_configured": bool(cfg.get("llm_api_key")),
         "model": cfg.get("llm_model") if cfg.get("llm_api_key") else None,
@@ -463,6 +498,7 @@ def get_analysis_config(
         "items_without_root_cause": total - with_rc,
         "correction_bank_size": correction_count,
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
-        "default_categories": ROOT_CAUSE_CATEGORIES,
+        "default_categories": all_categories,
         "default_solution_categories": SOLUTION_CATEGORIES,
+        "existing_details": existing_details,
     }

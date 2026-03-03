@@ -38,27 +38,22 @@ SOLUTION_CATEGORIES = [
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert LLM evaluation analyst. Your job is to analyze evaluation results "
-    "and determine the root cause of failures or low-quality outputs, and suggest a solution.\n\n"
+    "and determine the root cause of failures or low-quality outputs.\n\n"
     "Given an evaluation item with its input, expected output, actual output, and metric scores, "
-    "determine the most likely root cause category and suggest the most appropriate solution.\n\n"
-    "Available root cause categories:\n"
+    "classify the failure using two levels:\n\n"
+    "1. root_cause — the broad failure category. Choose from:\n"
     "{categories}\n\n"
-    "Available solution categories:\n"
-    "{solution_categories}\n\n"
-    "You may also suggest a custom category if none of the above fit.\n\n"
+    "{details_section}"
+    "You may suggest a custom value for either level if none of the above fit.\n\n"
     "Respond ONLY with valid JSON in this exact format:\n"
     "{{\n"
-    '  "root_cause": "<category name>",\n'
-    '  "root_cause_detail": "<specific issue — a short label for the exact failure>",\n'
+    '  "root_cause": "<broad category>",\n'
+    '  "root_cause_detail": "<specific sub-issue>",\n'
     '  "confidence": <float 0.0-1.0>,\n'
-    '  "root_cause_note": "<1-2 sentences: what went wrong and why>",\n'
-    '  "solution": "<solution category name>",\n'
-    '  "solution_note": "<1-2 sentences: what specific action to take>"\n'
+    '  "root_cause_note": "<1-2 sentences: what went wrong and why>"\n'
     "}}\n\n"
-    "IMPORTANT: root_cause is a broad category. root_cause_detail is the specific sub-issue "
-    "(e.g. root_cause='Context Missing', root_cause_detail='Out of Scope Query'). "
-    "Keep root_cause_note and solution_note brief and direct — 1-2 sentences max. "
-    "State the specific failure and proposed fix, not general observations."
+    "Keep root_cause_note brief and direct — 1-2 sentences max. "
+    "State the specific failure, not general observations."
 )
 
 # Default fields to include in item context
@@ -96,8 +91,23 @@ def get_few_shot_examples(
     db: Session,
     task: str,
     limit: int = 5,
+    correction_ids: list[int] | None = None,
 ) -> list[ReviewCorrection]:
-    """Retrieve the most recent correction bank examples for a given task."""
+    """Retrieve correction bank examples for a given task.
+
+    If correction_ids is provided, fetch those specific corrections (by ID)
+    instead of the latest N.
+    """
+    if correction_ids is not None:
+        return (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.task == task,
+                ReviewCorrection.id.in_(correction_ids),
+            )
+            .order_by(ReviewCorrection.created_at.desc())
+            .all()
+        )
     return (
         db.query(ReviewCorrection)
         .filter(ReviewCorrection.task == task)
@@ -222,20 +232,18 @@ def _format_correction_example(correction: ReviewCorrection) -> str:
     # Build the answer section — adapt based on whether there was a prior AI suggestion
     answer_parts: list[str] = []
     if correction.ai_root_cause and correction.ai_root_cause != "Unanalyzed":
-        answer_parts.append(f"AI suggested: {correction.ai_root_cause}")
+        answer_parts.append(f"AI suggested root_cause: {correction.ai_root_cause}")
+        ai_detail = getattr(correction, "ai_root_cause_detail", None)
+        if ai_detail:
+            answer_parts.append(f"AI suggested root_cause_detail: {ai_detail}")
         if correction.ai_root_cause_note:
             answer_parts.append(f"AI reasoning: {correction.ai_root_cause_note}")
-    answer_parts.append(f"CORRECT answer: {correction.human_root_cause}")
+    answer_parts.append(f"CORRECT root_cause: {correction.human_root_cause}")
+    human_detail = getattr(correction, "human_root_cause_detail", None)
+    if human_detail:
+        answer_parts.append(f"CORRECT root_cause_detail: {human_detail}")
     if correction.human_root_cause_note:
         answer_parts.append(f"Human feedback: {correction.human_root_cause_note}")
-
-    # Solution corrections
-    if correction.ai_solution and correction.ai_solution != "":
-        answer_parts.append(f"AI suggested solution: {correction.ai_solution}")
-    if correction.human_solution:
-        answer_parts.append(f"CORRECT solution: {correction.human_solution}")
-    if correction.human_solution_note:
-        answer_parts.append(f"Human solution feedback: {correction.human_solution_note}")
 
     return (
         f"--- Example ---\n"
@@ -265,18 +273,27 @@ def build_analysis_prompt(
     categories = cfg.get("root_cause_categories") or ROOT_CAUSE_CATEGORIES
     categories_text = "\n".join(f"- {cat}" for cat in categories)
 
-    solution_cats = cfg.get("solution_categories") or SOLUTION_CATEGORIES
-    solution_categories_text = "\n".join(f"- {cat}" for cat in solution_cats)
+    details = cfg.get("root_cause_details") or []
+    if details:
+        details_section = (
+            "2. root_cause_detail — the specific sub-issue. Prefer these known values when applicable:\n"
+            + "\n".join(f"- {d}" for d in details)
+            + "\n\n"
+        )
+    else:
+        details_section = (
+            "2. root_cause_detail — the specific sub-issue within that category "
+            "(e.g. root_cause='Context Missing', root_cause_detail='Out of Scope Query').\n\n"
+        )
 
     raw_prompt = cfg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
     try:
         system_prompt = raw_prompt.format(
-            categories=categories_text,
-            solution_categories=solution_categories_text,
+            categories=categories_text, details_section=details_section,
         )
     except (KeyError, IndexError):
         system_prompt = raw_prompt.replace("{categories}", categories_text)
-        system_prompt = system_prompt.replace("{solution_categories}", solution_categories_text)
+        system_prompt = system_prompt.replace("{details_section}", details_section)
 
     # Append additional instructions (with variable resolution)
     additional = cfg.get("additional_instructions", "")
@@ -302,9 +319,6 @@ def build_analysis_prompt(
     corrections_enabled = cfg.get("corrections_enabled", True)
     if not corrections_enabled:
         active_corrections: list[ReviewCorrection] = []
-    elif cfg.get("correction_ids") is not None:
-        allowed_ids = set(cfg["correction_ids"])
-        active_corrections = [c for c in corrections if c.id in allowed_ids]
     else:
         active_corrections = list(corrections)
 
@@ -326,7 +340,7 @@ def build_analysis_prompt(
         f"{examples_section}\n\n"
         f"Now analyze this evaluation item:\n\n"
         f"{item_context}\n\n"
-        f"Determine the root cause category and suggest a solution. Provide your analysis as JSON."
+        f"Determine the root cause category. Provide your analysis as JSON."
     )
 
     return [
@@ -352,9 +366,17 @@ def parse_llm_response(response_text: str, item_id: str) -> AnalysisResult:
             # Strip control characters that some models inject and retry
             text = re.sub(r"[\x00-\x1f]", lambda m: m.group() if m.group() in ("\n", "\r", "\t") else " ", text)
             data = json.loads(text)
+        if "root_cause" not in data or not str(data["root_cause"]).strip():
+            return AnalysisResult(
+                item_id=item_id,
+                root_cause="Unknown",
+                root_cause_note=f"LLM response missing root_cause field: {response_text[:500]}",
+                confidence=0.0,
+                error="missing_root_cause",
+            )
         return AnalysisResult(
             item_id=item_id,
-            root_cause=str(data.get("root_cause", "Unknown")),
+            root_cause=str(data["root_cause"]).strip(),
             root_cause_note=str(data.get("root_cause_note", "")),
             confidence=float(data.get("confidence", 0.5)),
             root_cause_detail=str(data.get("root_cause_detail", "")),

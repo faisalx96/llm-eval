@@ -50,6 +50,29 @@
       text-decoration: underline;
     }
 
+    .export-html-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      font-size: var(--font-sm);
+      font-weight: 500;
+      font-family: var(--font-sans);
+      color: var(--bg-void);
+      background: var(--accent-primary);
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .export-html-btn:hover {
+      background: #00e8bb;
+      transform: translateY(-1px);
+    }
+    .export-html-btn:active { transform: translateY(0); }
+    .export-html-btn svg { flex-shrink: 0; }
+
     /* Summary cards grid */
     .compare-summary {
       display: grid;
@@ -1043,7 +1066,7 @@
     }
 
     .item-expected-row .expected-text.collapsed {
-      max-height: 100px;
+      max-height: 300px;
       overflow: hidden;
       position: relative;
     }
@@ -1819,35 +1842,69 @@
       transition: all 0.15s;
     }
     .meta-badge.badge-root-cause:hover {
-      background: rgba(224, 122, 95, 0.2);
-      border-color: rgba(224, 122, 95, 0.4);
+      filter: brightness(1.2);
     }
 
     /* Root cause row inside each run output */
     .root-cause-row {
       margin-top: var(--space-sm);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
+      padding: var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
     }
+    .rc-badges-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .rc-badge-group {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+    }
+    .rc-badge-label {
+      display: block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .badge-rc-detail {
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .badge-rc-detail:hover { filter: brightness(1.2); }
+    .badge-rc-detail.ai-suggested { border-style: dashed !important; }
 
     /* ── Feedback section (formerly "root cause notes") ── */
     .feedback-section {
-      margin-top: 6px;
+      margin-top: 8px;
       background: var(--bg-base);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-default);
       border-radius: 6px;
       overflow: hidden;
-      transition: border-color 0.2s;
+      transition: all 0.2s ease;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
     }
-    .feedback-section:hover { border-color: var(--border-default); }
+    .feedback-section:hover {
+      border-color: var(--text-muted);
+      background: var(--bg-surface);
+    }
     .feedback-display {
       display: flex;
       align-items: flex-start;
-      gap: 8px;
-      padding: 8px 10px;
-      cursor: pointer;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: text;
       transition: background 0.15s;
-      min-height: 34px;
+      min-height: 38px;
     }
     .feedback-display:hover { background: var(--bg-surface); }
     .feedback-icon {
@@ -1948,6 +2005,192 @@
       background: rgba(224, 122, 95, 0.05);
     }
 
+    /* Root cause + Category + Solution unified row */
+    .rc-sol-row {
+      margin-top: var(--space-sm);
+      padding: var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+    }
+    .rc-sol-label {
+      display: block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      opacity: 0.6;
+    }
+    .rc-label { color: var(--text-secondary); }
+    .sol-label { color: var(--text-secondary); }
+    .sol-note-text {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      margin-top: 4px;
+    }
+    .rc-badges-sep { display: none; }
+
+    /* Solution badges */
+    .meta-badge.badge-solution {
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .meta-badge.badge-solution:hover {
+        filter: brightness(1.2);
+    }
+    .badge-solution.ai-suggested {
+        border-style: dashed !important;
+    }
+    .badge-solution .ai-indicator {
+        font-size: 11px;
+        margin-right: 2px;
+    }
+    .solution-assign-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      border: 1px dashed var(--border-default);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .solution-assign-btn:hover {
+      border-color: #60a5fa;
+      color: #60a5fa;
+      background: rgba(96, 165, 250, 0.05);
+    }
+
+    /* Sankey Flow Diagram */
+    .sankey-body {
+      position: relative;
+      width: 100%;
+    }
+    .sankey-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .sankey-svg path {
+      pointer-events: stroke;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .sankey-col {
+      position: absolute;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sankey-col-rc { left: 0; width: 180px; }
+    .sankey-col-sol { right: 0; width: 200px; }
+    .sankey-node {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, filter 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid;
+      box-sizing: border-box;
+    }
+    .sankey-node-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .sankey-node-count {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .sankey-dimmed { opacity: 0.15; }
+    .sankey-highlighted { opacity: 1; }
+
+    /* Root cause category cards */
+    .rc-category-card {
+      border-left: none !important;
+      padding: var(--space-sm);
+      overflow: hidden;
+    }
+    .rc-category-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid;
+      font-weight: 600;
+      font-size: var(--font-sm);
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .rc-category-pill-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .rc-category-pill-count {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      min-width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .rc-subcauses {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rc-subcause-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+      transition: background 0.1s;
+    }
+    .rc-subcause-item:hover {
+      background: var(--bg-secondary);
+    }
+    .rc-subcause-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rc-subcause-count {
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
     /* Root cause dropdown */
     .root-cause-dropdown {
       position: fixed;
@@ -2020,6 +2263,22 @@
       cursor: pointer;
       font-weight: 600;
     }
+    .rc-delete-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 14px;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity 0.1s, background 0.1s, color 0.1s;
+    }
+    .rc-option:hover .rc-delete-btn { opacity: 1; }
+    .rc-delete-btn:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 
     /* Root cause breakdown section */
     .breakdown-root-cause .breakdown-card {
@@ -2027,7 +2286,7 @@
     }
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header {
-      color: #e07a5f;
+      color: var(--text-primary);
     }
 
     .rc-mode-toggle {
@@ -2127,7 +2386,7 @@
       padding: var(--space-sm);
       z-index: 100;
       min-width: 180px;
-      max-height: 200px;
+      max-height: 300px;
       overflow-y: auto;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
@@ -2384,6 +2643,10 @@
           <div class="compare-subtitle" id="compare-subtitle">Comparing evaluation runs</div>
         </div>
         <div style="display:flex;align-items:center;gap:var(--space-md);">
+          <button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+          </button>
           <a href="" class="back-link" id="back-link-header">&larr; Back to Dashboard</a>
         </div>
       </div>
@@ -2412,6 +2675,13 @@
           </div>
         </div>
         <div class="stats-grid" id="stats-grid"></div>
+      </div>
+
+      <div id="root-cause-section"></div>
+
+      <div id="error-analysis-section" style="display:none;">
+        <h3 class="section-title">Error Analysis</h3>
+        <div class="stats-row-flex" id="error-analysis-container"></div>
       </div>
 
       <!-- Side-by-side items -->
@@ -2455,6 +2725,16 @@
                 <input type="number" id="pass-rate-value" class="fp-pass-rate-input" min="0" value="0" style="display:none;" />
                 <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
               </div>
+            </div>
+            <div class="fp-group">
+              <span class="fp-label">Sort</span>
+              <select id="sort-select" class="filter-select">
+                <option value="index">Index</option>
+                <option value="score_asc">Score &uarr;</option>
+                <option value="score_desc">Score &darr;</option>
+                <option value="latency_asc">Latency &uarr;</option>
+                <option value="latency_desc">Latency &darr;</option>
+              </select>
             </div>
             <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
               <span class="fp-label">Complexity</span>
@@ -2569,6 +2849,18 @@
         'Knowledge Gap': '#6366f1',
       };
 
+      const SOLUTION_PRESETS = [
+        'Improve Retrieval Context', 'Add Guardrails', 'Refine Prompt Instructions',
+        'Expand Training Data', 'Fix Tool Configuration', 'Add Output Validation',
+        'Restructure Chain-of-Thought', 'Update Knowledge Base',
+      ];
+      const SOLUTION_COLORS = {
+        'Improve Retrieval Context': '#3b82f6', 'Add Guardrails': '#10b981',
+        'Refine Prompt Instructions': '#f97316', 'Expand Training Data': '#0ea5e9',
+        'Fix Tool Configuration': '#ec4899', 'Add Output Validation': '#00d4aa',
+        'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
+      };
+
       const state = {
         runs: [],
         allMetrics: [],
@@ -2599,6 +2891,7 @@
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
         rootCauseValues: [],          // unique root cause values found in data
         rcCountMode: 'total',         // 'total' or 'unique' for root cause breakdown cards
+        sortBy: 'index',              // index, score_asc, score_desc, latency_asc, latency_desc
       };
 
       const el = (id) => document.getElementById(id);
@@ -2660,7 +2953,25 @@
         }).join('');
       }
 
+      const IS_COMPARE_EXPORT = !!window.__QYM_COMPARE_EXPORT__;
+
       async function loadComparisonData() {
+        // If opened as export, load from embedded data
+        if (IS_COMPARE_EXPORT && window.__QYM_COMPARE_DATA__) {
+          const data = window.__QYM_COMPARE_DATA__;
+          if (data.runs && data.runs.length >= 2) {
+            state.runs = data.runs;
+            state.langfuseHost = data.runs[0]?.run?.langfuse_host || '';
+            state.langfuseProjectId = data.runs[0]?.run?.langfuse_project_id || '';
+            processRuns();
+            render();
+            // Hide share button in export mode
+            var shareBtn = el('export-share-btn');
+            if (shareBtn) shareBtn.style.display = 'none';
+            return;
+          }
+        }
+
         // Get selected files from sessionStorage
         const filesJson = sessionStorage.getItem('compareRuns');
         if (!filesJson) {
@@ -3256,15 +3567,16 @@
 
         renderSummaries();
         renderComparisonStats();
+        renderRootCauseSection();
+        renderErrorAnalysis();
         renderMetricsTable();
         renderItems();
       }
 
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
       function renderMetadataBreakdown() {
-        // Look for 'complexity' and 'domain' keys in item metadata
+        // Look for 'complexity' and 'domain' keys in item metadata (root_cause has its own section)
         const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
-        breakdownKeys.push('root_cause');
 
         let existingSection = document.getElementById('metadata-breakdown');
         if (!existingSection) {
@@ -3292,8 +3604,7 @@
 
         for (const bdKey of breakdownKeys) {
           // Collect per-item-id data grouped by the breakdown key value
-          // We need item-level aggregation (across runs) for consistency
-          const itemsByGroup = {}; // groupVal -> { itemId -> { scores: [], latencies: [], runCount: number } }
+          const itemsByGroup = {};
 
           for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
             const run = state.runs[runIdx];
@@ -3303,7 +3614,6 @@
 
             for (const row of rows) {
               const itemId = row.item_id || String(row.index);
-              // Only include items that pass the current Item-by-Item filters
               if (!filteredItemIds.has(itemId)) continue;
 
               const md = row.item_metadata || {};
@@ -3312,13 +3622,10 @@
                 ? parseMetaList(rawVal)
                 : [String(rawVal)];
               if (groupVals.length === 0) groupVals.push('');
-              // When a domain filter is active, for filtered domains only count items
-              // where that domain is the sole value (not multi-tagged)
               const domainIsSole = (bdKey === 'domain' || bdKey === 'patterns') && groupVals.length === 1;
               for (const groupVal of groupVals) {
                 if ((bdKey === 'domain' || bdKey === 'patterns') && state.domainFilter !== null
                     && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
-                if (bdKey === 'root_cause' && !groupVal) continue;
                 const effectiveGroup = groupVal || 'unknown';
 
                 if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
@@ -3343,18 +3650,15 @@
             let totalScoreSum = 0, totalScoreCount = 0;
             let totalLatSum = 0, totalLatCount = 0;
             let consistencySum = 0, consistencyCount = 0;
-            let totalAssignments = 0; // total run-level assignments (for root_cause)
 
             let passAtKCount = 0;
 
             for (const itemId of itemIds) {
-              const { scores, latencies, runCount } = items[itemId];
-              totalAssignments += runCount;
+              const { scores, latencies } = items[itemId];
 
               for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
               for (const l of latencies) { totalLatSum += l; totalLatCount++; }
 
-              // pass@k: did this item pass in at least one run?
               if (scores.some(s => s >= correctThreshold)) passAtKCount++;
 
               if (scores.length > 1) {
@@ -3372,7 +3676,7 @@
             const consistency = consistencyCount > 0 ? consistencySum / consistencyCount : null;
             const passAtK = itemIds.length > 0 ? passAtKCount / itemIds.length : 0;
 
-            groupStats.push({ groupVal, itemCount: itemIds.length, totalAssignments, avgScore, passAtK, avgLatency, consistency });
+            groupStats.push({ groupVal, itemCount: itemIds.length, avgScore, passAtK, avgLatency, consistency });
           }
 
           if (bdKey === 'complexity') {
@@ -3382,80 +3686,57 @@
               const bi = cOrder.indexOf(b.groupVal.toLowerCase().trim());
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             });
-          } else if (bdKey === 'root_cause') {
-            const rcKey = state.rcCountMode === 'unique' ? 'itemCount' : 'totalAssignments';
-            groupStats.sort((a, b) => b[rcKey] - a[rcKey]);
           } else {
             groupStats.sort((a, b) => b.avgScore - a.avgScore);
           }
-          if (groupStats.length === 0 && bdKey !== 'root_cause') continue;
+          if (groupStats.length === 0) continue;
 
-          const icon = bdKey === 'complexity' ? '\u2666' : bdKey === 'root_cause' ? '\u26A0' : '\u25C6';
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : bdKey === 'root_cause' ? 'breakdown-root-cause' : 'breakdown-domain';
-          const displayName = bdKey === 'root_cause' ? 'Root Cause Analysis' : bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
+          const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : 'breakdown-domain';
+          const displayName = bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
 
           html += `<div class="breakdown-section ${colorClass}">`;
-          if (bdKey === 'root_cause') {
-            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)}
-              <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">🤖</span> Auto-Analyze</button>
-              <span class="rc-mode-toggle">
-                <button class="${state.rcCountMode === 'total' ? 'active' : ''}" data-rc-mode="total" title="Count across all runs (same item in multiple runs counted separately)">All Runs</button>
-                <button class="${state.rcCountMode === 'unique' ? 'active' : ''}" data-rc-mode="unique" title="Count unique items only (deduplicated across runs)">Unique Items</button>
-              </span>
-            </div>`;
-          } else {
-            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
-          }
+          html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
           html += '<div class="breakdown-grid">';
 
           for (const g of groupStats) {
-            if (bdKey === 'root_cause') {
-              const rcColor = ROOT_CAUSE_COLORS[g.groupVal] || '#e07a5f';
-              const rcCount = state.rcCountMode === 'unique' ? g.itemCount : g.totalAssignments;
-              html += `<div class="breakdown-card" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
-                <div class="breakdown-card-label" style="color: ${rcColor};">${escapeHtml(g.groupVal)}</div>
-                <div class="breakdown-card-score" style="color: ${rcColor};">${rcCount}</div>
-              </div>`;
-            } else {
-              const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
-              const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
-              const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
+            const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
+            const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
+            const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
 
-              // Add value-specific class for complexity breakdown cards
-              let cardValClass = '';
-              if (bdKey === 'complexity') {
-                const cv = g.groupVal.toLowerCase().trim();
-                if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
-                else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
-                else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(cv)) cardValClass = ' complexity-hard';
-                else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
-              }
-
-              const passAtKStr = formatPercent(g.passAtK);
-              const passAtKClass = scoreColorClass(g.passAtK);
-
-              html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
-                <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
-                <div class="breakdown-card-scores">
-                  <div class="score-col">
-                    <span class="score-col-label">Avg@${K}</span>
-                    <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</span>
-                  </div>
-                  <div class="score-col">
-                    <span class="score-col-label">Pass@${K}</span>
-                    <span class="score-col-value ${passAtKClass}">${passAtKStr}</span>
-                  </div>
-                  <div class="score-col" style="margin-left:auto;">
-                    <span class="score-col-label">Items</span>
-                    <span class="score-col-value" style="color:var(--text-muted);">${g.itemCount}</span>
-                  </div>
-                </div>
-                <div class="breakdown-card-details">
-                  <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                  <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
-                </div>
-              </div>`;
+            let cardValClass = '';
+            if (bdKey === 'complexity') {
+              const cv = g.groupVal.toLowerCase().trim();
+              if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
+              else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
+              else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(cv)) cardValClass = ' complexity-hard';
+              else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
             }
+
+            const passAtKStr = formatPercent(g.passAtK);
+            const passAtKClass = scoreColorClass(g.passAtK);
+
+            html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
+              <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
+              <div class="breakdown-card-scores">
+                <div class="score-col">
+                  <span class="score-col-label">Avg@${K}</span>
+                  <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</span>
+                </div>
+                <div class="score-col">
+                  <span class="score-col-label">Pass@${K}</span>
+                  <span class="score-col-value ${passAtKClass}">${passAtKStr}</span>
+                </div>
+                <div class="score-col" style="margin-left:auto;">
+                  <span class="score-col-label">Items</span>
+                  <span class="score-col-value" style="color:var(--text-muted);">${g.itemCount}</span>
+                </div>
+              </div>
+              <div class="breakdown-card-details">
+                <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
+                <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
+              </div>
+            </div>`;
           }
 
           html += '</div></div>';
@@ -3471,7 +3752,6 @@
             const val = card.dataset.bdValue;
             const current = getCatFilter(cat);
             if (cat === 'domain') {
-              // Domain drill-down: 1st click = filter, 2nd click = exclusive (sole value only)
               if (current === null) {
                 state.domainExclusive.delete(val);
                 setCatFilter(cat, [val]);
@@ -3491,19 +3771,6 @@
             renderItems();
           });
         });
-
-        // Wire root cause Total/Unique toggle
-        existingSection.querySelectorAll('.rc-mode-toggle button[data-rc-mode]').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            state.rcCountMode = btn.dataset.rcMode;
-            renderMetadataBreakdown();
-          });
-        });
-
-        // Wire auto-analyze button to open playground
-        var aaBtn = document.getElementById('auto-analyze-btn');
-        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
       }
 
       // Helper to create info icon with tooltip
@@ -3834,6 +4101,403 @@
         tbody.innerHTML = metricRows + latencyRow;
       }
 
+      function renderErrorAnalysis() {
+        const section = el('error-analysis-section');
+        const container = el('error-analysis-container');
+        if (!section || !container) return;
+
+        let totalErrors = 0;
+        let totalItems = 0;
+
+        const perRunErrors = state.runs.map((run, idx) => {
+          const rows = run.snapshot?.rows || [];
+          const stats = run.snapshot?.stats || {};
+          const total = stats.total || rows.length;
+          const failed = stats.failed || 0;
+          totalErrors += failed;
+          totalItems += total;
+
+          let timeout = 0, runtime = 0, unknown = 0;
+          for (const row of rows) {
+            if (window.QymMetrics.isErrorRow(row)) {
+              const output = (row.output_full || row.output || '').toLowerCase();
+              if (output.includes('timeout')) timeout++;
+              else if (output.includes('error')) runtime++;
+              else unknown++;
+            }
+          }
+          return { name: run.run?.run_name || ('Run ' + (idx + 1)), failed, total, timeout, runtime, unknown };
+        });
+
+        if (totalErrors === 0) { section.style.display = 'none'; return; }
+        section.style.display = '';
+
+        const pct = totalItems > 0 ? ((totalErrors / totalItems) * 100).toFixed(1) : '0.0';
+
+        let html = '<div class="stats-row-flex">' +
+          '<div class="stat-box"><div class="stat-title">Total Errors (all runs)</div><div class="stat-main score-1">' + totalErrors + '</div><div class="stat-detail">' + pct + '% error rate</div></div>';
+        for (const r of perRunErrors) {
+          if (r.failed === 0) continue;
+          const rPct = r.total > 0 ? ((r.failed / r.total) * 100).toFixed(1) : '0.0';
+          html += '<div class="stat-box"><div class="stat-title">' + escapeHtml(r.name) + '</div><div class="stat-main score-1">' + r.failed + ' / ' + r.total + '</div><div class="stat-detail">' + rPct + '% | T:' + r.timeout + ' R:' + r.runtime + ' U:' + r.unknown + '</div></div>';
+        }
+        html += '</div>';
+        container.innerHTML = html;
+      }
+
+      // ── Sankey Diagram ──
+      var _sankeyResizeObserver = null;
+      var _sankeyResizeTimeout = null;
+
+      function renderSankeyDiagram(filteredItemIds) {
+        const container = document.getElementById('sankey-diagram-container');
+        if (!container) return;
+
+        // Compute root cause -> solution mapping across ALL runs
+        const links = {};
+        const rcCounts = {};
+        const solCounts = {};
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            const itemId = row.item_id || String(row.index);
+            if (!filteredItemIds.has(itemId)) continue;
+            const md = row.item_metadata || {};
+            const rc = md.root_cause || '';
+            const sol = md.solution || '';
+            if (!rc || !sol) continue;
+            const key = rc + '|||' + sol;
+            links[key] = (links[key] || 0) + 1;
+            rcCounts[rc] = (rcCounts[rc] || 0) + 1;
+            solCounts[sol] = (solCounts[sol] || 0) + 1;
+          }
+        }
+
+        const linkEntries = Object.entries(links);
+        if (linkEntries.length === 0) { container.innerHTML = ''; return; }
+
+        const rcList = Object.entries(rcCounts).sort((a, b) => b[1] - a[1]);
+        const solList = Object.entries(solCounts).sort((a, b) => b[1] - a[1]);
+
+        const nodeH = 32;
+        const nodeGap = 8;
+        const colWidth = 190;
+        const svgPad = 20;
+        const totalLeftH = rcList.length * nodeH + (rcList.length - 1) * nodeGap;
+        const totalRightH = solList.length * nodeH + (solList.length - 1) * nodeGap;
+        const diagramH = Math.max(totalLeftH, totalRightH) + svgPad * 2;
+
+        const leftOffsetY = svgPad + (diagramH - svgPad * 2 - totalLeftH) / 2;
+        const rightOffsetY = svgPad + (diagramH - svgPad * 2 - totalRightH) / 2;
+
+        let html = '<div class="breakdown-header" style="color:var(--text-primary);margin-top:var(--space-md);"><span class="breakdown-icon">\u2666</span> Failure to Fix Flow</div>';
+        html += '<div class="sankey-body" style="height:' + diagramH + 'px;">';
+        html += '<svg class="sankey-svg" viewBox="0 0 100 ' + diagramH + '" preserveAspectRatio="none" id="sankey-svg"></svg>';
+
+        html += '<div class="sankey-col sankey-col-rc" style="width:' + colWidth + 'px;">';
+        rcList.forEach(([rc, count]) => {
+          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+          html += '<div class="sankey-node" data-sankey-rc="' + escapeAttr(rc) + '" style="background:' + color + '15;border-color:' + color + '40;color:' + color + ';" title="' + escapeAttr(rc) + ' (' + count + ')"><span class="sankey-node-label">' + escapeHtml(rc) + '</span><span class="sankey-node-count" style="background:' + color + '30;">' + count + '</span></div>';
+        });
+        html += '</div>';
+
+        html += '<div class="sankey-col sankey-col-sol" style="width:' + colWidth + 'px;">';
+        solList.forEach(([sol, count]) => {
+          const color = SOLUTION_COLORS[sol] || '#60a5fa';
+          html += '<div class="sankey-node" data-sankey-sol="' + escapeAttr(sol) + '" style="background:' + color + '15;border-color:' + color + '40;color:' + color + ';" title="' + escapeAttr(sol) + ' (' + count + ')"><span class="sankey-node-label">' + escapeHtml(sol) + '</span><span class="sankey-node-count" style="background:' + color + '30;">' + count + '</span></div>';
+        });
+        html += '</div>';
+
+        html += '</div>';
+        container.innerHTML = html;
+
+        requestAnimationFrame(function () {
+          drawSankeyPaths(container, linkEntries, {}, {}, colWidth);
+          wireSankeyHover(container);
+        });
+      }
+
+      function drawSankeyPaths(container, linkEntries, rcPositions, solPositions, colWidth) {
+        const svg = container.querySelector('#sankey-svg');
+        if (!svg) return;
+        const body = container.querySelector('.sankey-body');
+        if (!body) return;
+        const bodyRect = body.getBoundingClientRect();
+        const bodyW = bodyRect.width;
+
+        svg.setAttribute('viewBox', '0 0 ' + bodyW + ' ' + svg.parentElement.clientHeight);
+        svg.style.width = bodyW + 'px';
+
+        const rcNodes = container.querySelectorAll('[data-sankey-rc]');
+        const solNodes = container.querySelectorAll('[data-sankey-sol]');
+        const rcActual = {};
+        rcNodes.forEach(n => {
+          const r = n.getBoundingClientRect();
+          rcActual[n.dataset.sankeyRc] = r.top - bodyRect.top + r.height / 2;
+        });
+        const solActual = {};
+        solNodes.forEach(n => {
+          const r = n.getBoundingClientRect();
+          solActual[n.dataset.sankeySol] = r.top - bodyRect.top + r.height / 2;
+        });
+
+        const maxCount = Math.max(...linkEntries.map(([, c]) => c));
+        const minStroke = 2;
+        const maxStroke = 16;
+
+        let paths = '';
+        for (const [key, count] of linkEntries) {
+          const [rc, sol] = key.split('|||');
+          const y1 = rcActual[rc];
+          const y2 = solActual[sol];
+          if (y1 == null || y2 == null) continue;
+
+          const x1 = colWidth + 8;
+          const x2 = bodyW - colWidth - 8;
+          const cx = (x1 + x2) / 2;
+          const sw = minStroke + (count / maxCount) * (maxStroke - minStroke);
+          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+
+          paths += '<path d="M ' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + y2 + ', ' + x2 + ' ' + y2 + '" ' +
+            'fill="none" stroke="' + color + '" stroke-opacity="0.35" stroke-width="' + sw.toFixed(1) + '" ' +
+            'data-sankey-link-rc="' + escapeAttr(rc) + '" data-sankey-link-sol="' + escapeAttr(sol) + '" ' +
+            'data-sankey-count="' + count + '"/>';
+        }
+        svg.innerHTML = paths;
+      }
+
+      function wireSankeyHover(container) {
+        if (container._sankeyMouseHandler) {
+          container.removeEventListener('mouseenter', container._sankeyMouseHandler, true);
+          container.removeEventListener('mouseleave', container._sankeyMouseHandler, true);
+        }
+
+        function getHoverTarget(el) {
+          while (el && el !== container) {
+            if (el.classList && el.classList.contains('sankey-node')) return { rc: el.dataset.sankeyRc || '', sol: el.dataset.sankeySol || '' };
+            if (el.dataset && el.dataset.sankeyLinkRc) return { rc: el.dataset.sankeyLinkRc, sol: el.dataset.sankeyLinkSol };
+            el = el.parentElement;
+          }
+          return null;
+        }
+
+        function highlight(rc, sol) {
+          const allPaths = container.querySelectorAll('[data-sankey-link-rc]');
+          const allNodes = container.querySelectorAll('.sankey-node');
+          const connectedRc = new Set();
+          const connectedSol = new Set();
+          allPaths.forEach(p => {
+            const pRc = p.dataset.sankeyLinkRc;
+            const pSol = p.dataset.sankeyLinkSol;
+            if ((rc && pRc === rc) || (sol && pSol === sol)) {
+              connectedRc.add(pRc);
+              connectedSol.add(pSol);
+              p.classList.add('sankey-highlighted');
+              p.classList.remove('sankey-dimmed');
+              p.setAttribute('stroke-opacity', '0.7');
+            } else {
+              p.classList.add('sankey-dimmed');
+              p.classList.remove('sankey-highlighted');
+              p.setAttribute('stroke-opacity', '0.08');
+            }
+          });
+          allNodes.forEach(n => {
+            const connected = (n.dataset.sankeyRc && connectedRc.has(n.dataset.sankeyRc)) ||
+                              (n.dataset.sankeySol && connectedSol.has(n.dataset.sankeySol));
+            if (connected) { n.classList.add('sankey-highlighted'); n.classList.remove('sankey-dimmed'); }
+            else { n.classList.add('sankey-dimmed'); n.classList.remove('sankey-highlighted'); }
+          });
+        }
+
+        function clearHighlight() {
+          container.querySelectorAll('[data-sankey-link-rc]').forEach(p => {
+            p.classList.remove('sankey-highlighted', 'sankey-dimmed');
+            p.setAttribute('stroke-opacity', '0.35');
+          });
+          container.querySelectorAll('.sankey-node').forEach(n => n.classList.remove('sankey-highlighted', 'sankey-dimmed'));
+        }
+
+        function handler(e) {
+          if (e.type === 'mouseenter') {
+            const target = getHoverTarget(e.target);
+            if (target) highlight(target.rc, target.sol);
+          } else {
+            const target = getHoverTarget(e.target);
+            if (target) clearHighlight();
+          }
+        }
+        container._sankeyMouseHandler = handler;
+        container.addEventListener('mouseenter', handler, true);
+        container.addEventListener('mouseleave', handler, true);
+
+        if (_sankeyResizeObserver) {
+          _sankeyResizeObserver.disconnect();
+          _sankeyResizeObserver = null;
+        }
+        clearTimeout(_sankeyResizeTimeout);
+
+        if (typeof ResizeObserver !== 'undefined') {
+          const body = container.querySelector('.sankey-body');
+          if (body) {
+            _sankeyResizeObserver = new ResizeObserver(() => {
+              clearTimeout(_sankeyResizeTimeout);
+              _sankeyResizeTimeout = setTimeout(() => {
+                if (!container.isConnected) { if (_sankeyResizeObserver) _sankeyResizeObserver.disconnect(); return; }
+                const existingPaths = container.querySelectorAll('[data-sankey-link-rc]');
+                const entries = [];
+                existingPaths.forEach(p => {
+                  entries.push([p.dataset.sankeyLinkRc + '|||' + p.dataset.sankeyLinkSol, parseInt(p.dataset.sankeyCount) || 1]);
+                });
+                if (entries.length > 0) {
+                  drawSankeyPaths(container, entries, {}, {}, 190);
+                }
+              }, 150);
+            });
+            _sankeyResizeObserver.observe(body);
+          }
+        }
+      }
+
+      function renderRootCauseSection() {
+        const section = el('root-cause-section');
+        if (!section) return;
+
+        const filteredItems = getFilteredItems();
+        const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
+
+        // Build hierarchical root cause categories across ALL runs
+        const rcCategories = {};
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            const itemId = row.item_id || String(row.index);
+            if (!filteredItemIds.has(itemId)) continue;
+            const md = row.item_metadata || {};
+            const rcRaw = String(md.root_cause || '');
+            if (!rcRaw) continue;
+            const rcDetail = md.root_cause_detail || '';
+            if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
+            rcCategories[rcRaw].count++;
+            if (rcDetail) {
+              rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+            }
+          }
+        }
+
+        const catStats = Object.entries(rcCategories)
+          .map(([cat, data]) => ({ category: cat, count: data.count, subcauses: data.subcauses }))
+          .sort((a, b) => b.count - a.count);
+
+        // Empty state
+        if (catStats.length === 0) {
+          section.innerHTML = '<h3 class="section-title">Root Cause Analysis</h3>' +
+            '<div class="comparison-stats"><div style="padding:32px 24px;text-align:center;">' +
+              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">No root causes assigned yet. Run Auto-Analyze to identify failure patterns.</div>' +
+              '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>' +
+            '</div></div>';
+          var aaBtn0 = section.querySelector('#auto-analyze-btn');
+          if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
+          return;
+        }
+
+        let html = '<h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>';
+        html += '<div class="comparison-stats"><div class="breakdown-section breakdown-root-cause">';
+        html += '<div class="breakdown-header"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</div>';
+        html += '<div class="breakdown-grid">';
+
+        for (const cat of catStats) {
+          const rcColor = ROOT_CAUSE_COLORS[cat.category] || '#e07a5f';
+          const subcauseList = Object.entries(cat.subcauses).sort((a, b) => b[1] - a[1]);
+          let subcauseHtml = '';
+          if (subcauseList.length > 0) {
+            subcauseHtml = '<div class="rc-subcauses">' + subcauseList.map(function(sc) {
+              return '<div class="rc-subcause-item" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="' + escapeAttr(sc[0]) + '">' +
+                '<span class="rc-subcause-name">' + escapeHtml(sc[0]) + '</span>' +
+                '<span class="rc-subcause-count">' + sc[1] + '</span>' +
+              '</div>';
+            }).join('') + '</div>';
+          }
+          html += '<div class="breakdown-card rc-category-card" data-bd-category="root_cause" data-bd-value="' + escapeAttr(cat.category) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(cat.category) + '">' +
+            '<div class="rc-category-pill" style="background:' + rcColor + '20;border-color:' + rcColor + '40;color:' + rcColor + ';">' +
+              '<span class="rc-category-pill-name">' + escapeHtml(cat.category) + '</span>' +
+              '<span class="rc-category-pill-count" style="background:' + rcColor + '30;">' + cat.count + '</span>' +
+            '</div>' +
+            subcauseHtml +
+          '</div>';
+        }
+
+        html += '</div></div>';
+        html += '<div id="sankey-diagram-container"></div>';
+        html += '</div>';
+        section.innerHTML = html;
+
+        // Render Sankey diagram
+        renderSankeyDiagram(filteredItemIds);
+
+        // Sankey highlight helpers
+        var sankeyContainer = section.querySelector('#sankey-diagram-container');
+        function highlightSankey(rc) {
+          if (!sankeyContainer) return;
+          var allPaths = sankeyContainer.querySelectorAll('[data-sankey-link-rc]');
+          var allNodes = sankeyContainer.querySelectorAll('.sankey-node');
+          var connectedSol = new Set();
+          allPaths.forEach(function (p) {
+            if (p.dataset.sankeyLinkRc === rc) {
+              connectedSol.add(p.dataset.sankeyLinkSol);
+              p.classList.add('sankey-highlighted');
+              p.classList.remove('sankey-dimmed');
+              p.setAttribute('stroke-opacity', '0.7');
+            } else {
+              p.classList.add('sankey-dimmed');
+              p.classList.remove('sankey-highlighted');
+              p.setAttribute('stroke-opacity', '0.08');
+            }
+          });
+          allNodes.forEach(function (n) {
+            var connected = (n.dataset.sankeyRc && n.dataset.sankeyRc === rc) ||
+                            (n.dataset.sankeySol && connectedSol.has(n.dataset.sankeySol));
+            if (connected) { n.classList.add('sankey-highlighted'); n.classList.remove('sankey-dimmed'); }
+            else { n.classList.add('sankey-dimmed'); n.classList.remove('sankey-highlighted'); }
+          });
+        }
+        function clearSankeyHighlight() {
+          if (!sankeyContainer) return;
+          sankeyContainer.querySelectorAll('[data-sankey-link-rc]').forEach(function (p) {
+            p.classList.remove('sankey-highlighted', 'sankey-dimmed');
+            p.setAttribute('stroke-opacity', '0.35');
+          });
+          sankeyContainer.querySelectorAll('.sankey-node').forEach(function (n) {
+            n.classList.remove('sankey-highlighted', 'sankey-dimmed');
+          });
+        }
+
+        // Wire click-to-filter and hover-to-highlight-sankey on cards
+        section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+          card.addEventListener('click', () => {
+            const val = card.dataset.bdValue;
+            const current = getCatFilter('root_cause');
+            if (current !== null && current.length === 1 && current[0] === val) {
+              setCatFilter('root_cause', null);
+            } else {
+              setCatFilter('root_cause', [val]);
+            }
+            syncMultiselectUI('root_cause');
+            state.page = 1;
+            renderItems();
+          });
+          card.addEventListener('mouseenter', function () {
+            highlightSankey(card.dataset.bdValue);
+          });
+          card.addEventListener('mouseleave', function () {
+            clearSankeyHighlight();
+          });
+        });
+
+        // Wire auto-analyze button
+        var aaBtn = section.querySelector('#auto-analyze-btn');
+        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
+      }
+
       function getFilteredItems() {
         // Build aligned item list across runs using item_id
         const items = [];
@@ -4003,12 +4667,41 @@
           items.push({ itemId: itemId, rowData });
         }
 
+        // Sorting
+        if (state.sortBy === 'score_asc' || state.sortBy === 'score_desc') {
+          items.sort((a, b) => {
+            const getMax = (item) => {
+              const vals = item.rowData.map((row, ri) => {
+                if (!row) return null;
+                const run = state.runs[ri];
+                const mNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+                const mIdx = selectedMetric ? mNames.indexOf(selectedMetric) : 0;
+                if (mIdx < 0) return null;
+                return window.QymMetrics.getRowScore(row, mIdx).score;
+              }).filter(s => s !== null);
+              return vals.length > 0 ? Math.max(...vals) : -1;
+            };
+            const diff = getMax(a) - getMax(b);
+            return state.sortBy === 'score_asc' ? diff : -diff;
+          });
+        } else if (state.sortBy === 'latency_asc' || state.sortBy === 'latency_desc') {
+          items.sort((a, b) => {
+            const getMin = (item) => {
+              const vals = item.rowData.filter(r => r?.latency_ms).map(r => r.latency_ms);
+              return vals.length > 0 ? Math.min(...vals) : Infinity;
+            };
+            const diff = getMin(a) - getMin(b);
+            return state.sortBy === 'latency_asc' ? diff : -diff;
+          });
+        }
+
         return items;
       }
 
       function renderItems(scrollToTop = false) {
-        // Keep Performance by Category in sync with the current Item-by-Item filters
+        // Keep Performance by Category and Root Cause Analysis in sync with filters
         renderMetadataBreakdown();
+        renderRootCauseSection();
 
         const container = el('items-grid');
         const paginationEl = el('pagination');
@@ -4193,31 +4886,77 @@
               }
             }
 
-            // Root cause badge or assign button (per-run) + feedback (only for failed items)
+            // Root cause + Solution badges + feedback (only for failed items)
             let rootCauseHtml = '';
             const itemPassed = passfailBadge.includes('badge pass"');
             const rowRc = row.item_metadata?.root_cause || '';
+            const rowRcDetail = row.item_metadata?.root_cause_detail || '';
             const rowRcNote = row.item_metadata?.root_cause_note || '';
             const rowRcSource = row.item_metadata?.root_cause_source || '';
             const rowRcConfidence = row.item_metadata?.root_cause_confidence;
+            const rowSol = row.item_metadata?.solution || '';
+            const rowSolNote = row.item_metadata?.solution_note || '';
             const runFilePath = runInfo.file_path || '';
-            if (rowRc) {
+
+            if (rowRc || rowRcDetail || rowSol || !itemPassed) {
               const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
-              const feedbackHtml = rowRcNote
-                ? `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to edit feedback">${feedbackIcon}<span class="feedback-text">${escapeHtml(rowRcNote)}</span></div></div>`
-                : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
-              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
               const isAi = rowRcSource === 'ai';
-              const aiClass = isAi ? ' ai-suggested' : '';
-              const aiIndicator = isAi ? '<span class="ai-indicator">\u{1F916}</span>' : '<span class="ai-indicator">\u2713</span>';
-              let confidenceDot = '';
-              if (isAi && rowRcConfidence != null) {
-                const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
-                confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
+              const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
+
+              // Detail badge — uses same color as category
+              let rcDetailBadge = '';
+              if (rowRcDetail) {
+                const aiClass = isAi ? ' ai-suggested' : '';
+                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${escapeHtml(rowRcDetail)}</span>`;
+              } else if (!itemPassed) {
+                rcDetailBadge = `<button class="root-cause-assign-btn" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>`;
               }
-              rootCauseHtml = `<div class="root-cause-row"><span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Root cause: ${escapeAttr(rowRc)}${isAi ? ' (AI-suggested)' : ''}. Click to change.">${aiIndicator}<span class="badge-icon">\u26A0</span>${escapeHtml(rowRc)}${confidenceDot}</span>${feedbackHtml}</div>`;
-            } else if (!itemPassed) {
-              rootCauseHtml = `<div class="root-cause-row"><button class="root-cause-assign-btn" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button></div>`;
+
+              // Category badge
+              let rcCategoryBadge = '';
+              if (rowRc) {
+                const aiClass = isAi ? ' ai-suggested' : '';
+                let confidenceDot = '';
+                if (isAi && rowRcConfidence != null) {
+                  const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
+                  confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
+                }
+                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${escapeHtml(rowRc)}${confidenceDot}</span>`;
+              } else if (!itemPassed) {
+                rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
+              }
+
+              // Solution badge group
+              let solBadgeHtml = '';
+              if (rowSol) {
+                const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
+                const solSource = row.item_metadata?.solution_source || '';
+                const solIsAi = solSource === 'ai';
+                const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '';
+                solBadgeHtml = `<div class="rc-badge-group">
+                  <span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>
+                  <span class="meta-badge badge-solution${solIsAi ? ' ai-suggested' : ''}" data-sol-item="${escapeAttr(itemId)}" data-sol-run-idx="${runIdx}" style="border-color:${solColor}40;color:${solColor};background:${solColor}15;" title="Solution: ${escapeAttr(rowSol)}. Click to change.">${solIcon}${escapeHtml(rowSol)}</span>
+                  ${rowSolNote ? `<div class="sol-note-text">${escapeHtml(rowSolNote)}</div>` : ''}
+                </div>`;
+              } else if (!itemPassed) {
+                solBadgeHtml = `<div class="rc-badge-group">
+                  <span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>
+                  <button class="solution-assign-btn" data-sol-item="${escapeAttr(itemId)}" data-sol-run-idx="${runIdx}" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>
+                </div>`;
+              }
+
+              // Feedback
+              let feedbackHtml = '';
+              if (rowRc || rowRcDetail) {
+                feedbackHtml = rowRcNote
+                  ? `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to edit feedback">${feedbackIcon}<span class="feedback-text">${escapeHtml(rowRcNote)}</span></div></div>`
+                  : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
+              }
+
+              const detailGroup = rcDetailBadge ? `<div class="rc-badge-group"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
+              const catGroup = rcCategoryBadge ? `<div class="rc-badge-group"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
+              const solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
+              rootCauseHtml = `<div class="rc-sol-row"><div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
             }
 
             return `
@@ -4246,14 +4985,14 @@
           // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
           {
-            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_note', 'root_cause_source', 'root_cause_confidence'];
+            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
             const metaRow = rowData.find(r => r);
             const md = metaRow?.item_metadata || {};
             if (typeof md === 'object') {
               // Build special badges for complexity & domain
               let badgesHtml = '';
               for (const sk of SPECIAL_KEYS) {
-                if (sk.startsWith('root_cause')) continue;
+                if (sk.startsWith('root_cause') || sk.startsWith('solution')) continue;
                 if (md[sk] !== undefined && md[sk] !== null && md[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                   const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
                   const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(md[sk]) : [String(md[sk])];
@@ -4339,6 +5078,7 @@
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();
+        wireSolutionHandlers();
         initExpectedToggles();
         alignOutputHeights();
 
@@ -4478,7 +5218,7 @@
           const text = row.querySelector('.expected-text');
           const btn = row.querySelector('.expected-toggle');
           if (!text || !btn) return;
-          if (text.scrollHeight <= 100) {
+          if (text.scrollHeight <= 300) {
             text.classList.remove('collapsed');
             btn.style.display = 'none';
           } else {
@@ -4603,6 +5343,13 @@
             e.stopPropagation();
             const runIdx = parseInt(trigger.dataset.rcRunIdx, 10);
             showRootCauseDropdown(trigger.dataset.rcItem, runIdx, trigger);
+          });
+        });
+        document.querySelectorAll('[data-rcdetail-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const runIdx = parseInt(trigger.dataset.rcdetailRunIdx, 10);
+            showRcDetailDropdown(trigger.dataset.rcdetailItem, runIdx, trigger);
           });
         });
         document.querySelectorAll('[data-feedback-item]').forEach(trigger => {
@@ -4814,6 +5561,256 @@
         } catch (err) {
           console.error('Error saving root cause:', err);
         }
+      }
+
+      function showRcDetailDropdown(itemId, runIdx, anchorEl) {
+        document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentDetail = row?.item_metadata?.root_cause_detail || '';
+
+        // Collect existing detail values across ALL runs
+        const detailValues = [];
+        for (const r of state.runs) {
+          for (const rr of (r?.snapshot?.rows || [])) {
+            const d = rr.item_metadata?.root_cause_detail;
+            if (d && !detailValues.includes(d)) detailValues.push(d);
+          }
+        }
+        detailValues.sort();
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown rc-detail-dropdown';
+        let html = '<div class="rc-option" data-rcdetail-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        if (detailValues.length > 0) {
+          html += '<div class="rc-divider"></div>';
+          for (const dv of detailValues) {
+            html += '<div class="rc-option' + (dv === currentDetail ? ' active' : '') + '" data-rcdetail-value="' + escapeAttr(dv) + '">' + escapeHtml(dv) +
+              '<span class="rc-delete-btn" data-rcdetail-delete="' + escapeAttr(dv) + '" title="Delete this root cause">\u00D7</span>' +
+            '</div>';
+          }
+        }
+        html += '<div class="rc-divider"></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Describe the specific issue..." value="' + escapeAttr(currentDetail) + '" /><button>Save</button></div>';
+        dropdown.innerHTML = html;
+
+        document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+
+        // Delete buttons — clear detail from this run's items
+        dropdown.querySelectorAll('.rc-delete-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const val = btn.dataset.rcdetailDelete;
+            if (!confirm('Delete root cause "' + val + '"? This will clear it from all items in this run.')) return;
+            const runId = run?.run?.file_path;
+            for (const r of rows) {
+              if (r.item_metadata?.root_cause_detail === val) {
+                const rid = r.item_id || String(r.index);
+                if (runId) {
+                  await fetch(apiUrl('api/runs/update_root_cause'), {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: rid, root_cause: r.item_metadata?.root_cause || '', root_cause_detail: '', run_id: runId }),
+                  }).catch(() => {});
+                }
+                if (r.item_metadata) delete r.item_metadata.root_cause_detail;
+              }
+            }
+            dropdown.remove();
+            renderItems();
+          });
+        });
+
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveRootCauseDetail(itemId, runIdx, opt.dataset.rcdetailValue);
+            dropdown.remove();
+          });
+        });
+
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        const doSave = async () => {
+          const val = customInput.value.trim();
+          await saveRootCauseDetail(itemId, runIdx, val);
+          dropdown.remove();
+        };
+        customBtn.addEventListener('click', doSave);
+        customInput.addEventListener('keydown', async (e) => { if (e.key === 'Enter') doSave(); });
+        setTimeout(() => { customInput.focus(); customInput.setSelectionRange(customInput.value.length, customInput.value.length); }, 0);
+
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
+        };
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
+      }
+
+      async function saveRootCauseDetail(itemId, runIdx, detail) {
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const runId = run?.run?.file_path;
+        const existingCategory = row?.item_metadata?.root_cause || '';
+
+        function applyLocally() {
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (detail) { row.item_metadata.root_cause_detail = detail; }
+            else { delete row.item_metadata.root_cause_detail; }
+          }
+          renderItems();
+        }
+
+        if (!runId) { applyLocally(); return; }
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
+          applyLocally();
+        } catch (err) { console.error('Error saving root cause detail:', err); }
+      }
+
+      function wireSolutionHandlers() {
+        document.querySelectorAll('[data-sol-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const runIdx = parseInt(trigger.dataset.solRunIdx, 10);
+            showSolutionDropdown(trigger.dataset.solItem, runIdx, trigger);
+          });
+        });
+      }
+
+      function showSolutionDropdown(itemId, runIdx, anchorEl) {
+        document.querySelectorAll('.solution-dropdown').forEach(d => d.remove());
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const currentSol = row?.item_metadata?.solution || '';
+        const allOptions = [...SOLUTION_PRESETS];
+        // Add any dynamic solution values from ALL runs
+        for (const r of state.runs) {
+          for (const rr of (r?.snapshot?.rows || [])) {
+            const s = rr.item_metadata?.solution;
+            if (s && !allOptions.includes(s)) allOptions.push(s);
+          }
+        }
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'root-cause-dropdown solution-dropdown';
+        let html = '<div class="rc-option ' + (!currentSol ? 'active' : '') + '" data-sol-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        html += '<div class="rc-divider"></div>';
+        for (const opt of allOptions) {
+          const color = SOLUTION_COLORS[opt] || '#60a5fa';
+          html += '<div class="rc-option ' + (opt === currentSol ? 'active' : '') + '" data-sol-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
+        }
+        html += '<div class="rc-divider"></div>';
+        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom solution..." /><button>Add</button></div>';
+        dropdown.innerHTML = html;
+
+        document.body.appendChild(dropdown);
+        const rect = anchorEl.getBoundingClientRect();
+        const dropH = dropdown.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
+          dropdown.style.top = (rect.bottom + 4) + 'px';
+        } else {
+          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
+        }
+        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
+        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+
+        dropdown.querySelectorAll('.rc-option').forEach(opt => {
+          opt.addEventListener('click', async () => {
+            await saveSolution(itemId, runIdx, opt.dataset.solValue);
+            dropdown.remove();
+          });
+        });
+
+        const customInput = dropdown.querySelector('.rc-custom-input input');
+        const customBtn = dropdown.querySelector('.rc-custom-input button');
+        customBtn.addEventListener('click', async () => {
+          const val = customInput.value.trim();
+          if (val) { await saveSolution(itemId, runIdx, val); dropdown.remove(); }
+        });
+        customInput.addEventListener('keydown', async (e) => {
+          if (e.key === 'Enter') {
+            const val = customInput.value.trim();
+            if (val) { await saveSolution(itemId, runIdx, val); dropdown.remove(); }
+          }
+        });
+
+        const cleanup = () => {
+          dropdown.remove();
+          document.removeEventListener('click', closeHandler);
+          window.removeEventListener('scroll', scrollHandler, true);
+        };
+        const closeHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        const scrollHandler = (e) => {
+          if (!dropdown.contains(e.target)) cleanup();
+        };
+        setTimeout(() => {
+          document.addEventListener('click', closeHandler);
+          window.addEventListener('scroll', scrollHandler, true);
+        }, 0);
+      }
+
+      async function saveSolution(itemId, runIdx, solution) {
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const runId = run?.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_id: itemId,
+              root_cause: row?.item_metadata?.root_cause || '',
+              root_cause_detail: row?.item_metadata?.root_cause_detail || '',
+              solution: solution,
+              run_id: runId
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) { console.error('Failed to save solution:', data.error); return; }
+          // Update local state
+          if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            if (solution) { row.item_metadata.solution = solution; row.item_metadata.solution_source = 'human'; }
+            else { delete row.item_metadata.solution; delete row.item_metadata.solution_source; delete row.item_metadata.solution_note; }
+          }
+          renderItems();
+        } catch (err) { console.error('Error saving solution:', err); }
       }
 
       // Global function for toggling all metric details for an item
@@ -5107,6 +6104,7 @@
         if (state.domainFilter !== null) n++;
         if (state.rootCauseFilter !== null) n++;
         if (state.passRateOp) n++;
+        if (state.sortBy !== 'index') n++;
         return n;
       }
 
@@ -5128,6 +6126,7 @@
         state.rootCauseFilter = null;
         state.passRateOp = '';
         state.passRateValue = 0;
+        state.sortBy = 'index';
         state.page = 1;
 
         el('item-filter').value = 'all';
@@ -5136,6 +6135,7 @@
         el('pass-rate-op').value = '';
         el('pass-rate-value').style.display = 'none';
         el('pass-rate-suffix').style.display = 'none';
+        el('sort-select').value = 'index';
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
@@ -5146,6 +6146,12 @@
       el('clear-all-btn').addEventListener('click', clearAllFilters);
 
       // Event listeners
+      el('sort-select').addEventListener('change', (e) => {
+        state.sortBy = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
       el('item-filter').addEventListener('change', (e) => {
         state.itemFilter = e.target.value;
         state.page = 1;
@@ -5793,6 +6799,52 @@
           showToast: showToast,
           escapeHtml: escapeHtml,
       });
+
+      // ── Share button (export comparison as self-contained HTML) ──
+      var shareBtn = el('export-share-btn');
+      if (shareBtn) {
+        shareBtn.addEventListener('click', async function() {
+          try {
+            shareBtn.disabled = true;
+            shareBtn.textContent = 'Exporting...';
+
+            // Serialize current state data
+            const exportData = {
+              runs: state.runs.map(r => ({
+                run: r.run,
+                snapshot: r.snapshot
+              }))
+            };
+            const dataJson = JSON.stringify(exportData);
+
+            // Fetch the current page HTML
+            const resp = await fetch(window.location.href);
+            let html = await resp.text();
+
+            // Inject export data and mode flag before closing </head>
+            const exportScript = '<script>window.__QYM_COMPARE_EXPORT__ = true; window.__QYM_COMPARE_DATA__ = ' +
+              dataJson.replace(/<\//g, '<\\/') + ';</' + 'script>';
+            html = html.replace('</head>', exportScript + '</head>');
+
+            // Create downloadable blob
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'compare_export.html';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('success', 'Export Ready', 'HTML comparison downloaded.');
+          } catch (err) {
+            console.error('Export failed:', err);
+            showToast('error', 'Export Failed', err.message);
+          } finally {
+            shareBtn.disabled = false;
+            shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
+          }
+        });
+      }
 
       // Initialize
       loadComparisonData();
