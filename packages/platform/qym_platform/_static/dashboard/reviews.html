@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corrections Review</title>
+  <link rel="icon" type="image/png" href="./static/qym_icon.png">
+  <link rel="stylesheet" href="./static/dashboard.css">
+  <style>
+    /* ═══════════════════════════════════════════════════
+       REVIEWS PAGE — Correction Bank Management
+       ═══════════════════════════════════════════════════ */
+
+    .reviews-layout {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 44px);
+      overflow: hidden;
+    }
+
+    /* ── Stats Strip ─────────────────────────────── */
+
+    .reviews-stats {
+      display: flex;
+      align-items: stretch;
+      gap: 1px;
+      padding: var(--space-md) var(--space-lg);
+      background: var(--bg-base);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .stat-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+      position: relative;
+    }
+
+    .stat-card:hover {
+      background: var(--bg-elevated);
+    }
+
+    .stat-card.active {
+      border-color: var(--accent-primary);
+      background: var(--bg-elevated);
+    }
+
+    .stat-card .stat-num {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      line-height: 1;
+    }
+
+    .stat-card .stat-lbl {
+      font-size: var(--font-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .stat-card.stat-total .stat-num { color: var(--text-primary); }
+    .stat-card.stat-pending .stat-num { color: var(--warning); }
+    .stat-card.stat-approved .stat-num { color: var(--success); }
+    .stat-card.stat-rejected .stat-num { color: var(--error); }
+
+    .stat-card.stat-pending.active { border-color: var(--warning); }
+    .stat-card.stat-approved.active { border-color: var(--success); }
+    .stat-card.stat-rejected.active { border-color: var(--error); }
+
+    /* Active bar indicator */
+    .stat-card.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 20%;
+      right: 20%;
+      height: 2px;
+      border-radius: 2px;
+    }
+    .stat-card.stat-total.active::after { background: var(--accent-primary); }
+    .stat-card.stat-pending.active::after { background: var(--warning); }
+    .stat-card.stat-approved.active::after { background: var(--success); }
+    .stat-card.stat-rejected.active::after { background: var(--error); }
+
+    /* ── Toolbar ─────────────────────────────────── */
+
+    .reviews-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-lg);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      flex-wrap: wrap;
+    }
+
+    .reviews-search {
+      display: flex;
+      align-items: center;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: 0 var(--space-sm);
+      flex: 1;
+      max-width: 320px;
+      min-width: 180px;
+    }
+
+    .reviews-search .search-ico {
+      color: var(--text-dim);
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .reviews-search input {
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      padding: 6px var(--space-sm);
+      outline: none;
+      width: 100%;
+      font-family: var(--font-sans);
+    }
+
+    .reviews-search input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border-default);
+      flex-shrink: 0;
+    }
+
+    .toolbar-select {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      padding: 5px var(--space-sm);
+      font-family: var(--font-sans);
+      cursor: pointer;
+      min-width: 120px;
+    }
+
+    .toolbar-select:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-left: auto;
+    }
+
+    .bulk-bar {
+      display: none;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 4px var(--space-sm);
+      background: rgba(0, 212, 170, 0.08);
+      border: 1px solid rgba(0, 212, 170, 0.2);
+      border-radius: 6px;
+      font-size: var(--font-sm);
+      color: var(--accent-primary);
+    }
+
+    .bulk-bar.visible {
+      display: flex;
+    }
+
+    .bulk-count {
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: var(--font-xs);
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      font-weight: 500;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-approve {
+      background: var(--success-dim);
+      color: var(--success);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .btn-approve:hover { background: rgba(16, 185, 129, 0.25); }
+
+    .btn-reject {
+      background: var(--error-dim);
+      color: var(--error);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-reject:hover { background: rgba(239, 68, 68, 0.25); }
+
+    .btn-reset {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border-color: var(--border-default);
+    }
+    .btn-reset:hover { background: var(--bg-hover); }
+
+    .btn-ghost {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: var(--font-sm);
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .btn-ghost:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    /* ── Corrections List ────────────────────────── */
+
+    .reviews-body {
+      flex: 1;
+      overflow: auto;
+      padding: var(--space-md) var(--space-lg);
+      background: var(--bg-base);
+    }
+
+    .correction-list {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .card-separator {
+      height: 1px;
+      margin: 0;
+      border: none;
+      background: linear-gradient(90deg, transparent, var(--border-default) 15%, var(--border-default) 85%, transparent);
+    }
+
+    .correction-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      transition: all 0.15s;
+      overflow: hidden;
+    }
+
+    .correction-card:hover {
+      border-color: var(--border-default);
+    }
+
+    .correction-card.selected {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 1px rgba(0, 212, 170, 0.15);
+    }
+
+    .correction-card.status-approved {
+      border-left: 3px solid var(--success);
+    }
+    .correction-card.status-rejected {
+      border-left: 3px solid var(--error);
+    }
+    .correction-card.status-pending {
+      border-left: 3px solid var(--warning);
+    }
+
+    /* Card Header Row */
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    .card-check {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent-primary);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      flex: 1;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+
+    .card-id {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .card-task {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--accent-secondary);
+      padding: 1px 6px;
+      background: rgba(0, 168, 255, 0.1);
+      border-radius: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+
+    .card-item-id {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 160px;
+    }
+
+    .card-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .card-status-badge.pending {
+      background: var(--warning-dim);
+      color: var(--warning);
+    }
+    .card-status-badge.approved {
+      background: var(--success-dim);
+      color: var(--success);
+    }
+    .card-status-badge.rejected {
+      background: var(--error-dim);
+      color: var(--error);
+    }
+
+    .card-status-badge .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .card-confidence {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .card-provenance {
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      margin-left: auto;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    /* Card Body — Row-aligned Diff View */
+    .card-body {
+      display: flex;
+    }
+
+    .diff-col {
+      flex: 1;
+      padding: var(--space-md);
+      min-width: 0;
+    }
+
+    .diff-col:first-child {
+      border-right: 1px solid var(--border-subtle);
+    }
+
+    .diff-field + .diff-field {
+      margin-top: var(--space-sm);
+    }
+
+    .diff-col-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+
+    .diff-source-tag {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .diff-source-tag.ai {
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--accent-tertiary);
+    }
+
+    .diff-source-tag.human {
+      background: rgba(0, 212, 170, 0.12);
+      color: var(--accent-primary);
+    }
+
+    .diff-confidence {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+    }
+
+    .diff-field {
+      /* no margin — gap on parent handles spacing */
+    }
+
+    .diff-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+    }
+
+    .diff-value {
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+      width: fit-content;
+    }
+
+    .diff-value .empty {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .diff-value.changed {
+      background: rgba(0, 212, 170, 0.06);
+      border-radius: 3px;
+      padding: 1px 4px;
+      border-left: 2px solid var(--accent-primary);
+    }
+
+    .diff-value.removed {
+      background: rgba(239, 68, 68, 0.06);
+      border-radius: 3px;
+      padding: 1px 4px;
+      border-left: 2px solid rgba(239, 68, 68, 0.4);
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+
+    .diff-value.is-empty {
+      background: none !important;
+      border-left: none !important;
+      padding: 0 !important;
+      text-decoration: none !important;
+      opacity: 1 !important;
+    }
+
+    /* Card Footer — Review Info */
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-xs) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.1);
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+    }
+
+    .card-footer .review-info {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .card-footer .review-comment {
+      font-style: italic;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 400px;
+    }
+
+    /* ── Expand/Detail Panel ─────────────────────── */
+
+    .card-detail {
+      display: none;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+
+    .card-detail.open {
+      display: block;
+    }
+
+    .detail-section {
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .detail-section:last-child {
+      border-bottom: none;
+    }
+
+    .detail-section-title {
+      font-size: var(--font-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: var(--space-sm);
+    }
+
+    .detail-snapshot {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg-void);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      padding: var(--space-sm) var(--space-md);
+      max-height: 200px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+
+    .detail-scores {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .score-chip {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: var(--bg-void);
+      border: 1px solid var(--border-default);
+    }
+
+    .score-chip .metric-name {
+      color: var(--text-muted);
+    }
+
+    .score-chip .metric-val {
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    /* ── Edit Mode ───────────────────────────────── */
+
+    .edit-field {
+      margin-bottom: var(--space-sm);
+    }
+
+    .edit-field label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+      display: block;
+    }
+
+    .edit-field input,
+    .edit-field textarea {
+      width: 100%;
+      background: var(--bg-void);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      padding: 5px var(--space-sm);
+      font-family: var(--font-sans);
+    }
+
+    .edit-field textarea {
+      min-height: 50px;
+      resize: vertical;
+      font-family: var(--font-sans);
+    }
+
+    .edit-field input:focus,
+    .edit-field textarea:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.1);
+    }
+
+    .edit-actions {
+      display: flex;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+
+    /* ── Empty State ─────────────────────────────── */
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-xl) var(--space-lg);
+      color: var(--text-dim);
+      gap: var(--space-sm);
+      min-height: 300px;
+    }
+
+    .empty-state .empty-icon {
+      font-size: 40px;
+      opacity: 0.4;
+      line-height: 1;
+    }
+
+    .empty-state .empty-title {
+      font-size: var(--font-md);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .empty-state .empty-desc {
+      font-size: var(--font-sm);
+      color: var(--text-dim);
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.5;
+    }
+
+    /* ── Comment Modal ───────────────────────────── */
+
+    .reviews-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .reviews-modal.open {
+      display: flex;
+    }
+
+    .reviews-modal-content {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      max-width: 440px;
+      width: 90%;
+    }
+
+    .reviews-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .reviews-modal-header h3 {
+      font-size: var(--font-md);
+      color: var(--text-primary);
+    }
+
+    .reviews-modal-body {
+      padding: var(--space-lg);
+    }
+
+    .reviews-modal-body p {
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      margin-bottom: var(--space-sm);
+    }
+
+    .reviews-modal-body textarea {
+      width: 100%;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      padding: var(--space-sm) var(--space-md);
+      font-family: var(--font-sans);
+      min-height: 70px;
+      resize: vertical;
+    }
+
+    .reviews-modal-body textarea:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+    }
+
+    .reviews-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-default);
+    }
+
+    /* ── Loading state ───────────────────────────── */
+
+    .loading-spinner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-xl);
+      color: var(--text-dim);
+      gap: var(--space-sm);
+    }
+
+    .spinner-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      animation: spinPulse 1.2s ease-in-out infinite;
+    }
+    .spinner-dot:nth-child(2) { animation-delay: 0.2s; }
+    .spinner-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes spinPulse {
+      0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── Responsive ──────────────────────────────── */
+
+    @media (max-width: 800px) {
+      .card-body {
+        grid-template-columns: 1fr;
+      }
+      .diff-col:first-child {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .card-provenance {
+        display: none;
+      }
+      .reviews-stats {
+        flex-wrap: wrap;
+      }
+      .stat-card {
+        min-width: 80px;
+      }
+    }
+
+    /* ── Expand toggle ───────────────────────────── */
+
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 12px;
+      border-radius: 3px;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .expand-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+    .expand-btn .arrow {
+      transition: transform 0.2s;
+    }
+    .expand-btn.expanded .arrow {
+      transform: rotate(90deg);
+    }
+
+    /* ── Select All checkbox ─────────────────────── */
+
+    .select-all-wrap {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    /* ── Filter chip buttons ─────────────────────── */
+
+    .filter-chips {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      font-family: var(--font-sans);
+    }
+
+    .filter-chip:hover {
+      border-color: var(--border-strong);
+      color: var(--text-secondary);
+    }
+
+    .filter-chip.active {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.08);
+    }
+
+    .filter-group-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      padding-right: 2px;
+    }
+
+    /* ── Confidence Range Slider ─────────────────── */
+
+    .conf-slider-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .conf-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .conf-slider-wrap .conf-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      flex-shrink: 0;
+    }
+
+    .conf-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 80px;
+      height: 4px;
+      background: var(--bg-elevated);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .conf-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--accent-primary);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0, 212, 170, 0.4);
+      transition: transform 0.15s;
+    }
+
+    .conf-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 2px 8px rgba(0, 212, 170, 0.5);
+    }
+
+    .conf-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: var(--accent-primary);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .conf-slider::-moz-range-track {
+      background: var(--bg-elevated);
+      height: 4px;
+      border-radius: 2px;
+    }
+
+    .conf-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      color: var(--accent-primary);
+      min-width: 28px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Top Stats Bar -->
+  <header class="stats-bar">
+    <div class="stats-bar-left">
+      <a href="/" class="logo" style="text-decoration:none;">
+        <img src="./static/qym_text.png" alt="Qym" class="logo-text-img" style="cursor:pointer;" />
+      </a>
+      <span style="color: var(--text-dim); font-size: var(--font-sm); margin-left: 4px;">/ Corrections Review</span>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-sm);">
+      <a href="/" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        Dashboard
+      </a>
+    </div>
+  </header>
+
+  <div class="reviews-layout">
+    <!-- Stats Strip -->
+    <div class="reviews-stats">
+      <div class="stat-card stat-total active" data-filter="">
+        <span class="stat-num" id="stat-total">-</span>
+        <span class="stat-lbl">Total</span>
+      </div>
+      <div class="stat-card stat-pending" data-filter="pending">
+        <span class="stat-num" id="stat-pending">-</span>
+        <span class="stat-lbl">Pending</span>
+      </div>
+      <div class="stat-card stat-approved" data-filter="approved">
+        <span class="stat-num" id="stat-approved">-</span>
+        <span class="stat-lbl">Approved</span>
+      </div>
+      <div class="stat-card stat-rejected" data-filter="rejected">
+        <span class="stat-num" id="stat-rejected">-</span>
+        <span class="stat-lbl">Rejected</span>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="reviews-toolbar">
+      <label class="select-all-wrap">
+        <input type="checkbox" class="card-check" id="select-all" title="Select all visible">
+        <span>All</span>
+      </label>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="reviews-search">
+        <span class="search-ico">&#x2315;</span>
+        <input type="text" id="search-input" placeholder="Search task, item, root cause..." />
+      </div>
+
+      <select class="toolbar-select" id="filter-task">
+        <option value="">All Tasks</option>
+      </select>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="filter-chips">
+        <span class="filter-group-label">Source</span>
+        <button class="filter-chip active" data-source="">All</button>
+        <button class="filter-chip" data-source="ai_only">AI Only</button>
+        <button class="filter-chip" data-source="human_only">Human Only</button>
+        <button class="filter-chip" data-source="corrected">AI+Human Corrected</button>
+      </div>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="conf-slider-group">
+        <span class="filter-group-label">Confidence</span>
+        <div class="conf-slider-wrap">
+          <span class="conf-label">Min</span>
+          <input type="range" class="conf-slider" id="conf-min" min="0" max="100" step="5" value="0">
+          <span class="conf-value" id="conf-min-val">0%</span>
+        </div>
+        <div class="conf-slider-wrap">
+          <span class="conf-label">Max</span>
+          <input type="range" class="conf-slider" id="conf-max" min="0" max="100" step="5" value="100">
+          <span class="conf-value" id="conf-max-val">100%</span>
+        </div>
+      </div>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="bulk-bar" id="bulk-bar">
+        <span><span class="bulk-count" id="bulk-count">0</span> selected</span>
+        <button class="btn-sm btn-approve" id="bulk-approve">Approve</button>
+        <button class="btn-sm btn-reject" id="bulk-reject">Reject</button>
+        <button class="btn-sm btn-reset" id="bulk-reset">Reset</button>
+        <button class="btn-ghost" id="bulk-deselect" title="Deselect all">&times;</button>
+      </div>
+
+      <div class="toolbar-right">
+        <span style="font-size: var(--font-xs); color: var(--text-dim);" id="result-count"></span>
+      </div>
+    </div>
+
+    <!-- Corrections List -->
+    <div class="reviews-body" id="reviews-body">
+      <div class="loading-spinner" id="loading">
+        <span class="spinner-dot"></span>
+        <span class="spinner-dot"></span>
+        <span class="spinner-dot"></span>
+      </div>
+      <div class="correction-list" id="correction-list" style="display:none;"></div>
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <div class="empty-icon">&#x2205;</div>
+        <div class="empty-title">No corrections found</div>
+        <div class="empty-desc">
+          Corrections appear here when humans correct AI-suggested root causes on run detail pages.
+          Only approved corrections feed into the auto-analyzer as few-shot examples.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Modal (approve/reject with comment) -->
+  <div class="reviews-modal" id="action-modal">
+    <div class="reviews-modal-content">
+      <div class="reviews-modal-header">
+        <h3 id="modal-title">Approve Correction</h3>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <div class="reviews-modal-body">
+        <p id="modal-desc">This correction will be used as a few-shot example for future AI analysis.</p>
+        <textarea id="modal-comment" placeholder="Optional review comment..." rows="3"></textarea>
+      </div>
+      <div class="reviews-modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    'use strict';
+
+    /* ── Helpers ─────────────────────────────────── */
+
+    const BASE_URL = (() => {
+      const loc = window.location;
+      let base = loc.pathname;
+      if (!base.endsWith('/')) {
+        base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+      }
+      return loc.origin + base;
+    })();
+
+    function apiUrl(path) {
+      const clean = path.replace(/^\.?\//, '');
+      return BASE_URL + clean;
+    }
+
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+    const el = (id) => document.getElementById(id);
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function stringify(val) {
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'string') return val;
+      return JSON.stringify(val, null, 2);
+    }
+
+    function truncate(str, max) {
+      if (!str) return '';
+      return str.length > max ? str.slice(0, max) + '...' : str;
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const month = (d.getMonth() + 1).toString().padStart(2, '0');
+      const day = d.getDate().toString().padStart(2, '0');
+      const h = d.getHours().toString().padStart(2, '0');
+      const m = d.getMinutes().toString().padStart(2, '0');
+      return `${month}/${day} ${h}:${m}`;
+    }
+
+    function debounce(fn, ms) {
+      let t;
+      return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    }
+
+    /* ── State ───────────────────────────────────── */
+
+    const state = {
+      corrections: [],
+      filtered: [],
+      stats: { total: 0, pending: 0, approved: 0, rejected: 0 },
+      tasks: [],
+      selected: new Set(),
+      statusFilter: '',
+      taskFilter: '',
+      searchQuery: '',
+      sourceFilter: '',   // '' | 'ai_only' | 'human_only' | 'corrected'
+      confMin: 0,         // 0-100
+      confMax: 100,       // 0-100
+      editingId: null,
+    };
+
+    /* ── Toast ───────────────────────────────────── */
+
+    function showToast(type, title, message) {
+      const container = el('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `
+        <div class="toast-icon">${type === 'success' ? '&#10003;' : '&#10007;'}</div>
+        <div class="toast-content">
+          <div class="toast-title">${escapeHtml(title)}</div>
+          ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
+        </div>
+        <button class="toast-close">&times;</button>
+      `;
+      container.appendChild(toast);
+      toast.querySelector('.toast-close').addEventListener('click', () => {
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 300);
+      });
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.classList.add('toast-exit');
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, 4000);
+    }
+
+    /* ── API ─────────────────────────────────────── */
+
+    async function fetchCorrections() {
+      try {
+        const params = new URLSearchParams();
+        if (state.statusFilter) params.set('status', state.statusFilter);
+        if (state.taskFilter) params.set('task', state.taskFilter);
+        if (state.searchQuery) params.set('search', state.searchQuery);
+
+        const qs = params.toString();
+        const resp = await fetch(apiUrl(`api/corrections${qs ? '?' + qs : ''}`));
+        if (!resp.ok) throw new Error('Failed to fetch');
+        const data = await resp.json();
+
+        state.corrections = data.corrections || [];
+        state.stats = data.stats || { total: 0, pending: 0, approved: 0, rejected: 0 };
+        state.tasks = data.tasks || [];
+        state.selected.clear();
+
+        applyClientFilters();
+        updateStats();
+        updateTaskDropdown();
+        render();
+      } catch (err) {
+        showToast('error', 'Load failed', err.message);
+      } finally {
+        el('loading').style.display = 'none';
+      }
+    }
+
+    async function apiAction(method, path, body) {
+      const resp = await fetch(apiUrl(path), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!resp.ok) {
+        const d = await resp.json().catch(() => ({}));
+        throw new Error(d.detail || 'Request failed');
+      }
+      return resp.json();
+    }
+
+    /* ── Client-side Filters (source, confidence) ── */
+
+    function applyClientFilters() {
+      let list = state.corrections;
+
+      // Source filter
+      if (state.sourceFilter === 'ai_only') {
+        // Items where AI and Human are identical (no human correction)
+        list = list.filter(c => c.ai_root_cause === c.human_root_cause && c.ai_root_cause_detail === c.human_root_cause_detail);
+      } else if (state.sourceFilter === 'human_only') {
+        // Items where there's no AI suggestion (ai fields empty)
+        list = list.filter(c => !c.ai_root_cause);
+      } else if (state.sourceFilter === 'corrected') {
+        // Items where AI suggested something AND human changed it
+        list = list.filter(c => c.ai_root_cause && (c.ai_root_cause !== c.human_root_cause || c.ai_root_cause_detail !== c.human_root_cause_detail));
+      }
+
+      // Confidence range filter (only applies when not full range 0-100)
+      if (state.confMin > 0 || state.confMax < 100) {
+        const lo = state.confMin / 100;
+        const hi = state.confMax / 100;
+        list = list.filter(c => {
+          if (c.ai_confidence == null) return false;
+          return c.ai_confidence >= lo && c.ai_confidence <= hi;
+        });
+      }
+
+      state.filtered = list;
+    }
+
+    /* ── Modal ───────────────────────────────────── */
+
+    let modalResolve = null;
+
+    function openModal(title, desc, confirmLabel, btnClass) {
+      el('modal-title').textContent = title;
+      el('modal-desc').textContent = desc;
+      el('modal-comment').value = '';
+      el('modal-confirm').textContent = confirmLabel;
+      el('modal-confirm').className = `btn ${btnClass || 'btn-primary'}`;
+      el('action-modal').classList.add('open');
+      el('modal-comment').focus();
+
+      return new Promise((resolve) => {
+        modalResolve = resolve;
+      });
+    }
+
+    function closeModal(result) {
+      el('action-modal').classList.remove('open');
+      if (modalResolve) {
+        modalResolve(result);
+        modalResolve = null;
+      }
+    }
+
+    el('modal-cancel').addEventListener('click', () => closeModal(null));
+    el('modal-close').addEventListener('click', () => closeModal(null));
+    el('modal-confirm').addEventListener('click', () => {
+      closeModal(el('modal-comment').value || '');
+    });
+
+    el('action-modal').addEventListener('click', (e) => {
+      if (e.target === el('action-modal')) closeModal(null);
+    });
+
+    /* ── Rendering ───────────────────────────────── */
+
+    function updateStats() {
+      el('stat-total').textContent = state.stats.total;
+      el('stat-pending').textContent = state.stats.pending;
+      el('stat-approved').textContent = state.stats.approved;
+      el('stat-rejected').textContent = state.stats.rejected;
+    }
+
+    function updateTaskDropdown() {
+      const select = el('filter-task');
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">All Tasks</option>';
+      state.tasks.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        select.appendChild(opt);
+      });
+      select.value = currentVal;
+    }
+
+    function updateBulkBar() {
+      const bar = el('bulk-bar');
+      const count = state.selected.size;
+      el('bulk-count').textContent = count;
+      bar.classList.toggle('visible', count > 0);
+    }
+
+    function render() {
+      const list = el('correction-list');
+      const empty = el('empty-state');
+      const count = el('result-count');
+
+      if (state.filtered.length === 0) {
+        list.style.display = 'none';
+        empty.style.display = 'flex';
+        count.textContent = '';
+        return;
+      }
+
+      empty.style.display = 'none';
+      list.style.display = 'flex';
+      count.textContent = `${state.filtered.length} correction${state.filtered.length !== 1 ? 's' : ''}`;
+
+      list.innerHTML = state.filtered.map((c, i) => (i > 0 ? '<hr class="card-separator">' : '') + renderCard(c)).join('');
+      attachCardListeners();
+      updateBulkBar();
+
+      // Sync select-all checkbox
+      const allChecked = state.filtered.length > 0 && state.filtered.every(c => state.selected.has(c.id));
+      el('select-all').checked = allChecked;
+    }
+
+    function renderCard(c) {
+      const st = c.status || 'pending';
+      const isSelected = state.selected.has(c.id);
+      const isEditing = state.editingId === c.id;
+      const aiChanged = c.ai_root_cause !== c.human_root_cause;
+      const detailChanged = c.ai_root_cause_detail !== c.human_root_cause_detail;
+
+      const corrector = c.corrected_by ? (c.corrected_by.display_name || c.corrected_by.email) : '';
+      const reviewer = c.reviewed_by ? (c.reviewed_by.display_name || c.reviewed_by.email) : '';
+
+      return `
+        <div class="correction-card status-${st} ${isSelected ? 'selected' : ''}" data-id="${c.id}">
+          <div class="card-header">
+            <input type="checkbox" class="card-check" data-check="${c.id}" ${isSelected ? 'checked' : ''}>
+            <div class="card-meta">
+              <span class="card-id">#${c.id}</span>
+              <span class="card-task" title="${escapeHtml(c.task)}">${escapeHtml(c.task)}</span>
+              <span class="card-item-id" title="${escapeHtml(c.item_id)}">${escapeHtml(truncate(c.item_id, 24))}</span>
+              <span class="card-status-badge ${st}"><span class="dot"></span> ${st}</span>
+              ${c.ai_confidence != null ? `<span class="card-confidence" title="AI confidence">${(c.ai_confidence * 100).toFixed(0)}%</span>` : ''}
+            </div>
+            <span class="card-provenance">${corrector ? `by ${escapeHtml(corrector)}` : ''} ${c.created_at ? formatDate(c.created_at) : ''}</span>
+            <div class="card-actions">
+              ${st === 'pending' ? `
+                <button class="btn-sm btn-approve" data-approve="${c.id}" title="Approve">&#10003;</button>
+                <button class="btn-sm btn-reject" data-reject="${c.id}" title="Reject">&#10007;</button>
+              ` : st === 'approved' ? `
+                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+              ` : st === 'rejected' ? `
+                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+              ` : ''}
+              <button class="btn-ghost" data-edit="${c.id}" title="Edit correction">&#9998;</button>
+              <button class="expand-btn" data-expand="${c.id}" title="Show metadata">
+                <span class="arrow">&#x25B6;</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- AI Column -->
+            <div class="diff-col">
+              <div class="diff-col-header">
+                <span class="diff-source-tag ai">AI</span>
+                ${c.ai_confidence != null ? `<span class="diff-confidence">${(c.ai_confidence * 100).toFixed(0)}% conf</span>` : ''}
+              </div>
+              <div class="diff-field">
+                <div class="diff-label">Root Cause Category</div>
+                <div class="diff-value ${c.ai_root_cause ? (aiChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause ? escapeHtml(c.ai_root_cause) : '<span class="empty">—</span>'}</div>
+              </div>
+              <div class="diff-field">
+                <div class="diff-label">Root Cause Detail</div>
+                <div class="diff-value ${c.ai_root_cause_detail ? (detailChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause_detail ? escapeHtml(c.ai_root_cause_detail) : '<span class="empty">—</span>'}</div>
+              </div>
+              <div class="diff-field">
+                <div class="diff-label">Feedback</div>
+                <div class="diff-value ${c.ai_root_cause_note ? '' : 'is-empty'}">${c.ai_root_cause_note ? escapeHtml(truncate(c.ai_root_cause_note, 200)) : '<span class="empty">—</span>'}</div>
+              </div>
+            </div>
+
+            <!-- Human Column -->
+            <div class="diff-col">
+              <div class="diff-col-header">
+                <span class="diff-source-tag human">Human</span>
+              </div>
+              ${isEditing ? renderEditForm(c) : `
+                <div class="diff-field">
+                  <div class="diff-label">Root Cause Category</div>
+                  <div class="diff-value ${c.human_root_cause ? (aiChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause ? escapeHtml(c.human_root_cause) : '<span class="empty">—</span>'}</div>
+                </div>
+                <div class="diff-field">
+                  <div class="diff-label">Root Cause Detail</div>
+                  <div class="diff-value ${c.human_root_cause_detail ? (detailChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause_detail ? escapeHtml(c.human_root_cause_detail) : '<span class="empty">—</span>'}</div>
+                </div>
+                <div class="diff-field">
+                  <div class="diff-label">Feedback</div>
+                  <div class="diff-value ${c.human_root_cause_note ? '' : 'is-empty'}">${c.human_root_cause_note ? escapeHtml(truncate(c.human_root_cause_note, 200)) : '<span class="empty">—</span>'}</div>
+                </div>
+              `}
+            </div>
+          </div>
+
+          ${c.review_comment || reviewer ? `
+            <div class="card-footer">
+              ${reviewer ? `<span class="review-info">Reviewed by <strong>${escapeHtml(reviewer)}</strong> ${c.reviewed_at ? formatDate(c.reviewed_at) : ''}</span>` : ''}
+              ${c.review_comment ? `<span class="review-comment" title="${escapeHtml(c.review_comment)}">"${escapeHtml(truncate(c.review_comment, 80))}"</span>` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Input / Output / Expected always visible -->
+          ${c.input_snapshot ? `
+            <div class="detail-section">
+              <div class="detail-section-title">Input</div>
+              <div class="detail-snapshot">${escapeHtml(stringify(c.input_snapshot))}</div>
+            </div>
+          ` : ''}
+          ${c.expected_snapshot ? `
+            <div class="detail-section">
+              <div class="detail-section-title">Expected</div>
+              <div class="detail-snapshot">${escapeHtml(stringify(c.expected_snapshot))}</div>
+            </div>
+          ` : ''}
+          ${c.output_snapshot ? `
+            <div class="detail-section">
+              <div class="detail-section-title">Output</div>
+              <div class="detail-snapshot">${escapeHtml(stringify(c.output_snapshot))}</div>
+            </div>
+          ` : ''}
+
+          <!-- Expandable: Scores + Metadata -->
+          <div class="card-detail" id="detail-${c.id}">
+            ${c.scores_snapshot && Object.keys(c.scores_snapshot).length ? `
+              <div class="detail-section">
+                <div class="detail-section-title">Metric Scores</div>
+                <div class="detail-scores">
+                  ${Object.entries(c.scores_snapshot).map(([k, v]) =>
+                    `<span class="score-chip"><span class="metric-name">${escapeHtml(k)}: </span><span class="metric-val">${typeof v === 'number' ? v.toFixed(2) : escapeHtml(String(v))}</span></span>`
+                  ).join('')}
+                </div>
+              </div>
+            ` : ''}
+            <div class="detail-section">
+              <div class="detail-section-title">Item Metadata</div>
+              <div class="detail-snapshot">${escapeHtml(JSON.stringify({
+                run_id: c.run_id,
+                item_id: c.item_id,
+                task: c.task,
+                ai_confidence: c.ai_confidence,
+                corrected_by: c.corrected_by ? (c.corrected_by.display_name || c.corrected_by.email) : null,
+                created_at: c.created_at,
+                status: c.status,
+                reviewed_by: c.reviewed_by ? (c.reviewed_by.display_name || c.reviewed_by.email) : null,
+                reviewed_at: c.reviewed_at,
+                review_comment: c.review_comment || null,
+              }, null, 2))}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderEditForm(c) {
+      return `
+        <div class="edit-field">
+          <label>Root Cause Category</label>
+          <input type="text" data-edit-field="human_root_cause" value="${escapeHtml(c.human_root_cause)}" />
+        </div>
+        <div class="edit-field">
+          <label>Root Cause Detail</label>
+          <input type="text" data-edit-field="human_root_cause_detail" value="${escapeHtml(c.human_root_cause_detail)}" />
+        </div>
+        <div class="edit-field">
+          <label>Feedback</label>
+          <textarea data-edit-field="human_root_cause_note">${escapeHtml(c.human_root_cause_note)}</textarea>
+        </div>
+        <div class="edit-actions">
+          <button class="btn-sm btn-approve" data-save-edit="${c.id}">Save</button>
+          <button class="btn-sm btn-reset" data-cancel-edit="${c.id}">Cancel</button>
+        </div>
+      `;
+    }
+
+    /* ── Event Handlers ──────────────────────────── */
+
+    function attachCardListeners() {
+      // Checkbox toggle
+      $$('[data-check]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const id = Number(cb.dataset.check);
+          if (cb.checked) state.selected.add(id);
+          else state.selected.delete(id);
+          const card = cb.closest('.correction-card');
+          card.classList.toggle('selected', cb.checked);
+          updateBulkBar();
+          // Sync select-all
+          const allChecked = state.filtered.length > 0 && state.filtered.every(c => state.selected.has(c.id));
+          el('select-all').checked = allChecked;
+        });
+      });
+
+      // Approve
+      $$('[data-approve]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.approve);
+          const comment = await openModal(
+            'Approve Correction',
+            'This correction will be used as a few-shot example for future AI analysis.',
+            'Approve',
+            'btn-primary'
+          );
+          if (comment === null) return;
+          try {
+            await apiAction('POST', `api/corrections/${id}/approve`, { comment });
+            showToast('success', 'Approved', `Correction #${id} approved`);
+            fetchCorrections();
+          } catch (err) {
+            showToast('error', 'Failed', err.message);
+          }
+        });
+      });
+
+      // Reject
+      $$('[data-reject]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.reject);
+          const comment = await openModal(
+            'Reject Correction',
+            'This correction will NOT be used as a few-shot example.',
+            'Reject',
+            'btn-danger'
+          );
+          if (comment === null) return;
+          try {
+            await apiAction('POST', `api/corrections/${id}/reject`, { comment });
+            showToast('success', 'Rejected', `Correction #${id} rejected`);
+            fetchCorrections();
+          } catch (err) {
+            showToast('error', 'Failed', err.message);
+          }
+        });
+      });
+
+      // Reset
+      $$('[data-reset]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.reset);
+          try {
+            await apiAction('POST', `api/corrections/${id}/reset`, {});
+            showToast('success', 'Reset', `Correction #${id} reset to pending`);
+            fetchCorrections();
+          } catch (err) {
+            showToast('error', 'Failed', err.message);
+          }
+        });
+      });
+
+      // Edit
+      $$('[data-edit]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.edit);
+          state.editingId = state.editingId === id ? null : id;
+          render();
+        });
+      });
+
+      // Save edit
+      $$('[data-save-edit]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.saveEdit);
+          const card = btn.closest('.correction-card');
+          const body = {};
+          card.querySelectorAll('[data-edit-field]').forEach(field => {
+            body[field.dataset.editField] = field.value;
+          });
+          try {
+            await apiAction('PUT', `api/corrections/${id}`, body);
+            state.editingId = null;
+            showToast('success', 'Saved', 'Correction updated');
+            fetchCorrections();
+          } catch (err) {
+            showToast('error', 'Failed', err.message);
+          }
+        });
+      });
+
+      // Cancel edit
+      $$('[data-cancel-edit]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.editingId = null;
+          render();
+        });
+      });
+
+      // Expand/collapse context
+      $$('[data-expand]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.expand;
+          const detail = el(`detail-${id}`);
+          const isOpen = detail.classList.toggle('open');
+          btn.classList.toggle('expanded', isOpen);
+        });
+      });
+    }
+
+    /* ── Stat card filter ────────────────────────── */
+
+    $$('.stat-card').forEach(card => {
+      card.addEventListener('click', () => {
+        $$('.stat-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        state.statusFilter = card.dataset.filter;
+        fetchCorrections();
+      });
+    });
+
+    /* ── Search ──────────────────────────────────── */
+
+    el('search-input').addEventListener('input', debounce(() => {
+      state.searchQuery = el('search-input').value.trim();
+      fetchCorrections();
+    }, 300));
+
+    /* ── Task filter ─────────────────────────────── */
+
+    el('filter-task').addEventListener('change', () => {
+      state.taskFilter = el('filter-task').value;
+      fetchCorrections();
+    });
+
+    /* ── Source filter chips ────────────────────── */
+
+    $$('[data-source]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        $$('[data-source]').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        state.sourceFilter = chip.dataset.source;
+        applyClientFilters();
+        render();
+      });
+    });
+
+    /* ── Confidence range sliders ────────────────── */
+
+    const confMinSlider = el('conf-min');
+    const confMaxSlider = el('conf-max');
+    const confMinVal = el('conf-min-val');
+    const confMaxVal = el('conf-max-val');
+
+    function onConfSliderChange() {
+      let lo = Number(confMinSlider.value);
+      let hi = Number(confMaxSlider.value);
+      // Clamp: don't let min exceed max
+      if (lo > hi) {
+        if (this === confMinSlider) { lo = hi; confMinSlider.value = lo; }
+        else { hi = lo; confMaxSlider.value = hi; }
+      }
+      confMinVal.textContent = lo + '%';
+      confMaxVal.textContent = hi + '%';
+      state.confMin = lo;
+      state.confMax = hi;
+      applyClientFilters();
+      render();
+    }
+
+    confMinSlider.addEventListener('input', debounce(onConfSliderChange.bind(confMinSlider), 150));
+    confMaxSlider.addEventListener('input', debounce(onConfSliderChange.bind(confMaxSlider), 150));
+
+    /* ── Select All ──────────────────────────────── */
+
+    el('select-all').addEventListener('change', () => {
+      const checked = el('select-all').checked;
+      if (checked) {
+        state.filtered.forEach(c => state.selected.add(c.id));
+      } else {
+        state.selected.clear();
+      }
+      render();
+    });
+
+    /* ── Bulk Actions ────────────────────────────── */
+
+    el('bulk-approve').addEventListener('click', async () => {
+      const ids = [...state.selected];
+      if (!ids.length) return;
+      const comment = await openModal(
+        `Approve ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
+        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as few-shot examples.`,
+        'Approve All',
+        'btn-primary'
+      );
+      if (comment === null) return;
+      try {
+        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'approve', comment });
+        state.selected.clear();
+        showToast('success', 'Bulk Approved', `${ids.length} corrections approved`);
+        fetchCorrections();
+      } catch (err) {
+        showToast('error', 'Failed', err.message);
+      }
+    });
+
+    el('bulk-reject').addEventListener('click', async () => {
+      const ids = [...state.selected];
+      if (!ids.length) return;
+      const comment = await openModal(
+        `Reject ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
+        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be rejected.`,
+        'Reject All',
+        'btn-danger'
+      );
+      if (comment === null) return;
+      try {
+        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'reject', comment });
+        state.selected.clear();
+        showToast('success', 'Bulk Rejected', `${ids.length} corrections rejected`);
+        fetchCorrections();
+      } catch (err) {
+        showToast('error', 'Failed', err.message);
+      }
+    });
+
+    el('bulk-reset').addEventListener('click', async () => {
+      const ids = [...state.selected];
+      if (!ids.length) return;
+      try {
+        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'reset' });
+        state.selected.clear();
+        showToast('success', 'Bulk Reset', `${ids.length} corrections reset to pending`);
+        fetchCorrections();
+      } catch (err) {
+        showToast('error', 'Failed', err.message);
+      }
+    });
+
+    el('bulk-deselect').addEventListener('click', () => {
+      state.selected.clear();
+      render();
+    });
+
+    /* ── Keyboard shortcuts ──────────────────────── */
+
+    document.addEventListener('keydown', (e) => {
+      // Escape closes modal
+      if (e.key === 'Escape') {
+        if (el('action-modal').classList.contains('open')) {
+          closeModal(null);
+        }
+        if (state.editingId !== null) {
+          state.editingId = null;
+          render();
+        }
+      }
+      // '/' focuses search
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        el('search-input').focus();
+      }
+    });
+
+    /* ── Init ────────────────────────────────────── */
+
+    fetchCorrections();
+
+  })();
+  </script>
+</body>
+</html>

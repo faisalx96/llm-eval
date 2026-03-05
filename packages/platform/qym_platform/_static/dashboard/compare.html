@@ -1786,11 +1786,16 @@
       align-items: center;
       gap: 4px;
       padding: 3px 10px;
-      border-radius: 100px;
+      border-radius: 8px;
       font-size: var(--font-xs);
       font-family: var(--font-mono);
       font-weight: 600;
-      white-space: nowrap;
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-align: left;
+      line-height: 1.4;
+      max-width: 100%;
+      box-sizing: border-box;
     }
 
     .meta-badge .badge-icon {
@@ -1864,6 +1869,7 @@
       flex-direction: column;
       align-items: flex-start;
       min-width: 0;
+      max-width: 100%;
     }
     .rc-badge-label {
       display: block;
@@ -4907,7 +4913,7 @@
               let rcDetailBadge = '';
               if (rowRcDetail) {
                 const aiClass = isAi ? ' ai-suggested' : '';
-                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${escapeHtml(rowRcDetail)}</span>`;
+                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${escapeHtml(rowRcDetail)}</span>`;
               } else if (!itemPassed) {
                 rcDetailBadge = `<button class="root-cause-assign-btn" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>`;
               }
@@ -4921,7 +4927,7 @@
                   const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
                   confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
                 }
-                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${escapeHtml(rowRc)}${confidenceDot}</span>`;
+                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${escapeHtml(rowRc)}${confidenceDot}</span>`;
               } else if (!itemPassed) {
                 rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
               }
@@ -4933,13 +4939,13 @@
                 const solSource = row.item_metadata?.solution_source || '';
                 const solIsAi = solSource === 'ai';
                 const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '';
-                solBadgeHtml = `<div class="rc-badge-group">
+                solBadgeHtml = `<div class="rc-badge-group" style="max-width:100%;">
                   <span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>
-                  <span class="meta-badge badge-solution${solIsAi ? ' ai-suggested' : ''}" data-sol-item="${escapeAttr(itemId)}" data-sol-run-idx="${runIdx}" style="border-color:${solColor}40;color:${solColor};background:${solColor}15;" title="Solution: ${escapeAttr(rowSol)}. Click to change.">${solIcon}${escapeHtml(rowSol)}</span>
+                  <span class="meta-badge badge-solution${solIsAi ? ' ai-suggested' : ''}" data-sol-item="${escapeAttr(itemId)}" data-sol-run-idx="${runIdx}" style="border-color:${solColor}40;color:${solColor};background:${solColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Solution: ${escapeAttr(rowSol)}. Click to change.">${solIcon}${escapeHtml(rowSol)}</span>
                   ${rowSolNote ? `<div class="sol-note-text">${escapeHtml(rowSolNote)}</div>` : ''}
                 </div>`;
               } else if (!itemPassed) {
-                solBadgeHtml = `<div class="rc-badge-group">
+                solBadgeHtml = `<div class="rc-badge-group" style="max-width:100%;">
                   <span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>
                   <button class="solution-assign-btn" data-sol-item="${escapeAttr(itemId)}" data-sol-run-idx="${runIdx}" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>
                 </div>`;
@@ -4953,8 +4959,8 @@
                   : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
               }
 
-              const detailGroup = rcDetailBadge ? `<div class="rc-badge-group"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
-              const catGroup = rcCategoryBadge ? `<div class="rc-badge-group"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
+              const detailGroup = rcDetailBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
+              const catGroup = rcCategoryBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
               const solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
               rootCauseHtml = `<div class="rc-sol-row"><div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
             }
