@@ -285,6 +285,14 @@ def compare_index() -> FileResponse:
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
+@router.get("/reviews")
+def reviews_index() -> FileResponse:
+    idx = _platform_static_dir() / "dashboard" / "reviews.html"
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Reviews UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
 @router.get("/admin")
 def admin_index() -> FileResponse:
     idx = _platform_static_admin_index()
@@ -464,6 +472,15 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     """Build the run + snapshot data dict used by the UI."""
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
     metrics = list(run.metrics or [])
+    corrections = (
+        db.query(ReviewCorrection)
+        .filter(ReviewCorrection.run_id == run.id)
+        .order_by(ReviewCorrection.created_at.desc())
+        .all()
+    )
+    correction_by_item: Dict[str, ReviewCorrection] = {}
+    for corr in corrections:
+        correction_by_item.setdefault(corr.item_id, corr)
 
     # Build per-item score/meta for UI
     scores = db.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
@@ -518,6 +535,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         ts_ms = it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None
         if not ts_ms:
             ts_ms = _item_start_ts.get(it.item_id)
+        corr = correction_by_item.get(it.item_id)
 
         ui_rows.append(
             {
@@ -538,6 +556,9 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
                 "item_metadata": it.item_metadata if isinstance(it.item_metadata, dict) else {},
+                "review_correction_status": (
+                    corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
+                ),
             }
         )
 
@@ -842,14 +863,31 @@ def update_root_cause(
         else:
             meta.pop("solution_note", None)
 
-    # Record correction only when a human is explicitly changing root_cause from an AI suggestion
+    # Sync a review entry whenever human-review fields change.
+    # This captures:
+    # - AI accepted as-is (ai fields present, unchanged),
+    # - AI corrected by human (ai fields present, changed),
+    # - Human-only labels (no prior ai source).
     old_source = old_meta.get("root_cause_source")
     root_cause_val = meta.get("root_cause", "")
     old_rc = old_meta.get("root_cause", "")
+    ai_root_cause_norm = str(old_rc or "").strip()
+    had_real_ai_suggestion = old_source == "ai" and ai_root_cause_norm.lower() != "unanalyzed"
+    review_fields_changed = (
+        root_cause_provided
+        or "root_cause_detail" in request
+        or root_cause_note is not None
+        or "solution" in request
+        or solution_note is not None
+    )
 
-    if root_cause_provided and root_cause_val and old_source == "ai" and root_cause_val != old_rc:
-        old_note = old_meta.get("root_cause_note", "")
+    if review_fields_changed and root_cause_val:
+        old_note = old_meta.get("root_cause_note", "") if had_real_ai_suggestion else ""
         old_confidence = old_meta.get("root_cause_confidence")
+        ai_root_cause = old_rc if had_real_ai_suggestion else ""
+        ai_root_cause_detail = old_meta.get("root_cause_detail", "") if had_real_ai_suggestion else ""
+        ai_solution = old_meta.get("solution", "") if had_real_ai_suggestion else ""
+        ai_solution_note = old_meta.get("solution_note", "") if had_real_ai_suggestion else ""
 
         item_scores = (
             db.query(RunItemScore)
@@ -876,12 +914,13 @@ def update_root_cause(
             .first()
         )
         if existing:
-            existing.ai_root_cause = old_rc
-            existing.ai_root_cause_detail = old_meta.get("root_cause_detail", "")
-            existing.ai_root_cause_note = old_note
-            existing.ai_confidence = old_confidence
-            existing.ai_solution = old_meta.get("solution", "")
-            existing.ai_solution_note = old_meta.get("solution_note", "")
+            if had_real_ai_suggestion and not existing.ai_root_cause:
+                existing.ai_root_cause = ai_root_cause
+                existing.ai_root_cause_detail = ai_root_cause_detail
+                existing.ai_root_cause_note = old_note
+                existing.ai_confidence = old_confidence
+                existing.ai_solution = ai_solution
+                existing.ai_solution_note = ai_solution_note
             existing.human_root_cause = root_cause_val
             existing.human_root_cause_detail = human_detail
             existing.human_root_cause_note = human_note
@@ -902,12 +941,12 @@ def update_root_cause(
                 expected_snapshot=item.expected,
                 output_snapshot=item.output,
                 scores_snapshot=scores_snap,
-                ai_root_cause=old_rc,
-                ai_root_cause_detail=old_meta.get("root_cause_detail", ""),
+                ai_root_cause=ai_root_cause,
+                ai_root_cause_detail=ai_root_cause_detail,
                 ai_root_cause_note=old_note,
-                ai_confidence=old_confidence,
-                ai_solution=old_meta.get("solution", ""),
-                ai_solution_note=old_meta.get("solution_note", ""),
+                ai_confidence=old_confidence if had_real_ai_suggestion else None,
+                ai_solution=ai_solution,
+                ai_solution_note=ai_solution_note,
                 human_root_cause=root_cause_val,
                 human_root_cause_detail=human_detail,
                 human_root_cause_note=human_note,
@@ -1050,5 +1089,3 @@ def reject_run(
     run.status = RunWorkflowStatus.REJECTED
     db.commit()
     return {"ok": True, "status": run.status}
-
-

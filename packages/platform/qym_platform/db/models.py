@@ -273,6 +273,12 @@ class RunEvent(Base):
     )
 
 
+class CorrectionStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class ReviewCorrection(Base):
     """Stores human corrections to AI-suggested root causes for few-shot retrieval."""
 
@@ -309,8 +315,21 @@ class ReviewCorrection(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # Approval workflow
+    status: Mapped[CorrectionStatus] = mapped_column(
+        Enum(CorrectionStatus, values_callable=lambda e: [x.value for x in e]),
+        default=CorrectionStatus.PENDING,
+        index=True,
+    )
+    reviewed_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+
     __table_args__ = (
         Index("ix_review_corrections_task_created", "task", "created_at"),
+        Index("ix_review_corrections_status", "status"),
     )
 
 

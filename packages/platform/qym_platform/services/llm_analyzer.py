@@ -10,7 +10,7 @@ from typing import Any, Optional
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
-from qym_platform.db.models import ReviewCorrection, RunItem, RunItemScore
+from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RunItem, RunItemScore
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +93,11 @@ def get_few_shot_examples(
     limit: int = 5,
     correction_ids: list[int] | None = None,
 ) -> list[ReviewCorrection]:
-    """Retrieve correction bank examples for a given task.
+    """Retrieve *approved* correction bank examples for a given task.
 
+    Only corrections with status=APPROVED are used as few-shot examples.
     If correction_ids is provided, fetch those specific corrections (by ID)
-    instead of the latest N.
+    instead of the latest N — still restricted to approved ones.
     """
     if correction_ids is not None:
         return (
@@ -104,13 +105,17 @@ def get_few_shot_examples(
             .filter(
                 ReviewCorrection.task == task,
                 ReviewCorrection.id.in_(correction_ids),
+                ReviewCorrection.status == CorrectionStatus.APPROVED,
             )
             .order_by(ReviewCorrection.created_at.desc())
             .all()
         )
     return (
         db.query(ReviewCorrection)
-        .filter(ReviewCorrection.task == task)
+        .filter(
+            ReviewCorrection.task == task,
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+        )
         .order_by(ReviewCorrection.created_at.desc())
         .limit(limit)
         .all()

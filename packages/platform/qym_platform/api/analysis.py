@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
-from qym_platform.db.models import ReviewCorrection, Run, RunItem, RunItemScore
+from qym_platform.db.models import CorrectionStatus, ReviewCorrection, Run, RunItem, RunItemScore, User
 from qym_platform.deps import get_db
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
@@ -402,14 +403,17 @@ def get_corrections(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Return correction bank entries for the run's task."""
+    """Return approved correction bank entries for the run's task."""
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
     corrections = (
         db.query(ReviewCorrection)
-        .filter(ReviewCorrection.task == run.task)
+        .filter(
+            ReviewCorrection.task == run.task,
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+        )
         .order_by(ReviewCorrection.created_at.desc())
         .limit(20)
         .all()
@@ -433,6 +437,7 @@ def get_corrections(
                 "input_snapshot": c.input_snapshot,
                 "expected_snapshot": c.expected_snapshot,
                 "output_snapshot": c.output_snapshot,
+                "status": c.status.value if hasattr(c.status, "value") else (c.status or "pending"),
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in corrections
@@ -502,3 +507,332 @@ def get_analysis_config(
         "default_solution_categories": SOLUTION_CATEGORIES,
         "existing_details": existing_details,
     }
+
+
+# ── Correction Management Endpoints (for /reviews page) ─────────────
+
+
+def _serialize_correction(c: ReviewCorrection, db: Session) -> Dict[str, Any]:
+    """Serialize a ReviewCorrection to a dict for the API."""
+    corrected_by = None
+    if c.corrected_by_user_id:
+        user = db.query(User).filter(User.id == c.corrected_by_user_id).first()
+        if user:
+            corrected_by = {
+                "id": user.id,
+                "email": user.email,
+                "display_name": user.display_name or user.email.split("@")[0],
+            }
+
+    reviewed_by = None
+    if c.reviewed_by_user_id:
+        user = db.query(User).filter(User.id == c.reviewed_by_user_id).first()
+        if user:
+            reviewed_by = {
+                "id": user.id,
+                "email": user.email,
+                "display_name": user.display_name or user.email.split("@")[0],
+            }
+
+    ai_root_cause = (c.ai_root_cause or "").strip()
+    ai_is_unanalyzed = ai_root_cause.lower() == "unanalyzed"
+
+    return {
+        "id": c.id,
+        "run_id": c.run_id,
+        "item_id": c.item_id,
+        "task": c.task,
+        "input_snapshot": c.input_snapshot,
+        "expected_snapshot": c.expected_snapshot,
+        "output_snapshot": c.output_snapshot,
+        "scores_snapshot": c.scores_snapshot,
+        "ai_root_cause": "" if ai_is_unanalyzed else c.ai_root_cause,
+        "ai_root_cause_detail": "" if ai_is_unanalyzed else c.ai_root_cause_detail,
+        "ai_root_cause_note": "" if ai_is_unanalyzed else c.ai_root_cause_note,
+        "ai_confidence": None if ai_is_unanalyzed else c.ai_confidence,
+        "ai_solution": "" if ai_is_unanalyzed else c.ai_solution,
+        "ai_solution_note": "" if ai_is_unanalyzed else c.ai_solution_note,
+        "human_root_cause": c.human_root_cause,
+        "human_root_cause_detail": c.human_root_cause_detail,
+        "human_root_cause_note": c.human_root_cause_note,
+        "human_solution": c.human_solution,
+        "human_solution_note": c.human_solution_note,
+        "corrected_by": corrected_by,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "status": c.status.value if hasattr(c.status, "value") else c.status,
+        "reviewed_by": reviewed_by,
+        "reviewed_at": c.reviewed_at.isoformat() if c.reviewed_at else None,
+        "review_comment": c.review_comment or "",
+    }
+
+
+@router.get("/api/corrections")
+def list_corrections(
+    task: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """List all corrections with optional filtering."""
+    from sqlalchemy import func, or_
+
+    query = db.query(ReviewCorrection).order_by(ReviewCorrection.created_at.desc())
+
+    if task:
+        query = query.filter(ReviewCorrection.task == task)
+    if status:
+        try:
+            cs = CorrectionStatus(status)
+            query = query.filter(ReviewCorrection.status == cs)
+        except ValueError:
+            pass
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                ReviewCorrection.task.ilike(like),
+                ReviewCorrection.item_id.ilike(like),
+                ReviewCorrection.human_root_cause.ilike(like),
+                ReviewCorrection.ai_root_cause.ilike(like),
+            )
+        )
+
+    corrections = query.all()
+
+    # Compute stats via COUNT queries (avoid loading all rows)
+    total = db.query(func.count(ReviewCorrection.id)).scalar() or 0
+    pending = db.query(func.count(ReviewCorrection.id)).filter(
+        ReviewCorrection.status == CorrectionStatus.PENDING
+    ).scalar() or 0
+    approved = db.query(func.count(ReviewCorrection.id)).filter(
+        ReviewCorrection.status == CorrectionStatus.APPROVED
+    ).scalar() or 0
+    rejected = db.query(func.count(ReviewCorrection.id)).filter(
+        ReviewCorrection.status == CorrectionStatus.REJECTED
+    ).scalar() or 0
+
+    stats = {"total": total, "pending": pending, "approved": approved, "rejected": rejected}
+
+    # Get distinct tasks for filter dropdown
+    task_rows = db.query(ReviewCorrection.task).distinct().order_by(ReviewCorrection.task).all()
+    tasks = [r[0] for r in task_rows]
+
+    return {
+        "corrections": [_serialize_correction(c, db) for c in corrections],
+        "stats": stats,
+        "tasks": tasks,
+    }
+
+
+@router.get("/api/corrections/{correction_id}")
+def get_correction(
+    correction_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Get a single correction by ID."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+    return _serialize_correction(c, db)
+
+
+@router.put("/api/corrections/{correction_id}")
+def update_correction(
+    correction_id: int,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Update a correction and sync the corresponding run item metadata."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+
+    for field in [
+        "human_root_cause", "human_root_cause_detail", "human_root_cause_note",
+        "human_solution", "human_solution_note",
+    ]:
+        if field in request:
+            setattr(c, field, (request[field] or "").strip())
+
+    # Keep run/compare views consistent with review edits.
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == c.run_id, RunItem.item_id == c.item_id)
+        .first()
+    )
+    if item:
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+
+        if c.human_root_cause:
+            meta["root_cause"] = c.human_root_cause
+            meta["root_cause_source"] = "human"
+            meta.pop("root_cause_confidence", None)
+        else:
+            meta.pop("root_cause", None)
+            meta.pop("root_cause_source", None)
+            meta.pop("root_cause_confidence", None)
+            meta.pop("root_cause_detail", None)
+            meta.pop("root_cause_note", None)
+
+        if c.human_root_cause_detail:
+            meta["root_cause_detail"] = c.human_root_cause_detail
+        else:
+            meta.pop("root_cause_detail", None)
+
+        if c.human_root_cause_note:
+            meta["root_cause_note"] = c.human_root_cause_note
+        else:
+            meta.pop("root_cause_note", None)
+
+        if c.human_solution:
+            meta["solution"] = c.human_solution
+            meta["solution_source"] = "human"
+        else:
+            meta.pop("solution", None)
+            meta.pop("solution_source", None)
+
+        if c.human_solution_note:
+            meta["solution_note"] = c.human_solution_note
+        else:
+            meta.pop("solution_note", None)
+
+        item.item_metadata = meta
+
+    db.commit()
+    return _serialize_correction(c, db)
+
+
+@router.post("/api/corrections/{correction_id}/approve")
+def approve_correction(
+    correction_id: int,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Approve a correction so it feeds into few-shot examples."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+
+    c.status = CorrectionStatus.APPROVED
+    c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
+    c.reviewed_at = datetime.utcnow()
+    c.review_comment = (request.get("comment") or "").strip()
+
+    db.commit()
+    return _serialize_correction(c, db)
+
+
+@router.post("/api/corrections/{correction_id}/reject")
+def reject_correction(
+    correction_id: int,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Reject a correction (won't be used as few-shot example)."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+
+    c.status = CorrectionStatus.REJECTED
+    c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
+    c.reviewed_at = datetime.utcnow()
+    c.review_comment = (request.get("comment") or "").strip()
+
+    db.commit()
+    return _serialize_correction(c, db)
+
+
+@router.post("/api/corrections/{correction_id}/reset")
+def reset_correction(
+    correction_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Reset a correction back to pending status."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+
+    c.status = CorrectionStatus.PENDING
+    c.reviewed_by_user_id = None
+    c.reviewed_at = None
+    c.review_comment = ""
+
+    db.commit()
+    return _serialize_correction(c, db)
+
+
+class BulkActionRequest(BaseModel):
+    ids: List[int]
+    action: str  # approve | reject | reset | delete
+    comment: str = ""
+
+
+@router.post("/api/corrections/bulk")
+def bulk_correction_action(
+    request: BulkActionRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Perform a bulk action on multiple corrections."""
+    if not request.ids:
+        raise HTTPException(status_code=400, detail="No correction IDs provided")
+
+    corrections = (
+        db.query(ReviewCorrection)
+        .filter(ReviewCorrection.id.in_(request.ids))
+        .all()
+    )
+
+    if not corrections:
+        raise HTTPException(status_code=404, detail="No corrections found")
+
+    now = datetime.utcnow()
+    reviewer_id = principal.user.id if principal.auth_type != "none" else None
+    affected = 0
+
+    for c in corrections:
+        if request.action == "approve":
+            c.status = CorrectionStatus.APPROVED
+            c.reviewed_by_user_id = reviewer_id
+            c.reviewed_at = now
+            c.review_comment = request.comment
+            affected += 1
+        elif request.action == "reject":
+            c.status = CorrectionStatus.REJECTED
+            c.reviewed_by_user_id = reviewer_id
+            c.reviewed_at = now
+            c.review_comment = request.comment
+            affected += 1
+        elif request.action == "reset":
+            c.status = CorrectionStatus.PENDING
+            c.reviewed_by_user_id = None
+            c.reviewed_at = None
+            c.review_comment = ""
+            affected += 1
+        elif request.action == "delete":
+            db.delete(c)
+            affected += 1
+
+    db.commit()
+    return {"ok": True, "affected": affected}
+
+
+@router.delete("/api/corrections/{correction_id}")
+def delete_correction(
+    correction_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Delete a single correction."""
+    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Correction not found")
+    db.delete(c)
+    db.commit()
+    return {"ok": True, "deleted_id": correction_id}

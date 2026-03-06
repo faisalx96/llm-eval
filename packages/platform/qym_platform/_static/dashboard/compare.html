@@ -2597,10 +2597,29 @@
     .auto-analyze-btn .ai-icon { font-size: 14px; }
 
     .badge-root-cause.ai-suggested { border-style: dashed !important; }
+    .badge-rc-detail .ai-indicator,
     .badge-root-cause .ai-indicator { font-size: 11px; margin-right: 2px; }
     .badge-root-cause .confidence-dot {
         width: 6px; height: 6px; border-radius: 50%;
         display: inline-block; margin-left: 4px; vertical-align: middle;
+    }
+    .rc-status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        border: 1px solid transparent;
+        margin-bottom: 12px;
+    }
+    .rc-status-pill.approved {
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.12);
+        border-color: rgba(16, 185, 129, 0.28);
     }
   </style>
 </head>
@@ -4902,6 +4921,7 @@
             const rowRcConfidence = row.item_metadata?.root_cause_confidence;
             const rowSol = row.item_metadata?.solution || '';
             const rowSolNote = row.item_metadata?.solution_note || '';
+            const reviewStatus = row.review_correction_status || '';
             const runFilePath = runInfo.file_path || '';
 
             if (rowRc || rowRcDetail || rowSol || !itemPassed) {
@@ -4913,7 +4933,8 @@
               let rcDetailBadge = '';
               if (rowRcDetail) {
                 const aiClass = isAi ? ' ai-suggested' : '';
-                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${escapeHtml(rowRcDetail)}</span>`;
+                const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
+                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${aiIcon}${escapeHtml(rowRcDetail)}</span>`;
               } else if (!itemPassed) {
                 rcDetailBadge = `<button class="root-cause-assign-btn" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>`;
               }
@@ -4923,11 +4944,12 @@
               if (rowRc) {
                 const aiClass = isAi ? ' ai-suggested' : '';
                 let confidenceDot = '';
+                const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
                 if (isAi && rowRcConfidence != null) {
                   const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
                   confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
                 }
-                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${escapeHtml(rowRc)}${confidenceDot}</span>`;
+                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${aiIcon}${escapeHtml(rowRc)}${confidenceDot}</span>`;
               } else if (!itemPassed) {
                 rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
               }
@@ -4961,8 +4983,9 @@
 
               const detailGroup = rcDetailBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
               const catGroup = rcCategoryBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
+              const reviewStatusHtml = reviewStatus === 'approved' ? '<div class="rc-status-pill approved">Approved</div>' : '';
               const solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
-              rootCauseHtml = `<div class="rc-sol-row"><div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
+              rootCauseHtml = `<div class="rc-sol-row">${reviewStatusHtml}<div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
             }
 
             return `

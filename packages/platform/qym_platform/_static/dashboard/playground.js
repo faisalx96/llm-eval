@@ -377,7 +377,9 @@ window.QymPlayground = (function () {
 
     // Run All Progress
     html += '<div id="pg-runall-progress" class="pg-runall-progress" style="display:none;">' +
-      '<div class="pg-progress-text" id="pg-runall-progress-text">Analyzing\u2026</div>' +
+      '<div class="pg-progress-icon-container"><div class="pg-progress-icon">✨</div></div>' +
+      '<div class="pg-progress-text" id="pg-runall-progress-text">Analyzing items…</div>' +
+      '<div class="pg-progress-subtext" id="pg-runall-progress-subtext">This might take a moment depending on batch size.</div>' +
       '<div class="pg-progress-bar"><div class="pg-progress-fill" id="pg-runall-progress-fill"></div></div>' +
     '</div>';
     html += '<div id="pg-runall-results" class="pg-runall-results"></div>';
@@ -483,21 +485,44 @@ window.QymPlayground = (function () {
       body += '<div id="pg-corrections-list">';
       for (var c = 0; c < _corrections.length; c++) {
         var cor = _corrections[c];
+        var humanColor = _RC_COLORS[cor.human_root_cause] || '#e07a5f';
+        var aiColor = _RC_COLORS[cor.ai_root_cause] || '#e07a5f';
+        var hasAiSuggestion = !!(cor.ai_root_cause && cor.ai_root_cause !== 'Unanalyzed');
         body += '<div class="pg-example-card">';
 
         // Header: checkbox + correction flow
         body += '<label class="pg-example-header">';
         body += '<input type="checkbox" data-correction-id="' + cor.id + '" checked />';
         body += '<span class="pg-example-num">#' + (c + 1) + '</span>';
-        if (cor.ai_root_cause && cor.ai_root_cause !== 'Unanalyzed') {
-          body += '<span class="pg-example-ai-tag">' + _esc(cor.ai_root_cause) + '</span>';
+        if (hasAiSuggestion) {
+          body += '<span class="pg-example-ai-tag">AI Suggested</span>';
           body += '<span class="pg-example-flow-arrow">\u2192</span>';
         }
-        body += '<span class="pg-example-human-tag">' + _esc(cor.human_root_cause) + '</span>';
+        body += '<span class="pg-example-human-tag">' + _esc(hasAiSuggestion ? 'Human Corrected' : 'Human Labeled') + '</span>';
         body += '</label>';
 
         // Data preview
         body += '<div class="pg-example-body">';
+
+        body += '<div class="pg-example-badges-row">';
+        if (hasAiSuggestion) {
+          body += '<div class="pg-example-badge-group">';
+          body += '<span class="pg-example-badge-label">AI</span>';
+          if (cor.ai_root_cause_detail) {
+            body += '<span class="pg-example-badge pg-example-badge-detail ai-suggested" style="border-color:' + aiColor + '40;color:' + aiColor + ';background:' + aiColor + '15;">' + _esc(cor.ai_root_cause_detail) + '</span>';
+          }
+          body += '<span class="pg-example-badge pg-example-badge-category ai-suggested" style="border-color:' + aiColor + '40;color:' + aiColor + ';background:' + aiColor + '15;">' + _esc(cor.ai_root_cause) + '</span>';
+          body += '</div>';
+        }
+
+        body += '<div class="pg-example-badge-group">';
+        body += '<span class="pg-example-badge-label">' + _esc(hasAiSuggestion ? 'Corrected' : 'Labeled') + '</span>';
+        if (cor.human_root_cause_detail) {
+          body += '<span class="pg-example-badge pg-example-badge-detail" style="border-color:' + humanColor + '40;color:' + humanColor + ';background:' + humanColor + '15;">' + _esc(cor.human_root_cause_detail) + '</span>';
+        }
+        body += '<span class="pg-example-badge pg-example-badge-category" style="border-color:' + humanColor + '40;color:' + humanColor + ';background:' + humanColor + '15;">' + _esc(cor.human_root_cause) + '</span>';
+        body += '</div>';
+        body += '</div>';
 
         if (cor.input_snapshot != null) {
           body += '<div class="pg-example-field">';
@@ -1289,9 +1314,20 @@ window.QymPlayground = (function () {
     var progress = document.getElementById('pg-runall-progress');
     var fill = document.getElementById('pg-runall-progress-fill');
     var progressText = document.getElementById('pg-runall-progress-text');
+    var subtext = document.getElementById('pg-runall-progress-subtext');
     if (progress) progress.style.display = 'block';
-    if (fill) fill.style.width = '30%';
+    
+    if (fill) {
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      // Force reflow
+      void fill.offsetWidth;
+      fill.style.transition = 'width 15s cubic-bezier(0.1, 0.5, 0.2, 1)';
+      fill.style.width = '85%';
+    }
+    
     if (progressText) progressText.textContent = 'Analyzing items\u2026';
+    if (subtext) subtext.textContent = 'AI is evaluating root causes. This may take a minute...';
 
     fetch(base('api/runs/' + runId + '/analyze'), {
       method: 'POST',
@@ -1299,20 +1335,28 @@ window.QymPlayground = (function () {
       body: JSON.stringify(body),
     })
     .then(function (r) {
-      if (fill) fill.style.width = '90%';
+      if (fill) {
+        fill.style.transition = 'width 0.5s ease-out';
+        fill.style.width = '95%';
+      }
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Analysis failed'); });
       return r.json();
     })
     .then(function (data) {
-      if (fill) fill.style.width = '100%';
-      if (progressText) progressText.textContent = 'Complete!';
+      if (fill) {
+        fill.style.transition = 'width 0.3s ease-out';
+        fill.style.width = '100%';
+      }
+      if (progressText) progressText.textContent = 'Analysis Complete!';
+      if (subtext) subtext.textContent = 'Finalizing results...';
 
       var resultsEl = document.getElementById('pg-runall-results');
       if (resultsEl) {
         resultsEl.innerHTML = '<div class="pg-runall-done">' +
-          'Analyzed <strong>' + data.total_analyzed + '</strong> items' +
-          (data.errors > 0 ? ' (<span style="color:#ef4444;">' + data.errors + ' errors</span>)' : '') +
-        '</div>';
+          '<div class="pg-runall-done-icon">\u2728</div>' +
+          '<div class="pg-runall-done-text">Analyzed <strong>' + data.total_analyzed + '</strong> items successfully' +
+          (data.errors > 0 ? '<div class="pg-runall-done-error">\u26A0\uFE0F ' + data.errors + ' items failed to analyze</div>' : '') +
+          '</div></div>';
       }
 
       if (_opts.showToast) _opts.showToast('success', 'Analysis Complete', data.total_analyzed + ' items analyzed');
@@ -1320,16 +1364,21 @@ window.QymPlayground = (function () {
 
       setTimeout(function () {
         if (progress) progress.style.display = 'none';
-      }, 2000);
+      }, 3000);
     })
     .catch(function (err) {
       console.error('Run All error:', err);
       if (progressText) progressText.textContent = 'Failed';
-      if (fill) fill.style.width = '0%';
+      if (subtext) subtext.textContent = err.message || 'An error occurred during analysis.';
+      if (fill) {
+        fill.style.transition = 'width 0.3s ease-out';
+        fill.style.width = '0%';
+        fill.style.background = 'var(--error)';
+      }
       if (_opts.showToast) _opts.showToast('error', 'Analysis Failed', err.message);
       setTimeout(function () {
         if (progress) progress.style.display = 'none';
-      }, 3000);
+      }, 4000);
     })
     .finally(function () {
       _running = false;

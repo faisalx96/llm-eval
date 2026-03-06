@@ -470,7 +470,7 @@
       width: fit-content;
     }
 
-    .diff-value .empty {
+    .diff-value .diff-empty {
       color: var(--text-dim);
       font-style: italic;
     }
@@ -1040,6 +1040,7 @@
         <button class="btn-sm btn-approve" id="bulk-approve">Approve</button>
         <button class="btn-sm btn-reject" id="bulk-reject">Reject</button>
         <button class="btn-sm btn-reset" id="bulk-reset">Reset</button>
+        <button class="btn-sm btn-reject" id="bulk-delete">Delete</button>
         <button class="btn-ghost" id="bulk-deselect" title="Deselect all">&times;</button>
       </div>
 
@@ -1231,17 +1232,36 @@
 
     function applyClientFilters() {
       let list = state.corrections;
+      const hasText = (v) => Boolean(String(v || '').trim());
+      const hasAiData = (c) =>
+        hasText(c.ai_root_cause) ||
+        hasText(c.ai_root_cause_detail) ||
+        hasText(c.ai_root_cause_note) ||
+        hasText(c.ai_solution) ||
+        hasText(c.ai_solution_note);
+      const hasHumanData = (c) =>
+        hasText(c.human_root_cause) ||
+        hasText(c.human_root_cause_detail) ||
+        hasText(c.human_root_cause_note) ||
+        hasText(c.human_solution) ||
+        hasText(c.human_solution_note);
+      const isChanged = (c) =>
+        c.ai_root_cause !== c.human_root_cause ||
+        c.ai_root_cause_detail !== c.human_root_cause_detail ||
+        c.ai_root_cause_note !== c.human_root_cause_note ||
+        c.ai_solution !== c.human_solution ||
+        c.ai_solution_note !== c.human_solution_note;
 
       // Source filter
       if (state.sourceFilter === 'ai_only') {
-        // Items where AI and Human are identical (no human correction)
-        list = list.filter(c => c.ai_root_cause === c.human_root_cause && c.ai_root_cause_detail === c.human_root_cause_detail);
+        // AI present and unchanged by human (human accepted AI suggestion).
+        list = list.filter(c => hasAiData(c) && hasHumanData(c) && !isChanged(c));
       } else if (state.sourceFilter === 'human_only') {
-        // Items where there's no AI suggestion (ai fields empty)
-        list = list.filter(c => !c.ai_root_cause);
+        // Human labels present, AI labels absent.
+        list = list.filter(c => hasHumanData(c) && !hasAiData(c));
       } else if (state.sourceFilter === 'corrected') {
-        // Items where AI suggested something AND human changed it
-        list = list.filter(c => c.ai_root_cause && (c.ai_root_cause !== c.human_root_cause || c.ai_root_cause_detail !== c.human_root_cause_detail));
+        // AI present and human changed it.
+        list = list.filter(c => hasAiData(c) && hasHumanData(c) && isChanged(c));
       }
 
       // Confidence range filter (only applies when not full range 0-100)
@@ -1379,6 +1399,7 @@
                 <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
               ` : ''}
               <button class="btn-ghost" data-edit="${c.id}" title="Edit correction">&#9998;</button>
+              <button class="btn-sm btn-reject" data-delete="${c.id}" title="Delete correction">Delete</button>
               <button class="expand-btn" data-expand="${c.id}" title="Show metadata">
                 <span class="arrow">&#x25B6;</span>
               </button>
@@ -1394,15 +1415,15 @@
               </div>
               <div class="diff-field">
                 <div class="diff-label">Root Cause Category</div>
-                <div class="diff-value ${c.ai_root_cause ? (aiChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause ? escapeHtml(c.ai_root_cause) : '<span class="empty">—</span>'}</div>
+                <div class="diff-value ${c.ai_root_cause ? (aiChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause ? escapeHtml(c.ai_root_cause) : '<span class="diff-empty">—</span>'}</div>
               </div>
               <div class="diff-field">
                 <div class="diff-label">Root Cause Detail</div>
-                <div class="diff-value ${c.ai_root_cause_detail ? (detailChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause_detail ? escapeHtml(c.ai_root_cause_detail) : '<span class="empty">—</span>'}</div>
+                <div class="diff-value ${c.ai_root_cause_detail ? (detailChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause_detail ? escapeHtml(c.ai_root_cause_detail) : '<span class="diff-empty">—</span>'}</div>
               </div>
               <div class="diff-field">
                 <div class="diff-label">Feedback</div>
-                <div class="diff-value ${c.ai_root_cause_note ? '' : 'is-empty'}">${c.ai_root_cause_note ? escapeHtml(truncate(c.ai_root_cause_note, 200)) : '<span class="empty">—</span>'}</div>
+                <div class="diff-value ${c.ai_root_cause_note ? '' : 'is-empty'}">${c.ai_root_cause_note ? escapeHtml(truncate(c.ai_root_cause_note, 200)) : '<span class="diff-empty">—</span>'}</div>
               </div>
             </div>
 
@@ -1414,15 +1435,15 @@
               ${isEditing ? renderEditForm(c) : `
                 <div class="diff-field">
                   <div class="diff-label">Root Cause Category</div>
-                  <div class="diff-value ${c.human_root_cause ? (aiChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause ? escapeHtml(c.human_root_cause) : '<span class="empty">—</span>'}</div>
+                  <div class="diff-value ${c.human_root_cause ? (aiChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause ? escapeHtml(c.human_root_cause) : '<span class="diff-empty">—</span>'}</div>
                 </div>
                 <div class="diff-field">
                   <div class="diff-label">Root Cause Detail</div>
-                  <div class="diff-value ${c.human_root_cause_detail ? (detailChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause_detail ? escapeHtml(c.human_root_cause_detail) : '<span class="empty">—</span>'}</div>
+                  <div class="diff-value ${c.human_root_cause_detail ? (detailChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause_detail ? escapeHtml(c.human_root_cause_detail) : '<span class="diff-empty">—</span>'}</div>
                 </div>
                 <div class="diff-field">
                   <div class="diff-label">Feedback</div>
-                  <div class="diff-value ${c.human_root_cause_note ? '' : 'is-empty'}">${c.human_root_cause_note ? escapeHtml(truncate(c.human_root_cause_note, 200)) : '<span class="empty">—</span>'}</div>
+                  <div class="diff-value ${c.human_root_cause_note ? '' : 'is-empty'}">${c.human_root_cause_note ? escapeHtml(truncate(c.human_root_cause_note, 200)) : '<span class="diff-empty">—</span>'}</div>
                 </div>
               `}
             </div>
@@ -1531,15 +1552,8 @@
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const id = Number(btn.dataset.approve);
-          const comment = await openModal(
-            'Approve Correction',
-            'This correction will be used as a few-shot example for future AI analysis.',
-            'Approve',
-            'btn-primary'
-          );
-          if (comment === null) return;
           try {
-            await apiAction('POST', `api/corrections/${id}/approve`, { comment });
+            await apiAction('POST', `api/corrections/${id}/approve`, { comment: '' });
             showToast('success', 'Approved', `Correction #${id} approved`);
             fetchCorrections();
           } catch (err) {
@@ -1578,6 +1592,24 @@
           try {
             await apiAction('POST', `api/corrections/${id}/reset`, {});
             showToast('success', 'Reset', `Correction #${id} reset to pending`);
+            fetchCorrections();
+          } catch (err) {
+            showToast('error', 'Failed', err.message);
+          }
+        });
+      });
+
+      // Delete
+      $$('[data-delete]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = Number(btn.dataset.delete);
+          const confirmed = window.confirm(`Delete correction #${id}? This cannot be undone.`);
+          if (!confirmed) return;
+          try {
+            await apiAction('DELETE', `api/corrections/${id}`);
+            state.selected.delete(id);
+            showToast('success', 'Deleted', `Correction #${id} deleted`);
             fetchCorrections();
           } catch (err) {
             showToast('error', 'Failed', err.message);
@@ -1761,6 +1793,21 @@
         await apiAction('POST', 'api/corrections/bulk', { ids, action: 'reset' });
         state.selected.clear();
         showToast('success', 'Bulk Reset', `${ids.length} corrections reset to pending`);
+        fetchCorrections();
+      } catch (err) {
+        showToast('error', 'Failed', err.message);
+      }
+    });
+
+    el('bulk-delete').addEventListener('click', async () => {
+      const ids = [...state.selected];
+      if (!ids.length) return;
+      const confirmed = window.confirm(`Delete ${ids.length} correction${ids.length > 1 ? 's' : ''}? This cannot be undone.`);
+      if (!confirmed) return;
+      try {
+        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'delete' });
+        state.selected.clear();
+        showToast('success', 'Bulk Deleted', `${ids.length} correction${ids.length > 1 ? 's' : ''} deleted`);
         fetchCorrections();
       } catch (err) {
         showToast('error', 'Failed', err.message);
