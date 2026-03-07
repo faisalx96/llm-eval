@@ -277,10 +277,34 @@ class CorrectionStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+    WITHDRAWN = "withdrawn"
+
+
+class RootCauseRevision(Base):
+    """Append-only history of root-cause analysis state changes for a run item."""
+
+    __tablename__ = "root_cause_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    item_id: Mapped[str] = mapped_column(String(200), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    actor_source: Mapped[str] = mapped_column(String(20), nullable=False, default="human")
+    before_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    backfilled_from_legacy: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "item_id", "revision_number", name="uq_root_cause_revision_number"),
+        Index("ix_root_cause_revisions_run_item_created", "run_id", "item_id", "created_at"),
+    )
 
 
 class ReviewCorrection(Base):
-    """Stores human corrections to AI-suggested root causes for few-shot retrieval."""
+    """Review candidate snapshots linked to specific root-cause revisions."""
 
     __tablename__ = "review_corrections"
 
@@ -313,6 +337,10 @@ class ReviewCorrection(Base):
     corrected_by_user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
+    revision_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("root_cause_revisions.id"), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Approval workflow
@@ -329,7 +357,5 @@ class ReviewCorrection(Base):
 
     __table_args__ = (
         Index("ix_review_corrections_task_created", "task", "created_at"),
-        Index("ix_review_corrections_status", "status"),
+        Index("ix_review_corrections_run_item_active", "run_id", "item_id", "is_active"),
     )
-
-

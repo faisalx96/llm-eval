@@ -23,7 +23,7 @@
     .reviews-stats {
       display: flex;
       align-items: stretch;
-      gap: 1px;
+      gap: var(--space-sm);
       padding: var(--space-md) var(--space-lg);
       background: var(--bg-base);
       border-bottom: 1px solid var(--border-subtle);
@@ -161,11 +161,74 @@
       border-color: var(--accent-primary);
     }
 
+    .multi-select-btn.has-selection {
+      background: rgba(0, 212, 170, 0.08);
+      border-color: rgba(0, 212, 170, 0.28);
+      color: var(--accent-primary);
+    }
+
+    .multi-select-option .option-count {
+      margin-left: auto;
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .multi-select-dropdown .ms-actions {
+      display: flex;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      background: var(--bg-surface);
+      z-index: 1;
+    }
+
+    .multi-select-dropdown .ms-action-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+      font-size: var(--font-xs);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    .multi-select-dropdown .ms-action-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
     .toolbar-right {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
       margin-left: auto;
+    }
+
+    .btn-clear-filters {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      padding: 3px 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .btn-clear-filters:hover {
+      color: var(--text-primary);
+      border-color: var(--text-dim);
+    }
+
+    .btn-clear-filters.visible {
+      display: inline-flex;
     }
 
     .bulk-bar {
@@ -296,10 +359,6 @@
     }
 
     .card-check {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--accent-primary);
-      cursor: pointer;
       flex-shrink: 0;
     }
 
@@ -317,19 +376,6 @@
       font-size: var(--font-xs);
       color: var(--text-dim);
       flex-shrink: 0;
-    }
-
-    .card-task {
-      font-size: var(--font-sm);
-      font-weight: 600;
-      color: var(--accent-secondary);
-      padding: 1px 6px;
-      background: rgba(0, 168, 255, 0.1);
-      border-radius: 3px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 200px;
     }
 
     .card-item-id {
@@ -526,6 +572,41 @@
       max-width: 400px;
     }
 
+    .card-context {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 0 var(--space-md) var(--space-sm);
+    }
+
+    .context-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+      font-size: var(--font-xs);
+      max-width: 280px;
+    }
+
+    .context-chip strong {
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-size: 10px;
+    }
+
+    .context-chip span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     /* ── Expand/Detail Panel ─────────────────────── */
 
     .card-detail {
@@ -571,6 +652,46 @@
       line-height: 1.5;
     }
 
+    .snapshot-structured {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .snapshot-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .snapshot-key {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+    }
+
+    .snapshot-link {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      color: var(--accent-secondary);
+      text-decoration: none;
+      font-size: var(--font-xs);
+      word-break: break-all;
+    }
+
+    .snapshot-link:hover {
+      color: var(--accent-primary);
+      text-decoration: underline;
+    }
+
+    .detail-snapshot.sql-block {
+      max-height: 320px;
+    }
+
     .detail-scores {
       display: flex;
       gap: var(--space-sm);
@@ -593,6 +714,79 @@
     .score-chip .metric-val {
       color: var(--accent-primary);
       font-weight: 600;
+    }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .history-entry {
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-surface);
+      padding: var(--space-sm) var(--space-md);
+    }
+
+    .history-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .history-rev {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.08);
+      border: 1px solid rgba(0, 212, 170, 0.22);
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .history-actor,
+    .history-time,
+    .history-review-status {
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+    }
+
+    .history-review-status {
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .history-review-status.approved { color: var(--success); }
+    .history-review-status.pending { color: var(--warning); }
+    .history-review-status.rejected,
+    .history-review-status.superseded,
+    .history-review-status.withdrawn { color: var(--error); }
+
+    .history-state {
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+
+    .history-state strong {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .history-note,
+    .history-review-comment {
+      margin-top: 6px;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+
+    .history-empty {
+      color: var(--text-dim);
+      font-size: var(--font-sm);
     }
 
     /* ── Edit Mode ───────────────────────────────── */
@@ -992,7 +1186,10 @@
     <!-- Toolbar -->
     <div class="reviews-toolbar">
       <label class="select-all-wrap">
-        <input type="checkbox" class="card-check" id="select-all" title="Select all visible">
+        <span class="custom-checkbox card-check" title="Select all visible">
+          <input type="checkbox" id="select-all">
+          <span class="checkmark"></span>
+        </span>
         <span>All</span>
       </label>
 
@@ -1003,9 +1200,25 @@
         <input type="text" id="search-input" placeholder="Search task, item, root cause..." />
       </div>
 
-      <select class="toolbar-select" id="filter-task">
-        <option value="">All Tasks</option>
-      </select>
+      <div class="multi-select-wrapper">
+        <button class="multi-select-btn" id="task-ms-btn">All Tasks</button>
+        <div class="multi-select-dropdown" id="task-ms-dropdown"></div>
+      </div>
+
+      <div class="multi-select-wrapper">
+        <button class="multi-select-btn" id="dataset-ms-btn">All Datasets</button>
+        <div class="multi-select-dropdown" id="dataset-ms-dropdown"></div>
+      </div>
+
+      <div class="multi-select-wrapper">
+        <button class="multi-select-btn" id="model-ms-btn">All Models</button>
+        <div class="multi-select-dropdown" id="model-ms-dropdown"></div>
+      </div>
+
+      <div class="multi-select-wrapper">
+        <button class="multi-select-btn" id="run_name-ms-btn">All Runs</button>
+        <div class="multi-select-dropdown" id="run_name-ms-dropdown"></div>
+      </div>
 
       <div class="toolbar-sep"></div>
 
@@ -1045,6 +1258,7 @@
       </div>
 
       <div class="toolbar-right">
+        <button class="btn-clear-filters" id="clear-filters" title="Clear all filters">&times; Clear filters</button>
         <span style="font-size: var(--font-xs); color: var(--text-dim);" id="result-count"></span>
       </div>
     </div>
@@ -1115,10 +1329,76 @@
       return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    function parseStructuredString(val) {
+      if (typeof val !== 'string') return val;
+      const trimmed = val.trim();
+      if (!trimmed) return val;
+
+      try {
+        return JSON.parse(trimmed);
+      } catch {}
+
+      const looksStructured = (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      );
+      if (!looksStructured) return val;
+
+      const normalized = trimmed
+        .replace(/\bNone\b/g, 'null')
+        .replace(/\bTrue\b/g, 'true')
+        .replace(/\bFalse\b/g, 'false')
+        .replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_, inner) => {
+          const escaped = inner
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"');
+          return `"${escaped}"`;
+        });
+
+      try {
+        return JSON.parse(normalized);
+      } catch {
+        return val;
+      }
+    }
+
     function stringify(val) {
       if (val === null || val === undefined) return '';
-      if (typeof val === 'string') return val;
-      return JSON.stringify(val, null, 2);
+      const parsed = parseStructuredString(val);
+      if (typeof parsed === 'string') return parsed;
+      return JSON.stringify(parsed, null, 2);
+    }
+
+    function renderSnapshot(val) {
+      if (val === null || val === undefined || val === '') return '';
+      const parsed = parseStructuredString(val);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const rows = Object.entries(parsed).map(([key, value]) => {
+          const label = titleCase(key);
+          if (
+            typeof value === 'string' &&
+            /^(https?:)?\/\//.test(value) &&
+            (key === 'url' || key.endsWith('_url') || key.endsWith('link'))
+          ) {
+            return `
+              <div class="snapshot-row">
+                <div class="snapshot-key">${escapeHtml(label)}</div>
+                <a class="snapshot-link" href="${escapeHtml(value)}" target="_blank" rel="noopener noreferrer">${escapeHtml(value)}</a>
+              </div>
+            `;
+          }
+          const display = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+          const cssClass = key === 'sql' ? 'detail-snapshot sql-block' : 'detail-snapshot';
+          return `
+            <div class="snapshot-row">
+              <div class="snapshot-key">${escapeHtml(label)}</div>
+              <div class="${cssClass}">${escapeHtml(display)}</div>
+            </div>
+          `;
+        }).join('');
+        return `<div class="snapshot-structured">${rows}</div>`;
+      }
+      return `<div class="detail-snapshot">${escapeHtml(stringify(parsed))}</div>`;
     }
 
     function truncate(str, max) {
@@ -1136,6 +1416,10 @@
       return `${month}/${day} ${h}:${m}`;
     }
 
+    function titleCase(value) {
+      return String(value || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+    }
+
     function debounce(fn, ms) {
       let t;
       return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -1148,9 +1432,16 @@
       filtered: [],
       stats: { total: 0, pending: 0, approved: 0, rejected: 0 },
       tasks: [],
+      datasets: [],
+      models: [],
+      runNames: [],
+      facetCounts: { task: {}, dataset: {}, model: {}, run_name: {} },
       selected: new Set(),
       statusFilter: '',
-      taskFilter: '',
+      taskFilter: null,
+      datasetFilter: null,
+      modelFilter: null,
+      runNameFilter: null,
       searchQuery: '',
       sourceFilter: '',   // '' | 'ai_only' | 'human_only' | 'corrected'
       confMin: 0,         // 0-100
@@ -1190,8 +1481,13 @@
     async function fetchCorrections() {
       try {
         const params = new URLSearchParams();
-        if (state.statusFilter) params.set('status', state.statusFilter);
-        if (state.taskFilter) params.set('task', state.taskFilter);
+        if (Array.isArray(state.taskFilter) && state.taskFilter.length) state.taskFilter.forEach(v => params.append('task', v));
+        if (Array.isArray(state.datasetFilter) && state.datasetFilter.length) state.datasetFilter.forEach(v => params.append('dataset', v));
+        if (Array.isArray(state.modelFilter) && state.modelFilter.length) state.modelFilter.forEach(v => params.append('model', v));
+        if (Array.isArray(state.runNameFilter) && state.runNameFilter.length) state.runNameFilter.forEach(v => params.append('run_name', v));
+        if (state.sourceFilter) params.set('source', state.sourceFilter);
+        if (state.confMin > 0) params.set('conf_min', String(state.confMin));
+        if (state.confMax < 100) params.set('conf_max', String(state.confMax));
         if (state.searchQuery) params.set('search', state.searchQuery);
 
         const qs = params.toString();
@@ -1202,11 +1498,19 @@
         state.corrections = data.corrections || [];
         state.stats = data.stats || { total: 0, pending: 0, approved: 0, rejected: 0 };
         state.tasks = data.tasks || [];
+        state.datasets = data.datasets || [];
+        state.models = data.models || [];
+        state.runNames = data.run_names || [];
+        state.facetCounts = data.facet_counts || { task: {}, dataset: {}, model: {}, run_name: {} };
         state.selected.clear();
 
         applyClientFilters();
         updateStats();
-        updateTaskDropdown();
+        buildMultiselectOptions('task', state.tasks);
+        buildMultiselectOptions('dataset', state.datasets);
+        buildMultiselectOptions('model', state.models);
+        buildMultiselectOptions('run_name', state.runNames);
+        if (typeof updateClearFiltersButton === 'function') updateClearFiltersButton();
         render();
       } catch (err) {
         showToast('error', 'Load failed', err.message);
@@ -1228,53 +1532,30 @@
       return resp.json();
     }
 
-    /* ── Client-side Filters (source, confidence) ── */
+    /* ── Client-side Filters ─────────────────────── */
+
+    function getClientFilteredCorrections(includeStatus = true) {
+      let list = state.corrections;
+      const applyMulti = (items, selectedValues, getter) => {
+        if (selectedValues === null) return items;
+        if (!selectedValues.length) return [];
+        return items.filter(item => selectedValues.includes(getter(item)));
+      };
+
+      list = applyMulti(list, state.taskFilter, c => c.task || '');
+      list = applyMulti(list, state.datasetFilter, c => c.dataset || '');
+      list = applyMulti(list, state.modelFilter, c => c.model || '');
+      list = applyMulti(list, state.runNameFilter, c => c.run_name || '');
+
+      if (includeStatus && state.statusFilter) {
+        list = list.filter(c => c.status === state.statusFilter);
+      }
+
+      return list;
+    }
 
     function applyClientFilters() {
-      let list = state.corrections;
-      const hasText = (v) => Boolean(String(v || '').trim());
-      const hasAiData = (c) =>
-        hasText(c.ai_root_cause) ||
-        hasText(c.ai_root_cause_detail) ||
-        hasText(c.ai_root_cause_note) ||
-        hasText(c.ai_solution) ||
-        hasText(c.ai_solution_note);
-      const hasHumanData = (c) =>
-        hasText(c.human_root_cause) ||
-        hasText(c.human_root_cause_detail) ||
-        hasText(c.human_root_cause_note) ||
-        hasText(c.human_solution) ||
-        hasText(c.human_solution_note);
-      const isChanged = (c) =>
-        c.ai_root_cause !== c.human_root_cause ||
-        c.ai_root_cause_detail !== c.human_root_cause_detail ||
-        c.ai_root_cause_note !== c.human_root_cause_note ||
-        c.ai_solution !== c.human_solution ||
-        c.ai_solution_note !== c.human_solution_note;
-
-      // Source filter
-      if (state.sourceFilter === 'ai_only') {
-        // AI present and unchanged by human (human accepted AI suggestion).
-        list = list.filter(c => hasAiData(c) && hasHumanData(c) && !isChanged(c));
-      } else if (state.sourceFilter === 'human_only') {
-        // Human labels present, AI labels absent.
-        list = list.filter(c => hasHumanData(c) && !hasAiData(c));
-      } else if (state.sourceFilter === 'corrected') {
-        // AI present and human changed it.
-        list = list.filter(c => hasAiData(c) && hasHumanData(c) && isChanged(c));
-      }
-
-      // Confidence range filter (only applies when not full range 0-100)
-      if (state.confMin > 0 || state.confMax < 100) {
-        const lo = state.confMin / 100;
-        const hi = state.confMax / 100;
-        list = list.filter(c => {
-          if (c.ai_confidence == null) return false;
-          return c.ai_confidence >= lo && c.ai_confidence <= hi;
-        });
-      }
-
-      state.filtered = list;
+      state.filtered = getClientFilteredCorrections(true);
     }
 
     /* ── Modal ───────────────────────────────────── */
@@ -1316,24 +1597,133 @@
     /* ── Rendering ───────────────────────────────── */
 
     function updateStats() {
-      el('stat-total').textContent = state.stats.total;
-      el('stat-pending').textContent = state.stats.pending;
-      el('stat-approved').textContent = state.stats.approved;
-      el('stat-rejected').textContent = state.stats.rejected;
+      const counts = state.stats;
+      el('stat-total').textContent = counts.total;
+      el('stat-pending').textContent = counts.pending;
+      el('stat-approved').textContent = counts.approved;
+      el('stat-rejected').textContent = counts.rejected;
     }
 
-    function updateTaskDropdown() {
-      const select = el('filter-task');
-      const currentVal = select.value;
-      select.innerHTML = '<option value="">All Tasks</option>';
-      state.tasks.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        select.appendChild(opt);
-      });
-      select.value = currentVal;
+    function getFilterValues(key) {
+      if (key === 'task') return state.tasks;
+      if (key === 'dataset') return state.datasets;
+      if (key === 'model') return state.models;
+      if (key === 'run_name') return state.runNames;
+      return [];
     }
+
+    function getFilterState(key) {
+      if (key === 'task') return state.taskFilter;
+      if (key === 'dataset') return state.datasetFilter;
+      if (key === 'model') return state.modelFilter;
+      if (key === 'run_name') return state.runNameFilter;
+      return null;
+    }
+
+    function setFilterState(key, value) {
+      if (key === 'task') state.taskFilter = value;
+      else if (key === 'dataset') state.datasetFilter = value;
+      else if (key === 'model') state.modelFilter = value;
+      else if (key === 'run_name') state.runNameFilter = value;
+    }
+
+    function getFilterLabel(key) {
+      if (key === 'task') return 'All Tasks';
+      if (key === 'dataset') return 'All Datasets';
+      if (key === 'model') return 'All Models';
+      if (key === 'run_name') return 'All Runs';
+      return 'All';
+    }
+
+    function syncMultiselectUI(key) {
+      const btn = el(`${key}-ms-btn`);
+      const dropdown = el(`${key}-ms-dropdown`);
+      if (!btn || !dropdown) return;
+      const effective = getFilterState(key);
+
+      if (effective === null) {
+        btn.textContent = getFilterLabel(key);
+        btn.classList.remove('has-selection');
+      } else if (effective.length === 0) {
+        btn.textContent = 'None';
+        btn.classList.add('has-selection');
+      } else if (effective.length === 1) {
+        btn.textContent = effective[0];
+        btn.classList.add('has-selection');
+      } else {
+        btn.textContent = `${effective.length} selected`;
+        btn.classList.add('has-selection');
+      }
+
+      dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+        cb.checked = effective === null || effective.includes(cb.dataset.val);
+      });
+    }
+
+    function buildMultiselectOptions(key, values) {
+      const dropdown = el(`${key}-ms-dropdown`);
+      if (!dropdown) return;
+      const selected = getFilterState(key);
+      const mergedValues = [...new Set([...(values || []), ...((selected && selected.length) ? selected : [])])];
+      const counts = state.facetCounts && state.facetCounts[key] ? state.facetCounts[key] : {};
+
+      let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-filter="' + key + '">Select All</button><button class="ms-action-btn" data-action="none" data-filter="' + key + '">Clear</button></div>';
+      html += mergedValues.map(value =>
+        '<label class="multi-select-option" data-value="' + escapeHtml(value) + '"><input type="checkbox" data-filter="' + key + '" data-val="' + escapeHtml(value) + '" /><span>' + escapeHtml(value) + '</span><span class="option-count">' + (counts[value] || 0) + '</span></label>'
+      ).join('');
+      dropdown.innerHTML = html;
+
+      dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          let filterValues = getFilterState(key);
+          if (filterValues === null) {
+            filterValues = [...mergedValues];
+            setFilterState(key, filterValues);
+          }
+          if (cb.checked) {
+            if (!filterValues.includes(cb.dataset.val)) filterValues.push(cb.dataset.val);
+          } else {
+            const idx = filterValues.indexOf(cb.dataset.val);
+            if (idx >= 0) filterValues.splice(idx, 1);
+          }
+          syncMultiselectUI(key);
+          fetchCorrections();
+        });
+      });
+
+      dropdown.querySelectorAll('.ms-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setFilterState(key, btn.dataset.action === 'all' ? null : []);
+          syncMultiselectUI(key);
+          fetchCorrections();
+        });
+      });
+
+      syncMultiselectUI(key);
+    }
+
+    function setupMultiselectToggle(key) {
+      const btn = el(`${key}-ms-btn`);
+      const dropdown = el(`${key}-ms-dropdown`);
+      if (!btn || !dropdown) return;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(d => {
+          if (d !== dropdown) d.classList.remove('open');
+        });
+        dropdown.classList.toggle('open');
+      });
+      dropdown.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    setupMultiselectToggle('task');
+    setupMultiselectToggle('dataset');
+    setupMultiselectToggle('model');
+    setupMultiselectToggle('run_name');
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
+    });
 
     function updateBulkBar() {
       const bar = el('bulk-bar');
@@ -1380,10 +1770,12 @@
       return `
         <div class="correction-card status-${st} ${isSelected ? 'selected' : ''}" data-id="${c.id}">
           <div class="card-header">
-            <input type="checkbox" class="card-check" data-check="${c.id}" ${isSelected ? 'checked' : ''}>
+            <label class="custom-checkbox card-check">
+            <input type="checkbox" data-check="${c.id}" ${isSelected ? 'checked' : ''}>
+              <span class="checkmark"></span>
+            </label>
             <div class="card-meta">
               <span class="card-id">#${c.id}</span>
-              <span class="card-task" title="${escapeHtml(c.task)}">${escapeHtml(c.task)}</span>
               <span class="card-item-id" title="${escapeHtml(c.item_id)}">${escapeHtml(truncate(c.item_id, 24))}</span>
               <span class="card-status-badge ${st}"><span class="dot"></span> ${st}</span>
               ${c.ai_confidence != null ? `<span class="card-confidence" title="AI confidence">${(c.ai_confidence * 100).toFixed(0)}%</span>` : ''}
@@ -1404,6 +1796,13 @@
                 <span class="arrow">&#x25B6;</span>
               </button>
             </div>
+          </div>
+
+          <div class="card-context">
+            ${c.task ? `<span class="context-chip" title="${escapeHtml(c.task)}"><strong>Task</strong><span>${escapeHtml(c.task)}</span></span>` : ''}
+            ${c.run_name ? `<span class="context-chip" title="${escapeHtml(c.run_name)}"><strong>Run</strong><span>${escapeHtml(c.run_name)}</span></span>` : ''}
+            ${c.dataset ? `<span class="context-chip" title="${escapeHtml(c.dataset)}"><strong>Dataset</strong><span>${escapeHtml(c.dataset)}</span></span>` : ''}
+            ${c.model ? `<span class="context-chip" title="${escapeHtml(c.model)}"><strong>Model</strong><span>${escapeHtml(c.model)}</span></span>` : ''}
           </div>
 
           <div class="card-body">
@@ -1460,24 +1859,25 @@
           ${c.input_snapshot ? `
             <div class="detail-section">
               <div class="detail-section-title">Input</div>
-              <div class="detail-snapshot">${escapeHtml(stringify(c.input_snapshot))}</div>
+              ${renderSnapshot(c.input_snapshot)}
             </div>
           ` : ''}
           ${c.expected_snapshot ? `
             <div class="detail-section">
               <div class="detail-section-title">Expected</div>
-              <div class="detail-snapshot">${escapeHtml(stringify(c.expected_snapshot))}</div>
+              ${renderSnapshot(c.expected_snapshot)}
             </div>
           ` : ''}
           ${c.output_snapshot ? `
             <div class="detail-section">
               <div class="detail-section-title">Output</div>
-              <div class="detail-snapshot">${escapeHtml(stringify(c.output_snapshot))}</div>
+              ${renderSnapshot(c.output_snapshot)}
             </div>
           ` : ''}
 
           <!-- Expandable: Scores + Metadata -->
           <div class="card-detail" id="detail-${c.id}">
+            ${renderHistory(c)}
             ${c.scores_snapshot && Object.keys(c.scores_snapshot).length ? `
               <div class="detail-section">
                 <div class="detail-section-title">Metric Scores</div>
@@ -1492,8 +1892,11 @@
               <div class="detail-section-title">Item Metadata</div>
               <div class="detail-snapshot">${escapeHtml(JSON.stringify({
                 run_id: c.run_id,
+                run_name: c.run_name,
                 item_id: c.item_id,
                 task: c.task,
+                dataset: c.dataset,
+                model: c.model,
                 ai_confidence: c.ai_confidence,
                 corrected_by: c.corrected_by ? (c.corrected_by.display_name || c.corrected_by.email) : null,
                 created_at: c.created_at,
@@ -1503,6 +1906,48 @@
                 review_comment: c.review_comment || null,
               }, null, 2))}</div>
             </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderHistory(c) {
+      const history = Array.isArray(c.history) ? c.history : [];
+      if (!history.length) return '';
+      return `
+        <div class="detail-section">
+          <div class="detail-section-title">Revision History</div>
+          <div class="history-list">
+            ${history.map(entry => {
+              const after = entry.after_state || {};
+              const review = entry.review;
+              const rootCause = after.root_cause ? escapeHtml(after.root_cause) : '<span class="history-empty">Cleared</span>';
+              const detail = after.root_cause_detail ? ` / ${escapeHtml(after.root_cause_detail)}` : '';
+              const solution = after.solution ? ` | Solution: ${escapeHtml(after.solution)}` : '';
+              const note = after.root_cause_note ? `<div class="history-note">${escapeHtml(after.root_cause_note)}</div>` : '';
+              const actor = titleCase(entry.actor_source || 'legacy');
+              const reviewStatus = review && review.status ? `
+                <span class="history-review-status ${escapeHtml(review.status)}">${escapeHtml(review.status)}</span>
+              ` : '<span class="history-review-status">No review candidate</span>';
+              const reviewComment = review && review.review_comment
+                ? `<div class="history-review-comment">${escapeHtml(review.review_comment)}</div>`
+                : '';
+              return `
+                <div class="history-entry">
+                  <div class="history-head">
+                    <span class="history-rev">${entry.revision_number != null ? `R${entry.revision_number}` : 'Legacy'}</span>
+                    <span class="history-actor">${escapeHtml(actor)}</span>
+                    <span class="history-time">${entry.created_at ? formatDate(entry.created_at) : ''}</span>
+                    ${reviewStatus}
+                  </div>
+                  <div class="history-state">
+                    <strong>After:</strong> ${rootCause}${detail}${solution}
+                  </div>
+                  ${note}
+                  ${reviewComment}
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       `;
@@ -1689,11 +2134,6 @@
 
     /* ── Task filter ─────────────────────────────── */
 
-    el('filter-task').addEventListener('change', () => {
-      state.taskFilter = el('filter-task').value;
-      fetchCorrections();
-    });
-
     /* ── Source filter chips ────────────────────── */
 
     $$('[data-source]').forEach(chip => {
@@ -1701,8 +2141,7 @@
         $$('[data-source]').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         state.sourceFilter = chip.dataset.source;
-        applyClientFilters();
-        render();
+        fetchCorrections();
       });
     });
 
@@ -1725,12 +2164,57 @@
       confMaxVal.textContent = hi + '%';
       state.confMin = lo;
       state.confMax = hi;
-      applyClientFilters();
-      render();
+      fetchCorrections();
     }
 
     confMinSlider.addEventListener('input', debounce(onConfSliderChange.bind(confMinSlider), 150));
     confMaxSlider.addEventListener('input', debounce(onConfSliderChange.bind(confMaxSlider), 150));
+
+    /* ── Clear All Filters ───────────────────────── */
+
+    function hasActiveFilters() {
+      return state.statusFilter !== ''
+        || state.taskFilter !== null
+        || state.datasetFilter !== null
+        || state.modelFilter !== null
+        || state.runNameFilter !== null
+        || state.sourceFilter !== ''
+        || state.searchQuery !== ''
+        || state.confMin > 0
+        || state.confMax < 100;
+    }
+
+    function updateClearFiltersButton() {
+      el('clear-filters').classList.toggle('visible', hasActiveFilters());
+    }
+
+    el('clear-filters').addEventListener('click', () => {
+      state.statusFilter = '';
+      state.taskFilter = null;
+      state.datasetFilter = null;
+      state.modelFilter = null;
+      state.runNameFilter = null;
+      state.sourceFilter = '';
+      state.searchQuery = '';
+      state.confMin = 0;
+      state.confMax = 100;
+
+      // Reset UI controls
+      el('search-input').value = '';
+      $$('.stat-card').forEach(c => c.classList.remove('active'));
+      document.querySelector('.stat-card.stat-total').classList.add('active');
+      $$('[data-source]').forEach(c => c.classList.remove('active'));
+      document.querySelector('[data-source=""]').classList.add('active');
+      confMinSlider.value = 0;
+      confMaxSlider.value = 100;
+      confMinVal.textContent = '0%';
+      confMaxVal.textContent = '100%';
+      ['task', 'dataset', 'model', 'run_name'].forEach(key => {
+        syncMultiselectUI(key);
+      });
+
+      fetchCorrections();
+    });
 
     /* ── Select All ──────────────────────────────── */
 

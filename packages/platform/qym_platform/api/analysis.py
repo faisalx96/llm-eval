@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import ast
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, func, or_, tuple_
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
-from qym_platform.db.models import CorrectionStatus, ReviewCorrection, Run, RunItem, RunItemScore, User
+from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
 from qym_platform.deps import get_db
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
@@ -21,6 +23,7 @@ from qym_platform.services.llm_analyzer import (
     build_client,
     get_few_shot_examples,
 )
+from qym_platform.services.root_cause_changes import apply_root_cause_change, build_ai_state
 
 router = APIRouter(tags=["analysis"])
 
@@ -239,7 +242,7 @@ async def analyze_run_items(
         max_tokens=request.config.max_tokens if request.config else None,
     )
 
-    # Save results to item_metadata
+    # Save results to item_metadata and revision history
     response_results = []
     error_count = 0
     for result in results:
@@ -252,18 +255,26 @@ async def analyze_run_items(
         if result.error:
             error_count += 1
             meta["analysis_error"] = result.error
+            item.item_metadata = meta
         else:
-            meta.pop("analysis_error", None)
-            meta["root_cause"] = result.root_cause
-            meta["root_cause_detail"] = result.root_cause_detail
-            meta["root_cause_note"] = result.root_cause_note
-            meta["root_cause_source"] = "ai"
-            meta["root_cause_confidence"] = result.confidence
-            meta["solution"] = result.solution
-            meta["solution_note"] = result.solution_note
-            meta["solution_source"] = "ai"
-
-        item.item_metadata = meta
+            if "analysis_error" in meta:
+                meta.pop("analysis_error", None)
+                item.item_metadata = meta
+            apply_root_cause_change(
+                db,
+                run=run,
+                item=item,
+                actor_user_id=principal.user.id if principal.auth_type != "none" else None,
+                actor_source="ai",
+                next_state=build_ai_state(
+                    root_cause=result.root_cause,
+                    root_cause_detail=result.root_cause_detail,
+                    root_cause_note=result.root_cause_note,
+                    confidence=result.confidence,
+                    solution=result.solution,
+                    solution_note=result.solution_note,
+                ),
+            )
 
         response_results.append(
             {
@@ -413,6 +424,7 @@ def get_corrections(
         .filter(
             ReviewCorrection.task == run.task,
             ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc())
         .limit(20)
@@ -473,7 +485,13 @@ def get_analysis_config(
     )
 
     correction_count = (
-        db.query(ReviewCorrection).filter(ReviewCorrection.task == run.task).count()
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.task == run.task,
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .count()
     )
 
     # Collect existing root_cause values from items and merge with defaults
@@ -512,40 +530,94 @@ def get_analysis_config(
 # ── Correction Management Endpoints (for /reviews page) ─────────────
 
 
-def _serialize_correction(c: ReviewCorrection, db: Session) -> Dict[str, Any]:
-    """Serialize a ReviewCorrection to a dict for the API."""
-    corrected_by = None
-    if c.corrected_by_user_id:
-        user = db.query(User).filter(User.id == c.corrected_by_user_id).first()
-        if user:
-            corrected_by = {
-                "id": user.id,
-                "email": user.email,
-                "display_name": user.display_name or user.email.split("@")[0],
-            }
+def _serialize_user(user: Optional[User]) -> Optional[Dict[str, Any]]:
+    if not user:
+        return None
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name or user.email.split("@")[0],
+    }
 
-    reviewed_by = None
-    if c.reviewed_by_user_id:
-        user = db.query(User).filter(User.id == c.reviewed_by_user_id).first()
-        if user:
-            reviewed_by = {
-                "id": user.id,
-                "email": user.email,
-                "display_name": user.display_name or user.email.split("@")[0],
-            }
 
+def _load_users_map(db: Session, user_ids: set[str]) -> Dict[str, User]:
+    if not user_ids:
+        return {}
+    users = db.query(User).filter(User.id.in_(sorted(user_ids))).all()
+    return {u.id: u for u in users}
+
+
+def _strip_model_provider(model_name: str) -> str:
+    if not model_name:
+        return ""
+    idx = model_name.find("/")
+    return model_name[idx + 1:] if idx > 0 else model_name
+
+
+def _run_display_name(run: Optional[Run]) -> str:
+    if not run:
+        return ""
+    if isinstance(run.run_config, dict):
+        configured = str(run.run_config.get("run_name") or "").strip()
+        if configured:
+            return configured
+    return str(run.external_run_id or run.id or "").strip()
+
+
+def _load_runs_map(db: Session, run_ids: set[str]) -> Dict[str, Run]:
+    if not run_ids:
+        return {}
+    runs = db.query(Run).filter(Run.id.in_(sorted(run_ids))).all()
+    return {run.id: run for run in runs}
+
+
+def _run_name_value(run_id: str, external_run_id: Optional[str], configured_name: Optional[str]) -> str:
+    configured = str(configured_name or "").strip()
+    if configured:
+        return configured
+    return str(external_run_id or run_id or "").strip()
+
+
+def _normalize_snapshot_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    if not trimmed:
+        return value
+    if not (
+        (trimmed.startswith("{") and trimmed.endswith("}"))
+        or (trimmed.startswith("[") and trimmed.endswith("]"))
+    ):
+        return value
+    try:
+        parsed = ast.literal_eval(trimmed)
+    except (SyntaxError, ValueError):
+        return value
+    return parsed
+
+
+def _serialize_review_fields(
+    c: ReviewCorrection,
+    *,
+    users_by_id: Dict[str, User],
+    runs_by_id: Dict[str, Run],
+) -> Dict[str, Any]:
     ai_root_cause = (c.ai_root_cause or "").strip()
     ai_is_unanalyzed = ai_root_cause.lower() == "unanalyzed"
-
+    run = runs_by_id.get(c.run_id)
     return {
         "id": c.id,
+        "revision_id": c.revision_id,
         "run_id": c.run_id,
         "item_id": c.item_id,
         "task": c.task,
-        "input_snapshot": c.input_snapshot,
-        "expected_snapshot": c.expected_snapshot,
-        "output_snapshot": c.output_snapshot,
-        "scores_snapshot": c.scores_snapshot,
+        "dataset": run.dataset if run else "",
+        "model": _strip_model_provider(run.model or "") if run else "",
+        "run_name": _run_display_name(run),
+        "input_snapshot": _normalize_snapshot_value(c.input_snapshot),
+        "expected_snapshot": _normalize_snapshot_value(c.expected_snapshot),
+        "output_snapshot": _normalize_snapshot_value(c.output_snapshot),
+        "scores_snapshot": _normalize_snapshot_value(c.scores_snapshot),
         "ai_root_cause": "" if ai_is_unanalyzed else c.ai_root_cause,
         "ai_root_cause_detail": "" if ai_is_unanalyzed else c.ai_root_cause_detail,
         "ai_root_cause_note": "" if ai_is_unanalyzed else c.ai_root_cause_note,
@@ -557,71 +629,474 @@ def _serialize_correction(c: ReviewCorrection, db: Session) -> Dict[str, Any]:
         "human_root_cause_note": c.human_root_cause_note,
         "human_solution": c.human_solution,
         "human_solution_note": c.human_solution_note,
-        "corrected_by": corrected_by,
+        "corrected_by": _serialize_user(users_by_id.get(c.corrected_by_user_id)),
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "status": c.status.value if hasattr(c.status, "value") else c.status,
-        "reviewed_by": reviewed_by,
+        "is_active": bool(c.is_active),
+        "reviewed_by": _serialize_user(users_by_id.get(c.reviewed_by_user_id)),
         "reviewed_at": c.reviewed_at.isoformat() if c.reviewed_at else None,
         "review_comment": c.review_comment or "",
     }
 
 
+def _build_history_map(
+    db: Session,
+    corrections: List[ReviewCorrection],
+) -> tuple[Dict[tuple[str, str], List[Dict[str, Any]]], Dict[str, User]]:
+    keys = sorted({(c.run_id, c.item_id) for c in corrections})
+    if not keys:
+        return {}, {}
+
+    revisions = (
+        db.query(RootCauseRevision)
+        .filter(tuple_(RootCauseRevision.run_id, RootCauseRevision.item_id).in_(keys))
+        .order_by(
+            RootCauseRevision.run_id.asc(),
+            RootCauseRevision.item_id.asc(),
+            RootCauseRevision.revision_number.desc(),
+        )
+        .all()
+    )
+    all_candidates = (
+        db.query(ReviewCorrection)
+        .filter(tuple_(ReviewCorrection.run_id, ReviewCorrection.item_id).in_(keys))
+        .order_by(ReviewCorrection.created_at.desc())
+        .all()
+    )
+
+    user_ids: set[str] = {
+        uid
+        for uid in [
+            *(r.actor_user_id for r in revisions if r.actor_user_id),
+            *(c.corrected_by_user_id for c in all_candidates if c.corrected_by_user_id),
+            *(c.reviewed_by_user_id for c in all_candidates if c.reviewed_by_user_id),
+        ]
+        if uid
+    }
+    users_by_id = _load_users_map(db, user_ids)
+    runs_by_id = _load_runs_map(db, {run_id for run_id, _ in keys})
+
+    candidates_by_revision: Dict[int, ReviewCorrection] = {}
+    orphan_candidates: Dict[tuple[str, str], List[ReviewCorrection]] = {}
+    for candidate in all_candidates:
+        if candidate.revision_id is not None and candidate.revision_id not in candidates_by_revision:
+            candidates_by_revision[candidate.revision_id] = candidate
+        elif candidate.revision_id is None:
+            orphan_candidates.setdefault((candidate.run_id, candidate.item_id), []).append(candidate)
+
+    history_map: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    revisions_by_key: Dict[tuple[str, str], List[RootCauseRevision]] = {}
+    for revision in revisions:
+        revisions_by_key.setdefault((revision.run_id, revision.item_id), []).append(revision)
+
+    for key, revision_list in revisions_by_key.items():
+        entries: List[Dict[str, Any]] = []
+        for revision in revision_list:
+            review_candidate = candidates_by_revision.get(revision.id)
+            entries.append(
+                {
+                    "revision_id": revision.id,
+                    "revision_number": revision.revision_number,
+                    "actor_source": revision.actor_source,
+                    "actor_user": _serialize_user(users_by_id.get(revision.actor_user_id)),
+                    "before_state": revision.before_state or {},
+                    "after_state": revision.after_state or {},
+                    "backfilled_from_legacy": bool(revision.backfilled_from_legacy),
+                    "created_at": revision.created_at.isoformat() if revision.created_at else None,
+                    "review": (
+                        _serialize_review_fields(
+                            review_candidate,
+                            users_by_id=users_by_id,
+                            runs_by_id=runs_by_id,
+                        )
+                        if review_candidate
+                        else None
+                    ),
+                }
+            )
+        for orphan in orphan_candidates.get(key, []):
+            entries.append(
+                {
+                    "revision_id": None,
+                    "revision_number": None,
+                    "actor_source": "legacy",
+                    "actor_user": _serialize_user(users_by_id.get(orphan.corrected_by_user_id)),
+                    "before_state": {},
+                    "after_state": {},
+                    "backfilled_from_legacy": True,
+                    "created_at": orphan.created_at.isoformat() if orphan.created_at else None,
+                    "review": _serialize_review_fields(orphan, users_by_id=users_by_id, runs_by_id=runs_by_id),
+                }
+            )
+        history_map[key] = sorted(
+            entries,
+            key=lambda entry: (
+                entry["revision_number"] if entry["revision_number"] is not None else -1,
+                entry["created_at"] or "",
+            ),
+            reverse=True,
+        )
+
+    for key, candidates in orphan_candidates.items():
+        if key in history_map:
+            continue
+        history_map[key] = [
+            {
+                "revision_id": None,
+                "revision_number": None,
+                "actor_source": "legacy",
+                "actor_user": _serialize_user(users_by_id.get(candidate.corrected_by_user_id)),
+                "before_state": {},
+                "after_state": {},
+                "backfilled_from_legacy": True,
+                "created_at": candidate.created_at.isoformat() if candidate.created_at else None,
+                "review": _serialize_review_fields(candidate, users_by_id=users_by_id, runs_by_id=runs_by_id),
+            }
+            for candidate in candidates
+        ]
+
+    return history_map, users_by_id
+
+
+def _serialize_correction(
+    c: ReviewCorrection,
+    *,
+    users_by_id: Dict[str, User],
+    runs_by_id: Dict[str, Run],
+    history: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    payload = _serialize_review_fields(c, users_by_id=users_by_id, runs_by_id=runs_by_id)
+    payload["history"] = history or []
+    return payload
+
+
+def _serialize_corrections_with_history(
+    db: Session,
+    corrections: List[ReviewCorrection],
+) -> List[Dict[str, Any]]:
+    history_map, users_by_id = _build_history_map(db, corrections)
+    runs_by_id = _load_runs_map(db, {correction.run_id for correction in corrections})
+    serialized: List[Dict[str, Any]] = []
+    for correction in corrections:
+        serialized.append(
+            _serialize_correction(
+                correction,
+                users_by_id=users_by_id,
+                runs_by_id=runs_by_id,
+                history=history_map.get((correction.run_id, correction.item_id), []),
+            )
+        )
+    return serialized
+
+
+def _require_active_candidate(correction: ReviewCorrection) -> None:
+    if not correction.is_active:
+        raise HTTPException(status_code=409, detail="Historical corrections are immutable")
+
+
+def _approve_candidate(
+    db: Session,
+    *,
+    correction: ReviewCorrection,
+    reviewer_id: Optional[str],
+    comment: str,
+    reviewed_at: datetime,
+) -> None:
+    _require_active_candidate(correction)
+
+    has_human_label = any(
+        str(value or "").strip()
+        for value in (
+            correction.human_root_cause,
+            correction.human_root_cause_detail,
+            correction.human_root_cause_note,
+            correction.human_solution,
+            correction.human_solution_note,
+        )
+    )
+    if not has_human_label and str(correction.ai_root_cause or "").strip():
+        correction.human_root_cause = correction.ai_root_cause or ""
+        correction.human_root_cause_detail = correction.ai_root_cause_detail or ""
+        correction.human_root_cause_note = correction.ai_root_cause_note or ""
+        correction.human_solution = correction.ai_solution or ""
+        correction.human_solution_note = correction.ai_solution_note or ""
+
+    older_approved = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == correction.run_id,
+            ReviewCorrection.item_id == correction.item_id,
+            ReviewCorrection.id != correction.id,
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+        )
+        .all()
+    )
+    for candidate in older_approved:
+        candidate.status = CorrectionStatus.SUPERSEDED
+        candidate.is_active = False
+
+    correction.status = CorrectionStatus.APPROVED
+    correction.is_active = True
+    correction.reviewed_by_user_id = reviewer_id
+    correction.reviewed_at = reviewed_at
+    correction.review_comment = comment
+
+
+def _delete_active_candidate(db: Session, correction: ReviewCorrection) -> None:
+    _require_active_candidate(correction)
+
+    run = db.query(Run).filter(Run.id == correction.run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == correction.run_id, RunItem.item_id == correction.item_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Run item not found")
+
+    apply_root_cause_change(
+        db,
+        run=run,
+        item=item,
+        actor_user_id=None,
+        actor_source="system",
+        next_state={},
+    )
+    db.delete(correction)
+
+
 @router.get("/api/corrections")
 def list_corrections(
-    task: Optional[str] = Query(None),
+    task: Optional[List[str]] = Query(None),
+    dataset: Optional[List[str]] = Query(None),
+    model: Optional[List[str]] = Query(None),
+    run_name: Optional[List[str]] = Query(None),
+    source: Optional[str] = Query(None),
+    conf_min: int = Query(0, ge=0, le=100),
+    conf_max: int = Query(100, ge=0, le=100),
     status: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """List all corrections with optional filtering."""
-    from sqlalchemy import func, or_
+    run_name_expr = func.coalesce(Run.run_config.op("->>")("run_name"), "")
+    ai_root_cause_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause, ""))
+    ai_root_cause_detail_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_detail, ""))
+    ai_root_cause_note_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_note, ""))
+    ai_solution_expr = func.btrim(func.coalesce(ReviewCorrection.ai_solution, ""))
+    ai_solution_note_expr = func.btrim(func.coalesce(ReviewCorrection.ai_solution_note, ""))
+    human_root_cause_expr = func.btrim(func.coalesce(ReviewCorrection.human_root_cause, ""))
+    human_root_cause_detail_expr = func.btrim(func.coalesce(ReviewCorrection.human_root_cause_detail, ""))
+    human_root_cause_note_expr = func.btrim(func.coalesce(ReviewCorrection.human_root_cause_note, ""))
+    human_solution_expr = func.btrim(func.coalesce(ReviewCorrection.human_solution, ""))
+    human_solution_note_expr = func.btrim(func.coalesce(ReviewCorrection.human_solution_note, ""))
 
-    query = db.query(ReviewCorrection).order_by(ReviewCorrection.created_at.desc())
+    has_ai_data = or_(
+        and_(ai_root_cause_expr != "", func.lower(ai_root_cause_expr) != "unanalyzed"),
+        ai_root_cause_detail_expr != "",
+        ai_root_cause_note_expr != "",
+        ai_solution_expr != "",
+        ai_solution_note_expr != "",
+    )
+    has_human_data = or_(
+        human_root_cause_expr != "",
+        human_root_cause_detail_expr != "",
+        human_root_cause_note_expr != "",
+        human_solution_expr != "",
+        human_solution_note_expr != "",
+    )
+    is_changed = or_(
+        ai_root_cause_expr != human_root_cause_expr,
+        ai_root_cause_detail_expr != human_root_cause_detail_expr,
+        ai_root_cause_note_expr != human_root_cause_note_expr,
+        ai_solution_expr != human_solution_expr,
+        ai_solution_note_expr != human_solution_note_expr,
+    )
 
-    if task:
-        query = query.filter(ReviewCorrection.task == task)
-    if status:
-        try:
-            cs = CorrectionStatus(status)
-            query = query.filter(ReviewCorrection.status == cs)
-        except ValueError:
-            pass
-    if search:
-        like = f"%{search}%"
-        query = query.filter(
-            or_(
-                ReviewCorrection.task.ilike(like),
-                ReviewCorrection.item_id.ilike(like),
-                ReviewCorrection.human_root_cause.ilike(like),
-                ReviewCorrection.ai_root_cause.ilike(like),
+    active_query = (
+        db.query(ReviewCorrection)
+        .join(Run, Run.id == ReviewCorrection.run_id)
+        .filter(ReviewCorrection.is_active.is_(True))
+    )
+    def apply_filter_set(base_query, *, exclude: Optional[str] = None):
+        query_obj = base_query
+        if task and exclude != "task":
+            query_obj = query_obj.filter(ReviewCorrection.task.in_(task))
+        if dataset and exclude != "dataset":
+            query_obj = query_obj.filter(Run.dataset.in_(dataset))
+        if model and exclude != "model":
+            query_obj = query_obj.filter(
+                or_(
+                    *([Run.model == value for value in model] + [Run.model.ilike(f"%/{value}") for value in model])
+                )
             )
-        )
+        if run_name and exclude != "run_name":
+            query_obj = query_obj.filter(
+                or_(
+                    Run.external_run_id.in_(run_name),
+                    run_name_expr.in_(run_name),
+                    Run.id.in_(run_name),
+                )
+            )
+        if source == "ai_only":
+            query_obj = query_obj.filter(
+                has_ai_data,
+                or_(~has_human_data, ~is_changed),
+            )
+        elif source == "human_only":
+            query_obj = query_obj.filter(has_human_data, ~has_ai_data)
+        elif source == "corrected":
+            query_obj = query_obj.filter(has_ai_data, has_human_data, is_changed)
+        if conf_min > 0 or conf_max < 100:
+            lo = conf_min / 100.0
+            hi = conf_max / 100.0
+            query_obj = query_obj.filter(
+                ReviewCorrection.ai_confidence.is_not(None),
+                ReviewCorrection.ai_confidence >= lo,
+                ReviewCorrection.ai_confidence <= hi,
+            )
+        if status and exclude != "status":
+            try:
+                cs = CorrectionStatus(status)
+                query_obj = query_obj.filter(ReviewCorrection.status == cs)
+            except ValueError:
+                pass
+        if search:
+            like = f"%{search}%"
+            query_obj = query_obj.filter(
+                or_(
+                    ReviewCorrection.task.ilike(like),
+                    ReviewCorrection.item_id.ilike(like),
+                    ReviewCorrection.human_root_cause.ilike(like),
+                    ReviewCorrection.ai_root_cause.ilike(like),
+                    Run.dataset.ilike(like),
+                    Run.model.ilike(like),
+                    Run.external_run_id.ilike(like),
+                    run_name_expr.ilike(like),
+                )
+            )
+        return query_obj
+
+    def facet_value_expr(key: str):
+        if key == "task":
+            return ReviewCorrection.task
+        if key == "dataset":
+            return Run.dataset
+        if key == "model":
+            return Run.model
+        if key == "run_name":
+            return run_name_expr
+        raise ValueError(f"Unsupported facet key: {key}")
+
+    def build_facet_counts(key: str) -> Dict[str, int]:
+        facet_query = apply_filter_set(active_query, exclude=key)
+        if key == "model":
+            rows = facet_query.with_entities(Run.model, func.count(ReviewCorrection.id)).group_by(Run.model).all()
+            counts: Dict[str, int] = {}
+            for raw_model, count in rows:
+                if not raw_model:
+                    continue
+                display = _strip_model_provider(raw_model or "")
+                counts[display] = counts.get(display, 0) + int(count or 0)
+            return counts
+        if key == "run_name":
+            rows = (
+                facet_query
+                .with_entities(Run.id, Run.external_run_id, run_name_expr, func.count(ReviewCorrection.id))
+                .group_by(Run.id, Run.external_run_id, run_name_expr)
+                .all()
+            )
+            counts: Dict[str, int] = {}
+            for run_id_value, external_run_id, configured_name, count in rows:
+                display = _run_name_value(run_id_value, external_run_id, configured_name)
+                if not display:
+                    continue
+                counts[display] = counts.get(display, 0) + int(count or 0)
+            return counts
+        value_expr = facet_value_expr(key)
+        rows = facet_query.with_entities(value_expr, func.count(ReviewCorrection.id)).group_by(value_expr).all()
+        return {
+            str(value): int(count or 0)
+            for value, count in rows
+            if str(value or "").strip()
+        }
+
+    query = apply_filter_set(active_query).order_by(ReviewCorrection.created_at.desc())
 
     corrections = query.all()
 
-    # Compute stats via COUNT queries (avoid loading all rows)
-    total = db.query(func.count(ReviewCorrection.id)).scalar() or 0
-    pending = db.query(func.count(ReviewCorrection.id)).filter(
-        ReviewCorrection.status == CorrectionStatus.PENDING
+    # Compute stats excluding status filter so stat cards show the breakdown
+    stats_query = apply_filter_set(active_query, exclude="status")
+    total = stats_query.with_entities(func.count(ReviewCorrection.id)).scalar() or 0
+    pending = stats_query.filter(ReviewCorrection.status == CorrectionStatus.PENDING).with_entities(
+        func.count(ReviewCorrection.id)
     ).scalar() or 0
-    approved = db.query(func.count(ReviewCorrection.id)).filter(
-        ReviewCorrection.status == CorrectionStatus.APPROVED
+    approved = stats_query.filter(ReviewCorrection.status == CorrectionStatus.APPROVED).with_entities(
+        func.count(ReviewCorrection.id)
     ).scalar() or 0
-    rejected = db.query(func.count(ReviewCorrection.id)).filter(
-        ReviewCorrection.status == CorrectionStatus.REJECTED
+    rejected = stats_query.filter(ReviewCorrection.status == CorrectionStatus.REJECTED).with_entities(
+        func.count(ReviewCorrection.id)
     ).scalar() or 0
 
     stats = {"total": total, "pending": pending, "approved": approved, "rejected": rejected}
 
     # Get distinct tasks for filter dropdown
-    task_rows = db.query(ReviewCorrection.task).distinct().order_by(ReviewCorrection.task).all()
+    task_rows = (
+        apply_filter_set(active_query, exclude="task")
+        .with_entities(ReviewCorrection.task)
+        .distinct()
+        .order_by(ReviewCorrection.task)
+        .all()
+    )
     tasks = [r[0] for r in task_rows]
+    dataset_rows = (
+        apply_filter_set(active_query, exclude="dataset")
+        .with_entities(Run.dataset)
+        .distinct()
+        .order_by(Run.dataset)
+        .all()
+    )
+    datasets = [r[0] for r in dataset_rows if r[0]]
+    model_rows = (
+        apply_filter_set(active_query, exclude="model")
+        .with_entities(Run.model)
+        .distinct()
+        .order_by(Run.model)
+        .all()
+    )
+    models = [_strip_model_provider(r[0] or "") for r in model_rows if r[0]]
+    run_rows = (
+        apply_filter_set(active_query, exclude="run_name")
+        .with_entities(Run.id, Run.external_run_id, run_name_expr.label("run_name"))
+        .distinct()
+        .all()
+    )
+    run_names = sorted(
+        {
+            (
+                _run_name_value(run_id, external, configured_name)
+            )
+            for run_id, external, configured_name in run_rows
+            if _run_name_value(run_id, external, configured_name)
+        }
+    )
 
     return {
-        "corrections": [_serialize_correction(c, db) for c in corrections],
+        "corrections": _serialize_corrections_with_history(db, corrections),
         "stats": stats,
         "tasks": tasks,
+        "datasets": datasets,
+        "models": sorted(set(models)),
+        "run_names": run_names,
+        "facet_counts": {
+            "task": build_facet_counts("task"),
+            "dataset": build_facet_counts("dataset"),
+            "model": build_facet_counts("model"),
+            "run_name": build_facet_counts("run_name"),
+        },
     }
 
 
@@ -635,7 +1110,7 @@ def get_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
-    return _serialize_correction(c, db)
+    return _serialize_corrections_with_history(db, [c])[0]
 
 
 @router.put("/api/corrections/{correction_id}")
@@ -645,64 +1120,53 @@ def update_correction(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update a correction and sync the corresponding run item metadata."""
+    """Apply a new human revision from the reviews page."""
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
+    _require_active_candidate(c)
 
-    for field in [
-        "human_root_cause", "human_root_cause_detail", "human_root_cause_note",
-        "human_solution", "human_solution_note",
-    ]:
-        if field in request:
-            setattr(c, field, (request[field] or "").strip())
-
-    # Keep run/compare views consistent with review edits.
+    run = db.query(Run).filter(Run.id == c.run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
     item = (
         db.query(RunItem)
         .filter(RunItem.run_id == c.run_id, RunItem.item_id == c.item_id)
         .first()
     )
-    if item:
-        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+    if not item:
+        raise HTTPException(status_code=404, detail="Run item not found")
 
-        if c.human_root_cause:
-            meta["root_cause"] = c.human_root_cause
-            meta["root_cause_source"] = "human"
-            meta.pop("root_cause_confidence", None)
-        else:
-            meta.pop("root_cause", None)
-            meta.pop("root_cause_source", None)
-            meta.pop("root_cause_confidence", None)
-            meta.pop("root_cause_detail", None)
-            meta.pop("root_cause_note", None)
+    patch: Dict[str, Any] = {}
+    for request_key, state_key in [
+        ("human_root_cause", "root_cause"),
+        ("human_root_cause_detail", "root_cause_detail"),
+        ("human_root_cause_note", "root_cause_note"),
+        ("human_solution", "solution"),
+        ("human_solution_note", "solution_note"),
+    ]:
+        if request_key in request:
+            patch[state_key] = request.get(request_key)
 
-        if c.human_root_cause_detail:
-            meta["root_cause_detail"] = c.human_root_cause_detail
-        else:
-            meta.pop("root_cause_detail", None)
-
-        if c.human_root_cause_note:
-            meta["root_cause_note"] = c.human_root_cause_note
-        else:
-            meta.pop("root_cause_note", None)
-
-        if c.human_solution:
-            meta["solution"] = c.human_solution
-            meta["solution_source"] = "human"
-        else:
-            meta.pop("solution", None)
-            meta.pop("solution_source", None)
-
-        if c.human_solution_note:
-            meta["solution_note"] = c.human_solution_note
-        else:
-            meta.pop("solution_note", None)
-
-        item.item_metadata = meta
-
+    result = apply_root_cause_change(
+        db,
+        run=run,
+        item=item,
+        actor_user_id=principal.user.id if principal.auth_type != "none" else None,
+        actor_source="human",
+        human_patch=patch,
+    )
     db.commit()
-    return _serialize_correction(c, db)
+    target = result.candidate or (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == c.run_id,
+            ReviewCorrection.item_id == c.item_id,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .first()
+    ) or c
+    return _serialize_corrections_with_history(db, [target])[0]
 
 
 @router.post("/api/corrections/{correction_id}/approve")
@@ -716,14 +1180,16 @@ def approve_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
-
-    c.status = CorrectionStatus.APPROVED
-    c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
-    c.reviewed_at = datetime.utcnow()
-    c.review_comment = (request.get("comment") or "").strip()
+    _approve_candidate(
+        db,
+        correction=c,
+        reviewer_id=principal.user.id if principal.auth_type != "none" else None,
+        comment=(request.get("comment") or "").strip(),
+        reviewed_at=datetime.utcnow(),
+    )
 
     db.commit()
-    return _serialize_correction(c, db)
+    return _serialize_corrections_with_history(db, [c])[0]
 
 
 @router.post("/api/corrections/{correction_id}/reject")
@@ -737,6 +1203,7 @@ def reject_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
+    _require_active_candidate(c)
 
     c.status = CorrectionStatus.REJECTED
     c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
@@ -744,7 +1211,7 @@ def reject_correction(
     c.review_comment = (request.get("comment") or "").strip()
 
     db.commit()
-    return _serialize_correction(c, db)
+    return _serialize_corrections_with_history(db, [c])[0]
 
 
 @router.post("/api/corrections/{correction_id}/reset")
@@ -757,6 +1224,7 @@ def reset_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
+    _require_active_candidate(c)
 
     c.status = CorrectionStatus.PENDING
     c.reviewed_by_user_id = None
@@ -764,7 +1232,7 @@ def reset_correction(
     c.review_comment = ""
 
     db.commit()
-    return _serialize_correction(c, db)
+    return _serialize_corrections_with_history(db, [c])[0]
 
 
 class BulkActionRequest(BaseModel):
@@ -785,7 +1253,10 @@ def bulk_correction_action(
 
     corrections = (
         db.query(ReviewCorrection)
-        .filter(ReviewCorrection.id.in_(request.ids))
+        .filter(
+            ReviewCorrection.id.in_(request.ids),
+            ReviewCorrection.is_active.is_(True),
+        )
         .all()
     )
 
@@ -798,10 +1269,13 @@ def bulk_correction_action(
 
     for c in corrections:
         if request.action == "approve":
-            c.status = CorrectionStatus.APPROVED
-            c.reviewed_by_user_id = reviewer_id
-            c.reviewed_at = now
-            c.review_comment = request.comment
+            _approve_candidate(
+                db,
+                correction=c,
+                reviewer_id=reviewer_id,
+                comment=request.comment,
+                reviewed_at=now,
+            )
             affected += 1
         elif request.action == "reject":
             c.status = CorrectionStatus.REJECTED
@@ -816,7 +1290,7 @@ def bulk_correction_action(
             c.review_comment = ""
             affected += 1
         elif request.action == "delete":
-            db.delete(c)
+            _delete_active_candidate(db, c)
             affected += 1
 
     db.commit()
@@ -833,6 +1307,6 @@ def delete_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
-    db.delete(c)
+    _delete_active_candidate(db, c)
     db.commit()
     return {"ok": True, "deleted_id": correction_id}

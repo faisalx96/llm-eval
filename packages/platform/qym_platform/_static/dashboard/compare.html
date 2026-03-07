@@ -1786,7 +1786,7 @@
       align-items: center;
       gap: 4px;
       padding: 3px 10px;
-      border-radius: 8px;
+      border-radius: 999px;
       font-size: var(--font-xs);
       font-family: var(--font-mono);
       font-weight: 600;
@@ -2343,7 +2343,7 @@
       padding: 2px 8px;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
-      border-radius: 4px;
+      border-radius: 999px;
       font-size: var(--font-xs);
       font-family: var(--font-mono);
     }
@@ -2615,11 +2615,51 @@
         letter-spacing: 0.8px;
         border: 1px solid transparent;
         margin-bottom: 12px;
+        white-space: nowrap;
     }
     .rc-status-pill.approved {
         color: #10b981;
         background: rgba(16, 185, 129, 0.12);
         border-color: rgba(16, 185, 129, 0.28);
+    }
+    .rc-status-pill.pending {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.12);
+        border-color: rgba(245, 158, 11, 0.28);
+    }
+    .rc-inline-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .rc-approve-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(16, 185, 129, 0.7);
+        background: linear-gradient(180deg, #1ecf93, #12a874);
+        color: #071b15;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
+        transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+        margin-left: 0;
+    }
+    .rc-approve-btn:hover {
+        filter: brightness(1.04);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(16, 185, 129, 0.24);
+    }
+    .rc-approve-btn:disabled {
+        opacity: 0.55;
+        cursor: wait;
+        transform: none;
+        box-shadow: none;
     }
   </style>
 </head>
@@ -2782,6 +2822,14 @@
                 <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
               </div>
             </div>
+            <div class="fp-group">
+              <span class="fp-label">Approval</span>
+              <select id="approval-filter" class="filter-select">
+                <option value="all">All Root Causes</option>
+                <option value="approved">Approved</option>
+                <option value="not_approved">Not Approved</option>
+              </select>
+            </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
                 <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
@@ -2893,6 +2941,7 @@
         selectedItemsMetric: null,     // For Item-by-Item filters
         itemFilter: 'all',
         winnerFilter: 'any',
+        approvalFilter: 'all',
         page: 1,
         pageSize: 20,
         comparisonStats: {},  // Now keyed by metric name
@@ -3726,7 +3775,7 @@
 
           for (const g of groupStats) {
             const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
-            const consStr = g.consistency !== null ? formatPercent(g.consistency) : '—';
+            const consStr = g.consistency !== null ? formatPercent(g.consistency, 0) : '—';
             const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
 
             let cardValClass = '';
@@ -3738,7 +3787,7 @@
               else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
             }
 
-            const passAtKStr = formatPercent(g.passAtK);
+            const passAtKStr = formatPercent(g.passAtK, 0);
             const passAtKClass = scoreColorClass(g.passAtK);
 
             html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
@@ -3746,7 +3795,7 @@
               <div class="breakdown-card-scores">
                 <div class="score-col">
                   <span class="score-col-label">Avg@${K}</span>
-                  <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore)}</span>
+                  <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore, 0)}</span>
                 </div>
                 <div class="score-col">
                   <span class="score-col-label">Pass@${K}</span>
@@ -4389,6 +4438,24 @@
 
         const filteredItems = getFilteredItems();
         const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
+        const anyAssignedOverall = state.runs.some(run => (run.snapshot?.rows || []).some(row => {
+          const md = row.item_metadata || {};
+          return !!String(md.root_cause || '').trim();
+        }));
+        const filteredFailedCount = filteredItems.filter(item => {
+          return (item.rows || []).some((row, runIdx) => {
+            if (!row) return false;
+            if ((row.status || '') === 'error') return true;
+            const run = state.runs[runIdx];
+            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+            const metricIdx = state.selectedItemsMetric ? metricNames.indexOf(state.selectedItemsMetric) : 0;
+            if (metricIdx < 0) return false;
+            const score = window.QymMetrics.parseScoreValue((row.metric_values || [])[metricIdx]);
+            const isBoolean = state.selectedItemsMetric ? state.metricIsBoolean[state.selectedItemsMetric] : false;
+            const threshold = isBoolean ? 0.9999 : (state.metricThresholds[state.selectedItemsMetric] || 0.8);
+            return score !== null && score < threshold;
+          });
+        }).length;
 
         // Build hierarchical root cause categories across ALL runs
         const rcCategories = {};
@@ -4415,10 +4482,18 @@
 
         // Empty state
         if (catStats.length === 0) {
+          const emptyMsg = anyAssignedOverall
+            ? (filteredFailedCount === 0
+                ? 'The current filtered items are all passing, so there are no root causes to summarize.'
+                : 'No root causes appear in the current filtered items. Adjust filters to view failure patterns.')
+            : 'No root causes assigned yet. Run Auto-Analyze to identify failure patterns.';
+          const autoAnalyzeHtml = anyAssignedOverall
+            ? ''
+            : '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>';
           section.innerHTML = '<h3 class="section-title">Root Cause Analysis</h3>' +
             '<div class="comparison-stats"><div style="padding:32px 24px;text-align:center;">' +
-              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">No root causes assigned yet. Run Auto-Analyze to identify failure patterns.</div>' +
-              '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>' +
+              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">' + escapeHtml(emptyMsg) + '</div>' +
+              autoAnalyzeHtml +
             '</div></div>';
           var aaBtn0 = section.querySelector('#auto-analyze-btn');
           if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
@@ -4617,6 +4692,19 @@
               if (!matchesNamed && !matchesNone) continue;
             }
           }
+          if (state.approvalFilter !== 'all') {
+            const matchingApproval = rowData.some(r => {
+              if (!r) return false;
+              const rmd = (typeof r.item_metadata === 'object') ? r.item_metadata : {};
+              const hasRootCause = !!String(rmd.root_cause || '').trim();
+              const reviewStatus = String(r.review_correction_status || '').toLowerCase();
+              if (!hasRootCause) return false;
+              if (state.approvalFilter === 'approved') return reviewStatus === 'approved';
+              if (state.approvalFilter === 'not_approved') return reviewStatus !== 'approved';
+              return true;
+            });
+            if (!matchingApproval) continue;
+          }
 
           // Apply item filter
           if (state.itemFilter === 'different') {
@@ -4723,7 +4811,25 @@
         return items;
       }
 
+      function getScrollHost() {
+        return document.querySelector('.compare-container');
+      }
+
+      function getItemsGridTop() {
+        const grid = el('items-grid');
+        return grid ? grid.getBoundingClientRect().top : null;
+      }
+
+      function restoreItemsGridTop(anchorTop) {
+        const host = getScrollHost();
+        const grid = el('items-grid');
+        if (!host || !grid || anchorTop == null) return;
+        const currentTop = grid.getBoundingClientRect().top;
+        host.scrollTop += currentTop - anchorTop;
+      }
+
       function renderItems(scrollToTop = false) {
+        const anchorTop = scrollToTop ? null : getItemsGridTop();
         // Keep Performance by Category and Root Cause Analysis in sync with filters
         renderMetadataBreakdown();
         renderRootCauseSection();
@@ -4749,6 +4855,7 @@
         if (items.length === 0) {
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
           paginationEl.innerHTML = '';
+          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
           return;
         }
 
@@ -5103,6 +5210,8 @@
         // Scroll to top of items grid if requested
         if (scrollToTop) {
           container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (anchorTop != null) {
+          requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
         }
 
         wireMetricEditHandlers();
@@ -6128,6 +6237,7 @@
         let n = 0;
         if (state.itemFilter !== 'all') n++;
         if (state.winnerFilter !== 'any') n++;
+        if (state.approvalFilter !== 'all') n++;
         if (state.searchQuery) n++;
         if (state.complexityFilter !== null) n++;
         if (state.domainFilter !== null) n++;
@@ -6148,6 +6258,7 @@
       function clearAllFilters() {
         state.itemFilter = 'all';
         state.winnerFilter = 'any';
+        state.approvalFilter = 'all';
         state.searchQuery = '';
         state.complexityFilter = null;
         state.domainFilter = null;
@@ -6160,6 +6271,7 @@
 
         el('item-filter').value = 'all';
         el('run-winner-filter').value = 'any';
+        el('approval-filter').value = 'all';
         el('items-search').value = '';
         el('pass-rate-op').value = '';
         el('pass-rate-value').style.display = 'none';
@@ -6189,6 +6301,12 @@
 
       el('run-winner-filter').addEventListener('change', (e) => {
         state.winnerFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('approval-filter').addEventListener('change', (e) => {
+        state.approvalFilter = e.target.value;
         state.page = 1;
         renderItems();
       });

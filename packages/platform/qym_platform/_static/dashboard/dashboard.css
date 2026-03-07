@@ -88,6 +88,37 @@ body {
   flex-direction: column;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 150, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 150, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(122, 122, 144, 0.82) 0%, rgba(80, 80, 94, 0.92) 100%);
+  border: 2px solid rgba(16, 16, 24, 0.75);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0, 212, 170, 0.82) 0%, rgba(0, 168, 255, 0.82) 100%);
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3816,8 +3847,8 @@ main {
   color: var(--text-secondary);
   cursor: pointer;
 }
-.pg-field-toggle input[type="checkbox"] {
-  accent-color: #a855f7;
+.pg-field-toggle .custom-checkbox {
+  flex-shrink: 0;
 }
 
 /* Correction Cards */
@@ -3836,10 +3867,6 @@ main {
   font-size: var(--font-sm);
   color: var(--text-secondary);
   cursor: pointer;
-}
-.pg-correction-card-header input[type="checkbox"] {
-  accent-color: #a855f7;
-  flex-shrink: 0;
 }
 .pg-correction-label {
   font-weight: 500;
@@ -3947,6 +3974,9 @@ main {
   cursor: pointer;
   padding-bottom: 2px;
 }
+.pg-filter-check .custom-checkbox {
+  flex-shrink: 0;
+}
 .pg-filter-score {
   width: 70px;
 }
@@ -3969,14 +3999,15 @@ main {
   padding-right: 4px;
 }
 .pg-items-list::-webkit-scrollbar {
-  width: 6px;
+  width: 10px;
 }
 .pg-items-list::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
 }
 .pg-items-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(122, 122, 144, 0.82) 0%, rgba(80, 80, 94, 0.92) 100%);
+  border: 2px solid rgba(16, 16, 24, 0.75);
+  border-radius: 999px;
 }
 .pg-item-card {
   background: rgba(255, 255, 255, 0.02);

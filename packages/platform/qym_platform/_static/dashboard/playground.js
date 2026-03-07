@@ -117,8 +117,8 @@ window.QymPlayground = (function () {
     // Highlight --- Example --- / --- End Example --- blocks
     escaped = escaped.replace(/^(--- (?:Example|End Example) ---)/gm,
       '<span class="pg-hl-example">$1</span>');
-    // Highlight CORRECT answer: lines
-    escaped = escaped.replace(/^(CORRECT answer:.*)/gm,
+    // Highlight CORRECT root_cause: lines
+    escaped = escaped.replace(/^(CORRECT root_cause:.*)/gm,
       '<span class="pg-hl-correct">$1</span>');
     // Highlight bulleted list items (root cause categories and details)
     escaped = escaped.replace(/^(- .+)$/gm,
@@ -354,8 +354,8 @@ window.QymPlayground = (function () {
     filterBody += '<span class="pg-slider-value" id="pg-max-score-value">80%</span>';
     filterBody += '</div>';
     filterBody += '</div>';
-    filterBody += '<label class="pg-filter-check"><input type="checkbox" id="pg-skip-analyzed" checked /> <span>Skip analyzed</span></label>';
-    filterBody += '<label class="pg-filter-check"><input type="checkbox" id="pg-allow-human-overwrite" /> <span>Re-analyze human labels</span></label>';
+    filterBody += '<label class="pg-filter-check"><span class="custom-checkbox"><input type="checkbox" id="pg-skip-analyzed" checked /><span class="checkmark"></span></span><span>Skip analyzed</span></label>';
+    filterBody += '<label class="pg-filter-check"><span class="custom-checkbox"><input type="checkbox" id="pg-allow-human-overwrite" /><span class="checkmark"></span></span><span>Re-analyze human labels</span></label>';
     filterBody += '</div>';
     filterBody += '<div id="pg-matched-section">';
     filterBody += _buildMatchedItemsTable();
@@ -441,8 +441,8 @@ window.QymPlayground = (function () {
     ];
     for (var e = 0; e < extras.length; e++) {
       body += '<label class="pg-field-toggle">' +
-        '<input type="checkbox" data-field="' + extras[e].key + '" checked /> ' +
-        extras[e].label +
+        '<span class="custom-checkbox"><input type="checkbox" data-field="' + extras[e].key + '" checked /><span class="checkmark"></span></span>' +
+        '<span>' + extras[e].label + '</span>' +
       '</label>';
     }
     body += '</div>';
@@ -492,7 +492,7 @@ window.QymPlayground = (function () {
 
         // Header: checkbox + correction flow
         body += '<label class="pg-example-header">';
-        body += '<input type="checkbox" data-correction-id="' + cor.id + '" checked />';
+        body += '<span class="custom-checkbox"><input type="checkbox" data-correction-id="' + cor.id + '" checked /><span class="checkmark"></span></span>';
         body += '<span class="pg-example-num">#' + (c + 1) + '</span>';
         if (hasAiSuggestion) {
           body += '<span class="pg-example-ai-tag">AI Suggested</span>';
@@ -1251,7 +1251,7 @@ window.QymPlayground = (function () {
               '<summary class="pg-result-details-summary">Few-Shot Examples (' + examples.length + ')</summary>' +
               '<div class="pg-result-details-content">' +
                 examples.map(function (ex, i) {
-                  var correctMatch = ex.match(/CORRECT answer:\s*(.+)/);
+                  var correctMatch = ex.match(/CORRECT root_cause:\s*(.+)/);
                   var correctLabel = correctMatch ? correctMatch[1].trim() : 'Example ' + (i + 1);
                   return '<div class="pg-fewshot-example">' +
                     '<div class="pg-fewshot-header">Example ' + (i + 1) + ' \u2014 <span style="color:#c084fc;">' + _esc(correctLabel) + '</span></div>' +

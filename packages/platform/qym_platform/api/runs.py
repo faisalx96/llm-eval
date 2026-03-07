@@ -20,6 +20,7 @@ from qym_platform.db.models import (
     OrgUnitType,
     PlatformSetting,
     ReviewCorrection,
+    RootCauseRevision,
     Run,
     RunEvent,
     RunItem,
@@ -29,6 +30,7 @@ from qym_platform.db.models import (
     UserRole,
 )
 from qym_platform.deps import get_db
+from qym_platform.services.root_cause_changes import apply_root_cause_change
 
 
 router = APIRouter()
@@ -474,7 +476,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     metrics = list(run.metrics or [])
     corrections = (
         db.query(ReviewCorrection)
-        .filter(ReviewCorrection.run_id == run.id)
+        .filter(ReviewCorrection.run_id == run.id, ReviewCorrection.is_active.is_(True))
         .order_by(ReviewCorrection.created_at.desc())
         .all()
     )
@@ -556,6 +558,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
                 "item_metadata": it.item_metadata if isinstance(it.item_metadata, dict) else {},
+                "review_correction_id": corr.id if corr else None,
                 "review_correction_status": (
                     corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
                 ),
@@ -811,157 +814,19 @@ def update_root_cause(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    old_meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-    meta = dict(old_meta)
+    patch = {}
+    for field in ("root_cause", "root_cause_detail", "root_cause_note", "solution", "solution_note"):
+        if field in request or (field == "root_cause_note" and request.get(field) is not None):
+            patch[field] = request.get(field)
 
-    # --- root_cause: only modify when explicitly present in request ---
-    root_cause_provided = "root_cause" in request
-    if root_cause_provided:
-        root_cause = (request["root_cause"] or "").strip()
-        if root_cause:
-            meta["root_cause"] = root_cause
-        else:
-            meta.pop("root_cause", None)
-            # Clean up orphaned provenance/child keys when clearing root cause
-            meta.pop("root_cause_source", None)
-            meta.pop("root_cause_confidence", None)
-            meta.pop("root_cause_detail", None)
-
-    # --- root_cause_detail: only modify when explicitly present in request ---
-    if "root_cause_detail" in request:
-        root_cause_detail = (request["root_cause_detail"] or "").strip()
-        if root_cause_detail:
-            meta["root_cause_detail"] = root_cause_detail
-        else:
-            meta.pop("root_cause_detail", None)
-
-    # --- root_cause_note: only modify when present (None = absent) ---
-    root_cause_note = request.get("root_cause_note")
-    if root_cause_note is not None:
-        note = str(root_cause_note).strip()
-        if note:
-            meta["root_cause_note"] = note
-        else:
-            meta.pop("root_cause_note", None)
-
-    # --- solution: only modify when explicitly present in request ---
-    if "solution" in request:
-        solution = (request["solution"] or "").strip()
-        if solution:
-            meta["solution"] = solution
-            meta["solution_source"] = "human"
-        else:
-            meta.pop("solution", None)
-            meta.pop("solution_source", None)
-
-    # --- solution_note: only modify when present (None = absent) ---
-    solution_note = request.get("solution_note")
-    if solution_note is not None:
-        snote = str(solution_note).strip()
-        if snote:
-            meta["solution_note"] = snote
-        else:
-            meta.pop("solution_note", None)
-
-    # Sync a review entry whenever human-review fields change.
-    # This captures:
-    # - AI accepted as-is (ai fields present, unchanged),
-    # - AI corrected by human (ai fields present, changed),
-    # - Human-only labels (no prior ai source).
-    old_source = old_meta.get("root_cause_source")
-    root_cause_val = meta.get("root_cause", "")
-    old_rc = old_meta.get("root_cause", "")
-    ai_root_cause_norm = str(old_rc or "").strip()
-    had_real_ai_suggestion = old_source == "ai" and ai_root_cause_norm.lower() != "unanalyzed"
-    review_fields_changed = (
-        root_cause_provided
-        or "root_cause_detail" in request
-        or root_cause_note is not None
-        or "solution" in request
-        or solution_note is not None
+    apply_root_cause_change(
+        db,
+        run=run,
+        item=item,
+        actor_user_id=principal.user.id if principal.auth_type != "none" else None,
+        actor_source="human",
+        human_patch=patch,
     )
-
-    if review_fields_changed and root_cause_val:
-        old_note = old_meta.get("root_cause_note", "") if had_real_ai_suggestion else ""
-        old_confidence = old_meta.get("root_cause_confidence")
-        ai_root_cause = old_rc if had_real_ai_suggestion else ""
-        ai_root_cause_detail = old_meta.get("root_cause_detail", "") if had_real_ai_suggestion else ""
-        ai_solution = old_meta.get("solution", "") if had_real_ai_suggestion else ""
-        ai_solution_note = old_meta.get("solution_note", "") if had_real_ai_suggestion else ""
-
-        item_scores = (
-            db.query(RunItemScore)
-            .filter(RunItemScore.run_id == run.id, RunItemScore.item_id == item.item_id)
-            .all()
-        )
-        scores_snap = {}
-        for s in item_scores:
-            scores_snap[s.metric_name] = s.score_numeric if s.score_numeric is not None else s.score_raw
-
-        # Use post-update meta for human correction values (captures final state)
-        human_detail = meta.get("root_cause_detail", "")
-        human_note = meta.get("root_cause_note", "")
-        human_solution = meta.get("solution", "")
-        human_solution_note = meta.get("solution_note", "")
-
-        # Upsert: update existing correction for same item, or create new
-        existing = (
-            db.query(ReviewCorrection)
-            .filter(
-                ReviewCorrection.run_id == run.id,
-                ReviewCorrection.item_id == item.item_id,
-            )
-            .first()
-        )
-        if existing:
-            if had_real_ai_suggestion and not existing.ai_root_cause:
-                existing.ai_root_cause = ai_root_cause
-                existing.ai_root_cause_detail = ai_root_cause_detail
-                existing.ai_root_cause_note = old_note
-                existing.ai_confidence = old_confidence
-                existing.ai_solution = ai_solution
-                existing.ai_solution_note = ai_solution_note
-            existing.human_root_cause = root_cause_val
-            existing.human_root_cause_detail = human_detail
-            existing.human_root_cause_note = human_note
-            existing.human_solution = human_solution
-            existing.human_solution_note = human_solution_note
-            existing.input_snapshot = item.input
-            existing.expected_snapshot = item.expected
-            existing.output_snapshot = item.output
-            existing.scores_snapshot = scores_snap
-            existing.corrected_by_user_id = principal.user.id if principal.auth_type != "none" else None
-            existing.created_at = datetime.utcnow()
-        else:
-            correction = ReviewCorrection(
-                run_id=run.id,
-                item_id=item.item_id,
-                task=run.task,
-                input_snapshot=item.input,
-                expected_snapshot=item.expected,
-                output_snapshot=item.output,
-                scores_snapshot=scores_snap,
-                ai_root_cause=ai_root_cause,
-                ai_root_cause_detail=ai_root_cause_detail,
-                ai_root_cause_note=old_note,
-                ai_confidence=old_confidence if had_real_ai_suggestion else None,
-                ai_solution=ai_solution,
-                ai_solution_note=ai_solution_note,
-                human_root_cause=root_cause_val,
-                human_root_cause_detail=human_detail,
-                human_root_cause_note=human_note,
-                human_solution=human_solution,
-                human_solution_note=human_solution_note,
-                corrected_by_user_id=principal.user.id if principal.auth_type != "none" else None,
-            )
-            db.add(correction)
-
-    # Track provenance — only when root_cause actually changed
-    if root_cause_provided and root_cause_val and root_cause_val != old_rc:
-        meta["root_cause_source"] = "human"
-        meta.pop("root_cause_confidence", None)
-
-    item.item_metadata = meta
 
     db.commit()
     return {"ok": True}
@@ -1000,6 +865,8 @@ def delete_run(
         raise HTTPException(status_code=403, detail="Permission denied")
 
     # Delete related data first (foreign key constraints)
+    db.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).delete()
+    db.query(RootCauseRevision).filter(RootCauseRevision.run_id == run.id).delete()
     db.query(RunItemScore).filter(RunItemScore.run_id == run.id).delete()
     db.query(RunItem).filter(RunItem.run_id == run.id).delete()
     db.query(RunEvent).filter(RunEvent.run_id == run.id).delete()

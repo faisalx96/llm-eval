@@ -1624,7 +1624,7 @@
       align-items: center;
       gap: 4px;
       padding: 3px 10px;
-      border-radius: 8px;
+      border-radius: 999px;
       font-size: var(--font-xs);
       font-family: var(--font-mono);
       font-weight: 600;
@@ -1669,7 +1669,7 @@
       padding: 2px 8px;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
-      border-radius: 4px;
+      border-radius: 999px;
       font-size: var(--font-xs);
       font-family: var(--font-mono);
     }
@@ -2127,12 +2127,53 @@
         text-transform: uppercase;
         letter-spacing: 0.8px;
         border: 1px solid transparent;
-        margin-bottom: 12px;
+        margin: 0;
+        white-space: nowrap;
     }
     .rc-status-pill.approved {
         color: #10b981;
         background: rgba(16, 185, 129, 0.12);
         border-color: rgba(16, 185, 129, 0.28);
+    }
+    .rc-status-pill.pending {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.12);
+        border-color: rgba(245, 158, 11, 0.28);
+    }
+    .rc-inline-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+    .rc-approve-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(16, 185, 129, 0.7);
+        background: linear-gradient(180deg, #1ecf93, #12a874);
+        color: #071b15;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
+        transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+        margin-left: 0;
+        align-self: center;
+    }
+    .rc-approve-btn:hover {
+        filter: brightness(1.04);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(16, 185, 129, 0.24);
+    }
+    .rc-approve-btn:disabled {
+        opacity: 0.55;
+        cursor: wait;
+        transform: none;
+        box-shadow: none;
     }
 
     /* Solution badges */
@@ -2389,6 +2430,14 @@
                 <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
               </div>
             </div>
+            <div class="fp-group">
+              <span class="fp-label">Approval</span>
+              <select id="approval-filter" class="filter-select">
+                <option value="all">All Root Causes</option>
+                <option value="approved">Approved</option>
+                <option value="not_approved">Not Approved</option>
+              </select>
+            </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
                 <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
@@ -2494,6 +2543,7 @@
         allMetrics: [],
         selectedMetric: null,
         itemFilter: 'all',
+        approvalFilter: 'all',
         sortBy: 'index',
         page: 1,
         pageSize: 20,
@@ -3709,7 +3759,7 @@
               }
               html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '">' +
                 '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore, 0) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
                 '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
           }
           html += '</div></div>';
@@ -3758,6 +3808,21 @@
           const r = item.row;
           return r.item_id || String(r.index);
         }));
+        const anyAssignedOverall = rows.some(row => {
+          const md = row.item_metadata || {};
+          return !!String(md.root_cause || '').trim();
+        });
+        const filteredFailedCount = filteredItems.filter(item => {
+          const row = item.row;
+          const status = row.status || '';
+          if (status === 'error') return true;
+          const metric = state.selectedMetric;
+          const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
+          if (mIdx < 0) return false;
+          const score = window.QymMetrics.parseScoreValue((row.metric_values || [])[mIdx]);
+          const threshold = state.metricIsBoolean[metric] ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+          return score !== null && score < threshold;
+        }).length;
 
         // Build hierarchical root cause categories
         const rcCategories = {};
@@ -3781,10 +3846,18 @@
 
         // Empty state if no root cause data
         if (catStats.length === 0) {
+          const emptyMsg = anyAssignedOverall
+            ? (filteredFailedCount === 0
+                ? 'The current filtered items are all passing, so there are no root causes to summarize.'
+                : 'No root causes appear in the current filtered items. Adjust filters to view failure patterns.')
+            : 'No root causes assigned yet. Run Auto-Analyze to identify failure patterns.';
+          const autoAnalyzeHtml = anyAssignedOverall
+            ? ''
+            : '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>';
           section.innerHTML = '<h3 class="section-title">Root Cause Analysis</h3>' +
             '<div class="comparison-stats"><div style="padding:32px 24px;text-align:center;">' +
-              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">No root causes assigned yet. Run Auto-Analyze to identify failure patterns.</div>' +
-              '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>' +
+              '<div style="color:var(--text-muted);font-size:var(--font-sm);margin-bottom:12px;">' + escapeHtml(emptyMsg) + '</div>' +
+              autoAnalyzeHtml +
             '</div></div>';
           var aaBtn0 = section.querySelector('#auto-analyze-btn');
           if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
@@ -3938,6 +4011,13 @@
             const matchesNone = wantNone && !rcVal;
             if (!matchesNamed && !matchesNone) continue;
           }
+          if (state.approvalFilter !== 'all') {
+            const hasRootCause = !!String(md.root_cause || '').trim();
+            const reviewStatus = String(row.review_correction_status || '').toLowerCase();
+            if (!hasRootCause) continue;
+            if (state.approvalFilter === 'approved' && reviewStatus !== 'approved') continue;
+            if (state.approvalFilter === 'not_approved' && reviewStatus === 'approved') continue;
+          }
 
           // Score for this metric
           let score = null;
@@ -3986,17 +4066,39 @@
       }
 
       var _breakdownTimer = null;
-      function scheduleBreakdownRender() {
+      function getScrollHost() {
+        return document.querySelector('.run-container');
+      }
+
+      function getItemsGridTop() {
+        const grid = el('items-grid');
+        return grid ? grid.getBoundingClientRect().top : null;
+      }
+
+      function restoreItemsGridTop(anchorTop) {
+        const host = getScrollHost();
+        const grid = el('items-grid');
+        if (!host || !grid || anchorTop == null) return;
+        const currentTop = grid.getBoundingClientRect().top;
+        host.scrollTop += currentTop - anchorTop;
+      }
+
+      function scheduleBreakdownRender(preserveAnchor = false) {
+        const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         clearTimeout(_breakdownTimer);
         _breakdownTimer = setTimeout(function () {
           renderMetadataBreakdown();
           renderRootCauseSection();
+          if (anchorTop != null) {
+            requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          }
         }, 80);
       }
 
       function renderItems(scrollToTop) {
+        const anchorTop = scrollToTop ? null : getItemsGridTop();
         // Keep Performance by Category in sync with the current filters (debounced)
-        scheduleBreakdownRender();
+        scheduleBreakdownRender(!scrollToTop);
 
         const container = el('items-grid');
         const paginationEl = el('pagination');
@@ -4018,6 +4120,7 @@
         if (items.length === 0) {
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
           paginationEl.innerHTML = '';
+          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
           return;
         }
 
@@ -4091,6 +4194,7 @@
           const rowRcNote = row.item_metadata?.root_cause_note || '';
           const rowSol = row.item_metadata?.solution || '';
           const rowSolNote = row.item_metadata?.solution_note || '';
+          const reviewCorrectionId = row.review_correction_id;
           const reviewStatus = row.review_correction_status || '';
 
           // Build root cause group (detail + category badges + shared feedback)
@@ -4157,7 +4261,12 @@
             }
 
             // Combine all badge groups + feedback
-            var reviewStatusHtml = reviewStatus === 'approved' ? '<div class="rc-status-pill approved">Approved</div>' : '';
+            var reviewStatusHtml = '';
+            if (reviewStatus === 'approved') {
+              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill approved">Approved</div></div>';
+            } else if (reviewStatus === 'pending' && reviewCorrectionId) {
+              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill pending">Pending Review</div><button class="rc-approve-btn" data-approve-correction="' + escapeAttr(String(reviewCorrectionId)) + '" data-approve-item="' + escapeAttr(itemId) + '">\u2713 Approve</button></div>';
+            }
             var solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
             rootCauseHtml = '<div class="rc-sol-row">' +
               reviewStatusHtml +
@@ -4243,7 +4352,11 @@
         el('prev-page').onclick = () => { state.page--; renderItems(true); };
         el('next-page').onclick = () => { state.page++; renderItems(true); };
 
-        if (scrollToTop) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (scrollToTop) {
+          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (anchorTop != null) {
+          requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+        }
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();
@@ -4370,6 +4483,35 @@
               }
               if (ev.key === 'Escape') { renderItems(); }
             });
+          });
+        });
+        document.querySelectorAll('[data-approve-correction]').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const correctionId = btn.dataset.approveCorrection;
+            const itemId = btn.dataset.approveItem;
+            if (!correctionId || !itemId) return;
+            btn.disabled = true;
+            try {
+              const res = await fetch(apiUrl('api/corrections/' + correctionId + '/approve'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comment: '' }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok || data.detail || data.error) {
+                console.error('Failed to approve correction:', data.detail || data.error);
+                btn.disabled = false;
+                return;
+              }
+              const rows = state.snapshot.rows || [];
+              const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+              if (row) row.review_correction_status = 'approved';
+              renderItems();
+            } catch (err) {
+              console.error('Error approving correction:', err);
+              btn.disabled = false;
+            }
           });
         });
       }
@@ -5064,6 +5206,7 @@
       function countActiveFilters() {
         let n = 0;
         if (state.itemFilter !== 'all') n++;
+        if (state.approvalFilter !== 'all') n++;
         if (state.sortBy !== 'index') n++;
         if (state.searchQuery) n++;
         if (state.complexityFilter !== null) n++;
@@ -5084,6 +5227,7 @@
 
       function clearAllFilters() {
         state.itemFilter = 'all';
+        state.approvalFilter = 'all';
         state.sortBy = 'index';
         state.searchQuery = '';
         state.complexityFilter = null;
@@ -5094,6 +5238,7 @@
         state.latencyDistFilter = null;
         state.page = 1;
         el('item-filter').value = 'all';
+        el('approval-filter').value = 'all';
         el('sort-select').value = 'index';
         el('items-search').value = '';
         syncMultiselectUI('complexity');
@@ -5108,6 +5253,12 @@
 
       el('item-filter').addEventListener('change', (e) => {
         state.itemFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('approval-filter').addEventListener('change', (e) => {
+        state.approvalFilter = e.target.value;
         state.page = 1;
         renderItems();
       });

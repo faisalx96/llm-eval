@@ -106,6 +106,7 @@ def get_few_shot_examples(
                 ReviewCorrection.task == task,
                 ReviewCorrection.id.in_(correction_ids),
                 ReviewCorrection.status == CorrectionStatus.APPROVED,
+                ReviewCorrection.is_active.is_(True),
             )
             .order_by(ReviewCorrection.created_at.desc())
             .all()
@@ -115,6 +116,7 @@ def get_few_shot_examples(
         .filter(
             ReviewCorrection.task == task,
             ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc())
         .limit(limit)
