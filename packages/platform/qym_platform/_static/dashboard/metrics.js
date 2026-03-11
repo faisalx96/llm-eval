@@ -281,9 +281,11 @@ function formatLatency(ms) {
  * @returns {string} CSS class name
  */
 function getScoreColorClass(score) {
-  if (score >= 0.8) return 'score-high';
-  if (score >= 0.5) return 'score-medium';
-  return 'score-low';
+  if (score >= 0.9) return 'score-5';
+  if (score >= 0.75) return 'score-4';
+  if (score >= 0.6) return 'score-3';
+  if (score >= 0.4) return 'score-2';
+  return 'score-1';
 }
 
 /**
@@ -312,6 +314,91 @@ function getMetricTooltips(K, isBoolean, threshold) {
   };
 }
 
+/**
+ * Detect the type of a metric from its actual values across rows.
+ *
+ * Types:
+ *   'boolean'  — all values are exactly 0 or 1  (display as %)
+ *   'score'    — all values in [0, 1] range      (display as %)
+ *   'numeric'  — any value > 1 or < 0            (display as raw number)
+ *
+ * @param {Array} rows  - Snapshot rows
+ * @param {number} metricIdx - Index in metric_values
+ * @returns {'boolean'|'score'|'numeric'}
+ */
+function detectMetricType(rows, metricIdx) {
+  let hasNonBinary = false;
+  let hasOutOfRange = false;
+  let count = 0;
+
+  for (const row of rows) {
+    const { score } = getRowScore(row, metricIdx);
+    if (score === null) continue;
+    count++;
+    if (score !== 0 && score !== 1) hasNonBinary = true;
+    if (score > 1 || score < 0) { hasOutOfRange = true; break; }
+  }
+
+  if (count === 0) return 'score';
+  if (hasOutOfRange) return 'numeric';
+  if (!hasNonBinary) return 'boolean';
+  return 'score';
+}
+
+/**
+ * Detect metric type from a pre-computed average value.
+ * Used when only summary data is available (e.g. dashboard list).
+ * @param {number} avgValue
+ * @returns {'score'|'numeric'}
+ */
+function detectMetricTypeFromAvg(avgValue) {
+  if (avgValue === null || avgValue === undefined || isNaN(avgValue)) return 'score';
+  if (avgValue > 1 || avgValue < 0) return 'numeric';
+  return 'score';
+}
+
+/**
+ * Format a metric value according to its type.
+ * @param {number} value
+ * @param {'boolean'|'score'|'numeric'} metricType
+ * @param {number} [decimals=1]
+ * @returns {string}
+ */
+function formatMetricValue(value, metricType, decimals) {
+  if (value === undefined || value === null || isNaN(value)) return '\u2014';
+  if (metricType === 'numeric') {
+    return formatNumericValue(value);
+  }
+  return formatPercent(value, decimals);
+}
+
+/**
+ * Format a raw numeric value with appropriate precision and abbreviation.
+ * @param {number} value
+ * @returns {string}
+ */
+function formatNumericValue(value) {
+  if (value === undefined || value === null || isNaN(value)) return '\u2014';
+  const abs = Math.abs(value);
+  if (abs >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+  if (abs >= 10000) return (value / 1000).toFixed(1) + 'K';
+  if (abs >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (Number.isInteger(value)) return value.toString();
+  return value.toFixed(1);
+}
+
+/**
+ * Get CSS color class for a metric value, respecting its type.
+ * Numeric metrics get no color class (they have no intrinsic good/bad scale).
+ * @param {number} value
+ * @param {'boolean'|'score'|'numeric'} metricType
+ * @returns {string}
+ */
+function getMetricColorClass(value, metricType) {
+  if (metricType === 'numeric') return '';
+  return getScoreColorClass(value);
+}
+
 // Export for use in other modules (if using ES modules)
 if (typeof window !== 'undefined') {
   window.QymMetrics = {
@@ -321,10 +408,16 @@ if (typeof window !== 'undefined') {
     parseScoreValue,
     // Metrics calculation
     calculateItemLevelMetrics,
+    // Type detection
+    detectMetricType,
+    detectMetricTypeFromAvg,
     // Formatting utilities
     formatPercent,
+    formatMetricValue,
+    formatNumericValue,
     formatLatency,
     getScoreColorClass,
+    getMetricColorClass,
     getMetricTooltips
   };
 }

@@ -10,7 +10,8 @@ class EvaluatorConfig(BaseModel):
     task_name: Optional[str] = None  # #15: Override the auto-derived task name
     max_concurrency: int = Field(default=10, ge=1)
     max_metric_concurrency: int = Field(default=1, ge=1)
-    timeout: float = Field(default=30.0, gt=0)
+    timeout: Optional[float] = Field(default=None, gt=0)
+    max_retries: int = Field(default=0, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     model: Optional[str] = None
     model_full: Optional[str] = None  # Full provider-prefixed ID (e.g. qwen/qwen3.5-397b-a17b) for API calls

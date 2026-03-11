@@ -55,3 +55,73 @@ def test_csv_dataset_missing_required_column_has_clear_error(tmp_path):
     assert "column=input" in str(exc.value)
 
 
+def test_csv_dataset_explicit_id_column_preserves_source_ids(tmp_path):
+    p = tmp_path / "ids.csv"
+    p.write_text(
+        "case_id,input,expected_output\n"
+        "alpha,What is 2+2?,4\n"
+        "beta,What is 3+3?,6\n",
+        encoding="utf-8",
+    )
+
+    items = CsvDataset(p, id_col="case_id").get_items()
+
+    assert [item.id for item in items] == ["alpha", "beta"]
+
+
+def test_csv_dataset_generated_ids_are_stable_across_reloads(tmp_path):
+    p = tmp_path / "stable.csv"
+    p.write_text(
+        "input,expected_output,domain\n"
+        "What is 2+2?,4,math\n"
+        "What is 3+3?,6,math\n",
+        encoding="utf-8",
+    )
+
+    ids_first = [item.id for item in CsvDataset(p, metadata_cols=["domain"]).get_items()]
+    ids_second = [item.id for item in CsvDataset(p, metadata_cols=["domain"]).get_items()]
+
+    assert ids_first == ids_second
+    assert all(item_id.startswith("csv_") for item_id in ids_first)
+
+
+def test_csv_dataset_generated_ids_survive_row_reordering(tmp_path):
+    p1 = tmp_path / "ordered.csv"
+    p1.write_text(
+        "input,expected_output,domain\n"
+        "What is 2+2?,4,math\n"
+        "Capital of France?,Paris,geography\n",
+        encoding="utf-8",
+    )
+    p2 = tmp_path / "reordered.csv"
+    p2.write_text(
+        "input,expected_output,domain\n"
+        "Capital of France?,Paris,geography\n"
+        "What is 2+2?,4,math\n",
+        encoding="utf-8",
+    )
+
+    items1 = CsvDataset(p1, metadata_cols=["domain"]).get_items()
+    items2 = CsvDataset(p2, metadata_cols=["domain"]).get_items()
+
+    ids1 = {item.input: item.id for item in items1}
+    ids2 = {item.input: item.id for item in items2}
+    assert ids1 == ids2
+
+
+def test_csv_dataset_generated_ids_disambiguate_duplicates(tmp_path):
+    p = tmp_path / "dupes.csv"
+    p.write_text(
+        "input,expected_output\n"
+        "What is 2+2?,4\n"
+        "What is 2+2?,4\n",
+        encoding="utf-8",
+    )
+
+    ids = [item.id for item in CsvDataset(p).get_items()]
+
+    assert len(ids) == 2
+    assert ids[0] != ids[1]
+    assert ids[0].startswith("csv_")
+    assert ids[1].startswith("csv_")
+

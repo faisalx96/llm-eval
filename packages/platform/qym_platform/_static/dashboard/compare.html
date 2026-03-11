@@ -2752,6 +2752,7 @@
       <!-- Side-by-side items -->
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Comparison</h3>
+        <div class="compare-empty" id="alignment-warning" style="display:none;margin-bottom:var(--space-lg);"></div>
 
         <div class="filter-panel">
           <div class="fp-filter-row">
@@ -2966,9 +2967,39 @@
         rootCauseValues: [],          // unique root cause values found in data
         rcCountMode: 'total',         // 'total' or 'unique' for root cause breakdown cards
         sortBy: 'index',              // index, score_asc, score_desc, latency_asc, latency_desc
+        compareAlignmentStatus: 'aligned',
+        compareAlignmentIssues: [],
+        compareItemIds: [],
       };
 
       const el = (id) => document.getElementById(id);
+
+      function getRowCompareId(row) {
+        return row?.compare_item_id || null;
+      }
+
+      function findRowByCompareId(rows, compareItemId) {
+        return (rows || []).find(r => getRowCompareId(r) === compareItemId) || null;
+      }
+
+      function canRenderItemComparison() {
+        return state.compareAlignmentStatus === 'aligned';
+      }
+
+      function getAlignmentWarningHtml(titleText) {
+        const issueText = state.compareAlignmentIssues.map(run => {
+          const details = (run.issues || []).length ? ` (${run.issues.join('; ')})` : '';
+          return `<div><strong>${escapeHtml(run.runName)}</strong>${escapeHtml(details)}</div>`;
+        }).join('');
+        return `
+          <div style="font-size: 32px; margin-bottom: var(--space-sm);">!</div>
+          <h2 style="margin-bottom: var(--space-sm);">${escapeHtml(titleText)}</h2>
+          <p style="max-width: 720px; margin: 0 auto var(--space-md);">
+            These runs do not share reliable item identities, so strict item-level comparison is disabled.
+          </p>
+          ${issueText ? `<div style="text-align:left;display:inline-block;">${issueText}</div>` : ''}
+        `;
+      }
 
       function getSuccessClass(rate) {
         if (rate >= 0.9) return 'score-5';
@@ -3095,6 +3126,26 @@
       }
 
       function processRuns() {
+        const unalignableRuns = [];
+        const compareItemIds = new Set();
+        for (const run of state.runs) {
+          const runInfo = run.run || {};
+          if ((runInfo.compare_alignment_status || 'aligned') !== 'aligned') {
+            unalignableRuns.push({
+              runName: runInfo.run_name || 'Unnamed run',
+              issues: runInfo.compare_alignment_issues || [],
+            });
+          }
+          const rows = run.snapshot?.rows || [];
+          for (const row of rows) {
+            const compareItemId = getRowCompareId(row);
+            if (compareItemId) compareItemIds.add(compareItemId);
+          }
+        }
+        state.compareAlignmentStatus = unalignableRuns.length > 0 ? 'unalignable' : 'aligned';
+        state.compareAlignmentIssues = unalignableRuns;
+        state.compareItemIds = Array.from(compareItemIds);
+
         // Collect all unique metrics
         const metricsSet = new Set();
         for (const run of state.runs) {
@@ -3124,9 +3175,8 @@
         const prKSpan = el('pass-rate-k');
         if (prKSpan) prKSpan.textContent = K;
 
-        // Calculate total items (use max across runs)
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
-        el('total-items').textContent = maxItems;
+        el('total-items').textContent = state.compareItemIds.length || maxItems;
 
         // Detect metric types (boolean vs continuous)
         detectMetricTypes();
@@ -3301,7 +3351,8 @@
         }
 
         const isBoolean = state.metricIsBoolean[metric];
-        if (isBoolean) {
+        const isNumeric = state.metricTypes?.[metric] === 'numeric';
+        if (isBoolean || isNumeric) {
           thresholdControl.style.display = 'none';
         } else {
           thresholdControl.style.display = 'flex';
@@ -3312,35 +3363,30 @@
         }
       }
 
-      // Detect if a metric is boolean (all scores are 0 or 1) and initialize threshold
+      // Detect if a metric is boolean/score/numeric and initialize threshold
       function detectMetricTypes() {
+        state.metricTypes = {};
         for (const metricName of state.allMetrics) {
-          let allBoolean = true;
-
+          // Collect all rows across all runs for this metric
+          let allRows = [];
+          let metricIdx = -1;
           for (const run of state.runs) {
             const snap = run.snapshot || {};
             const rows = snap.rows || [];
             const metricNames = snap.metric_names || run.run?.metric_names || [];
-            const metricIdx = metricNames.indexOf(metricName);
-
-            if (metricIdx < 0) continue;
-
-            for (const row of rows) {
-              const v = (row.metric_values || [])[metricIdx];
-              const n = window.QymMetrics.parseScoreValue(v);
-              if (n !== null) {
-                // Check if score is NOT 0 or 1 (with tolerance)
-                if (Math.abs(n) > 0.0001 && Math.abs(n - 1) > 0.0001) {
-                  allBoolean = false;
-                  break;
-                }
-              }
+            const idx = metricNames.indexOf(metricName);
+            if (idx >= 0) {
+              metricIdx = idx;
+              allRows = allRows.concat(rows.map(row => {
+                // Remap metric_values so the target metric is at index 0
+                return { ...row, metric_values: [row.metric_values?.[idx]] };
+              }));
             }
-            if (!allBoolean) break;
           }
 
-          state.metricIsBoolean[metricName] = allBoolean;
-          // Default threshold: 80% for continuous metrics
+          const mType = window.QymMetrics.detectMetricType(allRows, 0);
+          state.metricTypes[metricName] = mType;
+          state.metricIsBoolean[metricName] = (mType === 'boolean');
           if (!state.metricThresholds[metricName]) {
             state.metricThresholds[metricName] = 0.8;
           }
@@ -3376,17 +3422,7 @@
           itemWinners: [], // For each item, which run won
         };
 
-        // Collect all unique item_ids across all runs for proper alignment
-        const allItemIds = new Set();
-        for (const run of state.runs) {
-          const rows = run.snapshot?.rows || [];
-          for (const row of rows) {
-            // Use item_id if available, otherwise fallback to index
-            const itemId = row.item_id || String(row.index);
-            allItemIds.add(itemId);
-          }
-        }
-        const itemIdList = Array.from(allItemIds);
+        const itemIdList = state.compareItemIds || [];
 
         // Create a map from item_id to array index for itemWinners tracking
         state.itemIdToIndex = {};
@@ -3443,8 +3479,7 @@
           const scoresWithStatus = state.runs.map((run) => {
             const snap = run.snapshot || {};
             const rows = snap.rows || [];
-            // Match by item_id, fallback to index for legacy data
-            const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+            const row = findRowByCompareId(rows, itemId);
             if (!row) return { score: null, failed: false };
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return { score: null, failed: false };
@@ -3548,6 +3583,32 @@
         // Calculate overall averages across all runs
         const validScoresAll = stats.avgScores.filter(s => s > 0);
         const validLatenciesAll = stats.avgLatencies.filter(l => l > 0);
+
+        // Min/total across all individual scores (for numeric metrics)
+        let allScoresMin = Infinity, allScoresMax = -Infinity, allScoresTotal = 0, allScoresCount = 0;
+        for (const run of state.runs) {
+          const snap = run.snapshot || {};
+          const rows = snap.rows || [];
+          const mIdx = (function() {
+            const mNames = snap.metric_names || run.run?.metric_names || [];
+            return mNames.indexOf(metricName);
+          })();
+          if (mIdx < 0) continue;
+          for (const row of rows) {
+            const { score } = window.QymMetrics.getRowScore(row, mIdx);
+            if (score !== null) {
+              if (score < allScoresMin) allScoresMin = score;
+              if (score > allScoresMax) allScoresMax = score;
+              allScoresTotal += score;
+              allScoresCount++;
+            }
+          }
+        }
+        stats.allScoresMin = allScoresCount > 0 ? allScoresMin : 0;
+        stats.allScoresMax = allScoresCount > 0 ? allScoresMax : 0;
+        stats.allScoresTotal = allScoresTotal;
+        stats.allScoresCount = allScoresCount;
+
         stats.overallAvgScore = validScoresAll.length > 0
           ? validScoresAll.reduce((a, b) => a + b, 0) / validScoresAll.length
           : 0;
@@ -3665,6 +3726,13 @@
 
         const selectedMetric = state.selectedOverviewMetric || state.allMetrics[0];
         if (!selectedMetric) return;
+        if (!canRenderItemComparison()) {
+          existingSection.innerHTML = `
+            <h3 class="section-title">Performance by Category</h3>
+            <div class="compare-empty" style="display:flex;">${getAlignmentWarningHtml('Category Breakdown Unavailable')}</div>
+          `;
+          return;
+        }
 
         const isBoolean = state.metricIsBoolean[selectedMetric];
         const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
@@ -3687,7 +3755,8 @@
             const mIdx = metricNames.indexOf(selectedMetric);
 
             for (const row of rows) {
-              const itemId = row.item_id || String(row.index);
+              const itemId = getRowCompareId(row);
+              if (!itemId) continue;
               if (!filteredItemIds.has(itemId)) continue;
 
               const md = row.item_metadata || {};
@@ -3790,17 +3859,21 @@
             const passAtKStr = formatPercent(g.passAtK, 0);
             const passAtKClass = scoreColorClass(g.passAtK);
 
+            const bdMType = state.metricTypes?.[selectedMetric] || 'score';
+            const bdColorCls = window.QymMetrics.getMetricColorClass(g.avgScore, bdMType);
+            const bdDisplay = window.QymMetrics.formatMetricValue(g.avgScore, bdMType, 0);
+            const bdIsNumeric = bdMType === 'numeric';
             html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
               <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
               <div class="breakdown-card-scores">
                 <div class="score-col">
-                  <span class="score-col-label">Avg@${K}</span>
-                  <span class="score-col-value ${scoreColorClass(g.avgScore)}">${formatPercent(g.avgScore, 0)}</span>
+                  <span class="score-col-label">${bdIsNumeric ? 'Avg' : `Avg@${K}`}</span>
+                  <span class="score-col-value ${bdColorCls}">${bdDisplay}</span>
                 </div>
-                <div class="score-col">
+                ${bdIsNumeric ? '' : `<div class="score-col">
                   <span class="score-col-label">Pass@${K}</span>
                   <span class="score-col-value ${passAtKClass}">${passAtKStr}</span>
-                </div>
+                </div>`}
                 <div class="score-col" style="margin-left:auto;">
                   <span class="score-col-label">Items</span>
                   <span class="score-col-value" style="color:var(--text-muted);">${g.itemCount}</span>
@@ -3808,7 +3881,7 @@
               </div>
               <div class="breakdown-card-details">
                 <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                <span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>
+                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>`}
               </div>
             </div>`;
           }
@@ -3864,6 +3937,10 @@
       function renderComparisonStats() {
         const container = el('stats-grid');
         if (!container || !state.comparisonStats || !state.selectedOverviewMetric) return;
+        if (!canRenderItemComparison()) {
+          container.innerHTML = `<div class="compare-empty" style="display:flex;grid-column:1/-1;">${getAlignmentWarningHtml('Head-to-Head Stats Unavailable')}</div>`;
+          return;
+        }
 
         const stats = state.comparisonStats[state.selectedOverviewMetric];
         if (!stats) return;
@@ -3899,6 +3976,8 @@
 
         // Tooltips for each metric - adjust based on boolean vs continuous
         const isBoolean = state.metricIsBoolean[state.selectedOverviewMetric];
+        const isNumeric = state.metricTypes?.[state.selectedOverviewMetric] === 'numeric';
+        const overviewMType = isNumeric ? 'numeric' : (isBoolean ? 'boolean' : 'score');
         const threshold = Math.round((state.metricThresholds[state.selectedOverviewMetric] ?? 0.8) * 100);
         const correctDef = isBoolean ? '100%' : `≥${threshold}%`;
 
@@ -3909,11 +3988,15 @@
           passHatK: isBoolean
             ? `Percentage of items where <strong>all ${K} runs</strong> achieved a perfect score (100%). Measures consistency - do all runs reliably solve this item?`
             : `Percentage of items where <strong>all ${K} runs</strong> scored <strong>≥${threshold}%</strong>. Adjust the threshold above to change what counts as "correct".`,
-          maxAtK: `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
+          maxAtK: isNumeric
+            ? `Average of the <strong>best value</strong> across all ${K} runs for each item.`
+            : `Average of the <strong>best score</strong> across all ${K} runs for each item. Shows the upper bound of what your runs can achieve.`,
           consistency: `Measures how often runs <strong>agree on pass/fail</strong> across ${K} runs. <strong>100%</strong> = all runs agree, <strong>0%</strong> = 50/50 split.`,
           reliability: `When an item <strong>CAN be solved</strong>, how often is it? Only includes items with <strong>≥1 passing run</strong>.`,
           failedCount: `Number of runs that <strong>threw an error</strong> (across all items). Errors are scored as 0%.`,
-          avgScore: `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
+          avgScore: isNumeric
+            ? `The <strong>mean value</strong> across all items and all runs.`
+            : `The <strong>mean score</strong> across all items and all runs. A general measure of overall performance.`,
           avgLatency: `The <strong>mean response time</strong> across all items and all runs. Lower is better.`,
           winnerBreakdown: `Shows which run "won" (scored highest) for each item. Ties occur when multiple runs share the top score. Helps identify which run performs best most often.`,
           correctDist: isBoolean
@@ -3921,7 +4004,47 @@
             : `Distribution showing how many runs scored ≥${threshold}% for each item. Adjust the threshold above to change what counts as "correct".`
         };
 
-        container.innerHTML = `
+        // For numeric metrics, show avg/max instead of pass@K/consistency
+        const avgScoreDisplay = window.QymMetrics.formatMetricValue(stats.overallAvgScore, overviewMType);
+        const avgScoreColor = window.QymMetrics.getMetricColorClass(stats.overallAvgScore, overviewMType);
+        const maxAtKVal = stats.totalCompared > 0 ? stats.maxAtK / stats.totalCompared : 0;
+        const maxAtKDisplay = window.QymMetrics.formatMetricValue(maxAtKVal, overviewMType);
+        const maxAtKColor = window.QymMetrics.getMetricColorClass(maxAtKVal, overviewMType);
+
+        const fmtN = window.QymMetrics.formatNumericValue;
+        const statsRowHtml = isNumeric ? `
+          <div class="stats-row">
+            <div class="stat-box">
+              <div class="stat-title">Min ${infoIcon('The lowest individual value across all items and runs.')}</div>
+              <div class="stat-main">${fmtN(stats.allScoresMin)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Avg ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main">${avgScoreDisplay}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Max ${infoIcon('The highest individual value across all items and runs.')}</div>
+              <div class="stat-main">${fmtN(stats.allScoresMax)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
+              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.allScoresTotal)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
+            </div>
+          </div>
+        ` : `
           <div class="stats-row">
             <div class="stat-box">
               <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
@@ -3967,6 +4090,10 @@
               <div class="stat-main ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
             </div>
           </div>
+        `;
+
+        container.innerHTML = `
+          ${statsRowHtml}
 
           <div class="stat-box wide">
             <div class="stat-title">Winner Breakdown ${infoIcon(tooltips.winnerBreakdown)}</div>
@@ -3980,12 +4107,12 @@
             </div>
           </div>
 
-          <div class="stat-box wide">
+          ${isNumeric ? '' : `<div class="stat-box wide">
             <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
             <div class="distribution-bar">
               ${buildDistributionBar(stats)}
             </div>
-          </div>
+          </div>`}
         `;
 
         // #11: Wire click handlers on winner breakdown segments
@@ -4142,12 +4269,14 @@
 
         // Render rows - metrics first, then latency
         const metricRows = state.allMetrics.map(metric => {
+          const mType = state.metricTypes?.[metric] || 'score';
           const cells = runMetricAvgs.map(avgs => {
             const val = avgs[metric];
             if (val === null) return '<td class="metric-val">—</td>';
             const isBest = val === bestValues[metric] && state.runs.length > 1;
-            const cls = getSuccessClass(val);
-            return `<td class="metric-val ${cls} ${isBest ? 'best' : ''}">${formatPercent(val)}</td>`;
+            const cls = window.QymMetrics.getMetricColorClass(val, mType);
+            const display = window.QymMetrics.formatMetricValue(val, mType);
+            return `<td class="metric-val ${cls} ${isBest ? 'best' : ''}">${display}</td>`;
           }).join('');
 
           return `
@@ -4234,7 +4363,8 @@
         for (const run of state.runs) {
           const rows = run.snapshot?.rows || [];
           for (const row of rows) {
-            const itemId = row.item_id || String(row.index);
+            const itemId = getRowCompareId(row);
+            if (!itemId) continue;
             if (!filteredItemIds.has(itemId)) continue;
             const md = row.item_metadata || {};
             const rc = md.root_cause || '';
@@ -4435,6 +4565,10 @@
       function renderRootCauseSection() {
         const section = el('root-cause-section');
         if (!section) return;
+        if (!canRenderItemComparison()) {
+          section.innerHTML = `<div class="compare-empty" style="display:flex;margin-bottom:var(--space-xl);">${getAlignmentWarningHtml('Root Cause Comparison Unavailable')}</div>`;
+          return;
+        }
 
         const filteredItems = getFilteredItems();
         const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
@@ -4443,7 +4577,7 @@
           return !!String(md.root_cause || '').trim();
         }));
         const filteredFailedCount = filteredItems.filter(item => {
-          return (item.rows || []).some((row, runIdx) => {
+          return (item.rowData || []).some((row, runIdx) => {
             if (!row) return false;
             if ((row.status || '') === 'error') return true;
             const run = state.runs[runIdx];
@@ -4462,7 +4596,8 @@
         for (const run of state.runs) {
           const rows = run.snapshot?.rows || [];
           for (const row of rows) {
-            const itemId = row.item_id || String(row.index);
+            const itemId = getRowCompareId(row);
+            if (!itemId) continue;
             if (!filteredItemIds.has(itemId)) continue;
             const md = row.item_metadata || {};
             const rcRaw = String(md.root_cause || '');
@@ -4599,21 +4734,15 @@
       }
 
       function getFilteredItems() {
+        if (!canRenderItemComparison()) {
+          return [];
+        }
         // Build aligned item list across runs using item_id
         const items = [];
         const selectedMetric = state.selectedItemsMetric;
         const stats = selectedMetric ? state.comparisonStats[selectedMetric] : null;
 
-        // Collect all unique item_ids across all runs for proper alignment
-        const allItemIds = new Set();
-        for (const run of state.runs) {
-          const rows = run.snapshot?.rows || [];
-          for (const row of rows) {
-            const itemId = row.item_id || String(row.index);
-            allItemIds.add(itemId);
-          }
-        }
-        const itemIdList = Array.from(allItemIds);
+        const itemIdList = state.compareItemIds || [];
 
         // Helper to get metric index for a run
         function getMetricIndex(run) {
@@ -4624,8 +4753,7 @@
         for (const itemId of itemIdList) {
           const rowData = state.runs.map(run => {
             const rows = run.snapshot?.rows || [];
-            // Match by item_id, fallback to index for legacy data
-            return rows.find(r => (r.item_id || String(r.index)) === itemId) || null;
+            return findRowByCompareId(rows, itemId);
           });
 
           // Get scores for this item based on selected metric (use centralized error handling)
@@ -4837,6 +4965,22 @@
         const container = el('items-grid');
         const paginationEl = el('pagination');
         const filterCountEl = el('filter-count');
+        const warningEl = el('alignment-warning');
+        const filterPanel = document.querySelector('.items-comparison .filter-panel');
+        if (!canRenderItemComparison()) {
+          if (warningEl) {
+            warningEl.innerHTML = getAlignmentWarningHtml('Item-by-Item Comparison Unavailable');
+            warningEl.style.display = 'flex';
+          }
+          if (filterPanel) filterPanel.style.display = 'none';
+          if (filterCountEl) filterCountEl.textContent = '';
+          container.innerHTML = '';
+          paginationEl.innerHTML = '';
+          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          return;
+        }
+        if (warningEl) warningEl.style.display = 'none';
+        if (filterPanel) filterPanel.style.display = '';
         const items = getFilteredItems();
 
         // Update filter count & clear button
@@ -4913,7 +5057,9 @@
               const v = window.QymMetrics.parseScoreValue(score);
               if (v === null) return '';
 
-              const cls = getSuccessClass(v);
+              const itemMType = state.metricTypes?.[name] || 'score';
+              const cls = window.QymMetrics.getMetricColorClass(v, itemMType);
+              const display = window.QymMetrics.formatMetricValue(v, itemMType);
               const isSelected = name === selectedMetric;
               const meta = metricMeta[name] || {};
               const editBtn = `<button class="metric-edit-open" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="Edit ${escapeAttr(name)}" title="Edit">✎</button>`;
@@ -4924,7 +5070,7 @@
               return `<div class="metric-score-row ${isSelected ? 'highlighted' : ''}">
                 <span class="metric-score-name">${escapeHtml(name)}</span>
                 <span class="metric-score-meta">
-                  <span class="metric-score-value ${cls}">${formatPercent(v)}</span>
+                  <span class="metric-score-value ${cls}">${display}</span>
                   ${editBtn}
                   ${editedBadge}
                 </span>
@@ -4999,11 +5145,12 @@
 
             const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
 
-            // Pass/fail badge based on selected metric threshold
+            // Pass/fail badge based on selected metric threshold (skip for numeric metrics)
             let passfailBadge = '';
+            const pfIsNumeric = state.metricTypes?.[selectedMetric] === 'numeric';
             if (status === 'error') {
               passfailBadge = '<span class="passfail-badge fail">Fail</span>';
-            } else if (selectedMetric) {
+            } else if (selectedMetric && !pfIsNumeric) {
               const mIdx = metricNames.indexOf(selectedMetric);
               if (mIdx !== -1) {
                 const pfScore = metricVals[mIdx];
@@ -5497,7 +5644,7 @@
             const runIdx = parseInt(trigger.dataset.feedbackRunIdx, 10);
             const run = state.runs[runIdx];
             const rows = run?.snapshot?.rows || [];
-            const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+            const row = findRowByCompareId(rows, itemId);
             const currentNote = row?.item_metadata?.root_cause_note || '';
             const section = trigger.closest('.feedback-section');
             if (!section) return;
@@ -5527,17 +5674,19 @@
       async function saveFeedback(itemId, runIdx, note) {
         const runId = state.runs[runIdx]?.run?.file_path;
         if (!runId) return;
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = findRowByCompareId(rows, itemId);
+        const rawItemId = row?.item_id;
+        if (!rawItemId) return;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause_note: note, run_id: runId }),
+            body: JSON.stringify({ item_id: rawItemId, root_cause_note: note, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
-          const run = state.runs[runIdx];
-          const rows = run?.snapshot?.rows || [];
-          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
             if (note) row.item_metadata.root_cause_note = note;
@@ -5562,7 +5711,7 @@
         // Get current root cause for this specific run's item
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
-        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const row = findRowByCompareId(rows, itemId);
         const currentRC = row?.item_metadata?.root_cause || '';
 
         // Build options: predefined + any custom values already in data
@@ -5652,11 +5801,16 @@
       async function saveRootCause(itemId, runIdx, rootCause) {
         const runId = state.runs[runIdx]?.run?.file_path;
         if (!runId) return;
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = findRowByCompareId(rows, itemId);
+        const rawItemId = row?.item_id;
+        if (!rawItemId) return;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, run_id: runId }),
+            body: JSON.stringify({ item_id: rawItemId, root_cause: rootCause, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) {
@@ -5665,9 +5819,6 @@
           }
 
           // Update local state: set root_cause only on this run's item
-          const run = state.runs[runIdx];
-          const rows = run?.snapshot?.rows || [];
-          const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
             if (rootCause) {
@@ -5705,7 +5856,7 @@
         document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
-        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const row = findRowByCompareId(rows, itemId);
         const currentDetail = row?.item_metadata?.root_cause_detail || '';
 
         // Collect existing detail values across ALL runs
@@ -5808,8 +5959,9 @@
       async function saveRootCauseDetail(itemId, runIdx, detail) {
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
-        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const row = findRowByCompareId(rows, itemId);
         const runId = run?.run?.file_path;
+        const rawItemId = row?.item_id;
         const existingCategory = row?.item_metadata?.root_cause || '';
 
         function applyLocally() {
@@ -5822,11 +5974,12 @@
         }
 
         if (!runId) { applyLocally(); return; }
+        if (!rawItemId) return;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
+            body: JSON.stringify({ item_id: rawItemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
@@ -5848,7 +6001,7 @@
         document.querySelectorAll('.solution-dropdown').forEach(d => d.remove());
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
-        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const row = findRowByCompareId(rows, itemId);
         const currentSol = row?.item_metadata?.solution || '';
         const allOptions = [...SOLUTION_PRESETS];
         // Add any dynamic solution values from ALL runs
@@ -5924,15 +6077,17 @@
       async function saveSolution(itemId, runIdx, solution) {
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
-        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+        const row = findRowByCompareId(rows, itemId);
         const runId = run?.run?.file_path;
+        const rawItemId = row?.item_id;
         if (!runId) return;
+        if (!rawItemId) return;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              item_id: itemId,
+              item_id: rawItemId,
               root_cause: row?.item_metadata?.root_cause || '',
               root_cause_detail: row?.item_metadata?.root_cause_detail || '',
               solution: solution,
@@ -6368,7 +6523,7 @@
               // Count items where ANY run has no root cause (partial)
               const anyMissingRc = state.runs.some(run => {
                 const rRows = run.snapshot?.rows || [];
-                const rRow = rRows.find(r => (r.item_id || String(r.index)) === (row.item_id || String(row.index)));
+                const rRow = findRowByCompareId(rRows, getRowCompareId(row));
                 return !rRow || !rRow.item_metadata?.root_cause;
               });
               if (anyMissingRc) noRcCount++;
@@ -6786,7 +6941,7 @@
       function getCompareExportCellValue(itemId, rowData, colKey) {
         const inputRow = rowData.find(r => r);
 
-        if (colKey === 'item_id') return itemId;
+        if (colKey === 'item_id') return inputRow?.item_id || itemId;
         if (colKey === 'input') return stringify(inputRow?.input_full || inputRow?.input || '');
         if (colKey === 'expected') return stringify(inputRow?.expected_full || inputRow?.expected || '');
 

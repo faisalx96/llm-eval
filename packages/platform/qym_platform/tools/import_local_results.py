@@ -84,7 +84,7 @@ def main() -> None:
             metric_names = list(snap.get("metric_names") or [])
 
             for row in rows:
-                item_id = str(row.get("item_id") or row.get("index") or "")
+                item_id = str(row.get("item_id") or row.get("compare_item_id") or row.get("index") or "")
                 status = str(row.get("status") or "")
                 is_error = status == "error"
                 output_full = row.get("output_full") or row.get("output") or ""
@@ -140,5 +140,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 

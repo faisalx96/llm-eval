@@ -132,3 +132,84 @@ def test_dashboard_api_rebuilds_nested_langfuse_urls(tmp_path):
     assert run["langfuse_url"] == (
         "https://cloud.langfuse.com/project/project-123/datasets/dataset-123/runs/run-123"
     )
+
+
+def test_run_discovery_builds_compare_ids_from_legacy_positional_item_ids(tmp_path):
+    results_dir = tmp_path / "qym_results"
+    csv_path = (
+        results_dir
+        / "task_alpha"
+        / "provider-model"
+        / "2025-01-01"
+        / "run-250101-0101.csv"
+    )
+
+    rows = [
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000000",
+            output="ok",
+            score=1.0,
+        ),
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000001",
+            output="ok",
+            score=0.0,
+        ),
+    ]
+    _write_checkpoint_rows(csv_path, ["accuracy"], rows)
+
+    data = RunDiscovery(str(results_dir)).get_run_data(str(csv_path))
+    snapshot_rows = data["snapshot"]["rows"]
+
+    assert data["run"]["compare_alignment_status"] == "aligned"
+    assert snapshot_rows[0]["item_id"] == "row_000000"
+    assert snapshot_rows[0]["compare_item_id"].startswith("csv_")
+    assert snapshot_rows[1]["compare_item_id"].startswith("csv_")
+    assert snapshot_rows[0]["compare_item_id"] != snapshot_rows[1]["compare_item_id"]
+
+
+def test_run_discovery_compare_ids_match_reordered_legacy_rows(tmp_path):
+    results_dir = tmp_path / "qym_results"
+    csv_path_a = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-a"
+        / "2025-01-01"
+        / "run-250101-0101.csv"
+    )
+    csv_path_b = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-b"
+        / "2025-01-01"
+        / "run-250101-0202.csv"
+    )
+
+    rows_a = [
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000000",
+            output="ok",
+            score=1.0,
+        ),
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000001",
+            output="ok",
+            score=0.0,
+        ),
+    ]
+    rows_b = [rows_a[1], rows_a[0]]
+    _write_checkpoint_rows(csv_path_a, ["accuracy"], rows_a)
+    _write_checkpoint_rows(csv_path_b, ["accuracy"], rows_b)
+
+    discovery = RunDiscovery(str(results_dir))
+    data_a = discovery.get_run_data(str(csv_path_a))
+    data_b = discovery.get_run_data(str(csv_path_b))
+
+    compare_ids_a = {row["input"]: row["compare_item_id"] for row in data_a["snapshot"]["rows"]}
+    compare_ids_b = {row["input"]: row["compare_item_id"] for row in data_b["snapshot"]["rows"]}
+
+    assert compare_ids_a == compare_ids_b

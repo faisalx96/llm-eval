@@ -819,6 +819,49 @@ html {
   flex-shrink: 0;
 }
 
+/* Metric visibility dropdown */
+.mv-actions {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+}
+.mv-action-btn {
+  padding: 2px 8px;
+  font-size: var(--font-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mv-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.mv-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  cursor: pointer;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  transition: background 0.1s;
+}
+.mv-option:hover {
+  background: var(--bg-hover);
+}
+.mv-option input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--accent-primary);
+}
+.multi-select-btn.has-selection {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
 /* ═══════════════════════════════════════════════════
    COMPARE PANEL
    ═══════════════════════════════════════════════════ */
@@ -1248,6 +1291,14 @@ main {
   white-space: nowrap;
 }
 
+.chart-numeric-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
+  display: block;
+}
 .chart-latency-cell {
   width: 70px;
   text-align: right;

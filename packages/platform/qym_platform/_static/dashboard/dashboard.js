@@ -51,6 +51,7 @@
     aggregations: null,
     chartData: null,  // Aggregated data for charts
     allMetrics: [],   // All unique metric names across runs
+    visibleMetrics: null, // null = all visible; Set of visible metric names
     allModels: [],    // All unique model names
     currentUser: null,
     // Models view state (uses global filterTask/filterDataset for task+dataset)
@@ -189,6 +190,158 @@
   }
 
   // ═══════════════════════════════════════════════════
+  // METRIC VISIBILITY
+  // ═══════════════════════════════════════════════════
+
+  function getAvailableMetricsForRuns(runs) {
+    if (!Array.isArray(runs) || runs.length === 0) return [];
+
+    const available = new Set();
+    runs.forEach(run => {
+      if (Array.isArray(run.metrics)) {
+        run.metrics.forEach(metric => available.add(metric));
+      }
+      if (run.metric_averages) {
+        Object.keys(run.metric_averages).forEach(metric => available.add(metric));
+      }
+    });
+
+    const ordered = state.allMetrics.filter(metric => available.has(metric));
+    const extras = Array.from(available).filter(metric => !state.allMetrics.includes(metric)).sort();
+    return ordered.concat(extras);
+  }
+
+  function getVisibleMetrics(availableMetrics = state.allMetrics) {
+    if (!state.visibleMetrics) return availableMetrics;
+    return availableMetrics.filter(m => state.visibleMetrics.has(m));
+  }
+
+  function saveMetricVisibility() {
+    try {
+      if (!state.visibleMetrics) {
+        sessionStorage.removeItem('qym_visible_metrics');
+      } else {
+        sessionStorage.setItem('qym_visible_metrics', JSON.stringify([...state.visibleMetrics]));
+      }
+    } catch (e) {}
+  }
+
+  function loadMetricVisibility() {
+    try {
+      const saved = sessionStorage.getItem('qym_visible_metrics');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr)) {
+          const valid = arr.filter(m => state.allMetrics.includes(m));
+          if (valid.length > 0 && valid.length < state.allMetrics.length) {
+            state.visibleMetrics = new Set(valid);
+          } else {
+            state.visibleMetrics = null;
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  function populateMetricVisibility() {
+    const wrapper = el('metric-visibility-wrapper');
+    const dropdown = el('metric-visibility-dropdown');
+    const btn = el('metric-visibility-btn');
+    if (!wrapper || !dropdown || !btn) return;
+
+    if (state.allMetrics.length <= 1) {
+      wrapper.style.display = 'none';
+      return;
+    }
+    wrapper.style.display = '';
+
+    const allVisible = !state.visibleMetrics;
+    dropdown.innerHTML =
+      '<div class="mv-actions">' +
+        '<button class="mv-action-btn" id="mv-select-all">All</button>' +
+        '<button class="mv-action-btn" id="mv-select-none">None</button>' +
+      '</div>' +
+      state.allMetrics.map(m => {
+        const checked = allVisible || state.visibleMetrics.has(m) ? 'checked' : '';
+        return `<label class="mv-option"><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /> ${escapeHtml(m)}</label>`;
+      }).join('');
+
+    // Update button text
+    updateMetricVisibilityBtn();
+
+    dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        applyMetricVisibilityFromCheckboxes();
+      });
+    });
+
+    const selAll = dropdown.querySelector('#mv-select-all');
+    const selNone = dropdown.querySelector('#mv-select-none');
+    if (selAll) selAll.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.visibleMetrics = null;
+      saveMetricVisibility();
+      syncMetricVisibilityDropdownState();
+      render();
+    });
+    if (selNone) selNone.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      state.visibleMetrics = new Set();
+      saveMetricVisibility();
+      syncMetricVisibilityDropdownState();
+      render();
+    });
+  }
+
+  function syncMetricVisibilityDropdownState() {
+    const dropdown = el('metric-visibility-dropdown');
+    if (!dropdown) return;
+
+    const allVisible = !state.visibleMetrics;
+    dropdown.querySelectorAll('input[data-mv-metric]').forEach(cb => {
+      cb.checked = allVisible || state.visibleMetrics.has(cb.dataset.mvMetric);
+    });
+    updateMetricVisibilityBtn();
+  }
+
+  function updateMetricVisibilityBtn() {
+    const btn = el('metric-visibility-btn');
+    if (!btn) return;
+    if (!state.visibleMetrics) {
+      btn.textContent = 'All Metrics';
+      btn.classList.remove('has-selection');
+    } else if (state.visibleMetrics.size === 0) {
+      btn.textContent = 'No Metrics';
+      btn.classList.add('has-selection');
+    } else if (state.visibleMetrics.size === 1) {
+      btn.textContent = [...state.visibleMetrics][0];
+      btn.classList.add('has-selection');
+    } else {
+      btn.textContent = state.visibleMetrics.size + ' Metrics';
+      btn.classList.add('has-selection');
+    }
+  }
+
+  function applyMetricVisibilityFromCheckboxes() {
+    const dropdown = el('metric-visibility-dropdown');
+    if (!dropdown) return;
+    const checked = new Set();
+    dropdown.querySelectorAll('input[data-mv-metric]').forEach(cb => {
+      if (cb.checked) checked.add(cb.dataset.mvMetric);
+    });
+    if (checked.size === state.allMetrics.length) {
+      state.visibleMetrics = null;
+    } else {
+      state.visibleMetrics = checked;
+    }
+    saveMetricVisibility();
+    syncMetricVisibilityDropdownState();
+    render();
+  }
+
+  // ═══════════════════════════════════════════════════
   // DATA PROCESSING
   // ═══════════════════════════════════════════════════
 
@@ -224,7 +377,21 @@
         }
       }
     }
-    return { runs, metrics: Array.from(metricsSet).sort() };
+    // Detect metric types from averages across all runs
+    const metricTypes = {};
+    for (const metric of metricsSet) {
+      let detectedNumeric = false;
+      for (const run of runs) {
+        const avg = run.metric_averages?.[metric];
+        if (avg !== undefined && avg !== null && (avg > 1 || avg < 0)) {
+          detectedNumeric = true;
+          break;
+        }
+      }
+      metricTypes[metric] = detectedNumeric ? 'numeric' : 'score';
+    }
+
+    return { runs, metrics: Array.from(metricsSet).sort(), metricTypes };
   }
 
   function computeAggregations(runs) {
@@ -631,7 +798,9 @@
     // Render chart cards - one per task+dataset, showing metrics
     const gridEl = el('charts-grid');
     gridEl.innerHTML = chartData.combos.map(combo => {
-      const metrics = combo.metrics || [];
+      const allComboMetrics = combo.metrics || [];
+      const visSet = state.visibleMetrics;
+      const metrics = visSet ? allComboMetrics.filter(m => visSet.has(m)) : allComboMetrics;
       const modelEntries = Object.entries(combo.models);
 
       if (metrics.length === 0) {
@@ -738,6 +907,16 @@
           if (score === undefined || score === null) {
             return `<div class="chart-metric-cell"><span class="metric-na">—</span></div>`;
           }
+          const chartMType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(score);
+          if (chartMType === 'numeric') {
+            // For numeric metrics, show the value as text (no bar)
+            const display = window.QymMetrics.formatNumericValue(score);
+            return `
+              <div class="chart-metric-cell">
+                <span class="chart-numeric-value">${display}</span>
+              </div>
+            `;
+          }
           const pct = score * 100;
           const barWidth = Math.max(pct, 2);
           const pctStr = pct === 0 ? '0%' : pct === 100 ? '100%' : `${pct.toFixed(1)}%`;
@@ -831,7 +1010,7 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
-  function updateTableHeader() {
+  function updateTableHeader(metricsToShow) {
     // Update the table header to include dynamic metric columns
     const headerRow = el('table-header-row');
     if (!headerRow) return;
@@ -843,8 +1022,7 @@
     // Remove any existing dynamic metric columns
     headerRow.querySelectorAll('.col-metric-dynamic').forEach(col => col.remove());
 
-    // Insert metric columns before LATENCY column (limit to 4 metrics)
-    const metricsToShow = state.allMetrics.slice(0, 4);
+    // Insert metric columns before LATENCY column
     metricsToShow.forEach(metric => {
       const th = document.createElement('th');
       th.className = 'col-metric-dynamic sortable';
@@ -927,10 +1105,21 @@
   function renderTableView() {
     const runs = state.filteredRuns;
     const tbody = el('runs-tbody');
-    const metricsToShow = state.allMetrics.slice(0, 4);
+    const availableMetrics = getAvailableMetricsForRuns(runs);
+    // Runs View should reflect the active run filters directly.
+    const metricsToShow = availableMetrics;
+
+    if (state.sortKey.startsWith('metric-')) {
+      const parts = state.sortKey.split('-');
+      const metricName = parts.slice(1, -1).join('-');
+      if (!metricsToShow.includes(metricName)) {
+        state.sortKey = 'time-desc';
+        sortRuns(runs);
+      }
+    }
 
     // Update header with dynamic metric columns
-    updateTableHeader();
+    updateTableHeader(metricsToShow);
 
     if (runs.length === 0) {
       const colCount = 11 + metricsToShow.length;
@@ -1044,9 +1233,10 @@
         if (value === undefined || value === null) {
           return `<td class="col-metric-value"><span class="metric-na">—</span></td>`;
         }
-        const pct = (value * 100).toFixed(1);
-        const metricClass = getSuccessClass(value);
-        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${pct}%</span></td>`;
+        const mType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(value);
+        const metricClass = window.QymMetrics.getMetricColorClass(value, mType);
+        const display = window.QymMetrics.formatMetricValue(value, mType);
+        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span></td>`;
       }).join('');
 
       const status = run.status || '';
@@ -1783,6 +1973,8 @@
       avgLatency: metrics.avgLatency,
       totalItems: metrics.totalItems,
       failedCount: metrics.failedCount,
+      totalScoreSum: metrics.totalScoreSum,
+      totalScoreCount: metrics.totalScoreCount,
       K: metrics.K,
       correctDistribution: metrics.correctDistribution || new Array(K + 1).fill(0),
       runNames
@@ -1792,26 +1984,29 @@
   function detectModelsViewMetricType(runs, metricName) {
     if (!metricName) {
       state.modelsViewState.metricIsBoolean = true;
+      state.modelsViewState.metricIsNumeric = false;
       return;
     }
 
     let allBoolean = true;
+    let isNumeric = false;
     for (const run of runs) {
       const metricAvg = run.metric_averages?.[metricName];
       if (metricAvg !== undefined && metricAvg !== null) {
         const val = parseFloat(metricAvg);
-        if (!isNaN(val) && Math.abs(val) > 0.0001 && Math.abs(val - 1) > 0.0001) {
-          allBoolean = false;
-          break;
+        if (!isNaN(val)) {
+          if (val > 1 || val < 0) { isNumeric = true; allBoolean = false; break; }
+          if (Math.abs(val) > 0.0001 && Math.abs(val - 1) > 0.0001) allBoolean = false;
         }
       }
     }
     state.modelsViewState.metricIsBoolean = allBoolean;
+    state.modelsViewState.metricIsNumeric = isNumeric;
 
-    // Show/hide threshold control (inline)
+    // Show/hide threshold control (inline) — hide for boolean and numeric
     const thresholdRow = el('models-threshold-row');
     if (thresholdRow) {
-      thresholdRow.style.display = allBoolean ? 'none' : 'inline-flex';
+      thresholdRow.style.display = (allBoolean || isNumeric) ? 'none' : 'inline-flex';
     }
   }
 
@@ -1845,6 +2040,8 @@
 
     const mvs = state.modelsViewState;
     const isBoolean = mvs.metricIsBoolean;
+    const isNumeric = mvs.metricIsNumeric;
+    const mType = isNumeric ? 'numeric' : (isBoolean ? 'boolean' : 'score');
     const threshold = Math.round(mvs.threshold * 100);
 
     const models = Object.keys(runsByModel).sort((a, b) => {
@@ -1869,38 +2066,46 @@
         passHatK: isBoolean
           ? `% of items where ALL ${K} runs achieved 100%`
           : `% of items where ALL ${K} runs scored ≥${threshold}%`,
-        maxAtK: `Average of the best score per item across all ${K} runs`,
+        maxAtK: isNumeric
+          ? `Average of the best value per item across all ${K} runs`
+          : `Average of the best score per item across all ${K} runs`,
         consistency: `How often runs agree on pass/fail across ${K} runs. 100% = all agree, 0% = 50/50 split.`,
         reliability: `When an item CAN be solved, how often is it? Only includes items with ≥1 passing run.`,
         failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
-        avgScore: `Mean score across all items and all ${K} runs`,
+        avgScore: isNumeric
+          ? `Mean value across all items and all ${K} runs`
+          : `Mean score across all items and all ${K} runs`,
         avgLatency: `Average response time across all runs`,
         correctDist: isBoolean
           ? `How many runs got each item correct (100%). "0" = no run solved it, "${K}" = all runs solved it.`
           : `How many runs scored ≥${threshold}% for each item.`
       };
 
-      const distBar = buildModelDistributionBar(stats);
+      const distBar = isNumeric ? '' : buildModelDistributionBar(stats);
 
       // Helper to create info icon with tooltip (same as compare view)
       function infoIcon(tooltip) {
         return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
       }
 
-      return `
-        <div class="model-card" data-model="${model}">
-          <div class="model-card-header">
-            <div class="model-card-title" title="${model}">
-              <span class="model-color-dot" style="background: ${color}"></span>
-              <span class="model-name">${stripModelProvider(model)}</span>
+      // For numeric metrics, show min/avg/max/total instead of pass@K/pass^K
+      const fmtN = window.QymMetrics.formatNumericValue;
+      const statsRow1 = isNumeric ? `
+          <div class="model-stats-row">
+            <div class="model-stat-box">
+              <div class="stat-title">Avg ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main">${fmtN(stats.avgScore)}</div>
             </div>
-            <div class="model-card-runs">
-              <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
-              ${hasWarning ? `<span class="runs-warning" title="Only ${stats.totalAvailable} runs available (requested ${globalK})">⚠️</span>` : ''}
-              <button class="customize-btn" data-model="${model}" title="Customize run selection">Edit</button>
+            <div class="model-stat-box">
+              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
+              <div class="stat-main">${fmtN(stats.maxAtK)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
+              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.totalScoreSum)}</div>
             </div>
           </div>
-
+      ` : `
           <div class="model-stats-row">
             <div class="model-stat-box">
               <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
@@ -1915,7 +2120,20 @@
               <div class="stat-main ${getSuccessClass(stats.maxAtK)}">${formatPercent(stats.maxAtK)}</div>
             </div>
           </div>
+      `;
 
+      const statsRow2 = isNumeric ? `
+          <div class="model-stats-row">
+            <div class="model-stat-box">
+              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
+            </div>
+          </div>
+      ` : `
           <div class="model-stats-row">
             <div class="model-stat-box">
               <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
@@ -1937,9 +2155,28 @@
               <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
               <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
             </div>
+      `;
+
+      return `
+        <div class="model-card" data-model="${model}">
+          <div class="model-card-header">
+            <div class="model-card-title" title="${model}">
+              <span class="model-color-dot" style="background: ${color}"></span>
+              <span class="model-name">${stripModelProvider(model)}</span>
+            </div>
+            <div class="model-card-runs">
+              <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
+              ${hasWarning ? `<span class="runs-warning" title="Only ${stats.totalAvailable} runs available (requested ${globalK})">⚠️</span>` : ''}
+              <button class="customize-btn" data-model="${model}" title="Customize run selection">Edit</button>
+            </div>
           </div>
 
-          <div class="model-stat-box-wide">
+          ${statsRow1}
+
+          ${statsRow2}
+          </div>
+
+          ${isNumeric ? '' : `<div class="model-stat-box-wide">
             <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
             <div class="distribution-bar">${distBar}</div>
             <div class="distribution-legend">
@@ -1947,7 +2184,7 @@
               <span class="dist-legend-item"><span style="color:var(--warning)">■</span> 1-${K-1} runs</span>
               <span class="dist-legend-item"><span style="color:var(--success)">■</span> ${K} runs</span>
             </div>
-          </div>
+          </div>`}
 
           <div class="model-card-footer">
             <span class="latency">${stats.totalItems} items</span>
@@ -2000,18 +2237,22 @@
 
     const rankEmojis = ['🥇', '🥈', '🥉'];
 
+    const isNumeric = mvs.metricIsNumeric;
+    const rankMType = isNumeric ? 'numeric' : 'score';
+
     container.style.display = 'block';
     container.innerHTML = `
-      <h3>Ranking (by Avg Score)</h3>
+      <h3>Ranking (by ${isNumeric ? 'Avg Value' : 'Avg Score'})</h3>
       <div class="ranking-list">
         ${ranked.map((item, idx) => {
           const rank = idx < 3 ? rankEmojis[idx] : `#${idx + 1}`;
-          const scoreClass = getSuccessClass(item.score);
+          const scoreClass = window.QymMetrics.getMetricColorClass(item.score, rankMType);
+          const display = window.QymMetrics.formatMetricValue(item.score, rankMType);
           return `
             <div class="ranking-item">
               <span class="rank">${rank}</span>
               <span class="model-name">${item.model}</span>
-              <span class="score ${scoreClass}">(${formatPercent(item.score)})</span>
+              <span class="score ${scoreClass}">(${display})</span>
             </div>
           `;
         }).join('')}
@@ -2063,7 +2304,9 @@
         const dt = formatDate(run.timestamp);
         const metric = mvs.selectedMetric;
         const score = run.metric_averages?.[metric];
-        const scoreClass = score !== undefined ? getSuccessClass(score) : '';
+        const selMType = mvs.metricIsNumeric ? 'numeric' : 'score';
+        const scoreClass = score !== undefined ? window.QymMetrics.getMetricColorClass(score, selMType) : '';
+        const scoreDisplay = score !== undefined ? window.QymMetrics.formatMetricValue(score, selMType) : '';
 
         runListHtml += `
           <label class="run-selection-item ${isSelected ? 'selected' : ''}">
@@ -2072,7 +2315,7 @@
               <div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</div>
               <div class="run-date">${dt.full}</div>
             </div>
-            ${score !== undefined ? `<span class="run-score ${scoreClass}">${formatPercent(score)}</span>` : ''}
+            ${score !== undefined ? `<span class="run-score ${scoreClass}">${scoreDisplay}</span>` : ''}
           </label>
         `;
       }
@@ -2176,7 +2419,7 @@
       }
     }
     updateModelFilterButton();
-    populateFilterDropdowns(); // Keep dropdown in sync
+    syncModelFilterDropdownState();
     render();
   }
 
@@ -2184,7 +2427,7 @@
     state.filterModels.clear();
     state.filterModels.add(model);
     updateModelFilterButton();
-    populateFilterDropdowns(); // Keep dropdown in sync
+    syncModelFilterDropdownState();
     render();
   }
 
@@ -2201,6 +2444,26 @@
     } else {
       btn.textContent = `${state.filterModels.size} Models`;
     }
+  }
+
+  function syncModelFilterDropdownState() {
+    const dropdown = el('filter-model-dropdown');
+    if (!dropdown) return;
+
+    const isShowingAll = state.filterModels.size === 0;
+    const isShowingNone = state.filterModels.has('__none__');
+
+    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+      const checkbox = opt.querySelector('input[type="checkbox"]');
+      if (!checkbox) return;
+
+      const value = opt.dataset.value || '';
+      if (value === '') {
+        checkbox.checked = isShowingAll;
+        return;
+      }
+      checkbox.checked = !isShowingNone && (isShowingAll || state.filterModels.has(value));
+    });
   }
 
   function selectAll() {
@@ -2438,9 +2701,11 @@
 
       const data = await runsResponse.json();
       state.runs = data;
-      const { runs, metrics } = flattenRuns(data);
+      const { runs, metrics, metricTypes } = flattenRuns(data);
       state.flatRuns = runs;
       state.allMetrics = metrics;
+      state._metricTypes = metricTypes;
+      loadMetricVisibility();
       try {
         state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
       } catch {
@@ -2452,6 +2717,7 @@
 
       // Populate filter dropdowns
       populateFilterDropdowns();
+      populateMetricVisibility();
 
       el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -2585,10 +2851,12 @@
     if (taskSelect) {
       taskSelect.innerHTML = '<option value="">All Tasks</option>' +
         tasks.map(t => `<option value="${t}">${t}</option>`).join('');
+      taskSelect.value = state.filterTask || '';
     }
     if (datasetSelect) {
       datasetSelect.innerHTML = '<option value="">All Datasets</option>' +
         datasets.map(d => `<option value="${d}">${d}</option>`).join('');
+      datasetSelect.value = state.filterDataset || '';
     }
 
     // Populate model multi-select dropdown
@@ -2683,7 +2951,7 @@
             }
           }
           updateModelFilterButton();
-          populateFilterDropdowns(); // Refresh checkboxes
+          syncModelFilterDropdownState();
           render();
         });
       });
@@ -2731,6 +2999,18 @@
     if (wrapper && dropdown && !wrapper.contains(e.target)) {
       dropdown.classList.remove('open');
     }
+    const mvWrapper = el('metric-visibility-wrapper');
+    const mvDropdown = el('metric-visibility-dropdown');
+    if (mvWrapper && mvDropdown && !mvWrapper.contains(e.target)) {
+      mvDropdown.classList.remove('open');
+    }
+  });
+
+  // Metric visibility dropdown toggle
+  el('metric-visibility-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dropdown = el('metric-visibility-dropdown');
+    dropdown.classList.toggle('open');
   });
 
   // Close actions dropdowns when clicking outside

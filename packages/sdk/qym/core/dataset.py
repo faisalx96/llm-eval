@@ -14,6 +14,9 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from langfuse import Langfuse
 
+from collections import defaultdict
+
+from .item_identity import build_identity_fingerprint
 from ..utils.errors import CsvDatasetSchemaError, DatasetNotFoundError
 
 
@@ -216,10 +219,12 @@ class CsvDataset:
                 for c in self.metadata_cols:
                     _require_col(c)
 
+                rows = list(reader)
+                generated_counts: Dict[str, int] = defaultdict(int)
                 items: List[CsvDatasetItem] = []
                 # DictReader yields data rows; CSV line numbers are 1-based with header at row=1.
                 # So the first data row is row=2.
-                for i, row in enumerate(reader):
+                for i, row in enumerate(rows):
                     csv_row_num = i + 2
 
                     if row is None:
@@ -235,9 +240,6 @@ class CsvDataset:
                                 row=csv_row_num,
                                 column=self.id_col,
                             )
-                    else:
-                        item_id = f"row_{i:06d}"
-
                     raw_input = row.get(self.input_col, "")
                     parsed_input = self._parse_cell(
                         raw_input, file_path=file_path, row=csv_row_num, column=self.input_col
@@ -253,6 +255,15 @@ class CsvDataset:
                     md: Dict[str, Any] = {}
                     for c in self.metadata_cols:
                         md[c] = self._parse_cell(row.get(c, ""), file_path=file_path, row=csv_row_num, column=c)
+
+                    if not self.id_col:
+                        fingerprint = build_identity_fingerprint(
+                            input_value=parsed_input,
+                            expected_value=parsed_expected,
+                            metadata=md,
+                        )
+                        generated_counts[fingerprint] += 1
+                        item_id = f"csv_{fingerprint}__{generated_counts[fingerprint]:04d}"
 
                     items.append(
                         CsvDatasetItem(
@@ -283,4 +294,3 @@ class CsvDataset:
 
     def __repr__(self) -> str:
         return f"CsvDataset(name='{self.name}', path='{self.path}', items={self.size})"
-

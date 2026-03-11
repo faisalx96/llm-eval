@@ -30,6 +30,7 @@ from qym_platform.db.models import (
     UserRole,
 )
 from qym_platform.deps import get_db
+from qym_platform.item_identity import build_compare_identity, finalize_compare_alignment
 from qym_platform.services.root_cause_changes import apply_root_cause_change
 
 
@@ -406,10 +407,22 @@ def legacy_compare(
         lf_host = lf_host or first_run.get("langfuse_host", "")
         lf_project_id = lf_project_id or first_run.get("langfuse_project_id", "")
 
+    unalignable_runs = [
+        {
+            "run_name": str(data.get("run", {}).get("run_name") or ""),
+            "issues": list(data.get("run", {}).get("compare_alignment_issues") or []),
+        }
+        for data in runs_data
+        if str(data.get("run", {}).get("compare_alignment_status") or "") != "aligned"
+    ]
+    compare_alignment_status = "unalignable" if unalignable_runs else "aligned"
+
     return {
         "runs": runs_data,
         "langfuse_host": lf_host,
         "langfuse_project_id": lf_project_id,
+        "compare_alignment_status": compare_alignment_status,
+        "unalignable_runs": unalignable_runs,
     }
 
 
@@ -511,6 +524,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
 
     ui_rows = []
     stats = {"total": len(items), "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
+    duplicate_counts: Dict[str, int] = {}
     for it in items:
         is_error = bool(it.error)
         status = "error" if is_error else "completed"
@@ -538,11 +552,21 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         if not ts_ms:
             ts_ms = _item_start_ts.get(it.item_id)
         corr = correction_by_item.get(it.item_id)
+        item_metadata = it.item_metadata if isinstance(it.item_metadata, dict) else {}
+        identity = build_compare_identity(
+            item_id=it.item_id,
+            input_value=it.input,
+            expected_value=it.expected,
+            metadata=item_metadata,
+            duplicate_counts=duplicate_counts,
+        )
 
         ui_rows.append(
             {
                 "index": it.index,
                 "item_id": it.item_id,
+                "compare_item_id": identity["compare_item_id"],
+                "compare_alignment_source": identity["compare_alignment_source"],
                 "status": status,
                 "input": _stringify(it.input),
                 "input_full": _stringify(it.input),
@@ -557,7 +581,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "task_started_at_ms": ts_ms,
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
-                "item_metadata": it.item_metadata if isinstance(it.item_metadata, dict) else {},
+                "item_metadata": item_metadata,
                 "review_correction_id": corr.id if corr else None,
                 "review_correction_status": (
                     corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
@@ -570,7 +594,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     # Extract Langfuse host/project_id from run metadata (langfuse_url fallback)
     lf_host, lf_project_id = _extract_langfuse_ids(run.run_metadata or {})
 
-    return {
+    return finalize_compare_alignment({
         "run": {
             "file_path": run.id,
             "dataset_name": run.dataset,
@@ -583,7 +607,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "langfuse_project_id": lf_project_id,
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
-    }
+    })
 
 
 @router.get("/api/runs/{run_id:path}/export-html")
@@ -760,10 +784,27 @@ def update_metric(
 
     is_error = bool(item.error)
     status = "error" if is_error else "completed"
+    duplicate_counts: Dict[str, int] = {}
+    ordered_items = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
+    identity = {"compare_item_id": item.item_id, "compare_alignment_source": "item_id"}
+    for ordered_item in ordered_items:
+        ordered_metadata = ordered_item.item_metadata if isinstance(ordered_item.item_metadata, dict) else {}
+        ordered_identity = build_compare_identity(
+            item_id=ordered_item.item_id,
+            input_value=ordered_item.input,
+            expected_value=ordered_item.expected,
+            metadata=ordered_metadata,
+            duplicate_counts=duplicate_counts,
+        )
+        if ordered_item.id == item.id:
+            identity = ordered_identity
+            break
 
     row = {
         "index": item.index,
         "item_id": item.item_id,
+        "compare_item_id": identity["compare_item_id"],
+        "compare_alignment_source": identity["compare_alignment_source"],
         "status": status,
         "input": item.input,
         "input_full": item.input,

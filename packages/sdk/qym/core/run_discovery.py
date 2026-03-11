@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import time
 
+from .item_identity import build_identity_fingerprint, looks_like_positional_item_id
+
 # Configure logger for run discovery
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,65 @@ def parse_total_items(value: Any) -> Optional[int]:
         except (TypeError, ValueError):
             return None
     return parsed if parsed > 0 else None
+
+
+def _parse_item_metadata(raw_metadata: Any) -> Dict[str, Any]:
+    if isinstance(raw_metadata, dict):
+        return raw_metadata
+    if raw_metadata in (None, ""):
+        return {}
+    try:
+        parsed = json.loads(str(raw_metadata))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _resolve_compare_identity(
+    *,
+    item_id: Any,
+    input_value: Any,
+    expected_value: Any,
+    metadata: Any,
+    duplicate_counts: Dict[str, int],
+) -> Dict[str, str]:
+    raw_item_id = str(item_id or "").strip()
+    if raw_item_id and not looks_like_positional_item_id(raw_item_id):
+        return {"compare_item_id": raw_item_id, "compare_alignment_source": "item_id"}
+
+    fingerprint = build_identity_fingerprint(
+        input_value=input_value,
+        expected_value=expected_value,
+        metadata=metadata,
+    )
+    duplicate_counts[fingerprint] = duplicate_counts.get(fingerprint, 0) + 1
+    return {
+        "compare_item_id": f"csv_{fingerprint}__{duplicate_counts[fingerprint]:04d}",
+        "compare_alignment_source": "fingerprint",
+    }
+
+
+def _finalize_compare_alignment(run_payload: Dict[str, Any]) -> Dict[str, Any]:
+    rows = ((run_payload.get("snapshot") or {}).get("rows") or [])
+    seen: set[str] = set()
+    issues: List[str] = []
+    status = "aligned"
+    for row in rows:
+        compare_item_id = str(row.get("compare_item_id") or "").strip()
+        if not compare_item_id:
+            status = "unalignable"
+            issues.append("missing compare_item_id")
+            continue
+        if compare_item_id in seen:
+            status = "unalignable"
+            issues.append(f"duplicate compare_item_id: {compare_item_id}")
+            continue
+        seen.add(compare_item_id)
+
+    run_payload.setdefault("run", {})
+    run_payload["run"]["compare_alignment_status"] = status
+    run_payload["run"]["compare_alignment_issues"] = issues
+    return run_payload
 
 
 def is_error_row(row: Dict[str, Any], metrics: List[str]) -> bool:
@@ -608,6 +669,7 @@ class RunDiscovery:
         ui_rows = []
         stats = {"total": len(rows), "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
 
+        duplicate_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
             output = row.get("output", "")
             is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
@@ -663,6 +725,14 @@ class RunDiscovery:
             input_full = row.get("input", "")
             output_full = row.get("output", "")
             expected_full = row.get("expected_output", "")
+            item_metadata = _parse_item_metadata(row.get("item_metadata", ""))
+            identity = _resolve_compare_identity(
+                item_id=row.get("item_id", ""),
+                input_value=input_full,
+                expected_value=expected_full,
+                metadata=item_metadata,
+                duplicate_counts=duplicate_counts,
+            )
 
             # Optional: per-item task start timestamp (epoch ms)
             task_started_at_ms = None
@@ -675,7 +745,9 @@ class RunDiscovery:
 
             ui_row = {
                 "index": idx,
-                "item_id": row.get("item_id", str(idx)),  # Use item_id from CSV, fallback to index
+                "item_id": str(row.get("item_id", "") or ""),
+                "compare_item_id": identity["compare_item_id"],
+                "compare_alignment_source": identity["compare_alignment_source"],
                 "status": status,
                 "input": input_full,
                 "input_full": input_full,
@@ -690,13 +762,14 @@ class RunDiscovery:
                 "trace_url": "",  # Historical runs don't have live trace URLs
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
+                "item_metadata": item_metadata,
             }
             ui_rows.append(ui_row)
 
         # Calculate success rate
         stats["success_rate"] = (stats["completed"] / stats["total"] * 100) if stats["total"] > 0 else 0
 
-        return {
+        return _finalize_compare_alignment({
             "run": {
                 "dataset_name": dataset_name,
                 "run_name": run_name,
@@ -712,7 +785,7 @@ class RunDiscovery:
                 "stats": stats,
                 "metric_names": metric_names,
             },
-        }
+        })
 
     def _get_xlsx_run_data(self, path: Path) -> Dict[str, Any]:
         """Load xlsx run data and transform to UI snapshot format."""
@@ -776,6 +849,7 @@ class RunDiscovery:
         ui_rows = []
         stats = {"total": len(rows), "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
 
+        duplicate_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
             output = str(row.get("output", "") or "")
             is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
@@ -831,6 +905,14 @@ class RunDiscovery:
             input_full = str(row.get("input", "") or "")
             output_full = str(row.get("output", "") or "")
             expected_full = str(row.get("expected_output", "") or "")
+            item_metadata = _parse_item_metadata(row.get("item_metadata", ""))
+            identity = _resolve_compare_identity(
+                item_id=row.get("item_id", ""),
+                input_value=input_full,
+                expected_value=expected_full,
+                metadata=item_metadata,
+                duplicate_counts=duplicate_counts,
+            )
 
             # Optional: per-item task start timestamp (epoch ms)
             task_started_at_ms = None
@@ -843,7 +925,9 @@ class RunDiscovery:
 
             ui_row = {
                 "index": idx,
-                "item_id": str(row.get("item_id", "") or "") or str(idx),  # Use item_id from xlsx, fallback to index
+                "item_id": str(row.get("item_id", "") or ""),
+                "compare_item_id": identity["compare_item_id"],
+                "compare_alignment_source": identity["compare_alignment_source"],
                 "status": status,
                 "input": input_full,
                 "input_full": input_full,
@@ -858,13 +942,14 @@ class RunDiscovery:
                 "trace_url": "",
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
+                "item_metadata": item_metadata,
             }
             ui_rows.append(ui_row)
 
         # Calculate success rate
         stats["success_rate"] = (stats["completed"] / stats["total"] * 100) if stats["total"] > 0 else 0
 
-        return {
+        return _finalize_compare_alignment({
             "run": {
                 "dataset_name": dataset_name,
                 "run_name": run_name,
@@ -880,7 +965,7 @@ class RunDiscovery:
                 "stats": stats,
                 "metric_names": metric_names,
             },
-        }
+        })
 
     def update_metric_score(
         self, file_path: str, row_index: int, metric_name: str, new_score: Any
@@ -983,4 +1068,7 @@ class RunDiscovery:
         except Exception as e:
             return {"error": f"Failed to write CSV: {type(e).__name__}: {e}"}
 
-        return {"ok": True}
+        updated_data = self.get_run_data(str(path.resolve()))
+        updated_rows = ((updated_data.get("snapshot") or {}).get("rows") or [])
+        updated_row = next((r for r in updated_rows if int(r.get("index", -1)) == int(row_index)), None)
+        return {"ok": True, "row": updated_row}

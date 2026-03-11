@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import inspect
 import os
 import traceback
@@ -195,6 +196,7 @@ class Evaluator:
         self.max_concurrency = self.config.max_concurrency
         self.max_metric_concurrency = self.config.max_metric_concurrency
         self.timeout = self.config.timeout
+        self.max_retries = self.config.max_retries
 
         # Model handling - strip provider prefix once, keep full name for user's task
         # e.g., "qwen/qwen3-235b" -> model_name="qwen3-235b", model_name_full="qwen/qwen3-235b"
@@ -591,6 +593,15 @@ class Evaluator:
         Note:
             The Web UI is always available at the URL printed at startup.
         """
+        # Size the thread pool to match concurrency so sync tasks don't queue.
+        # Skip if MultiModelRunner already sized the pool for all models.
+        loop = asyncio.get_running_loop()
+        if not getattr(loop, '_qym_executor_set', False):
+            loop.set_default_executor(
+                concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency)
+            )
+            loop._qym_executor_set = True
+
         checkpoint_state = None
         if self.config.resume_from:
             checkpoint_state = load_checkpoint_state(self.config.resume_from)
@@ -1070,9 +1081,15 @@ class Evaluator:
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
         
-        # Keep HTTP server running - don't shut it down
-        # The server will be cleaned up when the process exits
-        
+        # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
+        try:
+            loop = asyncio.get_running_loop()
+            executor = loop.get_default_executor()
+            if executor is not None:
+                executor.shutdown(wait=False)
+        except Exception:
+            pass
+
         return result
 
     @staticmethod
@@ -1307,11 +1324,29 @@ class Evaluator:
             except Exception:
                 pass
 
-            # Execute task - purely async, no thread pool needed.
+            # Execute task with timeout and optional retry.
             # Pass full model name (with provider) to user's task.
             task_started_at_ms = int(time.time() * 1000)
             task_start_time = time.time()
-            output = await self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
+            last_error = None
+            output = None
+            for _attempt in range(1 + self.max_retries):
+                try:
+                    coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
+                    if self.timeout is not None:
+                        output = await asyncio.wait_for(coro, timeout=self.timeout)
+                    else:
+                        output = await coro
+                    last_error = None
+                    break
+                except asyncio.TimeoutError:
+                    last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
+                    logger.warning(f"Item {index}: {last_error}")
+                except Exception as e:
+                    last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
+                    logger.warning(f"Item {index}: {last_error}")
+            if last_error is not None:
+                raise RuntimeError(last_error)
             task_elapsed_time = time.time() - task_start_time
 
             # Update span with output

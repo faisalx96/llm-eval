@@ -1,0 +1,50 @@
+from qym_platform.item_identity import build_compare_identity, finalize_compare_alignment
+
+
+def test_platform_compare_identity_prefers_non_positional_item_id():
+    duplicate_counts = {}
+
+    identity = build_compare_identity(
+        item_id="case-123",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math"},
+        duplicate_counts=duplicate_counts,
+    )
+
+    assert identity == {
+        "compare_item_id": "case-123",
+        "compare_alignment_source": "item_id",
+    }
+
+
+def test_platform_compare_identity_falls_back_to_fingerprint_for_legacy_row_ids():
+    duplicate_counts = {}
+
+    identity = build_compare_identity(
+        item_id="row_000001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math"},
+        duplicate_counts=duplicate_counts,
+    )
+
+    assert identity["compare_item_id"].startswith("csv_")
+    assert identity["compare_alignment_source"] == "fingerprint"
+
+
+def test_platform_finalize_compare_alignment_marks_duplicate_compare_keys_unalignable():
+    payload = {
+        "run": {"run_name": "legacy-run"},
+        "snapshot": {
+            "rows": [
+                {"compare_item_id": "dup-key"},
+                {"compare_item_id": "dup-key"},
+            ]
+        },
+    }
+
+    result = finalize_compare_alignment(payload)
+
+    assert result["run"]["compare_alignment_status"] == "unalignable"
+    assert result["run"]["compare_alignment_issues"] == ["duplicate compare_item_id: dup-key"]

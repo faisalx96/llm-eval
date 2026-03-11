@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rich.console import Console
@@ -197,6 +198,18 @@ class MultiModelRunner:
         # Create semaphore if max_parallel_runs is set
         semaphore = asyncio.Semaphore(max_parallel_runs) if max_parallel_runs else None
 
+        # Size the thread pool to match actual parallelism so sync tasks don't queue.
+        # Effective parallel models = min(num_specs, max_parallel_runs or num_specs)
+        num_specs = len(self.specs)
+        effective_parallel = min(num_specs, max_parallel_runs) if max_parallel_runs else num_specs
+        max_conc = max((s.config.max_concurrency or 10) for s in self.specs)
+        pool_size = max_conc * effective_parallel
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(
+            concurrent.futures.ThreadPoolExecutor(max_workers=pool_size)
+        )
+        loop._qym_executor_set = True
+
         async def _run_spec(spec: RunSpec):
             # Acquire semaphore if limiting parallel runs
             if semaphore:
@@ -274,6 +287,14 @@ class MultiModelRunner:
         if errors and not interrupted:
             summary = ", ".join(f"{spec.name}: {err}" for spec, err in errors)
             raise RuntimeError(f"One or more runs failed: {summary}")
+
+        # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
+        try:
+            executor = loop.get_default_executor()
+            if executor is not None:
+                executor.shutdown(wait=False)
+        except Exception:
+            pass
 
         return final_results
 

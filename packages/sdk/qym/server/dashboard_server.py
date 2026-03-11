@@ -287,6 +287,14 @@ class DashboardServer:
                             data = server.discovery.get_run_data(file_path)
                             if not data.get("error"):
                                 runs_data.append(data)
+                    unalignable_runs = [
+                        {
+                            "run_name": str(data.get("run", {}).get("run_name") or ""),
+                            "issues": list(data.get("run", {}).get("compare_alignment_issues") or []),
+                        }
+                        for data in runs_data
+                        if str(data.get("run", {}).get("compare_alignment_status") or "") != "aligned"
+                    ]
                     # Include Langfuse config for trace URLs
                     langfuse_host = os.environ.get("LANGFUSE_HOST", "")
                     langfuse_project_id = get_langfuse_project_id()
@@ -296,6 +304,8 @@ class DashboardServer:
                             "runs": runs_data,
                             "langfuse_host": langfuse_host,
                             "langfuse_project_id": langfuse_project_id,
+                            "compare_alignment_status": "unalignable" if unalignable_runs else "aligned",
+                            "unalignable_runs": unalignable_runs,
                         }, ensure_ascii=False).encode("utf-8")
                     )
                     return

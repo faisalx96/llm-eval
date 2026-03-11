@@ -39,6 +39,7 @@ from qym_platform.events import (
     RunEventV1,
     RunStartedPayload,
 )
+from qym_platform.item_identity import build_identity_fingerprint, looks_like_positional_item_id
 from qym_platform.settings import PlatformSettings
 
 
@@ -408,15 +409,26 @@ async def upload_run(
         metrics = [c.replace("_score", "") for c in fieldnames if c.endswith("_score") and "__meta__" not in c]
         run.metrics = metrics
         rows = list(reader)
+        fingerprint_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
-            item_id = str(row.get("item_id") or f"row_{idx:06d}")
-            output = str(row.get("output") or "")
-            is_error = output.startswith("ERROR:")
             raw_meta = row.get("item_metadata") or ""
             try:
                 parsed_meta = json.loads(raw_meta) if raw_meta else {}
             except (json.JSONDecodeError, TypeError):
                 parsed_meta = {}
+            raw_item_id = str(row.get("item_id") or "").strip()
+            if raw_item_id and not looks_like_positional_item_id(raw_item_id):
+                item_id = raw_item_id
+            else:
+                fingerprint = build_identity_fingerprint(
+                    input_value=row.get("input") or "",
+                    expected_value=row.get("expected_output") or "",
+                    metadata=parsed_meta,
+                )
+                fingerprint_counts[fingerprint] = fingerprint_counts.get(fingerprint, 0) + 1
+                item_id = f"csv_{fingerprint}__{fingerprint_counts[fingerprint]:04d}"
+            output = str(row.get("output") or "")
+            is_error = output.startswith("ERROR:")
             item = RunItem(
                 run_id=run.id,
                 item_id=item_id,
@@ -477,5 +489,3 @@ async def upload_run(
     settings = PlatformSettings()
     live_url = f"{settings.base_url.rstrip('/')}/run/{run.id}"
     return {"run_id": run.id, "live_url": live_url}
-
-

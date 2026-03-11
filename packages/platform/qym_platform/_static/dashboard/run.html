@@ -568,6 +568,85 @@
       text-transform: capitalize;
       letter-spacing: 0.2px;
     }
+    /* ── Numeric metric stats row ── */
+    .metric-numeric-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border-top: 1px solid var(--border);
+    }
+    .metric-num-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 6px;
+      border-right: 1px solid var(--border);
+    }
+    .metric-num-stat:last-child { border-right: none; }
+    .metric-num-stat-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+    .metric-num-stat-value {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .metric-num-stat-value.total-val { color: var(--accent-primary); }
+
+    /* ── Boolean metric pass/fail bar ── */
+    .metric-bool-bar {
+      border-top: 1px solid var(--border);
+      padding: 10px 14px 12px;
+    }
+    .metric-bool-track {
+      display: flex;
+      height: 24px;
+      border-radius: 6px;
+      overflow: hidden;
+      background: var(--bg-elevated);
+    }
+    .metric-bool-seg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      transition: flex 0.3s ease;
+    }
+    .metric-bool-seg.pass-seg {
+      background: var(--success);
+      color: #fff;
+    }
+    .metric-bool-seg.fail-seg {
+      background: var(--error);
+      color: #fff;
+    }
+    .metric-bool-legend {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .metric-bool-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .metric-bool-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .metric-bool-dot.pass { background: var(--success); }
+    .metric-bool-dot.fail { background: var(--error); }
     .metric-card-badge {
       font-size: 10px;
       font-family: var(--font-mono);
@@ -2852,18 +2931,13 @@
           state.selectedMetric = state.allMetrics[0];
         }
 
-        // Detect metric types
+        // Detect metric types (boolean/score/numeric)
+        state.metricTypes = {};
         for (const metricName of state.allMetrics) {
-          let allBoolean = true;
           const mIdx = state.allMetrics.indexOf(metricName);
-          for (const row of (snap.rows || [])) {
-            const v = (row.metric_values || [])[mIdx];
-            const n = window.QymMetrics.parseScoreValue(v);
-            if (n !== null && Math.abs(n) > 0.0001 && Math.abs(n - 1) > 0.0001) {
-              allBoolean = false; break;
-            }
-          }
-          state.metricIsBoolean[metricName] = allBoolean;
+          const mType = window.QymMetrics.detectMetricType(snap.rows || [], mIdx);
+          state.metricTypes[metricName] = mType;
+          state.metricIsBoolean[metricName] = (mType === 'boolean');
           if (!state.metricThresholds[metricName]) {
             state.metricThresholds[metricName] = 0.8;
           }
@@ -3079,7 +3153,8 @@
         const tv = el('threshold-value');
         if (!tg || !ts) return;
         const metric = state.selectedMetric;
-        if (!metric || state.metricIsBoolean[metric]) {
+        const mType = state.metricTypes?.[metric];
+        if (!metric || state.metricIsBoolean[metric] || mType === 'numeric') {
           tg.style.display = 'none';
         } else {
           tg.style.display = '';
@@ -3113,7 +3188,10 @@
 
         let boxes = state.allMetrics.map(m => {
           const v = metricStats[m];
-          return '<div class="stat-box"><div class="stat-title">' + escapeHtml(m) + '</div><div class="stat-main ' + scoreColorClass(v) + '">' + formatPercent(v) + '</div></div>';
+          const mType = state.metricTypes[m] || 'score';
+          const colorCls = window.QymMetrics.getMetricColorClass(v, mType);
+          const display = window.QymMetrics.formatMetricValue(v, mType);
+          return '<div class="stat-box"><div class="stat-title">' + escapeHtml(m) + '</div><div class="stat-main ' + colorCls + '">' + display + '</div></div>';
         }).join('');
 
         boxes += '<div class="stat-box"><div class="stat-title">Success Rate</div><div class="stat-main ' + scoreColorClass(successRate) + '">' + formatPercent(successRate) + '</div><div class="stat-detail">' + completed + ' / ' + total + '</div></div>';
@@ -3254,48 +3332,103 @@
 
         for (const metric of state.allMetrics) {
           const mIdx = state.allMetrics.indexOf(metric);
-          let sum = 0, cnt = 0;
+          const mType = state.metricTypes[metric] || 'score';
+          let sum = 0, cnt = 0, min = Infinity, max = -Infinity;
           for (const row of rows) {
             const { score } = window.QymMetrics.getRowScore(row, mIdx);
-            if (score !== null) { sum += score; cnt++; }
+            if (score !== null) { sum += score; cnt++; if (score < min) min = score; if (score > max) max = score; }
           }
-          const avg = cnt > 0 ? sum / cnt : 0;
+          if (cnt === 0) continue;
+          const avg = sum / cnt;
 
-          const buckets = computeScoreDistribution(metric);
-          const totalWithScores = buckets.reduce((a,b) => a+b, 0);
-          if (totalWithScores === 0) continue;
-
-          const maxCount = Math.max(...buckets);
-          let barsHtml = '<div class="dist-chart">';
-          for (let b = 0; b <= 10; b++) {
-            const count = buckets[b];
-            const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
-            const color = getDistSegmentColor(b);
-            const label = (b * 10) + '%';
-            const rangeMin = b / 10;
-            const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
-            const pct = totalWithScores > 0 ? ((count / totalWithScores) * 100).toFixed(0) : '0';
-            barsHtml += '<div class="dist-chart-col" data-metric="' + escapeAttr(metric) + '" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + count + ' items (' + pct + '%) — Click to filter">' +
-              '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
-              '<div class="bar-fill" style="height:' + barH + 'px;background:' + color + ';"></div>' +
-              '<span class="bar-label">' + label + '</span>' +
+          if (mType === 'numeric') {
+            // ── Numeric: show min / avg / max / total ──
+            const fmtN = window.QymMetrics.formatNumericValue;
+            cards += '<div class="metric-card">' +
+              '<div class="metric-card-header">' +
+                '<div class="metric-card-gauge">' +
+                  '<div class="metric-card-info">' +
+                    '<div class="metric-card-value">' + fmtN(avg) + '</div>' +
+                    '<div class="metric-card-name">' + escapeHtml(metric) + '</div>' +
+                  '</div>' +
+                '</div>' +
+                '<span class="metric-card-badge">' + cnt + ' items</span>' +
+              '</div>' +
+              '<div class="metric-numeric-stats">' +
+                '<div class="metric-num-stat"><span class="metric-num-stat-label">Min</span><span class="metric-num-stat-value">' + fmtN(min) + '</span></div>' +
+                '<div class="metric-num-stat"><span class="metric-num-stat-label">Avg</span><span class="metric-num-stat-value">' + fmtN(avg) + '</span></div>' +
+                '<div class="metric-num-stat"><span class="metric-num-stat-label">Max</span><span class="metric-num-stat-value">' + fmtN(max) + '</span></div>' +
+                '<div class="metric-num-stat"><span class="metric-num-stat-label">Total</span><span class="metric-num-stat-value total-val">' + fmtN(sum) + '</span></div>' +
+              '</div>' +
             '</div>';
-          }
-          barsHtml += '</div>';
 
-          cards += '<div class="metric-card">' +
-            '<div class="metric-card-header">' +
-              '<div class="metric-card-gauge">' +
-                buildGaugeRing(avg) +
-                '<div class="metric-card-info">' +
-                  '<div class="metric-card-value ' + scoreColorClass(avg) + '">' + formatPercent(avg) + '</div>' +
-                  '<div class="metric-card-name">' + escapeHtml(metric) + '</div>' +
+          } else if (mType === 'boolean') {
+            // ── Boolean: pass/fail split bar ──
+            const passCount = Math.round(avg * cnt);
+            const failCount = cnt - passCount;
+            const passPct = (avg * 100).toFixed(0);
+            const failPct = (100 - avg * 100).toFixed(0);
+            cards += '<div class="metric-card">' +
+              '<div class="metric-card-header">' +
+                '<div class="metric-card-gauge">' +
+                  buildGaugeRing(avg) +
+                  '<div class="metric-card-info">' +
+                    '<div class="metric-card-value ' + scoreColorClass(avg) + '">' + formatPercent(avg) + '</div>' +
+                    '<div class="metric-card-name">' + escapeHtml(metric) + '</div>' +
+                  '</div>' +
+                '</div>' +
+                '<span class="metric-card-badge">' + cnt + ' items</span>' +
+              '</div>' +
+              '<div class="metric-bool-bar">' +
+                '<div class="metric-bool-track">' +
+                  (passCount > 0 ? '<div class="metric-bool-seg pass-seg" style="flex:' + passCount + '">' + (passCount > 1 ? passCount : '') + '</div>' : '') +
+                  (failCount > 0 ? '<div class="metric-bool-seg fail-seg" style="flex:' + failCount + '">' + (failCount > 1 ? failCount : '') + '</div>' : '') +
+                '</div>' +
+                '<div class="metric-bool-legend">' +
+                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass ' + passPct + '% (' + passCount + ')</span>' +
+                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail ' + failPct + '% (' + failCount + ')</span>' +
                 '</div>' +
               '</div>' +
-              '<span class="metric-card-badge">' + totalWithScores + ' scored</span>' +
-            '</div>' +
-            barsHtml +
-          '</div>';
+            '</div>';
+
+          } else {
+            // ── Score (0-1 continuous): histogram ──
+            const buckets = computeScoreDistribution(metric);
+            const totalWithScores = buckets.reduce((a,b) => a+b, 0);
+            if (totalWithScores === 0) continue;
+
+            const maxCount = Math.max(...buckets);
+            let barsHtml = '<div class="dist-chart">';
+            for (let b = 0; b <= 10; b++) {
+              const count = buckets[b];
+              const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
+              const color = getDistSegmentColor(b);
+              const label = (b * 10) + '%';
+              const rangeMin = b / 10;
+              const rangeMax = b === 10 ? 1.01 : (b + 1) / 10;
+              const pct = totalWithScores > 0 ? ((count / totalWithScores) * 100).toFixed(0) : '0';
+              barsHtml += '<div class="dist-chart-col" data-metric="' + escapeAttr(metric) + '" data-bucket-min="' + rangeMin + '" data-bucket-max="' + rangeMax + '" title="' + label + ': ' + count + ' items (' + pct + '%) — Click to filter">' +
+                '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
+                '<div class="bar-fill" style="height:' + barH + 'px;background:' + color + ';"></div>' +
+                '<span class="bar-label">' + label + '</span>' +
+              '</div>';
+            }
+            barsHtml += '</div>';
+
+            cards += '<div class="metric-card">' +
+              '<div class="metric-card-header">' +
+                '<div class="metric-card-gauge">' +
+                  buildGaugeRing(avg) +
+                  '<div class="metric-card-info">' +
+                    '<div class="metric-card-value ' + scoreColorClass(avg) + '">' + formatPercent(avg) + '</div>' +
+                    '<div class="metric-card-name">' + escapeHtml(metric) + '</div>' +
+                  '</div>' +
+                '</div>' +
+                '<span class="metric-card-badge">' + totalWithScores + ' scored</span>' +
+              '</div>' +
+              barsHtml +
+            '</div>';
+          }
         }
 
         // ── Latency card ──
@@ -3757,9 +3890,12 @@
                 else if (['hard','difficult','advanced','high','complex'].includes(cv)) cardValClass = ' complexity-hard';
                 else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
               }
+              const bdMType = state.metricTypes[metric] || 'score';
+              const bdColorCls = window.QymMetrics.getMetricColorClass(g.avgScore, bdMType);
+              const bdDisplay = window.QymMetrics.formatMetricValue(g.avgScore, bdMType, 0);
               html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '">' +
                 '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + scoreColorClass(g.avgScore) + '">' + formatPercent(g.avgScore, 0) + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + bdColorCls + '">' + bdDisplay + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
                 '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
           }
           html += '</div></div>';
@@ -4148,12 +4284,14 @@
             const sv = metricVals[i];
             const v = window.QymMetrics.parseScoreValue(sv);
             if (v === null) return '';
-            const cls = getSuccessClass(v);
+            const mType = state.metricTypes[name] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            const display = window.QymMetrics.formatMetricValue(v, mType);
             const isSelected = name === metric;
             const meta = metricMeta[name] || {};
             const editBtn = '<button class="metric-edit-open" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit">\u270E</button>';
             const editedBadge = String(meta.modified || '').toLowerCase() === 'true' ? '<span class="metric-edit-badge">Edited</span>' : '';
-            return '<div class="metric-score-row ' + (isSelected ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-meta"><span class="metric-score-value ' + cls + '">' + formatPercent(v) + '</span>' + editBtn + editedBadge + '</span></div>';
+            return '<div class="metric-score-row ' + (isSelected ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-meta"><span class="metric-score-value ' + cls + '">' + display + '</span>' + editBtn + editedBadge + '</span></div>';
           }).join('');
 
           // Metric edit blocks
@@ -4175,11 +4313,12 @@
           // Trace link
           const traceLink = traceUrl ? '<a href="' + escapeAttr(traceUrl) + '" target="_blank" class="trace-link">Langfuse \u2197</a>' : '';
 
-          // Pass/fail badge
+          // Pass/fail badge (skip for numeric metrics — threshold doesn't apply)
           let passfailBadge = '';
+          const pfMType = metric ? (state.metricTypes[metric] || 'score') : 'score';
           if (status === 'error') {
             passfailBadge = '<span class="passfail-badge fail">Fail</span>';
-          } else if (metric && mIdx >= 0) {
+          } else if (metric && mIdx >= 0 && pfMType !== 'numeric') {
             const pfVal = window.QymMetrics.parseScoreValue(metricVals[mIdx]);
             if (pfVal !== null) {
               passfailBadge = pfVal >= threshold ? '<span class="passfail-badge pass">Pass</span>' : '<span class="passfail-badge fail">Fail</span>';
