@@ -618,8 +618,10 @@
       font-family: var(--font-mono);
       font-size: 11px;
       font-weight: 700;
-      transition: flex 0.3s ease;
+      cursor: pointer;
+      transition: flex 0.3s ease, opacity 0.15s ease, filter 0.15s ease;
     }
+    .metric-bool-seg:hover { opacity: 0.8; }
     .metric-bool-seg.pass-seg {
       background: var(--success);
       color: #fff;
@@ -3381,8 +3383,8 @@
               '</div>' +
               '<div class="metric-bool-bar">' +
                 '<div class="metric-bool-track">' +
-                  (passCount > 0 ? '<div class="metric-bool-seg pass-seg" style="flex:' + passCount + '">' + (passCount > 1 ? passCount : '') + '</div>' : '') +
-                  (failCount > 0 ? '<div class="metric-bool-seg fail-seg" style="flex:' + failCount + '">' + (failCount > 1 ? failCount : '') + '</div>' : '') +
+                  (passCount > 0 ? '<div class="metric-bool-seg pass-seg" data-metric="' + escapeAttr(metric) + '" data-bool-filter="passed" style="flex:' + passCount + '" title="Click to filter passing items">' + (passCount > 1 ? passCount : '') + '</div>' : '') +
+                  (failCount > 0 ? '<div class="metric-bool-seg fail-seg" data-metric="' + escapeAttr(metric) + '" data-bool-filter="failed" style="flex:' + failCount + '" title="Click to filter failing items">' + (failCount > 1 ? failCount : '') + '</div>' : '') +
                 '</div>' +
                 '<div class="metric-bool-legend">' +
                   '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass ' + passPct + '% (' + passCount + ')</span>' +
@@ -3519,6 +3521,25 @@
             const min = parseFloat(col.dataset.latMin);
             const max = col.dataset.latMax === 'Infinity' ? Infinity : parseFloat(col.dataset.latMax);
             state.latencyDistFilter = { min, max };
+            state.page = 1;
+            renderItems();
+          });
+        });
+
+        grid.querySelectorAll('.metric-bool-seg[data-bool-filter]').forEach(seg => {
+          seg.addEventListener('click', () => {
+            const metric = seg.dataset.metric;
+            const boolFilter = seg.dataset.boolFilter;
+            if (metric && metric !== state.selectedMetric) {
+              state.selectedMetric = metric;
+              const sel = el('items-metric-select');
+              if (sel) sel.value = metric;
+              updateThresholdControl();
+            }
+            state.scoreDistFilter = null;
+            state.itemFilter = boolFilter || 'all';
+            const itemFilter = el('item-filter');
+            if (itemFilter) itemFilter.value = state.itemFilter;
             state.page = 1;
             renderItems();
           });

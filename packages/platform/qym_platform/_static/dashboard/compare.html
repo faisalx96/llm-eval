@@ -4119,6 +4119,11 @@
         container.querySelectorAll('.segment.clickable[data-winner-filter]').forEach(seg => {
           seg.addEventListener('click', () => {
             const val = seg.dataset.winnerFilter;
+            if (state.selectedOverviewMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
+              state.selectedItemsMetric = state.selectedOverviewMetric;
+              const itemsMetricSelect = el('items-metric-select');
+              if (itemsMetricSelect) itemsMetricSelect.value = state.selectedItemsMetric;
+            }
             state.winnerFilter = val;
             const winnerSelect = el('run-winner-filter');
             if (winnerSelect && winnerSelect.querySelector(`option[value="${val}"]`)) {
@@ -4133,6 +4138,11 @@
         container.querySelectorAll('.dist-segment.clickable[data-dist-count]').forEach(seg => {
           seg.addEventListener('click', () => {
             const count = seg.dataset.distCount;
+            if (state.selectedOverviewMetric && state.selectedItemsMetric !== state.selectedOverviewMetric) {
+              state.selectedItemsMetric = state.selectedOverviewMetric;
+              const itemsMetricSelect = el('items-metric-select');
+              if (itemsMetricSelect) itemsMetricSelect.value = state.selectedItemsMetric;
+            }
             state.passRateOp = 'eq';
             state.passRateValue = Number(count);
             el('pass-rate-op').value = 'eq';
