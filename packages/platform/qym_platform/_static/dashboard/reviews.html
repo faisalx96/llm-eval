@@ -1155,10 +1155,47 @@
       <span style="color: var(--text-dim); font-size: var(--font-sm); margin-left: 4px;">/ Corrections Review</span>
     </div>
     <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-sm);">
-      <a href="/" class="back-link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-        Dashboard
-      </a>
+      <div class="header-user-dropdown header-user-dropdown-inline" id="header-user-dropdown">
+        <button class="trigger" id="header-user-trigger">
+          <span class="avatar" id="header-user-avatar">?</span>
+          <span class="name" id="header-user-name">User</span>
+          <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div class="menu" id="header-user-menu">
+          <div class="menu-header">
+            <div class="avatar" id="header-menu-avatar">?</div>
+            <div class="info">
+              <div class="email" id="header-user-email"></div>
+              <div class="role" id="header-user-role"></div>
+            </div>
+          </div>
+          <nav class="menu-nav">
+            <a href="/profile" class="menu-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              Profile
+            </a>
+            <a href="/reviews" class="menu-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              Corrections Review
+            </a>
+            <a href="/admin" class="menu-item" id="header-admin-link">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Admin Panel
+            </a>
+          </nav>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1323,6 +1360,65 @@
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => document.querySelectorAll(sel);
     const el = (id) => document.getElementById(id);
+
+    function hideHeaderUserDropdown() {
+      const dropdown = el('header-user-dropdown');
+      if (dropdown) dropdown.style.display = 'none';
+    }
+
+    function getUserInitials(name) {
+      if (!name) return '?';
+      const parts = String(name).trim().split(/\s+/);
+      if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      return String(name).slice(0, 2).toUpperCase();
+    }
+
+    function populateHeaderUser(user) {
+      if (!user) return;
+      const displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
+      const initials = getUserInitials(displayName);
+      const avatar = el('header-user-avatar');
+      const name = el('header-user-name');
+      const menuAvatar = el('header-menu-avatar');
+      const email = el('header-user-email');
+      const role = el('header-user-role');
+      const adminLink = el('header-admin-link');
+      if (avatar) avatar.textContent = initials;
+      if (name) name.textContent = displayName;
+      if (menuAvatar) menuAvatar.textContent = initials;
+      if (email) email.textContent = user.email || '';
+      if (role) role.textContent = user.role || '';
+      if (adminLink) adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
+    }
+
+    function setupHeaderUserDropdown() {
+      const dropdown = el('header-user-dropdown');
+      const trigger = el('header-user-trigger');
+      if (!dropdown || !trigger || trigger.dataset.initialized) return;
+      trigger.dataset.initialized = 'true';
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('open');
+      });
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target)) dropdown.classList.remove('open');
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') dropdown.classList.remove('open');
+      });
+    }
+
+    async function loadHeaderUser() {
+      try {
+        const res = await fetch(apiUrl('v1/me'));
+        if (!res.ok) throw new Error('Failed to load current user');
+        const me = await res.json();
+        populateHeaderUser(me);
+        setupHeaderUserDropdown();
+      } catch {
+        hideHeaderUserDropdown();
+      }
+    }
 
     function escapeHtml(str) {
       if (!str) return '';
@@ -2325,6 +2421,7 @@
 
     /* ── Init ────────────────────────────────────── */
 
+    loadHeaderUser();
     fetchCorrections();
 
   })();

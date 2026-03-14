@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import copy
+import inspect
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -66,6 +68,7 @@ class PreviewRequest(BaseModel):
     """Request to preview the LLM messages for an item."""
 
     item_id: str
+    metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
 
 
@@ -73,6 +76,7 @@ class TestRequest(BaseModel):
     """Request to test analysis on 1-3 items without saving."""
 
     item_ids: List[str] = Field(..., min_length=1, max_length=3)
+    metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
 
 
@@ -114,6 +118,61 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
     return cfg if cfg else None
 
 
+def _supports_metric_name_arg(func: Any) -> bool:
+    """Return True when the callable accepts metric_name."""
+    try:
+        return "metric_name" in inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _rewrite_legacy_metric_metadata_source(source: str) -> str:
+    """Map metric_metadata.* sources onto item_metadata.* for legacy analyzers."""
+    if source == "metric_metadata":
+        return "item_metadata"
+    if source.startswith("metric_metadata."):
+        return "item_metadata." + source[len("metric_metadata."):]
+    return source
+
+
+def _adapt_legacy_analyzer_inputs(
+    item: RunItem,
+    scores: dict[str, RunItemScore],
+    analyzer_config: dict[str, Any] | None,
+    metric_name: str | None,
+) -> tuple[RunItem, dict[str, Any] | None]:
+    """Shim metric metadata into item metadata for older analyzer code paths."""
+    if not metric_name:
+        return item, analyzer_config
+
+    metric_score = scores.get(metric_name)
+    metric_meta = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else {}
+
+    adapted_item = copy.copy(item)
+    adapted_item.item_metadata = metric_meta
+
+    if analyzer_config is None:
+        return adapted_item, None
+
+    adapted_config = dict(analyzer_config)
+
+    field_mapping = adapted_config.get("field_mapping")
+    if isinstance(field_mapping, dict):
+        adapted_config["field_mapping"] = {
+            key: _rewrite_legacy_metric_metadata_source(str(source))
+            for key, source in field_mapping.items()
+        }
+
+    custom_variable_mapping = adapted_config.get("custom_variable_mapping")
+    if isinstance(custom_variable_mapping, dict):
+        adapted_config["custom_variable_mapping"] = {
+            key: _rewrite_legacy_metric_metadata_source(str(source))
+            for key, source in custom_variable_mapping.items()
+        }
+
+    return adapted_item, adapted_config
+
+
 def _load_run_items_and_scores(
     db: Session, run: Run
 ) -> tuple[list[RunItem], dict[str, dict[str, RunItemScore]]]:
@@ -129,6 +188,62 @@ def _load_run_items_and_scores(
     for s in all_scores:
         scores_by_item.setdefault(s.item_id, {})[s.metric_name] = s
     return all_items, scores_by_item
+
+
+def _ordered_unique(values: List[str]) -> List[str]:
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(normalized)
+    return ordered
+
+
+def _collect_task_root_cause_catalog(
+    db: Session,
+    run: Run,
+    items: List[RunItem],
+) -> tuple[List[str], List[str]]:
+    """Collect root-cause categories/details from defaults, run items, and task history."""
+    task_corrections = (
+        db.query(ReviewCorrection)
+        .filter(ReviewCorrection.task == run.task)
+        .order_by(ReviewCorrection.created_at.desc())
+        .all()
+    )
+
+    run_categories = [
+        str(i.item_metadata.get("root_cause", ""))
+        for i in items
+        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause")
+    ]
+    correction_categories = []
+    correction_details = []
+    for correction in task_corrections:
+        correction_categories.extend([
+            correction.human_root_cause,
+            correction.ai_root_cause,
+        ])
+        correction_details.extend([
+            correction.human_root_cause_detail,
+            correction.ai_root_cause_detail,
+        ])
+
+    all_categories = _ordered_unique(
+        list(ROOT_CAUSE_CATEGORIES) + run_categories + correction_categories
+    )
+
+    run_details = [
+        str(i.item_metadata.get("root_cause_detail", ""))
+        for i in items
+        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause_detail")
+    ]
+    all_details = _ordered_unique(run_details + correction_details)
+
+    return all_categories, all_details
 
 
 @router.post("/api/runs/{run_id:path}/analyze")
@@ -221,7 +336,7 @@ async def analyze_run_items(
 
     # Get few-shot examples from correction bank
     cfg_ids = (analyzer_config or {}).get("correction_ids")
-    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
+    corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
 
     # Build items list with their scores
     items_with_scores = [
@@ -231,16 +346,33 @@ async def analyze_run_items(
     # Run async LLM analysis
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
-    results: list[AnalysisResult] = await analyze_items_batch(
+    batch_items = items_with_scores
+    batch_config = analyzer_config
+    if not _supports_metric_name_arg(analyze_items_batch):
+        adapted_items: list[tuple[RunItem, dict[str, RunItemScore]]] = []
+        for item, item_scores in items_with_scores:
+            adapted_item, batch_config = _adapt_legacy_analyzer_inputs(
+                item,
+                item_scores,
+                batch_config,
+                metric,
+            )
+            adapted_items.append((adapted_item, item_scores))
+        batch_items = adapted_items
+
+    batch_kwargs = dict(
         client=client,
         model=model,
-        items=items_with_scores,
+        items=batch_items,
         corrections=corrections,
         concurrency=request.concurrency,
-        config=analyzer_config,
+        config=batch_config,
         temperature=request.config.temperature if request.config else None,
         max_tokens=request.config.max_tokens if request.config else None,
     )
+    if _supports_metric_name_arg(analyze_items_batch):
+        batch_kwargs["metric_name"] = metric
+    results: list[AnalysisResult] = await analyze_items_batch(**batch_kwargs)
 
     # Save results to item_metadata and revision history
     response_results = []
@@ -327,8 +459,16 @@ def analyze_preview(
 
     analyzer_config = _playground_config_to_analyzer(request.config)
     cfg_ids = (analyzer_config or {}).get("correction_ids")
-    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
-    messages = build_analysis_prompt(item, scores, corrections, config=analyzer_config)
+    corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
+    prompt_item = item
+    prompt_config = analyzer_config
+    prompt_kwargs = dict(config=prompt_config)
+    if _supports_metric_name_arg(build_analysis_prompt):
+        prompt_kwargs["metric_name"] = request.metric
+    else:
+        prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, scores, analyzer_config, request.metric)
+        prompt_kwargs["config"] = prompt_config
+    messages = build_analysis_prompt(prompt_item, scores, corrections, **prompt_kwargs)
 
     return {"messages": messages}
 
@@ -369,7 +509,7 @@ async def analyze_test(
 
     analyzer_config = _playground_config_to_analyzer(request.config)
     cfg_ids = (analyzer_config or {}).get("correction_ids")
-    corrections = get_few_shot_examples(db, task=run.task, limit=5, correction_ids=cfg_ids)
+    corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
 
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
@@ -379,11 +519,17 @@ async def analyze_test(
         item_scores = scores_by_item.get(item.item_id, {})
 
         # Build prompt messages so we can return the inputs alongside the result
-        messages = build_analysis_prompt(
-            item, item_scores, corrections, config=analyzer_config,
-        )
+        prompt_item = item
+        prompt_config = analyzer_config
+        prompt_kwargs = dict(config=prompt_config)
+        if _supports_metric_name_arg(build_analysis_prompt):
+            prompt_kwargs["metric_name"] = request.metric
+        else:
+            prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, request.metric)
+            prompt_kwargs["config"] = prompt_config
+        messages = build_analysis_prompt(prompt_item, item_scores, corrections, **prompt_kwargs)
 
-        result = await analyze_single_item(
+        single_kwargs = dict(
             client=client,
             model=model,
             item=item,
@@ -393,6 +539,13 @@ async def analyze_test(
             temperature=request.config.temperature if request.config else None,
             max_tokens=request.config.max_tokens if request.config else None,
         )
+        if _supports_metric_name_arg(analyze_single_item):
+            single_kwargs["metric_name"] = request.metric
+        else:
+            legacy_item, legacy_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, request.metric)
+            single_kwargs["item"] = legacy_item
+            single_kwargs["config"] = legacy_config
+        result = await analyze_single_item(**single_kwargs)
         results.append({
             "item_id": result.item_id,
             "root_cause": result.root_cause,
@@ -494,23 +647,7 @@ def get_analysis_config(
         .count()
     )
 
-    # Collect existing root_cause values from items and merge with defaults
-    existing_categories = {
-        str(i.item_metadata.get("root_cause", ""))
-        for i in items
-        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause")
-    }
-    # Defaults first, then any custom categories from the run (sorted)
-    all_categories = list(ROOT_CAUSE_CATEGORIES) + sorted(
-        existing_categories - set(ROOT_CAUSE_CATEGORIES)
-    )
-
-    # Collect existing root_cause_detail values from items
-    existing_details = sorted({
-        str(i.item_metadata.get("root_cause_detail", ""))
-        for i in items
-        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause_detail")
-    })
+    all_categories, existing_details = _collect_task_root_cause_catalog(db, run, items)
 
     return {
         "llm_configured": bool(cfg.get("llm_api_key")),
@@ -1177,19 +1314,34 @@ def approve_correction(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Approve a correction so it feeds into few-shot examples."""
-    c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
-    if not c:
+    correction = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
+    if not correction:
         raise HTTPException(status_code=404, detail="Correction not found")
+
+    target = correction
+    if not correction.is_active:
+        active_candidate = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == correction.run_id,
+                ReviewCorrection.item_id == correction.item_id,
+                ReviewCorrection.is_active.is_(True),
+            )
+            .first()
+        )
+        if active_candidate:
+            target = active_candidate
+
     _approve_candidate(
         db,
-        correction=c,
+        correction=target,
         reviewer_id=principal.user.id if principal.auth_type != "none" else None,
         comment=(request.get("comment") or "").strip(),
         reviewed_at=datetime.utcnow(),
     )
 
     db.commit()
-    return _serialize_corrections_with_history(db, [c])[0]
+    return _serialize_corrections_with_history(db, [target])[0]
 
 
 @router.post("/api/corrections/{correction_id}/reject")

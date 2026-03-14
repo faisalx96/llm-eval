@@ -43,6 +43,9 @@ wheels/
 # Claude Code settings (keep local only)
 .claude/
 
+# Codex settings (keep local only)
+.codex/
+
 # DeepEval cache
 .deepeval/
 

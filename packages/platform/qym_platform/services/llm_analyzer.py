@@ -90,7 +90,7 @@ def build_client(llm_config: dict[str, Any]) -> AsyncOpenAI:
 def get_few_shot_examples(
     db: Session,
     task: str,
-    limit: int = 5,
+    limit: int | None = 5,
     correction_ids: list[int] | None = None,
 ) -> list[ReviewCorrection]:
     """Retrieve *approved* correction bank examples for a given task.
@@ -111,7 +111,7 @@ def get_few_shot_examples(
             .order_by(ReviewCorrection.created_at.desc())
             .all()
         )
-    return (
+    query = (
         db.query(ReviewCorrection)
         .filter(
             ReviewCorrection.task == task,
@@ -119,16 +119,27 @@ def get_few_shot_examples(
             ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc())
-        .limit(limit)
-        .all()
     )
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all()
 
 
-def _resolve_source(item: RunItem, source: str) -> Any:
+def _resolve_source(
+    item: RunItem,
+    source: str,
+    scores: dict[str, RunItemScore] | None = None,
+    metric_name: str | None = None,
+) -> Any:
     """Resolve 'field' or 'field.key' to a value from the RunItem."""
     parts = source.split(".", 1)
     field_name = parts[0]
-    raw = getattr(item, field_name, None)
+    raw: Any = None
+    if field_name == "metric_metadata":
+        metric_score = (scores or {}).get(metric_name or "") if metric_name else None
+        raw = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else None
+    else:
+        raw = getattr(item, field_name, None)
     if len(parts) > 1 and isinstance(raw, dict):
         return raw.get(parts[1], raw)  # fallback to full dict if key missing
     return raw
@@ -139,6 +150,7 @@ def _format_item_context(
     scores: dict[str, RunItemScore],
     include_fields: dict[str, bool] | None = None,
     field_mapping: dict[str, str] | None = None,
+    metric_name: str | None = None,
 ) -> str:
     """Format a single item's context for the LLM prompt."""
     fields = include_fields or DEFAULT_INCLUDE_FIELDS
@@ -152,21 +164,21 @@ def _format_item_context(
     if field_mapping:
         # Use custom field mapping for input/expected/output
         if "input" in field_mapping:
-            val = _resolve_source(item, field_mapping["input"])
+            val = _resolve_source(item, field_mapping["input"], scores=scores, metric_name=metric_name)
             if val is not None:
                 parts.append(f"INPUT:\n{_dump(val)}")
         elif fields.get("input", True):
             parts.append(f"INPUT:\n{_dump(item.input)}")
 
         if "expected" in field_mapping:
-            val = _resolve_source(item, field_mapping["expected"])
+            val = _resolve_source(item, field_mapping["expected"], scores=scores, metric_name=metric_name)
             if val is not None:
                 parts.append(f"EXPECTED OUTPUT:\n{_dump(val)}")
         elif fields.get("expected", True) and item.expected is not None:
             parts.append(f"EXPECTED OUTPUT:\n{_dump(item.expected)}")
 
         if "output" in field_mapping:
-            val = _resolve_source(item, field_mapping["output"])
+            val = _resolve_source(item, field_mapping["output"], scores=scores, metric_name=metric_name)
             if val is not None:
                 parts.append(f"ACTUAL OUTPUT:\n{_dump(val)}")
         elif fields.get("output", True) and item.output is not None:
@@ -194,23 +206,15 @@ def _format_item_context(
         if score_lines:
             parts.append("METRIC SCORES:\n" + "\n".join(score_lines))
 
-    # Include relevant item metadata (exclude root-cause fields)
+    # Include metadata for the selected metric when available.
     if fields.get("metadata", True):
-        md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-        skip_keys = {
-            "task_started_at_ms",
-            "root_cause",
-            "root_cause_detail",
-            "root_cause_note",
-            "root_cause_source",
-            "root_cause_confidence",
-            "solution",
-            "solution_note",
-            "solution_source",
-        }
-        relevant = {k: v for k, v in md.items() if k not in skip_keys}
-        if relevant:
-            parts.append(f"METADATA:\n{json.dumps(relevant, indent=2, ensure_ascii=False)}")
+        metric_score = (scores or {}).get(metric_name or "") if metric_name else None
+        metric_meta = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else {}
+        if metric_meta:
+            parts.append(
+                f"METRIC METADATA ({metric_name or 'selected metric'}):\n"
+                f"{json.dumps(metric_meta, indent=2, ensure_ascii=False)}"
+            )
 
     return "\n\n".join(parts)
 
@@ -265,6 +269,7 @@ def build_analysis_prompt(
     scores: dict[str, RunItemScore],
     corrections: list[ReviewCorrection],
     config: dict[str, Any] | None = None,
+    metric_name: str | None = None,
 ) -> list[dict[str, str]]:
     """Build the full chat messages for root cause analysis.
 
@@ -308,7 +313,7 @@ def build_analysis_prompt(
         custom_map = cfg.get("custom_variable_mapping") or {}
         resolved = additional
         for var_name, source in custom_map.items():
-            val = _resolve_source(item, source)
+            val = _resolve_source(item, source, scores=scores, metric_name=metric_name)
             if val is not None:
                 if isinstance(val, (dict, list)):
                     dump = json.dumps(val, indent=2, ensure_ascii=False)
@@ -341,7 +346,13 @@ def build_analysis_prompt(
             "and understand why the human chose a different root cause."
         )
 
-    item_context = _format_item_context(item, scores, include_fields, field_mapping)
+    item_context = _format_item_context(
+        item,
+        scores,
+        include_fields,
+        field_mapping,
+        metric_name=metric_name,
+    )
 
     user_message = (
         f"{examples_section}\n\n"
@@ -439,11 +450,12 @@ async def analyze_single_item(
     scores: dict[str, RunItemScore],
     corrections: list[ReviewCorrection],
     config: dict[str, Any] | None = None,
+    metric_name: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> AnalysisResult:
     """Analyze a single item using the LLM."""
-    messages = build_analysis_prompt(item, scores, corrections, config=config)
+    messages = build_analysis_prompt(item, scores, corrections, config=config, metric_name=metric_name)
     try:
         kwargs: dict[str, Any] = dict(
             model=model,
@@ -521,6 +533,7 @@ async def analyze_items_batch(
     corrections: list[ReviewCorrection],
     concurrency: int = 5,
     config: dict[str, Any] | None = None,
+    metric_name: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> list[AnalysisResult]:
@@ -531,7 +544,7 @@ async def analyze_items_batch(
         async with semaphore:
             return await analyze_single_item(
                 client, model, item, scores, corrections,
-                config=config, temperature=temperature, max_tokens=max_tokens,
+                config=config, metric_name=metric_name, temperature=temperature, max_tokens=max_tokens,
             )
 
     tasks = [_bounded(item, scores) for item, scores in items]

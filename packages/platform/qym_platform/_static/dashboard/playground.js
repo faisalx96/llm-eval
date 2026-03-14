@@ -112,7 +112,7 @@ window.QymPlayground = (function () {
 
   function _highlightPreview(escaped) {
     // Highlight section labels like INPUT:, EXPECTED OUTPUT:, ACTUAL OUTPUT:, etc.
-    escaped = escaped.replace(/^(INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|METRIC SCORES:|METADATA:)/gm,
+    escaped = escaped.replace(/^(INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|METRIC SCORES:|METADATA:|METRIC METADATA(?: \([^)]+\))?:)/gm,
       '<span class="pg-hl-label">$1</span>');
     // Highlight --- Example --- / --- End Example --- blocks
     escaped = escaped.replace(/^(--- (?:Example|End Example) ---)/gm,
@@ -390,7 +390,7 @@ window.QymPlayground = (function () {
   // ── Variable Mapping Section ──
 
   function _buildVariableMapping() {
-    var sourceFields = ['input', 'output', 'expected', 'error', 'item_metadata'];
+    var sourceFields = ['input', 'output', 'expected', 'error', 'metric_metadata'];
     var standardRows = [
       { label: 'INPUT', defaultField: 'input' },
       { label: 'EXPECTED OUTPUT', defaultField: 'expected' },
@@ -437,7 +437,7 @@ window.QymPlayground = (function () {
     var extras = [
       { key: 'error', label: 'Error' },
       { key: 'scores', label: 'Scores' },
-      { key: 'metadata', label: 'Metadata' },
+      { key: 'metadata', label: 'Metric Metadata' },
     ];
     for (var e = 0; e < extras.length; e++) {
       body += '<label class="pg-field-toggle">' +
@@ -452,7 +452,7 @@ window.QymPlayground = (function () {
   function _buildCustomVarsMapping() {
     if (_customVars.length === 0) return '';
 
-    var sourceFields = ['input', 'output', 'expected', 'error', 'item_metadata'];
+    var sourceFields = ['input', 'output', 'expected', 'error', 'metric_metadata'];
     var html = '<div class="pg-custom-vars-divider">Custom Variables</div>';
 
     for (var i = 0; i < _customVars.length; i++) {
@@ -1080,7 +1080,7 @@ window.QymPlayground = (function () {
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, config: cfg }),
+        body: JSON.stringify({ item_id: itemId, metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg }),
       })
       .then(function (r) {
         if (!r.ok) {
@@ -1159,7 +1159,7 @@ window.QymPlayground = (function () {
     fetch(base('api/runs/' + runId + '/analyze-test'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids: [testItemId], config: cfg }),
+      body: JSON.stringify({ item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg }),
     })
     .then(function (r) {
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Test failed'); });
@@ -1229,7 +1229,7 @@ window.QymPlayground = (function () {
           { key: 'output', label: 'Output', pattern: /^ACTUAL OUTPUT:/m },
           { key: 'error', label: 'Error', pattern: /^ERROR:/m },
           { key: 'scores', label: 'Scores', pattern: /^METRIC SCORES:/m },
-          { key: 'metadata', label: 'Metadata', pattern: /^METADATA:/m },
+          { key: 'metadata', label: 'Metadata', pattern: /^(?:METADATA:|METRIC METADATA(?: \([^)]+\))?:)/m },
         ];
         var badges = fieldDefs.map(function (fd) {
           var present = fd.pattern.test(itemCtx);

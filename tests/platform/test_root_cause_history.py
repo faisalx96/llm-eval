@@ -13,7 +13,13 @@ os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
 if "openai" not in sys.modules:
     sys.modules["openai"] = MagicMock()
 
-from qym_platform.api.analysis import _approve_candidate, _delete_active_candidate
+from qym_platform.api.analysis import (
+    _approve_candidate,
+    _collect_task_root_cause_catalog,
+    _delete_active_candidate,
+    approve_correction,
+)
+from qym_platform.auth import Principal
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     CorrectionStatus,
@@ -25,7 +31,7 @@ from qym_platform.db.models import (
     RunWorkflowStatus,
     User,
 )
-from qym_platform.services.llm_analyzer import get_few_shot_examples
+from qym_platform.services.llm_analyzer import build_analysis_prompt, get_few_shot_examples
 from qym_platform.services.root_cause_changes import apply_root_cause_change, build_ai_state
 
 
@@ -601,3 +607,204 @@ def test_ai_analysis_creates_pending_ai_only_candidate_and_approval_copies_ai_to
 
     approved = get_few_shot_examples(db_session, run.task, limit=10)
     assert [c.id for c in approved] == [candidate.id]
+
+
+def test_get_few_shot_examples_without_limit_returns_all_active_approved_examples(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+
+    first_change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={
+            "root_cause": "Wrong Format",
+            "root_cause_detail": "First approved example",
+        },
+    )
+    db_session.commit()
+    first_candidate = first_change.candidate
+    assert first_candidate is not None
+    _approve_candidate(
+        db_session,
+        correction=first_candidate,
+        reviewer_id=reviewer.id,
+        comment="Approve first example",
+        reviewed_at=datetime.utcnow(),
+    )
+
+    second_run = Run(
+        id="run-2",
+        created_by_user_id=actor.id,
+        owner_user_id=actor.id,
+        task=run.task,
+        dataset="dataset-2",
+        metrics=["accuracy"],
+        status=RunWorkflowStatus.COMPLETED,
+    )
+    second_item = RunItem(
+        run_id=second_run.id,
+        item_id="item-2",
+        index=0,
+        input={"question": "q2"},
+        expected={"answer": "expected-2"},
+        output={"answer": "actual-2"},
+        item_metadata={},
+    )
+    second_score = RunItemScore(
+        run_id=second_run.id,
+        item_id=second_item.item_id,
+        metric_name="accuracy",
+        score_numeric=0.2,
+        meta={"reason": "second wrong answer"},
+    )
+    db_session.add_all([second_run, second_item, second_score])
+    db_session.commit()
+
+    second_change = apply_root_cause_change(
+        db_session,
+        run=second_run,
+        item=second_item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={
+            "root_cause": "Context Missing",
+            "root_cause_detail": "Second approved example",
+        },
+    )
+    db_session.commit()
+    second_candidate = second_change.candidate
+    assert second_candidate is not None
+    _approve_candidate(
+        db_session,
+        correction=second_candidate,
+        reviewer_id=reviewer.id,
+        comment="Approve second example",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+
+    approved = get_few_shot_examples(db_session, run.task, limit=None)
+    assert {c.id for c in approved} == {first_candidate.id, second_candidate.id}
+
+
+def test_build_analysis_prompt_resolves_custom_variable_from_selected_metric_metadata() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        expected={"answer": "expected"},
+        output={"answer": "actual"},
+        item_metadata={"difficulty": "hard"},
+    )
+    score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="accuracy",
+        score_numeric=0.2,
+        meta={"reason": "bad join", "judge": "llm"},
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {"accuracy": score},
+        [],
+        config={
+            "additional_instructions": "Use signal: {metric_reason}",
+            "custom_variable_mapping": {"metric_reason": "metric_metadata.reason"},
+        },
+        metric_name="accuracy",
+    )
+
+    assert any("Use signal: bad join" in message["content"] for message in messages)
+    assert any("METRIC METADATA (accuracy)" in message["content"] for message in messages)
+    assert any('"judge": "llm"' in message["content"] for message in messages)
+
+
+def test_task_root_cause_catalog_includes_defaults_and_task_history(db_session: Session) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+
+    change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="ai",
+        next_state=build_ai_state(
+            root_cause="Reasoning Error",
+            root_cause_detail="Join mismatch",
+            root_cause_note="AI suggestion",
+            confidence=0.8,
+        ),
+    )
+    db_session.commit()
+
+    candidate = change.candidate
+    assert candidate is not None
+    _approve_candidate(
+        db_session,
+        correction=candidate,
+        reviewer_id=reviewer.id,
+        comment="Approve task-specific label",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+
+    categories, details = _collect_task_root_cause_catalog(db_session, run, [item])
+
+    assert "Hallucination" in categories
+    assert "Reasoning Error" in categories
+    assert "Join mismatch" in details
+
+
+def test_approve_correction_promotes_active_candidate_when_given_stale_id(db_session: Session) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+
+    first_change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={
+            "root_cause": "Context Missing",
+            "root_cause_detail": "Missing schema",
+        },
+    )
+    db_session.commit()
+    stale_candidate = first_change.candidate
+    assert stale_candidate is not None
+
+    second_change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={
+            "root_cause": "Reasoning Error",
+            "root_cause_detail": "Wrong join",
+        },
+    )
+    db_session.commit()
+    active_candidate = second_change.candidate
+    assert active_candidate is not None
+    db_session.refresh(stale_candidate)
+    assert stale_candidate.is_active is False
+    assert active_candidate.is_active is True
+
+    principal = Principal(auth_type="api_key", user=reviewer)
+    result = approve_correction(
+        stale_candidate.id,
+        {"comment": ""},
+        db=db_session,
+        principal=principal,
+    )
+
+    db_session.refresh(active_candidate)
+    assert active_candidate.status == CorrectionStatus.APPROVED
+    assert result["id"] == active_candidate.id

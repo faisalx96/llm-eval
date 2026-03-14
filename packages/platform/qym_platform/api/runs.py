@@ -870,7 +870,10 @@ def update_root_cause(
     )
 
     db.commit()
-    return {"ok": True}
+    updated_snapshot = _build_run_data(db, run).get("snapshot", {})
+    updated_rows = updated_snapshot.get("rows", []) if isinstance(updated_snapshot, dict) else []
+    updated_row = next((row for row in updated_rows if row.get("item_id") == item.item_id), None)
+    return {"ok": True, "row": updated_row}
 
 
 @router.post("/api/runs/delete")

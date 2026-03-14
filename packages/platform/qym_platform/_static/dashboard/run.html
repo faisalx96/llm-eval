@@ -2370,7 +2370,48 @@
 </head>
 <body>
   <div class="toast-container" id="toast-container"></div>
-  <header class="stats-bar">
+  <div class="header-user-dropdown" id="header-user-dropdown">
+    <button class="trigger" id="header-user-trigger">
+      <span class="avatar" id="header-user-avatar">?</span>
+      <span class="name" id="header-user-name">User</span>
+      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="menu" id="header-user-menu">
+      <div class="menu-header">
+        <div class="avatar" id="header-menu-avatar">?</div>
+        <div class="info">
+          <div class="email" id="header-user-email"></div>
+          <div class="role" id="header-user-role"></div>
+        </div>
+      </div>
+      <nav class="menu-nav">
+        <a href="/profile" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Profile
+        </a>
+        <a href="/reviews" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4"></path>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          Corrections Review
+        </a>
+        <a href="/admin" class="menu-item" id="header-admin-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Admin Panel
+        </a>
+      </nav>
+    </div>
+  </div>
+  <header class="stats-bar has-user-pill-space">
     <div class="stats-bar-left">
       <a href="/" class="logo" id="logo-link" style="text-decoration:none;">
         <img src="../static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
@@ -2439,7 +2480,6 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             Share
           </button>
-          <a href="" class="back-link" id="back-link-header">&larr; Back to Dashboard</a>
         </div>
       </div>
 
@@ -2511,13 +2551,12 @@
                 <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
               </div>
             </div>
-            <div class="fp-group">
+            <div class="fp-group fp-cat-group" id="fp-cat-approval">
               <span class="fp-label">Approval</span>
-              <select id="approval-filter" class="filter-select">
-                <option value="all">All Root Causes</option>
-                <option value="approved">Approved</option>
-                <option value="not_approved">Not Approved</option>
-              </select>
+              <div class="multi-select-wrapper">
+                <button class="multi-select-btn" id="approval-ms-btn">All Approval</button>
+                <div class="multi-select-dropdown" id="approval-ms-dropdown"></div>
+              </div>
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
@@ -2624,7 +2663,8 @@
         allMetrics: [],
         selectedMetric: null,
         itemFilter: 'all',
-        approvalFilter: 'all',
+        approvalFilter: null,
+        approvalValues: ['approved', 'not_approved'],
         sortBy: 'index',
         page: 1,
         pageSize: 20,
@@ -2651,6 +2691,69 @@
       const IS_EXPORT = !!window.__QYM_EXPORT__;
 
       const el = (id) => document.getElementById(id);
+
+      function hideHeaderUserDropdown() {
+        const dropdown = el('header-user-dropdown');
+        if (dropdown) dropdown.style.display = 'none';
+      }
+
+      function getUserInitials(name) {
+        if (!name) return '?';
+        const parts = String(name).trim().split(/\s+/);
+        if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        return String(name).slice(0, 2).toUpperCase();
+      }
+
+      function populateHeaderUser(user) {
+        if (!user) return;
+        const displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
+        const initials = getUserInitials(displayName);
+        const avatar = el('header-user-avatar');
+        const name = el('header-user-name');
+        const menuAvatar = el('header-menu-avatar');
+        const email = el('header-user-email');
+        const role = el('header-user-role');
+        const adminLink = el('header-admin-link');
+        if (avatar) avatar.textContent = initials;
+        if (name) name.textContent = displayName;
+        if (menuAvatar) menuAvatar.textContent = initials;
+        if (email) email.textContent = user.email || '';
+        if (role) role.textContent = user.role || '';
+        if (adminLink) adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
+      }
+
+      function setupHeaderUserDropdown() {
+        const dropdown = el('header-user-dropdown');
+        const trigger = el('header-user-trigger');
+        if (!dropdown || !trigger || trigger.dataset.initialized) return;
+        trigger.dataset.initialized = 'true';
+        trigger.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dropdown.classList.toggle('open');
+        });
+        document.addEventListener('click', (e) => {
+          if (!dropdown.contains(e.target)) dropdown.classList.remove('open');
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') dropdown.classList.remove('open');
+        });
+      }
+
+      async function loadHeaderUser() {
+        if (IS_EXPORT) {
+          hideHeaderUserDropdown();
+          return;
+        }
+        try {
+          const res = await fetch(apiUrl('v1/me'));
+          if (!res.ok) throw new Error('Failed to load current user');
+          const me = await res.json();
+          populateHeaderUser(me);
+          setupHeaderUserDropdown();
+        } catch {
+          hideHeaderUserDropdown();
+        }
+      }
 
       // ── Utility functions ──
 
@@ -3579,6 +3682,24 @@
           '</div>';
       }
 
+      function getApprovalState(row) {
+        if (!row) return '';
+        const reviewStatus = String(row.review_correction_status || '').toLowerCase();
+        if (reviewStatus === 'approved') return 'approved';
+        return 'not_approved';
+      }
+
+      function matchesApprovalFilter(row, approvalSelection) {
+        if (!approvalSelection) return true;
+        const approvalState = getApprovalState(row);
+        if (!approvalState) return false;
+        return approvalSelection.some(option => {
+          if (option === 'approved') return approvalState === 'approved';
+          if (option === 'not_approved') return approvalState === 'not_approved';
+          return false;
+        });
+      }
+
       function renderSankeyDiagram(rows, filteredItemIds) {
         const container = document.getElementById('sankey-diagram-container');
         if (!container) return;
@@ -4168,12 +4289,8 @@
             const matchesNone = wantNone && !rcVal;
             if (!matchesNamed && !matchesNone) continue;
           }
-          if (state.approvalFilter !== 'all') {
-            const hasRootCause = !!String(md.root_cause || '').trim();
-            const reviewStatus = String(row.review_correction_status || '').toLowerCase();
-            if (!hasRootCause) continue;
-            if (state.approvalFilter === 'approved' && reviewStatus !== 'approved') continue;
-            if (state.approvalFilter === 'not_approved' && reviewStatus === 'approved') continue;
+          if (state.approvalFilter !== null) {
+            if (!matchesApprovalFilter(row, state.approvalFilter)) continue;
           }
 
           // Score for this metric
@@ -4187,7 +4304,8 @@
           if (state.itemFilter === 'passed') {
             if (score === null || score < threshold) continue;
           } else if (state.itemFilter === 'failed') {
-            if (score === null || score >= threshold) continue;
+            const isError = window.QymMetrics.isErrorRow(row);
+            if (!isError && (score === null || score >= threshold)) continue;
           } else if (state.itemFilter === 'errors') {
             if (!window.QymMetrics.isErrorRow(row)) continue;
           }
@@ -4710,7 +4828,9 @@
           });
           var data = await res.json().catch(function() { return {}; });
           if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
-          if (row) {
+          if (data && data.row) {
+            applyUpdatedRow(data.row);
+          } else if (row) {
             if (!row.item_metadata) row.item_metadata = {};
             if (note) row.item_metadata.root_cause_note = note;
             else delete row.item_metadata.root_cause_note;
@@ -4970,7 +5090,15 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
-          applyLocally();
+          if (data && data.row) {
+            applyUpdatedRow(data.row);
+            if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
+            if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
+            buildCategoryDropdowns();
+            renderItems();
+          } else {
+            applyLocally();
+          }
         } catch (err) { console.error('Error saving root cause:', err); }
       }
 
@@ -5003,7 +5131,12 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
-          applyLocally();
+          if (data && data.row) {
+            applyUpdatedRow(data.row);
+            renderItems();
+          } else {
+            applyLocally();
+          }
         } catch (err) { console.error('Error saving root cause detail:', err); }
       }
 
@@ -5109,7 +5242,12 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save solution:', data.error); return; }
-          applyLocally();
+          if (data && data.row) {
+            applyUpdatedRow(data.row);
+            renderItems();
+          } else {
+            applyLocally();
+          }
         } catch (err) { console.error('Error saving solution:', err); }
       }
 
@@ -5182,6 +5320,7 @@
         el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
         el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
+        buildMultiselectOptions('approval', state.approvalValues);
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
         if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
@@ -5194,6 +5333,14 @@
         for (const v of values) itemCounts[v] = 0;
         const rows = state.snapshot.rows || [];
         for (const row of rows) {
+          if (category === 'approval') {
+            const approvalState = getApprovalState(row);
+            if (approvalState) {
+              if (itemCounts.approved !== undefined && approvalState === 'approved') itemCounts.approved++;
+              if (itemCounts.not_approved !== undefined && approvalState === 'not_approved') itemCounts.not_approved++;
+            }
+            continue;
+          }
           const md = row.item_metadata || {};
           const val = String(md[category] ?? '');
           if (itemCounts[val] !== undefined) itemCounts[val]++;
@@ -5209,7 +5356,7 @@
         }
         let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
         html += extraOptions + values.map(v =>
-          '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(v) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
+          '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(getCatOptionLabel(category, v)) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
         ).join('');
         dropdown.innerHTML = html;
 
@@ -5238,27 +5385,39 @@
       }
 
       function getCatFilter(cat) {
+        if (cat === 'approval') return state.approvalFilter;
         if (cat === 'complexity') return state.complexityFilter;
         if (cat === 'domain') return state.domainFilter;
         if (cat === 'root_cause') return state.rootCauseFilter;
         return null;
       }
       function setCatFilter(cat, val) {
-        if (cat === 'complexity') state.complexityFilter = val;
+        if (cat === 'approval') state.approvalFilter = val;
+        else if (cat === 'complexity') state.complexityFilter = val;
         else if (cat === 'domain') { state.domainFilter = val; if (val === null) state.domainExclusive.clear(); }
         else if (cat === 'root_cause') state.rootCauseFilter = val;
       }
       function getCatValues(cat) {
+        if (cat === 'approval') return state.approvalValues;
         if (cat === 'complexity') return state.complexityValues;
         if (cat === 'domain') return state.domainValues;
         if (cat === 'root_cause') return state.rootCauseValues;
         return [];
       }
       function getCatDefaultLabel(cat) {
+        if (cat === 'approval') return 'All Approval';
         if (cat === 'complexity') return 'All Complexity';
         if (cat === 'domain') return 'All Domains';
         if (cat === 'root_cause') return 'All Root Causes';
         return 'All';
+      }
+      function getCatOptionLabel(cat, val) {
+        if (cat === 'approval') {
+          if (val === 'approved') return 'Approved';
+          if (val === 'not_approved') return 'Not Approved';
+        }
+        if (cat === 'root_cause' && val === '__none__') return '(No Root Cause)';
+        return val;
       }
 
       function syncMultiselectUI(category) {
@@ -5275,7 +5434,7 @@
         if (btn) {
           if (effective === null) { btn.textContent = defaultLabel; btn.classList.remove('has-selection'); }
           else if (effective.length === 0) { btn.textContent = 'None'; btn.classList.add('has-selection'); }
-          else if (effective.length === 1) { btn.textContent = effective[0] === '__none__' ? '(No Root Cause)' : effective[0]; btn.classList.add('has-selection'); }
+          else if (effective.length === 1) { btn.textContent = getCatOptionLabel(category, effective[0]); btn.classList.add('has-selection'); }
           else { btn.textContent = effective.length + ' selected'; btn.classList.add('has-selection'); }
         }
         if (dropdown) {
@@ -5299,6 +5458,7 @@
         dropdown.addEventListener('click', (e) => e.stopPropagation());
       }
 
+      setupCatDropdownToggle('approval');
       setupCatDropdownToggle('complexity');
       setupCatDropdownToggle('domain');
       setupCatDropdownToggle('root_cause');
@@ -5366,7 +5526,7 @@
       function countActiveFilters() {
         let n = 0;
         if (state.itemFilter !== 'all') n++;
-        if (state.approvalFilter !== 'all') n++;
+        if (state.approvalFilter !== null) n++;
         if (state.sortBy !== 'index') n++;
         if (state.searchQuery) n++;
         if (state.complexityFilter !== null) n++;
@@ -5387,7 +5547,7 @@
 
       function clearAllFilters() {
         state.itemFilter = 'all';
-        state.approvalFilter = 'all';
+        state.approvalFilter = null;
         state.sortBy = 'index';
         state.searchQuery = '';
         state.complexityFilter = null;
@@ -5398,9 +5558,9 @@
         state.latencyDistFilter = null;
         state.page = 1;
         el('item-filter').value = 'all';
-        el('approval-filter').value = 'all';
         el('sort-select').value = 'index';
         el('items-search').value = '';
+        syncMultiselectUI('approval');
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
@@ -5413,12 +5573,6 @@
 
       el('item-filter').addEventListener('change', (e) => {
         state.itemFilter = e.target.value;
-        state.page = 1;
-        renderItems();
-      });
-
-      el('approval-filter').addEventListener('change', (e) => {
-        state.approvalFilter = e.target.value;
         state.page = 1;
         renderItems();
       });
@@ -5699,6 +5853,7 @@
             getRunId: function () { return state.run?.file_path || state.run?.id; },
             getRows: function () {
                 return (state.snapshot?.rows || []).map(function (r) {
+                    var metricName = state.selectedMetric;
                     return {
                         item_id: r.item_id,
                         index: r.index,
@@ -5710,9 +5865,10 @@
                         expected_full: r.expected_full,
                         error: r.error,
                         item_metadata: r.item_metadata,
+                        metric_metadata: metricName ? ((r.metric_meta || {})[metricName] || {}) : {},
                         scores: r.scores || {},
                         metric_score: (function() {
-                            var mIdx = state.allMetrics.indexOf(state.selectedMetric);
+                            var mIdx = state.allMetrics.indexOf(metricName);
                             var v = mIdx >= 0 ? (r.metric_values || [])[mIdx] : null;
                             return v != null ? parseFloat(v) : null;
                         })(),
@@ -5825,6 +5981,7 @@
       }
 
       // ── Initialize ──
+      loadHeaderUser();
       loadRunData();
     })();
   </script>
