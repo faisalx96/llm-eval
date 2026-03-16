@@ -13,7 +13,7 @@ This is a monorepo with two independently-buildable packages under `packages/`:
   - `platform/`: platform client and defaults
   - `utils/`: errors and HTML/HTTP frontend helpers
   - `server/`: local UIServer + DashboardServer
-  - `cli.py`: `qym` entry point
+  - `cli/`: agent-native CLI package (Typer-based, noun-verb subcommands)
   - `_static/`: UI and dashboard assets
 - `packages/platform/qym_platform/`: Platform Python package (`pip install qym-platform`)
   - `api/`: FastAPI route modules (ingest, runs, org, web)
@@ -74,6 +74,37 @@ LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 - `.env` is gitignored; never commit secrets.
+
+## CLI Commands (Agent-Native)
+
+The `qym` CLI uses noun-verb subcommands with `--json` output for agent consumption.
+All commands support `--json` (structured JSON to stdout, human text to stderr).
+
+```bash
+# Inspect runs
+qym run list [--limit 50] [--task TEXT] [--model TEXT] [--status TEXT] --json
+qym run get <run_id> --json
+qym run failed <run_id> --json
+qym run compare <id1> <id2> --json
+
+# Execute evaluations
+qym run create --task-file FILE --task-function NAME --dataset NAME --metrics LIST
+
+# Metrics
+qym metric list --json
+
+# Analysis
+qym analyze run <run_id> --json
+qym analyze summary <run_id> --json
+
+# Config
+qym config show --json
+qym config check --json
+```
+
+Exit codes: 0=success, 1=failure, 2=usage error, 3=not found, 4=auth denied, 5=conflict.
+
+Legacy syntax (`qym --task-file ...`) is auto-rewritten to `qym run create --task-file ...`.
 
 ## Extending the Framework
 - Metrics: add to `packages/sdk/qym/metrics/builtin.py` or register dynamically via `metrics.registry.register_metric(name, func)`.
