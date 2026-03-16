@@ -1,6 +1,7 @@
 """Base adapter interface and auto-detection logic."""
 
 import asyncio
+import contextvars
 import inspect
 import logging
 import time
@@ -230,7 +231,8 @@ class FunctionAdapter(TaskAdapter):
                             self._clean_streak += 1
             else:
                 # Run sync function in thread pool to avoid blocking
-                output = await loop.run_in_executor(None, lambda: self.task(*args, **kwargs))
+                ctx = contextvars.copy_context()
+                output = await loop.run_in_executor(None, lambda: ctx.run(self.task, *args, **kwargs))
 
             # Update trace with output
             trace.update(output=output)

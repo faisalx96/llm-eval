@@ -240,21 +240,14 @@ def _format_correction_example(correction: ReviewCorrection) -> str:
 
     context = "\n\n".join(parts)
 
-    # Build the answer section — adapt based on whether there was a prior AI suggestion
+    # Build the answer section — only show the approved human labels
     answer_parts: list[str] = []
-    if correction.ai_root_cause and correction.ai_root_cause != "Unanalyzed":
-        answer_parts.append(f"AI suggested root_cause: {correction.ai_root_cause}")
-        ai_detail = getattr(correction, "ai_root_cause_detail", None)
-        if ai_detail:
-            answer_parts.append(f"AI suggested root_cause_detail: {ai_detail}")
-        if correction.ai_root_cause_note:
-            answer_parts.append(f"AI reasoning: {correction.ai_root_cause_note}")
     answer_parts.append(f"CORRECT root_cause: {correction.human_root_cause}")
     human_detail = getattr(correction, "human_root_cause_detail", None)
     if human_detail:
         answer_parts.append(f"CORRECT root_cause_detail: {human_detail}")
     if correction.human_root_cause_note:
-        answer_parts.append(f"Human feedback: {correction.human_root_cause_note}")
+        answer_parts.append(f"CORRECT reasoning: {correction.human_root_cause_note}")
 
     return (
         f"--- Example ---\n"
@@ -285,11 +278,26 @@ def build_analysis_prompt(
     categories = cfg.get("root_cause_categories") or ROOT_CAUSE_CATEGORIES
     categories_text = "\n".join(f"- {cat}" for cat in categories)
 
-    details = cfg.get("root_cause_details") or []
-    if details:
+    cat_details_map: dict[str, list[str]] | None = cfg.get("category_details_map")
+    flat_details: list[str] = cfg.get("root_cause_details") or []
+
+    if cat_details_map is not None:
+        # Build details section grouped by category
+        lines: list[str] = [
+            "2. root_cause_detail — the specific sub-issue. "
+            "Use the known details for each category when applicable:"
+        ]
+        for cat in categories:
+            dets = cat_details_map.get(cat, [])
+            if dets:
+                lines.append(f"  {cat}:")
+                for d in dets:
+                    lines.append(f"    - {d}")
+        details_section = "\n".join(lines) + "\n\n"
+    elif flat_details:
         details_section = (
             "2. root_cause_detail — the specific sub-issue. Prefer these known values when applicable:\n"
-            + "\n".join(f"- {d}" for d in details)
+            + "\n".join(f"- {d}" for d in flat_details)
             + "\n\n"
         )
     else:
@@ -338,12 +346,10 @@ def build_analysis_prompt(
     examples_section = ""
     if active_corrections:
         examples_section = (
-            "\n\nHere are examples of past corrections where a human reviewer corrected "
-            "the AI's initial assessment. Learn from these to improve your analysis:\n\n"
+            "\n\nHere are approved examples of how items should be classified. "
+            "Follow the same patterns and reasoning:\n\n"
             + "\n\n".join(_format_correction_example(c) for c in active_corrections)
-            + "\n\nPlease learn from the patterns in these corrections. "
-            "Pay special attention to cases where the AI's initial judgment was wrong "
-            "and understand why the human chose a different root cause."
+            + "\n\nApply the classification patterns from these examples to the item below."
         )
 
     item_context = _format_item_context(

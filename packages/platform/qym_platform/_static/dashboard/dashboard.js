@@ -216,6 +216,22 @@
     return availableMetrics.filter(m => state.visibleMetrics.has(m));
   }
 
+  function setVisibleMetricsForAvailable(availableMetrics, checkedMetrics) {
+    const availableSet = new Set(availableMetrics || []);
+    const knownMetrics = Array.from(new Set([
+      ...state.allMetrics,
+      ...(availableMetrics || []),
+      ...(state.visibleMetrics ? [...state.visibleMetrics] : []),
+    ]));
+
+    const preserved = state.visibleMetrics
+      ? knownMetrics.filter(m => !availableSet.has(m) && state.visibleMetrics.has(m))
+      : knownMetrics.filter(m => !availableSet.has(m));
+
+    const merged = new Set([...preserved, ...checkedMetrics]);
+    state.visibleMetrics = merged.size === knownMetrics.length ? null : merged;
+  }
+
   function saveMetricVisibility() {
     try {
       if (!state.visibleMetrics) {
@@ -243,35 +259,36 @@
     } catch (e) {}
   }
 
-  function populateMetricVisibility() {
+  function populateMetricVisibility(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
     const wrapper = el('metric-visibility-wrapper');
     const dropdown = el('metric-visibility-dropdown');
     const btn = el('metric-visibility-btn');
     if (!wrapper || !dropdown || !btn) return;
 
-    if (state.allMetrics.length <= 1) {
+    if (availableMetrics.length === 0) {
       wrapper.style.display = 'none';
       return;
     }
     wrapper.style.display = '';
 
-    const allVisible = !state.visibleMetrics;
+    const visibleMetrics = new Set(getVisibleMetrics(availableMetrics));
+    const allVisible = visibleMetrics.size === availableMetrics.length;
     dropdown.innerHTML =
       '<div class="mv-actions">' +
         '<button class="mv-action-btn" id="mv-select-all">All</button>' +
         '<button class="mv-action-btn" id="mv-select-none">None</button>' +
       '</div>' +
-      state.allMetrics.map(m => {
-        const checked = allVisible || state.visibleMetrics.has(m) ? 'checked' : '';
+      availableMetrics.map(m => {
+        const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
         return `<label class="mv-option"><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /> ${escapeHtml(m)}</label>`;
       }).join('');
 
     // Update button text
-    updateMetricVisibilityBtn();
+    updateMetricVisibilityBtn(availableMetrics);
 
     dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
-        applyMetricVisibilityFromCheckboxes();
+        applyMetricVisibilityFromCheckboxes(availableMetrics);
       });
     });
 
@@ -280,64 +297,65 @@
     if (selAll) selAll.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      state.visibleMetrics = null;
+      setVisibleMetricsForAvailable(availableMetrics, new Set(availableMetrics));
       saveMetricVisibility();
-      syncMetricVisibilityDropdownState();
+      syncMetricVisibilityDropdownState(availableMetrics);
       render();
     });
     if (selNone) selNone.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      state.visibleMetrics = new Set();
+      setVisibleMetricsForAvailable(availableMetrics, new Set());
       saveMetricVisibility();
-      syncMetricVisibilityDropdownState();
+      syncMetricVisibilityDropdownState(availableMetrics);
       render();
     });
   }
 
-  function syncMetricVisibilityDropdownState() {
+  function syncMetricVisibilityDropdownState(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
 
-    const allVisible = !state.visibleMetrics;
+    const visibleMetrics = new Set(getVisibleMetrics(availableMetrics));
+    const allVisible = visibleMetrics.size === availableMetrics.length;
     dropdown.querySelectorAll('input[data-mv-metric]').forEach(cb => {
-      cb.checked = allVisible || state.visibleMetrics.has(cb.dataset.mvMetric);
+      cb.checked = allVisible || visibleMetrics.has(cb.dataset.mvMetric);
     });
-    updateMetricVisibilityBtn();
+    updateMetricVisibilityBtn(availableMetrics);
   }
 
-  function updateMetricVisibilityBtn() {
+  function updateMetricVisibilityBtn(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
     const btn = el('metric-visibility-btn');
     if (!btn) return;
-    if (!state.visibleMetrics) {
-      btn.textContent = 'All Metrics';
-      btn.classList.remove('has-selection');
-    } else if (state.visibleMetrics.size === 0) {
+    const visibleMetrics = getVisibleMetrics(availableMetrics);
+    if (availableMetrics.length === 0) {
       btn.textContent = 'No Metrics';
       btn.classList.add('has-selection');
-    } else if (state.visibleMetrics.size === 1) {
-      btn.textContent = [...state.visibleMetrics][0];
+    } else if (visibleMetrics.length === availableMetrics.length) {
+      btn.textContent = 'All Metrics';
+      btn.classList.remove('has-selection');
+    } else if (visibleMetrics.length === 0) {
+      btn.textContent = 'No Metrics';
+      btn.classList.add('has-selection');
+    } else if (visibleMetrics.length === 1) {
+      btn.textContent = visibleMetrics[0];
       btn.classList.add('has-selection');
     } else {
-      btn.textContent = state.visibleMetrics.size + ' Metrics';
+      btn.textContent = visibleMetrics.length + ' Metrics';
       btn.classList.add('has-selection');
     }
   }
 
-  function applyMetricVisibilityFromCheckboxes() {
+  function applyMetricVisibilityFromCheckboxes(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
     const checked = new Set();
     dropdown.querySelectorAll('input[data-mv-metric]').forEach(cb => {
       if (cb.checked) checked.add(cb.dataset.mvMetric);
     });
-    if (checked.size === state.allMetrics.length) {
-      state.visibleMetrics = null;
-    } else {
-      state.visibleMetrics = checked;
-    }
+    setVisibleMetricsForAvailable(availableMetrics, checked);
     saveMetricVisibility();
-    syncMetricVisibilityDropdownState();
+    syncMetricVisibilityDropdownState(availableMetrics);
     render();
   }
 
@@ -881,10 +899,10 @@
         const latencyStr = latency > 0 ? formatLatency(latency) : '—';
         const dt = formatDate(timestamp);
 
-        // Format run label: show model name + run name + date (#13)
+        // Format run label: show only model name; run name stays in hover.
         const displayModel = stripModelProvider(model);
-        const runNameLabel = runData.run_name ? ` (${runData.run_name})` : '';
-        let displayHtml = `<span class="model-name-text" title="${model}">${displayModel}</span>`;
+        const hoverRunName = runData.run_name || 'none';
+        let displayHtml = `<span class="model-name-text">${displayModel}</span>`;
         // Try to extract date from run_id pattern
         const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
         if (tsMatch) {
@@ -894,12 +912,12 @@
           const day = parseInt(dd, 10);
           const timeStr = `${hh}:${min}`;
           const counterStr = counter ? ` #${counter}` : '';
-          displayHtml = `<span class="model-name-text" title="${model}${runNameLabel}">${displayModel}${runNameLabel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
+          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
         } else {
           // Fallback: use formatted timestamp from run data
-          displayHtml = `<span class="model-name-text" title="${model}${runNameLabel}">${displayModel}${runNameLabel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
+          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
         }
-        const tooltipText = `${run_id}\n${dt.full}\nClick to view details`;
+        const tooltipText = `Run name: ${hoverRunName}`;
 
         // Build metric cells
         const metricCells = metrics.map(metric => {
@@ -943,14 +961,16 @@
       }).join('');
 
       const metricChartsHtml = `
-        <div class="chart-table" data-card-id="${cardId}">
-          <div class="chart-table-header">
-            <span class="chart-col-header-run">Model</span>
-            ${headerCells}
-            <span class="chart-col-header-latency sortable-col ${latencyActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${latencyArrow}</span>
-          </div>
-          <div class="chart-table-body">
-            ${rowsHtml}
+        <div class="chart-table-scroll">
+          <div class="chart-table" data-card-id="${cardId}">
+            <div class="chart-table-header">
+              <span class="chart-col-header-run">Model</span>
+              ${headerCells}
+              <span class="chart-col-header-latency sortable-col ${latencyActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${latencyArrow}</span>
+            </div>
+            <div class="chart-table-body">
+              ${rowsHtml}
+            </div>
           </div>
         </div>
       `;
@@ -1726,6 +1746,8 @@
     }
 
     empty.style.display = 'none';
+
+    populateMetricVisibility(getAvailableMetricsForRuns(runs));
 
     // Show current view (Charts, Table/Runs, or Models)
     chartsView.style.display = state.currentView === 'charts' ? 'block' : 'none';

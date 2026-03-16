@@ -37,6 +37,11 @@ class EvaluatorConfig(BaseModel):
     resume_rerun_errors: bool = False
     interrupt_grace_seconds: float = 2.0
 
+    # OpenTelemetry / OpenLLMetry auto-instrumentation (optional)
+    otel_enabled: bool = True  # auto-enable if traceloop-sdk installed; no-op if not
+    otel_endpoint: Optional[str] = None  # OTLP exporter endpoint
+    otel_headers: Optional[Dict[str, str]] = None  # auth headers for OTLP exporter
+
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None
     platform_api_key: Optional[str] = None

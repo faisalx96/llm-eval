@@ -171,7 +171,11 @@ class Evaluator:
         elif self._langfuse_credentials_available():
             self.client = self._init_langfuse()
             self.langfuse_enabled = True
-        
+
+        # Initialize OpenLLMetry auto-instrumentation (optional)
+        from .otel import create_otel_manager
+        self._otel = create_otel_manager(self.config)
+
         # Load and validate dataset
         if isinstance(dataset, str):
             self.dataset_name = dataset
@@ -1081,6 +1085,16 @@ class Evaluator:
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
         
+        # Flush Langfuse spans
+        if self.client:
+            try:
+                self.client.flush()
+            except Exception:
+                pass
+
+        # Flush and shut down OTEL
+        self._otel.shutdown()
+
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
         try:
             loop = asyncio.get_running_loop()
@@ -1290,8 +1304,9 @@ class Evaluator:
                 },
             )
 
-            # Create span/trace using non-blocking API (queues internally) when Langfuse is enabled.
-            # Otherwise use a no-op trace so tasks/metrics/UI still work.
+            # Create Langfuse span first (this is the trace root in Langfuse).
+            # Then create an OTEL span linked to the same trace_id so auto-instrumented
+            # LLM and tool calls appear as children of the task in one unified trace.
             item_metadata = getattr(item, 'metadata', {})
             if self.client:
                 span = self.client.start_span(
@@ -1318,33 +1333,46 @@ class Evaluator:
                     },
                 )
 
-            # Extract trace metadata
+            # Extract trace metadata (including trace_id for OTEL linking)
             try:
                 meta = self._extract_trace_meta(span)
             except Exception:
                 pass
 
             # Execute task with timeout and optional retry.
-            # Pass full model name (with provider) to user's task.
+            # OTEL span wraps the task execution, linked to the Langfuse trace_id
+            # so openai.chat and tool spans nest under the task name.
+            task_name = getattr(self.task_adapter.task, "__name__", "task")
+            langfuse_trace_id = meta.get("trace_id") if meta else None
             task_started_at_ms = int(time.time() * 1000)
             task_start_time = time.time()
             last_error = None
             output = None
-            for _attempt in range(1 + self.max_retries):
-                try:
-                    coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
-                    if self.timeout is not None:
-                        output = await asyncio.wait_for(coro, timeout=self.timeout)
-                    else:
-                        output = await coro
-                    last_error = None
-                    break
-                except asyncio.TimeoutError:
-                    last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
-                    logger.warning(f"Item {index}: {last_error}")
-                except Exception as e:
-                    last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
-                    logger.warning(f"Item {index}: {last_error}")
+            with self._otel.span(
+                name=task_name,
+                attributes={
+                    "qym.run_name": self.run_name or "",
+                    "qym.item_index": index,
+                    "qym.dataset": self.dataset_name or "",
+                    "qym.model": self.model_name or "",
+                },
+                trace_id=langfuse_trace_id,
+            ):
+                for _attempt in range(1 + self.max_retries):
+                    try:
+                        coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
+                        if self.timeout is not None:
+                            output = await asyncio.wait_for(coro, timeout=self.timeout)
+                        else:
+                            output = await coro
+                        last_error = None
+                        break
+                    except asyncio.TimeoutError:
+                        last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
+                        logger.warning(f"Item {index}: {last_error}")
+                    except Exception as e:
+                        last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
+                        logger.warning(f"Item {index}: {last_error}")
             if last_error is not None:
                 raise RuntimeError(last_error)
             task_elapsed_time = time.time() - task_start_time

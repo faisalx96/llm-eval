@@ -120,9 +120,19 @@ window.QymPlayground = (function () {
     // Highlight CORRECT root_cause: lines
     escaped = escaped.replace(/^(CORRECT root_cause:.*)/gm,
       '<span class="pg-hl-correct">$1</span>');
-    // Highlight bulleted list items (root cause categories and details)
-    escaped = escaped.replace(/^(- .+)$/gm,
+    // Highlight bulleted list items (root cause categories and details, including indented)
+    escaped = escaped.replace(/^( *- .+)$/gm,
       '<span class="pg-hl-category">$1</span>');
+    // Highlight category headers in grouped details (e.g. "  Gold Query:")
+    escaped = escaped.replace(/^( {2}\S.+:)$/gm,
+      '<span class="pg-hl-label">$1</span>');
+    // Highlight Additional Instructions block (label + all content after it until end)
+    escaped = escaped.replace(/(Additional Instructions:\n)([\s\S]*)$/m,
+      '<span class="pg-hl-label">$1</span><span class="pg-hl-dynamic">$2</span>');
+    escaped = escaped.replace(/^(CORRECT root_cause_detail:.*)/gm,
+      '<span class="pg-hl-correct">$1</span>');
+    escaped = escaped.replace(/^(CORRECT reasoning:.*)/gm,
+      '<span class="pg-hl-correct">$1</span>');
     // Highlight JSON response format hints
     escaped = escaped.replace(/(&quot;root_cause&quot;|&quot;root_cause_detail&quot;|&quot;root_cause_note&quot;|&quot;confidence&quot;)/g,
       '<span class="pg-hl-json-key">$1</span>');
@@ -304,38 +314,42 @@ window.QymPlayground = (function () {
     instrBody += '<textarea class="pg-instructions-textarea" id="pg-additional-instructions" placeholder="e.g. Focus on whether the response addresses all parts of the question.\nPay special attention to the {rubric} criteria." spellcheck="false"></textarea>';
     html += _section('Additional Instructions', instrBody);
 
-    // ── Root Cause Categories ──
-    var catBody = '';
-    catBody += '<div id="pg-categories-list">';
+    // ── Root Cause Categories & Details ──
+    var detailsMap = (_config && _config.category_details_map) || {};
+    var totalDetails = 0;
+    var catDetBody = '';
+    catDetBody += '<div id="pg-categories-list">';
     for (var i = 0; i < cats.length; i++) {
-      catBody += '<div class="pg-category-item" data-cat="' + _escAttr(cats[i]) + '">' +
-        '<span class="pg-category-name">' + _esc(cats[i]) + '</span>' +
-        '<button class="pg-category-remove" title="Remove">&times;</button>' +
+      var cat = cats[i];
+      var catDets = detailsMap[cat] || [];
+      totalDetails += catDets.length;
+      catDetBody += '<div class="pg-category-group" data-cat="' + _escAttr(cat) + '">';
+      catDetBody += '<div class="pg-category-item">' +
+        '<span class="pg-category-name">' + _esc(cat) + '</span>' +
+        '<button class="pg-category-remove" title="Remove category">&times;</button>' +
       '</div>';
+      if (catDets.length > 0) {
+        catDetBody += '<div class="pg-details-sublist" data-cat="' + _escAttr(cat) + '">';
+        for (var di = 0; di < catDets.length; di++) {
+          catDetBody += '<div class="pg-detail-item" data-detail="' + _escAttr(catDets[di]) + '" data-parent-cat="' + _escAttr(cat) + '">' +
+            '<span class="pg-detail-name">' + _esc(catDets[di]) + '</span>' +
+            '<button class="pg-detail-remove" title="Remove detail">&times;</button>' +
+          '</div>';
+        }
+        catDetBody += '</div>';
+      }
+      catDetBody += '<div class="pg-add-detail-row" data-cat="' + _escAttr(cat) + '">' +
+        '<input type="text" placeholder="Add detail..." class="pg-add-input pg-add-detail-input" />' +
+        '<button class="pg-add-detail-btn pg-add-btn">+</button>' +
+      '</div>';
+      catDetBody += '</div>';
     }
-    catBody += '</div>';
-    catBody += '<div class="pg-add-category">' +
+    catDetBody += '</div>';
+    catDetBody += '<div class="pg-add-category">' +
       '<input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input" />' +
       '<button id="pg-add-category-btn" class="pg-add-btn">+ Add</button>' +
     '</div>';
-    html += _section('Root Cause Categories', catBody, { open: false, badge: String(cats.length) });
-
-    // ── Root Cause Details ──
-    var details = (_config && _config.existing_details) || [];
-    var detBody = '';
-    detBody += '<div id="pg-details-list">';
-    for (var di = 0; di < details.length; di++) {
-      detBody += '<div class="pg-category-item" data-detail="' + _escAttr(details[di]) + '">' +
-        '<span class="pg-category-name">' + _esc(details[di]) + '</span>' +
-        '<button class="pg-detail-remove" title="Remove">&times;</button>' +
-      '</div>';
-    }
-    detBody += '</div>';
-    detBody += '<div class="pg-add-category">' +
-      '<input type="text" id="pg-new-detail" placeholder="New detail (sub-issue)..." class="pg-add-input" />' +
-      '<button id="pg-add-detail-btn" class="pg-add-btn">+ Add</button>' +
-    '</div>';
-    html += _section('Root Cause Details', detBody, { open: false, badge: String(details.length) });
+    html += _section('Root Cause Categories & Details', catDetBody, { open: false, badge: cats.length + ' / ' + totalDetails });
 
     // ── Variable Mapping ──
     html += _buildVariableMapping();
@@ -366,7 +380,10 @@ window.QymPlayground = (function () {
     var previewBody = '';
     previewBody += '<div id="pg-preview-loading" style="display:none;padding:8px 14px;font-size:12px;color:#a855f7;background:rgba(168,85,247,0.06);border-bottom:1px solid rgba(168,85,247,0.15);">Generating preview\u2026</div>';
     previewBody += '<div id="pg-preview-content" class="pg-prompt-preview-content">Loading prompt preview\u2026</div>';
-    previewBody += '<button class="pg-toggle-expand" id="pg-preview-toggle" style="display:none;">Expand</button>';
+    previewBody += '<div class="pg-preview-actions">' +
+      '<button class="pg-toggle-expand" id="pg-preview-toggle" style="display:none;">Expand</button>' +
+      '<button class="pg-copy-btn" id="pg-preview-copy" title="Copy prompt to clipboard">Copy</button>' +
+    '</div>';
     html += _section('Prompt Preview', previewBody, {
       extraSummary: '<span class="pg-auto-indicator" id="pg-preview-indicator">auto-updates</span>',
     });
@@ -652,20 +669,22 @@ window.QymPlayground = (function () {
       cfg.additional_instructions = instrEl.value.trim();
     }
 
-    // Categories
-    var catItems = document.querySelectorAll('#pg-categories-list .pg-category-item');
-    if (catItems.length > 0) {
+    // Categories & Details (grouped)
+    var catGroups = document.querySelectorAll('#pg-categories-list .pg-category-group');
+    if (catGroups.length > 0) {
       var cats = [];
-      catItems.forEach(function (el) { cats.push(el.dataset.cat); });
+      var cdMap = {};
+      catGroups.forEach(function (group) {
+        var cat = group.dataset.cat;
+        cats.push(cat);
+        var dets = [];
+        group.querySelectorAll('.pg-detail-item').forEach(function (el) {
+          dets.push(el.dataset.detail);
+        });
+        if (dets.length > 0) cdMap[cat] = dets;
+      });
       cfg.root_cause_categories = cats;
-    }
-
-    // Details
-    var detItems = document.querySelectorAll('#pg-details-list .pg-category-item');
-    if (detItems.length > 0) {
-      var dets = [];
-      detItems.forEach(function (el) { dets.push(el.dataset.detail); });
-      cfg.root_cause_details = dets;
+      cfg.category_details_map = cdMap;
     }
 
     // Include fields
@@ -756,13 +775,57 @@ window.QymPlayground = (function () {
       });
     }
 
-    // Remove category
+    // Remove category (removes entire group including its details)
     var catList = document.getElementById('pg-categories-list');
     if (catList) catList.addEventListener('click', function (e) {
       var removeBtn = e.target.closest('.pg-category-remove');
       if (removeBtn) {
-        var item = removeBtn.closest('.pg-category-item');
-        if (item) { item.remove(); _scheduleAutoPreview(); }
+        var group = removeBtn.closest('.pg-category-group');
+        if (group) { group.remove(); _scheduleAutoPreview(); }
+      }
+      // Remove individual detail
+      var detRemoveBtn = e.target.closest('.pg-detail-remove');
+      if (detRemoveBtn) {
+        var detItem = detRemoveBtn.closest('.pg-detail-item');
+        if (detItem) { detItem.remove(); _scheduleAutoPreview(); }
+      }
+      // Add detail to a category
+      var addDetBtn = e.target.closest('.pg-add-detail-btn');
+      if (addDetBtn) {
+        var row = addDetBtn.closest('.pg-add-detail-row');
+        var input = row && row.querySelector('.pg-add-detail-input');
+        if (input) {
+          var val = input.value.trim();
+          if (!val) return;
+          var parentCat = row.dataset.cat;
+          var sublist = row.parentElement.querySelector('.pg-details-sublist[data-cat="' + parentCat + '"]');
+          if (!sublist) {
+            sublist = document.createElement('div');
+            sublist.className = 'pg-details-sublist';
+            sublist.dataset.cat = parentCat;
+            row.parentElement.insertBefore(sublist, row);
+          }
+          var div = document.createElement('div');
+          div.className = 'pg-detail-item';
+          div.dataset.detail = val;
+          div.dataset.parentCat = parentCat;
+          div.innerHTML = '<span class="pg-detail-name">' + _esc(val) + '</span>' +
+            '<button class="pg-detail-remove" title="Remove detail">&times;</button>';
+          sublist.appendChild(div);
+          input.value = '';
+          _scheduleAutoPreview();
+        }
+      }
+    });
+
+    // Enter key for inline detail inputs
+    if (catList) catList.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        var input = e.target.closest('.pg-add-detail-input');
+        if (input) {
+          var btn = input.parentElement.querySelector('.pg-add-detail-btn');
+          if (btn) btn.click();
+        }
       }
     });
 
@@ -773,47 +836,23 @@ window.QymPlayground = (function () {
       var addCat = function () {
         var val = addInput.value.trim();
         if (!val) return;
-        var div = document.createElement('div');
-        div.className = 'pg-category-item';
-        div.dataset.cat = val;
-        div.innerHTML = '<span class="pg-category-name">' + _esc(val) + '</span>' +
-          '<button class="pg-category-remove" title="Remove">&times;</button>';
-        catList.appendChild(div);
+        var group = document.createElement('div');
+        group.className = 'pg-category-group';
+        group.dataset.cat = val;
+        group.innerHTML = '<div class="pg-category-item">' +
+          '<span class="pg-category-name">' + _esc(val) + '</span>' +
+          '<button class="pg-category-remove" title="Remove category">&times;</button>' +
+        '</div>' +
+        '<div class="pg-add-detail-row" data-cat="' + _escAttr(val) + '">' +
+          '<input type="text" placeholder="Add detail..." class="pg-add-input pg-add-detail-input" />' +
+          '<button class="pg-add-detail-btn pg-add-btn">+</button>' +
+        '</div>';
+        catList.appendChild(group);
         addInput.value = '';
         _scheduleAutoPreview();
       };
       addBtn.addEventListener('click', addCat);
       addInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') addCat(); });
-    }
-
-    // Remove detail
-    var detList = document.getElementById('pg-details-list');
-    if (detList) detList.addEventListener('click', function (e) {
-      var removeBtn = e.target.closest('.pg-detail-remove');
-      if (removeBtn) {
-        var item = removeBtn.closest('.pg-category-item');
-        if (item) { item.remove(); _scheduleAutoPreview(); }
-      }
-    });
-
-    // Add detail
-    var addDetBtn = document.getElementById('pg-add-detail-btn');
-    var addDetInput = document.getElementById('pg-new-detail');
-    if (addDetBtn && addDetInput) {
-      var addDet = function () {
-        var val = addDetInput.value.trim();
-        if (!val) return;
-        var div = document.createElement('div');
-        div.className = 'pg-category-item';
-        div.dataset.detail = val;
-        div.innerHTML = '<span class="pg-category-name">' + _esc(val) + '</span>' +
-          '<button class="pg-detail-remove" title="Remove">&times;</button>';
-        detList.appendChild(div);
-        addDetInput.value = '';
-        _scheduleAutoPreview();
-      };
-      addDetBtn.addEventListener('click', addDet);
-      addDetInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') addDet(); });
     }
 
     // Variable mapping field change
@@ -878,6 +917,18 @@ window.QymPlayground = (function () {
         var expanded = content.classList.toggle('expanded');
         toggleBtn.textContent = expanded ? 'Collapse' : 'Expand';
       }
+    });
+
+    // Copy prompt button
+    var copyBtn = document.getElementById('pg-preview-copy');
+    if (copyBtn) copyBtn.addEventListener('click', function () {
+      var content = document.getElementById('pg-preview-content');
+      if (!content) return;
+      var text = content.innerText || content.textContent || '';
+      navigator.clipboard.writeText(text).then(function () {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+      });
     });
 
     // Test button

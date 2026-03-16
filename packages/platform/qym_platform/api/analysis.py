@@ -38,6 +38,7 @@ class PlaygroundConfig(BaseModel):
     custom_variable_mapping: Optional[Dict[str, str]] = None
     root_cause_categories: Optional[List[str]] = None
     root_cause_details: Optional[List[str]] = None
+    category_details_map: Optional[Dict[str, List[str]]] = None
     solution_categories: Optional[List[str]] = None
     include_fields: Optional[Dict[str, bool]] = None
     correction_ids: Optional[List[int]] = None
@@ -100,6 +101,8 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
         cfg["root_cause_categories"] = pg.root_cause_categories
+    if pg.category_details_map is not None:
+        cfg["category_details_map"] = pg.category_details_map
     if pg.root_cause_details is not None:
         cfg["root_cause_details"] = pg.root_cause_details
     if pg.solution_categories is not None:
@@ -206,44 +209,39 @@ def _collect_task_root_cause_catalog(
     db: Session,
     run: Run,
     items: List[RunItem],
-) -> tuple[List[str], List[str]]:
-    """Collect root-cause categories/details from defaults, run items, and task history."""
+) -> tuple[List[str], Dict[str, List[str]]]:
+    """Collect root-cause categories and a category→details mapping from approved corrections."""
     task_corrections = (
         db.query(ReviewCorrection)
-        .filter(ReviewCorrection.task == run.task)
+        .filter(
+            ReviewCorrection.task == run.task,
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
+        )
         .order_by(ReviewCorrection.created_at.desc())
         .all()
     )
 
-    run_categories = [
-        str(i.item_metadata.get("root_cause", ""))
-        for i in items
-        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause")
-    ]
-    correction_categories = []
-    correction_details = []
+    correction_categories: list[str] = []
+    # Build category → details mapping from approved corrections
+    cat_details_map: Dict[str, List[str]] = {}
     for correction in task_corrections:
-        correction_categories.extend([
-            correction.human_root_cause,
-            correction.ai_root_cause,
-        ])
-        correction_details.extend([
-            correction.human_root_cause_detail,
-            correction.ai_root_cause_detail,
-        ])
+        cat = correction.human_root_cause or ""
+        detail = correction.human_root_cause_detail or ""
+        if cat:
+            correction_categories.append(cat)
+            if detail:
+                cat_details_map.setdefault(cat, []).append(detail)
 
     all_categories = _ordered_unique(
-        list(ROOT_CAUSE_CATEGORIES) + run_categories + correction_categories
+        list(ROOT_CAUSE_CATEGORIES) + correction_categories
     )
 
-    run_details = [
-        str(i.item_metadata.get("root_cause_detail", ""))
-        for i in items
-        if isinstance(i.item_metadata, dict) and i.item_metadata.get("root_cause_detail")
-    ]
-    all_details = _ordered_unique(run_details + correction_details)
+    # De-duplicate details within each category while preserving order
+    for cat in cat_details_map:
+        cat_details_map[cat] = _ordered_unique(cat_details_map[cat])
 
-    return all_categories, all_details
+    return all_categories, cat_details_map
 
 
 @router.post("/api/runs/{run_id:path}/analyze")
@@ -647,7 +645,7 @@ def get_analysis_config(
         .count()
     )
 
-    all_categories, existing_details = _collect_task_root_cause_catalog(db, run, items)
+    all_categories, category_details_map = _collect_task_root_cause_catalog(db, run, items)
 
     return {
         "llm_configured": bool(cfg.get("llm_api_key")),
@@ -660,7 +658,11 @@ def get_analysis_config(
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
         "default_categories": all_categories,
         "default_solution_categories": SOLUTION_CATEGORIES,
-        "existing_details": existing_details,
+        "category_details_map": category_details_map,
+        # Keep flat list for backwards compatibility
+        "existing_details": _ordered_unique(
+            [d for dets in category_details_map.values() for d in dets]
+        ),
     }
 
 

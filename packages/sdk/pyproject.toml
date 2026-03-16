@@ -38,7 +38,8 @@ deepeval = ["deepeval>=0.20.0"]
 openai = ["openai>=1.0.0"]
 langchain = ["langchain>=0.1.0"]
 langgraph = ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"]
-all = ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"]
+otel = ["traceloop-sdk>=0.30.0"]
+all = ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0", "traceloop-sdk>=0.30.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
