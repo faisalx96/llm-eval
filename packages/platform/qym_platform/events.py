@@ -68,7 +68,7 @@ class ItemFailedPayload(BaseModel):
 class RunCompletedPayload(BaseModel):
     ended_at: datetime
     summary: Dict[str, Any] = Field(default_factory=dict)
-    final_status: Literal["COMPLETED", "FAILED"] = "COMPLETED"
+    final_status: Literal["COMPLETED", "FAILED", "STOPPED"] = "COMPLETED"
 
 
 class MetadataUpdatePayload(BaseModel):

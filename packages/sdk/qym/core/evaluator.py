@@ -571,14 +571,34 @@ class Evaluator:
             return self._run_multi_model(show_tui, auto_save, save_format, max_parallel_runs)
 
         # Run the async evaluation
-        result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
-        
+        try:
+            result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
+        except KeyboardInterrupt:
+            # asyncio.run() tears down the event loop on Ctrl+C before arun's
+            # finalization code can send run_completed. Send STOPPED synchronously here.
+            print("[QYM-SDK] Interrupted — sending STOPPED to platform", flush=True)
+            stream = getattr(self, "_platform_stream", None)
+            if stream is not None:
+                try:
+                    stream.emit(
+                        "run_completed",
+                        {
+                            "ended_at": _utc_now_str(),
+                            "final_status": "STOPPED",
+                            "summary": {},
+                        },
+                        sync=True,
+                    )
+                except Exception:
+                    pass
+            raise
+
         # Always print summary (silently no-op when disabled)
         html_url = getattr(result, 'html_url', None)
         result.print_summary(html_url)
         _announce_saved_results([result], include_run_name=False)
-        
-        
+
+
         return result
     
     
@@ -1050,6 +1070,8 @@ class Evaluator:
             result.html_url = html_url
 
         # Finalize remote streaming
+        _final_status = "STOPPED" if interrupted else "COMPLETED"
+        print(f"[QYM-SDK] Finalizing run: interrupted={interrupted} final_status={_final_status}", flush=True)
         if getattr(self, "_platform_stream", None) is not None:
             try:
                 # First, close the async queue to flush all pending item events
@@ -1065,7 +1087,7 @@ class Evaluator:
                     "run_completed",
                     {
                         "ended_at": _utc_now_str(),
-                        "final_status": "COMPLETED",
+                        "final_status": _final_status,
                         "summary": {
                             "total_items": result.total_items,
                             "success_count": len(result.results),
@@ -1148,14 +1170,33 @@ class Evaluator:
         except ImportError:
             pass
 
-        results = asyncio.run(
-            runner.arun(
-                show_tui=show_tui,
-                auto_save=auto_save,
-                save_format=save_format,
-                max_parallel_runs=max_parallel_runs,
+        try:
+            results = asyncio.run(
+                runner.arun(
+                    show_tui=show_tui,
+                    auto_save=auto_save,
+                    save_format=save_format,
+                    max_parallel_runs=max_parallel_runs,
+                )
             )
-        )
+        except KeyboardInterrupt:
+            print("[QYM-SDK] Interrupted — sending STOPPED to platform for all active runs", flush=True)
+            for ev in getattr(runner, "_active_evaluators", []):
+                stream = getattr(ev, "_platform_stream", None)
+                if stream is not None:
+                    try:
+                        stream.emit(
+                            "run_completed",
+                            {
+                                "ended_at": _utc_now_str(),
+                                "final_status": "STOPPED",
+                                "summary": {},
+                            },
+                            sync=True,
+                        )
+                    except Exception:
+                        pass
+            raise
 
         runner.print_summary(results)
         runner.print_saved_paths(results)

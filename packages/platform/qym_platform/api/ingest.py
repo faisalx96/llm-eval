@@ -138,9 +138,18 @@ async def ingest_events(
         # Apply side-effects into normalized tables
         # Parse payload explicitly based on event type to avoid Union ambiguity
         raw_payload = raw.get("payload") or {}
-        payload = evt.payload
-        if evt.type == "metadata_update":
-            payload = MetadataUpdatePayload.model_validate(raw_payload)
+        _PAYLOAD_TYPE = {
+            "run_started": RunStartedPayload,
+            "item_started": ItemStartedPayload,
+            "metric_scored": MetricScoredPayload,
+            "item_completed": ItemCompletedPayload,
+            "item_failed": ItemFailedPayload,
+            "run_completed": RunCompletedPayload,
+            "metadata_update": MetadataUpdatePayload,
+        }
+        payload_cls = _PAYLOAD_TYPE.get(evt.type)
+        payload = payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
+        print(f"[INGEST] run={run_id} type={evt.type} payload_type={type(payload).__name__}", flush=True)
 
         if isinstance(payload, RunStartedPayload):
             run.external_run_id = payload.external_run_id
@@ -155,6 +164,7 @@ async def ingest_events(
             run.run_config = payload.run_config
             run.started_at = payload.started_at
             run.status = RunWorkflowStatus.RUNNING
+            print(f"[INGEST] STATUS -> RUNNING run={run_id}", flush=True)
 
         elif isinstance(payload, ItemStartedPayload):
             item = db.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == payload.item_id).first()
@@ -263,7 +273,9 @@ async def ingest_events(
 
         elif isinstance(payload, RunCompletedPayload):
             run.ended_at = payload.ended_at
-            run.status = RunWorkflowStatus.COMPLETED if payload.final_status == "COMPLETED" else RunWorkflowStatus.FAILED
+            _FINAL_STATUS = {"COMPLETED": RunWorkflowStatus.COMPLETED, "FAILED": RunWorkflowStatus.FAILED, "STOPPED": RunWorkflowStatus.STOPPED}
+            run.status = _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED)
+            print(f"[INGEST] STATUS -> {payload.final_status} run={run_id}", flush=True)
             # Allow the client to attach final metadata (e.g., langfuse_url) at completion time.
             # This is safe because ingestion is authenticated (API key) and scoped to the run owner.
             try:

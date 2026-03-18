@@ -1553,7 +1553,8 @@ main {
 
 .runs-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--font-base);
   table-layout: auto;
 }
@@ -1635,6 +1636,12 @@ main {
 /* Group header row in Runs view */
 .runs-table tbody tr.run-group-header td {
   border-top: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+}
+.runs-table tbody tr.run-group-header td .group-header-content {
+  position: sticky;
+  left: 12px;
+  display: inline-block;
 }
 
 /* Column-specific styles */
@@ -1742,6 +1749,84 @@ main {
 
 .col-model {
   white-space: nowrap;
+}
+
+/* ── Sticky columns: freeze first 5 columns on horizontal scroll ── */
+.runs-table .col-select {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+}
+.runs-table .col-status {
+  position: sticky;
+  left: 40px;
+  z-index: 2;
+  width: 100px;
+  min-width: 100px;
+}
+.runs-table .col-run {
+  position: sticky;
+  left: 140px;
+  z-index: 2;
+  min-width: 180px;
+  max-width: 180px;
+}
+.runs-table .col-task {
+  position: sticky;
+  left: 320px;
+  z-index: 2;
+  width: 120px;
+  min-width: 120px;
+}
+.runs-table .col-model {
+  position: sticky;
+  left: 440px;
+  z-index: 2;
+  width: 120px;
+  min-width: 120px;
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Corner cells: sticky header + sticky column need highest z-index */
+.runs-table thead th.col-select,
+.runs-table thead th.col-status,
+.runs-table thead th.col-run,
+.runs-table thead th.col-task,
+.runs-table thead th.col-model {
+  z-index: 12;
+}
+
+/* Opaque backgrounds for sticky cells — must cover scrolling content */
+.runs-table tbody tr td.col-select,
+.runs-table tbody tr td.col-status,
+.runs-table tbody tr td.col-run,
+.runs-table tbody tr td.col-task,
+.runs-table tbody tr td.col-model {
+  background: var(--bg-base);
+}
+.runs-table tbody tr:nth-child(odd) td.col-select,
+.runs-table tbody tr:nth-child(odd) td.col-status,
+.runs-table tbody tr:nth-child(odd) td.col-run,
+.runs-table tbody tr:nth-child(odd) td.col-task,
+.runs-table tbody tr:nth-child(odd) td.col-model {
+  background: var(--bg-surface);
+}
+.runs-table tbody tr:hover td.col-select,
+.runs-table tbody tr:hover td.col-status,
+.runs-table tbody tr:hover td.col-run,
+.runs-table tbody tr:hover td.col-task,
+.runs-table tbody tr:hover td.col-model {
+  background: var(--bg-hover);
+}
+.runs-table tbody tr.selected td.col-select,
+.runs-table tbody tr.selected td.col-status,
+.runs-table tbody tr.selected td.col-run,
+.runs-table tbody tr.selected td.col-task,
+.runs-table tbody tr.selected td.col-model {
+  background: var(--bg-active);
 }
 
 .col-owner {
@@ -2737,12 +2822,14 @@ main {
   background: var(--bg-elevated);
   color: var(--text-secondary);
 }
-.status-badge.status-SUBMITTED { color: var(--warning); border-color: rgba(245, 158, 11, 0.35); }
+.status-badge.status-SUBMITTED { color: #94a3b8; border-color: rgba(148, 163, 184, 0.35); }
 .status-badge.status-APPROVED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
 .status-badge.status-REJECTED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
 .status-badge.status-RUNNING { color: var(--accent-secondary); border-color: rgba(0, 168, 255, 0.35); }
 .status-badge.status-COMPLETED { color: #a855f7; border-color: rgba(168, 85, 247, 0.35); }
 .status-badge.status-FAILED { color: var(--error); border-color: rgba(239, 68, 68, 0.35); }
+.status-badge.status-STOPPED { color: #f59e0b; border-color: rgba(245, 158, 11, 0.35); }
+.status-badge.status-PENDING { color: var(--text-muted); border-color: var(--border-default); }
 
 /* ═══════════════════════════════════════════════════
    MODELS COMPARISON VIEW

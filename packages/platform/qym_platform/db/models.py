@@ -46,6 +46,8 @@ class RunWorkflowStatus(str, enum.Enum):
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    STOPPED = "STOPPED"
+    PENDING = "PENDING"
 
 
 class ApprovalDecision(str, enum.Enum):

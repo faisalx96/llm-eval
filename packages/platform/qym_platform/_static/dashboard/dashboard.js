@@ -1224,12 +1224,14 @@
         const memberFilePaths = members.map(m => m.run.file_path);
 
         groupHeaderHtml = `<tr class="run-group-header" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
-          <td colspan="${colCount}" style="padding:6px 12px;background:var(--bg-elevated);cursor:pointer;user-select:none;">
-            <span class="group-toggle-arrow" style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;margin-right:4px;">${arrow}</span>
-            <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
-            <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
-            <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:8px;">${groupSize} runs</span>
-            <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;">Compare</button>
+          <td colspan="${colCount}" style="padding:6px 0;background:var(--bg-elevated);cursor:pointer;user-select:none;">
+            <div class="group-header-content">
+              <span class="group-toggle-arrow" style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;margin-right:4px;">${arrow}</span>
+              <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
+              <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
+              <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:8px;">${groupSize} runs</span>
+              <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;">Compare</button>
+            </div>
           </td>
         </tr>`;
       }
@@ -3464,8 +3466,8 @@
   let runsRefreshId = null;
   function updateRunsRefreshCadence() {
     try {
-      const anyRunning = (state.flatRuns || []).some(r => String(r.status || '').toUpperCase() === 'RUNNING');
-      const intervalMs = anyRunning ? 2000 : 60000;
+      const anyActive = (state.flatRuns || []).some(r => { const s = String(r.status || '').toUpperCase(); return s === 'RUNNING' || s === 'PENDING'; });
+      const intervalMs = anyActive ? 2000 : 60000;
       if (runsRefreshId) clearInterval(runsRefreshId);
       runsRefreshId = setInterval(fetchRuns, intervalMs);
     } catch {

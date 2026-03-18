@@ -898,7 +898,8 @@
         state.langfuseProjectId = run.langfuse_project_id || '';
 
         // If platform run is still executing, poll for updates.
-        const isRunning = String(run.status || '').toUpperCase() === 'RUNNING';
+        const _runSt = String(run.status || '').toUpperCase();
+        const isRunning = _runSt === 'RUNNING' || _runSt === 'PENDING';
         state.runStartMs = Date.now();
         state.runEndMs = isRunning ? null : Date.now();
 
@@ -945,7 +946,7 @@
                   updateMetricSeriesFromSnapshot(s2);
                   renderAll();
                   const st = String(r2.status || '').toUpperCase();
-                  if (st && st !== 'RUNNING') {
+                  if (st && st !== 'RUNNING' && st !== 'PENDING') {
                     clearInterval(state._pollId);
                     state._pollId = null;
                     state.runEndMs = Date.now();

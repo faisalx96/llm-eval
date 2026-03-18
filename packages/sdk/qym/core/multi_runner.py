@@ -218,6 +218,9 @@ class MultiModelRunner:
             else:
                 return await _run_spec_inner(spec)
 
+        # Track active evaluators so interrupt handler can send STOPPED
+        _active_evaluators: list = []
+
         async def _run_spec_inner(spec: RunSpec):
             observer = dashboard.create_observer(spec.name)
             # Pass config object directly
@@ -228,6 +231,7 @@ class MultiModelRunner:
                 config=spec.config,
                 observer=observer,
             )
+            _active_evaluators.append(evaluator)
             try:
                 result = await evaluator.arun(
                     show_tui=False,
@@ -239,6 +243,7 @@ class MultiModelRunner:
                 dashboard.mark_run_exception(spec.name, str(exc))
                 raise
 
+        self._active_evaluators = _active_evaluators
         tasks = [asyncio.create_task(_run_spec(spec)) for spec in self.specs]
 
         final_panel = None
