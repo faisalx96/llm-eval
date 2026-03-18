@@ -188,8 +188,14 @@ class Run(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships (lazy="noload" — use selectinload() explicitly when needed)
+    items: Mapped[list["RunItem"]] = relationship("RunItem", lazy="noload", foreign_keys="RunItem.run_id")
+    scores: Mapped[list["RunItemScore"]] = relationship("RunItemScore", lazy="noload", foreign_keys="RunItemScore.run_id")
+    approval_rel: Mapped[Optional["Approval"]] = relationship("Approval", uselist=False, lazy="noload", foreign_keys="Approval.run_id")
+    owner_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_user_id], lazy="noload")
 
 
 class RunItem(Base):

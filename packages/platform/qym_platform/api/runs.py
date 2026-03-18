@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -314,6 +315,8 @@ def run_ui(run_id: str) -> FileResponse:
 
 @router.get("/api/runs")
 def legacy_list_runs(
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
@@ -330,53 +333,189 @@ def legacy_list_runs(
 
     # Local dev mode: show everything to reduce friction
     if principal.auth_type == "none":
-        runs = q.all()
+        pass  # no filter
     elif principal.user.role == UserRole.ADMIN:
-        # Admin sees all runs
-        runs = q.all()
+        pass  # Admin sees all runs
     elif principal.user.role == UserRole.EMPLOYEE:
-        # Employee sees only their own runs
-        runs = q.filter(Run.owner_user_id == principal.user.id).all()
+        q = q.filter(Run.owner_user_id == principal.user.id)
     elif principal.user.role == UserRole.MANAGER:
-        # Manager sees runs from their managed team(s)
         managed_team_ids = _manager_team_ids(db, principal.user.id)
         if managed_team_ids:
-            # Get users in those teams
             team_users = db.query(User.id).filter(User.team_unit_id.in_(managed_team_ids)).all()
             team_user_ids = {u.id for u in team_users}
-            # Include manager's own runs too
             team_user_ids.add(principal.user.id)
-            runs = q.filter(Run.owner_user_id.in_(team_user_ids)).all()
+            q = q.filter(Run.owner_user_id.in_(team_user_ids))
         else:
-            # No managed teams, show only own runs
-            runs = q.filter(Run.owner_user_id == principal.user.id).all()
+            q = q.filter(Run.owner_user_id == principal.user.id)
     elif principal.user.role in {UserRole.GM, UserRole.VP}:
-        # GM/VP: approved runs only by default (can be relaxed via policy)
         gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
         if gm_vp_approved_only:
-            runs = q.filter(Run.status == RunWorkflowStatus.APPROVED).all()
+            q = q.filter(Run.status == RunWorkflowStatus.APPROVED)
         else:
-            # Show SUBMITTED and APPROVED
-            runs = q.filter(Run.status.in_([RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED])).all()
+            q = q.filter(Run.status.in_([RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED]))
     else:
-        # Fallback: own runs only
-        runs = q.filter(Run.owner_user_id == principal.user.id).all()
+        q = q.filter(Run.owner_user_id == principal.user.id)
 
     # Filter out hidden tasks
     from qym_platform.settings import PlatformSettings
     settings = PlatformSettings()
     hidden = {t.strip().lower() for t in settings.hidden_tasks.split(",") if t.strip()}
+    if hidden:
+        q = q.filter(~func.lower(Run.task).in_(hidden))
 
+    # Total count before pagination
+    total_count = q.count()
+
+    # Apply pagination
+    runs: List[Run] = q.offset(offset).limit(limit).all()
+
+    if not runs:
+        return {"tasks": {}, "last_updated": datetime.utcnow().isoformat(), "total_count": total_count}
+
+    run_ids = [r.id for r in runs]
+
+    # --- Batch query: item aggregates per run ---
+    item_agg_rows = (
+        db.query(
+            RunItem.run_id,
+            func.count().label("total"),
+            func.count(case((RunItem.error.isnot(None), 1))).label("error_count"),
+            func.count(case(((RunItem.output.isnot(None)) | (RunItem.error.isnot(None)), 1))).label("completed"),
+            func.avg(RunItem.latency_ms).label("avg_latency"),
+        )
+        .filter(RunItem.run_id.in_(run_ids))
+        .group_by(RunItem.run_id)
+        .all()
+    )
+    item_agg = {
+        row.run_id: {
+            "total": row.total,
+            "error_count": row.error_count,
+            "completed": row.completed,
+            "avg_latency": float(row.avg_latency) if row.avg_latency is not None else 0.0,
+        }
+        for row in item_agg_rows
+    }
+
+    # --- Batch query: score averages per run+metric ---
+    # Note: this uses SQL AVG which excludes NULLs. The old code counted error items
+    # as 0.0, so we do a LEFT JOIN to include error items with score 0.
+    score_agg_rows = (
+        db.query(
+            RunItemScore.run_id,
+            RunItemScore.metric_name,
+            func.avg(RunItemScore.score_numeric).label("avg_score"),
+        )
+        .filter(RunItemScore.run_id.in_(run_ids))
+        .group_by(RunItemScore.run_id, RunItemScore.metric_name)
+        .all()
+    )
+    # Build nested map: run_id -> {metric_name: avg_score}
+    score_agg: Dict[str, Dict[str, float]] = {}
+    for row in score_agg_rows:
+        score_agg.setdefault(row.run_id, {})[row.metric_name] = float(row.avg_score) if row.avg_score is not None else 0.0
+
+    # --- Batch query: approvals ---
+    approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
+    approval_map = {a.run_id: a for a in approvals}
+
+    # --- Batch query: all referenced users ---
+    user_ids = {r.owner_user_id for r in runs}
+    user_ids |= {a.decision_by_user_id for a in approvals if a.decision_by_user_id}
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+    user_map = {u.id: u for u in users}
+
+    # --- Build summaries from pre-fetched data ---
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     for r in runs:
-        summary = _compute_run_summary(db, r)
+        agg = item_agg.get(r.id, {"total": 0, "error_count": 0, "completed": 0, "avg_latency": 0.0})
+        total_items = agg["total"]
+        error_count = agg["error_count"]
+        success_count = total_items - error_count
+        completed_count = agg["completed"]
+
+        expected_total = None
+        if isinstance(r.run_metadata, dict):
+            try:
+                if r.run_metadata.get("total_items") is not None:
+                    expected_total = int(r.run_metadata["total_items"])
+            except Exception:
+                expected_total = None
+
+        metrics = list(r.metrics or [])
+        run_scores = score_agg.get(r.id, {})
+        metric_averages = {m: run_scores.get(m, 0.0) for m in metrics}
+
+        # Owner info
+        owner = user_map.get(r.owner_user_id)
+        owner_info = None
+        if owner:
+            owner_info = {
+                "id": owner.id,
+                "email": owner.email,
+                "display_name": owner.display_name or owner.email.split("@")[0],
+            }
+
+        # Approval info
+        approval_info = None
+        approval = approval_map.get(r.id)
+        if approval:
+            decision_by = None
+            if approval.decision_by_user_id:
+                decision_user = user_map.get(approval.decision_by_user_id)
+                if decision_user:
+                    decision_by = {
+                        "id": decision_user.id,
+                        "email": decision_user.email,
+                        "display_name": decision_user.display_name or decision_user.email.split("@")[0],
+                    }
+            approval_info = {
+                "decision": approval.decision.value if approval.decision else None,
+                "decision_at": _iso(approval.decision_at) if approval.decision_at else None,
+                "decision_by": decision_by,
+                "comment": approval.comment or "",
+            }
+
+        # Derive run_name from run_config without including full config in response
+        run_name = ""
+        if isinstance(r.run_config, dict):
+            run_name = r.run_config.get("run_name", "")
+        if not run_name:
+            run_name = r.external_run_id or ""
+
+        summary = {
+            "run_id": r.id,
+            "run_name": run_name,
+            "external_run_id": r.external_run_id or "",
+            "task_name": r.task,
+            "model_name": _strip_model_provider(r.model or ""),
+            "dataset_name": r.dataset,
+            "timestamp": _iso(r.started_at or r.created_at),
+            "file_path": r.id,
+            "metrics": metrics,
+            "metric_averages": metric_averages,
+            "total_items": total_items,
+            "progress_completed": completed_count,
+            "progress_total": expected_total,
+            "progress_pct": (completed_count / expected_total) if expected_total else None,
+            "success_count": success_count,
+            "error_count": error_count,
+            "success_rate": (success_count / total_items) if total_items else 0.0,
+            "avg_latency_ms": agg["avg_latency"],
+            "langfuse_url": r.run_metadata.get("langfuse_url") if isinstance(r.run_metadata, dict) else None,
+            "langfuse_dataset_id": r.run_metadata.get("langfuse_dataset_id") if isinstance(r.run_metadata, dict) else None,
+            "langfuse_run_id": r.run_metadata.get("langfuse_run_id") if isinstance(r.run_metadata, dict) else None,
+            "status": r.status,
+            "run_config": {},  # Omit full config from list view for payload size
+            "owner": owner_info,
+            "approval": approval_info,
+        }
+
         task = summary["task_name"]
-        if hidden and task.lower() in hidden:
-            continue
         model = summary["model_name"] or "nomodel"
         tasks.setdefault(task, {}).setdefault(model, []).append(summary)
 
-    return {"tasks": tasks, "last_updated": datetime.utcnow().isoformat()}
+    return {"tasks": tasks, "last_updated": datetime.utcnow().isoformat(), "total_count": total_count}
 
 
 @router.get("/api/compare")

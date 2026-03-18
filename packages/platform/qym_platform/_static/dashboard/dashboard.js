@@ -1191,7 +1191,7 @@
         const groupSize = members.length;
         // Derive group title: task_name is always available; show user-provided
         // run_name only if it differs from the auto-generated task-model pattern
-        const configRunName = (run.run_config || {}).run_name || '';
+        const configRunName = run.run_name || '';
         // Strip timestamp+counter suffix, then strip model suffix to get user's intent
         let userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
         // Collect all model names in this group to strip them from the base name
@@ -2703,11 +2703,65 @@
   // API & INITIALIZATION
   // ═══════════════════════════════════════════════════
 
+  const PAGE_SIZE = 100;
+
+  function _mergeTasksData(base, incoming) {
+    if (!incoming || !incoming.tasks) return base;
+    for (const [taskName, models] of Object.entries(incoming.tasks)) {
+      if (!base.tasks[taskName]) base.tasks[taskName] = {};
+      for (const [modelName, runList] of Object.entries(models)) {
+        if (!base.tasks[taskName][modelName]) base.tasks[taskName][modelName] = [];
+        base.tasks[taskName][modelName].push(...runList);
+      }
+    }
+    return base;
+  }
+
+  function _applyRunsData(data) {
+    state.runs = data;
+    const { runs, metrics, metricTypes } = flattenRuns(data);
+    state.flatRuns = runs;
+    state.allMetrics = metrics;
+    state._metricTypes = metricTypes;
+    loadMetricVisibility();
+    updateProfileLink();
+    state.aggregations = computeAggregations(state.flatRuns);
+    state.chartData = computeChartData(state.flatRuns);
+    populateFilterDropdowns();
+    populateMetricVisibility();
+    el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    render();
+  }
+
+  async function _fetchRemainingPages(data, totalCount) {
+    // Fetch remaining pages in the background and merge into state
+    const fetched = PAGE_SIZE; // first page already loaded
+    if (fetched >= totalCount) return;
+
+    const pagePromises = [];
+    for (let offset = fetched; offset < totalCount; offset += PAGE_SIZE) {
+      pagePromises.push(
+        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}`))
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      );
+    }
+
+    const pages = await Promise.all(pagePromises);
+    for (const page of pages) {
+      if (page) _mergeTasksData(data, page);
+    }
+
+    // Re-apply with full data
+    _applyRunsData(data);
+    try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
+  }
+
   async function fetchRuns() {
     try {
-      // Fetch runs and current user in parallel (platform)
+      // Fetch first page and current user in parallel
       const [runsResponse, meResponse] = await Promise.all([
-        fetch(apiUrl('api/runs')),
+        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=0`)),
         fetch(apiUrl('v1/me')).catch(() => null),
       ]);
 
@@ -2722,30 +2776,22 @@
       }
 
       const data = await runsResponse.json();
-      state.runs = data;
-      const { runs, metrics, metricTypes } = flattenRuns(data);
-      state.flatRuns = runs;
-      state.allMetrics = metrics;
-      state._metricTypes = metricTypes;
-      loadMetricVisibility();
+      const totalCount = data.total_count || 0;
+
       try {
         state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
       } catch {
         state.currentUser = null;
       }
-      updateProfileLink();
-      state.aggregations = computeAggregations(state.flatRuns);
-      state.chartData = computeChartData(state.flatRuns);
 
-      // Populate filter dropdowns
-      populateFilterDropdowns();
-      populateMetricVisibility();
+      // Render first page immediately
+      _applyRunsData(data);
 
-      el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-      render();
       // Adjust refresh cadence based on whether we have active runs.
       try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
+
+      // Fetch remaining pages in the background
+      _fetchRemainingPages(data, totalCount);
     } catch (err) {
       console.error('Failed to fetch runs:', err);
       el('loading').innerHTML = `
