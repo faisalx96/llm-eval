@@ -62,7 +62,8 @@ def run_create(
     # Normalize model arg
     model_arg: Optional[Union[str, List[str]]] = None
     if model:
-        parsed = Evaluator._normalize_models(model)
+        from ..core.config import EvaluatorConfig
+        parsed = EvaluatorConfig.normalize_models(model)
         if parsed:
             model_arg = parsed if len(parsed) > 1 else parsed[0]
 
@@ -268,6 +269,36 @@ def run_create(
     except Exception as e:
         output_error("failure", str(e))
         raise typer.Exit(code=ExitCode.FAILURE)
+
+
+# ── qym run tasks ───────────────────────────────────────────
+
+
+@run_app.command("tasks")
+def run_tasks() -> None:
+    """List distinct task names from the platform."""
+    client = PlatformAPIClient()
+
+    try:
+        data = client.list_runs()
+    except PlatformAPIError as exc:
+        output_error(
+            error_type="connection_failed" if exc.status_code == 0 else "failure",
+            message=exc.detail,
+            suggestion=exc.suggestion,
+        )
+        raise typer.Exit(code=exc.exit_code)
+
+    tasks = sorted(data.get("tasks", {}).keys())
+
+    if is_json_mode():
+        output({"tasks": tasks, "total": len(tasks)})
+    else:
+        if not tasks:
+            err_console.print("[dim]No tasks found.[/dim]")
+            return
+        for t in tasks:
+            err_console.print(t)
 
 
 # ── qym run list ────────────────────────────────────────────

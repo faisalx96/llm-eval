@@ -25,6 +25,9 @@ class PlatformSettings(BaseSettings):
     # Database (required - no SQLite fallback)
     database_url: str = Field(description="PostgreSQL connection string (required)")
 
+    # Visibility
+    hidden_tasks: str = Field(default="", description="Comma-separated task names to hide from listings")
+
     # Storage (raw artifacts)
     artifact_store_path: str = Field(default="./artifacts")
 

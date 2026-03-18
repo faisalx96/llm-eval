@@ -128,7 +128,8 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
         model_values = entry.get("models")
         if model_values is None:
             model_values = entry.get("model")
-        model_list = Evaluator._normalize_models(model_values) if model_values is not None else []
+        from ..core.config import EvaluatorConfig
+        model_list = EvaluatorConfig.normalize_models(model_values) if model_values is not None else []
         if not model_list:
             model_list = [None]
 

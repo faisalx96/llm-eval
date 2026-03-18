@@ -25,6 +25,7 @@ services:
       QYM_DATABASE_URL: postgresql+psycopg2://qym:qym@db:5432/qym
       QYM_ADMIN_BOOTSTRAP_TOKEN: test
       QYM_AUTH_MODE: none
+      # QYM_HIDDEN_TASKS: insightor_api
     ports:
       - "8000:8000"
     volumes:

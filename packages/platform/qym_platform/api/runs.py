@@ -362,10 +362,17 @@ def legacy_list_runs(
         # Fallback: own runs only
         runs = q.filter(Run.owner_user_id == principal.user.id).all()
 
+    # Filter out hidden tasks
+    from qym_platform.settings import PlatformSettings
+    settings = PlatformSettings()
+    hidden = {t.strip().lower() for t in settings.hidden_tasks.split(",") if t.strip()}
+
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     for r in runs:
         summary = _compute_run_summary(db, r)
         task = summary["task_name"]
+        if hidden and task.lower() in hidden:
+            continue
         model = summary["model_name"] or "nomodel"
         tasks.setdefault(task, {}).setdefault(model, []).append(summary)
 

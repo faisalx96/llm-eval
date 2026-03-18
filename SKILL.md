@@ -8,44 +8,30 @@ version: 0.8.4
 
 Fast, async LLM evaluation framework with agent-native CLI.
 
-## Quick Start
+## Setup
+
+The `qym` CLI is pre-installed. Just ensure the environment variables are set:
 
 ```bash
-# List recent evaluation runs
-qym run list --json
+export QYM_PLATFORM_URL=<platform-url>
+export QYM_API_KEY=<api-key>
 
-# Get details of a specific run
-qym run get <run_id> --json
-
-# See failed items in a run
-qym run failed <run_id> --json
-
-# Compare two runs side-by-side
-qym run compare <run_id_1> <run_id_2> --json
-
-# List available metrics
-qym metric list --json
-
-# Run AI root-cause analysis on a run
-qym analyze run <run_id> --json
-
-# Get analysis summary
-qym analyze summary <run_id> --json
-
-# Check platform connectivity
+# Verify
 qym config check --json
-
-# Show resolved config
-qym config show --json
 ```
 
 ## Commands
 
+Always use `--json` for structured output.
+
+### qym run tasks
+List distinct task names. Returns `{"tasks": [...], "total": N}`.
+
 ### qym run list [--limit N] [--task TEXT] [--model TEXT] [--status TEXT]
-List all evaluation runs. Returns JSON array of run summaries with run_id, task, model, status, success_rate, total_items, timestamp.
+List all evaluation runs. Returns `{"runs": [...], "total": N}` — each run has `run_id`, `run_name`, `task_name`, `model_name`, `status`, `success_rate`, `total_items`, `timestamp`.
 
 ### qym run get <run_id>
-Returns full run data including all items, scores, metadata, and summary stats.
+Returns full run data including all items, scores, metadata, and configuration.
 
 ### qym run failed <run_id>
 Returns only failed/error items from a run. Items with errors or zero metric scores.
@@ -76,6 +62,34 @@ Opens the platform web dashboard in the browser.
 
 ### qym submit --file PATH --task NAME --dataset NAME
 Uploads a saved results file (.csv or .json) to the platform.
+
+## Typical Workflows
+
+### Investigate a Regression
+
+```bash
+# 1. Find recent runs for a task
+qym run list --json --task sql_agent --limit 5
+
+# 2. Compare old vs new run
+qym run compare <old_run_id> <new_run_id> --json
+
+# 3. See what broke
+qym run failed <new_run_id> --json
+
+# 4. Get AI root-cause analysis
+qym analyze run <new_run_id> --json
+```
+
+### Check Model Performance
+
+```bash
+# 1. Find runs for a model
+qym run list --json --model gpt-5.4
+
+# 2. Get detailed results
+qym run get <run_id> --json
+```
 
 ## Environment Variables
 
