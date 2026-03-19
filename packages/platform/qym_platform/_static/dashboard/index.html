@@ -130,6 +130,9 @@
         <button class="multi-select-btn" id="metric-visibility-btn">All Metrics</button>
         <div class="multi-select-dropdown" id="metric-visibility-dropdown"></div>
       </div>
+      <select id="filter-version" class="filter-select" title="Git version">
+        <option value="">All Versions</option>
+      </select>
       <select id="filter-publish-status" class="filter-select" title="Workflow status">
         <option value="">All Status</option>
         <option value="PENDING">Pending</option>
@@ -237,10 +240,10 @@
             <th class="col-task sortable" data-sort="task">TASK</th>
             <th class="col-model sortable" data-sort="model">MODEL</th>
             <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
-            <th class="col-owner sortable" data-sort="owner">OWNER</th>
-            <th class="col-success sortable" data-sort="success">SUCCESS</th>
+            <th class="col-version sortable" data-sort="version">VERSION</th>
             <!-- Dynamic metric columns inserted here by JS -->
             <th class="col-latency sortable" data-sort="latency">LATENCY</th>
+            <th class="col-owner sortable" data-sort="owner">OWNER</th>
             <th class="col-time sortable" data-sort="time">TIME</th>
             <th class="col-actions">ACTIONS</th>
           </tr>

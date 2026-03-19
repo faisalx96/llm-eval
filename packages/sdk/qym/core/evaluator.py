@@ -118,6 +118,35 @@ class NullTrace:
 
 from .config import EvaluatorConfig
 
+
+def _detect_git_info(config: Optional[EvaluatorConfig] = None) -> Dict[str, Optional[str]]:
+    """Auto-detect git branch and commit hash. Config overrides take precedence."""
+    branch = getattr(config, "git_branch", None) if config else None
+    commit = getattr(config, "git_commit", None) if config else None
+
+    if not branch:
+        try:
+            raw = subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            branch = raw.decode().strip() or None
+        except Exception:
+            branch = None
+
+    if not commit:
+        try:
+            raw = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                stderr=subprocess.DEVNULL,
+            )
+            commit = raw.decode().strip() or None
+        except Exception:
+            commit = None
+
+    return {"git_branch": branch, "git_commit": commit}
+
+
 class Evaluator:
     """
     Simple evaluator for LLM tasks using Langfuse datasets.
@@ -352,13 +381,8 @@ class Evaluator:
             except Exception:
                 version = None
 
-        # Git SHA (best-effort)
-        git_sha = None
-        try:
-            sha = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL)
-            git_sha = sha.decode().strip()
-        except Exception:
-            git_sha = None
+        # Git info (best-effort, with config overrides)
+        git_info = _detect_git_info(self.config)
 
         run_block: Dict[str, Any] = {
             "dataset_name": self.dataset_name,
@@ -371,7 +395,8 @@ class Evaluator:
             },
             "model": self.model_name,
             "version": version,
-            "git_sha": git_sha,
+            "git_sha": git_info["git_commit"],
+            "git_branch": git_info["git_branch"],
             "cli_invocation": self.config.cli_invocation,
             "metric_names": list(self.metrics.keys()),
             "langfuse_host": getattr(self, 'langfuse_host', None),
@@ -687,6 +712,7 @@ class Evaluator:
             # Include total_items in metadata for progress tracking
             start_metadata = dict(self.run_metadata or {})
             start_metadata["total_items"] = len(items)
+            git_info = _detect_git_info(self.config)
             handle = client.create_run(
                 external_run_id=self.run_name,
                 task=self._task_name,
@@ -701,6 +727,8 @@ class Evaluator:
                     "run_name": self.run_name,
                     "task_name": self._task_name,
                     "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                    "git_branch": git_info["git_branch"],
+                    "git_commit": git_info["git_commit"],
                 },
             )
             html_url = handle.live_url

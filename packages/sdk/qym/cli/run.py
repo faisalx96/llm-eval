@@ -46,6 +46,8 @@ def run_create(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Only show final summary"),
     no_progress: bool = typer.Option(False, "--no-progress", help="Disable progress bar"),
     runs_config: Optional[str] = typer.Option(None, "--runs-config", help="Multi-run YAML/JSON config"),
+    git_branch: Optional[str] = typer.Option(None, "--git-branch", help="Override auto-detected git branch"),
+    git_commit: Optional[str] = typer.Option(None, "--git-commit", help="Override auto-detected git commit hash"),
 ) -> None:
     """Execute an LLM evaluation run."""
     from ..core.evaluator import Evaluator
@@ -170,6 +172,10 @@ def run_create(
             config["platform_url"] = platform_url
         if platform_api_key:
             config["platform_api_key"] = platform_api_key
+        if git_branch:
+            config["git_branch"] = git_branch
+        if git_commit:
+            config["git_commit"] = git_commit
         if live_mode:
             config["live_mode"] = live_mode
         else:

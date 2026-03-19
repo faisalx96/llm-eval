@@ -13,6 +13,8 @@ class EvaluatorConfig(BaseModel):
     timeout: Optional[float] = Field(default=None, gt=0)
     max_retries: int = Field(default=0, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
+    git_branch: Optional[str] = None   # Override auto-detected git branch
+    git_commit: Optional[str] = None   # Override auto-detected git commit hash
     model: Optional[str] = None
     model_full: Optional[str] = None  # Full provider-prefixed ID (e.g. qwen/qwen3.5-397b-a17b) for API calls
     models: Optional[List[str]] = None

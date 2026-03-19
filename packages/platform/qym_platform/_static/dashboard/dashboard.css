@@ -1398,6 +1398,76 @@ main {
   opacity: 1;
 }
 
+/* Version tag in chart rows */
+.chart-version-tag {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-secondary, rgba(128, 128, 128, 0.1));
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* Version leaderboard within chart cards */
+.version-leaderboard {
+  border-top: 1px solid var(--border-default);
+  padding: 10px 14px;
+  margin-top: 4px;
+}
+
+.version-leaderboard-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.version-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: var(--font-sm);
+}
+
+.version-rank-row:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.06));
+}
+
+.version-rank-badge {
+  width: 28px;
+  text-align: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.version-rank-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-rank-score {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  min-width: 60px;
+  text-align: right;
+}
+
+.version-rank-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
 .chart-bar-container {
   flex: 1;
   display: flex;
@@ -1634,6 +1704,9 @@ main {
 }
 
 /* Group header row in Runs view */
+.runs-table tbody tr.run-group-header {
+  background: var(--bg-elevated);
+}
 .runs-table tbody tr.run-group-header td {
   border-top: 1.5px solid var(--border-strong);
   background: var(--bg-elevated);
@@ -1714,6 +1787,14 @@ main {
   white-space: nowrap;
 }
 
+.status-errors {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--error);
+}
+
 .col-run {
   min-width: 180px;
 }
@@ -1749,6 +1830,23 @@ main {
 
 .col-model {
   white-space: nowrap;
+}
+
+.col-version {
+  white-space: nowrap;
+}
+
+.version-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+  background: var(--bg-secondary, rgba(128, 128, 128, 0.1));
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Sticky columns: freeze first 5 columns on horizontal scroll ── */

@@ -45,6 +45,7 @@
     filterModels: new Set(),  // Multi-select for models
     filterDataset: '',
     filterPublishStatus: '',  // '' or workflow status (RUNNING/COMPLETED/FAILED/SUBMITTED/APPROVED/REJECTED)
+    filterVersion: '',  // '' or git_commit hash
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
@@ -523,6 +524,8 @@
         metric_averages: run.metric_averages || {},
         avg_latency_ms: run.avg_latency_ms,
         total_items: run.total_items,
+        git_branch: run.git_branch || '',
+        git_commit: run.git_commit || '',
       });
 
       combos[key].models[model].runs++;
@@ -580,6 +583,56 @@
     }
     const sortedModels = Object.keys(modelFreq).sort((a, b) => modelFreq[b] - modelFreq[a]);
 
+    // --- Version ranking: aggregate per git_commit across all models ---
+    // For each combo, compute version-level stats
+    for (const combo of sortedCombos) {
+      const versionMap = {};
+      for (const [model, data] of Object.entries(combo.models)) {
+        for (const run of data.runsList) {
+          const commit = run.git_commit;
+          if (!commit) continue;
+          if (!versionMap[commit]) {
+            versionMap[commit] = {
+              git_commit: commit,
+              git_branch: run.git_branch || '',
+              metricSums: {},
+              metricCounts: {},
+              bestScores: {},  // {metric: {score, model}}
+              runCount: 0,
+            };
+          }
+          const v = versionMap[commit];
+          v.runCount++;
+          if (run.metric_averages) {
+            for (const [metric, score] of Object.entries(run.metric_averages)) {
+              if (score === undefined || score === null) continue;
+              v.metricSums[metric] = (v.metricSums[metric] || 0) + score;
+              v.metricCounts[metric] = (v.metricCounts[metric] || 0) + 1;
+              if (!v.bestScores[metric] || score > v.bestScores[metric].score) {
+                v.bestScores[metric] = { score, model };
+              }
+            }
+          }
+        }
+      }
+      // Compute averages
+      const versionRanking = Object.values(versionMap).map(v => {
+        const metricAverages = {};
+        for (const [metric, sum] of Object.entries(v.metricSums)) {
+          metricAverages[metric] = sum / (v.metricCounts[metric] || 1);
+        }
+        return {
+          git_commit: v.git_commit,
+          git_branch: v.git_branch,
+          label: v.git_branch ? `${v.git_branch}/${v.git_commit}` : v.git_commit,
+          runCount: v.runCount,
+          metricAverages,
+          bestScores: v.bestScores,
+        };
+      });
+      combo.versionRanking = versionRanking;
+    }
+
     return {
       combos: sortedCombos,
       models: sortedModels,
@@ -599,7 +652,9 @@
           String(r.task_name || '').toLowerCase().includes(q) ||
           String(r.model_name || '').toLowerCase().includes(q) ||
           String(r.display_model || '').toLowerCase().includes(q) ||
-          String(r.dataset_name || '').toLowerCase().includes(q)
+          String(r.dataset_name || '').toLowerCase().includes(q) ||
+          String(r.git_branch || '').toLowerCase().includes(q) ||
+          String(r.git_commit || '').toLowerCase().includes(q)
       );
     }
 
@@ -629,6 +684,9 @@
     }
     if (state.filterPublishStatus) {
       runs = runs.filter(r => (r.status || '') === state.filterPublishStatus);
+    }
+    if (state.filterVersion) {
+      runs = runs.filter(r => (r.git_commit || '') === state.filterVersion);
     }
 
     // Sort
@@ -685,6 +743,12 @@
         break;
       case 'dataset-desc':
         runs.sort((a, b) => b.dataset_name.localeCompare(a.dataset_name));
+        break;
+      case 'version-asc':
+        runs.sort((a, b) => (a.git_commit || '').localeCompare(b.git_commit || ''));
+        break;
+      case 'version-desc':
+        runs.sort((a, b) => (b.git_commit || '').localeCompare(a.git_commit || ''));
         break;
       case 'owner-asc':
         runs.sort((a, b) => (a.owner?.display_name || '').localeCompare(b.owner?.display_name || ''));
@@ -764,7 +828,7 @@
     // Update subtitle with filter info
     const subtitleEl = $('.charts-subtitle');
     if (subtitleEl) {
-      const isFiltered = state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus;
+      const isFiltered = state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus || state.filterVersion;
       if (isFiltered) {
         subtitleEl.textContent = `Filtered: ${state.filteredRuns.length} runs • Showing average metric scores across all items`;
       } else {
@@ -775,7 +839,7 @@
     if (!chartData || chartData.combos.length === 0) {
       el('charts-grid').innerHTML = `
         <div class="chart-no-data" style="grid-column: 1/-1;">
-          ${state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus
+          ${state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus || state.filterVersion
             ? 'No runs match current filters'
             : 'No data available for charts. Run some evaluations first.'}
         </div>
@@ -917,7 +981,9 @@
           // Fallback: use formatted timestamp from run data
           displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
         }
-        const tooltipText = `Run name: ${hoverRunName}`;
+        const versionStr = runData.git_commit ? (runData.git_branch ? `${runData.git_branch}/${runData.git_commit}` : runData.git_commit) : '';
+        const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
+        const tooltipText = `Run name: ${hoverRunName}${versionStr ? `\nVersion: ${versionStr}` : ''}`;
 
         // Build metric cells
         const metricCells = metrics.map(metric => {
@@ -953,7 +1019,7 @@
           <div class="chart-table-row">
             <span class="chart-bar-label clickable-run ${isMultiRun ? 'multi-run' : ''}"
                   data-file="${file_path}"
-                  title="${tooltipText}">${displayHtml}</span>
+                  title="${tooltipText}">${displayHtml}${versionTag}</span>
             ${metricCells}
             <span class="chart-latency-cell">${latencyStr}</span>
           </div>
@@ -975,6 +1041,47 @@
         </div>
       `;
 
+      // --- Version leaderboard for this card ---
+      const versionRanking = combo.versionRanking || [];
+      let versionLeaderboardHtml = '';
+      if (versionRanking.length > 0 && metrics.length > 0) {
+        // Rank by the first visible metric (same as default sort)
+        const rankMetric = metrics[0];
+        const rankMType = state._metricTypes?.[rankMetric] || 'score';
+        const ranked = versionRanking
+          .filter(v => v.metricAverages[rankMetric] !== undefined)
+          .sort((a, b) => (b.metricAverages[rankMetric] || 0) - (a.metricAverages[rankMetric] || 0));
+
+        if (ranked.length > 0) {
+          const rankEmojis = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
+          const versionRows = ranked.map((v, idx) => {
+            const rank = idx < 3 ? rankEmojis[idx] : `#${idx + 1}`;
+            const score = v.metricAverages[rankMetric];
+            const scoreDisplay = rankMType === 'numeric'
+              ? window.QymMetrics.formatNumericValue(score)
+              : window.QymMetrics.formatMetricValue(score, rankMType);
+            const scoreClass = rankMType !== 'numeric' ? window.QymMetrics.getMetricColorClass(score, rankMType) : '';
+            const best = v.bestScores[rankMetric];
+            const bestModel = best ? stripModelProvider(best.model) : '';
+            return `
+              <div class="version-rank-row">
+                <span class="version-rank-badge">${rank}</span>
+                <span class="version-rank-label" title="${v.label}">${v.label}</span>
+                <span class="version-rank-score ${scoreClass}">${scoreDisplay}</span>
+                <span class="version-rank-meta">${v.runCount} runs${bestModel ? ` · best: ${bestModel}` : ''}</span>
+              </div>
+            `;
+          }).join('');
+
+          versionLeaderboardHtml = `
+            <div class="version-leaderboard">
+              <div class="version-leaderboard-title">Version Leaderboard <span style="color:var(--text-muted);font-weight:400">by ${rankMetric}</span></div>
+              ${versionRows}
+            </div>
+          `;
+        }
+      }
+
       return `
         <div class="chart-card">
           <div class="chart-card-header">
@@ -988,6 +1095,7 @@
             </div>
           </div>
           ${metricChartsHtml}
+          ${versionLeaderboardHtml}
         </div>
       `;
     }).join('');
@@ -1242,10 +1350,6 @@
       const hiddenAttr = (isGrouped && isCollapsed) ? 'style="display:none;"' : '';
       const groupDataAttr = isGrouped ? `data-member-of="${escapeHtml(groupKey)}"` : '';
       const dt = formatDate(run.timestamp);
-      const completedRate = run.completion_rate ?? 0;
-      const successRate = run.success_on_completed_rate;
-      const successClass = getSuccessClass(successRate ?? 0);
-      const successText = successRate === null ? '\u2014' : formatPercent(successRate);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
 
@@ -1296,7 +1400,7 @@
             </label>
           </td>
           <td class="col-status">
-            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}
+            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
@@ -1313,6 +1417,13 @@
           <td class="col-dataset">
             <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
           </td>
+          <td class="col-version">
+            ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
+          </td>
+          ${metricCells}
+          <td class="col-latency">
+            <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
+          </td>
           <td class="col-owner">
             ${run.owner ? `
               <span class="owner-name" title="${run.owner.email}">
@@ -1320,13 +1431,6 @@
                 ${truncateText(run.owner.display_name, 15)}
               </span>
             ` : '<span style="color:var(--text-muted)">—</span>'}
-          </td>
-          <td class="col-success">
-            <span class="success-rate ${successClass}">${successText}</span>
-          </td>
-          ${metricCells}
-          <td class="col-latency">
-            <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
           </td>
           <td class="col-time">
             <span class="timestamp">
@@ -1647,6 +1751,7 @@
         parts.push('model: none');
       }
       if (state.filterPublishStatus) parts.push(`status: ${state.filterPublishStatus}`);
+      if (state.filterVersion) parts.push(`version: ${state.filterVersion}`);
       if (state.quickFilter === 'today') parts.push('today');
       if (state.quickFilter === 'week') parts.push('last 7d');
       if (state.searchQuery) parts.push(`"${state.searchQuery}"`);
@@ -2929,6 +3034,24 @@
       datasetSelect.value = state.filterDataset || '';
     }
 
+    // Populate version filter
+    const versionSelect = el('filter-version');
+    if (versionSelect) {
+      const versions = [...new Set(state.flatRuns.map(r => r.git_commit).filter(Boolean))].sort();
+      // Build display labels: branch/sha
+      const branchMap = {};
+      state.flatRuns.forEach(r => {
+        if (r.git_commit && r.git_branch) branchMap[r.git_commit] = r.git_branch;
+      });
+      versionSelect.innerHTML = '<option value="">All Versions</option>' +
+        versions.map(v => {
+          const branch = branchMap[v];
+          const label = branch ? `${branch}/${v}` : v;
+          return `<option value="${v}">${label}</option>`;
+        }).join('');
+      versionSelect.value = state.filterVersion || '';
+    }
+
     // Populate model multi-select dropdown
     const modelDropdown = el('filter-model-dropdown');
     if (modelDropdown) {
@@ -3103,6 +3226,12 @@
 
   el('filter-publish-status')?.addEventListener('change', (e) => {
     state.filterPublishStatus = e.target.value;
+    state.focusedIndex = -1;
+    render();
+  });
+
+  el('filter-version')?.addEventListener('change', (e) => {
+    state.filterVersion = e.target.value;
     state.focusedIndex = -1;
     render();
   });

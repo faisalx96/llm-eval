@@ -507,6 +507,8 @@ def legacy_list_runs(
             "langfuse_run_id": r.run_metadata.get("langfuse_run_id") if isinstance(r.run_metadata, dict) else None,
             "status": r.status,
             "run_config": {},  # Omit full config from list view for payload size
+            "git_branch": r.run_config.get("git_branch") if isinstance(r.run_config, dict) else None,
+            "git_commit": r.run_config.get("git_commit") if isinstance(r.run_config, dict) else None,
             "owner": owner_info,
             "approval": approval_info,
         }
