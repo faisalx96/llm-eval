@@ -693,7 +693,14 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 val = sc.score_numeric
             metric_values.append(val)
             if sc.meta:
-                metric_meta[m] = sc.meta
+                metric_meta[m] = dict(sc.meta)
+            if sc.label or sc.explanation:
+                if m not in metric_meta:
+                    metric_meta[m] = {}
+                if sc.label:
+                    metric_meta[m]["label"] = sc.label
+                if sc.explanation:
+                    metric_meta[m]["explanation"] = sc.explanation
 
         # Resolve task_started_at_ms: prefer item_metadata, then fallback to event timestamp
         ts_ms = it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None

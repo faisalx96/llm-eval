@@ -311,18 +311,16 @@ class RunDashboard:
         # Global success rate
         global_success = (total_completed / (total_completed + total_failed) * 100) if (total_completed + total_failed) > 0 else 0.0
 
-        grid = Table.grid(expand=True)
-        grid.add_column(justify="left", ratio=1)
-        grid.add_column(justify="right", ratio=1)
-        
         # Use arabic_display() for proper RTL text rendering in terminals
         title = Text(f"⚡ {arabic_display('أداة قيِّم')}", style="bold magenta")
-        
+
         # Extract timeout/retries from first run config
         first_config = next(iter(self.states.values())).config if self.states else {}
         timeout_val = first_config.get("timeout")
         retries_val = first_config.get("max_retries", 0)
         concurrency_val = first_config.get("max_concurrency", 10)
+
+        timeout_str = f"{int(timeout_val)}s" if timeout_val else "off"
 
         stats = Text()
         stats.append(f"Time: {_format_duration(elapsed_total)}  ", style="bold white")
@@ -330,12 +328,15 @@ class RunDashboard:
         stats.append(f"Items: {total_completed}/{total_items}  ", style="dim white")
         stats.append(f"Rate: {global_throughput:.1f} it/s  ", style="cyan")
         stats.append(f"Success: {global_success:.0f}%  ", style="green" if global_success > 90 else "yellow")
-        stats.append(f"Timeout: {int(timeout_val)}s  " if timeout_val else "Timeout: off  ", style="dim white")
+        stats.append(f"Timeout: {timeout_str}  ", style="dim white")
         stats.append(f"Retries: {retries_val}  ", style="dim white")
         stats.append(f"Concurrency: {concurrency_val}", style="dim white")
-        
+
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="left")
+        grid.add_column(justify="right")
         grid.add_row(title, stats)
-        
+
         return Panel(grid, style="white", box=box.ROUNDED, padding=(0, 1))
 
     def _render_main(self) -> RenderableType:

@@ -1549,10 +1549,10 @@ class Evaluator:
                             item.input
                         )
 
-                    # Extract main score value
-                    main_val = score
-                    if isinstance(score, dict):
-                        main_val = score.get('score', score)
+                    # Wrap raw score in MetricResult for structured access
+                    from qym.metrics.result import MetricResult
+                    result = MetricResult.from_raw(score)
+                    main_val = result.score
 
                     # Update metric span with result
                     metric_span.update(output=score)
@@ -1560,10 +1560,11 @@ class Evaluator:
 
                     # Queue score upload (non-blocking, uses internal queue)
                     try:
+                        comment = result.explanation or (str(score) if not isinstance(main_val, (int, float)) else None)
                         span.score(
                             name=m_name,
                             value=main_val if isinstance(main_val, (int, float)) else 0,
-                            comment=str(score) if not isinstance(main_val, (int, float)) else None
+                            comment=comment,
                         )
                     except Exception:
                         pass
@@ -1573,25 +1574,16 @@ class Evaluator:
                         ps = getattr(self, "_platform_stream", None)
                         if ps is not None:
                             item_id = getattr(item, "id", None) or f"item_{index}"
-                            score_numeric = None
-                            score_raw = score
-                            meta_payload: Dict[str, Any] = {}
-                            if isinstance(score, dict):
-                                score_raw = score
-                                if isinstance(score.get("score"), (int, float, bool)):
-                                    score_numeric = float(score["score"])
-                                if isinstance(score.get("metadata"), dict):
-                                    meta_payload = score.get("metadata") or {}
-                            elif isinstance(score, (int, float, bool)):
-                                score_numeric = float(score)
                             ps.emit(
                                 "metric_scored",
                                 {
                                     "item_id": str(item_id),
                                     "metric_name": str(m_name),
-                                    "score_numeric": score_numeric,
-                                    "score_raw": score_raw,
-                                    "meta": meta_payload,
+                                    "score_numeric": result.score,
+                                    "score_raw": result.to_legacy_dict(),
+                                    "meta": result.metadata or {},
+                                    "label": result.label,
+                                    "explanation": result.explanation,
                                 },
                             )
                     except Exception:

@@ -280,6 +280,102 @@ evaluator = Evaluator(
 
 > ⚠️ **Important**: Built-in metrics compare your task's output to the `expected_output` field in your dataset. If your dataset has no `expected_output`, these metrics will receive `None` and may not work as expected.
 
+### LLM Judge Metrics
+
+qym includes built-in LLM-as-judge metrics that use an OpenAI-compatible API. Install with `pip install openai`.
+
+| Metric Name | What It Evaluates | Required Input Fields |
+|-------------|-------------------|----------------------|
+| `"relevance"` | Is the response relevant? | `question` |
+| `"faithfulness_llm"` | Is it grounded in context? | `context`, `question` |
+| `"correctness_llm"` | Does it match expected? | `question` |
+| `"hallucination"` | Contains hallucinated content? | `context` |
+| `"toxicity"` | Contains harmful content? | _(none)_ |
+| `"conciseness"` | Is it concise or verbose? | `question` |
+| `"tool_calling"` | Are tool calls correct? | `tool_definitions`, `tool_calls` |
+
+```python
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", "relevance", "faithfulness_llm"],
+)
+```
+
+The "Required Input Fields" column shows what keys your dataset's `input` dict should contain. For example, `relevance` expects `input_data["question"]`.
+
+**Configuration** — you must configure your LLM provider before using judge metrics:
+
+```bash
+export QYM_JUDGE_MODEL=gpt-4o-mini     # Required: model name
+export QYM_JUDGE_API_KEY=sk-...        # Required: API key (or set OPENAI_API_KEY)
+export QYM_JUDGE_BASE_URL=http://...   # Optional: for vLLM, Ollama, etc.
+```
+
+If these are not set, qym will show a clear error message explaining what's needed.
+
+**Custom judges** — create your own with `create_judge()`:
+
+```python
+from qym.metrics.judges import create_judge
+
+# Binary judge (pass/fail)
+helpfulness = create_judge(
+    name="helpfulness",
+    prompt="Is this response helpful?\n[Question]: {question}\n[Response]: {output}",
+    choices={"helpful": 1.0, "unhelpful": 0.0},
+)
+
+# Multi-level judge (graded scale)
+answer_quality = create_judge(
+    name="answer_quality",
+    prompt="""\
+Rate the quality of this response.
+- excellent: Fully correct, well-structured, and comprehensive
+- good: Mostly correct with minor gaps
+- poor: Partially correct but missing key information
+- bad: Incorrect or completely off-topic
+
+[Question]: {question}
+[Response]: {output}""",
+    choices={"excellent": 1.0, "good": 0.7, "poor": 0.3, "bad": 0.0},
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", helpfulness, answer_quality],
+)
+```
+
+**How it works:** The LLM responds with structured JSON like:
+
+```json
+{"verdict": "good", "explanation": "The response covers the main points but misses edge cases."}
+```
+
+qym parses this into a `MetricResult` with:
+- `score` — mapped from the `choices` dict (e.g. `"good"` → `0.7`)
+- `label` — the verdict string (e.g. `"good"`)
+- `explanation` — the LLM's reasoning
+
+Labels and explanations are stored in the platform and visible per-item in the dashboard.
+
+**Per-judge LLM override** — use a different model for a specific judge:
+
+```python
+toxicity_local = create_judge(
+    name="toxicity_local",
+    prompt="Is this response toxic or non-toxic?\n[Response]: {output}",
+    choices={"non-toxic": 1.0, "toxic": 0.0},
+    judge_model="llama-3.1-8b",
+    judge_base_url="http://localhost:11434/v1",
+    judge_api_key="ollama",
+)
+```
+
+See the [Metrics Guide](METRICS_GUIDE.md#llm-as-judge-metrics) for full details on configuration and the factory API.
+
 ### Custom Metrics
 
 A custom metric is a function you define. The evaluator **automatically detects** how many parameters your metric accepts and calls it accordingly.

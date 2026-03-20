@@ -23,6 +23,16 @@ except ImportError:
     }
     _has_deepeval = False
 
+# Try to import LLM judge metrics (requires openai)
+try:
+    from .judges import judge_metrics, create_judge
+    from .judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
+    from .result import MetricResult
+    builtin_metrics.update(judge_metrics)
+    _has_judges = True
+except ImportError:
+    _has_judges = False
+
 
 def list_available_metrics():
     """List all available metrics with descriptions."""
@@ -55,4 +65,9 @@ def has_deepeval() -> bool:
     return _has_deepeval
 
 
-__all__ = ["builtin_metrics", "list_available_metrics", "has_deepeval"]
+def has_judges() -> bool:
+    """Check if LLM judge metrics are available (requires openai)."""
+    return _has_judges
+
+
+__all__ = ["builtin_metrics", "list_available_metrics", "has_deepeval", "has_judges"]
