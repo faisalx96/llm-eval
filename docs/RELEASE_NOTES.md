@@ -122,6 +122,25 @@ The entries below cover every commit after `e2fda02`, in chronological order.
 - 🏆 Added a **Version Leaderboard** that aggregates performance by git commit, including run counts and the best-performing model per version
 - 🔎 Added a version filter plus richer tooltips and badges so model comparisons can be tied back to code revisions
 
+### `cae762d` — LLM-as-judge metric system
+
+- ⚖️ Added **7 built-in LLM judge metrics**: `relevance`, `faithfulness_llm`, `correctness_llm`, `hallucination`, `toxicity`, `conciseness`, `tool_calling` — use them as metric names like any built-in metric
+- 🏭 Added `create_judge()` **factory** for custom judges with binary or multi-level grading scales (e.g. excellent/good/poor/bad → 1.0/0.7/0.3/0.0)
+- 📊 Introduced **`MetricResult`** dataclass carrying `score`, `label`, `explanation`, and `kind` for structured metric output
+- 🔧 **`JudgeConfig`** with env var cascade (`QYM_JUDGE_MODEL`, `QYM_JUDGE_API_KEY`, `QYM_JUDGE_BASE_URL`) and clear error messages when not configured
+- 🔁 LLM judge calls include **exponential backoff with jitter** (3 attempts) and safe prompt template substitution
+- 🏷️ Platform now stores **`label`** and **`explanation`** on each metric score (new DB columns via migration `0010`), surfaced in the run detail view alongside numeric scores
+- 📖 Updated **METRICS_GUIDE.md** and **USER_GUIDE.md** with built-in judge reference, custom judge examples, per-judge model overrides, and structured result documentation
+
+### `afac91d` — Charts view redesign, dataset tabs, and retries
+
+- 🗂️ Redesigned the charts view to render **one card per task** with **dataset tabs** inside each card, so teams can switch datasets without losing the task-level grouping
+- 🧭 Added an inline **Run / Version / Model** segmented control in chart tables, including collapsible grouped rows, version-aware grouping, and consistent latency-last column layout
+- 🔎 Extended dashboard filtering and presentation around datasets and versions, including version multi-select filters, better wide-table scrolling behavior, and unified **Select All / None** controls across multi-select dropdowns
+- ✅ Simplified the approval filter in run and compare views to a single **All / Approved / Not Approved** select instead of the older multi-select pattern
+- ⏱️ The SDK now retries failed item execution with **exponential backoff + jitter**, defaults `timeout` to **300s** and `max_retries` to **2**, and records `retry_count` per item
+- 📥 Platform ingest now persists each item’s **`retry_count`** in metadata so retries remain visible after streaming to the dashboard
+
 ---
 
 # 🚀 qym v0.9.0 — Release Notes
