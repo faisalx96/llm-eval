@@ -255,6 +255,16 @@ td.metric-yes { color: var(--ok); font-weight: 600; }
 td.metric-no { color: var(--err); font-weight: 600; }
 td.metric-na { color: var(--muted); }
 
+/* Metric label badges */
+.metric-label-badge { display:inline-block; font-size:0.75rem; padding:1px 6px; border-radius:4px; background:rgba(99,102,241,0.15); color:#818cf8; font-weight:600; margin-left:4px; vertical-align:middle; }
+body[data-theme="light"] .metric-label-badge { background:rgba(99,102,241,0.12); color:#6366f1; }
+
+/* Metric explanation in drawer */
+.metric-explanation { margin:2px 0 4px 0; font-size:0.85rem; }
+.metric-explanation details { cursor:pointer; }
+.metric-explanation summary { color:var(--muted); font-size:0.8rem; }
+.metric-explanation p { margin:4px 0 0 0; color:var(--fg2); line-height:1.4; white-space:pre-wrap; }
+
 /* Sleek progress bar */
 .progress { display:flex; align-items:center; gap: 10px; }
 .bar { position: relative; flex: 1; height: 12px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; }

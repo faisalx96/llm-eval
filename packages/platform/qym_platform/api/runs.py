@@ -511,6 +511,8 @@ def legacy_run_data(
 
         metric_values: list[Any] = []
         metric_meta: dict[str, Any] = {}
+        metric_labels: dict[str, str] = {}
+        metric_explanations: dict[str, str] = {}
         for m in metrics:
             sc = (by_item.get(it.item_id, {}) or {}).get(m)
             if not sc:
@@ -522,6 +524,10 @@ def legacy_run_data(
             metric_values.append(val)
             if sc.meta:
                 metric_meta[m] = sc.meta
+            if sc.label:
+                metric_labels[m] = sc.label
+            if sc.explanation:
+                metric_explanations[m] = sc.explanation
 
         # Resolve task_started_at_ms: prefer item_metadata, then fallback to event timestamp
         ts_ms = it.item_metadata.get("task_started_at_ms") if isinstance(it.item_metadata, dict) else None
@@ -546,6 +552,8 @@ def legacy_run_data(
                 "task_started_at_ms": ts_ms,
                 "metric_values": metric_values,
                 "metric_meta": metric_meta,
+                "metric_labels": metric_labels,
+                "metric_explanations": metric_explanations,
                 "item_metadata": it.item_metadata if isinstance(it.item_metadata, dict) else {},
             }
         )

@@ -172,12 +172,16 @@ async def ingest_events(
                     score_numeric=payload.score_numeric,
                     score_raw=payload.score_raw,
                     meta=payload.meta,
+                    label=payload.label,
+                    explanation=payload.explanation,
                 )
                 db.add(score)
             else:
                 score.score_numeric = payload.score_numeric
                 score.score_raw = payload.score_raw
                 score.meta = payload.meta
+                score.label = payload.label
+                score.explanation = payload.explanation
 
         elif isinstance(payload, ItemCompletedPayload):
             # Determine task_started_at_ms: prefer explicit value from SDK,

@@ -23,31 +23,55 @@ except ImportError:
     }
     _has_deepeval = False
 
+from .result import MetricResult
+from .judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
+
+# Lazy import for judge metrics — only available when openai is installed
+_has_judges = False
+try:
+    from .judges import create_judge
+    _has_judges = True
+except ImportError:
+    create_judge = None
+
 
 def list_available_metrics():
     """List all available metrics with descriptions."""
     print("Available Metrics:")
     print("=" * 50)
-    
+
     if not _has_deepeval:
-        print("🔸 Note: Using built-in metrics only (DeepEval not installed)")
+        print("Note: Using built-in metrics only (DeepEval not installed)")
         print("   To get advanced metrics, install with: pip install qym[deepeval]")
         print()
-    
+
     for name, metric in sorted(builtin_metrics.items()):
         if hasattr(metric, '__doc__') and metric.__doc__:
             description = metric.__doc__.strip().split('\n')[0]
         else:
             description = "No description available"
-        
-        print(f"• {name:20} - {description}")
-    
-    total_msg = f"Total: {len(builtin_metrics)} metrics available"
+
+        print(f"  {name:20} - {description}")
+
+    # List judge metrics if available
+    if _has_judges:
+        from .registry import _load_judge_metrics
+        judges = _load_judge_metrics()
+        if judges:
+            print()
+            print("LLM Judge Metrics (require openai):")
+            for name in sorted(judges.keys()):
+                print(f"  {name:20} - LLM-as-judge evaluator")
+
+    total_msg = f"\nTotal: {len(builtin_metrics)} metrics available"
     if _has_deepeval:
         total_msg += " (including DeepEval metrics)"
     else:
         total_msg += " (built-in only)"
-    print(f"\n{total_msg}")
+    if _has_judges:
+        from .registry import _load_judge_metrics
+        total_msg += f" + {len(_load_judge_metrics())} judge metrics"
+    print(total_msg)
 
 
 def has_deepeval() -> bool:
@@ -55,4 +79,13 @@ def has_deepeval() -> bool:
     return _has_deepeval
 
 
-__all__ = ["builtin_metrics", "list_available_metrics", "has_deepeval"]
+__all__ = [
+    "builtin_metrics",
+    "list_available_metrics",
+    "has_deepeval",
+    "MetricResult",
+    "JudgeConfig",
+    "get_default_judge_config",
+    "set_default_judge_config",
+    "create_judge",
+]

@@ -36,6 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 deepeval = ["deepeval>=0.20.0"]
 openai = ["openai>=1.0.0"]
+judges = ["openai>=1.0.0"]
 langchain = ["langchain>=0.1.0"]
 langgraph = ["langgraph>=0.0.40", "langchain>=0.1.0", "openai>=1.0.0", "tavily-python>=0.3.0"]
 all = ["deepeval>=0.20.0", "langchain>=0.1.0", "openai>=1.0.0"]

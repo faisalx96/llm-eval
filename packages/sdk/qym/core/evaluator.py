@@ -21,6 +21,7 @@ from rich.live import Live
 from rich.table import Table
 
 from .results import EvaluationResult
+from ..metrics.result import MetricResult
 from .checkpoint import (
     CheckpointWriter,
     load_checkpoint_state,
@@ -1410,10 +1411,10 @@ class Evaluator:
                             item.input
                         )
 
-                    # Extract main score value
-                    main_val = score
-                    if isinstance(score, dict):
-                        main_val = score.get('score', score)
+                    # Wrap raw result into MetricResult
+                    mr = MetricResult.from_raw(score)
+                    # Convert back to legacy dict for backward compat
+                    score = mr.to_legacy_dict()
 
                     # Update metric span with result
                     metric_span.update(output=score)
@@ -1423,8 +1424,8 @@ class Evaluator:
                     try:
                         span.score(
                             name=m_name,
-                            value=main_val if isinstance(main_val, (int, float)) else 0,
-                            comment=str(score) if not isinstance(main_val, (int, float)) else None
+                            value=mr.score,
+                            comment=mr.explanation or None,
                         )
                     except Exception:
                         pass
@@ -1434,25 +1435,16 @@ class Evaluator:
                         ps = getattr(self, "_platform_stream", None)
                         if ps is not None:
                             item_id = getattr(item, "id", None) or f"item_{index}"
-                            score_numeric = None
-                            score_raw = score
-                            meta_payload: Dict[str, Any] = {}
-                            if isinstance(score, dict):
-                                score_raw = score
-                                if isinstance(score.get("score"), (int, float, bool)):
-                                    score_numeric = float(score["score"])
-                                if isinstance(score.get("metadata"), dict):
-                                    meta_payload = score.get("metadata") or {}
-                            elif isinstance(score, (int, float, bool)):
-                                score_numeric = float(score)
                             ps.emit(
                                 "metric_scored",
                                 {
                                     "item_id": str(item_id),
                                     "metric_name": str(m_name),
-                                    "score_numeric": score_numeric,
-                                    "score_raw": score_raw,
-                                    "meta": meta_payload,
+                                    "score_numeric": mr.score,
+                                    "score_raw": score,
+                                    "meta": mr.metadata,
+                                    "label": mr.label,
+                                    "explanation": mr.explanation,
                                 },
                             )
                     except Exception:

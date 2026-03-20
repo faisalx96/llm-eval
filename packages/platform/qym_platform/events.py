@@ -45,6 +45,8 @@ class MetricScoredPayload(BaseModel):
     score_numeric: Optional[float] = None
     score_raw: Any = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+    label: Optional[str] = None
+    explanation: Optional[str] = None
 
 
 class ItemCompletedPayload(BaseModel):

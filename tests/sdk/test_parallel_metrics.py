@@ -49,6 +49,14 @@ def _make_item(input_val="hello", expected="world"):
     return item
 
 
+def _get_score(scores, name):
+    """Extract numeric score from the scores dict, handling both raw and MetricResult dict formats."""
+    val = scores[name]
+    if isinstance(val, dict) and "score" in val:
+        return val["score"]
+    return val
+
+
 async def _run_metrics_sequentially(evaluator, output, expected_output, item_input):
     """Simulate the OLD sequential metric loop for comparison."""
     scores = {}
@@ -97,10 +105,11 @@ class TestParallelMetrics:
         result = await evaluator._evaluate_item(0, item, tracker)
         parallel_time = time.monotonic() - t0
 
-        # Correctness: both paths produce the same scores
+        # Correctness: both paths produce the same metric names
         assert set(seq_scores.keys()) == set(result["scores"].keys())
+        # Sequential returns raw values; parallel wraps with MetricResult
         for k in seq_scores:
-            assert seq_scores[k] == result["scores"][k]
+            assert float(seq_scores[k]) == _get_score(result["scores"], k)
 
         # Performance: parallel must be meaningfully faster (ratio-based)
         speedup = sequential_time / parallel_time
@@ -135,8 +144,9 @@ class TestParallelMetrics:
         result = await evaluator._evaluate_item(0, item, tracker)
 
         # Pure correctness — no timing assertions
-        assert seq_scores["async_m"] == result["scores"]["async_m"]
-        assert seq_scores["sync_m"] == result["scores"]["sync_m"]
+        # Sequential returns raw dicts; parallel wraps with MetricResult
+        assert seq_scores["async_m"]["score"] == _get_score(result["scores"], "async_m")
+        assert seq_scores["sync_m"]["score"] == _get_score(result["scores"], "sync_m")
 
     @pytest.mark.asyncio
     async def test_metric_error_isolated_under_gather(self):
@@ -157,9 +167,9 @@ class TestParallelMetrics:
         result = await evaluator._evaluate_item(0, item, tracker)
 
         assert result["success"] is True
-        assert result["scores"]["good"] == 1.0
-        assert result["scores"]["bad"]["score"] == 0
-        assert "boom" in result["scores"]["bad"]["error"]
+        assert _get_score(result["scores"], "good") == 1.0
+        assert _get_score(result["scores"], "bad") == 0
+        assert "boom" in result["scores"]["bad"].get("metadata", {}).get("error", result["scores"]["bad"].get("error", ""))
 
     @pytest.mark.asyncio
     async def test_single_metric_regression(self):
@@ -175,7 +185,7 @@ class TestParallelMetrics:
 
         result = await evaluator._evaluate_item(0, item, tracker)
         assert result["success"] is True
-        assert result["scores"]["only"] == 0.75
+        assert _get_score(result["scores"], "only") == 0.75
 
     @pytest.mark.asyncio
     async def test_semaphore_bounds_concurrent_metrics(self):
@@ -244,7 +254,7 @@ class TestMetricBlockingDetection:
             result = await evaluator._evaluate_item(0, item, tracker)
 
         assert result["success"] is True
-        assert result["scores"]["blocker"] == 1.0
+        assert _get_score(result["scores"], "blocker") == 1.0
         warnings = [r for r in caplog.records if "block the event loop" in r.message]
         assert len(warnings) == 1, (
             f"Expected exactly 1 blocking warning, got {len(warnings)}"
@@ -265,7 +275,7 @@ class TestMetricBlockingDetection:
         with caplog.at_level(logging.WARNING, logger="qym.core.evaluator"):
             result = await evaluator._evaluate_item(0, item, tracker)
 
-        assert result["scores"]["good"] == 0.9
+        assert _get_score(result["scores"], "good") == 0.9
         warnings = [r for r in caplog.records if "block the event loop" in r.message]
         assert len(warnings) == 0
 
@@ -284,7 +294,7 @@ class TestMetricBlockingDetection:
         with caplog.at_level(logging.WARNING, logger="qym.core.evaluator"):
             result = await evaluator._evaluate_item(0, item, tracker)
 
-        assert result["scores"]["sync_m"] == 0.8
+        assert _get_score(result["scores"], "sync_m") == 0.8
         warnings = [r for r in caplog.records if "block the event loop" in r.message]
         assert len(warnings) == 0
 
@@ -344,8 +354,10 @@ class TestMetricBlockingDetection:
         with caplog.at_level(logging.WARNING, logger="qym.core.evaluator"):
             result = await evaluator._evaluate_item(0, item, tracker)
 
-        # Metric error is caught and returned as error dict
-        assert "metric failed" in result["scores"]["bad"]["error"]
+        # Metric error is caught and returned as error dict (wrapped by MetricResult)
+        bad_score = result["scores"]["bad"]
+        error_str = bad_score.get("metadata", {}).get("error", bad_score.get("error", ""))
+        assert "metric failed" in error_str
         warnings = [r for r in caplog.records if "block the event loop" in r.message]
         assert len(warnings) == 1, (
             "Detection must fire even when the metric raises — "

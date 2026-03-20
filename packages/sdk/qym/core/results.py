@@ -322,12 +322,28 @@ class EvaluationResult:
         metric_fields: List[str] = []
         for m in self.metrics:
             metric_fields.append(f'{m}_score')
+            metric_fields.append(f'{m}_label')
+            metric_fields.append(f'{m}_explanation')
             for k in meta_fields[m]:
                 # Use __meta__ separator to distinguish from score columns
                 metric_fields.append(f'{m}__meta__{k}')
         header = base_fields + metric_fields
 
         # Prepare row formatter helpers
+        def _extract_label(val: Any) -> str:
+            if isinstance(val, dict):
+                md = val.get('metadata', {})
+                if isinstance(md, dict):
+                    return md.get('label', '')
+            return ''
+
+        def _extract_explanation(val: Any) -> str:
+            if isinstance(val, dict):
+                md = val.get('metadata', {})
+                if isinstance(md, dict):
+                    return md.get('explanation', '')
+            return ''
+
         def main_score(val: Any) -> Any:
             if isinstance(val, dict):
                 if 'error' in val:
@@ -360,10 +376,12 @@ class EvaluationResult:
             }
             scores = result.get('scores', {})
             for m in self.metrics:
-                val = main_score(scores.get(m))
-                row[f'{m}_score'] = val
-                md: Dict[str, Any] = {}
                 sc = scores.get(m)
+                val = main_score(sc)
+                row[f'{m}_score'] = val
+                row[f'{m}_label'] = _extract_label(sc)
+                row[f'{m}_explanation'] = _extract_explanation(sc)
+                md: Dict[str, Any] = {}
                 if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
                     md = flatten_meta(sc['metadata'])
                 for k in meta_fields[m]:
@@ -407,6 +425,8 @@ class EvaluationResult:
             }
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'
+                row[f'{m}_label'] = ''
+                row[f'{m}_explanation'] = ''
                 for k in meta_fields[m]:
                     row[f'{m}__meta__{k}'] = ''
             rows.append(row)
@@ -479,6 +499,8 @@ class EvaluationResult:
         metric_fields: List[str] = []
         for m in self.metrics:
             metric_fields.append(f'{m}_score')
+            metric_fields.append(f'{m}_label')
+            metric_fields.append(f'{m}_explanation')
             for k in meta_fields[m]:
                 # Use __meta__ separator to distinguish from score columns
                 metric_fields.append(f'{m}__meta__{k}')
@@ -492,6 +514,20 @@ class EvaluationResult:
                 if 'score' in val:
                     return val.get('score')
             return val
+
+        def _extract_label_xl(val: Any) -> str:
+            if isinstance(val, dict):
+                md = val.get('metadata', {})
+                if isinstance(md, dict):
+                    return md.get('label', '')
+            return ''
+
+        def _extract_explanation_xl(val: Any) -> str:
+            if isinstance(val, dict):
+                md = val.get('metadata', {})
+                if isinstance(md, dict):
+                    return md.get('explanation', '')
+            return ''
 
         # Assemble rows (same logic as CSV)
         rows: List[Dict[str, Any]] = []
@@ -516,10 +552,12 @@ class EvaluationResult:
             }
             scores = result.get('scores', {})
             for m in self.metrics:
-                val = main_score(scores.get(m))
-                row[f'{m}_score'] = val
-                md: Dict[str, Any] = {}
                 sc = scores.get(m)
+                val = main_score(sc)
+                row[f'{m}_score'] = val
+                row[f'{m}_label'] = _extract_label_xl(sc)
+                row[f'{m}_explanation'] = _extract_explanation_xl(sc)
+                md: Dict[str, Any] = {}
                 if isinstance(sc, dict) and 'metadata' in sc and isinstance(sc['metadata'], dict):
                     md = flatten_meta(sc['metadata'])
                 for k in meta_fields[m]:
@@ -562,6 +600,8 @@ class EvaluationResult:
             }
             for m in self.metrics:
                 row[f'{m}_score'] = 'N/A'
+                row[f'{m}_label'] = ''
+                row[f'{m}_explanation'] = ''
                 for k in meta_fields[m]:
                     row[f'{m}__meta__{k}'] = ''
             rows.append(row)

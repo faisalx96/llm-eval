@@ -73,6 +73,8 @@ def build_checkpoint_header(metrics: Sequence[str]) -> List[str]:
     header = list(BASE_FIELDS)
     for metric in metrics:
         header.append(f"{metric}_score")
+        header.append(f"{metric}_label")
+        header.append(f"{metric}_explanation")
         header.append(f"{metric}__meta__json")
     return header
 
@@ -113,7 +115,17 @@ def serialize_checkpoint_row(
 
     metric_meta = metric_meta or {}
     for metric, score in scores.items():
+        # Extract label/explanation from score dict metadata
+        label = ""
+        explanation = ""
+        if isinstance(score, dict):
+            md = score.get("metadata", {})
+            if isinstance(md, dict):
+                label = md.get("label", "") or ""
+                explanation = md.get("explanation", "") or ""
         row[f"{metric}_score"] = score
+        row[f"{metric}_label"] = label
+        row[f"{metric}_explanation"] = explanation
         meta_val = metric_meta.get(metric, {})
         row[f"{metric}__meta__json"] = json.dumps(meta_val, ensure_ascii=False) if meta_val else ""
     return row
@@ -267,6 +279,11 @@ def parse_checkpoint_row(
             scores[metric] = score_num
         else:
             scores[metric] = score_val
+
+        # Read label/explanation from checkpoint columns
+        label = row.get(f"{metric}_label", "") or ""
+        explanation = row.get(f"{metric}_explanation", "") or ""
+
         meta_raw = row.get(f"{metric}__meta__json", "")
         if meta_raw:
             try:
@@ -275,6 +292,14 @@ def parse_checkpoint_row(
                     metric_meta[metric] = parsed
             except Exception:
                 pass
+
+        # Merge label/explanation into metric_meta
+        if label or explanation:
+            mm = metric_meta.setdefault(metric, {})
+            if label:
+                mm["label"] = label
+            if explanation:
+                mm["explanation"] = explanation
 
     result["scores"] = scores
     if metric_meta:

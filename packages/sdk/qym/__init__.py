@@ -14,6 +14,8 @@ from .core.results import EvaluationResult
 from .core.config import RunSpec
 from .core.dataset import CsvDataset
 from .metrics import builtin_metrics, list_available_metrics
+from .metrics.result import MetricResult
+from .metrics.judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
 
 __all__ = [
     "Evaluator",
@@ -21,6 +23,10 @@ __all__ = [
     "MultiModelRunner",
     "RunSpec",
     "CsvDataset",
+    "MetricResult",
+    "JudgeConfig",
+    "get_default_judge_config",
+    "set_default_judge_config",
     "builtin_metrics",
     "list_available_metrics",
 ]

@@ -446,6 +446,7 @@
     const html = rows.map(r => {
       const st = r.status||'pending';
       function tdMetricByIndex(i){
+        const mName = (state.metricNames||[])[i] || '';
         const v = (r.metric_values||[])[i];
         const raw = (v ?? '').toString();
         const t = raw.trim().toLowerCase();
@@ -454,7 +455,11 @@
         else if (t === '✗' || t === 'false' || t === 'no' || t === '0' || t === '0.0') cls = 'metric-no';
         else if (t === 'n/a' || t === 'pending' || t === 'error' || t === 'computing...') cls = 'metric-na';
         else { const n = Number(raw); if (!Number.isNaN(n)) { if (Math.abs(n-1)<1e-9) cls='metric-yes'; else if (Math.abs(n)<1e-9) cls='metric-no'; } }
-        return `<td class="${cls}">${raw}</td>`;
+        const lbl = (r.metric_labels && r.metric_labels[mName]) || '';
+        const badge = lbl ? ` <span class="metric-label-badge">${lbl}</span>` : '';
+        const expl = (r.metric_explanations && r.metric_explanations[mName]) || '';
+        const tip = expl ? ` title="${expl.replace(/"/g,'&quot;')}"` : '';
+        return `<td class="${cls}"${tip}>${raw}${badge}</td>`;
       }
       function tdMetricField(name, field){
         const mm = (r.metric_meta && r.metric_meta[name]) || {};
@@ -689,13 +694,19 @@
     const names = state.metricNames || [];
     const vals = row.metric_values || [];
     const meta = row.metric_meta || {};
+    const labels = row.metric_labels || {};
+    const explanations = row.metric_explanations || {};
     const $ml = el('drawer-metrics');
     if ($ml){
       const items = names.map((n, i) => {
         const v = vals[i];
         const cls = classifyMetric(v);
         const txt = (v==null||v==='') ? '—' : String(v);
-        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span></div>`;
+        const lbl = labels[n] || '';
+        const labelBadge = lbl ? `<span class="metric-label-badge">${lbl}</span>` : '';
+        const header = `<div class="metric-row"><span class="name">${n}_score</span><span class="value ${cls}">${txt}</span>${labelBadge}</div>`;
+        const expl = explanations[n] || '';
+        const explHtml = expl ? `<div class="metric-explanation"><details><summary>Explanation</summary><p>${expl}</p></details></div>` : '';
         const extrasObj = meta[n] || {};
         const extras = Object.keys(extrasObj).map(k => {
           const vv = extrasObj[k];
@@ -703,7 +714,7 @@
           const t = (vv==null||vv==='') ? '—' : String(vv);
           return `<div class="metric-row"><span class="name">${n}_${k}</span><span class="value ${c}">${t}</span></div>`;
         }).join('');
-        return header + extras;
+        return header + explHtml + extras;
       }).join('');
       $ml.innerHTML = items || '<div class="muted">No metrics</div>';
     }

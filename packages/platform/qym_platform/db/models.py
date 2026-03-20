@@ -224,6 +224,8 @@ class RunItemScore(Base):
     score_numeric: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     score_raw: Mapped[Any] = mapped_column(JSON, nullable=True)
     meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (UniqueConstraint("run_id", "item_id", "metric_name", name="uq_run_item_metric"),)
 
