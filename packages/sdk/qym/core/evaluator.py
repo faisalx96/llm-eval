@@ -6,6 +6,7 @@ import asyncio
 import concurrent.futures
 import inspect
 import os
+import random
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple, Set
 from datetime import datetime, timezone
@@ -1442,6 +1443,12 @@ class Evaluator:
                     except Exception as e:
                         last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
                         logger.warning(f"Item {index}: {last_error}")
+                    # Exponential backoff with jitter before next retry
+                    if _attempt < self.max_retries and last_error is not None:
+                        base_delay = min(2 ** _attempt, 30)  # 1s, 2s, 4s, ... capped at 30s
+                        jitter = random.uniform(0, base_delay * 0.5)
+                        await asyncio.sleep(base_delay + jitter)
+            retry_count = _attempt  # 0 = succeeded first try, 1 = one retry, etc.
             if last_error is not None:
                 raise RuntimeError(last_error)
             task_elapsed_time = time.time() - task_start_time
@@ -1664,6 +1671,8 @@ class Evaluator:
             # Update tracker with results
             tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
             tracker.update_output(index, output)
+            if retry_count > 0:
+                tracker.item_statuses[index]['retry_count'] = retry_count
 
             for m_name, score in scores.items():
                 if score is not None:
@@ -1714,6 +1723,7 @@ class Evaluator:
                             "trace_id": meta.get("trace_id"),
                             "trace_url": meta.get("trace_url"),
                             "task_started_at_ms": task_started_at_ms,
+                            "retry_count": retry_count,
                         },
                     )
             except Exception:

@@ -55,6 +55,7 @@ class ItemCompletedPayload(BaseModel):
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None
     task_started_at_ms: Optional[int] = None  # Epoch ms when the task execution began
+    retry_count: int = 0  # Number of retries before success (0 = first attempt)
 
 
 class ItemFailedPayload(BaseModel):

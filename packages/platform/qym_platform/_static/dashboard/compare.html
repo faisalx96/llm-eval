@@ -2863,12 +2863,13 @@
                 <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
               </div>
             </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-approval">
+            <div class="fp-group" id="fp-cat-approval">
               <span class="fp-label">Approval</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="approval-ms-btn">All Approval</button>
-                <div class="multi-select-dropdown" id="approval-ms-dropdown"></div>
-              </div>
+              <select id="filter-approval" class="filter-select">
+                <option value="">All</option>
+                <option value="approved">Approved</option>
+                <option value="not_approved">Not Approved</option>
+              </select>
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
@@ -3100,6 +3101,9 @@
         if (!approvalSelection) return true;
         const approvalState = getApprovalState(row);
         if (!approvalState) return false;
+        if (typeof approvalSelection === 'string') {
+          return approvalState === approvalSelection;
+        }
         return approvalSelection.some(option => {
           if (option === 'approved') return approvalState === 'approved';
           if (option === 'not_approved') return approvalState === 'not_approved';
@@ -6553,7 +6557,8 @@
         el('pass-rate-value').style.display = 'none';
         el('pass-rate-suffix').style.display = 'none';
         el('sort-select').value = 'index';
-        syncMultiselectUI('approval');
+        const approvalSelect = el('filter-approval');
+        if (approvalSelect) approvalSelect.value = '';
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
@@ -6572,6 +6577,12 @@
 
       el('item-filter').addEventListener('change', (e) => {
         state.itemFilter = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('filter-approval')?.addEventListener('change', (e) => {
+        state.approvalFilter = e.target.value || null;
         state.page = 1;
         renderItems();
       });
@@ -6608,7 +6619,7 @@
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
         el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
 
-        buildMultiselectOptions('approval', state.approvalValues);
+        // Approval is a simple <select>, no multi-select build needed
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
         if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
@@ -6664,7 +6675,7 @@
 
         let html = `<div class="ms-actions">
           <button class="ms-action-btn" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
-          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">Clear</button>
+          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">None</button>
         </div>`;
         html += extraOptions + values.map(v =>
           `<label class="multi-select-option" data-value="${escapeAttr(v)}">

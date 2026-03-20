@@ -38,24 +38,24 @@
     runs: null,
     flatRuns: [],
     filteredRuns: [],
-    searchQuery: '',
     sortKey: 'time-desc',
     quickFilter: 'all',
-    filterTask: '',
+    filterTasks: new Set(),
     filterModels: new Set(),  // Multi-select for models
-    filterDataset: '',
-    filterPublishStatus: '',  // '' or workflow status (RUNNING/COMPLETED/FAILED/SUBMITTED/APPROVED/REJECTED)
-    filterVersion: '',  // '' or git_commit hash
+    filterDatasets: new Set(),
+    filterStatuses: new Set(),
+    filterVersions: new Set(),
     currentView: 'charts',  // Default to charts view
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
     chartData: null,  // Aggregated data for charts
+    chartDatasetTab: {},  // {taskName: datasetName} — active dataset tab per task card
     allMetrics: [],   // All unique metric names across runs
     visibleMetrics: null, // null = all visible; Set of visible metric names
     allModels: [],    // All unique model names
     currentUser: null,
-    // Models view state (uses global filterTask/filterDataset for task+dataset)
+    // Models view state (uses global filterTasks/filterDatasets for task+dataset)
     modelsViewState: {
       selectedMetric: '',
       globalK: 5,
@@ -82,6 +82,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
   const el = (id) => document.getElementById(id);
+  const EMPTY_FILTER_VALUE = '__empty__';
 
   function debounce(fn, ms) {
     let t;
@@ -190,6 +191,171 @@
     return beforeSlash.slice(0, lastDash + 1) + runId.slice(slashIdx + 1);
   }
 
+  function isEmptyFilterValue(value) {
+    return value === null || value === undefined || String(value).trim() === '';
+  }
+
+  function getFilterOptionLabel(value, labelFn = null) {
+    if (value === EMPTY_FILTER_VALUE) return 'Empty / Missing';
+    const label = labelFn ? labelFn(value) : value;
+    return isEmptyFilterValue(label) ? 'Empty / Missing' : String(label);
+  }
+
+  function collectFilterValues(runs, getter) {
+    const values = new Set();
+    let hasEmpty = false;
+    (runs || []).forEach(run => {
+      const value = getter(run);
+      if (isEmptyFilterValue(value)) {
+        hasEmpty = true;
+      } else {
+        values.add(value);
+      }
+    });
+    const ordered = Array.from(values).sort((a, b) => String(a).localeCompare(String(b)));
+    if (hasEmpty) ordered.push(EMPTY_FILTER_VALUE);
+    return ordered;
+  }
+
+  function matchesFilterSelection(selection, value) {
+    if (!selection || selection.size === 0) return true;
+    if (selection.has('__none__')) return false;
+    const normalized = isEmptyFilterValue(value) ? EMPTY_FILTER_VALUE : value;
+    return selection.has(normalized);
+  }
+
+  function summarizeFilterSelection(selection, labelFn = null) {
+    if (!selection || selection.size === 0) return '';
+    if (selection.has('__none__')) return 'none';
+    return [...selection].map(value => {
+      const label = getFilterOptionLabel(value, labelFn);
+      return label.length > 20 ? label.slice(0, 20) + '...' : label;
+    }).join(', ');
+  }
+
+  // ═══════════════════════════════════════════════════
+  // GENERIC MULTI-SELECT BUILDER
+  // ═══════════════════════════════════════════════════
+
+  function buildMultiSelect({ btnId, dropdownId, stateSet, values, labelFn, defaultLabel, showSearch, searchPlaceholder, colorFn, onchange }) {
+    const btn = el(btnId);
+    const dropdown = el(dropdownId);
+    if (!btn || !dropdown) return;
+
+    const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
+
+    let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all">Select All</button><button class="ms-action-btn" data-action="none">None</button></div>';
+    if (showSearch) {
+      html += `<div class="model-search-box"><input type="text" class="model-search-input" placeholder="${searchPlaceholder || 'Search...'}" value="${escapeHtml(searchValue)}" /></div>`;
+    }
+    html += values.map((v, idx) => {
+      const checked = stateSet.size === 0 || stateSet.has(v) ? 'checked' : '';
+      const label = getFilterOptionLabel(v, labelFn);
+      const color = colorFn && v !== EMPTY_FILTER_VALUE ? colorFn(v, idx) : '';
+      const colorDot = color ? `<span class="model-color" style="background:${color}"></span>` : '';
+      const emptyClass = v === EMPTY_FILTER_VALUE ? ' is-empty-option' : '';
+      const hidden = showSearch && searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+      return `<div class="multi-select-option${emptyClass}" data-value="${escapeHtml(v)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" ${checked} /><span>${escapeHtml(label)}</span></div>`;
+    }).join('');
+    dropdown.innerHTML = html;
+
+    // Wire search
+    if (showSearch) {
+      const searchInput = dropdown.querySelector('.model-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          const q = e.target.value.toLowerCase();
+          dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+            const text = opt.textContent || opt.dataset.value || '';
+            opt.style.display = text.toLowerCase().includes(q) ? '' : 'none';
+          });
+        });
+        searchInput.addEventListener('click', (e) => e.stopPropagation());
+        searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+      }
+    }
+
+    // Wire All/None buttons
+    dropdown.querySelectorAll('.ms-action-btn').forEach(ab => {
+      ab.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (ab.dataset.action === 'all') {
+          stateSet.clear();
+        } else {
+          stateSet.clear();
+          stateSet.add('__none__');
+        }
+        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
+        if (onchange) onchange();
+        render();
+      });
+    });
+
+    // Wire individual option clicks
+    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const value = opt.dataset.value;
+        const wasNone = stateSet.has('__none__');
+        stateSet.delete('__none__');
+        if (wasNone) {
+          stateSet.clear();
+          stateSet.add(value);
+        } else if (stateSet.size === 0) {
+          // Was "all" - select all except clicked one
+          values.forEach(v => { if (v !== value) stateSet.add(v); });
+        } else if (stateSet.has(value)) {
+          stateSet.delete(value);
+          if (stateSet.size === 0) stateSet.clear(); // back to "all"
+        } else {
+          stateSet.add(value);
+        }
+        // Normalize: if all selected, clear to "show all"
+        if (stateSet.size >= values.length) stateSet.clear();
+        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
+        if (onchange) onchange();
+        render();
+      });
+    });
+
+    syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
+  }
+
+  function syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn }) {
+    const btn = el(btnId);
+    const dropdown = el(dropdownId);
+
+    // Update button text
+    if (btn) {
+      if (stateSet.size === 0) {
+        btn.textContent = defaultLabel;
+        btn.classList.remove('has-selection');
+      } else if (stateSet.has('__none__')) {
+        btn.textContent = 'None';
+        btn.classList.add('has-selection');
+      } else if (stateSet.size === 1) {
+        btn.textContent = getFilterOptionLabel([...stateSet][0], labelFn);
+        btn.classList.add('has-selection');
+      } else {
+        btn.textContent = `${stateSet.size} selected`;
+        btn.classList.add('has-selection');
+      }
+    }
+
+    // Update checkboxes
+    if (dropdown) {
+      const isAll = stateSet.size === 0;
+      const isNone = stateSet.has('__none__');
+      dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+        const cb = opt.querySelector('input[type="checkbox"]');
+        if (!cb) return;
+        const v = opt.dataset.value;
+        cb.checked = isAll || (!isNone && stateSet.has(v));
+      });
+    }
+  }
+
   // ═══════════════════════════════════════════════════
   // METRIC VISIBILITY
   // ═══════════════════════════════════════════════════
@@ -260,7 +426,7 @@
     } catch (e) {}
   }
 
-  function populateMetricVisibility(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
+  function populateMetricVisibility(availableMetrics = state.allMetrics) {
     const wrapper = el('metric-visibility-wrapper');
     const dropdown = el('metric-visibility-dropdown');
     const btn = el('metric-visibility-btn');
@@ -274,21 +440,50 @@
 
     const visibleMetrics = new Set(getVisibleMetrics(availableMetrics));
     const allVisible = visibleMetrics.size === availableMetrics.length;
+    const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
     dropdown.innerHTML =
-      '<div class="mv-actions">' +
-        '<button class="mv-action-btn" id="mv-select-all">All</button>' +
-        '<button class="mv-action-btn" id="mv-select-none">None</button>' +
+      '<div class="ms-actions">' +
+        '<button class="ms-action-btn" id="mv-select-all">All</button>' +
+        '<button class="ms-action-btn" id="mv-select-none">None</button>' +
       '</div>' +
+      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
       availableMetrics.map(m => {
         const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
-        return `<label class="mv-option"><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /> ${escapeHtml(m)}</label>`;
+        const hidden = searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
       }).join('');
 
     // Update button text
     updateMetricVisibilityBtn(availableMetrics);
 
+    // Wire search input for metrics
+    const mvSearchInput = dropdown.querySelector('.model-search-input');
+    if (mvSearchInput) {
+      mvSearchInput.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+          const metricCb = opt.querySelector('input[data-mv-metric]');
+          if (!metricCb) return;
+          const m = metricCb.dataset.mvMetric || '';
+          opt.style.display = m.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+      mvSearchInput.addEventListener('click', (e) => e.stopPropagation());
+      mvSearchInput.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+
     dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
+        applyMetricVisibilityFromCheckboxes(availableMetrics);
+      });
+    });
+
+    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+      const metricCb = opt.querySelector('input[data-mv-metric]');
+      if (!metricCb) return;
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        metricCb.checked = !metricCb.checked;
         applyMetricVisibilityFromCheckboxes(availableMetrics);
       });
     });
@@ -313,7 +508,7 @@
     });
   }
 
-  function syncMetricVisibilityDropdownState(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
+  function syncMetricVisibilityDropdownState(availableMetrics = state.allMetrics) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
 
@@ -325,29 +520,29 @@
     updateMetricVisibilityBtn(availableMetrics);
   }
 
-  function updateMetricVisibilityBtn(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
+  function updateMetricVisibilityBtn(availableMetrics = state.allMetrics) {
     const btn = el('metric-visibility-btn');
     if (!btn) return;
     const visibleMetrics = getVisibleMetrics(availableMetrics);
     if (availableMetrics.length === 0) {
-      btn.textContent = 'No Metrics';
+      btn.textContent = 'No Columns';
       btn.classList.add('has-selection');
     } else if (visibleMetrics.length === availableMetrics.length) {
-      btn.textContent = 'All Metrics';
+      btn.textContent = 'Columns';
       btn.classList.remove('has-selection');
     } else if (visibleMetrics.length === 0) {
-      btn.textContent = 'No Metrics';
+      btn.textContent = 'No Columns';
       btn.classList.add('has-selection');
     } else if (visibleMetrics.length === 1) {
       btn.textContent = visibleMetrics[0];
       btn.classList.add('has-selection');
     } else {
-      btn.textContent = visibleMetrics.length + ' Metrics';
+      btn.textContent = visibleMetrics.length + ' Columns';
       btn.classList.add('has-selection');
     }
   }
 
-  function applyMetricVisibilityFromCheckboxes(availableMetrics = getAvailableMetricsForRuns(state.filteredRuns)) {
+  function applyMetricVisibilityFromCheckboxes(availableMetrics = state.allMetrics) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
     const checked = new Set();
@@ -583,58 +778,21 @@
     }
     const sortedModels = Object.keys(modelFreq).sort((a, b) => modelFreq[b] - modelFreq[a]);
 
-    // --- Version ranking: aggregate per git_commit across all models ---
-    // For each combo, compute version-level stats
+    // Group combos by task for dataset-tab cards
+    const taskGroupsMap = {};
     for (const combo of sortedCombos) {
-      const versionMap = {};
-      for (const [model, data] of Object.entries(combo.models)) {
-        for (const run of data.runsList) {
-          const commit = run.git_commit;
-          if (!commit) continue;
-          if (!versionMap[commit]) {
-            versionMap[commit] = {
-              git_commit: commit,
-              git_branch: run.git_branch || '',
-              metricSums: {},
-              metricCounts: {},
-              bestScores: {},  // {metric: {score, model}}
-              runCount: 0,
-            };
-          }
-          const v = versionMap[commit];
-          v.runCount++;
-          if (run.metric_averages) {
-            for (const [metric, score] of Object.entries(run.metric_averages)) {
-              if (score === undefined || score === null) continue;
-              v.metricSums[metric] = (v.metricSums[metric] || 0) + score;
-              v.metricCounts[metric] = (v.metricCounts[metric] || 0) + 1;
-              if (!v.bestScores[metric] || score > v.bestScores[metric].score) {
-                v.bestScores[metric] = { score, model };
-              }
-            }
-          }
-        }
+      if (!taskGroupsMap[combo.task]) {
+        taskGroupsMap[combo.task] = { task: combo.task, datasets: [] };
       }
-      // Compute averages
-      const versionRanking = Object.values(versionMap).map(v => {
-        const metricAverages = {};
-        for (const [metric, sum] of Object.entries(v.metricSums)) {
-          metricAverages[metric] = sum / (v.metricCounts[metric] || 1);
-        }
-        return {
-          git_commit: v.git_commit,
-          git_branch: v.git_branch,
-          label: v.git_branch ? `${v.git_branch}/${v.git_commit}` : v.git_commit,
-          runCount: v.runCount,
-          metricAverages,
-          bestScores: v.bestScores,
-        };
-      });
-      combo.versionRanking = versionRanking;
+      taskGroupsMap[combo.task].datasets.push(combo);
     }
+    const tasks = Object.values(taskGroupsMap).sort(
+      (a, b) => b.datasets.reduce((s, d) => s + d.totalRuns, 0) - a.datasets.reduce((s, d) => s + d.totalRuns, 0)
+    );
 
     return {
       combos: sortedCombos,
+      tasks,
       models: sortedModels,
       metrics: Array.from(allMetrics),
       modelIndex: Object.fromEntries(sortedModels.map((m, i) => [m, i])),
@@ -643,20 +801,6 @@
 
   function filterRuns() {
     let runs = [...state.flatRuns];
-
-    // Search filter
-    if (state.searchQuery) {
-      const q = state.searchQuery.toLowerCase();
-      runs = runs.filter(r =>
-          String(r.run_id || '').toLowerCase().includes(q) ||
-          String(r.task_name || '').toLowerCase().includes(q) ||
-          String(r.model_name || '').toLowerCase().includes(q) ||
-          String(r.display_model || '').toLowerCase().includes(q) ||
-          String(r.dataset_name || '').toLowerCase().includes(q) ||
-          String(r.git_branch || '').toLowerCase().includes(q) ||
-          String(r.git_commit || '').toLowerCase().includes(q)
-      );
-    }
 
     // Quick filter (time-based)
     switch (state.quickFilter) {
@@ -669,24 +813,32 @@
     }
 
     // Dropdown filters
-    if (state.filterTask) {
-      runs = runs.filter(r => r.task_name === state.filterTask);
+    if (state.filterTasks.size > 0 && !state.filterTasks.has('__none__')) {
+      runs = runs.filter(r => matchesFilterSelection(state.filterTasks, r.task_name));
+    } else if (state.filterTasks.has('__none__')) {
+      runs = [];
     }
     if (state.filterModels.size > 0) {
       if (state.filterModels.has('__none__')) {
         runs = [];
       } else {
-        runs = runs.filter(r => state.filterModels.has(r.model_name));
+        runs = runs.filter(r => matchesFilterSelection(state.filterModels, r.model_name));
       }
     }
-    if (state.filterDataset) {
-      runs = runs.filter(r => r.dataset_name === state.filterDataset);
+    if (state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
+      runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, r.dataset_name));
+    } else if (state.filterDatasets.has('__none__')) {
+      runs = [];
     }
-    if (state.filterPublishStatus) {
-      runs = runs.filter(r => (r.status || '') === state.filterPublishStatus);
+    if (state.filterStatuses.size > 0 && !state.filterStatuses.has('__none__')) {
+      runs = runs.filter(r => matchesFilterSelection(state.filterStatuses, r.status));
+    } else if (state.filterStatuses.has('__none__')) {
+      runs = [];
     }
-    if (state.filterVersion) {
-      runs = runs.filter(r => (r.git_commit || '') === state.filterVersion);
+    if (state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
+      runs = runs.filter(r => matchesFilterSelection(state.filterVersions, r.git_commit));
+    } else if (state.filterVersions.has('__none__')) {
+      runs = [];
     }
 
     // Sort
@@ -818,6 +970,68 @@
     }).join('');
   }
 
+  function isLatencyLikeMetric(metricName) {
+    return /(^|[_\s-])latency([_\s-]|$)/i.test(String(metricName || ''));
+  }
+
+  function isTokenLikeMetric(metricName) {
+    return /(^|[_\s-])(token|tokens|usage)([_\s-]|$)/i.test(String(metricName || ''));
+  }
+
+  function prefersBarChartMetric(metricName, metricType) {
+    if (metricType !== 'numeric') return true;
+    return isLatencyLikeMetric(metricName) || isTokenLikeMetric(metricName);
+  }
+
+  function orderChartMetrics(metrics) {
+    return metrics
+      .map((metric, index) => ({ metric, index }))
+      .sort((a, b) => {
+        const aType = state._metricTypes?.[a.metric] || 'score';
+        const bType = state._metricTypes?.[b.metric] || 'score';
+        const aPriority = prefersBarChartMetric(a.metric, aType) ? 0 : 1;
+        const bPriority = prefersBarChartMetric(b.metric, bType) ? 0 : 1;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return a.index - b.index;
+      })
+      .map(entry => entry.metric);
+  }
+
+  function renderMiniBarCell({ value, label, ratio, modelIdx, isAggregate = false, cellClass = 'chart-metric-cell' }) {
+    const safeRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(ratio, 1)) : 0;
+    const width = value === null || value === undefined ? 0 : Math.max(safeRatio * 100, 2);
+    const aggregateClass = isAggregate && !Number.isInteger(modelIdx) ? ' aggregate' : '';
+    const modelAttr = Number.isInteger(modelIdx) ? ` data-model-idx="${modelIdx}"` : '';
+    return `
+      <div class="${cellClass}">
+        <div class="chart-mini-bar-track">
+          <div class="chart-mini-bar-fill${aggregateClass}"${modelAttr} style="width:${width}%">
+            <span class="chart-mini-bar-label">${label}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function getChartGroupExpansionEntry(cardId, mode) {
+    if (!state.chartGroupExpansion) state.chartGroupExpansion = {};
+    const existing = state.chartGroupExpansion[cardId];
+    if (!existing || existing.mode !== mode) {
+      state.chartGroupExpansion[cardId] = { mode, expanded: {} };
+    }
+    return state.chartGroupExpansion[cardId];
+  }
+
+  function isChartGroupCollapsed(cardId, mode, groupId) {
+    const entry = getChartGroupExpansionEntry(cardId, mode);
+    return entry.expanded[groupId] !== true;
+  }
+
+  function setChartGroupCollapsed(cardId, mode, groupId, collapsed) {
+    const entry = getChartGroupExpansionEntry(cardId, mode);
+    entry.expanded[groupId] = !collapsed;
+  }
+
   // ═══════════════════════════════════════════════════
   // RENDERING: CHARTS VIEW
   // ═══════════════════════════════════════════════════
@@ -828,18 +1042,18 @@
     // Update subtitle with filter info
     const subtitleEl = $('.charts-subtitle');
     if (subtitleEl) {
-      const isFiltered = state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus || state.filterVersion;
+      const isFiltered = state.quickFilter !== 'all' || state.filterStatuses.size > 0 || state.filterVersions.size > 0;
       if (isFiltered) {
         subtitleEl.textContent = `Filtered: ${state.filteredRuns.length} runs • Showing average metric scores across all items`;
       } else {
         subtitleEl.textContent = `Showing average metric scores across all items in matching runs`;
       }
     }
-    
+
     if (!chartData || chartData.combos.length === 0) {
       el('charts-grid').innerHTML = `
         <div class="chart-no-data" style="grid-column: 1/-1;">
-          ${state.searchQuery || state.quickFilter !== 'all' || state.filterPublishStatus || state.filterVersion
+          ${state.quickFilter !== 'all' || state.filterStatuses.size > 0 || state.filterVersions.size > 0
             ? 'No runs match current filters'
             : 'No data available for charts. Run some evaluations first.'}
         </div>
@@ -877,33 +1091,54 @@
       });
     });
 
-    // Render chart cards - one per task+dataset, showing metrics
+    // Render chart cards - one per task, with dataset tabs
     const gridEl = el('charts-grid');
-    gridEl.innerHTML = chartData.combos.map(combo => {
+    gridEl.innerHTML = (chartData.tasks || []).map(taskGroup => {
+      const taskName = taskGroup.task;
+      const datasets = taskGroup.datasets;
+      const totalTaskRuns = datasets.reduce((s, d) => s + d.totalRuns, 0);
+      const allTaskModels = new Set();
+      datasets.forEach(d => Object.keys(d.models).forEach(m => allTaskModels.add(m)));
+
+      // Determine active dataset tab
+      const activeDataset = state.chartDatasetTab[taskName] || datasets[0]?.dataset || '';
+      const combo = datasets.find(d => d.dataset === activeDataset) || datasets[0];
+      if (!combo) return '';
+
+      // Dataset tabs HTML
+      const datasetTabsHtml = `
+        <div class="chart-dataset-tabs">
+          ${datasets.map(d => `
+            <div class="chart-dataset-tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}">
+              ${d.dataset} <span class="tab-count">${d.totalRuns}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
       const allComboMetrics = combo.metrics || [];
       const visSet = state.visibleMetrics;
-      const metrics = visSet ? allComboMetrics.filter(m => visSet.has(m)) : allComboMetrics;
+      const metrics = orderChartMetrics(visSet ? allComboMetrics.filter(m => visSet.has(m)) : allComboMetrics);
       const modelEntries = Object.entries(combo.models);
 
       if (metrics.length === 0) {
         return `
-          <div class="chart-card">
-            <div class="chart-card-header">
-              <div class="chart-card-title">
-                <span class="chart-task-name">${combo.task}</span>
-                <span class="chart-dataset-name">${combo.dataset}</span>
-              </div>
-              <div class="chart-card-meta">
-                <span class="runs-count">${combo.totalRuns} runs</span>
+          <div class="chart-task-section">
+            <div class="chart-task-header">
+              <span class="chart-task-name">${taskName}</span>
+              <span class="chart-task-meta">${totalTaskRuns} runs \u00b7 ${allTaskModels.size} models</span>
+            </div>
+            <div class="chart-card">
+              ${datasetTabsHtml}
+              <div class="chart-card-body">
+                <div class="chart-no-data">No metrics recorded</div>
               </div>
             </div>
-            <div class="chart-no-data">No metrics recorded</div>
           </div>
         `;
       }
 
-      // Build table with runs as rows and metrics as columns
-      // First, collect all unique runs across all models
+      // Collect all runs across all models
       const allRuns = [];
       for (const [model, data] of modelEntries) {
         for (const run of data.runsList) {
@@ -917,6 +1152,8 @@
             metric_averages: run.metric_averages || {},
             latency: run.avg_latency_ms || 0,
             isMultiRun: data.runs > 1,
+            git_branch: run.git_branch || '',
+            git_commit: run.git_commit || '',
           });
         }
       }
@@ -931,8 +1168,12 @@
       }
       const sortState = state.chartSortState[cardId];
 
-      // Sort runs
-      allRuns.sort((a, b) => {
+      // Grouping mode: run (default) / version / model
+      if (!state.chartGroupMode) state.chartGroupMode = {};
+      const groupMode = state.chartGroupMode[cardId] || 'run';
+
+      // Sort helper
+      function sortByState(a, b) {
         let aVal, bVal;
         if (sortState.key === 'latency') {
           aVal = a.latency || 0;
@@ -942,32 +1183,95 @@
           bVal = b.metric_averages[sortState.key] ?? -1;
         }
         return sortState.dir === 'desc' ? bVal - aVal : aVal - bVal;
-      });
+      }
 
       if (allRuns.length === 0) return '';
 
+      const visualMetrics = metrics.filter(metric => {
+        const metricType = state._metricTypes?.[metric] || 'score';
+        return prefersBarChartMetric(metric, metricType);
+      });
+      const numericMetrics = metrics.filter(metric => !visualMetrics.includes(metric));
+      const LATENCY_COLUMN_KEY = '__latency__';
+      const displayColumns = [...visualMetrics, ...numericMetrics, LATENCY_COLUMN_KEY];
+      const metricScaleMax = {};
+      for (const metric of visualMetrics) {
+        const metricType = state._metricTypes?.[metric] || 'score';
+        if (metricType !== 'numeric') continue;
+        metricScaleMax[metric] = Math.max(...allRuns.map(run => Number(run.metric_averages?.[metric] || 0)), 0);
+      }
+      const latencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
+
+      if (!displayColumns.some(column => (column === LATENCY_COLUMN_KEY ? 'latency' : column) === sortState.key)) {
+        sortState.key = displayColumns[0] === LATENCY_COLUMN_KEY ? 'latency' : displayColumns[0];
+        sortState.dir = 'desc';
+        state.chartSortState[cardId] = sortState;
+      }
+
       // Build header row with sortable columns
-      const headerCells = metrics.map(metric => {
-        const isActive = sortState.key === metric;
-        const arrow = isActive ? (sortState.dir === 'desc' ? ' ↓' : ' ↑') : '';
-        return `<span class="chart-col-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${metric}">${metric}${arrow}</span>`;
+      const headerCells = displayColumns.map(column => {
+        if (column === LATENCY_COLUMN_KEY) {
+          const isActive = sortState.key === 'latency';
+          const arrow = isActive ? (sortState.dir === 'desc' ? ' \u2193' : ' \u2191') : '';
+          return `<span class="chart-col-header chart-col-header-latency sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${arrow}</span>`;
+        }
+        const isActive = sortState.key === column;
+        const arrow = isActive ? (sortState.dir === 'desc' ? ' \u2193' : ' \u2191') : '';
+        return `<span class="chart-col-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${column}">${column}${arrow}</span>`;
       }).join('');
 
-      const latencyActive = sortState.key === 'latency';
-      const latencyArrow = latencyActive ? (sortState.dir === 'desc' ? ' ↓' : ' ↑') : '';
+      function renderMetricValueCell(metricName, value, modelIdx, isAggregate = false) {
+        if (value === undefined || value === null) {
+          return `<div class="chart-metric-cell"><span class="metric-na">\u2014</span></div>`;
+        }
+        const chartMType = state._metricTypes?.[metricName] || window.QymMetrics.detectMetricTypeFromAvg(value);
+        if (!prefersBarChartMetric(metricName, chartMType)) {
+          const display = window.QymMetrics.formatNumericValue(value);
+          return `<div class="chart-metric-cell"><span class="chart-numeric-value${isAggregate ? ' aggregate' : ''}">${display}</span></div>`;
+        }
+        if (chartMType === 'numeric') {
+          const scaleMax = metricScaleMax[metricName] || value || 1;
+          return renderMiniBarCell({
+            value,
+            label: window.QymMetrics.formatNumericValue(value),
+            ratio: scaleMax > 0 ? value / scaleMax : 0,
+            modelIdx,
+            isAggregate,
+          });
+        }
+        const pct = value * 100;
+        const label = pct === 0 ? '0%' : pct === 100 ? '100%' : `${pct.toFixed(1)}%`;
+        return renderMiniBarCell({
+          value,
+          label,
+          ratio: value,
+          modelIdx,
+          isAggregate,
+        });
+      }
 
-      // Build data rows
-      const rowsHtml = allRuns.map((runData) => {
-        const { model, run_id, external_run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
+      function renderLatencyValueCell(latencyValue, modelIdx, isAggregate = false) {
+        if (!latencyValue) {
+          return `<div class="chart-latency-cell"><span class="metric-na">\u2014</span></div>`;
+        }
+        return renderMiniBarCell({
+          value: latencyValue,
+          label: formatLatency(latencyValue),
+          ratio: latencyScaleMax > 0 ? latencyValue / latencyScaleMax : 0,
+          modelIdx,
+          isAggregate,
+          cellClass: 'chart-latency-cell',
+        });
+      }
+
+      // --- Helper: render a single run row ---
+      function renderRunRow(runData) {
+        const { model, run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
         const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
-        const latencyStr = latency > 0 ? formatLatency(latency) : '—';
         const dt = formatDate(timestamp);
-
-        // Format run label: show only model name; run name stays in hover.
         const displayModel = stripModelProvider(model);
         const hoverRunName = runData.run_name || 'none';
         let displayHtml = `<span class="model-name-text">${displayModel}</span>`;
-        // Try to extract date from run_id pattern
         const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
         if (tsMatch) {
           const [, yy, mm, dd, hh, min, counter] = tsMatch;
@@ -976,63 +1280,186 @@
           const day = parseInt(dd, 10);
           const timeStr = `${hh}:${min}`;
           const counterStr = counter ? ` #${counter}` : '';
-          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${monthName} ${day} · ${timeStr}${counterStr}</span>`;
+          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${monthName} ${day} \u00b7 ${timeStr}${counterStr}</span>`;
         } else {
-          // Fallback: use formatted timestamp from run data
-          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${dt.date} · ${dt.time}</span>`;
+          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${dt.date} \u00b7 ${dt.time}</span>`;
         }
         const versionStr = runData.git_commit ? (runData.git_branch ? `${runData.git_branch}/${runData.git_commit}` : runData.git_commit) : '';
         const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
         const tooltipText = `Run name: ${hoverRunName}${versionStr ? `\nVersion: ${versionStr}` : ''}`;
-
-        // Build metric cells
-        const metricCells = metrics.map(metric => {
-          const score = metric_averages[metric];
-          if (score === undefined || score === null) {
-            return `<div class="chart-metric-cell"><span class="metric-na">—</span></div>`;
+        const dataCells = displayColumns.map(column => {
+          if (column === LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(latency, modelIdx);
           }
-          const chartMType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(score);
-          if (chartMType === 'numeric') {
-            // For numeric metrics, show the value as text (no bar)
-            const display = window.QymMetrics.formatNumericValue(score);
-            return `
-              <div class="chart-metric-cell">
-                <span class="chart-numeric-value">${display}</span>
-              </div>
-            `;
-          }
-          const pct = score * 100;
-          const barWidth = Math.max(pct, 2);
-          const pctStr = pct === 0 ? '0%' : pct === 100 ? '100%' : `${pct.toFixed(1)}%`;
-          return `
-            <div class="chart-metric-cell">
-              <div class="chart-mini-bar-track">
-                <div class="chart-mini-bar-fill" data-model-idx="${modelIdx}" style="width:${barWidth}%">
-                  <span class="chart-mini-bar-pct">${pctStr}</span>
-                </div>
-              </div>
-            </div>
-          `;
+          return renderMetricValueCell(column, metric_averages[column], modelIdx);
         }).join('');
-
         return `
           <div class="chart-table-row">
             <span class="chart-bar-label clickable-run ${isMultiRun ? 'multi-run' : ''}"
                   data-file="${file_path}"
                   title="${tooltipText}">${displayHtml}${versionTag}</span>
-            ${metricCells}
-            <span class="chart-latency-cell">${latencyStr}</span>
+            ${dataCells}
           </div>
         `;
-      }).join('');
+      }
+
+      // --- Helper: compute group aggregates ---
+      function computeGroupAgg(runs) {
+        const agg = {};
+        let latSum = 0, latCount = 0;
+        for (const r of runs) {
+          for (const m of metrics) {
+            const v = r.metric_averages[m];
+            if (v !== undefined && v !== null) {
+              if (!agg[m]) agg[m] = { sum: 0, count: 0 };
+              agg[m].sum += v;
+              agg[m].count++;
+            }
+          }
+          if (r.latency) { latSum += r.latency; latCount++; }
+        }
+        const metricAverages = {};
+        for (const m of metrics) {
+          metricAverages[m] = agg[m] ? agg[m].sum / agg[m].count : undefined;
+        }
+        return { metricAverages, avgLatency: latCount > 0 ? latSum / latCount : 0 };
+      }
+
+      // --- Helper: render a group header row ---
+      function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null) {
+        const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
+        const dataCells = displayColumns.map(column => {
+          if (column === LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(agg.avgLatency, groupModelIdx, true);
+          }
+          return renderMetricValueCell(column, agg.metricAverages[column], groupModelIdx, true);
+        }).join('');
+        return `
+          <div class="chart-table-group-header" data-group-id="${groupId}">
+            <span class="chart-group-first-col">
+              <span class="chart-group-toggle">${isCollapsed ? '\u25b6' : '\u25bc'}</span>
+              <span class="chart-group-label">${label}</span>
+              <span class="chart-group-count">${runCount} run${runCount !== 1 ? 's' : ''}</span>
+            </span>
+            ${dataCells}
+          </div>
+        `;
+      }
+
+      // --- Build table body based on grouping mode ---
+      let rowsHtml = '';
+      let firstColLabel = 'Model';
+      let hasExpandedGroups = false;
+
+      if (groupMode === 'run') {
+        // Flat run rows (original behavior)
+        allRuns.sort(sortByState);
+        rowsHtml = allRuns.map(renderRunRow).join('');
+      } else if (groupMode === 'version') {
+        firstColLabel = 'Version';
+        // Group runs by git_commit
+        const groups = {};
+        const ungrouped = [];
+        for (const r of allRuns) {
+          if (r.git_commit) {
+            const key = r.git_commit;
+            if (!groups[key]) groups[key] = { label: r.git_branch ? `${r.git_branch}/${r.git_commit}` : r.git_commit, runs: [] };
+            groups[key].runs.push(r);
+          } else {
+            ungrouped.push(r);
+          }
+        }
+        // Sort groups by aggregate metric
+        const sortedGroups = Object.entries(groups).map(([key, g]) => {
+          const agg = computeGroupAgg(g.runs);
+          // Sort runs within group
+          g.runs.sort(sortByState);
+          return { key, label: g.label, runs: g.runs, agg };
+        });
+        sortedGroups.sort((a, b) => {
+          const aVal = a.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? a.agg.avgLatency : -1);
+          const bVal = b.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? b.agg.avgLatency : -1);
+          return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
+        });
+
+        for (const g of sortedGroups) {
+          const groupId = `vg_${cardId}_${g.key}`;
+          const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
+          if (!isCollapsed) hasExpandedGroups = true;
+          rowsHtml += renderGroupHeader(g.label, g.runs.length, g.agg, groupId);
+          rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${groupId}">`;
+          rowsHtml += g.runs.map(renderRunRow).join('');
+          rowsHtml += `</div>`;
+        }
+        if (ungrouped.length > 0) {
+          ungrouped.sort(sortByState);
+          const ungroupedAgg = computeGroupAgg(ungrouped);
+          const gid = `vg_${cardId}_ungrouped`;
+          const isCollapsed = isChartGroupCollapsed(cardId, groupMode, gid);
+          if (!isCollapsed) hasExpandedGroups = true;
+          rowsHtml += renderGroupHeader('No version', ungrouped.length, ungroupedAgg, gid);
+          rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${gid}">`;
+          rowsHtml += ungrouped.map(renderRunRow).join('');
+          rowsHtml += `</div>`;
+        }
+      } else if (groupMode === 'model') {
+        firstColLabel = 'Model';
+        // Group runs by model
+        const groups = {};
+        for (const r of allRuns) {
+          if (!groups[r.model]) groups[r.model] = [];
+          groups[r.model].push(r);
+        }
+        const sortedGroups = Object.entries(groups).map(([model, runs]) => {
+          const agg = computeGroupAgg(runs);
+          runs.sort(sortByState);
+          return { model, label: stripModelProvider(model), runs, agg };
+        });
+        sortedGroups.sort((a, b) => {
+          const aVal = a.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? a.agg.avgLatency : -1);
+          const bVal = b.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? b.agg.avgLatency : -1);
+          return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
+        });
+
+        for (const g of sortedGroups) {
+          const groupId = `mg_${cardId}_${g.model.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const modelIdx = state.allModels.indexOf(g.model) % CHART_COLORS.length;
+          const colorDot = `<span class="model-color-dot" style="background:${CHART_COLORS[modelIdx]}"></span>`;
+          const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
+          if (!isCollapsed) hasExpandedGroups = true;
+          rowsHtml += renderGroupHeader(`${colorDot}${g.label}`, g.runs.length, g.agg, groupId, modelIdx);
+          rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${groupId}">`;
+          rowsHtml += g.runs.map(renderRunRow).join('');
+          rowsHtml += `</div>`;
+        }
+      }
+
+      // Check if version grouping should be available (any runs have git_commit)
+      const hasVersions = allRuns.some(r => r.git_commit);
+
+      // Segmented control sits in the table header's first column
+      const isGrouped = groupMode !== 'run';
+      const expandCollapseBtn = isGrouped
+        ? `<button class="chart-expand-collapse-btn" data-card="${cardId}">${hasExpandedGroups ? 'Collapse all' : 'Expand all'}</button>`
+        : '';
+
+      const firstColHtml = `
+        <span class="chart-col-header-run">
+          <span class="chart-segment-control" data-card="${cardId}">
+            <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Run</button>
+            <button class="chart-segment-btn ${groupMode === 'version' ? 'active' : ''}" data-mode="version" ${!hasVersions ? 'disabled title="No version data available"' : ''}>Version</button>
+            <button class="chart-segment-btn ${groupMode === 'model' ? 'active' : ''}" data-mode="model">Model</button>
+          </span>
+          ${expandCollapseBtn}
+        </span>
+      `;
 
       const metricChartsHtml = `
         <div class="chart-table-scroll">
           <div class="chart-table" data-card-id="${cardId}">
             <div class="chart-table-header">
-              <span class="chart-col-header-run">Model</span>
+              ${firstColHtml}
               ${headerCells}
-              <span class="chart-col-header-latency sortable-col ${latencyActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${latencyArrow}</span>
             </div>
             <div class="chart-table-body">
               ${rowsHtml}
@@ -1041,61 +1468,18 @@
         </div>
       `;
 
-      // --- Version leaderboard for this card ---
-      const versionRanking = combo.versionRanking || [];
-      let versionLeaderboardHtml = '';
-      if (versionRanking.length > 0 && metrics.length > 0) {
-        // Rank by the first visible metric (same as default sort)
-        const rankMetric = metrics[0];
-        const rankMType = state._metricTypes?.[rankMetric] || 'score';
-        const ranked = versionRanking
-          .filter(v => v.metricAverages[rankMetric] !== undefined)
-          .sort((a, b) => (b.metricAverages[rankMetric] || 0) - (a.metricAverages[rankMetric] || 0));
-
-        if (ranked.length > 0) {
-          const rankEmojis = ['\u{1F947}', '\u{1F948}', '\u{1F949}'];
-          const versionRows = ranked.map((v, idx) => {
-            const rank = idx < 3 ? rankEmojis[idx] : `#${idx + 1}`;
-            const score = v.metricAverages[rankMetric];
-            const scoreDisplay = rankMType === 'numeric'
-              ? window.QymMetrics.formatNumericValue(score)
-              : window.QymMetrics.formatMetricValue(score, rankMType);
-            const scoreClass = rankMType !== 'numeric' ? window.QymMetrics.getMetricColorClass(score, rankMType) : '';
-            const best = v.bestScores[rankMetric];
-            const bestModel = best ? stripModelProvider(best.model) : '';
-            return `
-              <div class="version-rank-row">
-                <span class="version-rank-badge">${rank}</span>
-                <span class="version-rank-label" title="${v.label}">${v.label}</span>
-                <span class="version-rank-score ${scoreClass}">${scoreDisplay}</span>
-                <span class="version-rank-meta">${v.runCount} runs${bestModel ? ` · best: ${bestModel}` : ''}</span>
-              </div>
-            `;
-          }).join('');
-
-          versionLeaderboardHtml = `
-            <div class="version-leaderboard">
-              <div class="version-leaderboard-title">Version Leaderboard <span style="color:var(--text-muted);font-weight:400">by ${rankMetric}</span></div>
-              ${versionRows}
-            </div>
-          `;
-        }
-      }
-
       return `
-        <div class="chart-card">
-          <div class="chart-card-header">
-            <div class="chart-card-title">
-              <span class="chart-task-name">${combo.task}</span>
-              <span class="chart-dataset-name">${combo.dataset}</span>
-            </div>
-            <div class="chart-card-meta">
-              <span class="runs-count">${combo.totalRuns} runs</span>
-              <span>${modelEntries.length} models • ${metrics.length} metrics</span>
+        <div class="chart-task-section">
+          <div class="chart-task-header">
+            <span class="chart-task-name">${taskName}</span>
+            <span class="chart-task-meta">${totalTaskRuns} runs \u00b7 ${allTaskModels.size} models \u00b7 ${metrics.length} metrics</span>
+          </div>
+          <div class="chart-card">
+            ${datasetTabsHtml}
+            <div class="chart-card-body">
+              ${metricChartsHtml}
             </div>
           </div>
-          ${metricChartsHtml}
-          ${versionLeaderboardHtml}
         </div>
       `;
     }).join('');
@@ -1121,15 +1505,89 @@
 
         const currentSort = state.chartSortState[cardId] || { key: sortKey, dir: 'desc' };
         if (currentSort.key === sortKey) {
-          // Toggle direction
           currentSort.dir = currentSort.dir === 'desc' ? 'asc' : 'desc';
         } else {
-          // New column, default to desc
           currentSort.key = sortKey;
           currentSort.dir = 'desc';
         }
         state.chartSortState[cardId] = currentSort;
         renderChartsView();
+      });
+    });
+
+    // Wire up segmented control (Run / Version / Model)
+    gridEl.querySelectorAll('.chart-segment-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const cardId = e.target.closest('.chart-segment-control')?.dataset.card;
+        const mode = e.target.dataset.mode;
+        if (!cardId || !mode || e.target.disabled) return;
+        if (!state.chartGroupMode) state.chartGroupMode = {};
+        state.chartGroupMode[cardId] = mode;
+        if (mode !== 'run') {
+          state.chartGroupExpansion = state.chartGroupExpansion || {};
+          state.chartGroupExpansion[cardId] = { mode, expanded: {} };
+        }
+        renderChartsView();
+      });
+    });
+
+    // Wire up group expand/collapse
+    gridEl.querySelectorAll('.chart-table-group-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const groupId = header.dataset.groupId;
+        const card = header.closest('.chart-table')?.dataset.cardId;
+        const body = gridEl.querySelector(`.chart-table-group-body[data-group-id="${groupId}"]`);
+        const toggle = header.querySelector('.chart-group-toggle');
+        if (body && card) {
+          const isCollapsed = body.classList.toggle('collapsed');
+          const mode = state.chartGroupMode?.[card] || 'run';
+          setChartGroupCollapsed(card, mode, groupId, isCollapsed);
+          if (toggle) toggle.textContent = isCollapsed ? '\u25b6' : '\u25bc';
+          const expandBtn = header.closest('.chart-card')?.querySelector('.chart-expand-collapse-btn');
+          if (expandBtn) {
+            const bodies = header.closest('.chart-card').querySelectorAll('.chart-table-group-body');
+            const anyExpanded = [...bodies].some(b => !b.classList.contains('collapsed'));
+            expandBtn.textContent = anyExpanded ? 'Collapse all' : 'Expand all';
+          }
+        }
+      });
+    });
+
+    // Wire up expand/collapse all buttons
+    gridEl.querySelectorAll('.chart-expand-collapse-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cardId = btn.dataset.card;
+        const card = btn.closest('.chart-card');
+        if (!card) return;
+        const bodies = card.querySelectorAll('.chart-table-group-body');
+        const anyExpanded = [...bodies].some(b => !b.classList.contains('collapsed'));
+        const mode = state.chartGroupMode?.[cardId] || 'run';
+        bodies.forEach(b => {
+          const groupId = b.dataset.groupId;
+          if (anyExpanded) {
+            b.classList.add('collapsed');
+            if (groupId) setChartGroupCollapsed(cardId, mode, groupId, true);
+          } else {
+            b.classList.remove('collapsed');
+            if (groupId) setChartGroupCollapsed(cardId, mode, groupId, false);
+          }
+        });
+        card.querySelectorAll('.chart-group-toggle').forEach(t => {
+          t.textContent = anyExpanded ? '\u25b6' : '\u25bc';
+        });
+        btn.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
+      });
+    });
+
+    // Wire up dataset tab clicks
+    gridEl.querySelectorAll('.chart-dataset-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const taskName = tab.dataset.task;
+        const dataset = tab.dataset.dataset;
+        if (taskName && dataset) {
+          state.chartDatasetTab[taskName] = dataset;
+          renderChartsView();
+        }
       });
     });
   }
@@ -1234,8 +1692,7 @@
     const runs = state.filteredRuns;
     const tbody = el('runs-tbody');
     const availableMetrics = getAvailableMetricsForRuns(runs);
-    // Runs View should reflect the active run filters directly.
-    const metricsToShow = availableMetrics;
+    const metricsToShow = getVisibleMetrics(availableMetrics);
 
     if (state.sortKey.startsWith('metric-')) {
       const parts = state.sortKey.split('-');
@@ -1731,31 +2188,38 @@
     const total = state.flatRuns.length;
     const filtered = state.filteredRuns.length;
     const selected = state.selectedRuns.size;
+    const countText = filtered === total ? `${total} runs` : `${filtered} of ${total} runs`;
 
-    const hasFilters = state.searchQuery
-      || state.quickFilter !== 'all'
-      || state.filterTask
+    const hasFilters = state.quickFilter !== 'all'
+      || state.filterTasks.size > 0
       || (state.filterModels.size > 0)
-      || state.filterDataset
-      || state.filterPublishStatus;
+      || state.filterDatasets.size > 0
+      || state.filterStatuses.size > 0
+      || state.filterVersions.size > 0;
 
-    let filterText = 'Showing all runs';
+    let filterText = countText;
     if (hasFilters) {
       const parts = [];
-      if (state.filterTask) parts.push(`task: ${state.filterTask}`);
-      if (state.filterDataset) parts.push(`dataset: ${state.filterDataset}`);
+      if (state.filterTasks.size > 0 && !state.filterTasks.has('__none__')) {
+        parts.push(`task: ${summarizeFilterSelection(state.filterTasks)}`);
+      }
+      if (state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
+        parts.push(`dataset: ${summarizeFilterSelection(state.filterDatasets)}`);
+      }
       if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
-        const names = [...state.filterModels].map(m => m.length > 20 ? m.slice(0, 20) + '…' : m);
-        parts.push(`model: ${names.join(', ')}`);
+        parts.push(`model: ${summarizeFilterSelection(state.filterModels, stripModelProvider)}`);
       } else if (state.filterModels.has('__none__')) {
         parts.push('model: none');
       }
-      if (state.filterPublishStatus) parts.push(`status: ${state.filterPublishStatus}`);
-      if (state.filterVersion) parts.push(`version: ${state.filterVersion}`);
+      if (state.filterStatuses.size > 0 && !state.filterStatuses.has('__none__')) {
+        parts.push(`status: ${summarizeFilterSelection(state.filterStatuses, (s) => isEmptyFilterValue(s) ? 'Empty / Missing' : s.charAt(0) + s.slice(1).toLowerCase())}`);
+      }
+      if (state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
+        parts.push(`version: ${summarizeFilterSelection(state.filterVersions)}`);
+      }
       if (state.quickFilter === 'today') parts.push('today');
       if (state.quickFilter === 'week') parts.push('last 7d');
-      if (state.searchQuery) parts.push(`"${state.searchQuery}"`);
-      filterText = `Showing ${filtered} of ${total} runs` + (parts.length > 0 ? ` — ${parts.join(', ')}` : '');
+      filterText = countText + (parts.length > 0 ? ` — ${parts.join(', ')}` : '');
     }
 
     el('status-filter').textContent = filterText;
@@ -1819,6 +2283,9 @@
   // ═══════════════════════════════════════════════════
 
   function render() {
+    // Re-populate dropdowns with applicable values for current filter state
+    populateFilterDropdowns();
+
     const loading = el('loading');
     const empty = el('empty');
     const chartsView = el('charts-view');
@@ -1854,7 +2321,17 @@
 
     empty.style.display = 'none';
 
-    populateMetricVisibility(getAvailableMetricsForRuns(runs));
+    populateMetricVisibility(state.allMetrics);
+
+    const displayTools = el('display-tools');
+    const metricVisibilityDropdown = el('metric-visibility-dropdown');
+    const showDisplayTools = state.currentView === 'table';
+    if (displayTools) {
+      displayTools.style.display = showDisplayTools ? 'flex' : 'none';
+    }
+    if (!showDisplayTools && metricVisibilityDropdown) {
+      metricVisibilityDropdown.classList.remove('open');
+    }
 
     // Show current view (Charts, Table/Runs, or Models)
     chartsView.style.display = state.currentView === 'charts' ? 'block' : 'none';
@@ -1888,6 +2365,46 @@
     renderStatsBar();
     renderStatusBar();
     renderComparePanel();
+    updateFilterUI();
+  }
+
+  // ═══════════════════════════════════════════════════
+  // FILTER UI HELPERS
+  // ═══════════════════════════════════════════════════
+
+  function countActiveFilters() {
+    let n = 0;
+    if (state.filterTasks.size > 0) n++;
+    if (state.filterModels.size > 0) n++;
+    if (state.filterStatuses.size > 0) n++;
+    if (state.filterVersions.size > 0) n++;
+    if (state.filterDatasets.size > 0) n++;
+    if (state.quickFilter !== 'all') n++;
+    return n;
+  }
+
+  function updateFilterUI() {
+    // Clear button
+    const clearBtn = el('clear-all-filters');
+    const countBadge = el('active-filter-count');
+    const n = countActiveFilters();
+    if (clearBtn) {
+      clearBtn.classList.toggle('is-visible', n > 0);
+      clearBtn.setAttribute('aria-hidden', n > 0 ? 'false' : 'true');
+      if (countBadge) countBadge.textContent = n;
+    }
+  }
+
+  function clearAllFilters() {
+    state.filterTasks.clear();
+    state.filterModels.clear();
+    state.filterStatuses.clear();
+    state.filterVersions.clear();
+    state.filterDatasets.clear();
+    state.quickFilter = 'all';
+    $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+    populateFilterDropdowns();
+    render();
   }
 
   // ═══════════════════════════════════════════════════
@@ -1905,8 +2422,9 @@
     const mvs = state.modelsViewState;
 
     // Use global filters for task and dataset
-    const selectedTask = state.filterTask;
-    const selectedDataset = state.filterDataset;
+    // Models view requires exactly one task selected
+    const selectedTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
+    const selectedDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
 
     // If no task+dataset selected, show empty state
     if (!selectedTask || !selectedDataset) {
@@ -1920,10 +2438,11 @@
 
     // Get runs matching task+dataset (and model filter if active)
     const matchingRuns = state.flatRuns.filter(r => {
-      if (r.task_name !== selectedTask || r.dataset_name !== selectedDataset) return false;
+      if (!matchesFilterSelection(new Set([selectedTask]), r.task_name)) return false;
+      if (!matchesFilterSelection(new Set([selectedDataset]), r.dataset_name)) return false;
       // #14: Apply global model filter to Models View
       if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
-        if (!state.filterModels.has(r.model_name)) return false;
+        if (!matchesFilterSelection(state.filterModels, r.model_name)) return false;
       }
       if (state.filterModels.has('__none__')) return false;
       return true;
@@ -2001,8 +2520,9 @@
     if (!metricSelect) return;
 
     // Use global filters for task and dataset
-    const currentTask = state.filterTask;
-    const currentDataset = state.filterDataset;
+    // Models view requires exactly one task selected
+    const currentTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
+    const currentDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
 
     // Get metrics for selected task+dataset
     const runsForCombo = currentTask && currentDataset
@@ -2535,10 +3055,6 @@
     } else if (state.filterModels.has(model)) {
       // This model is in the whitelist - remove it (hide it)
       state.filterModels.delete(model);
-      // If none left, that means nothing would show - revert to show all
-      if (state.filterModels.size === 0) {
-        // Empty means show all, which is fine
-      }
     } else {
       // This model is not in whitelist - add it (show it)
       state.filterModels.add(model);
@@ -2547,52 +3063,15 @@
         state.filterModels.clear();
       }
     }
-    updateModelFilterButton();
-    syncModelFilterDropdownState();
+    syncMultiSelect({ btnId: 'filter-model-btn', dropdownId: 'filter-model-dropdown', stateSet: state.filterModels, values: state.allModels, defaultLabel: 'All Models' });
     render();
   }
 
   function selectOnlyModel(model) {
     state.filterModels.clear();
     state.filterModels.add(model);
-    updateModelFilterButton();
-    syncModelFilterDropdownState();
+    syncMultiSelect({ btnId: 'filter-model-btn', dropdownId: 'filter-model-dropdown', stateSet: state.filterModels, values: state.allModels, defaultLabel: 'All Models' });
     render();
-  }
-
-  function updateModelFilterButton() {
-    const btn = el('filter-model-btn');
-    if (!btn) return;
-
-    if (state.filterModels.size === 0) {
-      btn.textContent = 'All Models';
-    } else if (state.filterModels.has('__none__')) {
-      btn.textContent = 'No Models';
-    } else if (state.filterModels.size === 1) {
-      btn.textContent = [...state.filterModels][0];
-    } else {
-      btn.textContent = `${state.filterModels.size} Models`;
-    }
-  }
-
-  function syncModelFilterDropdownState() {
-    const dropdown = el('filter-model-dropdown');
-    if (!dropdown) return;
-
-    const isShowingAll = state.filterModels.size === 0;
-    const isShowingNone = state.filterModels.has('__none__');
-
-    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-      const checkbox = opt.querySelector('input[type="checkbox"]');
-      if (!checkbox) return;
-
-      const value = opt.dataset.value || '';
-      if (value === '') {
-        checkbox.checked = isShowingAll;
-        return;
-      }
-      checkbox.checked = !isShowingNone && (isShowingAll || state.filterModels.has(value));
-    });
   }
 
   function selectAll() {
@@ -3014,141 +3493,95 @@
   }
 
   function populateFilterDropdowns() {
-    const tasks = [...new Set(state.flatRuns.map(r => r.task_name))].sort();
-    const models = [...new Set(state.flatRuns.map(r => r.model_name))].sort();
-    const datasets = [...new Set(state.flatRuns.map(r => r.dataset_name))].sort();
-
-    state.allModels = models;
-
-    const taskSelect = el('filter-task');
-    const datasetSelect = el('filter-dataset');
-
-    if (taskSelect) {
-      taskSelect.innerHTML = '<option value="">All Tasks</option>' +
-        tasks.map(t => `<option value="${t}">${t}</option>`).join('');
-      taskSelect.value = state.filterTask || '';
-    }
-    if (datasetSelect) {
-      datasetSelect.innerHTML = '<option value="">All Datasets</option>' +
-        datasets.map(d => `<option value="${d}">${d}</option>`).join('');
-      datasetSelect.value = state.filterDataset || '';
-    }
-
-    // Populate version filter
-    const versionSelect = el('filter-version');
-    if (versionSelect) {
-      const versions = [...new Set(state.flatRuns.map(r => r.git_commit).filter(Boolean))].sort();
-      // Build display labels: branch/sha
-      const branchMap = {};
-      state.flatRuns.forEach(r => {
-        if (r.git_commit && r.git_branch) branchMap[r.git_commit] = r.git_branch;
-      });
-      versionSelect.innerHTML = '<option value="">All Versions</option>' +
-        versions.map(v => {
-          const branch = branchMap[v];
-          const label = branch ? `${branch}/${v}` : v;
-          return `<option value="${v}">${label}</option>`;
-        }).join('');
-      versionSelect.value = state.filterVersion || '';
-    }
-
-    // Populate model multi-select dropdown
-    const modelDropdown = el('filter-model-dropdown');
-    if (modelDropdown) {
-      const isShowingAll = state.filterModels.size === 0;
-      const isShowingNone = state.filterModels.has('__none__');
-      const searchValue = modelDropdown.querySelector('.model-search-input')?.value || '';
-
-      modelDropdown.innerHTML = `
-        <div class="model-search-box">
-          <input type="text" class="model-search-input" placeholder="Search models..." value="${searchValue}" />
-        </div>
-        <div class="multi-select-option" data-value="">
-          <span class="model-color" style="background:transparent"></span>
-          <input type="checkbox" ${isShowingAll ? 'checked' : ''} />
-          <span>All Models</span>
-        </div>
-        ${models.map((m, idx) => `
-          <div class="multi-select-option" data-value="${m}" title="${m}" style="${searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? 'display:none' : ''}">
-            <span class="model-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
-            <input type="checkbox" ${isShowingNone ? '' : (isShowingAll || state.filterModels.has(m) ? 'checked' : '')} />
-            <span>${stripModelProvider(m)}</span>
-          </div>
-        `).join('')}
-      `;
-
-      // Wire search input
-      const searchInput = modelDropdown.querySelector('.model-search-input');
-      if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-          const query = e.target.value.toLowerCase();
-          modelDropdown.querySelectorAll('.multi-select-option[data-value]').forEach(opt => {
-            const value = opt.dataset.value;
-            if (value === '') return; // Skip "All Models"
-            opt.style.display = value.toLowerCase().includes(query) ? '' : 'none';
-          });
-        });
-        searchInput.addEventListener('click', (e) => e.stopPropagation());
-        searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+    // For each filter, compute applicable values from runs matching ALL OTHER active filters.
+    // This ensures each dropdown only shows values that would produce results.
+    function runsExcluding(skipFilter) {
+      let runs = state.flatRuns;
+      switch (state.quickFilter) {
+        case 'today':
+          runs = runs.filter(r => isToday(r.timestamp));
+          break;
+        case 'week':
+          runs = runs.filter(r => isWithinDays(r.timestamp, 7));
+          break;
       }
-
-      // Wire dropdown events
-      modelDropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-        opt.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const value = opt.dataset.value;
-          if (value === '') {
-            // "All Models" clicked - toggle between all and none
-            if (state.filterModels.size === 0) {
-              // Already showing all - select none (add a dummy to make filter non-empty but match nothing)
-              state.filterModels.add('__none__');
-            } else if (state.filterModels.has('__none__')) {
-              // Currently showing none - show all
-              state.filterModels.clear();
-            } else {
-              // Some are filtered, clear to show all
-              state.filterModels.clear();
-            }
-          } else {
-            // Individual model clicked - simple toggle
-            const wasShowingNone = state.filterModels.has('__none__');
-            // Clear the __none__ sentinel if present
-            state.filterModels.delete('__none__');
-
-            if (wasShowingNone) {
-              // Was showing none, now select just this one model
-              state.filterModels.add(value);
-            } else if (state.filterModels.has(value)) {
-              // This model is selected - deselect it
-              state.filterModels.delete(value);
-              // If none left after removing, show all
-              if (state.filterModels.size === 0) {
-                // Empty = show all, which is fine
-              }
-            } else {
-              // If currently showing all (size === 0), we need to select all EXCEPT this one
-              // to effectively "deselect" this model
-              if (state.filterModels.size === 0) {
-                // Add all models except the clicked one
-                models.forEach(m => {
-                  if (m !== value) state.filterModels.add(m);
-                });
-              } else {
-                // Normal case: add this model to selection
-                state.filterModels.add(value);
-              }
-            }
-            // If all models are now selected, clear to "show all" state
-            if (state.filterModels.size === models.length) {
-              state.filterModels.clear();
-            }
-          }
-          updateModelFilterButton();
-          syncModelFilterDropdownState();
-          render();
-        });
-      });
+      if (skipFilter !== 'tasks' && state.filterTasks.size > 0 && !state.filterTasks.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterTasks, r.task_name));
+      }
+      if (skipFilter !== 'datasets' && state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, r.dataset_name));
+      }
+      if (skipFilter !== 'models' && state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterModels, r.model_name));
+      }
+      if (skipFilter !== 'statuses' && state.filterStatuses.size > 0 && !state.filterStatuses.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterStatuses, r.status));
+      }
+      if (skipFilter !== 'versions' && state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterVersions, r.git_commit));
+      }
+      return runs;
     }
+
+    const tasks = collectFilterValues(runsExcluding('tasks'), r => r.task_name);
+    const datasets = collectFilterValues(runsExcluding('datasets'), r => r.dataset_name);
+    const models = collectFilterValues(runsExcluding('models'), r => r.model_name);
+    const statusValues = collectFilterValues(runsExcluding('statuses'), r => r.status);
+    const versions = collectFilterValues(runsExcluding('versions'), r => r.git_commit);
+
+    state.allModels = [...new Set(state.flatRuns.map(r => r.model_name).filter(m => !isEmptyFilterValue(m)))].sort();
+
+    const branchMap = {};
+    state.flatRuns.forEach(r => {
+      if (r.git_commit && r.git_branch) branchMap[r.git_commit] = r.git_branch;
+    });
+
+    // Task multi-select
+    buildMultiSelect({
+      btnId: 'filter-task-btn', dropdownId: 'filter-task-dropdown',
+      stateSet: state.filterTasks, values: tasks,
+      labelFn: null, defaultLabel: 'All Tasks',
+      showSearch: true, searchPlaceholder: 'Search tasks...',
+      onchange: () => { state.modelsViewState.selectedMetric = ''; state.modelsViewState.modelRunSelections = {}; },
+    });
+
+    // Dataset multi-select
+    buildMultiSelect({
+      btnId: 'filter-dataset-btn', dropdownId: 'filter-dataset-dropdown',
+      stateSet: state.filterDatasets, values: datasets,
+      labelFn: null, defaultLabel: 'All Datasets',
+      showSearch: true, searchPlaceholder: 'Search datasets...',
+      onchange: () => { state.modelsViewState.selectedMetric = ''; state.modelsViewState.modelRunSelections = {}; },
+    });
+
+    // Model multi-select
+    buildMultiSelect({
+      btnId: 'filter-model-btn', dropdownId: 'filter-model-dropdown',
+      stateSet: state.filterModels, values: models,
+      labelFn: (m) => stripModelProvider(m), defaultLabel: 'All Models',
+      showSearch: true, searchPlaceholder: 'Search models...',
+      colorFn: (m, idx) => CHART_COLORS[state.allModels.indexOf(m) % CHART_COLORS.length],
+    });
+
+    // Status multi-select
+    buildMultiSelect({
+      btnId: 'filter-status-btn', dropdownId: 'filter-status-dropdown',
+      stateSet: state.filterStatuses, values: statusValues,
+      labelFn: (s) => isEmptyFilterValue(s) ? 'Empty / Missing' : s.charAt(0) + s.slice(1).toLowerCase(), defaultLabel: 'All Status',
+      showSearch: false,
+    });
+
+    // Version multi-select
+    buildMultiSelect({
+      btnId: 'filter-version-btn', dropdownId: 'filter-version-dropdown',
+      stateSet: state.filterVersions, values: versions,
+      labelFn: (v) => {
+        if (v === EMPTY_FILTER_VALUE) return 'Empty / Missing';
+        const b = branchMap[v];
+        return b ? b + '/' + v : v;
+      },
+      defaultLabel: 'All Versions', showSearch: true, searchPlaceholder: 'Search versions...',
+    });
   }
 
   function startHeartbeat() {
@@ -3161,49 +3594,29 @@
   // EVENT LISTENERS
   // ═══════════════════════════════════════════════════
 
-  // Search
-  el('search').addEventListener('input', debounce((e) => {
-    state.searchQuery = e.target.value;
-    state.focusedIndex = -1;
-    render();
-  }, 150));
-
-  // Filter dropdowns
-  el('filter-task')?.addEventListener('change', (e) => {
-    state.filterTask = e.target.value;
-    state.focusedIndex = -1;
-    // Reset Models view state when task changes
-    state.modelsViewState.selectedMetric = '';
-    state.modelsViewState.modelRunSelections = {};
-    render();
+  // Generic multi-select dropdown toggles
+  ['filter-task-btn', 'filter-dataset-btn', 'filter-model-btn', 'filter-version-btn', 'filter-status-btn', 'metric-visibility-btn'].forEach(id => {
+    el(id)?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wrapper = e.target.closest('.multi-select-wrapper');
+      const dd = wrapper?.querySelector('.multi-select-dropdown');
+      if (dd) {
+        // Close other open dropdowns first
+        document.querySelectorAll('.multi-select-dropdown.open').forEach(other => {
+          if (other !== dd) other.classList.remove('open');
+        });
+        dd.classList.toggle('open');
+      }
+    });
   });
 
-  // Model multi-select dropdown toggle
-  el('filter-model-btn')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const dropdown = el('filter-model-dropdown');
-    dropdown.classList.toggle('open');
-  });
-
-  // Close dropdown when clicking outside
+  // Unified click-outside handler for all multi-select dropdowns
   document.addEventListener('click', (e) => {
-    const wrapper = el('model-filter-wrapper');
-    const dropdown = el('filter-model-dropdown');
-    if (wrapper && dropdown && !wrapper.contains(e.target)) {
-      dropdown.classList.remove('open');
-    }
-    const mvWrapper = el('metric-visibility-wrapper');
-    const mvDropdown = el('metric-visibility-dropdown');
-    if (mvWrapper && mvDropdown && !mvWrapper.contains(e.target)) {
-      mvDropdown.classList.remove('open');
-    }
-  });
-
-  // Metric visibility dropdown toggle
-  el('metric-visibility-btn')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const dropdown = el('metric-visibility-dropdown');
-    dropdown.classList.toggle('open');
+    document.querySelectorAll('.multi-select-dropdown.open').forEach(dd => {
+      if (!dd.parentElement.contains(e.target)) {
+        dd.classList.remove('open');
+      }
+    });
   });
 
   // Close actions dropdowns when clicking outside
@@ -3215,26 +3628,8 @@
     }
   });
 
-  el('filter-dataset')?.addEventListener('change', (e) => {
-    state.filterDataset = e.target.value;
-    state.focusedIndex = -1;
-    // Reset Models view state when dataset changes
-    state.modelsViewState.selectedMetric = '';
-    state.modelsViewState.modelRunSelections = {};
-    render();
-  });
-
-  el('filter-publish-status')?.addEventListener('change', (e) => {
-    state.filterPublishStatus = e.target.value;
-    state.focusedIndex = -1;
-    render();
-  });
-
-  el('filter-version')?.addEventListener('change', (e) => {
-    state.filterVersion = e.target.value;
-    state.focusedIndex = -1;
-    render();
-  });
+  // Clear all filters button
+  el('clear-all-filters')?.addEventListener('click', clearAllFilters);
 
   // Quick filters
   $$('.filter-btn').forEach(btn => {
@@ -3354,10 +3749,6 @@
       case 'Escape':
         e.preventDefault();
         clearSelection();
-        break;
-      case '/':
-        e.preventDefault();
-        el('search').focus();
         break;
       case '?':
         e.preventDefault();
@@ -3516,10 +3907,12 @@
     const stateToSave = {
       currentView: state.currentView,
       modelsViewState: state.modelsViewState,
-      filterTask: state.filterTask,
-      filterDataset: state.filterDataset,
+      filterTasks: [...state.filterTasks],
+      filterModels: [...state.filterModels],
+      filterStatuses: [...state.filterStatuses],
+      filterVersions: [...state.filterVersions],
+      filterDatasets: [...state.filterDatasets],
       quickFilter: state.quickFilter,
-      searchQuery: state.searchQuery,
     };
     sessionStorage.setItem('dashboardState', JSON.stringify(stateToSave));
   }
@@ -3536,15 +3929,14 @@
         if (parsed.modelsViewState) {
           state.modelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
         }
-        if (parsed.filterTask) state.filterTask = parsed.filterTask;
-        if (parsed.filterDataset) state.filterDataset = parsed.filterDataset;
+        if (parsed.filterTasks) state.filterTasks = new Set(parsed.filterTasks);
+        if (parsed.filterModels) state.filterModels = new Set(parsed.filterModels);
+        if (parsed.filterStatuses) state.filterStatuses = new Set(parsed.filterStatuses);
+        if (parsed.filterVersions) state.filterVersions = new Set(parsed.filterVersions);
+        if (parsed.filterDatasets) state.filterDatasets = new Set(parsed.filterDatasets);
         if (parsed.quickFilter) {
           state.quickFilter = parsed.quickFilter;
           $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));
-        }
-        if (parsed.searchQuery) {
-          state.searchQuery = parsed.searchQuery;
-          el('search').value = state.searchQuery;
         }
       } catch (e) {
         console.warn('Failed to restore dashboard state:', e);

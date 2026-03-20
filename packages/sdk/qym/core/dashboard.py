@@ -318,12 +318,21 @@ class RunDashboard:
         # Use arabic_display() for proper RTL text rendering in terminals
         title = Text(f"⚡ {arabic_display('أداة قيِّم')}", style="bold magenta")
         
+        # Extract timeout/retries from first run config
+        first_config = next(iter(self.states.values())).config if self.states else {}
+        timeout_val = first_config.get("timeout")
+        retries_val = first_config.get("max_retries", 0)
+        concurrency_val = first_config.get("max_concurrency", 10)
+
         stats = Text()
         stats.append(f"Time: {_format_duration(elapsed_total)}  ", style="bold white")
         stats.append(f"Runs: {total_runs}  ", style="bold white")
         stats.append(f"Items: {total_completed}/{total_items}  ", style="dim white")
         stats.append(f"Rate: {global_throughput:.1f} it/s  ", style="cyan")
-        stats.append(f"Success: {global_success:.0f}%", style="green" if global_success > 90 else "yellow")
+        stats.append(f"Success: {global_success:.0f}%  ", style="green" if global_success > 90 else "yellow")
+        stats.append(f"Timeout: {int(timeout_val)}s  " if timeout_val else "Timeout: off  ", style="dim white")
+        stats.append(f"Retries: {retries_val}  ", style="dim white")
+        stats.append(f"Concurrency: {concurrency_val}", style="dim white")
         
         grid.add_row(title, stats)
         

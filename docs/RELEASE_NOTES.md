@@ -1,3 +1,129 @@
+# 🚧 qym — Since v0.9.0
+
+**📅 March 2026**
+
+---
+
+**Release notes coverage stopped at commit `e2fda02`** (`feat: release notes for qym v0.9.0 with LLM-powered auto root cause analysis`).
+
+The entries below cover every commit after `e2fda02`, in chronological order.
+
+---
+
+### `bd7759a` — AI evaluator playground
+
+- 🤖 Added an **AI Evaluator Playground** modal to single-run and compare views, opened from **Auto-Analyze**, with filter-aware matched-item previews, pagination, live prompt preview, debounced auto-refresh, and one-click test runs on matched items
+- ⚙️ Added playground controls for **system prompt editing**, **variable mapping**, **additional fields**, **correction-bank toggles**, **temperature**, and reusable category editing so reviewers can tune analysis before running it
+- 🧪 Playground test results now expose the generated item context and few-shot examples so reviewers can inspect exactly what the analyzer will see before running it
+- 🔌 Added `/api/runs/{run_id}/analyze-preview` and `/api/runs/{run_id}/analyze-test` plus config translation in the analyzer service so custom playground settings affect prompt generation and live analysis
+
+### `b734338` — Shareable HTML exports and stricter domain drill-down
+
+- 📄 Added **self-contained HTML export** for run pages via `/api/runs/{run_id}/export-html`, with CSS, data, and assets inlined for offline sharing
+- ✍️ Run pages now expose **Share** and **Download with Changes** actions; exported HTML stays editable locally, preserves annotation edits in browser storage, and can be re-downloaded with changes baked into a new file
+- 🏷️ Domain filtering now supports **AND matching** plus an **exclusive second-click mode** for sole-domain items, and performance breakdown cards now stay aligned with current item-level filters
+- 📊 Breakdown cards got clearer click affordances and now sort non-root-cause groups by score instead of alphabetically
+
+### `feb76e9` — Solution analysis
+
+- 💡 AI analysis now suggests **solutions** alongside root causes, storing `solution`, `solution_note`, and source metadata on items and review corrections
+- 🧩 Added **solution categories**, **solution notes**, and inline solution assignment/editing in run and compare views, including color-coded badges and a root-cause-to-solution Sankey view
+- 🛝 Expanded the playground with **solution categories**, **additional instructions with custom-variable interpolation**, syntax-highlighted prompt previews, richer test-result inspection, and selected-item testing
+- 🗃️ Added migration `0004_add_solution_fields` so AI and human solution corrections are persisted separately
+
+### `ed12883` — Root cause details and notes
+
+- 🔎 AI analysis now outputs **`root_cause_detail`** and **`root_cause_note`**, and both AI and human versions are stored on run items and review corrections
+- 🏷️ Run and compare views now separate the **broad root-cause category** from the **specific issue detail**, with dedicated badges, shared notes, inline editors, and run-level detail cleanup flows
+- 📊 Root-cause summaries became more hierarchical and filter-aware, compare view gained detail-aware category cards and solution flow visualizations, and the playground gained a reusable **detail catalog** for known sub-issues
+- 🛡️ Partial saves for notes/details/solutions now preserve unrelated fields instead of clearing other analysis metadata
+
+### `35ad025` — Corrections review UI foundation and overflow fixes
+
+- 🧱 Added the initial **Corrections Review** UI shell with searchable correction cards, status statistics, source/confidence filters, bulk selection, and review action controls
+- 🪟 Fixed long root-cause details, categories, and solution badges so they wrap correctly in single-run and compare views instead of causing horizontal overflow
+
+### `232ca1a` — Corrections approval workflow
+
+- 🗂️ Exposed a dedicated **Corrections Review** page from the dashboard navigation
+- ✅ Added a full correction approval workflow with **pending / approved / rejected** statuses, reviewer attribution, review comments, bulk actions, and CRUD endpoints for review candidates
+- 🔎 The review page now supports task search, source filters, confidence filtering, inline human edits, and bulk moderation flows for large correction queues
+- 🧠 Only **approved** corrections now feed the few-shot correction bank used by AI analysis
+- 🔄 Editing a correction from `/reviews` now syncs the corresponding run item metadata so review, run, and compare views stay consistent
+- 🏷️ Run payloads now expose per-item **review correction status** so the rest of the dashboard can render approval state inline
+
+### `d55dda6` — Approval filters and append-only revision history
+
+- 🔍 Added **Approved / Not Approved** filtering to root-cause analysis in single-run and compare views, plus clearer approved-state pills and filter reset behavior
+- 🕘 Introduced append-only **`root_cause_revisions`** history with numbered revisions, before/after states, actor source, and linked review candidates
+- 📸 Reviews now preserve snapshots of **input**, **expected output**, **output**, and **scores** at correction time and display per-item revision timelines with review comments and statuses
+- 🔒 Approval logic now **supersedes older approved candidates** for the same run item and keeps historical rows immutable, so the correction bank has one active approved example per item
+
+### `310e6c4` — Metric visibility and stable item identity
+
+- 👁️ Added a **metric visibility** dropdown on the runs dashboard with select-all/select-none controls and persisted preferences so users can hide noisy metrics without affecting others
+- 🧬 CSV ingest and compare alignment now use deterministic **item fingerprints** when `item_id` is missing or positional, stabilizing cross-run matching for CSV datasets, imported runs, and run discovery
+- 🧾 SDK CSV datasets now generate repeatable `csv_<fingerprint>__NNNN` item IDs from input, expected output, and immutable metadata, and the platform returns `compare_item_id` plus `compare_alignment_source` for transparency in comparisons and imported runs
+- 🧪 Added platform and SDK test coverage around the new identity rules and CSV handling paths
+
+### `df6d437` — Metric-driven drill-down
+
+- 🎯 In compare view, clicking winner or pass-rate distribution segments now switches the item grid to the same metric used by the overview card before applying the filter
+- 📈 In single-run view, clicking pass/fail bars on metric cards now selects that metric and filters the items table to passing or failing rows
+- ✨ Added hover affordances on these metric segments so the drill-down behavior is discoverable
+
+### `13e8dc4` — Header user menu and smarter root-cause catalogs
+
+- 👤 Added a header **user dropdown** across run, compare, and reviews pages for quick access to **Profile** and **Admin**
+- 🗃️ Analyzer root-cause catalogs now combine built-in defaults, current-run values, and approved task history, so playground suggestions reflect real reviewer vocabulary across runs
+- 🔁 Approving a stale correction ID now promotes the active candidate for that run item instead of failing, and the few-shot loader can return the full approved bank when needed
+- 📊 Approval-based counts and filters were tightened so approved vs not-approved items are tracked more accurately in run and compare views
+
+### `2b2416c` — Category-to-detail maps and OTEL tracing
+
+- 🗂️ Reworked root-cause catalog management from flat lists to **category → detail maps**, so the playground can add/remove categories and nested details and send that structure to the analyzer
+- 🧠 Analyzer prompts can now bias each broad category toward the right known sub-issues from approved corrections
+- 📡 Added optional **OpenTelemetry / OpenLLMetry** support in the SDK (`qym[otel]`) with spans linked to Langfuse traces, configurable OTLP export, and explicit tool-call spans between LLM calls
+- 🔄 Evaluator and adapter execution now preserve tracing context across async paths so instrumented runs stay connected end to end
+
+### `7828d5d` — Agent-native CLI package
+
+- 🖥️ Replaced the old monolithic CLI with a Typer-based **agent-native CLI package** and noun-verb command groups: `run`, `metric`, `analyze`, and `config`
+- 📦 Added structured `--json` output, standardized exit codes, shared output/error helpers, and platform API wrappers for automation-friendly use
+- 🛠️ Added `qym run create/list/get/failed/compare`, `qym metric list`, `qym analyze run/summary`, and `qym config show/check`, while keeping `qym dashboard` and `qym submit` as top-level conveniences
+- ♻️ Legacy invocations are auto-rewritten, including bare `--task-file ...` and `qym resume --run-file ...`
+
+### `787144e` — Task listing and hidden tasks
+
+- 📋 Added `qym run tasks` to list distinct task names from the platform
+- 🙈 Added `hidden_tasks` platform settings support so operators can hide specific tasks from run listings and task discovery
+- 🌐 The runs API now omits hidden tasks from grouped task payloads, so both CLI and dashboard listings stay focused on relevant work
+- 📚 Updated operator and CLI docs, plus Docker configuration, for the new task-visibility flow
+
+### `9353a7c` — Paginated runs loading
+
+- ⚡ Runs API now supports **`limit` + `offset` pagination** and returns `total_count`, backed by a new run `created_at` index for faster large-list queries
+- 🖥️ The dashboard renders the first page immediately, then fetches remaining pages in the background and merges them into state without discarding already-rendered data
+- 🏷️ Group titles on the runs dashboard now prefer the resolved API `run_name` instead of reconstructing names from raw config
+- 📈 This makes large installations feel much faster while still converging to the full run list
+
+### `596fe81` — `PENDING` and `STOPPED` run states
+
+- 🟡 Added **`PENDING`** and **`STOPPED`** to the run workflow status model and database
+- ⛔ The SDK now sends **`STOPPED`** when a single run or multi-run session is interrupted with `Ctrl+C`, instead of leaving runs stuck in `RUNNING`
+- 🔄 Dashboard status filters, auto-refresh logic, polling, and badges now treat `PENDING` as active and display `STOPPED` explicitly
+- 📌 The runs table gained **sticky first columns** and sticky group headers so wide tables remain usable while scrolling
+- 🧯 Event ingestion now dispatches status payloads by explicit type, fixing parsing issues around final status events
+
+### `b1a7c80` — Version tracking
+
+- 🌿 The SDK now auto-detects **git branch** and **git commit** for each run, with CLI overrides via `--git-branch` and `--git-commit`
+- 🏷️ The runs API exposes version metadata from `run_config`, and the runs dashboard now shows a dedicated **Version** column with branch/commit search and sorting
+- 🏆 Added a **Version Leaderboard** that aggregates performance by git commit, including run counts and the best-performing model per version
+- 🔎 Added a version filter plus richer tooltips and badges so model comparisons can be tied back to code revisions
+
+---
+
 # 🚀 qym v0.9.0 — Release Notes
 
 **📅 March 2026**

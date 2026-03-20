@@ -56,6 +56,15 @@ class CreateRunRequest(BaseModel):
     run_config: Dict[str, Any] = Field(default_factory=dict)
 
 
+def _build_item_meta(ts_ms, retry_count=0):
+    md = {}
+    if ts_ms:
+        md["task_started_at_ms"] = ts_ms
+    if retry_count > 0:
+        md["retry_count"] = retry_count
+    return md
+
+
 @router.post("/runs")
 def create_run(
     req: CreateRunRequest,
@@ -228,7 +237,7 @@ async def ingest_events(
                     latency_ms=payload.latency_ms,
                     trace_id=payload.trace_id,
                     trace_url=payload.trace_url,
-                    item_metadata={"task_started_at_ms": ts_ms} if ts_ms else {},
+                    item_metadata=_build_item_meta(ts_ms, payload.retry_count),
                 )
                 db.add(item)
             else:
@@ -240,10 +249,13 @@ async def ingest_events(
                 item.latency_ms = payload.latency_ms
                 item.trace_id = payload.trace_id
                 item.trace_url = payload.trace_url
-                # Merge task_started_at_ms into item_metadata
+                # Merge metadata into item_metadata
+                md = dict(item.item_metadata or {})
                 if ts_ms:
-                    md = dict(item.item_metadata or {})
                     md["task_started_at_ms"] = ts_ms
+                if payload.retry_count > 0:
+                    md["retry_count"] = payload.retry_count
+                if md != (item.item_metadata or {}):
                     item.item_metadata = md
 
         elif isinstance(payload, ItemFailedPayload):

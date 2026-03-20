@@ -2551,12 +2551,13 @@
                 <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
               </div>
             </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-approval">
+            <div class="fp-group" id="fp-cat-approval">
               <span class="fp-label">Approval</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="approval-ms-btn">All Approval</button>
-                <div class="multi-select-dropdown" id="approval-ms-dropdown"></div>
-              </div>
+              <select id="filter-approval" class="filter-select">
+                <option value="">All</option>
+                <option value="approved">Approved</option>
+                <option value="not_approved">Not Approved</option>
+              </select>
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector" style="position:relative;">
@@ -3693,6 +3694,10 @@
         if (!approvalSelection) return true;
         const approvalState = getApprovalState(row);
         if (!approvalState) return false;
+        // Support string (simple select) or array (legacy)
+        if (typeof approvalSelection === 'string') {
+          return approvalState === approvalSelection;
+        }
         return approvalSelection.some(option => {
           if (option === 'approved') return approvalState === 'approved';
           if (option === 'not_approved') return approvalState === 'not_approved';
@@ -5320,7 +5325,7 @@
         el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
         el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
         el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
-        buildMultiselectOptions('approval', state.approvalValues);
+        // Approval is a simple <select>, no multi-select build needed
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
         if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
@@ -5354,7 +5359,7 @@
           }
           extraOptions = '<label class="multi-select-option" data-value="__none__"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="__none__" /><span style="font-style:italic;">(No Root Cause)</span><span class="option-count">' + noRcCount + '</span></label><div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>';
         }
-        let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">Clear</button></div>';
+        let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-cat="' + escapeAttr(category) + '">Select All</button><button class="ms-action-btn" data-action="none" data-cat="' + escapeAttr(category) + '">None</button></div>';
         html += extraOptions + values.map(v =>
           '<label class="multi-select-option" data-value="' + escapeAttr(v) + '"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="' + escapeAttr(v) + '" /><span>' + escapeHtml(getCatOptionLabel(category, v)) + '</span><span class="option-count">' + (itemCounts[v] || 0) + '</span></label>'
         ).join('');
@@ -5560,7 +5565,8 @@
         el('item-filter').value = 'all';
         el('sort-select').value = 'index';
         el('items-search').value = '';
-        syncMultiselectUI('approval');
+        const approvalSelect = el('filter-approval');
+        if (approvalSelect) approvalSelect.value = '';
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
@@ -5579,6 +5585,12 @@
 
       el('sort-select').addEventListener('change', (e) => {
         state.sortBy = e.target.value;
+        state.page = 1;
+        renderItems();
+      });
+
+      el('filter-approval')?.addEventListener('change', (e) => {
+        state.approvalFilter = e.target.value || null;
         state.page = 1;
         renderItems();
       });

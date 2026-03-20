@@ -10,8 +10,8 @@ class EvaluatorConfig(BaseModel):
     task_name: Optional[str] = None  # #15: Override the auto-derived task name
     max_concurrency: int = Field(default=10, ge=1)
     max_metric_concurrency: int = Field(default=1, ge=1)
-    timeout: Optional[float] = Field(default=None, gt=0)
-    max_retries: int = Field(default=0, ge=0)
+    timeout: Optional[float] = Field(default=300, gt=0)
+    max_retries: int = Field(default=2, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     git_branch: Optional[str] = None   # Override auto-detected git branch
     git_commit: Optional[str] = None   # Override auto-detected git commit hash
