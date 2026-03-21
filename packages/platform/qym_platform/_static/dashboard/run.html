@@ -4458,7 +4458,7 @@
           const startBadge = startInfo ? '<span class="start-badge" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
           const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
           const traceButton = !IS_EXPORT
-            ? '<button type="button" class="trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open native trace">Trace</button>'
+            ? '<button type="button" class="trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="13" cy="8" r="1.5" fill="currentColor" opacity=".5"/><circle cx="14" cy="12" r="1.5" fill="currentColor" opacity=".5"/></svg>Trace</button>'
             : '';
           // Trace link
           const traceLink = traceUrl ? '<a href="' + escapeAttr(traceUrl) + '" target="_blank" class="trace-link">Langfuse \u2197</a>' : '';

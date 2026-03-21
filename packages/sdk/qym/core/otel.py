@@ -21,6 +21,7 @@ import contextvars
 import functools
 import json as _json
 import logging
+import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,12 @@ _initialized = False
 # Track emitted tool_call_ids per trace context to avoid duplicates
 _emitted_tool_ids: contextvars.ContextVar[Set[str]] = contextvars.ContextVar(
     "_emitted_tool_ids", default=None,
+)
+
+# Timestamp (ns) recorded after the last LLM call returned.
+# Used as the approximate start time for tool execution spans.
+_last_llm_end_ns: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
+    "_last_llm_end_ns", default=None,
 )
 
 
@@ -162,7 +169,8 @@ def _emit_tool_spans(tracer, messages):
                 args = getattr(fn, "arguments", "") if fn else ""
             id_to_info[tc_id] = {"name": name, "arguments": args}
 
-    # Emit a span for each unseen tool message
+    # Collect unseen tool messages
+    new_tools = []
     for msg in messages:
         role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
         if role != "tool":
@@ -171,20 +179,36 @@ def _emit_tool_spans(tracer, messages):
         if tc_id in seen:
             continue
         seen.add(tc_id)
+        new_tools.append((tc_id, msg))
 
+    if not new_tools:
+        return
+
+    # Approximate timing: tool execution happened between the last LLM
+    # response and now (the start of the next LLM call).
+    now_ns = time.time_ns()
+    range_start_ns = _last_llm_end_ns.get(None) or now_ns
+    # Divide the time window evenly among tool calls
+    count = len(new_tools)
+    slot_ns = max((now_ns - range_start_ns) // count, 1) if count else 1
+
+    for i, (tc_id, msg) in enumerate(new_tools):
         info = id_to_info.get(tc_id, {})
         tool_name = info.get("name", "unknown")
         tool_args = info.get("arguments", "")
         content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
 
-        span = tracer.start_span(f"tool:{tool_name}")
+        tool_start = range_start_ns + i * slot_ns
+        tool_end = range_start_ns + (i + 1) * slot_ns
+
+        span = tracer.start_span(f"tool:{tool_name}", start_time=tool_start)
         span.set_attribute("openinference.span.kind", "TOOL")
         span.set_attribute("tool.name", tool_name)
         if tool_args:
             span.set_attribute("input.value", str(tool_args)[:4000])
         if content:
             span.set_attribute("output.value", str(content)[:4000])
-        span.end()
+        span.end(end_time=tool_end)
 
 
 def _enrich_with_reasoning(result):
@@ -233,6 +257,7 @@ def _patch_openai_enrichments():
         if messages:
             _emit_tool_spans(tracer, messages)
         result = _real_create(self, *args, **kwargs)
+        _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)
         return result
 
@@ -247,6 +272,7 @@ def _patch_openai_enrichments():
         if messages:
             _emit_tool_spans(tracer, messages)
         result = await _real_acreate(self, *args, **kwargs)
+        _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)
         return result
 
