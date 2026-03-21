@@ -1,29 +1,40 @@
 """
-Optional OpenTelemetry auto-instrumentation via OpenLLMetry (traceloop-sdk).
+Optional OpenTelemetry auto-instrumentation for LLM calls.
 
-When traceloop-sdk is installed, this module auto-instruments installed LLM SDKs
-(OpenAI, Anthropic, Cohere, etc.) so that LLM calls inside user task functions
-appear as child spans under qym's per-item evaluation spans.
+Uses OpenInference instrumentors (the same library Phoenix uses) so traces
+render properly in both Phoenix and Langfuse. Langfuse explicitly maps
+OpenInference attributes (input.value, output.value, llm.*, etc.) to its
+own data model.
 
-In the Langfuse v3 architecture, Langfuse's LangfuseSpanProcessor is added to the
-same TracerProvider that traceloop creates, so all spans (both auto-instrumented
-and manually created via Langfuse SDK) flow through a single provider.
+Architecture:
+  - One shared TracerProvider
+  - OpenInference instrumentors register on it
+  - LangfuseSpanProcessor exports to Langfuse (added later by _init_langfuse)
+  - Optional OTLP exporter for Phoenix dual export
+  - QymSpanProcessor captures spans for local DB storage
 
-A QymSpanProcessor captures completed spans for local DB storage via the platform
-event stream.
-
-If traceloop-sdk is not installed, a no-op fallback is used transparently.
+Enrichments (applied before instrumentors patch the SDK):
+  - Tool call spans: reconstructed from message history (role=tool messages)
+  - Reasoning capture: non-standard 'reasoning' field added to span attributes
 """
+import contextvars
+import functools
+import json as _json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
 _initialized = False
 
+# Track emitted tool_call_ids per trace context to avoid duplicates
+_emitted_tool_ids: contextvars.ContextVar[Set[str]] = contextvars.ContextVar(
+    "_emitted_tool_ids", default=None,
+)
+
 
 class NullOtelManager:
-    """No-op fallback when traceloop-sdk is not installed or OTEL is disabled."""
+    """No-op fallback when OTEL is disabled or no instrumentors are available."""
 
     enabled = False
     qym_processor = None
@@ -40,23 +51,17 @@ def _make_qym_span_processor_class():
         _Base = object
 
     class QymSpanProcessor(_Base):
-        """Captures completed OTEL spans and streams them to the qym platform for DB storage.
-
-        Inherits from the SDK's SpanProcessor so all required methods
-        (_on_ending, on_start, on_end, etc.) are provided.
-        """
+        """Captures completed OTEL spans and streams them to the qym platform."""
 
         def __init__(self):
             self._stream = None
 
         def set_stream(self, stream):
-            """Set the PlatformEventStream to emit span data to."""
             self._stream = stream
 
         def on_start(self, span, parent_context=None):
             pass
 
-        # Noise spans to skip (HTTPX connection, DNS, TLS handshake)
         _NOISE_SPAN_NAMES = frozenset({"connect", "dns.resolve", "tls.handshake"})
 
         def on_end(self, span):
@@ -87,7 +92,7 @@ def _make_qym_span_processor_class():
                     ],
                 })
             except Exception:
-                pass  # Non-blocking, best-effort
+                pass
 
         def shutdown(self):
             pass
@@ -101,7 +106,7 @@ QymSpanProcessor = _make_qym_span_processor_class()
 
 
 class OtelManager:
-    """Manages OpenLLMetry auto-instrumentation lifecycle."""
+    """Manages auto-instrumentation lifecycle."""
 
     enabled = True
 
@@ -120,75 +125,184 @@ class OtelManager:
 
 
 # ---------------------------------------------------------------------------
-# Reasoning field capture
+# OpenAI enrichments (tool spans + reasoning capture)
 # ---------------------------------------------------------------------------
 
-def _patch_reasoning_capture():
-    """Patch OpenAI SDK to capture the 'reasoning' field from model responses.
+def _emit_tool_spans(tracer, messages):
+    """Create spans for tool results found in the messages array.
 
-    Reasoning models (Qwen 3.x, OpenAI o1/o3, etc.) return chain-of-thought
-    in a non-standard 'reasoning' extra field. traceloop doesn't capture it.
+    Scans messages for role=tool entries, correlates them with the preceding
+    assistant message's tool_calls to resolve function names, and emits a
+    short OTEL span for each. Already-emitted tool_call_ids are skipped.
+    """
+    seen = _emitted_tool_ids.get(None)
+    if seen is None:
+        seen = set()
+        _emitted_tool_ids.set(seen)
 
-    Strategy: wrap on top of traceloop's wrapper. After traceloop's span ends,
-    the response is stored in a contextvar. Then we immediately re-open the
-    span's attributes via the provider's internal span reference — but that's
-    fragile. Instead, we take the simpler approach: our wrapper runs outside
-    traceloop's, gets the result, and creates a tiny sibling span with the
-    reasoning content.
+    # Build tool_call_id -> {name, arguments} map from assistant messages
+    id_to_info: Dict[str, Dict[str, str]] = {}
+    for msg in messages:
+        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
+        if role != "assistant":
+            continue
+        tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else getattr(msg, "tool_calls", None)
+        if not tool_calls:
+            continue
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                tc_id = tc.get("id", "")
+                fn = tc.get("function", {})
+                name = fn.get("name", "unknown") if isinstance(fn, dict) else getattr(fn, "name", "unknown")
+                args = fn.get("arguments", "") if isinstance(fn, dict) else getattr(fn, "arguments", "")
+            else:
+                tc_id = getattr(tc, "id", "")
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", "unknown") if fn else "unknown"
+                args = getattr(fn, "arguments", "") if fn else ""
+            id_to_info[tc_id] = {"name": name, "arguments": args}
 
-    Actually simplest: use wrapt's callback mechanism. traceloop uses wrapt
-    BoundFunctionWrapper. We can register a post-call hook via wrapt.
+    # Emit a span for each unseen tool message
+    for msg in messages:
+        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
+        if role != "tool":
+            continue
+        tc_id = msg.get("tool_call_id") if isinstance(msg, dict) else getattr(msg, "tool_call_id", "")
+        if tc_id in seen:
+            continue
+        seen.add(tc_id)
+
+        info = id_to_info.get(tc_id, {})
+        tool_name = info.get("name", "unknown")
+        tool_args = info.get("arguments", "")
+        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+
+        span = tracer.start_span(f"tool:{tool_name}")
+        span.set_attribute("openinference.span.kind", "TOOL")
+        span.set_attribute("tool.name", tool_name)
+        if tool_args:
+            span.set_attribute("input.value", str(tool_args)[:4000])
+        if content:
+            span.set_attribute("output.value", str(content)[:4000])
+        span.end()
+
+
+def _enrich_with_reasoning(result):
+    """Add reasoning field to current span if present in response."""
+    try:
+        from opentelemetry import trace as otel_trace
+        span = otel_trace.get_current_span()
+        if not span or not span.is_recording():
+            return
+        for choice in result.choices:
+            msg = choice.message
+            reasoning = getattr(msg, "reasoning", None)
+            if reasoning:
+                span.set_attribute(
+                    f"gen_ai.completion.{choice.index}.reasoning",
+                    str(reasoning)[:16000],
+                )
+    except Exception:
+        pass
+
+
+def _patch_openai_enrichments():
+    """Wrap OpenAI SDK methods BEFORE instrumentors patch them.
+
+    The instrumentor's wrapper calls our wrapper (which is the 'wrapped'
+    function from its perspective) inside its span context. This means:
+    - Tool span emission runs inside the instrumentor's span -> correct parenting
+    - Reasoning capture runs inside the instrumentor's span -> can set attributes
+
+    Single wrapper handles both enrichments.
     """
     try:
-        import functools
         import openai.resources.chat.completions as mod
         from opentelemetry import trace as otel_trace
     except ImportError:
         return
 
-    def _add_reasoning_span(response, parent_tracer):
-        """Create a brief span capturing reasoning content from the response."""
+    tracer = otel_trace.get_tracer("qym.enrichments")
+
+    # Sync
+    _real_create = mod.Completions.create
+
+    @functools.wraps(_real_create)
+    def _enriched_create(self, *args, **kwargs):
+        messages = kwargs.get("messages") or (args[0] if args else None)
+        if messages:
+            _emit_tool_spans(tracer, messages)
+        result = _real_create(self, *args, **kwargs)
+        _enrich_with_reasoning(result)
+        return result
+
+    mod.Completions.create = _enriched_create
+
+    # Async
+    _real_acreate = mod.AsyncCompletions.create
+
+    @functools.wraps(_real_acreate)
+    async def _enriched_acreate(self, *args, **kwargs):
+        messages = kwargs.get("messages") or (args[0] if args else None)
+        if messages:
+            _emit_tool_spans(tracer, messages)
+        result = await _real_acreate(self, *args, **kwargs)
+        _enrich_with_reasoning(result)
+        return result
+
+    mod.AsyncCompletions.create = _enriched_acreate
+    logger.debug("OpenAI enrichments (tool spans + reasoning) installed")
+
+
+# ---------------------------------------------------------------------------
+# Instrumentor registration
+# ---------------------------------------------------------------------------
+
+# OpenInference instrumentors (same library Phoenix uses).
+_KNOWN_INSTRUMENTORS: List[Tuple[str, str]] = [
+    ("openinference.instrumentation.openai", "OpenAIInstrumentor"),
+    ("openinference.instrumentation.anthropic", "AnthropicInstrumentor"),
+    ("openinference.instrumentation.bedrock", "BedrockInstrumentor"),
+    ("openinference.instrumentation.google_generativeai", "GoogleGenerativeAIInstrumentor"),
+    ("openinference.instrumentation.mistralai", "MistralAIInstrumentor"),
+    ("openinference.instrumentation.groq", "GroqInstrumentor"),
+    ("openinference.instrumentation.cohere", "CohereInstrumentor"),
+    ("openinference.instrumentation.litellm", "LiteLLMInstrumentor"),
+    ("openinference.instrumentation.langchain", "LangChainInstrumentor"),
+    ("openinference.instrumentation.llama_index", "LlamaIndexInstrumentor"),
+    ("openinference.instrumentation.crewai", "CrewAIInstrumentor"),
+    ("openinference.instrumentation.haystack", "HaystackInstrumentor"),
+    ("openinference.instrumentation.dspy", "DSPyInstrumentor"),
+]
+
+
+def _register_instrumentors(provider):
+    """Register all available OpenInference instrumentors on the given TracerProvider."""
+    # Suppress noisy DependencyConflict errors from instrumentors
+    # whose provider SDKs aren't installed.
+    _instrumentor_logger = logging.getLogger("opentelemetry.instrumentation.instrumentor")
+    _prev_level = _instrumentor_logger.level
+    _instrumentor_logger.setLevel(logging.CRITICAL)
+
+    registered = []
+    for module_path, class_name in _KNOWN_INSTRUMENTORS:
         try:
-            for choice in response.choices:
-                msg = choice.message
-                reasoning = getattr(msg, "reasoning", None)
-                if not reasoning:
-                    continue
-                # Create a child span under the current context (the parent task span)
-                span = parent_tracer.start_span(f"reasoning (step {choice.index})")
-                span.set_attribute("gen_ai.reasoning", str(reasoning)[:16000])
-                # If content was None, also note that
-                content = getattr(msg, "content", None)
-                if content:
-                    span.set_attribute("gen_ai.content", str(content)[:4000])
-                span.end()
-        except Exception:
+            mod = __import__(module_path, fromlist=[class_name])
+            instrumentor_cls = getattr(mod, class_name)
+            instrumentor = instrumentor_cls()
+            if not getattr(instrumentor, '_is_instrumented_by_opentelemetry', False):
+                instrumentor.instrument(tracer_provider=provider)
+                registered.append(class_name)
+        except ImportError:
             pass
+        except Exception as e:
+            logger.debug(f"Failed to register {class_name}: {e}")
 
-    tracer = otel_trace.get_tracer("qym.reasoning")
+    _instrumentor_logger.setLevel(_prev_level)
 
-    # Wrap sync create (on top of traceloop's wrapper)
-    _original_create = mod.Completions.create
-
-    @functools.wraps(_original_create)
-    def _patched_create(self, *args, **kwargs):
-        result = _original_create(self, *args, **kwargs)
-        _add_reasoning_span(result, tracer)
-        return result
-
-    mod.Completions.create = _patched_create
-
-    # Wrap async create
-    _original_acreate = mod.AsyncCompletions.create
-
-    @functools.wraps(_original_acreate)
-    async def _patched_acreate(self, *args, **kwargs):
-        result = await _original_acreate(self, *args, **kwargs)
-        _add_reasoning_span(result, tracer)
-        return result
-
-    mod.AsyncCompletions.create = _patched_acreate
-    logger.debug("Reasoning field capture patched onto OpenAI SDK")
+    if registered:
+        logger.info(f"Auto-instrumentation registered: {', '.join(registered)}")
+    return registered
 
 
 # ---------------------------------------------------------------------------
@@ -196,13 +310,13 @@ def _patch_reasoning_capture():
 # ---------------------------------------------------------------------------
 
 def create_otel_manager(config) -> Any:
-    """
-    Create an OtelManager if traceloop-sdk is installed and otel_enabled is True.
-    Returns NullOtelManager otherwise.
+    """Create an OtelManager with OpenInference auto-instrumentation.
 
-    Does NOT configure an OTEL exporter — Langfuse SDK v3 adds its own
-    LangfuseSpanProcessor to the TracerProvider when initialized with
-    tracer_provider=<this provider>. This avoids dual-export.
+    Sets up a real TracerProvider, registers available instrumentors,
+    and optionally adds a Phoenix OTLP exporter for dual tracing.
+
+    Langfuse adds its own LangfuseSpanProcessor to the same provider
+    later (in _init_langfuse), so all spans reach both destinations.
     """
     global _initialized
 
@@ -210,81 +324,57 @@ def create_otel_manager(config) -> Any:
         return NullOtelManager()
 
     try:
-        from traceloop.sdk import Traceloop
+        from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
         from opentelemetry import trace
-    except Exception:
-        logger.debug("traceloop-sdk not available — OTEL auto-instrumentation disabled")
+    except ImportError:
+        logger.debug("opentelemetry-sdk not installed — auto-instrumentation disabled")
         return NullOtelManager()
 
     qym_processor = QymSpanProcessor()
 
     if not _initialized:
         try:
-            # Suppress noisy "Metrics are disabled" log from traceloop
-            logging.getLogger("traceloop.sdk").setLevel(logging.WARNING)
-
-            # Create a real SDK TracerProvider BEFORE Traceloop.init().
-            # Without this, traceloop (which requires an API key or exporter)
-            # falls back to a NoOp ProxyTracerProvider that creates
-            # non-recording spans.  By setting a real provider first,
-            # traceloop's instrumentors attach to it and produce real spans.
-            # Langfuse later adds its LangfuseSpanProcessor to the same
-            # provider, so all spans (auto-instrumented + manual) reach
-            # Langfuse without a separate OTLP exporter.
-            from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
-
+            # Create a real TracerProvider
             existing = trace.get_tracer_provider()
             if not isinstance(existing, SdkTracerProvider):
                 provider = SdkTracerProvider()
                 trace.set_tracer_provider(provider)
+            else:
+                provider = existing
 
-            # Provide a no-op exporter so traceloop fully initializes
-            # (without an API key or exporter, it skips instrumentor registration).
-            # The actual export to Langfuse is handled by LangfuseSpanProcessor
-            # which is added to the same provider later.
-            from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+            # Wrap OpenAI methods BEFORE instrumentors patch them
+            # so enrichments (tool spans, reasoning) run inside the
+            # instrumentor's span context.
+            _patch_openai_enrichments()
 
-            class _NoOpExporter(SpanExporter):
-                def export(self, spans):
-                    return SpanExportResult.SUCCESS
-                def shutdown(self):
-                    pass
+            # Register all available OpenInference instrumentors
+            registered = _register_instrumentors(provider)
+            if not registered:
+                logger.debug("No OpenInference instrumentors found — auto-instrumentation inactive")
 
-            init_kwargs = {
-                "app_name": "qym",
-                "disable_batch": False,
-                "exporter": _NoOpExporter(),
-            }
+            # Optional: Phoenix OTLP export for dual tracing
+            import os
+            phoenix_enabled = getattr(config, "phoenix_enabled", False) or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"
+            phoenix_endpoint = getattr(config, "phoenix_endpoint", None) or os.environ.get("PHOENIX_ENDPOINT")
+            if phoenix_enabled and phoenix_endpoint:
+                try:
+                    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+                    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-            # Block noisy HTTP connection spans
-            try:
-                from traceloop.sdk.instruments import Instruments
-                init_kwargs["block_instruments"] = {Instruments.REQUESTS, Instruments.URLLIB3}
-            except ImportError:
-                pass
+                    phoenix_exporter = OTLPSpanExporter(endpoint=phoenix_endpoint)
+                    provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
+                    logger.info(f"Phoenix trace export enabled -> {phoenix_endpoint}")
+                except ImportError:
+                    logger.warning("opentelemetry-exporter-otlp not installed — Phoenix export disabled")
 
-            # Suppress traceloop's stderr output (it may still print warnings).
-            import sys, io
-            _stderr = sys.stderr
-            sys.stderr = io.StringIO()
-            try:
-                Traceloop.init(**init_kwargs)
-            finally:
-                sys.stderr = _stderr
             _initialized = True
-            logger.info("OTEL auto-instrumentation initialized via traceloop-sdk")
-
-            # Patch OpenAI SDK to capture 'reasoning' field from model responses.
-            # traceloop only captures standard fields (content, role, tool_calls).
-            # Reasoning models (Qwen, o1, etc.) return thinking in a non-standard
-            # 'reasoning' extra field that traceloop ignores.
-            _patch_reasoning_capture()
+            logger.info("OTEL auto-instrumentation initialized")
 
         except Exception as e:
             logger.warning(f"Failed to initialize OTEL auto-instrumentation: {e}")
             return NullOtelManager()
 
-    # Register QymSpanProcessor on the same provider
+    # Register QymSpanProcessor on the provider
     provider = trace.get_tracer_provider()
     if hasattr(provider, 'add_span_processor'):
         provider.add_span_processor(qym_processor)

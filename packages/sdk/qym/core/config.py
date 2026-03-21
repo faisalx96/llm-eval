@@ -39,8 +39,12 @@ class EvaluatorConfig(BaseModel):
     resume_rerun_errors: bool = False
     interrupt_grace_seconds: float = 2.0
 
-    # OpenTelemetry / OpenLLMetry auto-instrumentation (optional)
-    otel_enabled: bool = True  # auto-enable if traceloop-sdk installed; no-op if not
+    # OpenTelemetry auto-instrumentation (optional)
+    otel_enabled: bool = True  # auto-enable if instrumentors installed; no-op if not
+
+    # Phoenix tracing (optional, for dual export alongside Langfuse)
+    phoenix_enabled: bool = False
+    phoenix_endpoint: Optional[str] = None  # e.g. "http://localhost:6006/v1/traces"
 
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None

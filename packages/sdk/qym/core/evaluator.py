@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import inspect
+import json as _json
 import os
 import random
 import traceback
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple, Set
 from datetime import datetime, timezone
 import time
@@ -84,10 +86,117 @@ except Exception:  # pragma: no cover
 
 console = Console()
 
-class NullTrace:
-    """No-op trace/span used when Langfuse is disabled.
+@dataclass
+class ItemSpans:
+    """All OTEL span state for a single evaluation item.
 
-    Must support the subset of the Langfuse span API used by adapters and the evaluator.
+    Manages the lifecycle of OpenInference spans for the eval root,
+    task function, and metrics evaluation. Provides helpers to create
+    and end spans with proper OpenInference attributes.
+    """
+    eval_span: Any = None
+    eval_token: Any = None
+    task_span: Any = None
+    task_token: Any = None
+    metrics_span: Any = None
+    metrics_token: Any = None
+    trace_id: Optional[str] = None
+    trace_url: Optional[str] = None
+    tracer: Any = None  # OTEL tracer if enabled
+
+    @staticmethod
+    def _start_span(tracer, name, kind="CHAIN", input_value=None, metadata=None):
+        """Create an OTEL span with OpenInference attributes."""
+        from opentelemetry import trace as _trace, context as _ctx
+
+        span = tracer.start_span(name)
+        span.set_attribute("openinference.span.kind", kind)
+        if input_value is not None:
+            try:
+                span.set_attribute("input.value", _json.dumps(input_value, default=str)[:16000])
+                span.set_attribute("input.mime_type", "application/json")
+            except Exception:
+                span.set_attribute("input.value", str(input_value)[:16000])
+        if metadata:
+            try:
+                span.set_attribute("metadata", _json.dumps(metadata, default=str)[:8000])
+            except Exception:
+                pass
+        token = _ctx.attach(_trace.set_span_in_context(span))
+        return span, token
+
+    @staticmethod
+    def _end_span(span, token, output_value=None, error=None):
+        """End an OTEL span, setting output and optional error status."""
+        from opentelemetry import context as _ctx
+
+        if error is not None:
+            try:
+                from opentelemetry.trace import StatusCode
+                span.set_status(StatusCode.ERROR, str(error))
+                span.set_attribute("output.value", _json.dumps({"error": str(error)}, default=str)[:16000])
+            except Exception:
+                pass
+        elif output_value is not None:
+            try:
+                span.set_attribute("output.value", _json.dumps(output_value, default=str)[:16000])
+                span.set_attribute("output.mime_type", "application/json")
+            except Exception:
+                span.set_attribute("output.value", str(output_value)[:16000])
+        try:
+            span.end()
+        except Exception:
+            pass
+        try:
+            _ctx.detach(token)
+        except Exception:
+            pass
+
+    def end_task(self, output=None, error=None):
+        """End the task span."""
+        if self.task_span:
+            self._end_span(self.task_span, self.task_token, output_value=output, error=error)
+            self.task_span = None
+            self.task_token = None
+
+    def end_metrics(self, scores=None):
+        """End the metrics span."""
+        if self.metrics_span:
+            self._end_span(self.metrics_span, self.metrics_token, output_value=scores)
+            self.metrics_span = None
+            self.metrics_token = None
+
+    def add_score_event(self, metric_name, value, label=None, explanation=None):
+        """Add a score as an event on the eval root span."""
+        if self.eval_span and self.eval_span.is_recording():
+            self.eval_span.add_event(
+                f"score.{metric_name}",
+                attributes={
+                    "score.name": metric_name,
+                    "score.value": value if isinstance(value, (int, float)) else 0,
+                    "score.label": label or "",
+                    "score.explanation": explanation or "",
+                },
+            )
+
+    def end_eval(self, output=None, error=None):
+        """End the root eval span."""
+        if self.eval_span:
+            self._end_span(self.eval_span, self.eval_token, output_value=output, error=error)
+            self.eval_span = None
+            self.eval_token = None
+
+    def end_all(self, error=None):
+        """End all open spans (for error cleanup)."""
+        self.end_task(error=error)
+        self.end_metrics()
+        self.end_eval(error=error)
+
+
+class NullTrace:
+    """No-op trace/span used when OTEL is disabled.
+
+    Provides the interface adapters expect (.update, .trace_id).
     """
 
     def __init__(self, name: str = "", input: Any = None, metadata: Optional[Dict[str, Any]] = None):
@@ -95,13 +204,11 @@ class NullTrace:
         self.input = input
         self.metadata = metadata or {}
         self.output: Any = None
+        self.trace_id = None
 
     def update(self, **kwargs: Any) -> None:
-        # Store a few common fields for debugging; otherwise no-op.
         if "input" in kwargs:
             self.input = kwargs.get("input")
-        if "metadata" in kwargs and isinstance(kwargs.get("metadata"), dict):
-            self.metadata = kwargs.get("metadata") or {}
         if "output" in kwargs:
             self.output = kwargs.get("output")
 
@@ -431,8 +538,6 @@ class Evaluator:
                 secret_key=secret_key,
                 host=host,
                 timeout=self.config.timeout,
-                # Filter out noisy HTTPX connection spans from Langfuse traces
-                blocked_instrumentation_scopes=["opentelemetry.instrumentation.httpx"],
             )
             if self._otel.enabled:
                 from opentelemetry import trace as otel_trace
@@ -1325,528 +1430,401 @@ class Evaluator:
             max_parallel_runs=max_parallel_runs,
         )
     
-    async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
-        """
-        Evaluate a single item using fully async Langfuse operations.
+    # ------------------------------------------------------------------
+    # _evaluate_item: decomposed into focused sub-methods
+    # ------------------------------------------------------------------
 
-        This implementation avoids blocking the event loop by:
-        1. Using start_span() which queues trace creation (non-blocking)
-        2. Running the task purely async
-        3. Using async_api for dataset run item linking
-        4. Deferring score uploads to background tasks
-        """
-        meta = {"trace_id": None, "trace_url": None}
-        span = None
-        # For dashboard display / persistence: when the task execution began (epoch ms).
+    def _create_item_spans(self, index: int, item: Any) -> ItemSpans:
+        """Create OTEL spans with OpenInference attributes for an eval item."""
+        spans = ItemSpans()
+        item_metadata = getattr(item, 'metadata', {})
+
+        if not self._otel.enabled:
+            return spans
+
+        from opentelemetry import trace as otel_trace
+        spans.tracer = otel_trace.get_tracer("qym")
+
+        # Root eval span
+        spans.eval_span, spans.eval_token = ItemSpans._start_span(
+            spans.tracer,
+            name=f"eval-{self.run_name}-item-{index}",
+            kind="CHAIN",
+            input_value=item.input,
+            metadata={
+                **self.run_metadata,
+                "item_index": index,
+                "dataset_item_id": getattr(item, 'id', None),
+                "run_name": self.run_name,
+                "item_metadata": item_metadata,
+            },
+        )
+
+        # Extract trace_id from the OTEL span
+        _ctx = spans.eval_span.get_span_context()
+        if _ctx.is_valid:
+            spans.trace_id = format(_ctx.trace_id, '032x')
+            if getattr(self, 'langfuse_host', None) and getattr(self, 'langfuse_project_id', None):
+                host = self.langfuse_host.rstrip('/')
+                spans.trace_url = f"{host}/project/{self.langfuse_project_id}/traces/{spans.trace_id}"
+
+        # Task function span (child of eval, parent of LLM calls)
+        task_name = getattr(self.task_adapter.task, "__name__", "task")
+        spans.task_span, spans.task_token = ItemSpans._start_span(
+            spans.tracer,
+            name=task_name,
+            kind="AGENT",
+            input_value=item.input,
+        )
+
+        # Reset tool call tracking for this item
+        from .otel import _emitted_tool_ids
+        _emitted_tool_ids.set(set())
+
+        return spans
+
+    def _emit_item_started(self, index: int, item: Any):
+        """Emit item_started to platform stream and notify observer."""
+        try:
+            ps = getattr(self, "_platform_stream", None)
+            if ps is not None:
+                item_id = getattr(item, "id", None) or f"item_{index}"
+                ps.emit("item_started", {
+                    "item_id": str(item_id),
+                    "index": int(index),
+                    "input": item.input,
+                    "expected": getattr(item, "expected_output", None),
+                    "item_metadata": getattr(item, "metadata", {}) or {},
+                })
+        except Exception:
+            pass
+        self._notify_observer("on_item_start", item_index=index, payload={
+            "input": item.input,
+            "expected": getattr(item, 'expected_output', None),
+        })
+
+    async def _execute_task(self, index: int, item: Any, spans: ItemSpans) -> Tuple[Any, float, int]:
+        """Execute the task with retry logic. Returns (output, elapsed_time, retry_count)."""
+        # Create a NullTrace for adapter compatibility
+        adapter_trace = NullTrace(name=f"eval-{self.run_name}-item-{index}", input=item.input)
+        adapter_trace.trace_id = spans.trace_id
+
+        task_start_time = time.time()
+        last_error = None
+        output = None
+
+        for _attempt in range(1 + self.max_retries):
+            try:
+                coro = self.task_adapter.arun(item.input, adapter_trace, model_name=self.model_name_full)
+                if self.timeout is not None:
+                    output = await asyncio.wait_for(coro, timeout=self.timeout)
+                else:
+                    output = await coro
+                last_error = None
+                break
+            except asyncio.TimeoutError:
+                last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
+                logger.warning(f"Item {index}: {last_error}")
+            except Exception as e:
+                last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
+                logger.warning(f"Item {index}: {last_error}")
+            if _attempt < self.max_retries and last_error is not None:
+                base_delay = min(2 ** _attempt, 30)
+                jitter = random.uniform(0, base_delay * 0.5)
+                await asyncio.sleep(base_delay + jitter)
+
+        retry_count = _attempt
+        if last_error is not None:
+            raise RuntimeError(last_error)
+
+        return output, time.time() - task_start_time, retry_count
+
+    async def _compute_metrics(self, index: int, item: Any, output: Any, spans: ItemSpans) -> Dict[str, Any]:
+        """Compute all metrics concurrently. Returns {metric_name: score_dict}."""
+        expected_output = getattr(item, 'expected_output', None)
+
+        # Create metrics parent span
+        if spans.tracer:
+            spans.metrics_span, spans.metrics_token = ItemSpans._start_span(
+                spans.tracer, name="eval_metrics", kind="EVALUATOR",
+            )
+
+        _metric_sem = asyncio.Semaphore(self.max_metric_concurrency)
+
+        async def run_one(m_name: str, m_func: Callable) -> Tuple[str, Any]:
+            async with _metric_sem:
+                return await self._run_single_metric(
+                    m_name, m_func, output, expected_output, index, item, spans,
+                )
+
+        results = await asyncio.gather(*[
+            run_one(m_name, m_func) for m_name, m_func in self.metrics.items()
+        ])
+        return dict(results)
+
+    async def _run_single_metric(
+        self, m_name: str, m_func: Callable, output: Any, expected: Any,
+        index: int, item: Any, spans: ItemSpans,
+    ) -> Tuple[str, Any]:
+        """Run a single metric, emit score event, and notify platform."""
+        try:
+            # Compute metric (async or sync)
+            if asyncio.iscoroutinefunction(m_func):
+                func_id = id(m_func)
+                should_probe = func_id not in Evaluator._metric_blocking_probed
+
+                if not should_probe:
+                    score = await self._compute_metric(m_func, output, expected, item.input)
+                else:
+                    Evaluator._metric_blocking_probed.add(func_id)
+                    _hb_ticks = 0
+                    _hb_stop = False
+
+                    async def _hb():
+                        nonlocal _hb_ticks
+                        while not _hb_stop:
+                            await asyncio.sleep(0.1)
+                            _hb_ticks += 1
+
+                    hb_task = asyncio.create_task(_hb())
+                    _t0 = time.monotonic()
+                    try:
+                        score = await self._compute_metric(m_func, output, expected, item.input)
+                    finally:
+                        _hb_stop = True
+                        _elapsed = time.monotonic() - _t0
+                        hb_task.cancel()
+                        try:
+                            await hb_task
+                        except asyncio.CancelledError:
+                            pass
+
+                        if _elapsed > 1.0 and _hb_ticks < 2:
+                            if func_id not in Evaluator._metric_blocking_warned:
+                                Evaluator._metric_blocking_warned.add(func_id)
+                                _fname = getattr(m_func, '__name__', m_name)
+                                warning_msg = (
+                                    f"Async metric '{_fname}' appears to block "
+                                    f"the event loop ({_elapsed:.1f}s elapsed, "
+                                    f"{_hb_ticks} event-loop ticks). Fix: remove "
+                                    f"'async' from your metric function so qym "
+                                    f"runs it in a thread pool automatically."
+                                )
+                                logger.warning(warning_msg)
+                                self._notify_observer("on_warning", message=warning_msg)
+            else:
+                score = await asyncio.to_thread(
+                    self._compute_metric_sync, m_func, output, expected, item.input,
+                )
+
+            # Wrap in MetricResult
+            from qym.metrics.result import MetricResult
+            result = MetricResult.from_raw(score)
+            main_val = result.score
+
+            # Add score as OTEL event on eval span (provider-agnostic)
+            spans.add_score_event(m_name, main_val, result.label, result.explanation)
+
+            # Langfuse: push score to Langfuse API (for UI score badges + dataset linkage)
+            if self.client and spans.trace_id:
+                try:
+                    comment = result.explanation or (str(score) if not isinstance(main_val, (int, float)) else None)
+                    self.client.create_score(
+                        trace_id=spans.trace_id,
+                        name=m_name,
+                        value=main_val if isinstance(main_val, (int, float)) else 0,
+                        comment=comment,
+                    )
+                except Exception:
+                    pass
+
+            # Platform: metric scored
+            try:
+                ps = getattr(self, "_platform_stream", None)
+                if ps is not None:
+                    item_id = getattr(item, "id", None) or f"item_{index}"
+                    ps.emit("metric_scored", {
+                        "item_id": str(item_id),
+                        "metric_name": str(m_name),
+                        "score_numeric": result.score,
+                        "score_raw": result.to_legacy_dict(),
+                        "meta": result.metadata or {},
+                        "label": result.label,
+                        "explanation": result.explanation,
+                    })
+            except Exception:
+                pass
+
+            return m_name, score
+        except Exception as e:
+            logger.error(f"Metric {m_name} failed: {e}")
+            return m_name, {"score": 0, "error": traceback.format_exc()}
+
+    async def _link_dataset_item(self, index: int, item: Any, spans: ItemSpans, error: Optional[str] = None):
+        """Link trace to Langfuse dataset run item (Langfuse datasets only)."""
+        dataset_item_id = getattr(item, 'id', None)
+        trace_id = spans.trace_id
+        if not (self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id):
+            return
+        try:
+            from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
+            metadata = {**self.run_metadata}
+            if error:
+                metadata["error"] = error
+            response = await self.client.async_api.dataset_run_items.create(
+                request=CreateDatasetRunItemRequest(
+                    runName=self.run_name,
+                    runDescription=None,
+                    metadata=metadata,
+                    datasetItemId=dataset_item_id,
+                    traceId=trace_id,
+                )
+            )
+            if self._langfuse_run_id is None and response:
+                run_id = (
+                    getattr(response, 'run_id', None) or
+                    getattr(response, 'runId', None) or
+                    getattr(response, 'dataset_run_id', None) or
+                    getattr(response, 'datasetRunId', None)
+                )
+                if not run_id and hasattr(response, 'run'):
+                    run_id = getattr(response.run, 'id', None)
+                self._langfuse_run_id = run_id
+                if self._langfuse_run_id and self._platform_stream:
+                    langfuse_url = self._build_langfuse_url()
+                    if langfuse_url:
+                        try:
+                            self._platform_stream.emit("metadata_update", {
+                                "langfuse_url": langfuse_url,
+                                "langfuse_dataset_id": self._langfuse_dataset_id,
+                                "langfuse_run_id": self._langfuse_run_id,
+                            })
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.debug(f"Failed to link dataset run item: {e}")
+
+    def _update_tracker(
+        self, index: int, item: Any, output: Any, scores: Dict,
+        task_time: float, retry_count: int, spans: ItemSpans,
+        tracker: "ProgressObserver",
+    ):
+        """Update the progress tracker with results."""
+        tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
+        tracker.update_output(index, output)
+        if retry_count > 0:
+            tracker.item_statuses[index]['retry_count'] = retry_count
+
+        for m_name, score in scores.items():
+            if score is not None:
+                main_val = score
+                meta_map = {}
+                if isinstance(score, dict):
+                    main_val = score.get('score', None)
+                    md = score.get('metadata', {})
+                    if isinstance(md, dict):
+                        for k, v in md.items():
+                            if isinstance(v, dict):
+                                for k2, v2 in v.items():
+                                    meta_map[f"{k}_{k2}"] = v2
+                            else:
+                                meta_map[str(k)] = v
+                tracker.update_metric(index, m_name, main_val, meta_map)
+                self._notify_observer("on_metric_result", item_index=index,
+                                      metric_name=m_name, score=score,
+                                      metadata={"input": item.input, "expected": getattr(item, 'expected_output', None)})
+            else:
+                tracker.set_metric_error(index, m_name)
+
+        scores = {k: v for k, v in scores.items() if v is not None}
+        tracker.complete_item(index)
+
+    def _emit_item_completed(
+        self, index: int, item: Any, output: Any, task_time: float,
+        spans: ItemSpans, retry_count: int,
+    ):
+        """Emit item_completed to platform stream and notify observer."""
+        try:
+            ps = getattr(self, "_platform_stream", None)
+            if ps is not None:
+                item_id = getattr(item, "id", None) or f"item_{index}"
+                ps.emit("item_completed", {
+                    "item_id": str(item_id),
+                    "index": int(index),
+                    "output": output,
+                    "latency_ms": float(task_time * 1000.0),
+                    "trace_id": spans.trace_id,
+                    "trace_url": spans.trace_url,
+                    "task_started_at_ms": int(time.time() * 1000),
+                    "retry_count": retry_count,
+                })
+        except Exception:
+            pass
+        self._notify_observer("on_item_complete", item_index=index, result={
+            "output": output, "scores": {}, "task_time": task_time,
+        })
+
+    async def _handle_item_error(
+        self, index: int, item: Any, error: Exception,
+        spans: ItemSpans, tracker: "ProgressObserver",
+        task_started_at_ms: Optional[int] = None,
+    ):
+        """Handle item evaluation error: end spans, link dataset, emit failure."""
+        spans.end_all(error=error)
+        await self._link_dataset_item(index, item, spans, error=str(error))
+        tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
+        tracker.fail_item(index, str(error))
+        self._notify_observer("on_item_error", item_index=index, error=str(error))
+        try:
+            ps = getattr(self, "_platform_stream", None)
+            if ps is not None:
+                item_id = getattr(item, "id", None) or f"item_{index}"
+                ps.emit("item_failed", {
+                    "item_id": str(item_id),
+                    "index": int(index),
+                    "error": str(error),
+                    "trace_id": spans.trace_id,
+                    "trace_url": spans.trace_url,
+                })
+        except Exception:
+            pass
+
+    async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
+        """Evaluate a single item: create spans, run task, compute metrics, emit results."""
+        spans = self._create_item_spans(index, item)
         task_started_at_ms: Optional[int] = None
 
         try:
             tracker.start_item(index)
+            self._emit_item_started(index, item)
 
-            # Platform: item started
-            try:
-                ps = getattr(self, "_platform_stream", None)
-                if ps is not None:
-                    item_id = getattr(item, "id", None) or f"item_{index}"
-                    ps.emit(
-                        "item_started",
-                        {
-                            "item_id": str(item_id),
-                            "index": int(index),
-                            "input": item.input,
-                            "expected": getattr(item, "expected_output", None),
-                            "item_metadata": getattr(item, "metadata", {}) or {},
-                        },
-                    )
-            except Exception:
-                pass
-
-            self._notify_observer(
-                "on_item_start",
-                item_index=index,
-                payload={
-                    "input": item.input,
-                    "expected": getattr(item, 'expected_output', None),
-                },
-            )
-
-            # Create a single Langfuse span that is also the active OTEL span.
-            # In Langfuse SDK v3, spans ARE OTEL spans, so auto-instrumented
-            # LLM calls (via traceloop) nest as children automatically.
-            item_metadata = getattr(item, 'metadata', {})
-            span_ctx = None
-            task_span_ctx = None
-            if self.client:
-                span_ctx = self.client.start_as_current_span(
-                    name=f"eval-{self.run_name}-item-{index}",
-                    input=item.input,
-                    metadata={
-                        **self.run_metadata,
-                        "item_index": index,
-                        "dataset_item_id": getattr(item, 'id', None),
-                        "run_name": self.run_name,
-                        "item_metadata": item_metadata,
-                    },
-                )
-                span = span_ctx.__enter__()
-                # Rename the auto-created trace to distinguish from the span
-                try:
-                    span.update_trace(name=f"qym | {self.run_name} | item-{index}")
-                except Exception:
-                    pass
-            else:
-                span = NullTrace(
-                    name=f"eval-{self.run_name}-item-{index}",
-                    input=item.input,
-                    metadata={
-                        **self.run_metadata,
-                        "item_index": index,
-                        "dataset_item_id": getattr(item, 'id', None),
-                        "run_name": self.run_name,
-                        "item_metadata": item_metadata,
-                    },
-                )
-
-            # Extract trace metadata
-            try:
-                meta = self._extract_trace_meta(span)
-            except Exception:
-                pass
-
-            # Create a child span for the task function so LLM calls nest under it.
-            task_name = getattr(self.task_adapter.task, "__name__", "task")
-            task_span = None
-            if self.client:
-                try:
-                    task_span_ctx = span.start_as_current_span(
-                        name=task_name,
-                        input=item.input,
-                    )
-                    task_span = task_span_ctx.__enter__()
-                except Exception:
-                    task_span_ctx = None
-
-            # Execute task with timeout and optional retry.
             task_started_at_ms = int(time.time() * 1000)
-            task_start_time = time.time()
-            last_error = None
-            output = None
-            for _attempt in range(1 + self.max_retries):
-                try:
-                    coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
-                    if self.timeout is not None:
-                        output = await asyncio.wait_for(coro, timeout=self.timeout)
-                    else:
-                        output = await coro
-                    last_error = None
-                    break
-                except asyncio.TimeoutError:
-                    last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
-                    logger.warning(f"Item {index}: {last_error}")
-                except Exception as e:
-                    last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
-                    logger.warning(f"Item {index}: {last_error}")
-                # Exponential backoff with jitter before next retry
-                if _attempt < self.max_retries and last_error is not None:
-                    base_delay = min(2 ** _attempt, 30)  # 1s, 2s, 4s, ... capped at 30s
-                    jitter = random.uniform(0, base_delay * 0.5)
-                    await asyncio.sleep(base_delay + jitter)
-            retry_count = _attempt  # 0 = succeeded first try, 1 = one retry, etc.
-            if last_error is not None:
-                raise RuntimeError(last_error)
-            task_elapsed_time = time.time() - task_start_time
-
-            # End task function span (before metrics, so metrics are siblings not children)
-            if task_span_ctx:
-                try:
-                    if task_span:
-                        task_span.update(output=output)
-                    task_span_ctx.__exit__(None, None, None)
-                except Exception:
-                    pass
-                task_span_ctx = None
-                task_span = None
-
-            # Update span with output
-            try:
-                span.update(output=output)
-            except Exception:
-                pass
-
-            # Compute metrics - async where possible
-            scores = {}
-            expected_output = getattr(item, 'expected_output', None)
-
-            # Create parent span for all metrics evaluation
-            eval_metrics_span = span.start_span(name="eval_metrics")
-
-            # Bound concurrent metrics per item to avoid executor/API burst.
-            _metric_sem = asyncio.Semaphore(self.max_metric_concurrency)
-
-            async def _run_metric(m_name: str, m_func: Callable) -> Tuple[str, Any]:
-                """Run a single metric with its full span lifecycle."""
-                async with _metric_sem:
-                    return await _run_metric_inner(m_name, m_func)
-
-            async def _run_metric_inner(m_name: str, m_func: Callable) -> Tuple[str, Any]:
-                metric_span = eval_metrics_span.start_span(
-                    name=f"metric_{m_name}",
-                    input={"output": output, "expected": expected_output}
-                )
-                try:
-                    # Compute metric (async or sync)
-                    if asyncio.iscoroutinefunction(m_func):
-                        func_id = id(m_func)
-                        should_probe = func_id not in Evaluator._metric_blocking_probed
-
-                        if not should_probe:
-                            score = await self._compute_metric(
-                                m_func, output,
-                                expected_output,
-                                item.input
-                            )
-                        else:
-                            # One-shot heartbeat probe for this metric function.
-                            Evaluator._metric_blocking_probed.add(func_id)
-                            _hb_ticks = 0
-                            _hb_stop = False
-
-                            async def _hb():
-                                nonlocal _hb_ticks
-                                while not _hb_stop:
-                                    await asyncio.sleep(0.1)
-                                    _hb_ticks += 1
-
-                            hb_task = asyncio.create_task(_hb())
-                            _t0 = time.monotonic()
-                            try:
-                                score = await self._compute_metric(
-                                    m_func, output,
-                                    expected_output,
-                                    item.input
-                                )
-                            finally:
-                                _hb_stop = True
-                                _elapsed = time.monotonic() - _t0
-                                hb_task.cancel()
-                                try:
-                                    await hb_task
-                                except asyncio.CancelledError:
-                                    pass
-
-                                if _elapsed > 1.0 and _hb_ticks < 2:
-                                    if func_id not in Evaluator._metric_blocking_warned:
-                                        Evaluator._metric_blocking_warned.add(func_id)
-                                        _fname = getattr(m_func, '__name__', m_name)
-                                        warning_msg = (
-                                            f"Async metric '{_fname}' appears to block "
-                                            f"the event loop ({_elapsed:.1f}s elapsed, "
-                                            f"{_hb_ticks} event-loop ticks). Common "
-                                            f"causes: using OpenAI() instead of "
-                                            f"AsyncOpenAI(), requests.get(), or "
-                                            f"synchronous DB calls inside an async def. "
-                                            f"Fix: remove 'async' from your metric "
-                                            f"function so qym runs it in a thread pool "
-                                            f"automatically, or switch to async I/O "
-                                            f"(e.g. httpx, aiohttp, AsyncOpenAI)."
-                                        )
-                                        logger.warning(warning_msg)
-                                        self._notify_observer(
-                                            "on_warning", message=warning_msg,
-                                        )
-                    else:
-                        # Run sync metrics in thread pool to avoid blocking
-                        score = await asyncio.to_thread(
-                            self._compute_metric_sync,
-                            m_func, output,
-                            expected_output,
-                            item.input
-                        )
-
-                    # Wrap raw score in MetricResult for structured access
-                    from qym.metrics.result import MetricResult
-                    result = MetricResult.from_raw(score)
-                    main_val = result.score
-
-                    # Update metric span with result
-                    metric_span.update(output=score)
-                    metric_span.end()
-
-                    # Queue score upload (non-blocking, uses internal queue)
-                    try:
-                        comment = result.explanation or (str(score) if not isinstance(main_val, (int, float)) else None)
-                        span.score(
-                            name=m_name,
-                            value=main_val if isinstance(main_val, (int, float)) else 0,
-                            comment=comment,
-                        )
-                    except Exception:
-                        pass
-
-                    # Platform: metric scored
-                    try:
-                        ps = getattr(self, "_platform_stream", None)
-                        if ps is not None:
-                            item_id = getattr(item, "id", None) or f"item_{index}"
-                            ps.emit(
-                                "metric_scored",
-                                {
-                                    "item_id": str(item_id),
-                                    "metric_name": str(m_name),
-                                    "score_numeric": result.score,
-                                    "score_raw": result.to_legacy_dict(),
-                                    "meta": result.metadata or {},
-                                    "label": result.label,
-                                    "explanation": result.explanation,
-                                },
-                            )
-                    except Exception:
-                        pass
-
-                    return m_name, score
-                except Exception as e:
-                    logger.error(f"Metric {m_name} failed: {e}")
-                    error_tb = traceback.format_exc()
-                    # Update metric span with error
-                    metric_span.update(output={"error": error_tb}, level="ERROR")
-                    metric_span.end()
-                    return m_name, {"score": 0, "error": error_tb}
-
-            # Run all metrics concurrently — LLM-judge metrics benefit most
-            # since their I/O waits overlap instead of serializing.
-            metric_results = await asyncio.gather(*[
-                _run_metric(m_name, m_func)
-                for m_name, m_func in self.metrics.items()
-            ])
-            scores = dict(metric_results)
-
-            # End the eval_metrics parent span
-            eval_metrics_span.end()
-
-            # End the span (queues finalization, non-blocking)
-            try:
-                if span_ctx:
-                    span_ctx.__exit__(None, None, None)
-                    span_ctx = None  # prevent double-exit in finally
-                else:
-                    span.end()
-            except Exception:
-                pass
-
-            # Link to Langfuse dataset run item only for Langfuse datasets (even if tracing is enabled for CSV).
-            dataset_item_id = getattr(item, 'id', None)
-            trace_id = meta.get('trace_id')
-            if self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id:
-                try:
-                    from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
-                    response = await self.client.async_api.dataset_run_items.create(
-                        request=CreateDatasetRunItemRequest(
-                            runName=self.run_name,
-                            runDescription=None,
-                            metadata=self.run_metadata,
-                            datasetItemId=dataset_item_id,
-                            traceId=trace_id,
-                        )
-                    )
-                    # Capture run_id from first successful response for URL building
-                    if self._langfuse_run_id is None and response:
-                        # Try different possible attribute names
-                        run_id = (
-                            getattr(response, 'run_id', None) or
-                            getattr(response, 'runId', None) or
-                            getattr(response, 'dataset_run_id', None) or
-                            getattr(response, 'datasetRunId', None)
-                        )
-                        # Also check if it's in a nested 'run' object
-                        if not run_id and hasattr(response, 'run'):
-                            run_obj = response.run
-                            run_id = getattr(run_obj, 'id', None)
-                        self._langfuse_run_id = run_id
-                        logger.debug(f"Captured Langfuse run_id: {run_id}, response attrs: {dir(response)}")
-                        # Send langfuse_url to platform as soon as we have it
-                        if self._langfuse_run_id and self._platform_stream:
-                            langfuse_url = self._build_langfuse_url()
-                            if langfuse_url:
-                                try:
-                                    self._platform_stream.emit("metadata_update", {
-                                        "langfuse_url": langfuse_url,
-                                        "langfuse_dataset_id": self._langfuse_dataset_id,
-                                        "langfuse_run_id": self._langfuse_run_id,
-                                    })
-                                except Exception:
-                                    pass
-                except Exception as e:
-                    logger.debug(f"Failed to link dataset run item: {e}")
-
-            # Update tracker with results
-            tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
-            tracker.update_output(index, output)
-            if retry_count > 0:
-                tracker.item_statuses[index]['retry_count'] = retry_count
-
-            for m_name, score in scores.items():
-                if score is not None:
-                    main_val = score
-                    meta_map = {}
-                    if isinstance(score, dict):
-                        main_val = score.get('score', None)
-                        md = score.get('metadata', {})
-                        if isinstance(md, dict):
-                            for k, v in md.items():
-                                if isinstance(v, dict):
-                                    for k2, v2 in v.items():
-                                        meta_map[f"{k}_{k2}"] = v2
-                                else:
-                                    meta_map[str(k)] = v
-                    tracker.update_metric(index, m_name, main_val, meta_map)
-
-                    self._notify_observer(
-                        "on_metric_result",
-                        item_index=index,
-                        metric_name=m_name,
-                        score=score,
-                        metadata={
-                            "input": item.input,
-                            "expected": getattr(item, 'expected_output', None),
-                        },
-                    )
-                else:
-                    tracker.set_metric_error(index, m_name)
-
-            # Filter out None scores
-            scores = {k: v for k, v in scores.items() if v is not None}
-
-            tracker.complete_item(index)
-
-            # Platform: item completed
-            try:
-                ps = getattr(self, "_platform_stream", None)
-                if ps is not None:
-                    item_id = getattr(item, "id", None) or f"item_{index}"
-                    ps.emit(
-                        "item_completed",
-                        {
-                            "item_id": str(item_id),
-                            "index": int(index),  # Include index for fallback when item_started was missed
-                            "output": output,
-                            "latency_ms": float(task_elapsed_time * 1000.0),
-                            "trace_id": meta.get("trace_id"),
-                            "trace_url": meta.get("trace_url"),
-                            "task_started_at_ms": task_started_at_ms,
-                            "retry_count": retry_count,
-                        },
-                    )
-            except Exception:
-                pass
-
-            self._notify_observer(
-                "on_item_complete",
-                item_index=index,
-                result={
-                    "output": output,
-                    "scores": scores,
-                    "task_time": task_elapsed_time,  # #18: task-only duration (excludes metric compute)
-                },
-            )
+            output, task_time, retry_count = await self._execute_task(index, item, spans)
+            spans.end_task(output=output)
+            scores = await self._compute_metrics(index, item, output, spans)
+            spans.end_metrics(scores=scores)
+            spans.end_eval(output=output)
+            await self._link_dataset_item(index, item, spans)
+            self._update_tracker(index, item, output, scores, task_time, retry_count, spans, tracker)
+            self._emit_item_completed(index, item, output, task_time, spans, retry_count)
 
             return {
                 "input": item.input,
                 "output": output,
                 "expected": getattr(item, 'expected_output', None),
-                "scores": scores,
-                "trace_id": meta.get('trace_id'),
-                "trace_url": meta.get('trace_url'),
-                "time": task_elapsed_time,
+                "scores": {k: v for k, v in scores.items() if v is not None},
+                "trace_id": spans.trace_id,
+                "trace_url": spans.trace_url,
+                "time": task_time,
                 "task_started_at_ms": task_started_at_ms,
                 "success": True,
             }
 
         except Exception as e:
-            # End task function span on error
-            if task_span_ctx:
-                try:
-                    task_span_ctx.__exit__(type(e), e, e.__traceback__)
-                except Exception:
-                    pass
-                task_span_ctx = None
-            # End span on error
-            if span:
-                try:
-                    span.update(output={"error": str(e)}, level="ERROR", status_message=str(e))
-                    if span_ctx:
-                        span_ctx.__exit__(type(e), e, e.__traceback__)
-                        span_ctx = None
-                    else:
-                        span.end()
-                except Exception:
-                    pass
-
-                # Link to dataset run item even on error (Langfuse datasets only)
-                dataset_item_id = getattr(item, 'id', None)
-                trace_id = meta.get('trace_id')
-                if self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id:
-                    try:
-                        from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
-                        response = await self.client.async_api.dataset_run_items.create(
-                            request=CreateDatasetRunItemRequest(
-                                runName=self.run_name,
-                                runDescription=None,
-                                metadata={**self.run_metadata, "error": str(e)},
-                                datasetItemId=dataset_item_id,
-                                traceId=trace_id,
-                            )
-                        )
-                        # Capture run_id from first successful response for URL building
-                        if self._langfuse_run_id is None and response:
-                            run_id = (
-                                getattr(response, 'run_id', None) or
-                                getattr(response, 'runId', None) or
-                                getattr(response, 'dataset_run_id', None) or
-                                getattr(response, 'datasetRunId', None)
-                            )
-                            if not run_id and hasattr(response, 'run'):
-                                run_obj = response.run
-                                run_id = getattr(run_obj, 'id', None)
-                            self._langfuse_run_id = run_id
-                            # Send langfuse_url to platform as soon as we have it
-                            if self._langfuse_run_id and self._platform_stream:
-                                langfuse_url = self._build_langfuse_url()
-                                if langfuse_url:
-                                    try:
-                                        self._platform_stream.emit("metadata_update", {
-                                            "langfuse_url": langfuse_url,
-                                            "langfuse_dataset_id": self._langfuse_dataset_id,
-                                            "langfuse_run_id": self._langfuse_run_id,
-                                        })
-                                    except Exception:
-                                        pass
-                    except Exception:
-                        pass
-
-            # Update trace info even on error so Langfuse link appears in dashboard
-            tracker.update_trace_info(index, meta.get('trace_id'), meta.get('trace_url'))
-            tracker.fail_item(index, str(e))
-            self._notify_observer("on_item_error", item_index=index, error=str(e))
-            # Return error info with trace_id so it can be saved to results
-            try:
-                ps = getattr(self, "_platform_stream", None)
-                if ps is not None:
-                    item_id = getattr(item, "id", None) or f"item_{index}"
-                    ps.emit(
-                        "item_failed",
-                        {
-                            "item_id": str(item_id),
-                            "index": int(index),  # Include index for fallback when item_started was missed
-                            "error": str(e),
-                            "trace_id": meta.get("trace_id"),
-                            "trace_url": meta.get("trace_url"),
-                        },
-                    )
-            except Exception:
-                pass
+            await self._handle_item_error(index, item, e, spans, tracker, task_started_at_ms)
             return {
                 "_error": str(e),
-                "_trace_id": meta.get('trace_id'),
+                "_trace_id": spans.trace_id,
                 "task_started_at_ms": task_started_at_ms,
             }
 

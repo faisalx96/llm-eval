@@ -151,6 +151,83 @@ def _iso(dt: Optional[datetime]) -> str:
     return (dt or datetime.utcnow()).isoformat()
 
 
+def _serialize_span(span: Span) -> Dict[str, Any]:
+    return {
+        "trace_id": span.trace_id,
+        "span_id": span.span_id,
+        "parent_span_id": span.parent_span_id,
+        "name": span.name,
+        "kind": span.kind,
+        "start_time_ns": span.start_time_ns,
+        "end_time_ns": span.end_time_ns,
+        "duration_ms": span.duration_ms,
+        "status": span.status,
+        "attributes": span.attributes,
+        "events": span.events,
+    }
+
+
+def _trace_time_bounds(spans: List[Span]) -> tuple[Optional[int], Optional[int]]:
+    starts: list[int] = []
+    ends: list[int] = []
+    for span in spans:
+        if span.start_time_ns is not None:
+            starts.append(int(span.start_time_ns))
+        if span.end_time_ns is not None:
+            ends.append(int(span.end_time_ns))
+        elif span.start_time_ns is not None and span.duration_ms is not None:
+            ends.append(int(span.start_time_ns + (float(span.duration_ms) * 1_000_000.0)))
+    if not starts or not ends:
+        return None, None
+    return min(starts), max(ends)
+
+
+def _build_trace_summary(spans: List[Span]) -> Dict[str, Any]:
+    span_ids = {s.span_id for s in spans}
+    root_count = 0
+    orphan_count = 0
+    error_count = 0
+    for span in spans:
+        status = str(span.status or "").upper()
+        if status == "ERROR":
+            error_count += 1
+        parent_id = span.parent_span_id
+        if not parent_id:
+            root_count += 1
+        elif parent_id not in span_ids:
+            root_count += 1
+            orphan_count += 1
+
+    started_at_ns, ended_at_ns = _trace_time_bounds(spans)
+    duration_ms: Optional[float] = None
+    if started_at_ns is not None and ended_at_ns is not None and ended_at_ns >= started_at_ns:
+        duration_ms = (ended_at_ns - started_at_ns) / 1_000_000.0
+
+    return {
+        "span_count": len(spans),
+        "root_count": root_count,
+        "error_count": error_count,
+        "duration_ms": duration_ms,
+        "started_at_ns": started_at_ns,
+        "ended_at_ns": ended_at_ns,
+        "has_orphans": orphan_count > 0,
+        "orphan_count": orphan_count,
+    }
+
+
+def _build_item_trace_payload(item: RunItem, spans: List[Span]) -> Dict[str, Any]:
+    return {
+        "item": {
+            "run_id": item.run_id,
+            "item_id": item.item_id,
+            "trace_id": item.trace_id or "",
+            "trace_url": item.trace_url or "",
+        },
+        "summary": _build_trace_summary(spans),
+        "spans": [_serialize_span(span) for span in spans],
+    }
+
+
 def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
     total_items = len(items)
@@ -766,7 +843,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     })
 
 
-@router.get("/api/runs/{run_id:path}/export-html")
+@router.get("/api/runs/{run_id}/export-html")
 def export_run_html(
     run_id: str,
     db: Session = Depends(get_db),
@@ -798,6 +875,14 @@ def export_run_html(
         '<script src="../static/metrics.js"></script>',
         f"<script>\n{metrics_js}\n</script>",
     )
+
+    trace_viewer_path = dashboard_dir / "trace_viewer.js"
+    if trace_viewer_path.exists():
+        trace_viewer_js = trace_viewer_path.read_text(encoding="utf-8")
+        run_html = run_html.replace(
+            '<script src="../static/trace_viewer.js"></script>',
+            f"<script>\n{trace_viewer_js}\n</script>",
+        )
 
     # Remove playground.js (not needed in export)
     run_html = run_html.replace('<script src="../static/playground.js"></script>', "")
@@ -836,7 +921,7 @@ def export_run_html(
     )
 
 
-@router.get("/api/runs/{run_id:path}")
+@router.get("/api/runs/{run_id}")
 def legacy_run_data(
     run_id: str,
     db: Session = Depends(get_db),
@@ -1171,32 +1256,22 @@ def reject_run(
 def get_run_spans(
     run_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
 ):
     """Return all OTEL spans captured for a run, ordered by start time."""
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not _can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     spans = (
         db.query(Span)
         .filter(Span.run_id == run_id)
         .order_by(Span.start_time_ns.asc().nullslast())
         .all()
     )
-    return {
-        "spans": [
-            {
-                "trace_id": s.trace_id,
-                "span_id": s.span_id,
-                "parent_span_id": s.parent_span_id,
-                "name": s.name,
-                "kind": s.kind,
-                "start_time_ns": s.start_time_ns,
-                "end_time_ns": s.end_time_ns,
-                "duration_ms": s.duration_ms,
-                "status": s.status,
-                "attributes": s.attributes,
-                "events": s.events,
-            }
-            for s in spans
-        ]
-    }
+    return {"spans": [_serialize_span(s) for s in spans]}
 
 
 @router.get("/api/runs/{run_id}/items/{item_id}/spans")
@@ -1204,8 +1279,15 @@ def get_item_spans(
     run_id: str,
     item_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
 ):
     """Return OTEL spans for a specific run item, looked up via trace_id."""
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not _can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     item = (
         db.query(RunItem)
         .filter(RunItem.run_id == run_id, RunItem.item_id == item_id)
@@ -1219,21 +1301,37 @@ def get_item_spans(
         .order_by(Span.start_time_ns.asc().nullslast())
         .all()
     )
-    return {
-        "spans": [
-            {
-                "trace_id": s.trace_id,
-                "span_id": s.span_id,
-                "parent_span_id": s.parent_span_id,
-                "name": s.name,
-                "kind": s.kind,
-                "start_time_ns": s.start_time_ns,
-                "end_time_ns": s.end_time_ns,
-                "duration_ms": s.duration_ms,
-                "status": s.status,
-                "attributes": s.attributes,
-                "events": s.events,
-            }
-            for s in spans
-        ]
-    }
+    return {"spans": [_serialize_span(s) for s in spans]}
+
+
+@router.get("/api/runs/{run_id}/items/{item_id}/trace")
+def get_item_trace(
+    run_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+):
+    """Return trace metadata + spans for an individual run item."""
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not _can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run_id, RunItem.item_id == item_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if not item.trace_id:
+        return _build_item_trace_payload(item, [])
+
+    spans = (
+        db.query(Span)
+        .filter(Span.run_id == run_id, Span.trace_id == item.trace_id)
+        .order_by(Span.start_time_ns.asc().nullslast(), Span.id.asc())
+        .all()
+    )
+    return _build_item_trace_payload(item, spans)

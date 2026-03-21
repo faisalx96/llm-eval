@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
   <script src="./static/metrics.js"></script>
+  <script src="./static/trace_viewer.js"></script>
   <script src="./static/playground.js"></script>
   <style>
     /* Compare-specific styles */
@@ -3184,6 +3185,7 @@
       }
 
       const IS_COMPARE_EXPORT = !!window.__QYM_COMPARE_EXPORT__;
+      if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: IS_COMPARE_EXPORT });
 
       async function loadComparisonData() {
         // If opened as export, load from embedded data
@@ -5239,6 +5241,10 @@
 
             // Langfuse trace link
             const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
+            const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(runFilePath) + '/items/' + encodeURIComponent(itemId) + '/trace');
+            const traceButton = !IS_COMPARE_EXPORT
+              ? `<button type="button" class="trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + itemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open native trace">Trace</button>`
+              : '';
 
             // Build metric details for this run (collected, rendered after toggle)
             const hasMetricMeta = Object.keys(metricMeta).length > 0;
@@ -5372,7 +5378,7 @@
               <div class="item-run-output" style="border-left-color: ${color}">
                 <div class="output-header">
                   <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges">${passfailBadge}<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${startBadge}${latencyBadge}${traceLink}</span>
+                  <span class="output-badges">${passfailBadge}<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${traceButton}${startBadge}${latencyBadge}${traceLink}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
