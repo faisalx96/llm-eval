@@ -612,6 +612,89 @@ correctness_strict = create_judge(
 - `langfuse_prompt` — fetch prompt template from Langfuse prompt management instead of using the `prompt` parameter
 - `system_prompt` — override the default system prompt
 
+### Pairwise Comparison Judges
+
+Instead of scoring a single output on an absolute scale, pairwise judges compare two outputs (A vs B) and decide which is better. Research shows LLMs are more reliable at relative comparison than absolute scoring.
+
+Use `create_pairwise_judge()` — it works like `create_judge()` but with two special template variables: `{output_a}` and `{output_b}`.
+
+```python
+from qym.metrics.judges import create_pairwise_judge
+
+compare_quality = create_pairwise_judge(
+    name="compare_quality",
+    prompt="""\
+Compare these two responses to the same question.
+
+[Question]: {question}
+[Response A]: {output_a}
+[Response B]: {output_b}
+
+Consider: accuracy, completeness, clarity, and relevance.
+Which response is better? Answer A, B, or tie.""",
+)
+
+results = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=[compare_quality],
+).run()
+```
+
+**How it works:** The LLM responds with:
+
+```json
+{"verdict": "A", "explanation": "Response A is more accurate and directly addresses the question."}
+```
+
+qym maps the verdict to a score:
+- `"A"` → `1.0` (your task's output wins)
+- `"tie"` → `0.5`
+- `"B"` → `0.0` (the comparison output wins)
+
+The result includes `label` (`"A"`, `"B"`, or `"tie"`) and `explanation` (the LLM's reasoning), both stored in the platform.
+
+**Where do A and B come from?**
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `{output_a}` | Your task's output | Always filled automatically — this is what you're evaluating |
+| `{output_b}` | `input_data["output_b"]` or `expected` | The baseline to compare against |
+
+Two common patterns:
+
+**Pattern 1: Compare against a gold-standard answer.** Your dataset's `expected` field contains the reference answer. `{output_b}` uses it by default.
+
+```python
+# Dataset has: question, expected (gold answer)
+# Task produces: output (model's answer)
+# Judge compares: output vs expected
+compare_to_gold = create_pairwise_judge(
+    name="vs_gold",
+    prompt="Which response better answers the question?\n[Question]: {question}\n[A]: {output_a}\n[B]: {output_b}",
+)
+```
+
+**Pattern 2: Compare two models' outputs.** Add an `output_b` column to your CSV with a baseline model's response. `{output_b}` reads from `input_data["output_b"]` when available.
+
+```csv
+id,question,expected,output_b
+1,"What is 2+2?","4","The answer is four."
+2,"Capital of France?","Paris","It's Paris, the capital city."
+```
+
+```python
+# Task produces output_a (new model's answer)
+# CSV provides output_b (baseline model's answer)
+# Judge compares them
+compare_models = create_pairwise_judge(
+    name="model_comparison",
+    prompt="Which response is better?\n[Question]: {question}\n[A]: {output_a}\n[B]: {output_b}",
+)
+```
+
+**Per-judge config** — same as `create_judge()`, you can pass `judge_model`, `judge_api_key`, and `judge_base_url` to use a different LLM for the comparison.
+
 ### Structured Results
 
 Every LLM judge returns a `MetricResult` with:

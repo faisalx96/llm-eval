@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from langfuse import Langfuse
-
 from collections import defaultdict
 
 from .item_identity import build_identity_fingerprint
@@ -23,7 +21,7 @@ from ..utils.errors import CsvDatasetSchemaError, DatasetNotFoundError
 class LangfuseDataset:
     """Wrapper for Langfuse datasets with validation and error handling."""
     
-    def __init__(self, client: Langfuse, dataset_name: str):
+    def __init__(self, client: Any, dataset_name: str):
         """
         Initialize dataset wrapper.
         

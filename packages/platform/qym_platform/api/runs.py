@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from sqlalchemy import case, func
+from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -27,6 +27,7 @@ from qym_platform.db.models import (
     RunItem,
     RunItemScore,
     RunWorkflowStatus,
+    Span,
     User,
     UserRole,
 )
@@ -1064,6 +1065,11 @@ def delete_run(
         raise HTTPException(status_code=403, detail="Permission denied")
 
     # Delete related data first (foreign key constraints)
+    # Clean up spans table (created by tracing, not in ORM models)
+    try:
+        db.execute(text("DELETE FROM spans WHERE run_id = :rid"), {"rid": run.id})
+    except Exception:
+        pass  # Table may not exist in all deployments
     db.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).delete()
     db.query(RootCauseRevision).filter(RootCauseRevision.run_id == run.id).delete()
     db.query(RunItemScore).filter(RunItemScore.run_id == run.id).delete()
@@ -1155,3 +1161,79 @@ def reject_run(
     run.status = RunWorkflowStatus.REJECTED
     db.commit()
     return {"ok": True, "status": run.status}
+
+
+# ---------------------------------------------------------------------------
+# Spans (OTEL trace data)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/runs/{run_id}/spans")
+def get_run_spans(
+    run_id: str,
+    db: Session = Depends(get_db),
+):
+    """Return all OTEL spans captured for a run, ordered by start time."""
+    spans = (
+        db.query(Span)
+        .filter(Span.run_id == run_id)
+        .order_by(Span.start_time_ns.asc().nullslast())
+        .all()
+    )
+    return {
+        "spans": [
+            {
+                "trace_id": s.trace_id,
+                "span_id": s.span_id,
+                "parent_span_id": s.parent_span_id,
+                "name": s.name,
+                "kind": s.kind,
+                "start_time_ns": s.start_time_ns,
+                "end_time_ns": s.end_time_ns,
+                "duration_ms": s.duration_ms,
+                "status": s.status,
+                "attributes": s.attributes,
+                "events": s.events,
+            }
+            for s in spans
+        ]
+    }
+
+
+@router.get("/api/runs/{run_id}/items/{item_id}/spans")
+def get_item_spans(
+    run_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+):
+    """Return OTEL spans for a specific run item, looked up via trace_id."""
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run_id, RunItem.item_id == item_id)
+        .first()
+    )
+    if not item or not item.trace_id:
+        return {"spans": []}
+    spans = (
+        db.query(Span)
+        .filter(Span.run_id == run_id, Span.trace_id == item.trace_id)
+        .order_by(Span.start_time_ns.asc().nullslast())
+        .all()
+    )
+    return {
+        "spans": [
+            {
+                "trace_id": s.trace_id,
+                "span_id": s.span_id,
+                "parent_span_id": s.parent_span_id,
+                "name": s.name,
+                "kind": s.kind,
+                "start_time_ns": s.start_time_ns,
+                "end_time_ns": s.end_time_ns,
+                "duration_ms": s.duration_ms,
+                "status": s.status,
+                "attributes": s.attributes,
+                "events": s.events,
+            }
+            for s in spans
+        ]
+    }

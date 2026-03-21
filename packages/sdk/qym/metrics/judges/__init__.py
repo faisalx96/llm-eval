@@ -5,7 +5,7 @@ label, and explanation.  They all use ``response_format={"type": "json_object"}`
 with OpenAI-compatible APIs (including vLLM).
 """
 
-from .base import create_judge, llm_judge, snap_to_rail
+from .base import create_judge, create_pairwise_judge, llm_judge, snap_to_rail
 from .faithfulness import faithfulness_llm
 from .relevance import relevance
 from .toxicity import toxicity
@@ -27,6 +27,7 @@ judge_metrics = {
 
 __all__ = [
     "create_judge",
+    "create_pairwise_judge",
     "llm_judge",
     "snap_to_rail",
     "judge_metrics",

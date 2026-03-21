@@ -7,7 +7,6 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Callable, Dict, Tuple, List
-from langfuse import Langfuse
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class TaskAdapter(ABC):
     """Base class for task adapters."""
     
-    def __init__(self, task: Any, client: Optional[Langfuse]):
+    def __init__(self, task: Any, client: Optional[Any]):
         self.task = task
         self.client = client
         self._warning_callback: Optional[Callable[[str], None]] = None
@@ -42,7 +41,7 @@ class FunctionAdapter(TaskAdapter):
     _PROBE_INITIAL = 3
     _PROBE_INTERVAL = 50
 
-    def __init__(self, task: Any, client: Langfuse):
+    def __init__(self, task: Any, client: Optional[Any]):
         super().__init__(task, client)
         self._is_async = inspect.iscoroutinefunction(self.task)
         self._call_count = 0
@@ -331,7 +330,7 @@ class OpenAIAdapter(TaskAdapter):
             raise
 
 
-def auto_detect_task(task: Any, client: Optional[Langfuse]) -> TaskAdapter:
+def auto_detect_task(task: Any, client: Optional[Any]) -> TaskAdapter:
     """
     Auto-detect task type and return appropriate adapter.
     

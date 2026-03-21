@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qym"
-version = "0.8.4"
+version = "0.9.0"
 description = "Simple, automated LLM evaluation framework built on Langfuse"
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
-    "langfuse>=2.0.0",
+    "langfuse>=3.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "rich>=13.0.0",

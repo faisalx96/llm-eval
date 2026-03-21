@@ -41,8 +41,6 @@ class EvaluatorConfig(BaseModel):
 
     # OpenTelemetry / OpenLLMetry auto-instrumentation (optional)
     otel_enabled: bool = True  # auto-enable if traceloop-sdk installed; no-op if not
-    otel_endpoint: Optional[str] = None  # OTLP exporter endpoint
-    otel_headers: Optional[Dict[str, str]] = None  # auth headers for OTLP exporter
 
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None

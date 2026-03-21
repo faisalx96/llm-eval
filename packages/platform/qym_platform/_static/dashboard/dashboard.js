@@ -2321,11 +2321,12 @@
 
     empty.style.display = 'none';
 
-    populateMetricVisibility(state.allMetrics);
+    const availableMetrics = getAvailableMetricsForRuns(state.filteredRuns);
+    populateMetricVisibility(availableMetrics);
 
     const displayTools = el('display-tools');
     const metricVisibilityDropdown = el('metric-visibility-dropdown');
-    const showDisplayTools = state.currentView === 'table';
+    const showDisplayTools = state.currentView === 'table' || state.currentView === 'charts';
     if (displayTools) {
       displayTools.style.display = showDisplayTools ? 'flex' : 'none';
     }

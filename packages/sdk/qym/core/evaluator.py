@@ -17,7 +17,6 @@ import copy
 from contextlib import nullcontext
 import re
 
-from langfuse import Langfuse
 from rich.console import Console
 from rich.live import Live
 from rich.table import Table
@@ -31,7 +30,6 @@ from .checkpoint import (
     parse_metric_score,
     serialize_checkpoint_row,
 )
-from .dataset import LangfuseDataset
 from .progress import ProgressTracker, ProgressObserver
 from .observers import (
     EvaluationObserver,
@@ -165,7 +163,7 @@ class Evaluator:
         config: Optional[Union[Dict[str, Any], EvaluatorConfig]] = None,
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
-        langfuse_client: Optional[Langfuse] = None,
+        langfuse_client: Optional[Any] = None,
     ):
         """
         Initialize the evaluator.
@@ -191,9 +189,14 @@ class Evaluator:
         self._raw_metrics = list(metrics)
         self.metrics = self._prepare_metrics(metrics)
         
+        # Initialize OpenLLMetry auto-instrumentation FIRST so TracerProvider exists
+        # before Langfuse (which will attach its processor to the same provider).
+        from .otel import create_otel_manager
+        self._otel = create_otel_manager(self.config)
+
         # Initialize Langfuse client ONLY when credentials exist (or user provided a client).
         # This ensures CSV/local datasets work without requiring Langfuse setup.
-        self.client: Optional[Langfuse] = None
+        self.client: Optional[Any] = None
         self.langfuse_enabled: bool = False
         if langfuse_client is not None:
             self.client = langfuse_client
@@ -201,10 +204,6 @@ class Evaluator:
         elif self._langfuse_credentials_available():
             self.client = self._init_langfuse()
             self.langfuse_enabled = True
-
-        # Initialize OpenLLMetry auto-instrumentation (optional)
-        from .otel import create_otel_manager
-        self._otel = create_otel_manager(self.config)
 
         # Load and validate dataset
         if isinstance(dataset, str):
@@ -215,6 +214,7 @@ class Evaluator:
                     "Set LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY or pass langfuse_client, "
                     "or use a CSV dataset object / --dataset-csv."
                 )
+            from .dataset import LangfuseDataset
             self.dataset = LangfuseDataset(self.client, dataset)
         else:
             self.dataset = dataset
@@ -325,47 +325,20 @@ class Evaluator:
 
 
     def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
-        """Extract Langfuse trace_id and URL using SDK-documented methods.
+        """Extract trace_id and build Langfuse URL.
 
-        Prefers callable accessors (e.g., trace.trace_id()) and then attributes.
+        In Langfuse SDK v3, LangfuseSpan exposes .trace_id directly.
+        Falls back to .id for NullTrace or legacy objects.
         """
         meta: Dict[str, Any] = {"trace_id": None, "trace_url": None}
-        # trace_id: prefer method, then attribute fallbacks
         try:
-            if hasattr(trace, 'trace_id'):
-                ti = getattr(trace, 'trace_id')
-                meta["trace_id"] = str(ti() if callable(ti) else ti)
+            tid = getattr(trace, 'trace_id', None) or getattr(trace, 'id', None)
+            meta["trace_id"] = str(tid) if tid else None
         except Exception:
-            meta["trace_id"] = None
-        if not meta["trace_id"]:
-            for name in ("id", "traceId", "observation_id"):
-                try:
-                    if hasattr(trace, name):
-                        val = getattr(trace, name)
-                        if val:
-                            meta["trace_id"] = str(val)
-                            break
-                except Exception as e:
-                    logger.debug(f"Failed to extract trace_id from {name}: {e}")
-                    continue
-        # URL: try common getters, then attribute
-        url = None
-        for getter in ("get_trace_url", "get_url"):
-            if hasattr(trace, getter):
-                try:
-                    url = getattr(trace, getter)()
-                    if url:
-                        break
-                except Exception as e:
-                    logger.debug(f"Failed to get URL via {getter}: {e}")
-                    url = None
-        if not url and hasattr(trace, 'url'):
-            try:
-                url = trace.url
-            except Exception:
-                url = None
-        if url:
-            meta["trace_url"] = str(url)
+            pass
+        if meta["trace_id"] and getattr(self, 'langfuse_host', None) and getattr(self, 'langfuse_project_id', None):
+            host = self.langfuse_host.rstrip('/')
+            meta["trace_url"] = f"{host}/project/{self.langfuse_project_id}/traces/{meta['trace_id']}"
         return meta
 
     def _build_run_info(self, result: Optional[EvaluationResult] = None) -> Dict[str, Any]:
@@ -414,7 +387,7 @@ class Evaluator:
 
         return run_block
     
-    def _init_langfuse(self) -> Langfuse:
+    def _init_langfuse(self) -> Any:
         """Initialize Langfuse client with error handling."""
         # Auto-load .env file if it exists
         if os.path.exists('.env'):
@@ -448,12 +421,24 @@ class Evaluator:
             )
         
         try:
-            client = Langfuse(
+            from langfuse import Langfuse
+
+            # Pass traceloop's TracerProvider so Langfuse adds its span processor
+            # to the same provider — all spans (auto-instrumented + manual) flow
+            # through one provider to both Langfuse and QymSpanProcessor.
+            init_kwargs = dict(
                 public_key=public_key,
                 secret_key=secret_key,
                 host=host,
-                timeout=self.config.timeout
+                timeout=self.config.timeout,
+                # Filter out noisy HTTPX connection spans from Langfuse traces
+                blocked_instrumentation_scopes=["opentelemetry.instrumentation.httpx"],
             )
+            if self._otel.enabled:
+                from opentelemetry import trace as otel_trace
+                provider = otel_trace.get_tracer_provider()
+                init_kwargs["tracer_provider"] = provider
+            client = Langfuse(**init_kwargs)
             # Expose host for frontend links (default to cloud)
             try:
                 self.langfuse_host = host or 'https://cloud.langfuse.com'
@@ -487,6 +472,10 @@ class Evaluator:
                     "- LANGFUSE_HOST (if using custom instance)"
                 )
             raise LangfuseConnectionError(f"Failed to connect to Langfuse: {e}")
+
+    def _is_langfuse_dataset(self) -> bool:
+        """Check if current dataset is a LangfuseDataset without top-level import."""
+        return type(self.dataset).__name__ == "LangfuseDataset"
 
     def _langfuse_credentials_available(self) -> bool:
         """Return True if Langfuse credentials appear to be available from config/env.
@@ -602,21 +591,22 @@ class Evaluator:
         except KeyboardInterrupt:
             # asyncio.run() tears down the event loop on Ctrl+C before arun's
             # finalization code can send run_completed. Send STOPPED synchronously here.
-            print("[QYM-SDK] Interrupted — sending STOPPED to platform", flush=True)
-            stream = getattr(self, "_platform_stream", None)
-            if stream is not None:
-                try:
-                    stream.emit(
-                        "run_completed",
-                        {
-                            "ended_at": _utc_now_str(),
-                            "final_status": "STOPPED",
-                            "summary": {},
-                        },
-                        sync=True,
-                    )
-                except Exception:
-                    pass
+            if not getattr(self, "_run_completed", False):
+                print("[QYM-SDK] Interrupted — sending STOPPED to platform", flush=True)
+                stream = getattr(self, "_platform_stream", None)
+                if stream is not None:
+                    try:
+                        stream.emit(
+                            "run_completed",
+                            {
+                                "ended_at": _utc_now_str(),
+                                "final_status": "STOPPED",
+                                "summary": {},
+                            },
+                            sync=True,
+                        )
+                    except Exception:
+                        pass
             raise
 
         # Always print summary (silently no-op when disabled)
@@ -734,6 +724,9 @@ class Evaluator:
             )
             html_url = handle.live_url
             self._platform_stream = PlatformEventStream(platform_url=platform_url, api_key=platform_api_key, run_id=handle.run_id)
+            # Connect QymSpanProcessor to platform stream for local DB capture
+            if self._otel.enabled and self._otel.qym_processor:
+                self._otel.qym_processor.set_stream(self._platform_stream)
             # Seed run_started event (platform also has run record already; this is for richer metadata)
             try:
                 self._platform_stream.emit(
@@ -1099,8 +1092,8 @@ class Evaluator:
             result.html_url = html_url
 
         # Finalize remote streaming
+        self._run_completed = False
         _final_status = "STOPPED" if interrupted else "COMPLETED"
-        print(f"[QYM-SDK] Finalizing run: interrupted={interrupted} final_status={_final_status}", flush=True)
         if getattr(self, "_platform_stream", None) is not None:
             try:
                 # First, close the async queue to flush all pending item events
@@ -1126,9 +1119,10 @@ class Evaluator:
                     },
                     sync=True,  # Send synchronously to guarantee delivery
                 )
+                self._run_completed = True
             except Exception:
                 pass
-        
+
         # Auto-save if requested (message printed by save_* methods)
         if auto_save and not checkpoint_path:
             try:
@@ -1209,22 +1203,24 @@ class Evaluator:
                 )
             )
         except KeyboardInterrupt:
-            print("[QYM-SDK] Interrupted — sending STOPPED to platform for all active runs", flush=True)
-            for ev in getattr(runner, "_active_evaluators", []):
-                stream = getattr(ev, "_platform_stream", None)
-                if stream is not None:
-                    try:
-                        stream.emit(
-                            "run_completed",
-                            {
-                                "ended_at": _utc_now_str(),
-                                "final_status": "STOPPED",
-                                "summary": {},
-                            },
-                            sync=True,
-                        )
-                    except Exception:
-                        pass
+            incomplete = [ev for ev in getattr(runner, "_active_evaluators", []) if not getattr(ev, "_run_completed", False)]
+            if incomplete:
+                print(f"[QYM-SDK] Interrupted — sending STOPPED for {len(incomplete)} incomplete run(s)", flush=True)
+                for ev in incomplete:
+                    stream = getattr(ev, "_platform_stream", None)
+                    if stream is not None:
+                        try:
+                            stream.emit(
+                                "run_completed",
+                                {
+                                    "ended_at": _utc_now_str(),
+                                    "final_status": "STOPPED",
+                                    "summary": {},
+                                },
+                                sync=True,
+                            )
+                        except Exception:
+                            pass
             raise
 
         runner.print_summary(results)
@@ -1374,12 +1370,14 @@ class Evaluator:
                 },
             )
 
-            # Create Langfuse span first (this is the trace root in Langfuse).
-            # Then create an OTEL span linked to the same trace_id so auto-instrumented
-            # LLM and tool calls appear as children of the task in one unified trace.
+            # Create a single Langfuse span that is also the active OTEL span.
+            # In Langfuse SDK v3, spans ARE OTEL spans, so auto-instrumented
+            # LLM calls (via traceloop) nest as children automatically.
             item_metadata = getattr(item, 'metadata', {})
+            span_ctx = None
+            task_span_ctx = None
             if self.client:
-                span = self.client.start_span(
+                span_ctx = self.client.start_as_current_span(
                     name=f"eval-{self.run_name}-item-{index}",
                     input=item.input,
                     metadata={
@@ -1390,6 +1388,12 @@ class Evaluator:
                         "item_metadata": item_metadata,
                     },
                 )
+                span = span_ctx.__enter__()
+                # Rename the auto-created trace to distinguish from the span
+                try:
+                    span.update_trace(name=f"qym | {self.run_name} | item-{index}")
+                except Exception:
+                    pass
             else:
                 span = NullTrace(
                     name=f"eval-{self.run_name}-item-{index}",
@@ -1403,55 +1407,65 @@ class Evaluator:
                     },
                 )
 
-            # Extract trace metadata (including trace_id for OTEL linking)
+            # Extract trace metadata
             try:
                 meta = self._extract_trace_meta(span)
             except Exception:
                 pass
 
-            # Execute task with timeout and optional retry.
-            # OTEL span wraps the task execution, linked to the Langfuse trace_id
-            # so openai.chat and tool spans nest under the task name.
+            # Create a child span for the task function so LLM calls nest under it.
             task_name = getattr(self.task_adapter.task, "__name__", "task")
-            langfuse_trace_id = meta.get("trace_id") if meta else None
+            task_span = None
+            if self.client:
+                try:
+                    task_span_ctx = span.start_as_current_span(
+                        name=task_name,
+                        input=item.input,
+                    )
+                    task_span = task_span_ctx.__enter__()
+                except Exception:
+                    task_span_ctx = None
+
+            # Execute task with timeout and optional retry.
             task_started_at_ms = int(time.time() * 1000)
             task_start_time = time.time()
             last_error = None
             output = None
-            with self._otel.span(
-                name=task_name,
-                attributes={
-                    "qym.run_name": self.run_name or "",
-                    "qym.item_index": index,
-                    "qym.dataset": self.dataset_name or "",
-                    "qym.model": self.model_name or "",
-                },
-                trace_id=langfuse_trace_id,
-            ):
-                for _attempt in range(1 + self.max_retries):
-                    try:
-                        coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
-                        if self.timeout is not None:
-                            output = await asyncio.wait_for(coro, timeout=self.timeout)
-                        else:
-                            output = await coro
-                        last_error = None
-                        break
-                    except asyncio.TimeoutError:
-                        last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
-                        logger.warning(f"Item {index}: {last_error}")
-                    except Exception as e:
-                        last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
-                        logger.warning(f"Item {index}: {last_error}")
-                    # Exponential backoff with jitter before next retry
-                    if _attempt < self.max_retries and last_error is not None:
-                        base_delay = min(2 ** _attempt, 30)  # 1s, 2s, 4s, ... capped at 30s
-                        jitter = random.uniform(0, base_delay * 0.5)
-                        await asyncio.sleep(base_delay + jitter)
+            for _attempt in range(1 + self.max_retries):
+                try:
+                    coro = self.task_adapter.arun(item.input, span, model_name=self.model_name_full)
+                    if self.timeout is not None:
+                        output = await asyncio.wait_for(coro, timeout=self.timeout)
+                    else:
+                        output = await coro
+                    last_error = None
+                    break
+                except asyncio.TimeoutError:
+                    last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
+                    logger.warning(f"Item {index}: {last_error}")
+                except Exception as e:
+                    last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
+                    logger.warning(f"Item {index}: {last_error}")
+                # Exponential backoff with jitter before next retry
+                if _attempt < self.max_retries and last_error is not None:
+                    base_delay = min(2 ** _attempt, 30)  # 1s, 2s, 4s, ... capped at 30s
+                    jitter = random.uniform(0, base_delay * 0.5)
+                    await asyncio.sleep(base_delay + jitter)
             retry_count = _attempt  # 0 = succeeded first try, 1 = one retry, etc.
             if last_error is not None:
                 raise RuntimeError(last_error)
             task_elapsed_time = time.time() - task_start_time
+
+            # End task function span (before metrics, so metrics are siblings not children)
+            if task_span_ctx:
+                try:
+                    if task_span:
+                        task_span.update(output=output)
+                    task_span_ctx.__exit__(None, None, None)
+                except Exception:
+                    pass
+                task_span_ctx = None
+                task_span = None
 
             # Update span with output
             try:
@@ -1611,14 +1625,18 @@ class Evaluator:
 
             # End the span (queues finalization, non-blocking)
             try:
-                span.end()
+                if span_ctx:
+                    span_ctx.__exit__(None, None, None)
+                    span_ctx = None  # prevent double-exit in finally
+                else:
+                    span.end()
             except Exception:
                 pass
 
             # Link to Langfuse dataset run item only for Langfuse datasets (even if tracing is enabled for CSV).
             dataset_item_id = getattr(item, 'id', None)
             trace_id = meta.get('trace_id')
-            if isinstance(self.dataset, LangfuseDataset) and self.client and dataset_item_id and trace_id:
+            if self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id:
                 try:
                     from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
                     response = await self.client.async_api.dataset_run_items.create(
@@ -1744,18 +1762,29 @@ class Evaluator:
             }
 
         except Exception as e:
+            # End task function span on error
+            if task_span_ctx:
+                try:
+                    task_span_ctx.__exit__(type(e), e, e.__traceback__)
+                except Exception:
+                    pass
+                task_span_ctx = None
             # End span on error
             if span:
                 try:
                     span.update(output={"error": str(e)}, level="ERROR", status_message=str(e))
-                    span.end()
+                    if span_ctx:
+                        span_ctx.__exit__(type(e), e, e.__traceback__)
+                        span_ctx = None
+                    else:
+                        span.end()
                 except Exception:
                     pass
 
                 # Link to dataset run item even on error (Langfuse datasets only)
                 dataset_item_id = getattr(item, 'id', None)
                 trace_id = meta.get('trace_id')
-                if isinstance(self.dataset, LangfuseDataset) and self.client and dataset_item_id and trace_id:
+                if self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id:
                     try:
                         from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
                         response = await self.client.async_api.dataset_run_items.create(

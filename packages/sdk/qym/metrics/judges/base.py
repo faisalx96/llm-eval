@@ -60,6 +60,37 @@ async def _call_with_retry(client, *, model, messages, temperature, max_tokens, 
     raise last_exc
 
 
+def _parse_verdict(raw_text: str, choices: Dict[str, float]):
+    """Try to extract verdict and explanation from LLM response.
+
+    Returns (verdict, explanation) where verdict is a key from choices,
+    or (None, None) if parsing fails.
+    """
+    verdict: Optional[str] = None
+    explanation: Optional[str] = None
+
+    try:
+        parsed = json.loads(raw_text)
+        verdict = parsed.get("verdict")
+        explanation = parsed.get("explanation")
+    except (json.JSONDecodeError, TypeError):
+        return None, None
+
+    if not verdict:
+        return None, explanation
+
+    # Exact match
+    if verdict in choices:
+        return verdict, explanation
+
+    # Case-insensitive match
+    for key in choices:
+        if key.lower() == verdict.lower():
+            return key, explanation
+
+    return None, explanation
+
+
 async def llm_judge(
     *,
     system_prompt: str,
@@ -106,49 +137,51 @@ async def llm_judge(
         )
 
     # --- Parse response ---
-    verdict: Optional[str] = None
-    explanation: Optional[str] = None
+    verdict, explanation = _parse_verdict(raw_text, choices)
 
-    try:
-        parsed = json.loads(raw_text)
-        verdict = parsed.get("verdict")
-        explanation = parsed.get("explanation")
-    except (json.JSONDecodeError, TypeError):
-        verdict = snap_to_rail(raw_text, list(choices.keys()))
+    if verdict is None:
+        # JSON parse failed — retry once with a stricter nudge
+        labels = ", ".join(f'"{k}"' for k in choices)
+        try:
+            retry_response = await _call_with_retry(
+                client,
+                model=cfg.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": raw_text},
+                    {"role": "user", "content": f'Your response was not valid JSON. Respond with ONLY a JSON object: {{"verdict": one of [{labels}], "explanation": "your reasoning"}}'},
+                ],
+                temperature=cfg.temperature,
+                max_tokens=cfg.max_tokens,
+                max_attempts=1,
+            )
+            retry_text = retry_response.choices[0].message.content or ""
+            verdict, explanation = _parse_verdict(retry_text, choices)
+        except Exception:
+            pass  # Fall through to snap_to_rail
 
-    if verdict and verdict in choices:
+    if verdict is None:
+        # Last resort: snap_to_rail on original raw text
+        snapped = snap_to_rail(raw_text, list(choices.keys()))
+        if snapped:
+            return MetricResult(
+                score=choices[snapped],
+                label=snapped,
+                explanation=explanation,
+                kind="llm",
+            )
         return MetricResult(
-            score=choices[verdict],
-            label=verdict,
-            explanation=explanation,
+            score=0.0,
             kind="llm",
-        )
-
-    # Case-insensitive match
-    if verdict:
-        for key in choices:
-            if key.lower() == verdict.lower():
-                return MetricResult(
-                    score=choices[key],
-                    label=key,
-                    explanation=explanation,
-                    kind="llm",
-                )
-
-    # Last resort: snap_to_rail on raw text
-    snapped = snap_to_rail(raw_text, list(choices.keys()))
-    if snapped:
-        return MetricResult(
-            score=choices[snapped],
-            label=snapped,
-            explanation=explanation,
-            kind="llm",
+            metadata={"error": "Could not parse LLM verdict", "raw_response": raw_text},
         )
 
     return MetricResult(
-        score=0.0,
+        score=choices[verdict],
+        label=verdict,
+        explanation=explanation,
         kind="llm",
-        metadata={"error": "Could not parse LLM verdict", "raw_response": raw_text},
     )
 
 
@@ -239,6 +272,97 @@ def create_judge(
             system_prompt=sys_prompt,
             user_prompt=user_prompt,
             choices=choices,
+            config=cfg,
+        )
+
+    _metric.__name__ = name
+    _metric.__qualname__ = name
+    return _metric
+
+
+def create_pairwise_judge(
+    name: str,
+    prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    judge_model: Optional[str] = None,
+    judge_base_url: Optional[str] = None,
+    judge_api_key: Optional[str] = None,
+) -> Callable:
+    """Pairwise comparison judge factory.
+
+    Instead of scoring a single output, compares two outputs (A vs B) and
+    returns which is better. More reliable than absolute scoring per research.
+
+    The *prompt* template uses ``{variable}`` syntax. In addition to the
+    standard variables (``{expected}``, ``{input}``, and any key from
+    *input_data*), two special variables are available:
+
+    * ``{output_a}`` — the first output (from the item being evaluated)
+    * ``{output_b}`` — the second output (from ``expected`` or ``input_data["output_b"]``)
+
+    The judge is asked to return ``{"verdict": "A"|"B"|"tie", "explanation": "..."}``.
+
+    Returns a metric function with signature
+    ``(output, expected, input_data) -> MetricResult`` where:
+    - score 1.0 = A wins, 0.5 = tie, 0.0 = B wins
+    - label = "A", "B", or "tie"
+    """
+    PAIRWISE_SYSTEM = system_prompt or (
+        "You are an expert evaluation judge. You will be shown two responses (A and B) "
+        "to the same question. Compare them according to the criteria given by the user. "
+        "Respond ONLY with a JSON object containing two keys: "
+        '"verdict" (one of "A", "B", or "tie") and "explanation" '
+        "(a brief justification for your choice). Do not include any other text."
+    )
+
+    pairwise_choices = {"A": 1.0, "B": 0.0, "tie": 0.5}
+
+    _cfg_overrides: Dict[str, Any] = {}
+    if judge_model is not None:
+        _cfg_overrides["model"] = judge_model
+    if judge_base_url is not None:
+        _cfg_overrides["base_url"] = judge_base_url
+    if judge_api_key is not None:
+        _cfg_overrides["api_key"] = judge_api_key
+
+    async def _metric(output: Any, expected: Any = None, input_data: Any = None) -> MetricResult:
+        cfg = None
+        if _cfg_overrides:
+            base = get_default_judge_config()
+            cfg = JudgeConfig(
+                model=_cfg_overrides.get("model", base.model),
+                base_url=_cfg_overrides.get("base_url", base.base_url),
+                api_key=_cfg_overrides.get("api_key", base.api_key),
+                temperature=base.temperature,
+                max_tokens=base.max_tokens,
+                timeout=base.timeout,
+            )
+
+        # Resolve output_b: prefer input_data["output_b"], fall back to expected
+        output_b = None
+        if isinstance(input_data, dict):
+            output_b = input_data.get("output_b")
+        if output_b is None:
+            output_b = expected
+
+        # Build substitution dict
+        subs: Dict[str, str] = {
+            "output_a": str(output) if output is not None else "",
+            "output_b": str(output_b) if output_b is not None else "",
+            "expected": str(expected) if expected is not None else "",
+            "input": str(input_data) if input_data is not None else "",
+        }
+        if isinstance(input_data, dict):
+            for k, v in input_data.items():
+                subs.setdefault(k, str(v) if v is not None else "")
+
+        user_prompt = _safe_substitute(prompt, subs)
+
+        return await llm_judge(
+            system_prompt=PAIRWISE_SYSTEM,
+            user_prompt=user_prompt,
+            choices=pairwise_choices,
             config=cfg,
         )
 

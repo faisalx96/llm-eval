@@ -15,6 +15,7 @@ RunEventType = Literal[
     "item_failed",
     "run_completed",
     "metadata_update",
+    "span_completed",
 ]
 
 
@@ -83,6 +84,21 @@ class MetadataUpdatePayload(BaseModel):
     extra: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SpanCompletedPayload(BaseModel):
+    """OTEL span data for local DB storage."""
+    trace_id: str
+    span_id: str
+    parent_span_id: Optional[str] = None
+    name: str
+    kind: str = "INTERNAL"
+    start_time_ns: Optional[int] = None
+    end_time_ns: Optional[int] = None
+    duration_ms: Optional[float] = None
+    status: str = "UNSET"
+    attributes: Dict[str, Any] = Field(default_factory=dict)
+    events: list[Dict[str, Any]] = Field(default_factory=list)
+
+
 RunEventPayload = Union[
     RunStartedPayload,
     ItemStartedPayload,
@@ -91,6 +107,7 @@ RunEventPayload = Union[
     ItemFailedPayload,
     RunCompletedPayload,
     MetadataUpdatePayload,
+    SpanCompletedPayload,
 ]
 
 

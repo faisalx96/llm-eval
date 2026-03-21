@@ -293,6 +293,18 @@ class MultiModelRunner:
             summary = ", ".join(f"{spec.name}: {err}" for spec, err in errors)
             raise RuntimeError(f"One or more runs failed: {summary}")
 
+        # Force-close any remaining PlatformEventStream threads to prevent hang.
+        # Each evaluator's arun() already called close(), but if any are stuck
+        # (retry loops, network issues), force them to stop.
+        for ev in _active_evaluators:
+            stream = getattr(ev, "_platform_stream", None)
+            if stream is not None:
+                try:
+                    if hasattr(stream, '_stop'):
+                        stream._stop.set()  # Signal the background thread to exit
+                except Exception:
+                    pass
+
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
         try:
             executor = loop.get_default_executor()

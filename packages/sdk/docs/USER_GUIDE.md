@@ -374,7 +374,52 @@ toxicity_local = create_judge(
 )
 ```
 
-See the [Metrics Guide](METRICS_GUIDE.md#llm-as-judge-metrics) for full details on configuration and the factory API.
+**Pairwise comparison judges** — instead of scoring one output on an absolute scale, compare two outputs and decide which is better. Research shows LLMs are more reliable at relative comparison than absolute scoring.
+
+```python
+from qym.metrics.judges import create_pairwise_judge
+
+compare_quality = create_pairwise_judge(
+    name="compare_quality",
+    prompt="""\
+Compare these two responses to the same question.
+
+[Question]: {question}
+[Response A]: {output_a}
+[Response B]: {output_b}
+
+Which response is better? Consider accuracy, completeness, and clarity.
+Answer A, B, or tie.""",
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=[compare_quality],
+)
+```
+
+The pairwise judge returns:
+- `score` — `1.0` (A wins), `0.5` (tie), `0.0` (B wins)
+- `label` — `"A"`, `"B"`, or `"tie"`
+- `explanation` — the LLM's reasoning
+
+**Where do A and B come from?**
+- `{output_a}` is always your task's output (the thing being evaluated)
+- `{output_b}` comes from one of two places:
+  1. **Default:** the dataset's `expected` field — useful for comparing your model's output against a gold-standard answer
+  2. **Explicit:** `input_data["output_b"]` — useful for comparing two models' outputs on the same input. Add an `output_b` column to your CSV dataset with the baseline model's response.
+
+```python
+# Example CSV dataset for pairwise comparison:
+# id, question, expected, output_b
+# 1, "What is 2+2?", "4", "The answer is four."
+#
+# Your task produces output_a. The CSV provides output_b.
+# The judge compares them.
+```
+
+See the [Metrics Guide](METRICS_GUIDE.md#pairwise-comparison-judges) for full details.
 
 ### Custom Metrics
 

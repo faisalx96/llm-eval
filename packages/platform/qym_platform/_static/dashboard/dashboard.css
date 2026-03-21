@@ -64,6 +64,9 @@
   --font-md: 15px;
   --font-lg: 17px;
 
+  /* Shared width for the charts view label/control column */
+  --chart-first-col-width: 320px;
+
   /* Mono font for data */
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
@@ -1088,6 +1091,7 @@ html {
 main {
   flex: 1;
   overflow: auto;
+  min-height: 0;
   background: var(--bg-base);
 }
 
@@ -1400,8 +1404,8 @@ main {
 }
 
 .chart-col-header-run {
-  width: 240px;
-  min-width: 240px;
+  width: var(--chart-first-col-width);
+  min-width: var(--chart-first-col-width);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1529,8 +1533,8 @@ main {
 }
 
 .chart-bar-label {
-  width: 240px;
-  min-width: 240px;
+  width: var(--chart-first-col-width);
+  min-width: var(--chart-first-col-width);
   font-size: var(--font-sm);
   font-family: var(--font-mono);
   color: var(--text-secondary);
@@ -1669,10 +1673,10 @@ main {
   background: var(--bg-elevated, rgba(128, 128, 128, 0.1));
 }
 
-/* First column in group header: matches .chart-bar-label width (240px) */
+/* First column in group header: matches the shared charts first-column width */
 .chart-group-first-col {
-  width: 240px;
-  min-width: 240px;
+  width: var(--chart-first-col-width);
+  min-width: var(--chart-first-col-width);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -1898,11 +1902,20 @@ main {
    ═══════════════════════════════════════════════════ */
 
 .table-container {
-  overflow-x: auto;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
 }
 
 .runs-table {
-  width: 100%;
+  --runs-col-select-width: 40px;
+  --runs-col-status-width: 168px;
+  --runs-col-run-width: 220px;
+  --runs-col-task-width: 180px;
+  --runs-col-model-width: 220px;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--font-base);
@@ -1914,13 +1927,10 @@ main {
   padding: 8px 12px;
 }
 
-.runs-table thead {
+.runs-table th {
   position: sticky;
   top: 0;
   z-index: 10;
-}
-
-.runs-table th {
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-strong);
   text-align: left;
@@ -1999,7 +2009,9 @@ main {
 
 /* Column-specific styles */
 .col-select {
-  width: 40px;
+  width: var(--runs-col-select-width);
+  min-width: var(--runs-col-select-width);
+  max-width: var(--runs-col-select-width);
 }
 
 /* Custom Checkbox styling */
@@ -2064,6 +2076,9 @@ main {
 
 
 .col-status {
+  width: var(--runs-col-status-width);
+  min-width: var(--runs-col-status-width);
+  max-width: var(--runs-col-status-width);
   white-space: nowrap;
 }
 
@@ -2076,7 +2091,9 @@ main {
 }
 
 .col-run {
-  min-width: 180px;
+  width: var(--runs-col-run-width);
+  min-width: var(--runs-col-run-width);
+  max-width: var(--runs-col-run-width);
 }
 
 .run-id {
@@ -2108,7 +2125,16 @@ main {
   white-space: nowrap;
 }
 
+.col-task {
+  width: var(--runs-col-task-width);
+  min-width: var(--runs-col-task-width);
+  max-width: var(--runs-col-task-width);
+}
+
 .col-model {
+  width: var(--runs-col-model-width);
+  min-width: var(--runs-col-model-width);
+  max-width: var(--runs-col-model-width);
   white-space: nowrap;
 }
 
@@ -2134,37 +2160,26 @@ main {
   position: sticky;
   left: 0;
   z-index: 2;
-  width: 40px;
-  min-width: 40px;
-  max-width: 40px;
 }
 .runs-table .col-status {
   position: sticky;
-  left: 40px;
+  left: var(--runs-col-select-width);
   z-index: 2;
-  width: 100px;
-  min-width: 100px;
 }
 .runs-table .col-run {
   position: sticky;
-  left: 140px;
+  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width));
   z-index: 2;
-  min-width: 180px;
-  max-width: 180px;
 }
 .runs-table .col-task {
   position: sticky;
-  left: 320px;
+  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width) + var(--runs-col-run-width));
   z-index: 2;
-  width: 120px;
-  min-width: 120px;
 }
 .runs-table .col-model {
   position: sticky;
-  left: 440px;
+  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width));
   z-index: 2;
-  width: 120px;
-  min-width: 120px;
   box-shadow: 4px 0 8px rgba(0, 0, 0, 0.25);
 }
 

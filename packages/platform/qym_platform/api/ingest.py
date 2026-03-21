@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_api_key_principal
-from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus
+from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
 from qym_platform.deps import get_db
 from qym_platform.events import (
     ItemCompletedPayload,
@@ -38,6 +38,7 @@ from qym_platform.events import (
     RunCompletedPayload,
     RunEventV1,
     RunStartedPayload,
+    SpanCompletedPayload,
 )
 from qym_platform.item_identity import build_identity_fingerprint, looks_like_positional_item_id
 from qym_platform.settings import PlatformSettings
@@ -155,6 +156,7 @@ async def ingest_events(
             "item_failed": ItemFailedPayload,
             "run_completed": RunCompletedPayload,
             "metadata_update": MetadataUpdatePayload,
+            "span_completed": SpanCompletedPayload,
         }
         payload_cls = _PAYLOAD_TYPE.get(evt.type)
         payload = payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
@@ -316,6 +318,28 @@ async def ingest_events(
                 updates.update(payload.extra)
             if updates:
                 run.run_metadata = {**current, **updates}
+
+        elif isinstance(payload, SpanCompletedPayload):
+            # Store OTEL span data for native trace viewing
+            existing = db.query(Span).filter(
+                Span.run_id == run_id,
+                Span.span_id == payload.span_id,
+            ).first()
+            if not existing:
+                db.add(Span(
+                    run_id=run_id,
+                    trace_id=payload.trace_id,
+                    span_id=payload.span_id,
+                    parent_span_id=payload.parent_span_id,
+                    name=payload.name,
+                    kind=payload.kind,
+                    start_time_ns=payload.start_time_ns,
+                    end_time_ns=payload.end_time_ns,
+                    duration_ms=payload.duration_ms,
+                    status=payload.status,
+                    attributes=_sanitize_for_json(payload.attributes),
+                    events=_sanitize_for_json(payload.events),
+                ))
 
         applied += 1
 

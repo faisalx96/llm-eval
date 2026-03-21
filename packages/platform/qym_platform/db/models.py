@@ -6,6 +6,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     JSON,
     Boolean,
     DateTime,
@@ -280,6 +281,31 @@ class RunEvent(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "event_id", name="uq_run_event_event_id"),
         UniqueConstraint("run_id", "sequence", name="uq_run_event_sequence"),
+    )
+
+
+class Span(Base):
+    """OTEL span data captured from evaluations for native trace storage."""
+
+    __tablename__ = "spans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    trace_id: Mapped[str] = mapped_column(String(64))
+    span_id: Mapped[str] = mapped_column(String(32))
+    parent_span_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    name: Mapped[str] = mapped_column(String(500))
+    kind: Mapped[str] = mapped_column(String(20), default="INTERNAL")
+    start_time_ns: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    end_time_ns: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    duration_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="UNSET")
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    events: Mapped[list] = mapped_column(JSON, default=list)
+
+    __table_args__ = (
+        Index("ix_span_run_trace", "run_id", "trace_id"),
+        UniqueConstraint("run_id", "span_id", name="uq_span"),
     )
 
 
