@@ -29,19 +29,19 @@
     selected: null,
     search: "",
     activeTab: null,
-    viewMode: "formatted",  // "formatted" (structured key-value) or "raw" (syntax-highlighted JSON)
+    viewMode: "raw",  // "formatted" (structured key-value) or "raw" (syntax-highlighted JSON)
   };
 
   /* ── icons (inline SVG, 16×16) ── */
   const ICONS = {
-    LLM:       `<svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5a2 2 0 0 1 2 2v1a2 2 0 0 1-4 0v-1a2 2 0 0 1 2-2Zm-3.5 6A1.5 1.5 0 0 1 6 6h4a1.5 1.5 0 0 1 1.5 1.5v4a3.5 3.5 0 0 1-7 0v-4Z" fill="currentColor" opacity=".85"/></svg>`,
-    TOOL:      `<svg viewBox="0 0 16 16" fill="none"><path d="M6.5 1a.5.5 0 0 1 .5.5V3h2V1.5a.5.5 0 0 1 1 0V3h1.5A1.5 1.5 0 0 1 13 4.5V6h1.5a.5.5 0 0 1 0 1H13v2h1.5a.5.5 0 0 1 0 1H13v1.5a1.5 1.5 0 0 1-1.5 1.5H10v1.5a.5.5 0 0 1-1 0V13H7v1.5a.5.5 0 0 1-1 0V13H4.5A1.5 1.5 0 0 1 3 11.5V10H1.5a.5.5 0 0 1 0-1H3V7H1.5a.5.5 0 0 1 0-1H3V4.5A1.5 1.5 0 0 1 4.5 3H6V1.5a.5.5 0 0 1 .5-.5ZM5 5.5v5a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 .5-.5v-5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0-.5.5Z" fill="currentColor" opacity=".85"/></svg>`,
-    AGENT:     `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" fill="currentColor" opacity=".7"/><path d="M3 13.5C3 11 5.2 9 8 9s5 2 5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>`,
-    CHAIN:     `<svg viewBox="0 0 16 16" fill="none"><path d="M6.354 3.818a3 3 0 0 1 4.243 0l1.585 1.586a3 3 0 0 1 0 4.243l-.707.707a1 1 0 0 1-1.414-1.414l.707-.707a1 1 0 0 0 0-1.415L9.183 5.233a1 1 0 0 0-1.415 0l-.707.707A1 1 0 0 1 5.647 4.525l.707-.707Zm-2.536 3.84a1 1 0 0 1 0 1.415l-1.586 1.585a1 1 0 0 0 0 1.414l1.586 1.586a1 1 0 0 0 1.414 0l.707-.707a1 1 0 0 1 1.414 1.414l-.707.707a3 3 0 0 1-4.242 0L.818 11.487a3 3 0 0 1 0-4.243l1.586-1.585a1 1 0 0 1 1.414 0Z" fill="currentColor" opacity=".85"/></svg>`,
-    EVALUATOR: `<svg viewBox="0 0 16 16" fill="none"><path d="M8 1l2.35 4.76 5.25.76-3.8 3.7.9 5.24L8 13.27l-4.7 2.5.9-5.25-3.8-3.7 5.25-.76Z" fill="currentColor" opacity=".75"/></svg>`,
-    RETRIEVER: `<svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-    EMBED:     `<svg viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity=".6"/></svg>`,
-    DEFAULT:   `<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" fill="currentColor" opacity=".5"/></svg>`,
+    LLM:       `<svg viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="8.5" rx="2" fill="currentColor"/><polygon points="5,10.5 5,14 8.5,10.5" fill="currentColor"/></svg>`,
+    TOOL:      `<svg viewBox="0 0 16 16"><path d="M9.7 7.7L5.3 12.1a1.6 1.6 0 0 1-2.3 0l-.1-.1a1.6 1.6 0 0 1 0-2.3l4.4-4.4a3.2 3.2 0 0 1 4.6-3.7L10 3.5l.3 1.2 1.2.3 1.9-1.9a3.2 3.2 0 0 1-3.7 4.6z" fill="currentColor"/></svg>`,
+    AGENT:     `<svg viewBox="0 0 16 16"><circle cx="8" cy="4" r="3" fill="currentColor"/><path d="M2.5 14.5c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5z" fill="currentColor" opacity=".75"/></svg>`,
+    CHAIN:     `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 9l-1.2 1.2a2.4 2.4 0 0 1-3.4-3.4L5.2 4a2.4 2.4 0 0 1 3.4 3.4"/><path d="M9 7l1.2-1.2a2.4 2.4 0 0 1 3.4 3.4L10.8 12a2.4 2.4 0 0 1-3.4-3.4"/></svg>`,
+    EVALUATOR: `<svg viewBox="0 0 16 16"><path d="M8 1.5l2 4 4.4.7-3.2 3.1.75 4.4L8 11.5l-3.95 2.2.75-4.4-3.2-3.1L7 5.5z" fill="currentColor"/></svg>`,
+    RETRIEVER: `<svg viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4.3" fill="currentColor" opacity=".3"/><circle cx="6.8" cy="6.8" r="2.5" fill="currentColor"/><rect x="10" y="10.2" width="2.2" height="4.5" rx="1" transform="rotate(-45 11 12.5)" fill="currentColor"/></svg>`,
+    EMBED:     `<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".85"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".45"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".45"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".85"/></svg>`,
+    DEFAULT:   `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5" fill="currentColor" opacity=".7"/></svg>`,
   };
 
   const KIND_COLORS = {
@@ -58,18 +58,15 @@
     if (ms == null) return "—";
     const n = Number(ms);
     if (!Number.isFinite(n)) return "—";
-    if (n >= 1000) return (n/1000).toFixed(n>=10000?1:2) + "s";
-    if (n >= 10) return n.toFixed(1) + "ms";
-    if (n >= 1) return n.toFixed(2) + "ms";
-    return n.toFixed(3) + "ms";
+    if (n >= 1000) return (n/1000).toFixed(1) + "s";
+    return Math.round(n) + "ms";
   }
 
   function fmtTokens(n) {
     if (n == null) return null;
     const num = Number(n);
     if (!Number.isFinite(num)) return null;
-    if (num >= 1000) return (num/1000).toFixed(1) + "k";
-    return String(num);
+    return num.toLocaleString("en-US");
   }
 
   function fmtCost(n) {
@@ -274,11 +271,6 @@
 
     S.el.meta.innerHTML = chips;
 
-    // External link
-    const url = meta.traceUrl || item.trace_url;
-    if (url) { S.el.link.href = url; S.el.link.style.display = ""; }
-    else { S.el.link.removeAttribute("href"); S.el.link.style.display = "none"; }
-
     // Warning
     if (sum.has_orphans) { S.el.warning.textContent = `${sum.orphan_count} orphan span${sum.orphan_count===1?"":"s"}`; S.el.warning.style.display = ""; }
     else { S.el.warning.style.display = "none"; }
@@ -296,13 +288,12 @@
     const bounds = computeBounds(S.data);
     const rows = [];
 
-    function visit(node) {
+    function visit(node, isLast, prefix) {
       if (!node._visible) return;
       const kids = node._children || [];
       const exp = S.expanded.has(node.span_id);
       const sel = S.selected === node.span_id;
       const kind = spanKind(node);
-      const model = spanModel(node);
       const tokens = spanTokens(node);
       const color = KIND_COLORS[kind] || KIND_COLORS.DEFAULT;
 
@@ -313,30 +304,49 @@
       width = Math.max(width, 0.75);
 
       const visibleKids = kids.filter(c => c._visible);
+
+      // Tree connector guides
+      let guidesHtml = '';
+      for (let i = 0; i < prefix.length; i++) {
+        guidesHtml += `<span class="tv-guide ${prefix[i] ? 'pipe' : 'space'}"></span>`;
+      }
+      if (node._depth > 0) {
+        guidesHtml += `<span class="tv-guide ${isLast ? 'elbow' : 'branch'}"></span>`;
+      }
+
+      // Toggle (expand/collapse) — right side
       const toggleHtml = visibleKids.length
         ? `<span class="tv-toggle ${exp?"open":""}" data-toggle="${esc(node.span_id)}"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
-        : `<span class="tv-toggle leaf"></span>`;
+        : '';
 
       // Inline meta for LLM spans
       let inlineMeta = "";
+      const model = kind === "LLM" ? spanModel(node) : "";
       if (kind === "LLM" && model) inlineMeta += `<span class="tv-inline-model">${esc(model)}</span>`;
-      if (kind === "LLM" && tokens) inlineMeta += `<span class="tv-inline-tokens">${fmtTokens(tokens)}</span>`;
+      if (kind === "LLM" && tokens) inlineMeta += `<span class="tv-inline-tokens"><svg class="tv-tokens-icon" viewBox="0 0 16 16" width="13" height="13"><ellipse cx="9" cy="10.5" rx="5.5" ry="2.8" fill="currentColor" opacity=".45"/><ellipse cx="7.5" cy="7.5" rx="5.5" ry="2.8" transform="rotate(-15 7.5 7.5)" fill="currentColor" opacity=".7"/><ellipse cx="6.5" cy="4.5" rx="5" ry="2.5" transform="rotate(-25 6.5 4.5)" fill="currentColor"/></svg>${fmtTokens(tokens)}</span>`;
 
       const stCls = statusCls(node.status);
 
       rows.push(
-        `<button type="button" class="tv-row ${sel?"sel":""} ${stCls==="error"?"row-err":""}" data-span="${esc(node.span_id)}" style="--d:${node._depth}">` +
-          toggleHtml +
-          `<span class="tv-icon" style="color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>` +
-          `<span class="tv-name">${esc(node.name||"(unnamed)")}</span>` +
-          inlineMeta +
+        `<button type="button" class="tv-row ${sel?"sel":""} ${stCls==="error"?"row-err":""}" data-span="${esc(node.span_id)}">` +
+          guidesHtml +
+          `<span class="tv-icon" style="background:${color}20;color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>` +
+          `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${inlineMeta}</span>` +
           `<span class="tv-dur">${esc(fmtDur(node.duration_ms))}</span>` +
-          `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%"></span></span>` +
+          `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%;${stCls === 'unset' ? 'background:' + color : ''}"></span></span>` +
+          toggleHtml +
         `</button>`
       );
-      if (exp) visibleKids.forEach(visit);
+      if (exp) {
+        const childPrefix = [...prefix];
+        if (node._depth > 0) childPrefix.push(!isLast);
+        visibleKids.forEach((child, i) => {
+          visit(child, i === visibleKids.length - 1, childPrefix);
+        });
+      }
     }
-    tree.roots.forEach(visit);
+    const visibleRoots = tree.roots.filter(r => r._visible);
+    visibleRoots.forEach((r, i) => visit(r, i === visibleRoots.length - 1, []));
     S.el.list.innerHTML = rows.join("");
     renderDetail();
   }
@@ -371,8 +381,12 @@
       tabs.push({ id: "params", label: "Params" });
     } else if (kind === "TOOL") {
       tabs.push({ id: "tool-io", label: "Input / Output" });
-    } else {
+    } else if (kind === "EVALUATOR" && attrs["output.value"]) {
+      tabs.push({ id: "metrics", label: "Metrics" });
       if (attrs["input.value"]) tabs.push({ id: "io", label: "Input / Output" });
+      if (scores.length) tabs.push({ id: "scores", label: "Scores" });
+    } else {
+      if (attrs["input.value"] || attrs["output.value"]) tabs.push({ id: "io", label: "Input / Output" });
       if (scores.length) tabs.push({ id: "scores", label: "Scores" });
     }
     tabs.push({ id: "raw", label: "Raw" });
@@ -417,6 +431,7 @@
     else if (S.activeTab === "reasoning") content += renderReasoning(reasoning);
     else if (S.activeTab === "params") content += renderParams(span);
     else if (S.activeTab === "tool-io") content += renderToolIO(span);
+    else if (S.activeTab === "metrics") content += renderMetrics(span);
     else if (S.activeTab === "io") content += renderIO(span);
     else if (S.activeTab === "scores") content += renderScores(scores);
     else if (S.activeTab === "raw") content += renderRaw(span);
@@ -611,6 +626,23 @@
     return `<div class="tv-fmt-obj">${visible}</div>`;
   }
 
+  function deepParseJson(obj) {
+    if (typeof obj === "string") {
+      const t = obj.trim();
+      if ((t[0] === "{" && t[t.length - 1] === "}") || (t[0] === "[" && t[t.length - 1] === "]")) {
+        try { return deepParseJson(JSON.parse(t)); } catch (_) {}
+      }
+      return obj;
+    }
+    if (Array.isArray(obj)) return obj.map(deepParseJson);
+    if (obj && typeof obj === "object") {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) out[k] = deepParseJson(v);
+      return out;
+    }
+    return obj;
+  }
+
   function renderJsonBlock(value) {
     let parsed;
     try {
@@ -618,6 +650,7 @@
     } catch (_) {
       return `<pre class="tv-code">${esc(String(value))}</pre>`;
     }
+    parsed = deepParseJson(parsed);
     const raw = JSON.stringify(parsed, null, 2);
     const highlighted = syntaxHighlight(raw);
     const lines = raw.split("\n").length;
@@ -629,6 +662,50 @@
     }
     // Formatted (structured key-value)
     return `<div class="tv-fmt-block">${formatStructured(parsed)}</div>`;
+  }
+
+  function renderMetrics(span) {
+    const a = span.attributes || {};
+    const raw = a["output.value"];
+    if (!raw) return `<div class="tv-empty-d">No metrics data</div>`;
+    let parsed;
+    try { parsed = deepParseJson(typeof raw === "string" ? JSON.parse(raw) : raw); } catch (_) { return renderJsonBlock(raw); }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return renderJsonBlock(raw);
+
+    const entries = Object.entries(parsed);
+    if (!entries.length) return `<div class="tv-empty-d">No metrics</div>`;
+
+    let id = 0;
+    return `<div class="tv-metrics">${entries.map(([name, data]) => {
+      const score = data && typeof data === "object" ? data.score : data;
+      const meta = data && typeof data === "object" ? data.metadata : null;
+      const isNum = typeof score === "number";
+      const displayVal = isNum ? (Number.isInteger(score) || score > 10 ? score.toLocaleString("en-US") : score.toFixed(2)) : String(score ?? "—");
+      const isPass = isNum && score >= 0.5 && score <= 1;
+      const isFail = isNum && score === 0;
+      const cls = isPass ? "pass" : isFail ? "fail" : "";
+      const metaId = `tv-metric-${++id}`;
+      let card = `<div class="tv-metric-card ${cls}">`;
+      card += `<div class="tv-metric-head${meta ? " tv-metric-expandable" : ""}" ${meta ? `data-metric-toggle="${metaId}"` : ""}>`;
+      card += `<span class="tv-metric-name">${esc(name.replace(/_/g, " "))}</span>`;
+      card += `<span class="tv-metric-val">${esc(displayVal)}</span>`;
+      if (meta) card += `<span class="tv-metric-chevron"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+      card += `</div>`;
+      if (meta) {
+        const metaEntries = Object.entries(meta);
+        card += `<div class="tv-metric-detail" id="${metaId}" style="display:none">`;
+        card += metaEntries.map(([k, v]) => {
+          let valStr, valCls = "";
+          if (typeof v === "boolean") { valStr = String(v); valCls = v ? "tv-metric-true" : "tv-metric-false"; }
+          else if (typeof v === "number") { valStr = v.toLocaleString("en-US"); }
+          else { valStr = String(v); }
+          return `<div class="tv-metric-meta-row"><span class="tv-metric-meta-key">${esc(k)}</span><span class="tv-metric-meta-val ${valCls}">${esc(valStr)}</span></div>`;
+        }).join("");
+        card += `</div>`;
+      }
+      card += `</div>`;
+      return card;
+    }).join("")}</div>`;
   }
 
   function renderScores(scores) {
@@ -670,7 +747,6 @@
               <input type="text" class="tv-search" placeholder="Filter spans..." aria-label="Search spans">
               <span class="tv-search-icon"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
             </div>
-            <a class="tv-ext-link" target="_blank" rel="noopener" style="display:none">External ↗</a>
             <button type="button" class="tv-close" data-trace-close="1" aria-label="Close">
               <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
@@ -678,13 +754,8 @@
         </div>
         <div class="tv-body">
           <div class="tv-list"></div>
+          <div class="tv-divider"></div>
           <div class="tv-detail"></div>
-        </div>
-        <div class="tv-footer">
-          <span class="tv-shortcut"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span class="tv-shortcut"><kbd>Enter</kbd> expand</span>
-          <span class="tv-shortcut"><kbd>/</kbd> search</span>
-          <span class="tv-shortcut"><kbd>Esc</kbd> close</span>
         </div>
       </aside>
     `;
@@ -692,7 +763,6 @@
     S.shell = el;
     S.el.title = el.querySelector(".tv-title");
     S.el.meta = el.querySelector(".tv-meta");
-    S.el.link = el.querySelector(".tv-ext-link");
     S.el.warning = el.querySelector(".tv-warning");
     S.el.list = el.querySelector(".tv-list");
     S.el.detail = el.querySelector(".tv-detail");
@@ -702,6 +772,29 @@
     S.el.search.addEventListener("input", () => {
       S.search = S.el.search.value;
       renderTree();
+    });
+
+    // Resizable divider
+    const divider = el.querySelector(".tv-divider");
+    const body = el.querySelector(".tv-body");
+    divider.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      divider.classList.add("active");
+      const startX = e.clientX;
+      const startW = S.el.list.getBoundingClientRect().width;
+      const bodyW = body.getBoundingClientRect().width;
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const newW = Math.max(200, Math.min(bodyW - 200, startW + dx));
+        S.el.list.style.flex = `0 0 ${newW}px`;
+      };
+      const onUp = () => {
+        divider.classList.remove("active");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
     });
   }
 
@@ -809,6 +902,18 @@
       e.preventDefault();
       S.viewMode = e.target.closest("[data-viewmode]").getAttribute("data-viewmode");
       renderDetail();
+      return;
+    }
+    // Metric card expand/collapse
+    if (e.target.closest("[data-metric-toggle]")) {
+      e.preventDefault();
+      const id = e.target.closest("[data-metric-toggle]").getAttribute("data-metric-toggle");
+      const el = document.getElementById(id);
+      if (el) {
+        const open = el.style.display !== "none";
+        el.style.display = open ? "none" : "";
+        e.target.closest(".tv-metric-card").classList.toggle("expanded", !open);
+      }
       return;
     }
     // JSON expand (show all lines in raw mode)
