@@ -50,6 +50,7 @@
 
   /* ── helpers ── */
   const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>`;
+  const EXPAND_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H3v3"/><path d="M10 3h3v3"/><path d="M13 10v3h-3"/><path d="M3 10v3h3"/><path d="M3 6l4-4"/><path d="M13 6L9 2"/><path d="M3 10l4 4"/><path d="M13 10l-4 4"/></svg>`;
 
   function copyBtn(textOrFn, label) {
     const id = `tv-cb-${++_copyId}`;
@@ -58,6 +59,20 @@
   }
   let _copyId = 0;
   const _copyData = {};
+
+  function expandBtn(payload, label) {
+    const id = `tv-xb-${++_expandId}`;
+    _expandData[id] = payload;
+    return `<button type="button" class="tv-expand-btn" data-expand-id="${id}" title="${label || "Expand"}">${EXPAND_ICON}</button>`;
+  }
+  let _expandId = 0;
+  const _expandData = {};
+
+  function actionGroup(buttons, cls) {
+    const inner = (buttons || []).filter(Boolean).join("");
+    if (!inner) return "";
+    return `<span class="${cls || "tv-inline-actions"}">${inner}</span>`;
+  }
 
   function esc(v) {
     return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -202,6 +217,182 @@
     if (value === 0) return "fail";
     if (value >= 0.5 && value <= 1) return "pass";
     return "";
+  }
+
+  function renderLabeledSection(label, bodyHtml, labelClass, actionsHtml) {
+    const cls = labelClass ? ` ${labelClass}` : "";
+    return `<div class="tv-io-section"><div class="tv-io-label${cls}">${esc(label)}${actionsHtml || ""}</div>${bodyHtml}</div>`;
+  }
+
+  function renderMessageContent(text, jsonClassName) {
+    const body = String(text || "").trim();
+    if (!body) return "";
+    if ((body.startsWith("{") && body.endsWith("}")) || (body.startsWith("[") && body.endsWith("]"))) {
+      try {
+        JSON.parse(body);
+        return `<div class="tv-msg-body">${renderJsonBlock(body, jsonClassName)}</div>`;
+      } catch (_) {
+        return `<div class="tv-msg-body">${esc(body)}</div>`;
+      }
+    }
+    if (body.includes("```")) return `<div class="tv-msg-body">${renderMarkdownLite(body)}</div>`;
+    return `<div class="tv-msg-body">${esc(body)}</div>`;
+  }
+
+  function renderToolCallCard(tc, actionsHtml, jsonClassName) {
+    let html = `<div class="tv-toolcall">`;
+    html += `<div class="tv-toolcall-name">${esc(tc.name)} <span class="tv-toolcall-label">call</span>${actionsHtml || ""}</div>`;
+    if (tc.arguments) html += renderJsonBlock(tc.arguments, jsonClassName);
+    html += `</div>`;
+    return html;
+  }
+
+  function renderExpandedContent(bodyHtml) {
+    return `<div class="tv-modal-content">${bodyHtml}</div>`;
+  }
+
+  function renderToolHeader(name, badge, toolCallId, actionsHtml) {
+    return `<div class="tv-msg-role">${esc(name)} <span class="tv-toolcall-label">${esc(badge)}</span>${toolCallId ? ` <span class="tv-msg-tcid">${esc(toolCallId)}</span>` : ""}${actionsHtml || ""}</div>`;
+  }
+
+  function directToolCallId(attrs) {
+    return attrs["tool_call.id"] || attrs["tool.call.id"] || attrs["tool_call_id"] || attrs["tool.call_id"] || "";
+  }
+
+  function inferToolCallId(span) {
+    const attrs = span.attributes || {};
+    const direct = directToolCallId(attrs);
+    if (direct) return direct;
+    if (span._resolvedToolCallId !== undefined) return span._resolvedToolCallId || "";
+
+    const toolName = attrs["tool.name"] || span.name || "";
+    const inputValue = attrs["input.value"] == null ? "" : String(attrs["input.value"]);
+    const outputValue = attrs["output.value"] == null ? "" : String(attrs["output.value"]);
+    const nodes = S.data?._tree?.nodes || [];
+
+    for (const node of nodes) {
+      const nodeAttrs = node.attributes || {};
+      const messages = extractMessages(nodeAttrs, "llm.input_messages").concat(extractMessages(nodeAttrs, "llm.output_messages"));
+      if (!messages.length) continue;
+
+      const toolInfoById = {};
+      messages.forEach(msg => {
+        if (!msg.toolCalls || !msg.toolCalls.length) return;
+        msg.toolCalls.forEach(tc => {
+          if (tc.id) toolInfoById[tc.id] = { name: tc.name || "", arguments: tc.arguments == null ? "" : String(tc.arguments) };
+        });
+      });
+
+      for (const msg of messages) {
+        if (String(msg.role || "").toLowerCase() !== "tool" || !msg.toolCallId) continue;
+        const info = toolInfoById[msg.toolCallId] || {};
+        const msgContent = msg.content == null ? "" : String(msg.content);
+        if (toolName && info.name && info.name !== toolName) continue;
+        if (outputValue && msgContent === outputValue) {
+          span._resolvedToolCallId = msg.toolCallId;
+          return msg.toolCallId;
+        }
+        if (inputValue && info.arguments && info.arguments === inputValue) {
+          span._resolvedToolCallId = msg.toolCallId;
+          return msg.toolCallId;
+        }
+      }
+
+      if (inputValue) {
+        for (const [id, info] of Object.entries(toolInfoById)) {
+          if (toolName && info.name && info.name !== toolName) continue;
+          if (info.arguments && info.arguments === inputValue) {
+            span._resolvedToolCallId = id;
+            return id;
+          }
+        }
+      }
+    }
+
+    span._resolvedToolCallId = "";
+    return "";
+  }
+
+  function renderMessageBubble(message, headerActions, includeNestedActions) {
+    const role = String(message.role).toLowerCase();
+    const msgText = message.content ? String(message.content) : "";
+    const resolvedName = message._resolvedToolName || "";
+    let bubble = `<div class="tv-msg tv-msg-${role}">`;
+    if (role === "tool" && resolvedName) {
+        bubble += renderToolHeader(resolvedName, "result", message.toolCallId, headerActions);
+    } else {
+      bubble += `<div class="tv-msg-role">${esc(role)}${message.toolCallId ? ` <span class="tv-msg-tcid">${esc(message.toolCallId)}</span>` : ""}${headerActions || ""}</div>`;
+    }
+    if (msgText) bubble += renderMessageContent(msgText, role === "tool" ? "tv-json-preview tv-json-preview-output" : "");
+    if (message.toolCalls && message.toolCalls.length) {
+      message.toolCalls.forEach(tc => {
+        let actions = "";
+        if (includeNestedActions) {
+          actions = actionGroup([
+            tc.arguments ? copyBtn(tc.arguments, "Copy arguments") : "",
+            expandBtn({
+              title: tc.name || "Tool Call",
+              render: () => renderExpandedContent(renderJsonBlock(tc.arguments || "")),
+            }, "Expand tool call"),
+          ]);
+        }
+        bubble += renderToolCallCard(tc, actions, "tv-json-preview");
+      });
+    }
+    bubble += `</div>`;
+    return bubble;
+  }
+
+  function renderReasoningBlock(reasoning, actionsHtml, open) {
+    return `<details class="tv-reasoning-expander"${open ? " open" : ""}><summary class="tv-reasoning-summary"><span class="tv-reasoning-title">Reasoning</span>${actionsHtml || ""}</summary><div class="tv-reasoning">${esc(reasoning)}</div></details>`;
+  }
+
+  function renderErrorBox(errInfo, actionsHtml) {
+    let html = `<div class="tv-det-error">`;
+    html += `<div class="tv-det-error-head"><div class="tv-det-error-title">Error</div>${actionsHtml || ""}</div>`;
+    if (errInfo) {
+      if (errInfo.type) html += `<div class="tv-det-error-type">${esc(errInfo.type)}</div>`;
+      if (errInfo.message) html += `<div class="tv-det-error-msg">${esc(errInfo.message)}</div>`;
+      if (errInfo.stacktrace) html += `<details class="tv-det-error-stack"><summary>Stack trace</summary><pre class="tv-code">${esc(errInfo.stacktrace)}</pre></details>`;
+    } else {
+      html += `<div class="tv-det-error-msg">This span completed with ERROR status</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  function renderMetricMeta(meta) {
+    const metaEntries = Object.entries(meta || {});
+    return metaEntries.map(([k, v]) => {
+      let valStr, valCls = "";
+      if (typeof v === "boolean") { valStr = String(v); valCls = v ? "tv-metric-true" : "tv-metric-false"; }
+      else if (typeof v === "number") { valStr = v.toLocaleString("en-US"); }
+      else { valStr = String(v); }
+      return `<div class="tv-metric-meta-row"><span class="tv-metric-meta-key">${esc(k)}</span><span class="tv-metric-meta-val ${valCls}">${esc(valStr)}</span></div>`;
+    }).join("");
+  }
+
+  function renderMetricCard(name, data, metaId, actionsHtml) {
+    const score = data && typeof data === "object" ? data.score : data;
+    const meta = data && typeof data === "object" ? data.metadata : null;
+    const isNum = typeof score === "number";
+    const displayVal = isNum ? (Number.isInteger(score) || score > 10 ? score.toLocaleString("en-US") : score.toFixed(2)) : String(score ?? "—");
+    const cls = metricToneClass(score);
+    let card = `<div class="tv-metric-card ${cls}">`;
+    card += `<div class="tv-metric-head${meta ? " tv-metric-expandable" : ""}" ${meta ? `data-metric-toggle="${metaId}"` : ""}>`;
+    card += `<span class="tv-metric-name">${esc(name.replace(/_/g, " "))}</span>`;
+    card += `<span class="tv-metric-side"><span class="tv-metric-val">${esc(displayVal)}</span>${actionsHtml || ""}</span>`;
+    if (meta) card += `<span class="tv-metric-chevron"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
+    card += `</div>`;
+    if (meta) card += `<div class="tv-metric-detail" id="${metaId}" style="display:none">${renderMetricMeta(meta)}</div>`;
+    card += `</div>`;
+    return card;
+  }
+
+  function renderScoreCard(sc, actionsHtml) {
+    const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
+    const tone = metricToneClass(sc.value);
+    return `<div class="tv-score-card ${tone}"><div class="tv-score-head"><span class="tv-score-name">${esc(sc.name)}</span><span class="tv-score-side"><span class="tv-score-val ${tone}">${esc(v)}</span>${actionsHtml || ""}</span></div>${sc.explanation ? `<div class="tv-score-exp">${esc(sc.explanation)}</div>` : ""}</div>`;
   }
 
   function extractErrorInfo(span) {
@@ -504,16 +695,14 @@
     // Error detail block
     if (stCls === "error") {
       const errInfo = extractErrorInfo(span);
-      header += `<div class="tv-det-error">`;
-      header += `<div class="tv-det-error-title">Error</div>`;
-      if (errInfo) {
-        if (errInfo.type) header += `<div class="tv-det-error-type">${esc(errInfo.type)}</div>`;
-        if (errInfo.message) header += `<div class="tv-det-error-msg">${esc(errInfo.message)}</div>`;
-        if (errInfo.stacktrace) header += `<details class="tv-det-error-stack"><summary>Stack trace</summary><pre class="tv-code">${esc(errInfo.stacktrace)}</pre></details>`;
-      } else {
-        header += `<div class="tv-det-error-msg">This span completed with ERROR status</div>`;
-      }
-      header += `</div>`;
+      const copyPayload = errInfo ? () => JSON.stringify(errInfo, null, 2) : "This span completed with ERROR status";
+      header += renderErrorBox(errInfo, actionGroup([
+        copyBtn(copyPayload, "Copy error"),
+        expandBtn({
+          title: `${span.name} Error`,
+          render: () => renderErrorBox(errInfo, ""),
+        }, "Expand error"),
+      ]));
     }
 
     // Tabs + view mode toggle
@@ -542,43 +731,38 @@
   /* ── tab renderers ── */
   function renderMessages(msgs, reasoning) {
     if (!msgs.length && !reasoning) return `<div class="tv-empty-d">No messages</div>`;
+    // Resolve tool call ID → tool name for result bubbles
+    const tcMap = {};
+    msgs.forEach(m => { if (m.toolCalls) m.toolCalls.forEach(tc => { if (tc.id && tc.name) tcMap[tc.id] = tc.name; }); });
+    msgs.forEach(m => { if (m.toolCallId && tcMap[m.toolCallId]) m._resolvedToolName = tcMap[m.toolCallId]; });
     let html = msgs.map(m => {
-      const role = String(m.role).toLowerCase();
       const msgText = m.content ? String(m.content) : "";
-      let bubble = `<div class="tv-msg tv-msg-${role}">`;
-      bubble += `<div class="tv-msg-role">${esc(role)}${m.toolCallId ? ` <span class="tv-msg-tcid">${esc(m.toolCallId)}</span>` : ""}${msgText ? copyBtn(msgText, "Copy message") : ""}</div>`;
-      if (m.content) {
-        const text = String(m.content).trim();
-        const trimmed = text;
-        // If content looks like JSON, render through the view mode system
-        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-          try { JSON.parse(trimmed); bubble += `<div class="tv-msg-body">${renderJsonBlock(text)}</div>`; }
-          catch (_) { bubble += `<div class="tv-msg-body">${esc(text)}</div>`; }
-        } else if (text.includes("```")) {
-          bubble += `<div class="tv-msg-body">${renderMarkdownLite(text)}</div>`;
-        } else {
-          bubble += `<div class="tv-msg-body">${esc(text)}</div>`;
-        }
-      }
-      if (m.toolCalls && m.toolCalls.length) {
-        m.toolCalls.forEach(tc => {
-          bubble += `<div class="tv-toolcall">`;
-          bubble += `<div class="tv-toolcall-name">${esc(tc.name)}${tc.arguments ? copyBtn(tc.arguments, "Copy arguments") : ""}</div>`;
-          if (tc.arguments) {
-            bubble += renderJsonBlock(tc.arguments);
-          }
-          bubble += `</div>`;
-        });
-      }
-      bubble += `</div>`;
-      return bubble;
+      const role = String(m.role || "").toLowerCase();
+      const expandTitle = role === "tool" && m._resolvedToolName
+        ? `${m._resolvedToolName} Result`
+        : `${String(m.role || "message")} Message`;
+      const expandRender = role === "tool" && msgText
+        ? () => renderExpandedContent(renderJsonBlock(msgText))
+        : () => renderMessageBubble(m, "", false);
+      const actions = actionGroup([
+        msgText ? copyBtn(msgText, "Copy message") : "",
+        expandBtn({
+          title: expandTitle,
+          render: expandRender,
+        }, "Expand message"),
+      ]);
+      return renderMessageBubble(m, actions, true);
     }).join("");
 
     // Reasoning: inline expander after messages (not a separate tab)
     if (reasoning) {
-      html += `<details class="tv-reasoning-expander"><summary class="tv-reasoning-summary">Reasoning ${copyBtn(reasoning, "Copy reasoning")}</summary>`;
-      html += `<div class="tv-reasoning">${esc(reasoning)}</div>`;
-      html += `</details>`;
+      html += renderReasoningBlock(reasoning, actionGroup([
+        copyBtn(reasoning, "Copy reasoning"),
+        expandBtn({
+          title: "Reasoning",
+          render: () => renderReasoningBlock(reasoning, "", true),
+        }, "Expand reasoning"),
+      ]), false);
     }
 
     return html;
@@ -634,7 +818,6 @@
     // Usage section
     const usage = parsed.usage;
     if (usage && typeof usage === "object") {
-      html += `<div class="tv-io-section"><div class="tv-io-label">Usage ${copyBtn(() => JSON.stringify(usage, null, 2), "Copy usage")}</div>`;
       const rows = [];
       function addRow(label, val, cls) { if (val != null && val !== 0 && val !== "") rows.push([label, val, cls || ""]); }
       addRow("Prompt Tokens", usage.prompt_tokens);
@@ -660,8 +843,14 @@
         if (cd.upstream_inference_completions_cost != null) addRow("    Completions Cost", "$" + Number(cd.upstream_inference_completions_cost).toFixed(6));
       }
       if (usage.is_byok != null) addRow("BYOK", String(usage.is_byok));
-      html += `<div class="tv-params">${rows.map(([k,v,c]) => `<div class="tv-param${k.startsWith("  ") ? " tv-param-indent" : ""}"><span class="tv-param-k ${c}">${esc(k.trim())}</span><span class="tv-param-v ${c}">${esc(String(v))}</span></div>`).join("")}</div>`;
-      html += `</div>`;
+      const usageBody = `<div class="tv-params">${rows.map(([k,v,c]) => `<div class="tv-param${k.startsWith("  ") ? " tv-param-indent" : ""}"><span class="tv-param-k ${c}">${esc(k.trim())}</span><span class="tv-param-v ${c}">${esc(String(v))}</span></div>`).join("")}</div>`;
+      html += renderLabeledSection("Usage", usageBody, "", actionGroup([
+        copyBtn(() => JSON.stringify(usage, null, 2), "Copy usage"),
+        expandBtn({
+          title: "Usage",
+          render: () => renderExpandedContent(usageBody),
+        }, "Expand usage"),
+      ]));
     }
 
     // Provider / model / metadata section
@@ -678,15 +867,24 @@
       if (choice.native_finish_reason) meta.push(["Native Finish Reason", choice.native_finish_reason]);
     }
     if (meta.length) {
-      html += `<div class="tv-io-section"><div class="tv-io-label">Response Metadata ${copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response")}</div>`;
-      html += `<div class="tv-params">${meta.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
-      html += `</div>`;
+      const metaBody = `<div class="tv-params">${meta.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
+      html += renderLabeledSection("Response Metadata", metaBody, "", actionGroup([
+        copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response"),
+        expandBtn({
+          title: "Response Metadata",
+          render: () => renderExpandedContent(metaBody),
+        }, "Expand metadata"),
+      ]));
     }
 
     // Full raw response
-    html += `<div class="tv-io-section"><div class="tv-io-label">Full Response ${copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response")}</div>`;
-    html += renderJsonBlock(raw);
-    html += `</div>`;
+    html += renderLabeledSection("Full Response", renderJsonBlock(raw), "", actionGroup([
+      copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response"),
+      expandBtn({
+        title: "Full Response",
+        render: () => renderExpandedContent(renderJsonBlock(raw)),
+      }, "Expand response"),
+    ]));
 
     return html;
   }
@@ -694,6 +892,7 @@
   function renderToolIO(span) {
     const a = span.attributes || {};
     const toolName = a["tool.name"] || span.name || "tool";
+    const toolCallId = inferToolCallId(span);
     const inp = a["input.value"];
     const out = a["output.value"];
     let html = "";
@@ -701,18 +900,28 @@
     // Tool call arguments — rendered as an assistant tool_call bubble
     if (inp) {
       html += `<div class="tv-msg tv-msg-assistant">`;
-      html += `<div class="tv-msg-role">tool call ${copyBtn(inp, "Copy input")}</div>`;
-      html += `<div class="tv-toolcall">`;
-      html += `<div class="tv-toolcall-name">${esc(toolName)}</div>`;
-      html += renderJsonBlock(inp);
-      html += `</div></div>`;
+      html += renderToolHeader(toolName, "call", toolCallId, actionGroup([
+        copyBtn(inp, "Copy input"),
+        expandBtn({
+          title: `${toolName} Input`,
+          render: () => renderExpandedContent(renderJsonBlock(inp)),
+        }, "Expand tool call"),
+      ]));
+      html += `<div class="tv-msg-body">${renderJsonBlock(inp, "tv-json-preview")}</div>`;
+      html += `</div>`;
     }
 
     // Tool result — rendered as a tool result bubble
     if (out) {
       html += `<div class="tv-msg tv-msg-tool">`;
-      html += `<div class="tv-msg-role">result ${copyBtn(out, "Copy output")}</div>`;
-      html += `<div class="tv-msg-body">${renderJsonBlock(out)}</div>`;
+      html += renderToolHeader(toolName, "result", toolCallId, actionGroup([
+        copyBtn(out, "Copy output"),
+        expandBtn({
+          title: `${toolName} Result`,
+          render: () => renderExpandedContent(renderJsonBlock(out)),
+        }, "Expand result"),
+      ]));
+      html += `<div class="tv-msg-body">${renderJsonBlock(out, "tv-json-preview tv-json-preview-output")}</div>`;
       html += `</div>`;
     }
 
@@ -726,14 +935,22 @@
     const inp = a["input.value"];
     const out = a["output.value"];
     if (inp) {
-      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-input">Input ${copyBtn(inp, "Copy input")}</div>`;
-      html += renderJsonBlock(inp);
-      html += `</div>`;
+      html += renderLabeledSection("Input", renderJsonBlock(inp), "tv-io-label-input", actionGroup([
+        copyBtn(inp, "Copy input"),
+        expandBtn({
+          title: "Input",
+          render: () => renderExpandedContent(renderJsonBlock(inp)),
+        }, "Expand input"),
+      ]));
     }
     if (out) {
-      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-output">Output ${copyBtn(out, "Copy output")}</div>`;
-      html += renderJsonBlock(out);
-      html += `</div>`;
+      html += renderLabeledSection("Output", renderJsonBlock(out), "tv-io-label-output", actionGroup([
+        copyBtn(out, "Copy output"),
+        expandBtn({
+          title: "Output",
+          render: () => renderExpandedContent(renderJsonBlock(out)),
+        }, "Expand output"),
+      ]));
     }
     if (!inp && !out) html = `<div class="tv-empty-d">No input/output data</div>`;
     return html;
@@ -766,10 +983,10 @@
   // Start loading immediately
   loadCodeMirror();
 
-  function renderJsonPlaceholder(jsonStr) {
+  function renderJsonPlaceholder(jsonStr, className) {
     const id = `tv-cm-${++_cmId}`;
     _cmData[id] = jsonStr;
-    return `<div class="tv-cm" data-cm-id="${id}"></div>`;
+    return `<div class="tv-cm${className ? ` ${className}` : ""}" data-cm-id="${id}"></div>`;
   }
 
   function mountJsonFormatters(root) {
@@ -794,7 +1011,7 @@
             cm.view.EditorView.editable.of(false),
             // qym theme
             cm.view.EditorView.theme({
-              "&": { fontSize: "12px", maxHeight: "500px", background: "var(--bg-void)", color: "var(--text-secondary)" },
+              "&": { fontSize: "12px", background: "var(--bg-void)", color: "var(--text-secondary)" },
               ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)" },
               ".cm-gutters": { background: "var(--bg-void)", border: "none", minWidth: "auto" },
               ".cm-lineNumbers .cm-gutterElement": { color: "#50505e", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
@@ -876,18 +1093,18 @@
     return obj;
   }
 
-  function renderJsonBlock(value) {
+  function renderJsonBlock(value, className) {
     let parsed;
     try {
       parsed = typeof value === "string" ? JSON.parse(value) : value;
     } catch (_) {
-      return `<pre class="tv-code">${esc(String(value))}</pre>`;
+      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(String(value))}</pre>`;
     }
     parsed = deepParseJson(parsed);
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
       parsed = nestDottedKeys(parsed);
     }
-    return renderJsonPlaceholder(JSON.stringify(parsed, null, 2));
+    return renderJsonPlaceholder(JSON.stringify(parsed, null, 2), className);
   }
 
   function renderMetrics(span) {
@@ -903,41 +1120,29 @@
 
     let id = 0;
     return `<div class="tv-metrics">${entries.map(([name, data]) => {
-      const score = data && typeof data === "object" ? data.score : data;
-      const meta = data && typeof data === "object" ? data.metadata : null;
-      const isNum = typeof score === "number";
-      const displayVal = isNum ? (Number.isInteger(score) || score > 10 ? score.toLocaleString("en-US") : score.toFixed(2)) : String(score ?? "—");
-      const cls = metricToneClass(score);
       const metaId = `tv-metric-${++id}`;
-      let card = `<div class="tv-metric-card ${cls}">`;
-      card += `<div class="tv-metric-head${meta ? " tv-metric-expandable" : ""}" ${meta ? `data-metric-toggle="${metaId}"` : ""}>`;
-      card += `<span class="tv-metric-name">${esc(name.replace(/_/g, " "))}</span>`;
-      card += `<span class="tv-metric-val">${esc(displayVal)}</span>`;
-      if (meta) card += `<span class="tv-metric-chevron"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
-      card += `</div>`;
-      if (meta) {
-        const metaEntries = Object.entries(meta);
-        card += `<div class="tv-metric-detail" id="${metaId}" style="display:none">`;
-        card += metaEntries.map(([k, v]) => {
-          let valStr, valCls = "";
-          if (typeof v === "boolean") { valStr = String(v); valCls = v ? "tv-metric-true" : "tv-metric-false"; }
-          else if (typeof v === "number") { valStr = v.toLocaleString("en-US"); }
-          else { valStr = String(v); }
-          return `<div class="tv-metric-meta-row"><span class="tv-metric-meta-key">${esc(k)}</span><span class="tv-metric-meta-val ${valCls}">${esc(valStr)}</span></div>`;
-        }).join("");
-        card += `</div>`;
-      }
-      card += `</div>`;
-      return card;
+      const actions = actionGroup([
+        copyBtn(() => JSON.stringify({ [name]: data }, null, 2), "Copy metric"),
+        expandBtn({
+          title: name.replace(/_/g, " "),
+          render: () => renderMetricCard(name, data, `tv-metric-modal-${id}`, ""),
+        }, "Expand metric"),
+      ], "tv-card-actions");
+      return renderMetricCard(name, data, metaId, actions);
     }).join("")}</div>`;
   }
 
   function renderScores(scores) {
     if (!scores.length) return `<div class="tv-empty-d">No scores</div>`;
     return `<div class="tv-scores">${scores.map(sc => {
-      const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
-      const tone = metricToneClass(sc.value);
-      return `<div class="tv-score-card ${tone}"><div class="tv-score-head"><span class="tv-score-name">${esc(sc.name)}</span><span class="tv-score-val ${tone}">${esc(v)}</span></div>${sc.explanation ? `<div class="tv-score-exp">${esc(sc.explanation)}</div>` : ""}</div>`;
+      const actions = actionGroup([
+        copyBtn(() => JSON.stringify(sc, null, 2), "Copy score"),
+        expandBtn({
+          title: sc.name || "Score",
+          render: () => renderScoreCard(sc, ""),
+        }, "Expand score"),
+      ], "tv-card-actions");
+      return renderScoreCard(sc, actions);
     }).join("")}</div>`;
   }
 
@@ -945,11 +1150,29 @@
     const allAttrs = span.attributes || {};
     const events = span.events || [];
     const metaObj = { span_id: span.span_id, parent_span_id: span.parent_span_id, trace_id: span.trace_id, kind: span.kind, status: span.status, duration_ms: span.duration_ms };
-    let html = `<div class="tv-io-section"><div class="tv-io-label">Attributes ${copyBtn(() => JSON.stringify(allAttrs, null, 2), "Copy attributes")}</div>${renderJsonBlock(allAttrs)}</div>`;
+    let html = renderLabeledSection("Attributes", renderJsonBlock(allAttrs), "", actionGroup([
+      copyBtn(() => JSON.stringify(allAttrs, null, 2), "Copy attributes"),
+      expandBtn({
+        title: "Attributes",
+        render: () => renderExpandedContent(renderJsonBlock(allAttrs)),
+      }, "Expand attributes"),
+    ]));
     if (events.length) {
-      html += `<div class="tv-io-section"><div class="tv-io-label">Events ${copyBtn(() => JSON.stringify(events, null, 2), "Copy events")}</div>${renderJsonBlock(events)}</div>`;
+      html += renderLabeledSection("Events", renderJsonBlock(events), "", actionGroup([
+        copyBtn(() => JSON.stringify(events, null, 2), "Copy events"),
+        expandBtn({
+          title: "Events",
+          render: () => renderExpandedContent(renderJsonBlock(events)),
+        }, "Expand events"),
+      ]));
     }
-    html += `<div class="tv-io-section"><div class="tv-io-label">Span Metadata ${copyBtn(() => JSON.stringify(metaObj, null, 2), "Copy metadata")}</div>${renderJsonBlock(metaObj)}</div>`;
+    html += renderLabeledSection("Span Metadata", renderJsonBlock(metaObj), "", actionGroup([
+      copyBtn(() => JSON.stringify(metaObj, null, 2), "Copy metadata"),
+      expandBtn({
+        title: "Span Metadata",
+        render: () => renderExpandedContent(renderJsonBlock(metaObj)),
+      }, "Expand metadata"),
+    ]));
     return html;
   }
 
@@ -984,6 +1207,21 @@
           <div class="tv-detail"></div>
         </div>
       </aside>
+      <div class="tv-modal-layer" aria-hidden="true">
+        <div class="tv-modal-backdrop" data-trace-modal-close="1"></div>
+        <section class="tv-modal" role="dialog" aria-modal="true" aria-label="Expanded trace content">
+          <div class="tv-modal-header">
+            <div class="tv-modal-title-wrap">
+              <div class="tv-modal-eyebrow">EXPANDED</div>
+              <div class="tv-modal-title">Expanded Trace Content</div>
+            </div>
+            <button type="button" class="tv-close" data-trace-modal-close="1" aria-label="Close expanded view">
+              <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="tv-modal-body"></div>
+        </section>
+      </div>
     `;
     document.body.appendChild(el);
     S.shell = el;
@@ -993,6 +1231,9 @@
     S.el.list = el.querySelector(".tv-list");
     S.el.detail = el.querySelector(".tv-detail");
     S.el.search = el.querySelector(".tv-search");
+    S.el.modalLayer = el.querySelector(".tv-modal-layer");
+    S.el.modalTitle = el.querySelector(".tv-modal-title");
+    S.el.modalBody = el.querySelector(".tv-modal-body");
 
     // Search input
     S.el.search.addEventListener("input", () => {
@@ -1026,7 +1267,27 @@
 
   /* ── open / close ── */
   function openDrawer() { ensureShell(); S.shell.classList.add("open"); document.body.classList.add("tv-open"); }
-  function closeDrawer() { if (!S.shell) return; S.shell.classList.remove("open"); document.body.classList.remove("tv-open"); }
+  function closeExpandModal() {
+    if (!S.el.modalLayer) return;
+    S.el.modalLayer.classList.remove("open");
+    S.el.modalLayer.setAttribute("aria-hidden", "true");
+    if (S.el.modalBody) S.el.modalBody.innerHTML = "";
+  }
+  function openExpandModal(payload) {
+    ensureShell();
+    if (!payload) return;
+    S.el.modalTitle.textContent = payload.title || "Expanded Trace Content";
+    S.el.modalBody.innerHTML = payload.render ? payload.render() : "";
+    S.el.modalLayer.classList.add("open");
+    S.el.modalLayer.setAttribute("aria-hidden", "false");
+    mountJsonFormatters(S.el.modalBody);
+  }
+  function closeDrawer() {
+    if (!S.shell) return;
+    closeExpandModal();
+    S.shell.classList.remove("open");
+    document.body.classList.remove("tv-open");
+  }
 
   async function fetchTrace(meta) {
     if (!meta.endpoint) throw new Error("Missing endpoint");
@@ -1110,6 +1371,7 @@
 
   /* ── event handling ── */
   function handleClick(e) {
+    if (e.target.closest("[data-trace-modal-close]")) { e.preventDefault(); closeExpandModal(); return; }
     if (e.target.closest("[data-trace-close]")) { e.preventDefault(); closeDrawer(); return; }
     if (e.target.closest("[data-copy-id]")) {
       e.preventDefault(); e.stopPropagation();
@@ -1122,6 +1384,12 @@
         btn.classList.add("tv-copy-ok");
         setTimeout(() => btn.classList.remove("tv-copy-ok"), 1200);
       }
+      return;
+    }
+    if (e.target.closest("[data-expand-id]")) {
+      e.preventDefault(); e.stopPropagation();
+      const btn = e.target.closest("[data-expand-id]");
+      openExpandModal(_expandData[btn.getAttribute("data-expand-id")]);
       return;
     }
     if (e.target.closest("[data-trace-copy]")) {
@@ -1174,7 +1442,8 @@
   function handleKey(e) {
     if (!S.shell || !S.shell.classList.contains("open")) return;
     if (e.key === "Escape") {
-      if (S.el.search === document.activeElement && S.search) { S.search = ""; S.el.search.value = ""; renderTree(); }
+      if (S.el.modalLayer && S.el.modalLayer.classList.contains("open")) closeExpandModal();
+      else if (S.el.search === document.activeElement && S.search) { S.search = ""; S.el.search.value = ""; renderTree(); }
       else closeDrawer();
       e.preventDefault(); return;
     }
