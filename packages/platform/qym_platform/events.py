@@ -97,6 +97,7 @@ class SpanCompletedPayload(BaseModel):
     status: str = "UNSET"
     attributes: Dict[str, Any] = Field(default_factory=dict)
     events: list[Dict[str, Any]] = Field(default_factory=list)
+    links: list[Dict[str, Any]] = Field(default_factory=list)
 
 
 RunEventPayload = Union[

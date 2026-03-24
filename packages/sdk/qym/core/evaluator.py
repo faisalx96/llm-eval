@@ -1041,6 +1041,18 @@ class Evaluator:
                         eval_result = await self._evaluate_item(idx, item, tracker)
                     except Exception as e:
                         eval_result = e
+                        # Last-resort: emit item_failed to the platform since
+                        # _evaluate_item's own error handling must have crashed.
+                        try:
+                            ps = getattr(self, "_platform_stream", None)
+                            if ps is not None:
+                                ps.emit("item_failed", {
+                                    "item_id": str(item_id),
+                                    "index": int(idx),
+                                    "error": str(e),
+                                })
+                        except Exception:
+                            pass
 
                     if isinstance(eval_result, Exception):
                         error_msg = str(eval_result)
@@ -1196,19 +1208,27 @@ class Evaluator:
         if html_url:
             result.html_url = html_url
 
-        # Finalize remote streaming
+        # Flush Langfuse spans
+        if self.client:
+            try:
+                self.client.flush()
+            except Exception:
+                pass
+
+        # Flush and shut down OTEL
+        self._otel.shutdown()
+
+        # Finalize remote streaming after all spans have had a chance to emit.
         self._run_completed = False
         _final_status = "STOPPED" if interrupted else "COMPLETED"
         if getattr(self, "_platform_stream", None) is not None:
             try:
-                # First, close the async queue to flush all pending item events
+                # Close the async queue after all late span/item emits have happened.
                 self._platform_stream.close()
             except Exception:
                 pass
             try:
-                # Then send run_completed synchronously to ensure it gets through
-                # Persist final metadata (e.g., langfuse_url) to the platform by embedding it in the
-                # completion summary. The platform ingest path will merge this into Run.run_metadata.
+                # Send run_completed synchronously to guarantee delivery.
                 final_run_metadata = dict(result.run_metadata or {})
                 self._platform_stream.emit(
                     "run_completed",
@@ -1222,7 +1242,7 @@ class Evaluator:
                             "run_metadata": final_run_metadata,
                         },
                     },
-                    sync=True,  # Send synchronously to guarantee delivery
+                    sync=True,
                 )
                 self._run_completed = True
             except Exception:
@@ -1234,16 +1254,6 @@ class Evaluator:
                 result.save(format=save_format, output_dir=self.config.output_dir)
             except Exception as e:
                 console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
-        
-        # Flush Langfuse spans
-        if self.client:
-            try:
-                self.client.flush()
-            except Exception:
-                pass
-
-        # Flush and shut down OTEL
-        self._otel.shutdown()
 
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
         try:
@@ -1546,7 +1556,9 @@ class Evaluator:
         # Create metrics parent span
         if spans.tracer:
             spans.metrics_span, spans.metrics_token = ItemSpans._start_span(
-                spans.tracer, name="eval_metrics", kind="EVALUATOR",
+                spans.tracer,
+                name="eval_metrics",
+                kind="EVALUATOR",
             )
 
         _metric_sem = asyncio.Semaphore(self.max_metric_concurrency)
@@ -1741,7 +1753,7 @@ class Evaluator:
 
     def _emit_item_completed(
         self, index: int, item: Any, output: Any, task_time: float,
-        spans: ItemSpans, retry_count: int,
+        spans: ItemSpans, retry_count: int, task_started_at_ms: Optional[int],
     ):
         """Emit item_completed to platform stream and notify observer."""
         try:
@@ -1755,7 +1767,7 @@ class Evaluator:
                     "latency_ms": float(task_time * 1000.0),
                     "trace_id": spans.trace_id,
                     "trace_url": spans.trace_url,
-                    "task_started_at_ms": int(time.time() * 1000),
+                    "task_started_at_ms": task_started_at_ms,
                     "retry_count": retry_count,
                 })
         except Exception:
@@ -1767,25 +1779,45 @@ class Evaluator:
     async def _handle_item_error(
         self, index: int, item: Any, error: Exception,
         spans: ItemSpans, tracker: "ProgressObserver",
-        task_started_at_ms: Optional[int] = None,
     ):
-        """Handle item evaluation error: end spans, link dataset, emit failure."""
-        spans.end_all(error=error)
-        await self._link_dataset_item(index, item, spans, error=str(error))
-        tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
-        tracker.fail_item(index, str(error))
-        self._notify_observer("on_item_error", item_index=index, error=str(error))
+        """Handle item evaluation error: emit failure, then clean up.
+
+        Platform event is emitted FIRST — before span cleanup, dataset
+        linking, or anything else that could crash.
+        """
+        error_str = str(error)
+        item_id = getattr(item, "id", None) or f"item_{index}"
+        # 1. Emit to platform FIRST (most important — prevents ghost items)
         try:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
-                item_id = getattr(item, "id", None) or f"item_{index}"
                 ps.emit("item_failed", {
                     "item_id": str(item_id),
                     "index": int(index),
-                    "error": str(error),
+                    "error": error_str,
                     "trace_id": spans.trace_id,
                     "trace_url": spans.trace_url,
                 })
+        except Exception:
+            pass
+        # 2. Update local tracker
+        try:
+            tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
+            tracker.fail_item(index, error_str)
+        except Exception:
+            pass
+        try:
+            self._notify_observer("on_item_error", item_index=index, error=error_str)
+        except Exception:
+            pass
+        # 3. Clean up spans (nice-to-have, can crash)
+        try:
+            spans.end_all(error=error)
+        except Exception:
+            pass
+        # 4. Link dataset item (nice-to-have)
+        try:
+            await self._link_dataset_item(index, item, spans, error=error_str)
         except Exception:
             pass
 
@@ -1793,6 +1825,7 @@ class Evaluator:
         """Evaluate a single item: create spans, run task, compute metrics, emit results."""
         spans = self._create_item_spans(index, item)
         task_started_at_ms: Optional[int] = None
+        _item_finished = False
 
         try:
             tracker.start_item(index)
@@ -1800,13 +1833,30 @@ class Evaluator:
 
             task_started_at_ms = int(time.time() * 1000)
             output, task_time, retry_count = await self._execute_task(index, item, spans)
-            spans.end_task(output=output)
+            try:
+                spans.end_task(output=output)
+            except Exception:
+                pass
             scores = await self._compute_metrics(index, item, output, spans)
-            spans.end_metrics(scores=scores)
-            spans.end_eval(output=output)
-            await self._link_dataset_item(index, item, spans)
+
+            # Emit to platform FIRST — before any span cleanup that could crash
             self._update_tracker(index, item, output, scores, task_time, retry_count, spans, tracker)
-            self._emit_item_completed(index, item, output, task_time, spans, retry_count)
+            self._emit_item_completed(index, item, output, task_time, spans, retry_count, task_started_at_ms)
+            _item_finished = True
+
+            # Span cleanup + dataset linking (nice-to-have, after emit)
+            try:
+                spans.end_metrics(scores=scores)
+            except Exception:
+                pass
+            try:
+                spans.end_eval(output=output)
+            except Exception:
+                pass
+            try:
+                await self._link_dataset_item(index, item, spans)
+            except Exception:
+                pass
 
             return {
                 "input": item.input,
@@ -1821,12 +1871,39 @@ class Evaluator:
             }
 
         except Exception as e:
-            await self._handle_item_error(index, item, e, spans, tracker, task_started_at_ms)
+            await self._handle_item_error(index, item, e, spans, tracker)
+            _item_finished = True
             return {
                 "_error": str(e),
                 "_trace_id": spans.trace_id,
                 "task_started_at_ms": task_started_at_ms,
             }
+        finally:
+            # Guard against CancelledError / KeyboardInterrupt leaving items
+            # in limbo with no output, no error, and no trace in the platform.
+            if not _item_finished:
+                # Emit FIRST — most important
+                try:
+                    ps = getattr(self, "_platform_stream", None)
+                    if ps is not None:
+                        item_id = getattr(item, "id", None) or f"item_{index}"
+                        ps.emit("item_failed", {
+                            "item_id": str(item_id),
+                            "index": int(index),
+                            "error": "Cancelled",
+                            "trace_id": spans.trace_id,
+                            "trace_url": spans.trace_url,
+                        })
+                except Exception:
+                    pass
+                try:
+                    tracker.fail_item(index, "Cancelled")
+                except Exception:
+                    pass
+                try:
+                    spans.end_all(error="Cancelled")
+                except Exception:
+                    pass
 
     def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:
         """Synchronous version of metric computation for thread pool execution."""

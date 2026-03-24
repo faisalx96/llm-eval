@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import threading
 import time
 import uuid
+from dataclasses import asdict, is_dataclass
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, time as dt_time, timezone
 from queue import Queue, Empty
+from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import request
 
@@ -34,6 +37,40 @@ def _debug(msg: str) -> None:
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """Recursively coerce platform event payloads into JSON-safe values."""
+    if obj is None or isinstance(obj, (str, int, bool)):
+        return obj
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, (datetime, date, dt_time)):
+        return obj.isoformat()
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, Path):
+        return str(obj)
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return _sanitize_for_json(asdict(obj))
+    if isinstance(obj, dict):
+        return {str(k): _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_sanitize_for_json(v) for v in obj]
+    if hasattr(obj, "model_dump"):
+        try:
+            return _sanitize_for_json(obj.model_dump(mode="json"))
+        except Exception:
+            try:
+                return _sanitize_for_json(obj.model_dump())
+            except Exception:
+                pass
+    if hasattr(obj, "dict"):
+        try:
+            return _sanitize_for_json(obj.dict())
+        except Exception:
+            pass
+    return str(obj)
 
 
 def _post_json(url: str, payload: Dict[str, Any], api_key: str) -> Dict[str, Any]:
@@ -84,15 +121,33 @@ class PlatformEventStream:
         self.api_key = api_key
         self.run_id = run_id
         self._seq = 0
+        self._seq_lock = threading.Lock()
+        self._state_lock = threading.Lock()
         self._q: "Queue[dict[str, Any]]" = Queue()
         self._stop = threading.Event()
+        self._closing = False
+        self._closed = False
         # Non-daemon thread ensures events are flushed before program exits
         self._thread = threading.Thread(target=self._loop, name="qym-platform-stream", daemon=False)
         self._thread.start()
 
     def next_sequence(self) -> int:
-        self._seq += 1
-        return self._seq
+        with self._seq_lock:
+            self._seq += 1
+            return self._seq
+
+    def _send_event_sync(self, evt: Dict[str, Any], *, reason: str) -> None:
+        ndjson = json.dumps(evt, ensure_ascii=False) + "\n"
+        _debug(f"direct emit ({reason}): {evt.get('type', '?')}")
+        for attempt in range(3):
+            try:
+                _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
+                _debug(f"direct emit success: {evt.get('type', '?')}")
+                return
+            except Exception as e:
+                _debug(f"direct emit error (attempt {attempt + 1}/3): {e}")
+                time.sleep(0.5)
+        _debug(f"direct emit FAILED after 3 attempts: {evt.get('type', '?')}")
 
     def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
         evt = {
@@ -102,26 +157,24 @@ class PlatformEventStream:
             "sent_at": _utc_now(),
             "type": type_,
             "run_id": self.run_id,
-            "payload": payload,
+            "payload": _sanitize_for_json(payload),
         }
-        if sync:
-            # Send synchronously for critical events (e.g., run_completed)
-            _debug(f"sync emit: {type_}")
-            ndjson = json.dumps(evt, ensure_ascii=False) + "\n"
-            for attempt in range(3):
-                try:
-                    _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
-                    _debug(f"sync emit success: {type_}")
-                    return
-                except Exception as e:
-                    _debug(f"sync emit error (attempt {attempt + 1}/3): {e}")
-                    time.sleep(0.5)
-            _debug(f"sync emit FAILED after 3 attempts: {type_}")
+        with self._state_lock:
+            closing = self._closing or self._closed or not self._thread.is_alive()
+        if sync or closing:
+            # Send synchronously for critical events (e.g., run_completed) and
+            # for any event emitted during/after shutdown.
+            reason = "sync" if sync else "closing"
+            self._send_event_sync(evt, reason=reason)
         else:
             self._q.put(evt)
 
     def close(self) -> None:
         # Request stop and wait for a final flush.
+        with self._state_lock:
+            if self._closed or self._closing:
+                return
+            self._closing = True
         qsize = self._q.qsize()
         _debug(f"close() called, queue size={qsize}, seq={self._seq}")
         self._stop.set()
@@ -134,6 +187,9 @@ class PlatformEventStream:
                 _debug("flush thread joined successfully")
         except Exception as e:
             _debug(f"close() exception: {e}")
+        finally:
+            with self._state_lock:
+                self._closed = True
 
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
@@ -172,22 +228,39 @@ class PlatformEventStream:
                 _debug(f"flushed {len(batch)} events (total sent: {total_sent})")
                 batch.clear()
                 last_flush = now
-                retry_count = 0  # Reset on success
+                retry_count = 0
             except Exception as e:
                 retry_count += 1
                 _debug(f"flush error (attempt {retry_count}/{max_retries}): {e}")
-                if retry_count >= max_retries:
-                    # Give up after max retries to prevent hanging
+                if retry_count >= 3 and len(batch) > 1:
+                    # Batch keeps failing — send events individually so one
+                    # bad event can't take down the rest (e.g. item_completed).
+                    _debug(f"falling back to per-event send for {len(batch)} events")
+                    for evt in batch:
+                        try:
+                            line = json.dumps(evt, ensure_ascii=False) + "\n"
+                            _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", line, self.api_key)
+                            total_sent += 1
+                        except Exception as e2:
+                            total_dropped += 1
+                            _debug(f"dropped event {evt.get('type','?')} seq={evt.get('sequence','?')}: {e2}")
+                    batch.clear()
+                    retry_count = 0
+                elif retry_count >= max_retries:
                     total_dropped += len(batch)
                     _debug(f"DROPPED {len(batch)} events after {max_retries} retries (total dropped: {total_dropped})")
                     batch.clear()
                     retry_count = 0
                 else:
-                    # Best-effort; keep events for retry on next loop.
                     time.sleep(0.5)
             if self._stop.is_set() and not batch:
-                _debug(f"flush loop exiting: sent={total_sent}, dropped={total_dropped}")
-                break
+                try:
+                    evt3 = self._q.get_nowait()
+                except Empty:
+                    _debug(f"flush loop exiting: sent={total_sent}, dropped={total_dropped}")
+                    break
+                else:
+                    batch.append(evt3)
 
 
 class PlatformClient:

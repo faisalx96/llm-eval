@@ -78,6 +78,17 @@ def _make_qym_span_processor_class():
                 return
             try:
                 ctx = span.get_span_context()
+                # Extract span links (used by retry/coupled span detection)
+                links = []
+                for lnk in (getattr(span, 'links', None) or []):
+                    lctx = lnk.context
+                    if lctx and lctx.is_valid:
+                        links.append({
+                            "trace_id": format(lctx.trace_id, '032x'),
+                            "span_id": format(lctx.span_id, '016x'),
+                            "attributes": dict(lnk.attributes) if lnk.attributes else {},
+                        })
+
                 self._stream.emit("span_completed", {
                     "trace_id": format(ctx.trace_id, '032x'),
                     "span_id": format(ctx.span_id, '016x'),
@@ -97,6 +108,7 @@ def _make_qym_span_processor_class():
                         }
                         for e in (span.events or [])
                     ],
+                    "links": links,
                 })
             except Exception:
                 pass
@@ -208,6 +220,32 @@ def _emit_tool_spans(tracer, messages):
             span.set_attribute("input.value", str(tool_args)[:4000])
         if content:
             span.set_attribute("output.value", str(content)[:4000])
+
+        # Detect error results in tool output and flag the span.
+        # Common patterns: {"error": ...} JSON or plain error strings.
+        _tool_has_error = False
+        if content:
+            content_str = str(content).strip()
+            if content_str.startswith("{"):
+                try:
+                    parsed = _json.loads(content_str)
+                    if isinstance(parsed, dict) and parsed.get("error"):
+                        _tool_has_error = True
+                        err_type = str(parsed.get("error", "ToolError"))
+                        err_msg = str(parsed.get("message", ""))
+                        span.add_event("exception", attributes={
+                            "exception.type": err_type,
+                            "exception.message": err_msg,
+                        })
+                except (ValueError, TypeError):
+                    pass
+        if _tool_has_error:
+            try:
+                from opentelemetry.trace import StatusCode
+                span.set_status(StatusCode.ERROR, err_msg or err_type)
+            except Exception:
+                pass
+
         span.end(end_time=tool_end)
 
 

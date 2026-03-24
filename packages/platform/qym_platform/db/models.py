@@ -302,6 +302,7 @@ class Span(Base):
     status: Mapped[str] = mapped_column(String(20), default="UNSET")
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     events: Mapped[list] = mapped_column(JSON, default=list)
+    links: Mapped[list] = mapped_column(JSON, default=list)
 
     __table_args__ = (
         Index("ix_span_run_trace", "run_id", "trace_id"),

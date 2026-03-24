@@ -164,6 +164,7 @@ def _serialize_span(span: Span) -> Dict[str, Any]:
         "status": span.status,
         "attributes": span.attributes,
         "events": span.events,
+        "links": span.links or [],
     }
 
 

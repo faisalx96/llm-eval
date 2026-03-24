@@ -1287,13 +1287,106 @@
       align-items: center;
       gap: 4px;
     }
-    .item-run-output .output-badges {
+    /* ── Output toolbar: left status cluster ── */
+    .item-run-output .output-status-cluster {
       display: flex;
-      gap: 4px;
       align-items: center;
+      gap: 10px;
     }
-    .item-run-output .metric-badge,
-    .item-run-output .latency-badge {
+    .item-run-output .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .item-run-output .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .item-run-output .status-dot.fail {
+      background: var(--error);
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+    }
+    .item-run-output .status-dot.pass {
+      background: var(--success);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.35);
+    }
+    .item-run-output .status-label {
+      font-size: var(--font-xs);
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .item-run-output .status-label.fail { color: var(--error); }
+    .item-run-output .status-label.pass { color: var(--success); }
+    .item-run-output .toolbar-sep {
+      color: var(--border-default);
+      font-size: 10px;
+      user-select: none;
+      line-height: 1;
+    }
+    .item-run-output .toolbar-duration {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .item-run-output .toolbar-duration svg {
+      width: 12px;
+      height: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .item-run-output .toolbar-duration span {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-secondary);
+    }
+    .item-run-output .toolbar-time {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      cursor: default;
+    }
+    /* ── Output toolbar: right action chips ── */
+    .item-run-output .output-actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .item-run-output .action-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 24px;
+      padding: 0 8px;
+      border: none;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .item-run-output .action-chip:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .item-run-output .action-chip svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+    .item-run-output .action-chip:hover svg {
+      opacity: 1;
+    }
+    /* ── Metric badges (kept for score display) ── */
+    .item-run-output .metric-badge {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
       padding: 2px 6px;
@@ -1305,36 +1398,6 @@
     .item-run-output .metric-badge.score-3 { background: rgba(234, 179, 8, 0.15); color: var(--score-3); }
     .item-run-output .metric-badge.score-2 { background: rgba(249, 115, 22, 0.15); color: var(--score-2); }
     .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
-    .item-run-output .latency-badge {
-      display: inline;
-      color: var(--text-muted);
-      width: auto;
-      height: auto;
-      border: none;
-      background: var(--bg-surface);
-      border-radius: 3px;
-    }
-    .item-run-output .start-badge {
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
-      padding: 2px 6px;
-      border-radius: 3px;
-      background: var(--bg-surface);
-      color: var(--text-muted);
-    }
-    .item-run-output .trace-link {
-      display: inline-flex;
-      align-items: center;
-      padding: 1px 5px;
-      background: rgba(225, 29, 72, 0.15);
-      color: #e11d48;
-      border-radius: 3px;
-      font-size: 10px;
-      font-weight: 500;
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-    .item-run-output .trace-link:hover { background: rgba(225, 29, 72, 0.25); }
     .item-run-output .output-text {
       font-family: var(--font-mono);
       font-size: var(--font-sm);
@@ -2808,7 +2871,9 @@
         try {
           const d = new Date(ms);
           const pad = (n) => String(n).padStart(2, '0');
-          return { ts: d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) };
+          const full = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+          const short = pad(d.getHours()) + ':' + pad(d.getMinutes());
+          return { ts: full, short: short };
         } catch { return null; }
       }
 
@@ -4451,33 +4516,39 @@
             return '<div class="metric-edit-block hidden" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '"><div class="metric-edit-title">Edit ' + escapeHtml(name) + '_score</div><div class="metric-edit-controls"><input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" /><button class="metric-edit-save" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '">Save</button><span class="metric-edit-status"></span></div>' + modifiedNote + '</div>';
           }).join('');
 
-          // Latency badge
-          const latencyBadge = latencyMs ? '<span class="latency-badge">\u23F1' + formatLatency(latencyMs) + '</span>' : '';
-          // Start badge
+          // Status left cluster
           const startInfo = formatTaskStart(taskStartedAtMs);
-          const startBadge = startInfo ? '<span class="start-badge" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
-          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
-          const traceButton = !IS_EXPORT
-            ? '<button type="button" class="trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="13" cy="8" r="1.5" fill="currentColor" opacity=".5"/><circle cx="14" cy="12" r="1.5" fill="currentColor" opacity=".5"/></svg>Trace</button>'
-            : '';
-          // Trace link
-          const traceLink = traceUrl ? '<a href="' + escapeAttr(traceUrl) + '" target="_blank" class="trace-link">Langfuse \u2197</a>' : '';
+          const clockIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
+          const durationPart = latencyMs ? '<span class="toolbar-sep">\u00B7</span><span class="toolbar-duration">' + clockIcon + '<span>' + formatLatency(latencyMs) + '</span></span>' : '';
+          const timePart = startInfo ? '<span class="toolbar-sep">\u00B7</span><span class="toolbar-time" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
 
-          // Pass/fail badge (skip for numeric metrics — threshold doesn't apply)
-          let passfailBadge = '';
+          // Action chips (right cluster)
+          const copyBtn = '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>';
+          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
+          const traceChip = !IS_EXPORT
+            ? '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
+            : '';
+          const langfuseChip = traceUrl ? '<a class="action-chip" href="' + escapeAttr(traceUrl) + '" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>' : '';
+
+          // Pass/fail status indicator (skip for numeric metrics — threshold doesn't apply)
+          let statusIndicator = '';
           const pfMType = metric ? (state.metricTypes[metric] || 'score') : 'score';
+          let pfClass = '';
           if (status === 'error') {
-            passfailBadge = '<span class="passfail-badge fail">Fail</span>';
+            pfClass = 'fail';
           } else if (metric && mIdx >= 0 && pfMType !== 'numeric') {
             const pfVal = window.QymMetrics.parseScoreValue(metricVals[mIdx]);
             if (pfVal !== null) {
-              passfailBadge = pfVal >= threshold ? '<span class="passfail-badge pass">Pass</span>' : '<span class="passfail-badge fail">Fail</span>';
+              pfClass = pfVal >= threshold ? 'pass' : 'fail';
             }
+          }
+          if (pfClass) {
+            statusIndicator = '<div class="status-indicator"><div class="status-dot ' + pfClass + '"></div><span class="status-label ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span></div>';
           }
 
           // Root cause + Solution (side by side for failed items)
           let rootCauseHtml = '';
-          const itemPassed = passfailBadge.includes('badge pass"');
+          const itemPassed = pfClass === 'pass';
           const rowRc = row.item_metadata?.root_cause || '';
           const rowRcDetail = row.item_metadata?.root_cause_detail || '';
           const rowRcNote = row.item_metadata?.root_cause_note || '';
@@ -4632,7 +4703,7 @@
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="run-label">OUTPUT</span><span class="output-badges">' + passfailBadge + '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>' + traceButton + startBadge + latencyBadge + traceLink + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 

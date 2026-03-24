@@ -29,7 +29,6 @@
     selected: null,
     search: "",
     activeTab: null,
-    viewMode: "raw",  // "formatted" (structured key-value) or "raw" (syntax-highlighted JSON)
   };
 
   /* ── icons (inline SVG, 16×16) ── */
@@ -50,6 +49,16 @@
   };
 
   /* ── helpers ── */
+  const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>`;
+
+  function copyBtn(textOrFn, label) {
+    const id = `tv-cb-${++_copyId}`;
+    _copyData[id] = textOrFn;
+    return `<button type="button" class="tv-copy-btn" data-copy-id="${id}" title="${label || "Copy"}">${COPY_ICON}</button>`;
+  }
+  let _copyId = 0;
+  const _copyData = {};
+
   function esc(v) {
     return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
@@ -106,6 +115,12 @@
   function statusCls(s) {
     const u = String(s||"").toUpperCase();
     return u === "ERROR" ? "error" : u === "OK" ? "ok" : "unset";
+  }
+
+  function laneOpacity(depthIndex) {
+    if (depthIndex <= 0) return "0.24";
+    if (depthIndex === 1) return "0.18";
+    return "0.14";
   }
 
   /* ── tree building ── */
@@ -179,6 +194,52 @@
         label: (ev.attributes || {})["score.label"] || "",
         explanation: (ev.attributes || {})["score.explanation"] || "",
       }));
+  }
+
+  function metricToneClass(value) {
+    if (typeof value === "boolean") return value ? "pass" : "fail";
+    if (typeof value !== "number" || !Number.isFinite(value)) return "";
+    if (value === 0) return "fail";
+    if (value >= 0.5 && value <= 1) return "pass";
+    return "";
+  }
+
+  function extractErrorInfo(span) {
+    const events = Array.isArray(span.events) ? span.events : [];
+    const ex = events.find(ev => ev.name === "exception");
+    if (ex) {
+      const a = ex.attributes || {};
+      return { type: a["exception.type"] || "", message: a["exception.message"] || "", stacktrace: a["exception.stacktrace"] || "" };
+    }
+    const a = span.attributes || {};
+    const msg = a["error.message"] || a["exception.message"] || a["otel.status_description"] || "";
+    if (msg) return { type: a["error.type"] || a["exception.type"] || "", message: msg, stacktrace: a["exception.stacktrace"] || "" };
+    return null;
+  }
+
+  function detectRetries(tree) {
+    tree.nodes.forEach(n => { n._retry = 0; n._failed = false; });
+    function processChildren(children) {
+      const seen = {};
+      children.forEach(c => {
+        const name = c.name || "";
+        if (!seen[name]) seen[name] = [];
+        seen[name].push(c);
+      });
+      Object.values(seen).forEach(group => {
+        if (group.length <= 1) return;
+        let retryNum = 0;
+        for (const span of group) {
+          if (retryNum > 0) span._retry = retryNum;
+          if (statusCls(span.status) === "error") {
+            span._failed = true;
+            retryNum++;
+          }
+        }
+      });
+    }
+    processChildren(tree.roots);
+    tree.nodes.forEach(n => { if (n._children.length) processChildren(n._children); });
   }
 
   function extractReasoning(span) {
@@ -265,7 +326,8 @@
     if (sum.error_count) chips += `<span class="tv-chip tv-chip-error">${sum.error_count} error${sum.error_count>1?"s":""}</span>`;
     scores.forEach(sc => {
       const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
-      chips += `<span class="tv-chip tv-chip-score">${esc(sc.name)}: ${esc(v)}</span>`;
+      const tone = metricToneClass(sc.value);
+      chips += `<span class="tv-chip tv-chip-score ${tone}">${esc(sc.name)}: ${esc(v)}</span>`;
     });
     if (item.trace_id) chips += `<button type="button" class="tv-chip tv-chip-copy" data-trace-copy="${esc(item.trace_id)}" title="Copy Trace ID">ID</button>`;
 
@@ -285,6 +347,7 @@
       return;
     }
     applySearch(tree);
+    detectRetries(tree);
     const bounds = computeBounds(S.data);
     const rows = [];
 
@@ -308,16 +371,17 @@
       // Tree connector guides
       let guidesHtml = '';
       for (let i = 0; i < prefix.length; i++) {
-        guidesHtml += `<span class="tv-guide ${prefix[i] ? 'pipe' : 'space'}"></span>`;
+        const guideStyle = ` style="--tv-guide-opacity:${laneOpacity(i)}"`;
+        guidesHtml += `<span class="tv-guide ${prefix[i] ? 'pipe' : 'space'}"${guideStyle}></span>`;
       }
       if (node._depth > 0) {
-        guidesHtml += `<span class="tv-guide ${isLast ? 'elbow' : 'branch'}"></span>`;
+        guidesHtml += `<span class="tv-guide ${isLast ? 'elbow' : 'branch'}" style="--tv-guide-opacity:${laneOpacity(prefix.length)}"></span>`;
       }
 
       // Toggle (expand/collapse) — right side
       const toggleHtml = visibleKids.length
         ? `<span class="tv-toggle ${exp?"open":""}" data-toggle="${esc(node.span_id)}"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
-        : '';
+        : `<span class="tv-toggle tv-toggle-empty"></span>`;
 
       // Inline meta for LLM spans
       let inlineMeta = "";
@@ -327,14 +391,37 @@
 
       const stCls = statusCls(node.status);
 
+      // Error indicator
+      let errHtml = "";
+      if (stCls === "error") {
+        const errInfo = extractErrorInfo(node);
+        errHtml = `<span class="tv-err-badge" title="${esc(errInfo?.message || 'Error')}"><svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".15"/><path d="M8 4v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.5" r="1" fill="currentColor"/></svg></span>`;
+      }
+
+      // Retry badge
+      let retryHtml = "";
+      if (node._retry > 0) {
+        retryHtml = `<span class="tv-retry-badge">↻ retry${node._retry > 1 ? " #" + node._retry : ""}</span>`;
+      }
+
+      const rowCls = [
+        "tv-row",
+        sel ? "sel" : "",
+        stCls === "error" ? "row-err" : "",
+        node._retry > 0 ? "row-retry" : "",
+        node._failed ? "row-failed" : "",
+      ].filter(Boolean).join(" ");
+
       rows.push(
-        `<button type="button" class="tv-row ${sel?"sel":""} ${stCls==="error"?"row-err":""}" data-span="${esc(node.span_id)}">` +
-          guidesHtml +
-          `<span class="tv-icon" style="background:${color}20;color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>` +
-          `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${inlineMeta}</span>` +
-          `<span class="tv-dur">${esc(fmtDur(node.duration_ms))}</span>` +
-          `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%;${stCls === 'unset' ? 'background:' + color : ''}"></span></span>` +
-          toggleHtml +
+        `<button type="button" class="${rowCls}" data-span="${esc(node.span_id)}">` +
+          `<span class="tv-tree-gutter">${guidesHtml}</span>` +
+          `<span class="tv-row-main">` +
+            `<span class="tv-icon" style="background:${color}20;color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>` +
+            `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${errHtml}${retryHtml}${inlineMeta}</span>` +
+            `<span class="tv-dur">${esc(fmtDur(node.duration_ms))}</span>` +
+            `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%;background:${color}"></span></span>` +
+            toggleHtml +
+          `</span>` +
         `</button>`
       );
       if (exp) {
@@ -377,7 +464,7 @@
 
     if (kind === "LLM") {
       if (inputMsgs.length || outputMsgs.length) tabs.push({ id: "messages", label: "Messages" });
-      if (reasoning) tabs.push({ id: "reasoning", label: "Reasoning" });
+      if (attrs["output.value"]) tabs.push({ id: "llm-output", label: "Output" });
       tabs.push({ id: "params", label: "Params" });
     } else if (kind === "TOOL") {
       tabs.push({ id: "tool-io", label: "Input / Output" });
@@ -411,24 +498,35 @@
     if (costStr) header += `<span class="tv-dot"></span><span>${costStr}</span>`;
     header += `</div></div>`;
     header += `<span class="tv-chip tv-chip-status-${stCls}">${esc(String(span.status||"UNSET").toUpperCase())}</span>`;
+    if (span._retry > 0) header += `<span class="tv-chip tv-chip-retry">↻ retry${span._retry > 1 ? " #" + span._retry : ""}</span>`;
     header += `</div>`;
+
+    // Error detail block
+    if (stCls === "error") {
+      const errInfo = extractErrorInfo(span);
+      header += `<div class="tv-det-error">`;
+      header += `<div class="tv-det-error-title">Error</div>`;
+      if (errInfo) {
+        if (errInfo.type) header += `<div class="tv-det-error-type">${esc(errInfo.type)}</div>`;
+        if (errInfo.message) header += `<div class="tv-det-error-msg">${esc(errInfo.message)}</div>`;
+        if (errInfo.stacktrace) header += `<details class="tv-det-error-stack"><summary>Stack trace</summary><pre class="tv-code">${esc(errInfo.stacktrace)}</pre></details>`;
+      } else {
+        header += `<div class="tv-det-error-msg">This span completed with ERROR status</div>`;
+      }
+      header += `</div>`;
+    }
 
     // Tabs + view mode toggle
     let tabBar = `<div class="tv-tabs">`;
     tabs.forEach(t => {
       tabBar += `<button type="button" class="tv-tab ${S.activeTab===t.id?"active":""}" data-tab="${t.id}">${esc(t.label)}</button>`;
     });
-    tabBar += `<span class="tv-tabs-spacer"></span>`;
-    tabBar += `<span class="tv-view-toggle">`;
-    tabBar += `<button type="button" class="tv-view-btn ${S.viewMode==="formatted"?"active":""}" data-viewmode="formatted" title="Structured view">Formatted</button>`;
-    tabBar += `<button type="button" class="tv-view-btn ${S.viewMode==="raw"?"active":""}" data-viewmode="raw" title="Raw JSON">Raw</button>`;
-    tabBar += `</span>`;
     tabBar += `</div>`;
 
     // Tab content
     let content = `<div class="tv-tab-content">`;
-    if (S.activeTab === "messages") content += renderMessages(inputMsgs.concat(outputMsgs));
-    else if (S.activeTab === "reasoning") content += renderReasoning(reasoning);
+    if (S.activeTab === "messages") content += renderMessages(inputMsgs.concat(outputMsgs), reasoning);
+    else if (S.activeTab === "llm-output") content += renderLLMOutput(span);
     else if (S.activeTab === "params") content += renderParams(span);
     else if (S.activeTab === "tool-io") content += renderToolIO(span);
     else if (S.activeTab === "metrics") content += renderMetrics(span);
@@ -438,18 +536,20 @@
     content += `</div>`;
 
     S.el.detail.innerHTML = header + tabBar + content;
+    mountJsonFormatters(S.el.detail);
   }
 
   /* ── tab renderers ── */
-  function renderMessages(msgs) {
-    if (!msgs.length) return `<div class="tv-empty-d">No messages</div>`;
-    return msgs.map(m => {
+  function renderMessages(msgs, reasoning) {
+    if (!msgs.length && !reasoning) return `<div class="tv-empty-d">No messages</div>`;
+    let html = msgs.map(m => {
       const role = String(m.role).toLowerCase();
+      const msgText = m.content ? String(m.content) : "";
       let bubble = `<div class="tv-msg tv-msg-${role}">`;
-      bubble += `<div class="tv-msg-role">${esc(role)}${m.toolCallId ? ` <span class="tv-msg-tcid">${esc(m.toolCallId)}</span>` : ""}</div>`;
+      bubble += `<div class="tv-msg-role">${esc(role)}${m.toolCallId ? ` <span class="tv-msg-tcid">${esc(m.toolCallId)}</span>` : ""}${msgText ? copyBtn(msgText, "Copy message") : ""}</div>`;
       if (m.content) {
-        const text = String(m.content);
-        const trimmed = text.trim();
+        const text = String(m.content).trim();
+        const trimmed = text;
         // If content looks like JSON, render through the view mode system
         if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
           try { JSON.parse(trimmed); bubble += `<div class="tv-msg-body">${renderJsonBlock(text)}</div>`; }
@@ -463,7 +563,7 @@
       if (m.toolCalls && m.toolCalls.length) {
         m.toolCalls.forEach(tc => {
           bubble += `<div class="tv-toolcall">`;
-          bubble += `<div class="tv-toolcall-name">${esc(tc.name)}</div>`;
+          bubble += `<div class="tv-toolcall-name">${esc(tc.name)}${tc.arguments ? copyBtn(tc.arguments, "Copy arguments") : ""}</div>`;
           if (tc.arguments) {
             bubble += renderJsonBlock(tc.arguments);
           }
@@ -473,6 +573,15 @@
       bubble += `</div>`;
       return bubble;
     }).join("");
+
+    // Reasoning: inline expander after messages (not a separate tab)
+    if (reasoning) {
+      html += `<details class="tv-reasoning-expander"><summary class="tv-reasoning-summary">Reasoning ${copyBtn(reasoning, "Copy reasoning")}</summary>`;
+      html += `<div class="tv-reasoning">${esc(reasoning)}</div>`;
+      html += `</details>`;
+    }
+
+    return html;
   }
 
   function renderMarkdownLite(text) {
@@ -485,11 +594,6 @@
       }
       return `<span>${esc(p)}</span>`;
     }).join("");
-  }
-
-  function renderReasoning(text) {
-    if (!text) return `<div class="tv-empty-d">No reasoning content</div>`;
-    return `<div class="tv-reasoning">${esc(text)}</div>`;
   }
 
   function renderParams(span) {
@@ -517,6 +621,76 @@
     return `<div class="tv-params">${rows.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
   }
 
+  function renderLLMOutput(span) {
+    const a = span.attributes || {};
+    const raw = a["output.value"];
+    if (!raw) return `<div class="tv-empty-d">No output data</div>`;
+    let parsed;
+    try { parsed = deepParseJson(typeof raw === "string" ? JSON.parse(raw) : raw); } catch (_) { return renderJsonBlock(raw); }
+    if (!parsed || typeof parsed !== "object") return renderJsonBlock(raw);
+
+    let html = "";
+
+    // Usage section
+    const usage = parsed.usage;
+    if (usage && typeof usage === "object") {
+      html += `<div class="tv-io-section"><div class="tv-io-label">Usage ${copyBtn(() => JSON.stringify(usage, null, 2), "Copy usage")}</div>`;
+      const rows = [];
+      function addRow(label, val, cls) { if (val != null && val !== 0 && val !== "") rows.push([label, val, cls || ""]); }
+      addRow("Prompt Tokens", usage.prompt_tokens);
+      addRow("Completion Tokens", usage.completion_tokens);
+      const rd = usage.completion_tokens_details;
+      if (rd) {
+        addRow("  Reasoning Tokens", rd.reasoning_tokens);
+        addRow("  Image Tokens", rd.image_tokens);
+        addRow("  Audio Tokens", rd.audio_tokens);
+      }
+      const pd = usage.prompt_tokens_details;
+      if (pd) {
+        addRow("  Cached Tokens", pd.cached_tokens || pd.cache_read_tokens);
+        addRow("  Cache Write Tokens", pd.cache_write_tokens);
+      }
+      addRow("Total Tokens", usage.total_tokens);
+      // Cost info
+      if (usage.cost != null) addRow("Cost", "$" + Number(usage.cost).toFixed(6), "tv-llm-cost");
+      const cd = usage.cost_details;
+      if (cd) {
+        if (cd.upstream_inference_cost != null) addRow("  Inference Cost", "$" + Number(cd.upstream_inference_cost).toFixed(6));
+        if (cd.upstream_inference_prompt_cost != null) addRow("    Prompt Cost", "$" + Number(cd.upstream_inference_prompt_cost).toFixed(6));
+        if (cd.upstream_inference_completions_cost != null) addRow("    Completions Cost", "$" + Number(cd.upstream_inference_completions_cost).toFixed(6));
+      }
+      if (usage.is_byok != null) addRow("BYOK", String(usage.is_byok));
+      html += `<div class="tv-params">${rows.map(([k,v,c]) => `<div class="tv-param${k.startsWith("  ") ? " tv-param-indent" : ""}"><span class="tv-param-k ${c}">${esc(k.trim())}</span><span class="tv-param-v ${c}">${esc(String(v))}</span></div>`).join("")}</div>`;
+      html += `</div>`;
+    }
+
+    // Provider / model / metadata section
+    const meta = [];
+    if (parsed.provider) meta.push(["Provider", parsed.provider]);
+    if (parsed.model) meta.push(["Model", parsed.model]);
+    if (parsed.id) meta.push(["Response ID", parsed.id]);
+    if (parsed.object) meta.push(["Object", parsed.object]);
+    if (parsed.created) meta.push(["Created", new Date(parsed.created * 1000).toISOString()]);
+    if (parsed.system_fingerprint) meta.push(["System Fingerprint", parsed.system_fingerprint]);
+    const choice = parsed.choices?.[0];
+    if (choice) {
+      if (choice.finish_reason) meta.push(["Finish Reason", choice.finish_reason]);
+      if (choice.native_finish_reason) meta.push(["Native Finish Reason", choice.native_finish_reason]);
+    }
+    if (meta.length) {
+      html += `<div class="tv-io-section"><div class="tv-io-label">Response Metadata ${copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response")}</div>`;
+      html += `<div class="tv-params">${meta.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
+      html += `</div>`;
+    }
+
+    // Full raw response
+    html += `<div class="tv-io-section"><div class="tv-io-label">Full Response ${copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response")}</div>`;
+    html += renderJsonBlock(raw);
+    html += `</div>`;
+
+    return html;
+  }
+
   function renderToolIO(span) {
     const a = span.attributes || {};
     const toolName = a["tool.name"] || span.name || "tool";
@@ -527,7 +701,7 @@
     // Tool call arguments — rendered as an assistant tool_call bubble
     if (inp) {
       html += `<div class="tv-msg tv-msg-assistant">`;
-      html += `<div class="tv-msg-role">tool call</div>`;
+      html += `<div class="tv-msg-role">tool call ${copyBtn(inp, "Copy input")}</div>`;
       html += `<div class="tv-toolcall">`;
       html += `<div class="tv-toolcall-name">${esc(toolName)}</div>`;
       html += renderJsonBlock(inp);
@@ -537,7 +711,7 @@
     // Tool result — rendered as a tool result bubble
     if (out) {
       html += `<div class="tv-msg tv-msg-tool">`;
-      html += `<div class="tv-msg-role">result</div>`;
+      html += `<div class="tv-msg-role">result ${copyBtn(out, "Copy output")}</div>`;
       html += `<div class="tv-msg-body">${renderJsonBlock(out)}</div>`;
       html += `</div>`;
     }
@@ -552,12 +726,12 @@
     const inp = a["input.value"];
     const out = a["output.value"];
     if (inp) {
-      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-input">Input</div>`;
+      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-input">Input ${copyBtn(inp, "Copy input")}</div>`;
       html += renderJsonBlock(inp);
       html += `</div>`;
     }
     if (out) {
-      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-output">Output</div>`;
+      html += `<div class="tv-io-section"><div class="tv-io-label tv-io-label-output">Output ${copyBtn(out, "Copy output")}</div>`;
       html += renderJsonBlock(out);
       html += `</div>`;
     }
@@ -565,65 +739,124 @@
     return html;
   }
 
-  /* ── JSON/value rendering ── */
+  /* ── JSON/value rendering (CodeMirror 6) ── */
 
-  function syntaxHighlight(json) {
-    return json
-      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-      .replace(/("(?:\\.|[^"\\])*")\s*:/g, '<span class="tv-json-key">$1</span>:')
-      .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span class="tv-json-str">$1</span>')
-      .replace(/:\s*(\d+\.?\d*)/g, ': <span class="tv-json-num">$1</span>')
-      .replace(/:\s*(true|false)/g, ': <span class="tv-json-bool">$1</span>')
-      .replace(/:\s*(null)/g, ': <span class="tv-json-null">$1</span>');
+  let _cmId = 0;
+  const _cmData = {};
+  let _cmModules = null;
+  let _cmLoading = null;
+
+  function loadCodeMirror() {
+    if (_cmModules) return Promise.resolve(_cmModules);
+    if (_cmLoading) return _cmLoading;
+    _cmLoading = Promise.all([
+      import("https://esm.sh/@codemirror/state@6"),
+      import("https://esm.sh/@codemirror/view@6"),
+      import("https://esm.sh/@codemirror/language@6"),
+      import("https://esm.sh/@codemirror/lang-json@6"),
+      import("https://esm.sh/@codemirror/commands@6"),
+      import("https://esm.sh/@lezer/highlight@1"),
+    ]).then(([state, view, language, langJson, commands, highlight]) => {
+      _cmModules = { state, view, language, langJson, commands, highlight };
+      return _cmModules;
+    });
+    return _cmLoading;
   }
 
-  let _fmtId = 0;
+  // Start loading immediately
+  loadCodeMirror();
 
-  function formatStructured(obj) {
-    if (obj === null || obj === undefined) return '<span class="tv-fmt-null">null</span>';
-    if (typeof obj === "boolean") return `<span class="tv-fmt-bool">${obj}</span>`;
-    if (typeof obj === "number") return `<span class="tv-fmt-num">${obj}</span>`;
-    if (typeof obj === "string") {
-      const trimmed = obj.trim();
-      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-        try { const p = JSON.parse(trimmed); if (typeof p === "object" && p !== null) return formatStructured(p); } catch (_) {}
+  function renderJsonPlaceholder(jsonStr) {
+    const id = `tv-cm-${++_cmId}`;
+    _cmData[id] = jsonStr;
+    return `<div class="tv-cm" data-cm-id="${id}"></div>`;
+  }
+
+  function mountJsonFormatters(root) {
+    const els = root.querySelectorAll("[data-cm-id]");
+    if (!els.length) return;
+    loadCodeMirror().then(cm => {
+      els.forEach(el => {
+        const id = el.getAttribute("data-cm-id");
+        const doc = _cmData[id];
+        if (doc == null) return;
+        delete _cmData[id];
+        const edState = cm.state.EditorState.create({
+          doc,
+          extensions: [
+            cm.view.lineNumbers(),
+            cm.language.foldGutter(),
+            cm.view.drawSelection(),
+            cm.language.bracketMatching(),
+            cm.langJson.json(),
+            cm.view.keymap.of([...cm.commands.defaultKeymap, ...cm.language.foldKeymap]),
+            cm.state.EditorState.readOnly.of(true),
+            cm.view.EditorView.editable.of(false),
+            // qym theme
+            cm.view.EditorView.theme({
+              "&": { fontSize: "12px", maxHeight: "500px", background: "var(--bg-void)", color: "var(--text-secondary)" },
+              ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)" },
+              ".cm-gutters": { background: "var(--bg-void)", border: "none", minWidth: "auto" },
+              ".cm-lineNumbers .cm-gutterElement": { color: "#50505e", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
+              ".cm-foldGutter .cm-gutterElement": { color: "#7a7a90", padding: "0 2px 0 0", width: "12px" },
+              ".cm-line": { padding: "0 8px" },
+              ".cm-activeLine": { background: "rgba(255,255,255,.03)" },
+              ".cm-activeLineGutter": { background: "rgba(255,255,255,.03)" },
+              ".cm-selectionBackground": { background: "rgba(0,168,255,.15) !important" },
+              ".cm-cursor": { borderLeftColor: "#00d4aa" },
+              "&.cm-focused .cm-selectionBackground": { background: "rgba(0,168,255,.2) !important" },
+              ".cm-matchingBracket": { background: "rgba(0,212,170,.15)", outline: "1px solid rgba(0,212,170,.3)" },
+            }, { dark: true }),
+            cm.language.syntaxHighlighting(cm.language.HighlightStyle.define([
+              { tag: cm.highlight.tags.propertyName, color: "#00a8ff" },
+              { tag: cm.highlight.tags.string, color: "#00d4aa" },
+              { tag: cm.highlight.tags.number, color: "#a855f7" },
+              { tag: cm.highlight.tags.bool, color: "#00a8ff" },
+              { tag: cm.highlight.tags.null, color: "#50505e" },
+              { tag: cm.highlight.tags.punctuation, color: "#7a7a90" },
+              { tag: cm.highlight.tags.brace, color: "#7a7a90" },
+              { tag: cm.highlight.tags.squareBracket, color: "#7a7a90" },
+            ])),
+          ],
+        });
+        new cm.view.EditorView({ state: edState, parent: el });
+      });
+    });
+  }
+
+  function nestDottedKeys(obj) {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return obj;
+    const hasDots = Object.keys(obj).some(k => k.includes("."));
+    if (!hasDots) return obj;
+    const root = {};
+    for (const [key, val] of Object.entries(obj)) {
+      const parts = key.split(".");
+      let cur = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!(parts[i] in cur) || typeof cur[parts[i]] !== "object" || cur[parts[i]] === null) {
+          cur[parts[i]] = {};
+        }
+        cur = cur[parts[i]];
       }
-      // Collapse long strings
-      if (obj.length > 300) {
-        const id = `tv-fmtc-${++_fmtId}`;
-        return `<span class="tv-fmt-str"><span class="tv-fmt-collapsed-text" id="${id}">${esc(obj.slice(0, 300))}<span class="tv-fmt-hidden" style="display:none">${esc(obj.slice(300))}</span></span> <button type="button" class="tv-fmt-toggle" onclick="var h=document.querySelector('#${id} .tv-fmt-hidden');if(h.style.display==='none'){h.style.display='inline';this.textContent='Show less'}else{h.style.display='none';this.textContent='Show more (${Math.ceil(obj.length/1000)}k chars)'}">Show more (${Math.ceil(obj.length/1000)}k chars)</button></span>`;
-      }
-      return `<span class="tv-fmt-str">${esc(obj)}</span>`;
+      cur[parts[parts.length - 1]] = val;
     }
-    if (Array.isArray(obj)) {
-      if (!obj.length) return '<span class="tv-fmt-null">[]</span>';
-      const limit = 10;
-      const items = obj.slice(0, limit).map((item, i) =>
-        `<div class="tv-fmt-arr-item"><span class="tv-fmt-idx">[${i}]</span>${formatStructured(item)}</div>`
-      ).join("");
-      if (obj.length > limit) {
-        const id = `tv-fmta-${++_fmtId}`;
-        const rest = obj.slice(limit).map((item, i) =>
-          `<div class="tv-fmt-arr-item"><span class="tv-fmt-idx">[${i + limit}]</span>${formatStructured(item)}</div>`
-        ).join("");
-        return `<div class="tv-fmt-arr">${items}<div id="${id}" style="display:none">${rest}</div><button type="button" class="tv-fmt-toggle" onclick="var el=document.getElementById('${id}');if(el.style.display==='none'){el.style.display='block';this.textContent='Show less'}else{el.style.display='none';this.textContent='Show ${obj.length - limit} more items'}">Show ${obj.length - limit} more items</button></div>`;
-      }
-      return `<div class="tv-fmt-arr">${items}</div>`;
+    // Convert objects with all-numeric keys to arrays (recursive)
+    return objectsToArrays(root);
+  }
+
+  function objectsToArrays(obj) {
+    if (!obj || typeof obj !== "object") return obj;
+    if (Array.isArray(obj)) return obj.map(objectsToArrays);
+    const keys = Object.keys(obj);
+    const allNumeric = keys.length > 0 && keys.every(k => /^\d+$/.test(k));
+    if (allNumeric) {
+      const arr = [];
+      keys.sort((a, b) => Number(a) - Number(b)).forEach(k => { arr[Number(k)] = objectsToArrays(obj[k]); });
+      return arr;
     }
-    const entries = Object.entries(obj);
-    if (!entries.length) return '<span class="tv-fmt-null">{}</span>';
-    const limit = 15;
-    const visible = entries.slice(0, limit).map(([k, v]) =>
-      `<div class="tv-fmt-row"><span class="tv-fmt-key">${esc(k)}</span><div class="tv-fmt-val">${formatStructured(v)}</div></div>`
-    ).join("");
-    if (entries.length > limit) {
-      const id = `tv-fmto-${++_fmtId}`;
-      const rest = entries.slice(limit).map(([k, v]) =>
-        `<div class="tv-fmt-row"><span class="tv-fmt-key">${esc(k)}</span><div class="tv-fmt-val">${formatStructured(v)}</div></div>`
-      ).join("");
-      return `<div class="tv-fmt-obj">${visible}<div id="${id}" style="display:none">${rest}</div><button type="button" class="tv-fmt-toggle" onclick="var el=document.getElementById('${id}');if(el.style.display==='none'){el.style.display='block';this.textContent='Show less'}else{el.style.display='none';this.textContent='Show ${entries.length - limit} more fields'}">Show ${entries.length - limit} more fields</button></div>`;
-    }
-    return `<div class="tv-fmt-obj">${visible}</div>`;
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = objectsToArrays(v);
+    return out;
   }
 
   function deepParseJson(obj) {
@@ -651,17 +884,10 @@
       return `<pre class="tv-code">${esc(String(value))}</pre>`;
     }
     parsed = deepParseJson(parsed);
-    const raw = JSON.stringify(parsed, null, 2);
-    const highlighted = syntaxHighlight(raw);
-    const lines = raw.split("\n").length;
-    const collapsed = lines > 20;
-
-    if (S.viewMode === "raw") {
-      return `<pre class="tv-code ${collapsed?"tv-json-collapsed":""}">${highlighted}</pre>` +
-        (collapsed ? `<button type="button" class="tv-json-expand">Show all ${lines} lines</button>` : "");
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      parsed = nestDottedKeys(parsed);
     }
-    // Formatted (structured key-value)
-    return `<div class="tv-fmt-block">${formatStructured(parsed)}</div>`;
+    return renderJsonPlaceholder(JSON.stringify(parsed, null, 2));
   }
 
   function renderMetrics(span) {
@@ -681,9 +907,7 @@
       const meta = data && typeof data === "object" ? data.metadata : null;
       const isNum = typeof score === "number";
       const displayVal = isNum ? (Number.isInteger(score) || score > 10 ? score.toLocaleString("en-US") : score.toFixed(2)) : String(score ?? "—");
-      const isPass = isNum && score >= 0.5 && score <= 1;
-      const isFail = isNum && score === 0;
-      const cls = isPass ? "pass" : isFail ? "fail" : "";
+      const cls = metricToneClass(score);
       const metaId = `tv-metric-${++id}`;
       let card = `<div class="tv-metric-card ${cls}">`;
       card += `<div class="tv-metric-head${meta ? " tv-metric-expandable" : ""}" ${meta ? `data-metric-toggle="${metaId}"` : ""}>`;
@@ -712,18 +936,20 @@
     if (!scores.length) return `<div class="tv-empty-d">No scores</div>`;
     return `<div class="tv-scores">${scores.map(sc => {
       const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
-      return `<div class="tv-score-card"><div class="tv-score-head"><span class="tv-score-name">${esc(sc.name)}</span><span class="tv-score-val">${esc(v)}</span></div>${sc.explanation ? `<div class="tv-score-exp">${esc(sc.explanation)}</div>` : ""}</div>`;
+      const tone = metricToneClass(sc.value);
+      return `<div class="tv-score-card ${tone}"><div class="tv-score-head"><span class="tv-score-name">${esc(sc.name)}</span><span class="tv-score-val ${tone}">${esc(v)}</span></div>${sc.explanation ? `<div class="tv-score-exp">${esc(sc.explanation)}</div>` : ""}</div>`;
     }).join("")}</div>`;
   }
 
   function renderRaw(span) {
     const allAttrs = span.attributes || {};
     const events = span.events || [];
-    let html = `<div class="tv-io-section"><div class="tv-io-label">Attributes</div>${renderJsonBlock(allAttrs)}</div>`;
+    const metaObj = { span_id: span.span_id, parent_span_id: span.parent_span_id, trace_id: span.trace_id, kind: span.kind, status: span.status, duration_ms: span.duration_ms };
+    let html = `<div class="tv-io-section"><div class="tv-io-label">Attributes ${copyBtn(() => JSON.stringify(allAttrs, null, 2), "Copy attributes")}</div>${renderJsonBlock(allAttrs)}</div>`;
     if (events.length) {
-      html += `<div class="tv-io-section"><div class="tv-io-label">Events</div>${renderJsonBlock(events)}</div>`;
+      html += `<div class="tv-io-section"><div class="tv-io-label">Events ${copyBtn(() => JSON.stringify(events, null, 2), "Copy events")}</div>${renderJsonBlock(events)}</div>`;
     }
-    html += `<div class="tv-io-section"><div class="tv-io-label">Span Metadata</div>${renderJsonBlock({ span_id: span.span_id, parent_span_id: span.parent_span_id, trace_id: span.trace_id, kind: span.kind, status: span.status, duration_ms: span.duration_ms })}</div>`;
+    html += `<div class="tv-io-section"><div class="tv-io-label">Span Metadata ${copyBtn(() => JSON.stringify(metaObj, null, 2), "Copy metadata")}</div>${renderJsonBlock(metaObj)}</div>`;
     return html;
   }
 
@@ -885,6 +1111,19 @@
   /* ── event handling ── */
   function handleClick(e) {
     if (e.target.closest("[data-trace-close]")) { e.preventDefault(); closeDrawer(); return; }
+    if (e.target.closest("[data-copy-id]")) {
+      e.preventDefault(); e.stopPropagation();
+      const btn = e.target.closest("[data-copy-id]");
+      const id = btn.getAttribute("data-copy-id");
+      const raw = _copyData[id];
+      const text = typeof raw === "function" ? raw() : String(raw || "");
+      if (text && navigator.clipboard) {
+        navigator.clipboard.writeText(text).catch(()=>{});
+        btn.classList.add("tv-copy-ok");
+        setTimeout(() => btn.classList.remove("tv-copy-ok"), 1200);
+      }
+      return;
+    }
     if (e.target.closest("[data-trace-copy]")) {
       e.preventDefault();
       const v = e.target.closest("[data-trace-copy]").getAttribute("data-trace-copy");
@@ -897,13 +1136,6 @@
       }
       return;
     }
-    // View mode toggle (formatted/raw) — applies to entire detail panel
-    if (e.target.closest("[data-viewmode]")) {
-      e.preventDefault();
-      S.viewMode = e.target.closest("[data-viewmode]").getAttribute("data-viewmode");
-      renderDetail();
-      return;
-    }
     // Metric card expand/collapse
     if (e.target.closest("[data-metric-toggle]")) {
       e.preventDefault();
@@ -914,14 +1146,6 @@
         el.style.display = open ? "none" : "";
         e.target.closest(".tv-metric-card").classList.toggle("expanded", !open);
       }
-      return;
-    }
-    // JSON expand (show all lines in raw mode)
-    if (e.target.closest(".tv-json-expand")) {
-      e.preventDefault();
-      const pre = e.target.closest(".tv-json-expand").previousElementSibling;
-      if (pre) pre.classList.remove("tv-json-collapsed");
-      e.target.closest(".tv-json-expand").remove();
       return;
     }
     if (e.target.closest(".trace-drawer-btn")) { e.preventDefault(); openFromButton(e.target.closest(".trace-drawer-btn")); return; }
