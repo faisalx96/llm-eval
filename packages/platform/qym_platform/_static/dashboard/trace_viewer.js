@@ -157,10 +157,78 @@
       const bs = b.start_time_ns == null ? Infinity : Number(b.start_time_ns);
       return as !== bs ? as - bs : a._i - b._i;
     };
-    function walk(n, d) { n._depth = d; n._children.sort(sortFn); n._children.forEach(c => walk(c, d+1)); }
+    function sortChildren(n) { n._children.sort(sortFn); n._children.forEach(sortChildren); }
     roots.sort(sortFn);
-    roots.forEach(r => walk(r, 0));
+    roots.forEach(sortChildren);
+
+    // Collapse framework noise: remove pass-through wrapper spans and
+    // trivially short routing spans from LangChain/LangGraph internals.
+    _collapseNoise(roots, byId);
+
+    // Recompute depths after collapsing
+    function setDepths(n, d) { n._depth = d; n._children.forEach(c => setDepths(c, d+1)); }
+    roots.forEach(r => setDepths(r, 0));
+
     return { roots, byId, nodes };
+  }
+
+  // Names of spans that are always noise from framework internals.
+  // Only these exact names get removed — user-defined graph nodes are kept.
+  const _NOISE_NAMES = new Set([
+    "should_continue", "route", "router", "RunnableSequence",
+    "call_model", "ChannelWrite", "ChannelRead",
+    "Prompt", "RunnableParallel", "RunnableLambda",
+    "__start__", "__end__",
+  ]);
+  // Span kinds that are meaningful (never collapse)
+  const _KEEP_KINDS = new Set(["LLM", "TOOL", "AGENT", "EMBED", "RETRIEVER", "EVALUATOR", "GUARDRAIL"]);
+
+  function _isNoiseSpan(node) {
+    const kind = spanKind(node);
+    if (_KEEP_KINDS.has(kind)) return false;
+    const name = (node.name || "").trim();
+    // Only remove spans with known framework-internal names
+    if (_NOISE_NAMES.has(name)) return true;
+    return false;
+  }
+
+  function _isPassThrough(node) {
+    // A span that has exactly one child and adds nothing meaningful
+    if (node._children.length !== 1) return false;
+    const kind = spanKind(node);
+    if (_KEEP_KINDS.has(kind)) return false;
+    const attrs = node.attributes || {};
+    // Has its own input/output? Keep it.
+    if (attrs["input.value"] || attrs["output.value"]) return false;
+    if (attrs["llm.model_name"] || attrs["gen_ai.request.model"]) return false;
+    return true;
+  }
+
+  function _collapseNoise(childList, byId) {
+    for (let i = childList.length - 1; i >= 0; i--) {
+      const node = childList[i];
+      // Recurse first (bottom-up)
+      _collapseNoise(node._children, byId);
+      // Remove pure noise spans (promote their children up)
+      if (_isNoiseSpan(node) && node._children.length === 0) {
+        childList.splice(i, 1);
+        continue;
+      }
+      // Collapse pass-through wrappers (single child, no data)
+      if (_isPassThrough(node)) {
+        const child = node._children[0];
+        child.parent_span_id = node.parent_span_id;
+        childList.splice(i, 1, child);
+        continue;
+      }
+      // Remove noise spans that have children by promoting children
+      if (_isNoiseSpan(node)) {
+        for (const child of node._children) {
+          child.parent_span_id = node.parent_span_id;
+        }
+        childList.splice(i, 1, ...node._children);
+      }
+    }
   }
 
   function computeBounds(data) {
@@ -1008,7 +1076,7 @@
 
     // ── Full Response JSON ──
     if (raw) {
-      html += renderLabeledSection("Full Response", renderJsonBlock(raw), "", actionGroup([
+      html += renderLabeledSection("Full Response", renderJsonBlock(raw, "tv-json-preview tv-json-preview-output"), "", actionGroup([
         copyBtn(() => JSON.stringify(parsed || raw, null, 2), "Copy full response"),
         expandBtn({ title: "Full Response", render: () => renderExpandedContent(renderJsonBlock(raw)) }, "Expand response"),
       ]));
@@ -1064,7 +1132,7 @@
     const inp = a["input.value"];
     const out = a["output.value"];
     if (inp) {
-      html += renderLabeledSection("Input", renderJsonBlock(inp), "tv-io-label-input", actionGroup([
+      html += renderLabeledSection("Input", renderJsonBlock(inp, "tv-json-preview"), "tv-io-label-input", actionGroup([
         copyBtn(inp, "Copy input"),
         expandBtn({
           title: "Input",
@@ -1073,7 +1141,7 @@
       ]));
     }
     if (out) {
-      html += renderLabeledSection("Output", renderJsonBlock(out), "tv-io-label-output", actionGroup([
+      html += renderLabeledSection("Output", renderJsonBlock(out, "tv-json-preview tv-json-preview-output"), "tv-io-label-output", actionGroup([
         copyBtn(out, "Copy output"),
         expandBtn({
           title: "Output",
@@ -1279,7 +1347,7 @@
     const allAttrs = span.attributes || {};
     const events = span.events || [];
     const metaObj = { span_id: span.span_id, parent_span_id: span.parent_span_id, trace_id: span.trace_id, kind: span.kind, status: span.status, duration_ms: span.duration_ms };
-    let html = renderLabeledSection("Attributes", renderJsonBlock(allAttrs), "", actionGroup([
+    let html = renderLabeledSection("Attributes", renderJsonBlock(allAttrs, "tv-json-preview tv-json-preview-output"), "", actionGroup([
       copyBtn(() => JSON.stringify(allAttrs, null, 2), "Copy attributes"),
       expandBtn({
         title: "Attributes",
@@ -1287,7 +1355,7 @@
       }, "Expand attributes"),
     ]));
     if (events.length) {
-      html += renderLabeledSection("Events", renderJsonBlock(events), "", actionGroup([
+      html += renderLabeledSection("Events", renderJsonBlock(events, "tv-json-preview tv-json-preview-output"), "", actionGroup([
         copyBtn(() => JSON.stringify(events, null, 2), "Copy events"),
         expandBtn({
           title: "Events",
@@ -1295,7 +1363,7 @@
         }, "Expand events"),
       ]));
     }
-    html += renderLabeledSection("Span Metadata", renderJsonBlock(metaObj), "", actionGroup([
+    html += renderLabeledSection("Span Metadata", renderJsonBlock(metaObj, "tv-json-preview"), "", actionGroup([
       copyBtn(() => JSON.stringify(metaObj, null, 2), "Copy metadata"),
       expandBtn({
         title: "Span Metadata",

@@ -1985,12 +1985,30 @@ main {
 
 .runs-table tbody tr.selected {
   background: var(--bg-active);
-  box-shadow: inset 2px 0 0 var(--accent-primary);
 }
 
 .runs-table tbody tr.focused {
-  outline: 1px solid var(--accent-primary);
-  outline-offset: -1px;
+  outline: none;
+}
+
+.runs-table tbody tr.selected td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+
+.runs-table tbody tr.focused td {
+  box-shadow: inset 0 1px 0 var(--accent-primary), inset 0 -1px 0 var(--accent-primary);
+}
+
+.runs-table tbody tr.focused td:first-child {
+  box-shadow: inset 1px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary), inset 0 -1px 0 var(--accent-primary);
+}
+
+.runs-table tbody tr.focused td:last-child {
+  box-shadow: inset -1px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary), inset 0 -1px 0 var(--accent-primary);
+}
+
+.runs-table tbody tr.selected.focused td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary), inset 0 -1px 0 var(--accent-primary);
 }
 
 /* Group header row in Runs view */

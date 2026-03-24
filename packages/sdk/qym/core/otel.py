@@ -510,25 +510,52 @@ def _patch_anthropic_enrichments():
 # ---------------------------------------------------------------------------
 
 # OpenInference instrumentors (same library Phoenix uses).
-_KNOWN_INSTRUMENTORS: List[Tuple[str, str]] = [
-    ("openinference.instrumentation.openai", "OpenAIInstrumentor"),
-    ("openinference.instrumentation.anthropic", "AnthropicInstrumentor"),
-    ("openinference.instrumentation.bedrock", "BedrockInstrumentor"),
-    ("openinference.instrumentation.google_generativeai", "GoogleGenerativeAIInstrumentor"),
-    ("openinference.instrumentation.mistralai", "MistralAIInstrumentor"),
-    ("openinference.instrumentation.groq", "GroqInstrumentor"),
-    ("openinference.instrumentation.cohere", "CohereInstrumentor"),
-    ("openinference.instrumentation.litellm", "LiteLLMInstrumentor"),
+#
+# Split into two tiers:
+#   - Framework instrumentors (LangChain, LlamaIndex, etc.) capture the full
+#     call tree including LLM calls, tool executions, and orchestration.
+#   - Provider instrumentors (OpenAI, Anthropic, etc.) capture raw LLM calls.
+#
+# When a framework instrumentor is active, its provider-level counterparts are
+# redundant — they produce duplicate spans for every LLM call.  We register
+# framework instrumentors first, then skip provider instrumentors that are
+# already covered.
+
+_FRAMEWORK_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.langchain", "LangChainInstrumentor"),
     ("openinference.instrumentation.llama_index", "LlamaIndexInstrumentor"),
     ("openinference.instrumentation.crewai", "CrewAIInstrumentor"),
     ("openinference.instrumentation.haystack", "HaystackInstrumentor"),
     ("openinference.instrumentation.dspy", "DSPyInstrumentor"),
+    ("openinference.instrumentation.litellm", "LiteLLMInstrumentor"),
 ]
+
+_PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
+    ("openinference.instrumentation.openai", "OpenAIInstrumentor"),
+    ("openinference.instrumentation.anthropic", "AnthropicInstrumentor"),
+    ("openinference.instrumentation.bedrock", "BedrockInstrumentor"),
+    ("openinference.instrumentation.mistralai", "MistralAIInstrumentor"),
+    ("openinference.instrumentation.groq", "GroqInstrumentor"),
+]
+
+# Which provider instrumentors each framework makes redundant.
+_FRAMEWORK_COVERS: Dict[str, Set[str]] = {
+    "LangChainInstrumentor":  {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
+    "LlamaIndexInstrumentor": {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
+    "CrewAIInstrumentor":     {"OpenAIInstrumentor", "AnthropicInstrumentor"},
+    "HaystackInstrumentor":   {"OpenAIInstrumentor", "AnthropicInstrumentor"},
+    "DSPyInstrumentor":       {"OpenAIInstrumentor", "AnthropicInstrumentor"},
+    "LiteLLMInstrumentor":    {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
+}
 
 
 def _register_instrumentors(provider):
-    """Register all available OpenInference instrumentors on the given TracerProvider."""
+    """Register all available OpenInference instrumentors on the given TracerProvider.
+
+    Framework instrumentors are registered first.  Provider instrumentors that
+    would duplicate spans already captured by a framework instrumentor are
+    skipped automatically.
+    """
     # Suppress noisy DependencyConflict errors from instrumentors
     # whose provider SDKs aren't installed.
     _instrumentor_logger = logging.getLogger("opentelemetry.instrumentation.instrumentor")
@@ -536,7 +563,9 @@ def _register_instrumentors(provider):
     _instrumentor_logger.setLevel(logging.CRITICAL)
 
     registered = []
-    for module_path, class_name in _KNOWN_INSTRUMENTORS:
+    skipped_by_framework: Set[str] = set()
+
+    def _try_register(module_path, class_name):
         try:
             mod = __import__(module_path, fromlist=[class_name])
             instrumentor_cls = getattr(mod, class_name)
@@ -544,15 +573,31 @@ def _register_instrumentors(provider):
             if not getattr(instrumentor, '_is_instrumented_by_opentelemetry', False):
                 instrumentor.instrument(tracer_provider=provider)
                 registered.append(class_name)
+                return True
         except ImportError:
             pass
         except Exception as e:
             logger.debug(f"Failed to register {class_name}: {e}")
+        return False
+
+    # 1. Register framework instrumentors first
+    for module_path, class_name in _FRAMEWORK_INSTRUMENTORS:
+        if _try_register(module_path, class_name):
+            skipped_by_framework |= _FRAMEWORK_COVERS.get(class_name, set())
+
+    # 2. Register provider instrumentors, skipping those covered by a framework
+    for module_path, class_name in _PROVIDER_INSTRUMENTORS:
+        if class_name in skipped_by_framework:
+            logger.debug(f"Skipping {class_name} (already covered by framework instrumentor)")
+            continue
+        _try_register(module_path, class_name)
 
     _instrumentor_logger.setLevel(_prev_level)
 
     if registered:
         logger.info(f"Auto-instrumentation registered: {', '.join(registered)}")
+    if skipped_by_framework:
+        logger.info(f"Provider instrumentors skipped (covered by framework): {', '.join(sorted(skipped_by_framework))}")
     return registered
 
 
@@ -593,16 +638,27 @@ def create_otel_manager(config) -> Any:
             else:
                 provider = existing
 
-            # Wrap provider SDK methods BEFORE instrumentors patch them
-            # so enrichments (tool spans, reasoning) run inside the
-            # instrumentor's span context.
-            _patch_openai_enrichments()
-            _patch_anthropic_enrichments()
-
-            # Register all available OpenInference instrumentors
+            # Register instrumentors — framework instrumentors first so we
+            # know whether to skip provider-level enrichments.
             registered = _register_instrumentors(provider)
             if not registered:
                 logger.debug("No OpenInference instrumentors found — auto-instrumentation inactive")
+
+            # Only apply provider SDK enrichments (tool span emission,
+            # reasoning capture) when no framework instrumentor is active.
+            # Framework instrumentors (LangChain, LlamaIndex, etc.) already
+            # capture tool calls and LLM details within their span tree.
+            _framework_names = {
+                "LangChainInstrumentor", "LlamaIndexInstrumentor",
+                "CrewAIInstrumentor", "HaystackInstrumentor",
+                "DSPyInstrumentor", "LiteLLMInstrumentor",
+            }
+            _has_framework = bool(_framework_names & set(registered))
+            if not _has_framework:
+                _patch_openai_enrichments()
+                _patch_anthropic_enrichments()
+            else:
+                logger.info("Skipping provider SDK enrichments (framework instrumentor active)")
 
             # Optional: Phoenix OTLP export for dual tracing
             import os

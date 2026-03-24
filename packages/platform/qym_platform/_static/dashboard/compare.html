@@ -298,6 +298,70 @@
       margin-top: 2px;
     }
 
+    /* Category chip selector */
+    .category-chip-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: var(--space-md);
+      align-items: center;
+    }
+    .category-chip-bar-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .category-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      user-select: none;
+    }
+    .category-chip:hover {
+      border-color: var(--border-default);
+      color: var(--text-primary);
+    }
+    .category-chip.selected {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: #fff;
+      font-weight: 600;
+    }
+    .category-chip .chip-count {
+      font-size: 10px;
+      opacity: 0.7;
+      font-family: var(--font-mono);
+    }
+    .category-chip.selected .chip-count {
+      opacity: 0.85;
+    }
+    .category-empty-state {
+      text-align: center;
+      padding: var(--space-lg) var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      background: var(--bg-elevated);
+      border-radius: 8px;
+      border: 1px dashed var(--border-subtle);
+    }
+    .category-empty-state strong {
+      display: block;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
     /* ── Metadata Breakdown cards ── */
     .breakdown-section {
       margin-bottom: var(--space-lg);
@@ -391,6 +455,9 @@
     .breakdown-domain .breakdown-card {
       border-left: 3px solid rgba(96, 165, 250, 0.3);
     }
+    .breakdown-custom .breakdown-icon,
+    .breakdown-custom .breakdown-header { color: #a78bfa; }
+    .breakdown-custom .breakdown-card { border-left: 3px solid rgba(167, 139, 250, 0.3); }
 
     .breakdown-card-top {
       display: flex;
@@ -403,7 +470,6 @@
       font-size: var(--font-sm);
       font-weight: 600;
       color: var(--text-primary);
-      text-transform: capitalize;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -3002,6 +3068,8 @@
         passRateOp: '',               // #20: '' = any, 'gte' = at least, 'lte' = at most, 'eq' = exactly
         passRateValue: 0,             // #20: the number for the pass rate filter
         allMetadataKeys: [],          // collected metadata keys across all items
+        selectedCategories: new Set(),   // which metadata keys to show as breakdowns
+        categoryFilters: {},             // custom category filters: key -> null|[values]
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
         allMetricMetaKeys: [],
         visibleMetricMetaFields: {},
@@ -3349,6 +3417,26 @@
         for (const k of state.allMetadataKeys) {
           if (state.visibleMetadataFields[k] === undefined) {
             state.visibleMetadataFields[k] = true;
+          }
+        }
+
+        // Auto-select categories for breakdown chips
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const MAX_CARDINALITY = 30;
+        if (state.selectedCategories.size === 0) {
+          for (const k of state.allMetadataKeys) {
+            if (EXCLUDED_CATEGORY_KEYS.has(k)) continue;
+            const uniqueVals = new Set();
+            for (const run of state.runs) {
+              for (const row of (run.snapshot?.rows || [])) {
+                const v = (row.item_metadata || {})[k];
+                if (v != null && v !== '') {
+                  for (const value of getMetadataCategoryValues(row.item_metadata || {}, k)) uniqueVals.add(value);
+                }
+              }
+            }
+            if (uniqueVals.size === 0 || uniqueVals.size > MAX_CARDINALITY) continue;
+            if (k === 'complexity' || k === 'domain') state.selectedCategories.add(k);
           }
         }
 
@@ -3836,10 +3924,28 @@
       }
 
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
-      function renderMetadataBreakdown() {
-        // Look for 'complexity' and 'domain' keys in item metadata (root_cause has its own section)
-        const breakdownKeys = ['complexity', 'domain'].filter(k => state.allMetadataKeys.includes(k));
+      function getCategoryChipKeys() {
+        const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const MAX_CARD = 30;
+        const keys = [];
+        for (const k of state.allMetadataKeys) {
+          if (EXCLUDED.has(k)) continue;
+          const uniqueVals = new Set();
+          for (const run of state.runs) {
+            for (const row of (run.snapshot?.rows || [])) {
+              const v = (row.item_metadata || {})[k];
+              if (v != null && v !== '') {
+                for (const value of getMetadataCategoryValues(row.item_metadata || {}, k)) uniqueVals.add(value);
+              }
+            }
+          }
+          if (uniqueVals.size === 0 || uniqueVals.size > MAX_CARD) continue;
+          keys.push({ key: k, count: uniqueVals.size });
+        }
+        return keys;
+      }
 
+      function renderMetadataBreakdown() {
         let existingSection = document.getElementById('metadata-breakdown');
         if (!existingSection) {
           existingSection = document.createElement('div');
@@ -3850,6 +3956,9 @@
             statsEl.parentNode.insertBefore(existingSection, statsEl.nextSibling);
           }
         }
+
+        const chipKeys = getCategoryChipKeys();
+        if (chipKeys.length === 0) { existingSection.innerHTML = ''; return; }
 
         const selectedMetric = state.selectedOverviewMetric || state.allMetrics[0];
         if (!selectedMetric) return;
@@ -3865,14 +3974,33 @@
         const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
         const K = state.runs.length;
 
-        // Get filtered item IDs so breakdown only shows items matching current filters
         const filteredItems = getFilteredItems();
         const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
 
-        let html = '<h3 class="section-title">Performance by Category</h3><div class="comparison-stats">';
+        let html = '<h3 class="section-title">Performance by Category</h3>';
+
+        // Chip selector bar
+        html += '<div class="category-chip-bar">';
+        html += '<span class="category-chip-bar-label">Categories</span>';
+        for (const { key, count } of chipKeys) {
+          const selected = state.selectedCategories.has(key);
+          const displayName = key;
+          html += `<button class="category-chip${selected ? ' selected' : ''}" data-chip-key="${escapeAttr(key)}">${escapeHtml(displayName)} <span class="chip-count">${count}</span></button>`;
+        }
+        html += '</div>';
+
+        const breakdownKeys = chipKeys.filter(c => state.selectedCategories.has(c.key)).map(c => c.key);
+
+        if (breakdownKeys.length === 0) {
+          html += '<div class="category-empty-state"><strong>Select categories above to see performance breakdowns</strong>Choose from your item metadata fields to analyze scores by group</div>';
+          existingSection.innerHTML = html;
+          wireChipClicks(existingSection);
+          return;
+        }
+
+        html += '<div class="comparison-stats">';
 
         for (const bdKey of breakdownKeys) {
-          // Collect per-item-id data grouped by the breakdown key value
           const itemsByGroup = {};
 
           for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
@@ -3888,13 +4016,13 @@
 
               const md = row.item_metadata || {};
               const rawVal = md[bdKey] ?? '';
-              const groupVals = (bdKey === 'domain' || bdKey === 'patterns')
-                ? parseMetaList(rawVal)
-                : [String(rawVal)];
+              const isListKey = isListCategoryKey(bdKey);
+              const normalizedVals = getMetadataCategoryValues(md, bdKey);
+              const groupVals = normalizedVals.length ? normalizedVals : [String(rawVal)];
               if (groupVals.length === 0) groupVals.push('');
-              const domainIsSole = (bdKey === 'domain' || bdKey === 'patterns') && groupVals.length === 1;
+              const domainIsSole = isListKey && groupVals.length === 1;
               for (const groupVal of groupVals) {
-                if ((bdKey === 'domain' || bdKey === 'patterns') && state.domainFilter !== null
+                if (isListKey && state.domainFilter !== null
                     && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
                 const effectiveGroup = groupVal || 'unknown';
 
@@ -3913,24 +4041,19 @@
             }
           }
 
-          // Compute stats per group
           const groupStats = [];
           for (const [groupVal, items] of Object.entries(itemsByGroup)) {
             const itemIds = Object.keys(items);
             let totalScoreSum = 0, totalScoreCount = 0;
             let totalLatSum = 0, totalLatCount = 0;
             let consistencySum = 0, consistencyCount = 0;
-
             let passAtKCount = 0;
 
             for (const itemId of itemIds) {
               const { scores, latencies } = items[itemId];
-
               for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
               for (const l of latencies) { totalLatSum += l; totalLatCount++; }
-
               if (scores.some(s => s >= correctThreshold)) passAtKCount++;
-
               if (scores.length > 1) {
                 const numCorrect = scores.filter(s => s >= correctThreshold).length;
                 const numFail = scores.length - numCorrect;
@@ -3961,9 +4084,9 @@
           }
           if (groupStats.length === 0) continue;
 
-          const icon = bdKey === 'complexity' ? '\u2666' : '\u25C6';
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : 'breakdown-domain';
-          const displayName = bdKey.charAt(0).toUpperCase() + bdKey.slice(1);
+          const icon = bdKey === 'complexity' ? '\u2666' : (bdKey === 'domain' ? '\u25C6' : '\u25CB');
+          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : (bdKey === 'domain' ? 'breakdown-domain' : 'breakdown-custom');
+          const displayName = bdKey;
 
           html += `<div class="breakdown-section ${colorClass}">`;
           html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
@@ -4018,6 +4141,7 @@
 
         html += '</div>';
         existingSection.innerHTML = html;
+        wireChipClicks(existingSection);
 
         // Wire breakdown card click-to-filter
         existingSection.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
@@ -4041,6 +4165,23 @@
               setCatFilter(cat, [val]);
             }
             syncMultiselectUI(cat);
+            state.page = 1;
+            renderItems();
+          });
+        });
+      }
+
+      function wireChipClicks(container) {
+        container.querySelectorAll('.category-chip[data-chip-key]').forEach(chip => {
+          chip.addEventListener('click', () => {
+            const key = chip.dataset.chipKey;
+            if (state.selectedCategories.has(key)) {
+              state.selectedCategories.delete(key);
+              setCatFilter(key, null);
+            } else {
+              state.selectedCategories.add(key);
+            }
+            renderMetadataBreakdown();
             state.page = 1;
             renderItems();
           });
@@ -4957,6 +5098,20 @@
               if (!matchesNamed && !matchesNone) continue;
             }
           }
+          // Custom category filters
+          if (Object.keys(state.categoryFilters).some(k => state.categoryFilters[k] !== null)) {
+            const inputRow2 = rowData.find(r => r);
+            const md2 = (typeof (inputRow2?.item_metadata) === 'object') ? inputRow2.item_metadata : {};
+            let customFilterFail = false;
+            for (const [cfKey, cfVal] of Object.entries(state.categoryFilters)) {
+              if (cfVal === null) continue;
+              if (cfVal.length === 0) { customFilterFail = true; break; }
+              const itemVals = getMetadataCategoryValues(md2, cfKey).map(v => v.toLowerCase());
+              const effectiveVals = itemVals.length ? itemVals : ['unknown'];
+              if (!cfVal.some(f => effectiveVals.includes(String(f).toLowerCase()))) { customFilterFail = true; break; }
+            }
+            if (customFilterFail) continue;
+          }
           if (state.approvalFilter !== null) {
             const matchingApproval = rowData.some(r => r && matchesApprovalFilter(r, state.approvalFilter));
             if (!matchingApproval) continue;
@@ -5591,6 +5746,17 @@
           } catch {}
         }
         return [s];
+      }
+
+      function isListCategoryKey(key) {
+        return key === 'domain' || key === 'patterns';
+      }
+
+      function getMetadataCategoryValues(md, key) {
+        const raw = (md && typeof md === 'object') ? md[key] : null;
+        if (raw == null || raw === '') return [];
+        if (isListCategoryKey(key) || Array.isArray(raw)) return parseMetaList(raw);
+        return [String(raw)];
       }
 
       function escapeHtml(text) {
@@ -6531,6 +6697,7 @@
         if (state.rootCauseFilter !== null) n++;
         if (state.passRateOp) n++;
         if (state.sortBy !== 'index') n++;
+        n += Object.values(state.categoryFilters).filter(v => v !== null).length;
         return n;
       }
 
@@ -6554,6 +6721,7 @@
         state.passRateOp = '';
         state.passRateValue = 0;
         state.sortBy = 'index';
+        state.categoryFilters = {};
         state.page = 1;
 
         el('item-filter').value = 'all';
@@ -6740,6 +6908,7 @@
         if (cat === 'complexity') return state.complexityFilter;
         if (cat === 'domain') return state.domainFilter;
         if (cat === 'root_cause') return state.rootCauseFilter;
+        if (state.categoryFilters[cat] !== undefined) return state.categoryFilters[cat];
         return null;
       }
       function setCatFilter(cat, val) {
@@ -6747,13 +6916,22 @@
         else if (cat === 'complexity') state.complexityFilter = val;
         else if (cat === 'domain') { state.domainFilter = val; if (val === null) state.domainExclusive.clear(); }
         else if (cat === 'root_cause') state.rootCauseFilter = val;
+        else state.categoryFilters[cat] = val;
       }
       function getCatValues(cat) {
         if (cat === 'approval') return state.approvalValues;
         if (cat === 'complexity') return state.complexityValues;
         if (cat === 'domain') return state.domainValues;
         if (cat === 'root_cause') return state.rootCauseValues;
-        return [];
+        const values = new Set();
+        for (const run of state.runs) {
+          for (const row of (run.snapshot?.rows || [])) {
+            for (const value of getMetadataCategoryValues(row.item_metadata || {}, cat)) {
+              if (value != null && value !== '') values.add(String(value));
+            }
+          }
+        }
+        return Array.from(values).sort((a, b) => a.localeCompare(b));
       }
       function getCatDefaultLabel(cat) {
         if (cat === 'approval') return 'All Approval';
@@ -6781,7 +6959,7 @@
         // Normalize: explicitly selecting every value = reset to null (no filter)
         // For root_cause, "all" means all named values + __none__
         const allCount = category === 'root_cause' ? values.length + 1 : values.length;
-        if (filterArr !== null && filterArr.length >= allCount) {
+        if (allCount > 0 && filterArr !== null && filterArr.length >= allCount) {
           setCatFilter(category, null);
         }
 
