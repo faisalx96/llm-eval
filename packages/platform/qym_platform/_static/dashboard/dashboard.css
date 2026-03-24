@@ -5856,6 +5856,31 @@ body.tv-open { overflow: hidden; }
   white-space: pre-wrap; word-break: break-word; max-height: 500px; overflow-y: auto;
 }
 
+/* ─── Thinking (subtle, inside assistant bubble) ─── */
+.tv-thinking {
+  margin-bottom: 6px; border-radius: 3px;
+  background: rgba(255,255,255,.02);
+}
+.tv-thinking-toggle {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px; cursor: pointer; user-select: none; list-style: none;
+  font-size: 10px; color: var(--text-dim); letter-spacing: .03em;
+}
+.tv-thinking-toggle::-webkit-details-marker { display: none; }
+.tv-thinking-toggle::before {
+  content: "▸"; font-size: 8px; color: var(--text-dim); transition: transform .15s; flex-shrink: 0;
+}
+.tv-thinking[open] .tv-thinking-toggle::before { transform: rotate(90deg); }
+.tv-thinking-toggle:hover { color: var(--text-muted); }
+.tv-thinking-toggle .tv-copy-btn { opacity: 0; transition: opacity .15s; }
+.tv-thinking:hover .tv-thinking-toggle .tv-copy-btn { opacity: .4; }
+.tv-thinking-body {
+  padding: 4px 6px 6px; font-size: 11px; line-height: 1.5;
+  color: var(--text-dim); white-space: pre-wrap; word-break: break-word;
+  max-height: 200px; overflow-y: auto;
+  border-top: 1px solid rgba(255,255,255,.03);
+}
+
 /* ─── Copy buttons ─── */
 .tv-inline-actions,
 .tv-card-actions {

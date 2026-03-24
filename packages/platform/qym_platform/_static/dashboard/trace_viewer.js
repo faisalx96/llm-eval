@@ -182,7 +182,20 @@
     for (let i = 0; i < 50; i++) {
       const role = attrs[`${prefix}.${i}.message.role`];
       if (role == null) break;
-      const content = attrs[`${prefix}.${i}.message.content`] || "";
+      let content = attrs[`${prefix}.${i}.message.content`] || "";
+      if (!content) {
+        const parts = [];
+        for (let j = 0; j < 20; j++) {
+          const base = `${prefix}.${i}.message.contents.${j}.message_content`;
+          const type = attrs[`${base}.type`];
+          if (type == null) break;
+          if (String(type) === "text") {
+            const text = attrs[`${base}.text`];
+            if (text) parts.push(String(text));
+          }
+        }
+        if (parts.length) content = parts.join("\n\n");
+      }
       const toolCalls = [];
       for (let j = 0; j < 20; j++) {
         const tcName = attrs[`${prefix}.${i}.message.tool_calls.${j}.tool_call.function.name`];
@@ -194,9 +207,34 @@
         });
       }
       const toolCallId = attrs[`${prefix}.${i}.message.tool_call_id`];
-      msgs.push({ role, content, toolCalls, toolCallId });
+      const reasoning = attrs[`${prefix}.${i}.message.reasoning`] || "";
+      msgs.push({ role, content, toolCalls, toolCallId, reasoning });
     }
     return msgs;
+  }
+
+  function enrichReasoning(msgs, rawValue) {
+    if (!rawValue || !msgs.length) return;
+    try {
+      const parsed = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+      // input.value has .messages[], output.value has .choices[].message
+      const srcMsgs = parsed.messages || (parsed.choices || []).map(c => c.message).filter(Boolean);
+      if (!srcMsgs || !srcMsgs.length) return;
+      // Match by index — flat attrs and JSON messages are in same order
+      let ai = 0;
+      for (let i = 0; i < msgs.length && ai < srcMsgs.length; i++) {
+        const m = msgs[i];
+        const role = String(m.role || "").toLowerCase();
+        // Find corresponding source message by walking both lists
+        while (ai < srcMsgs.length && String(srcMsgs[ai].role || "").toLowerCase() !== role) ai++;
+        if (ai >= srcMsgs.length) break;
+        const src = srcMsgs[ai];
+        if (!m.reasoning && src.reasoning) {
+          m.reasoning = typeof src.reasoning === "string" ? src.reasoning : JSON.stringify(src.reasoning);
+        }
+        ai++;
+      }
+    } catch (_) {}
   }
 
   function extractScores(span) {
@@ -222,6 +260,54 @@
   function renderLabeledSection(label, bodyHtml, labelClass, actionsHtml) {
     const cls = labelClass ? ` ${labelClass}` : "";
     return `<div class="tv-io-section"><div class="tv-io-label${cls}">${esc(label)}${actionsHtml || ""}</div>${bodyHtml}</div>`;
+  }
+
+  function messageSignatures(message) {
+    const role = String(message?.role || "").toLowerCase();
+    if (role !== "assistant") return [];
+    const content = message?.content == null ? "" : String(message.content);
+    const toolCalls = Array.isArray(message?.toolCalls)
+      ? message.toolCalls.map(tc => ({
+          id: tc?.id == null ? "" : String(tc.id),
+          name: tc?.name == null ? "" : String(tc.name),
+          arguments: tc?.arguments == null ? "" : String(tc.arguments),
+        }))
+      : [];
+    const base = { role, content, toolCalls };
+    const noIds = { role, content, toolCalls: toolCalls.map(tc => ({ name: tc.name, arguments: tc.arguments })) };
+    return [JSON.stringify(base), JSON.stringify(noIds)];
+  }
+
+  function assistantReasoningIndex() {
+    if (S.data?._assistantReasoningIndex) return S.data._assistantReasoningIndex;
+    const index = new Map();
+    const nodes = S.data?._tree?.nodes || [];
+
+    nodes.forEach(span => {
+      const attrs = span.attributes || {};
+      const outputMsgs = extractMessages(attrs, "llm.output_messages").map(m => ({ ...m, _reasoning: m.reasoning || null }));
+      let spanReasoning = extractReasoning(span);
+
+      if (spanReasoning) {
+        for (let i = outputMsgs.length - 1; i >= 0; i--) {
+          if (String(outputMsgs[i].role || "").toLowerCase() === "assistant" && !outputMsgs[i]._reasoning) {
+            outputMsgs[i]._reasoning = spanReasoning;
+            spanReasoning = null;
+            break;
+          }
+        }
+      }
+
+      outputMsgs.forEach(message => {
+        if (!message._reasoning) return;
+        messageSignatures(message).forEach(sig => {
+          if (sig && !index.has(sig)) index.set(sig, message._reasoning);
+        });
+      });
+    });
+
+    if (S.data) S.data._assistantReasoningIndex = index;
+    return index;
   }
 
   function renderMessageContent(text, jsonClassName) {
@@ -322,6 +408,10 @@
         bubble += renderToolHeader(resolvedName, "result", message.toolCallId, headerActions);
     } else {
       bubble += `<div class="tv-msg-role">${esc(role)}${message.toolCallId ? ` <span class="tv-msg-tcid">${esc(message.toolCallId)}</span>` : ""}${headerActions || ""}</div>`;
+    }
+    if (message._reasoning) {
+      const r = message._reasoning;
+      bubble += `<details class="tv-thinking"><summary class="tv-thinking-toggle">Thinking${copyBtn(r, "Copy reasoning")}</summary><div class="tv-thinking-body">${esc(r)}</div></details>`;
     }
     if (msgText) bubble += renderMessageContent(msgText, role === "tool" ? "tv-json-preview tv-json-preview-output" : "");
     if (message.toolCalls && message.toolCalls.length) {
@@ -650,18 +740,19 @@
     const tabs = [];
     const inputMsgs = extractMessages(attrs, "llm.input_messages");
     const outputMsgs = extractMessages(attrs, "llm.output_messages");
+    // Enrich messages with reasoning from input.value / output.value JSON
+    enrichReasoning(inputMsgs, attrs["input.value"]);
+    enrichReasoning(outputMsgs, attrs["output.value"]);
     const reasoning = extractReasoning(span);
     const scores = extractScores(span);
 
     if (kind === "LLM") {
       if (inputMsgs.length || outputMsgs.length) tabs.push({ id: "messages", label: "Messages" });
-      if (attrs["output.value"]) tabs.push({ id: "llm-output", label: "Output" });
-      tabs.push({ id: "params", label: "Params" });
+      tabs.push({ id: "response", label: "Response" });
     } else if (kind === "TOOL") {
       tabs.push({ id: "tool-io", label: "Input / Output" });
     } else if (kind === "EVALUATOR" && attrs["output.value"]) {
       tabs.push({ id: "metrics", label: "Metrics" });
-      if (attrs["input.value"]) tabs.push({ id: "io", label: "Input / Output" });
       if (scores.length) tabs.push({ id: "scores", label: "Scores" });
     } else {
       if (attrs["input.value"] || attrs["output.value"]) tabs.push({ id: "io", label: "Input / Output" });
@@ -715,8 +806,7 @@
     // Tab content
     let content = `<div class="tv-tab-content">`;
     if (S.activeTab === "messages") content += renderMessages(inputMsgs.concat(outputMsgs), reasoning);
-    else if (S.activeTab === "llm-output") content += renderLLMOutput(span);
-    else if (S.activeTab === "params") content += renderParams(span);
+    else if (S.activeTab === "response") content += renderResponse(span);
     else if (S.activeTab === "tool-io") content += renderToolIO(span);
     else if (S.activeTab === "metrics") content += renderMetrics(span);
     else if (S.activeTab === "io") content += renderIO(span);
@@ -729,13 +819,56 @@
   }
 
   /* ── tab renderers ── */
+  function decorateMessages(msgs, reasoning) {
+    const reasoningIndex = assistantReasoningIndex();
+    const decorated = (msgs || []).map(m => ({
+      ...m,
+      _reasoning: m.reasoning || null,
+      _resolvedToolName: m._resolvedToolName || "",
+    }));
+
+    const tcMap = {};
+    decorated.forEach(m => {
+      if (!m.toolCalls) return;
+      m.toolCalls.forEach(tc => {
+        if (tc.id && tc.name) tcMap[tc.id] = tc.name;
+      });
+    });
+
+    decorated.forEach(m => {
+      if (m.toolCallId && tcMap[m.toolCallId]) m._resolvedToolName = tcMap[m.toolCallId];
+    });
+
+    decorated.forEach(m => {
+      if (m._reasoning) return;
+      const sigs = messageSignatures(m);
+      for (const sig of sigs) {
+        const matched = reasoningIndex.get(sig);
+        if (matched) {
+          m._reasoning = matched;
+          break;
+        }
+      }
+    });
+
+    if (reasoning) {
+      for (let i = decorated.length - 1; i >= 0; i--) {
+        if (String(decorated[i].role || "").toLowerCase() === "assistant" && !decorated[i]._reasoning) {
+          decorated[i]._reasoning = reasoning;
+          reasoning = null;
+          break;
+        }
+      }
+    }
+
+    return { msgs: decorated, remainingReasoning: reasoning };
+  }
+
   function renderMessages(msgs, reasoning) {
     if (!msgs.length && !reasoning) return `<div class="tv-empty-d">No messages</div>`;
-    // Resolve tool call ID → tool name for result bubbles
-    const tcMap = {};
-    msgs.forEach(m => { if (m.toolCalls) m.toolCalls.forEach(tc => { if (tc.id && tc.name) tcMap[tc.id] = tc.name; }); });
-    msgs.forEach(m => { if (m.toolCallId && tcMap[m.toolCallId]) m._resolvedToolName = tcMap[m.toolCallId]; });
-    let html = msgs.map(m => {
+    const decorated = decorateMessages(msgs, reasoning);
+    const reasoningAttached = decorated.msgs.some(m => !!m._reasoning);
+    let html = decorated.msgs.map(m => {
       const msgText = m.content ? String(m.content) : "";
       const role = String(m.role || "").toLowerCase();
       const expandTitle = role === "tool" && m._resolvedToolName
@@ -754,13 +887,13 @@
       return renderMessageBubble(m, actions, true);
     }).join("");
 
-    // Reasoning: inline expander after messages (not a separate tab)
-    if (reasoning) {
-      html += renderReasoningBlock(reasoning, actionGroup([
-        copyBtn(reasoning, "Copy reasoning"),
+    // Fallback: if no assistant message found, show reasoning standalone
+    if (decorated.remainingReasoning && !reasoningAttached) {
+      html += renderReasoningBlock(decorated.remainingReasoning, actionGroup([
+        copyBtn(decorated.remainingReasoning, "Copy reasoning"),
         expandBtn({
           title: "Reasoning",
-          render: () => renderReasoningBlock(reasoning, "", true),
+          render: () => renderReasoningBlock(decorated.remainingReasoning, "", true),
         }, "Expand reasoning"),
       ]), false);
     }
@@ -780,112 +913,108 @@
     }).join("");
   }
 
-  function renderParams(span) {
-    const a = span.attributes || {};
-    const rows = [];
-    function add(label, value) { if (value != null && value !== "" && value !== 0) rows.push([label, value]); }
-    add("Model", spanModel(span));
-    add("Prompt Tokens", a["llm.token_count.prompt"] || a["gen_ai.usage.prompt_tokens"]);
-    add("Completion Tokens", a["llm.token_count.completion"] || a["gen_ai.usage.completion_tokens"]);
-    add("Reasoning Tokens", a["llm.token_count.completion_details.reasoning"]);
-    add("Total Tokens", spanTokens(span));
-    add("Cost", fmtCost(spanCost(span)));
-    add("Duration", fmtDur(span.duration_ms));
-    // Invocation parameters
-    try {
-      const ip = a["llm.invocation_parameters"];
-      if (ip) {
-        const parsed = typeof ip === "string" ? JSON.parse(ip) : ip;
-        Object.entries(parsed).forEach(([k,v]) => { if (k !== "model") add(k, v); });
-      }
-    } catch (_) {}
-    add("Finish Reason", a["gen_ai.completion.0.finish_reason"]);
-    add("Span ID", span.span_id);
-    if (!rows.length) return `<div class="tv-empty-d">No parameters</div>`;
-    return `<div class="tv-params">${rows.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
-  }
-
-  function renderLLMOutput(span) {
+  function renderResponse(span) {
     const a = span.attributes || {};
     const raw = a["output.value"];
-    if (!raw) return `<div class="tv-empty-d">No output data</div>`;
-    let parsed;
-    try { parsed = deepParseJson(typeof raw === "string" ? JSON.parse(raw) : raw); } catch (_) { return renderJsonBlock(raw); }
-    if (!parsed || typeof parsed !== "object") return renderJsonBlock(raw);
+    let parsed = null;
+    try { if (raw) parsed = deepParseJson(typeof raw === "string" ? JSON.parse(raw) : raw); } catch (_) {}
 
     let html = "";
 
-    // Usage section
-    const usage = parsed.usage;
+    // ── Usage section ──
+    // Primary: output.value.usage, fallback: llm.token_count.* attrs
+    const usage = parsed?.usage;
+    const usageRows = [];
+    function addUsage(label, val, cls) { if (val != null && val !== 0 && val !== "") usageRows.push([label, val, cls || ""]); }
     if (usage && typeof usage === "object") {
-      const rows = [];
-      function addRow(label, val, cls) { if (val != null && val !== 0 && val !== "") rows.push([label, val, cls || ""]); }
-      addRow("Prompt Tokens", usage.prompt_tokens);
-      addRow("Completion Tokens", usage.completion_tokens);
+      addUsage("Prompt Tokens", usage.prompt_tokens);
+      addUsage("Completion Tokens", usage.completion_tokens);
       const rd = usage.completion_tokens_details;
       if (rd) {
-        addRow("  Reasoning Tokens", rd.reasoning_tokens);
-        addRow("  Image Tokens", rd.image_tokens);
-        addRow("  Audio Tokens", rd.audio_tokens);
+        addUsage("  Reasoning Tokens", rd.reasoning_tokens);
+        addUsage("  Image Tokens", rd.image_tokens);
+        addUsage("  Audio Tokens", rd.audio_tokens);
       }
       const pd = usage.prompt_tokens_details;
       if (pd) {
-        addRow("  Cached Tokens", pd.cached_tokens || pd.cache_read_tokens);
-        addRow("  Cache Write Tokens", pd.cache_write_tokens);
+        addUsage("  Cached Tokens", pd.cached_tokens || pd.cache_read_tokens);
+        addUsage("  Cache Write Tokens", pd.cache_write_tokens);
       }
-      addRow("Total Tokens", usage.total_tokens);
-      // Cost info
-      if (usage.cost != null) addRow("Cost", "$" + Number(usage.cost).toFixed(6), "tv-llm-cost");
+      addUsage("Total Tokens", usage.total_tokens);
+      if (usage.cost != null) addUsage("Cost", "$" + Number(usage.cost).toFixed(6), "tv-llm-cost");
       const cd = usage.cost_details;
       if (cd) {
-        if (cd.upstream_inference_cost != null) addRow("  Inference Cost", "$" + Number(cd.upstream_inference_cost).toFixed(6));
-        if (cd.upstream_inference_prompt_cost != null) addRow("    Prompt Cost", "$" + Number(cd.upstream_inference_prompt_cost).toFixed(6));
-        if (cd.upstream_inference_completions_cost != null) addRow("    Completions Cost", "$" + Number(cd.upstream_inference_completions_cost).toFixed(6));
+        if (cd.upstream_inference_cost != null) addUsage("  Inference Cost", "$" + Number(cd.upstream_inference_cost).toFixed(6));
+        if (cd.upstream_inference_prompt_cost != null) addUsage("    Prompt Cost", "$" + Number(cd.upstream_inference_prompt_cost).toFixed(6));
+        if (cd.upstream_inference_completions_cost != null) addUsage("    Completions Cost", "$" + Number(cd.upstream_inference_completions_cost).toFixed(6));
       }
-      if (usage.is_byok != null) addRow("BYOK", String(usage.is_byok));
-      const usageBody = `<div class="tv-params">${rows.map(([k,v,c]) => `<div class="tv-param${k.startsWith("  ") ? " tv-param-indent" : ""}"><span class="tv-param-k ${c}">${esc(k.trim())}</span><span class="tv-param-v ${c}">${esc(String(v))}</span></div>`).join("")}</div>`;
+      if (usage.is_byok != null) addUsage("BYOK", String(usage.is_byok));
+    } else {
+      // Fallback to flat attrs
+      addUsage("Prompt Tokens", a["llm.token_count.prompt"] || a["gen_ai.usage.prompt_tokens"]);
+      addUsage("Completion Tokens", a["llm.token_count.completion"] || a["gen_ai.usage.completion_tokens"]);
+      addUsage("Reasoning Tokens", a["llm.token_count.completion_details.reasoning"]);
+      addUsage("Total Tokens", spanTokens(span));
+      const c = spanCost(span);
+      if (c) addUsage("Cost", fmtCost(c), "tv-llm-cost");
+    }
+    addUsage("Duration", fmtDur(span.duration_ms));
+    if (usageRows.length) {
+      const usageBody = `<div class="tv-params">${usageRows.map(([k,v,c]) => `<div class="tv-param${k.startsWith("  ") ? " tv-param-indent" : ""}"><span class="tv-param-k ${c}">${esc(k.trim())}</span><span class="tv-param-v ${c}">${esc(String(v))}</span></div>`).join("")}</div>`;
       html += renderLabeledSection("Usage", usageBody, "", actionGroup([
-        copyBtn(() => JSON.stringify(usage, null, 2), "Copy usage"),
-        expandBtn({
-          title: "Usage",
-          render: () => renderExpandedContent(usageBody),
-        }, "Expand usage"),
+        copyBtn(() => JSON.stringify(usage || {}, null, 2), "Copy usage"),
+        expandBtn({ title: "Usage", render: () => renderExpandedContent(usageBody) }, "Expand usage"),
       ]));
     }
 
-    // Provider / model / metadata section
-    const meta = [];
-    if (parsed.provider) meta.push(["Provider", parsed.provider]);
-    if (parsed.model) meta.push(["Model", parsed.model]);
-    if (parsed.id) meta.push(["Response ID", parsed.id]);
-    if (parsed.object) meta.push(["Object", parsed.object]);
-    if (parsed.created) meta.push(["Created", new Date(parsed.created * 1000).toISOString()]);
-    if (parsed.system_fingerprint) meta.push(["System Fingerprint", parsed.system_fingerprint]);
-    const choice = parsed.choices?.[0];
+    // ── Metadata section ──
+    const choice = parsed?.choices?.[0];
+    const metaRows = [];
+    if (parsed?.provider) metaRows.push(["Provider", parsed.provider]);
+    metaRows.push(["Model", parsed?.model || spanModel(span)]);
+    if (parsed?.id) metaRows.push(["Response ID", parsed.id]);
     if (choice) {
-      if (choice.finish_reason) meta.push(["Finish Reason", choice.finish_reason]);
-      if (choice.native_finish_reason) meta.push(["Native Finish Reason", choice.native_finish_reason]);
+      if (choice.finish_reason) metaRows.push(["Finish Reason", choice.finish_reason]);
+      if (choice.native_finish_reason) metaRows.push(["Native Finish Reason", choice.native_finish_reason]);
+    } else {
+      const fr = a["gen_ai.completion.0.finish_reason"];
+      if (fr) metaRows.push(["Finish Reason", fr]);
     }
-    if (meta.length) {
-      const metaBody = `<div class="tv-params">${meta.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
-      html += renderLabeledSection("Response Metadata", metaBody, "", actionGroup([
-        copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response"),
-        expandBtn({
-          title: "Response Metadata",
-          render: () => renderExpandedContent(metaBody),
-        }, "Expand metadata"),
+    if (parsed?.created) metaRows.push(["Created", new Date(parsed.created * 1000).toISOString()]);
+    if (parsed?.system_fingerprint) metaRows.push(["System Fingerprint", parsed.system_fingerprint]);
+    metaRows.push(["Span ID", span.span_id]);
+    const filteredMeta = metaRows.filter(([,v]) => v != null && v !== "");
+    if (filteredMeta.length) {
+      const metaBody = `<div class="tv-params">${filteredMeta.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
+      html += renderLabeledSection("Metadata", metaBody, "", actionGroup([
+        copyBtn(() => JSON.stringify(Object.fromEntries(filteredMeta), null, 2), "Copy metadata"),
       ]));
     }
 
-    // Full raw response
-    html += renderLabeledSection("Full Response", renderJsonBlock(raw), "", actionGroup([
-      copyBtn(() => JSON.stringify(parsed, null, 2), "Copy full response"),
-      expandBtn({
-        title: "Full Response",
-        render: () => renderExpandedContent(renderJsonBlock(raw)),
-      }, "Expand response"),
-    ]));
+    // ── Invocation section ──
+    try {
+      const ip = a["llm.invocation_parameters"];
+      if (ip) {
+        const params = typeof ip === "string" ? JSON.parse(ip) : ip;
+        const ipRows = Object.entries(params).filter(([,v]) => v != null && v !== "");
+        if (ipRows.length) {
+          const ipBody = `<div class="tv-params">${ipRows.map(([k,v]) => `<div class="tv-param"><span class="tv-param-k">${esc(k)}</span><span class="tv-param-v">${esc(String(v))}</span></div>`).join("")}</div>`;
+          html += renderLabeledSection("Invocation Parameters", ipBody, "", actionGroup([
+            copyBtn(ip, "Copy invocation params"),
+          ]));
+        }
+      }
+    } catch (_) {}
 
+    // ── Full Response JSON ──
+    if (raw) {
+      html += renderLabeledSection("Full Response", renderJsonBlock(raw), "", actionGroup([
+        copyBtn(() => JSON.stringify(parsed || raw, null, 2), "Copy full response"),
+        expandBtn({ title: "Full Response", render: () => renderExpandedContent(renderJsonBlock(raw)) }, "Expand response"),
+      ]));
+    }
+
+    if (!html) return `<div class="tv-empty-d">No response data</div>`;
     return html;
   }
 

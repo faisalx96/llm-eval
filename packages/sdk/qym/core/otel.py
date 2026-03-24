@@ -147,6 +147,166 @@ class OtelManager:
 # OpenAI enrichments (tool spans + reasoning capture)
 # ---------------------------------------------------------------------------
 
+def _normalize_message_content(content: Any) -> str:
+    """Best-effort text extraction from plain or structured message content."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (int, float, bool)):
+        return str(content)
+    if isinstance(content, list):
+        parts = [_normalize_message_content(item) for item in content]
+        text_parts = [part for part in parts if part]
+        if text_parts:
+            return "\n\n".join(text_parts)
+        try:
+            return _json.dumps(content, default=str)
+        except Exception:
+            return str(content)
+    if isinstance(content, dict):
+        type_ = content.get("type")
+        if type_ in {"text", "input_text", "output_text"}:
+            text = content.get("text")
+            if isinstance(text, dict):
+                return _normalize_message_content(text.get("value") or text.get("text"))
+            return _normalize_message_content(text)
+        if type_ in {"tool_result", "tool_output"}:
+            return _normalize_message_content(content.get("content"))
+        if "content" in content:
+            inner = _normalize_message_content(content.get("content"))
+            if inner:
+                return inner
+        if "text" in content:
+            inner = _normalize_message_content(content.get("text"))
+            if inner:
+                return inner
+        if "value" in content:
+            inner = _normalize_message_content(content.get("value"))
+            if inner:
+                return inner
+        try:
+            return _json.dumps(content, default=str)
+        except Exception:
+            return str(content)
+    return str(content)
+
+
+def _obj_get(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _block_type(block: Any) -> str:
+    return str(_obj_get(block, "type", "") or "")
+
+
+def _extract_tool_calls_from_message(msg: Any) -> List[Tuple[str, str, str]]:
+    """Return (tool_call_id, tool_name, arguments_json) tuples from assistant messages."""
+    if isinstance(msg, dict):
+        role = msg.get("role")
+        tool_calls = msg.get("tool_calls")
+        content = msg.get("content")
+    else:
+        role = getattr(msg, "role", None)
+        tool_calls = getattr(msg, "tool_calls", None)
+        content = getattr(msg, "content", None)
+    if role != "assistant":
+        return []
+
+    found: List[Tuple[str, str, str]] = []
+    if tool_calls:
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                tc_id = tc.get("id", "")
+                fn = tc.get("function", {})
+                name = fn.get("name", "unknown") if isinstance(fn, dict) else getattr(fn, "name", "unknown")
+                args = fn.get("arguments", "") if isinstance(fn, dict) else getattr(fn, "arguments", "")
+            else:
+                tc_id = getattr(tc, "id", "")
+                fn = getattr(tc, "function", None)
+                name = getattr(fn, "name", "unknown") if fn else "unknown"
+                args = getattr(fn, "arguments", "") if fn else ""
+            if tc_id:
+                found.append((tc_id, str(name or "unknown"), str(args or "")))
+
+    if isinstance(content, list):
+        for block in content:
+            if _block_type(block) not in {"tool_use", "tool_call"}:
+                continue
+            tc_id = str(_obj_get(block, "id") or _obj_get(block, "tool_use_id") or _obj_get(block, "tool_call_id") or "")
+            name = str(_obj_get(block, "name") or _obj_get(block, "tool_name") or "unknown")
+            raw_args = _obj_get(block, "input")
+            if raw_args is None:
+                raw_args = _obj_get(block, "arguments")
+            if isinstance(raw_args, str):
+                args = raw_args
+            elif raw_args is None:
+                args = ""
+            else:
+                try:
+                    args = _json.dumps(raw_args, default=str)
+                except Exception:
+                    args = str(raw_args)
+            if tc_id:
+                found.append((tc_id, name, args))
+
+    return found
+
+
+def _extract_tool_results_from_message(msg: Any) -> List[Tuple[str, str]]:
+    """Return (tool_call_id, text_content) tuples from tool result messages."""
+    if isinstance(msg, dict):
+        role = msg.get("role")
+        tool_call_id = msg.get("tool_call_id")
+        content = msg.get("content")
+    else:
+        role = getattr(msg, "role", None)
+        tool_call_id = getattr(msg, "tool_call_id", "")
+        content = getattr(msg, "content", None)
+
+    results: List[Tuple[str, str]] = []
+    if role == "tool":
+        text = _normalize_message_content(content)
+        if tool_call_id or text:
+            results.append((str(tool_call_id or ""), text))
+
+    if role == "user" and isinstance(content, list):
+        for block in content:
+            if _block_type(block) not in {"tool_result", "tool_output"}:
+                continue
+            tc_id = str(_obj_get(block, "tool_use_id") or _obj_get(block, "tool_call_id") or _obj_get(block, "id") or "")
+            text = _normalize_message_content(_obj_get(block, "content"))
+            if tc_id or text:
+                results.append((tc_id, text))
+
+    return results
+
+
+def _extract_reasoning_text(message: Any) -> str:
+    if isinstance(message, dict):
+        reasoning = message.get("reasoning")
+        content = message.get("content")
+    else:
+        reasoning = getattr(message, "reasoning", None)
+        content = getattr(message, "content", None)
+    if reasoning:
+        return str(reasoning)
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            type_ = _block_type(block)
+            if type_ not in {"reasoning", "thinking"}:
+                continue
+            summary = _obj_get(block, "summary")
+            text = _normalize_message_content(summary if summary is not None else _obj_get(block, "thinking", _obj_get(block, "text")))
+            if text:
+                parts.append(text)
+        if parts:
+            return "\n\n".join(parts)
+    return ""
+
 def _emit_tool_spans(tracer, messages):
     """Create spans for tool results found in the messages array.
 
@@ -162,36 +322,18 @@ def _emit_tool_spans(tracer, messages):
     # Build tool_call_id -> {name, arguments} map from assistant messages
     id_to_info: Dict[str, Dict[str, str]] = {}
     for msg in messages:
-        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
-        if role != "assistant":
-            continue
-        tool_calls = msg.get("tool_calls") if isinstance(msg, dict) else getattr(msg, "tool_calls", None)
-        if not tool_calls:
-            continue
-        for tc in tool_calls:
-            if isinstance(tc, dict):
-                tc_id = tc.get("id", "")
-                fn = tc.get("function", {})
-                name = fn.get("name", "unknown") if isinstance(fn, dict) else getattr(fn, "name", "unknown")
-                args = fn.get("arguments", "") if isinstance(fn, dict) else getattr(fn, "arguments", "")
-            else:
-                tc_id = getattr(tc, "id", "")
-                fn = getattr(tc, "function", None)
-                name = getattr(fn, "name", "unknown") if fn else "unknown"
-                args = getattr(fn, "arguments", "") if fn else ""
+        for tc_id, name, args in _extract_tool_calls_from_message(msg):
             id_to_info[tc_id] = {"name": name, "arguments": args}
 
     # Collect unseen tool messages
     new_tools = []
     for msg in messages:
-        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
-        if role != "tool":
-            continue
-        tc_id = msg.get("tool_call_id") if isinstance(msg, dict) else getattr(msg, "tool_call_id", "")
-        if tc_id in seen:
-            continue
-        seen.add(tc_id)
-        new_tools.append((tc_id, msg))
+        for tc_id, content in _extract_tool_results_from_message(msg):
+            seen_key = tc_id or f"tool-result-{len(new_tools)}-{hash(content)}"
+            if seen_key in seen:
+                continue
+            seen.add(seen_key)
+            new_tools.append((tc_id, content))
 
     if not new_tools:
         return
@@ -204,11 +346,10 @@ def _emit_tool_spans(tracer, messages):
     count = len(new_tools)
     slot_ns = max((now_ns - range_start_ns) // count, 1) if count else 1
 
-    for i, (tc_id, msg) in enumerate(new_tools):
+    for i, (tc_id, content) in enumerate(new_tools):
         info = id_to_info.get(tc_id, {})
         tool_name = info.get("name", "unknown")
         tool_args = info.get("arguments", "")
-        content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
 
         tool_start = range_start_ns + i * slot_ns
         tool_end = range_start_ns + (i + 1) * slot_ns
@@ -258,7 +399,7 @@ def _enrich_with_reasoning(result):
             return
         for choice in result.choices:
             msg = choice.message
-            reasoning = getattr(msg, "reasoning", None)
+            reasoning = _extract_reasoning_text(msg)
             if reasoning:
                 span.set_attribute(
                     f"gen_ai.completion.{choice.index}.reasoning",
@@ -316,6 +457,52 @@ def _patch_openai_enrichments():
 
     mod.AsyncCompletions.create = _enriched_acreate
     logger.debug("OpenAI enrichments (tool spans + reasoning) installed")
+
+
+def _patch_anthropic_enrichments():
+    """Wrap Anthropic SDK message creation so tool spans and reasoning are captured."""
+    try:
+        import anthropic.resources.messages as mod
+        from opentelemetry import trace as otel_trace
+    except ImportError:
+        return
+
+    tracer = otel_trace.get_tracer("qym.enrichments")
+
+    _real_create = mod.Messages.create
+
+    @functools.wraps(_real_create)
+    def _enriched_create(self, *args, **kwargs):
+        messages = kwargs.get("messages")
+        if messages:
+            _emit_tool_spans(tracer, messages)
+        result = _real_create(self, *args, **kwargs)
+        _last_llm_end_ns.set(time.time_ns())
+        if hasattr(result, "content"):
+            _enrich_with_reasoning(type("AnthropicResult", (), {
+                "choices": [type("Choice", (), {"index": 0, "message": result})()]
+            })())
+        return result
+
+    mod.Messages.create = _enriched_create
+
+    _real_acreate = mod.AsyncMessages.create
+
+    @functools.wraps(_real_acreate)
+    async def _enriched_acreate(self, *args, **kwargs):
+        messages = kwargs.get("messages")
+        if messages:
+            _emit_tool_spans(tracer, messages)
+        result = await _real_acreate(self, *args, **kwargs)
+        _last_llm_end_ns.set(time.time_ns())
+        if hasattr(result, "content"):
+            _enrich_with_reasoning(type("AnthropicResult", (), {
+                "choices": [type("Choice", (), {"index": 0, "message": result})()]
+            })())
+        return result
+
+    mod.AsyncMessages.create = _enriched_acreate
+    logger.debug("Anthropic enrichments (tool spans + reasoning) installed")
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +593,11 @@ def create_otel_manager(config) -> Any:
             else:
                 provider = existing
 
-            # Wrap OpenAI methods BEFORE instrumentors patch them
+            # Wrap provider SDK methods BEFORE instrumentors patch them
             # so enrichments (tool spans, reasoning) run inside the
             # instrumentor's span context.
             _patch_openai_enrichments()
+            _patch_anthropic_enrichments()
 
             # Register all available OpenInference instrumentors
             registered = _register_instrumentors(provider)
