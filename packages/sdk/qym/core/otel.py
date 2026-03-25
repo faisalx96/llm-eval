@@ -62,20 +62,55 @@ def _make_qym_span_processor_class():
 
         def __init__(self):
             self._stream = None
+            # Track LLM span IDs seen during on_start so on_end can detect
+            # nested LLM spans (provider inside framework = duplicate).
+            self._llm_span_ids: set = set()
 
         def set_stream(self, stream):
             self._stream = stream
 
         def on_start(self, span, parent_context=None):
-            pass
+            # Record LLM spans at start time so on_end can detect nested
+            # duplicates.  Check both attributes and span name since
+            # attributes may not be set yet at start time.
+            is_llm = False
+            attrs = span.attributes or {}
+            kind = str(attrs.get("openinference.span.kind", "") or
+                       attrs.get("ai.openinference.span.kind", "")).upper()
+            if kind == "LLM":
+                is_llm = True
+            elif span.name in ("ChatCompletion", "Completion"):
+                is_llm = True
+            if is_llm:
+                ctx = span.get_span_context()
+                self._llm_span_ids.add(format(ctx.span_id, '016x'))
+                if len(self._llm_span_ids) > 10000:
+                    self._llm_span_ids.clear()
 
         _NOISE_SPAN_NAMES = frozenset({"connect", "dns.resolve", "tls.handshake"})
+
+        def _is_llm_span(self, span):
+            """Check if a span is an LLM span (from any instrumentor)."""
+            attrs = span.attributes or {}
+            kind = str(attrs.get("openinference.span.kind", "") or
+                       attrs.get("ai.openinference.span.kind", "")).upper()
+            return kind == "LLM"
 
         def on_end(self, span):
             if not self._stream:
                 return
             if span.name in self._NOISE_SPAN_NAMES:
                 return
+
+            # Deduplicate nested LLM spans: when both a framework instrumentor
+            # (LangChain) and a provider instrumentor (OpenAI) are active, the
+            # same LLM call produces two nested LLM spans.  Keep the outer one
+            # (framework), skip the inner one (provider).
+            if self._is_llm_span(span):
+                parent_id = format(span.parent.span_id, '016x') if span.parent else None
+                if parent_id and parent_id in self._llm_span_ids:
+                    # Parent is also an LLM span — this is a provider duplicate
+                    return
             try:
                 ctx = span.get_span_context()
                 # Extract span links (used by retry/coupled span detection)
@@ -511,15 +546,13 @@ def _patch_anthropic_enrichments():
 
 # OpenInference instrumentors (same library Phoenix uses).
 #
-# Split into two tiers:
-#   - Framework instrumentors (LangChain, LlamaIndex, etc.) capture the full
-#     call tree including LLM calls, tool executions, and orchestration.
-#   - Provider instrumentors (OpenAI, Anthropic, etc.) capture raw LLM calls.
+# All instrumentors are registered — both framework-level (LangChain, etc.)
+# and provider-level (OpenAI, etc.).  When both are active, provider spans
+# nest correctly inside framework spans via OTEL context propagation.
 #
-# When a framework instrumentor is active, its provider-level counterparts are
-# redundant — they produce duplicate spans for every LLM call.  We register
-# framework instrumentors first, then skip provider instrumentors that are
-# already covered.
+# The only deduplication is on qym's enrichment patches (tool span emission,
+# reasoning capture): these are skipped when a framework instrumentor is
+# active, since the framework already captures tool calls and LLM details.
 
 _FRAMEWORK_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.langchain", "LangChainInstrumentor"),
@@ -538,24 +571,9 @@ _PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.groq", "GroqInstrumentor"),
 ]
 
-# Which provider instrumentors each framework makes redundant.
-_FRAMEWORK_COVERS: Dict[str, Set[str]] = {
-    "LangChainInstrumentor":  {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
-    "LlamaIndexInstrumentor": {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
-    "CrewAIInstrumentor":     {"OpenAIInstrumentor", "AnthropicInstrumentor"},
-    "HaystackInstrumentor":   {"OpenAIInstrumentor", "AnthropicInstrumentor"},
-    "DSPyInstrumentor":       {"OpenAIInstrumentor", "AnthropicInstrumentor"},
-    "LiteLLMInstrumentor":    {"OpenAIInstrumentor", "AnthropicInstrumentor", "BedrockInstrumentor", "MistralAIInstrumentor", "GroqInstrumentor"},
-}
-
 
 def _register_instrumentors(provider):
-    """Register all available OpenInference instrumentors on the given TracerProvider.
-
-    Framework instrumentors are registered first.  Provider instrumentors that
-    would duplicate spans already captured by a framework instrumentor are
-    skipped automatically.
-    """
+    """Register all available OpenInference instrumentors on the given TracerProvider."""
     # Suppress noisy DependencyConflict errors from instrumentors
     # whose provider SDKs aren't installed.
     _instrumentor_logger = logging.getLogger("opentelemetry.instrumentation.instrumentor")
@@ -563,7 +581,6 @@ def _register_instrumentors(provider):
     _instrumentor_logger.setLevel(logging.CRITICAL)
 
     registered = []
-    skipped_by_framework: Set[str] = set()
 
     def _try_register(module_path, class_name):
         try:
@@ -580,24 +597,20 @@ def _register_instrumentors(provider):
             logger.debug(f"Failed to register {class_name}: {e}")
         return False
 
-    # 1. Register framework instrumentors first
-    for module_path, class_name in _FRAMEWORK_INSTRUMENTORS:
-        if _try_register(module_path, class_name):
-            skipped_by_framework |= _FRAMEWORK_COVERS.get(class_name, set())
-
-    # 2. Register provider instrumentors, skipping those covered by a framework
+    # Provider instrumentors MUST register first so framework instrumentors
+    # wrap on top.  When LangChain's callback fires, it sets
+    # SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY before the provider
+    # instrumentor's wrapper executes, preventing duplicate LLM spans.
     for module_path, class_name in _PROVIDER_INSTRUMENTORS:
-        if class_name in skipped_by_framework:
-            logger.debug(f"Skipping {class_name} (already covered by framework instrumentor)")
-            continue
+        _try_register(module_path, class_name)
+
+    for module_path, class_name in _FRAMEWORK_INSTRUMENTORS:
         _try_register(module_path, class_name)
 
     _instrumentor_logger.setLevel(_prev_level)
 
     if registered:
         logger.info(f"Auto-instrumentation registered: {', '.join(registered)}")
-    if skipped_by_framework:
-        logger.info(f"Provider instrumentors skipped (covered by framework): {', '.join(sorted(skipped_by_framework))}")
     return registered
 
 
@@ -644,21 +657,13 @@ def create_otel_manager(config) -> Any:
             if not registered:
                 logger.debug("No OpenInference instrumentors found — auto-instrumentation inactive")
 
-            # Only apply provider SDK enrichments (tool span emission,
-            # reasoning capture) when no framework instrumentor is active.
-            # Framework instrumentors (LangChain, LlamaIndex, etc.) already
-            # capture tool calls and LLM details within their span tree.
-            _framework_names = {
-                "LangChainInstrumentor", "LlamaIndexInstrumentor",
-                "CrewAIInstrumentor", "HaystackInstrumentor",
-                "DSPyInstrumentor", "LiteLLMInstrumentor",
-            }
-            _has_framework = bool(_framework_names & set(registered))
-            if not _has_framework:
-                _patch_openai_enrichments()
-                _patch_anthropic_enrichments()
-            else:
-                logger.info("Skipping provider SDK enrichments (framework instrumentor active)")
+            # Apply provider SDK enrichments (tool span emission, reasoning
+            # capture).  These wrap SDK methods AFTER instrumentors so the
+            # enrichment spans nest inside the instrumentor's span context.
+            # When a framework instrumentor (LangChain, etc.) is also active,
+            # the trace viewer collapses any duplicate tool spans.
+            _patch_openai_enrichments()
+            _patch_anthropic_enrichments()
 
             # Optional: Phoenix OTLP export for dual tracing
             import os

@@ -3335,7 +3335,8 @@
         const configColors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
         let configHtml = '';
         if (config && typeof config === 'object' && Object.keys(config).length > 0) {
-          const entries = Object.entries(config).filter(([k]) => k !== 'run_name');
+          const hiddenConfigKeys = new Set(['run_name', 'max_metric_concurrency', 'MAX_METRIC_CONCURRENCY']);
+          const entries = Object.entries(config).filter(([k]) => !hiddenConfigKeys.has(k));
           if (entries.length > 0) {
             configHtml = '<div class="hero-config">' + entries.map(([k,v], i) => {
               const color = configColors[i % configColors.length];

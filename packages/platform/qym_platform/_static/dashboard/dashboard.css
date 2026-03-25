@@ -5526,7 +5526,7 @@ body.tv-open { overflow: hidden; }
 .tv-shell { position: fixed; inset: 0; z-index: 50000; pointer-events: none; }
 .tv-backdrop { position: absolute; inset: 0; background: rgba(4,8,18,.65); opacity: 0; transition: opacity .18s; }
 .tv-drawer {
-  position: absolute; top: 0; right: 0; width: min(1140px, 94vw); height: 100%;
+  position: absolute; top: 0; right: 0; width: min(1320px, 97vw); height: 100%;
   display: flex; flex-direction: column;
   background: var(--bg-base);
   border-left: 1px solid var(--border-default);
@@ -5622,7 +5622,7 @@ body.tv-open { overflow: hidden; }
   top: 0;
   bottom: 0;
   width: var(--tv-guide-stroke);
-  background: #fff;
+  background: var(--tv-guide-color, #fff);
 }
 .tv-guide.branch::before,
 .tv-guide.elbow::before {
@@ -5633,8 +5633,8 @@ body.tv-open { overflow: hidden; }
   right: -12px;
   height: calc(50% + (var(--tv-guide-stroke) / 2));
   box-sizing: border-box;
-  border-left: var(--tv-guide-stroke) solid #fff;
-  border-bottom: var(--tv-guide-stroke) solid #fff;
+  border-left: var(--tv-guide-stroke) solid var(--tv-guide-color, #fff);
+  border-bottom: var(--tv-guide-stroke) solid var(--tv-guide-color, #fff);
   border-bottom-left-radius: var(--tv-guide-radius);
 }
 
@@ -5679,12 +5679,16 @@ body.tv-open { overflow: hidden; }
   box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.08);
 }
 .tv-row.row-err .tv-row-main {
-  border-left: 2px solid rgba(255, 99, 99, 0.9);
-  background: rgba(239,68,68,.035);
+  border-left: none;
+  background: transparent;
 }
-.tv-row.row-err:hover .tv-row-main { background: rgba(239,68,68,.055); }
-.tv-row.row-failed .tv-name { text-decoration: line-through; text-decoration-color: rgba(239,68,68,.4); }
-.tv-row.row-retry .tv-row-main { border-left: 2px solid rgba(245,158,11,.45); }
+.tv-row.row-err:hover .tv-row-main {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.04);
+}
+/* Error span: red connector (--tv-guide-color set inline in JS).
+   Branch downward pipe must stay default — only the L-connector turns red. */
+.tv-guide.branch[style*="tv-guide-color"]::after { background: #fff !important; }
 
 /* Toggle (right-side expand/collapse) */
 .tv-toggle {
@@ -5729,10 +5733,12 @@ body.tv-open { overflow: hidden; }
 .tv-err-badge {
   display: inline-flex; align-items: center; color: var(--error); flex-shrink: 0;
 }
+.tv-err-badge svg {
+  width: 14px;
+  height: 14px;
+}
 .tv-retry-badge {
-  display: inline-flex; align-items: center; gap: 2px;
-  padding: 1px 6px; border-radius: 3px;
-  background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.2);
+  display: none;
   color: #f59e0b; font-size: 10px; font-weight: 600;
   white-space: nowrap; flex-shrink: 0;
 }
@@ -5743,7 +5749,7 @@ body.tv-open { overflow: hidden; }
 /* Error detail block (in detail panel header) */
 .tv-det-error {
   margin-top: 8px; padding: 10px 12px; border-radius: 6px;
-  background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.15);
+  background: rgba(239,68,68,.06);
 }
 .tv-det-error-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -5783,7 +5789,7 @@ body.tv-open { overflow: hidden; }
 .tv-wf-bar.error { background: var(--error) !important; }
 
 /* ─── Detail panel ─── */
-.tv-det-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
+.tv-det-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
 .tv-det-icon { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
 .tv-det-icon svg { width: 18px; height: 18px; }
 .tv-det-info { flex: 1; min-width: 0; }
@@ -5791,10 +5797,10 @@ body.tv-open { overflow: hidden; }
 .tv-det-sub { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--text-muted); font-size: var(--font-xs); flex-wrap: wrap; }
 .tv-dot { width: 2px; height: 2px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
 
-/* ─── Tabs (match platform tab style) ─── */
-.tv-tabs { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border-default); margin-bottom: 10px; padding-right: 4px; }
+/* ─── Tabs ─── */
+.tv-tabs { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border-subtle); margin-bottom: 14px; padding-right: 4px; }
 .tv-tab {
-  padding: 7px 14px; border: none; background: transparent;
+  padding: 6px 12px; border: none; background: transparent;
   color: var(--text-muted); font-size: var(--font-sm); cursor: pointer;
   border-bottom: 2px solid transparent; transition: color .1s;
 }
@@ -5803,7 +5809,7 @@ body.tv-open { overflow: hidden; }
 .tv-tab-content { }
 
 /* ─── Messages (chat bubbles — compact) ─── */
-.tv-msg { margin-bottom: 8px; border-radius: 4px; padding: 8px 10px; }
+.tv-msg { margin-bottom: 6px; border-radius: 6px; padding: 8px 10px; }
 .tv-msg-role,
 .tv-toolcall-name,
 .tv-io-label {
@@ -5816,21 +5822,21 @@ body.tv-open { overflow: hidden; }
   font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); font-weight: 400;
 }
 
-.tv-msg-system { background: rgba(255,255,255,.02); border: 1px solid var(--border-subtle); }
+.tv-msg-system { background: rgba(255,255,255,.02); }
 .tv-msg-system .tv-msg-role { color: var(--text-dim); }
 .tv-msg-system .tv-msg-body { color: var(--text-secondary); }
 
-.tv-msg-user { background: rgba(0,168,255,.04); border: 1px solid rgba(0,168,255,.1); }
+.tv-msg-user { background: rgba(0,168,255,.04); }
 .tv-msg-user .tv-msg-role { color: var(--accent-secondary); }
 
-.tv-msg-assistant { background: rgba(0,212,170,.03); border: 1px solid rgba(0,212,170,.08); }
+.tv-msg-assistant { background: rgba(0,212,170,.03); }
 .tv-msg-assistant .tv-msg-role { color: var(--accent-primary); }
 
-.tv-msg-tool { background: rgba(245,158,11,.03); border: 1px solid rgba(245,158,11,.08); }
+.tv-msg-tool { background: rgba(245,158,11,.03); }
 .tv-msg-tool .tv-msg-role { color: var(--warning); }
 
 /* Tool call cards */
-.tv-toolcall { margin-top: 6px; padding: 6px 8px; border-radius: 3px; background: rgba(168,85,247,.04); border: 1px solid rgba(168,85,247,.1); }
+.tv-toolcall { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: rgba(168,85,247,.04); }
 .tv-toolcall-name { font-size: 11px; font-weight: 600; color: var(--accent-tertiary); margin-bottom: 3px; }
 .tv-toolcall-label {
   display: inline-flex; align-items: center;
@@ -5841,17 +5847,16 @@ body.tv-open { overflow: hidden; }
 
 /* Code blocks */
 .tv-code {
-  margin: 3px 0 0; padding: 6px 8px; border-radius: 3px;
-  background: var(--bg-void); border: 1px solid var(--border-subtle);
+  margin: 0; padding: 8px 10px; border-radius: 6px;
+  background: var(--bg-void); border: 1px solid rgba(255,255,255,.06);
   font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-secondary);
   white-space: pre-wrap; word-break: break-word; overflow-x: auto; max-height: 500px; overflow-y: auto;
 }
 
 /* ─── Reasoning (inline expander after messages) ─── */
 .tv-reasoning-expander {
-  margin-top: 8px; border-radius: 4px;
-  border: 1px solid rgba(168,85,247,.12);
-  background: rgba(168,85,247,.02);
+  margin-top: 8px; border-radius: 6px;
+  background: rgba(168,85,247,.03);
 }
 .tv-reasoning-summary {
   padding: 8px 12px; cursor: pointer; user-select: none;
@@ -5876,27 +5881,80 @@ body.tv-open { overflow: hidden; }
 
 /* ─── Thinking (subtle, inside assistant bubble) ─── */
 .tv-thinking {
-  margin-bottom: 6px; border-radius: 3px;
-  background: rgba(255,255,255,.02);
+  margin-bottom: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 .tv-thinking-toggle {
-  display: flex; align-items: center; gap: 4px;
-  padding: 4px 6px; cursor: pointer; user-select: none; list-style: none;
-  font-size: 10px; color: var(--text-dim); letter-spacing: .03em;
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 0 4px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: .02em;
 }
 .tv-thinking-toggle::-webkit-details-marker { display: none; }
-.tv-thinking-toggle::before {
-  content: "▸"; font-size: 8px; color: var(--text-dim); transition: transform .15s; flex-shrink: 0;
+.tv-thinking-label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.tv-thinking[open] .tv-thinking-toggle::before { transform: rotate(90deg); }
-.tv-thinking-toggle:hover { color: var(--text-muted); }
-.tv-thinking-toggle .tv-copy-btn { opacity: 0; transition: opacity .15s; }
-.tv-thinking:hover .tv-thinking-toggle .tv-copy-btn { opacity: .4; }
+.tv-thinking-label-text {
+  display: inline-grid;
+}
+.tv-thinking-label-closed,
+.tv-thinking-label-open {
+  grid-area: 1 / 1;
+}
+.tv-thinking-label-open {
+  visibility: hidden;
+}
+.tv-thinking-label::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.45px solid currentColor;
+  border-bottom: 1.45px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform .15s ease;
+  flex-shrink: 0;
+}
+.tv-thinking[open] .tv-thinking-label-closed {
+  visibility: hidden;
+}
+.tv-thinking[open] .tv-thinking-label-open {
+  visibility: visible;
+}
+.tv-thinking[open] .tv-thinking-label::after {
+  transform: translateY(1px) rotate(225deg);
+}
+.tv-thinking-toggle:hover { color: var(--text-secondary); }
+.tv-thinking[open] .tv-thinking-toggle {
+  color: rgba(229, 231, 235, 0.86);
+}
 .tv-thinking-body {
-  padding: 4px 6px 6px; font-size: 11px; line-height: 1.5;
-  color: var(--text-dim); white-space: pre-wrap; word-break: break-word;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(229, 231, 235, 0.84);
+  white-space: pre-wrap;
+  word-break: break-word;
   max-height: 200px; overflow-y: auto;
-  border-top: 1px solid rgba(255,255,255,.03);
+  border-top: 1px solid rgba(255,255,255,.04);
+  background: rgba(5, 8, 15, 0.36);
+  border-radius: 4px;
+}
+.tv-msg-assistant .tv-msg-body {
+  padding: 4px 0 6px;
+}
+.tv-thinking + .tv-msg-body {
+  margin-top: 6px;
 }
 
 /* ─── Copy buttons ─── */
@@ -5931,30 +5989,29 @@ body.tv-open { overflow: hidden; }
 .tv-card-actions .tv-expand-btn { margin-left: 0; }
 
 /* ─── Params ─── */
-.tv-param { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--border-subtle); }
-.tv-param.tv-param-indent { padding-left: 12px; border-bottom-color: rgba(255,255,255,.03); }
+.tv-param { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; }
+.tv-param.tv-param-indent { padding-left: 12px; }
 .tv-param-k { color: var(--text-muted); font-size: var(--font-xs); }
 .tv-param-v { color: var(--text-primary); font-size: var(--font-sm); font-family: var(--font-mono); }
 .tv-param-k.tv-llm-cost, .tv-param-v.tv-llm-cost { color: #34d399; font-weight: 600; }
 
 /* ─── I/O ─── */
 .tv-io-section {
-  margin-bottom: 14px; padding: 10px 12px; border-radius: 4px;
-  border: 1px solid var(--border-default); background: var(--bg-base);
+  margin-bottom: 12px;
 }
-.tv-io-section + .tv-io-section { margin-top: 10px; }
+.tv-io-section + .tv-io-section { margin-top: 8px; }
 .tv-io-label {
-  font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
-  margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle);
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+  margin-bottom: 6px;
 }
 .tv-io-label-input { color: var(--accent-secondary); }
 .tv-io-label-output { color: var(--accent-primary); }
 
 /* ─── Scores ─── */
 .tv-scores { display: flex; flex-direction: column; gap: 6px; }
-.tv-score-card { padding: 8px 10px; border-radius: 4px; background: var(--bg-base); border: 1px solid var(--border-default); }
-.tv-score-card.pass { background: rgba(16,185,129,.03); border-color: rgba(16,185,129,.12); }
-.tv-score-card.fail { background: rgba(239,68,68,.03); border-color: rgba(239,68,68,.12); }
+.tv-score-card { padding: 8px 10px; border-radius: 6px; background: var(--bg-elevated); }
+.tv-score-card.pass { background: rgba(16,185,129,.04); }
+.tv-score-card.fail { background: rgba(239,68,68,.04); }
 .tv-score-head { display: flex; justify-content: space-between; align-items: center; }
 .tv-score-side,
 .tv-metric-side {
@@ -6011,8 +6068,8 @@ body.tv-open { overflow: hidden; }
 .tv-tabs-spacer { flex: 1; }
 /* ─── CodeMirror JSON viewer ─── */
 .tv-cm {
-  margin: 3px 0 0; border-radius: 4px; overflow: hidden;
-  border: 1px solid var(--border-subtle);
+  margin: 0; border-radius: 6px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.06);
 }
 .tv-cm .cm-editor { background: var(--bg-void); }
 .tv-cm .cm-editor.cm-focused { outline: none; }

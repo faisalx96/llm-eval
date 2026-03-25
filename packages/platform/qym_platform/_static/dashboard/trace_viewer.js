@@ -479,7 +479,7 @@
     }
     if (message._reasoning) {
       const r = message._reasoning;
-      bubble += `<details class="tv-thinking"><summary class="tv-thinking-toggle">Thinking${copyBtn(r, "Copy reasoning")}</summary><div class="tv-thinking-body">${esc(r)}</div></details>`;
+      bubble += `<details class="tv-thinking"><summary class="tv-thinking-toggle"><span class="tv-thinking-label"><span class="tv-thinking-label-text"><span class="tv-thinking-label-closed">Show Thinking</span><span class="tv-thinking-label-open">Hide Thinking</span></span></span></summary><div class="tv-thinking-body">${esc(r)}</div></details>`;
     }
     if (msgText) bubble += renderMessageContent(msgText, role === "tool" ? "tv-json-preview tv-json-preview-output" : "");
     if (message.toolCalls && message.toolCalls.length) {
@@ -724,7 +724,11 @@
         guidesHtml += `<span class="tv-guide ${prefix[i] ? 'pipe' : 'space'}"${guideStyle}></span>`;
       }
       if (node._depth > 0) {
-        guidesHtml += `<span class="tv-guide ${isLast ? 'elbow' : 'branch'}" style="--tv-guide-opacity:${laneOpacity(prefix.length)}"></span>`;
+        const guideType = isLast ? 'elbow' : 'branch';
+        const isErr = statusCls(node.status) === "error";
+        let guideInline = `--tv-guide-opacity:${isErr ? 1 : laneOpacity(prefix.length)}`;
+        if (isErr) guideInline += `;--tv-guide-color:#f87171`;
+        guidesHtml += `<span class="tv-guide ${guideType}" style="${guideInline}"></span>`;
       }
 
       // Toggle (expand/collapse) — right side
