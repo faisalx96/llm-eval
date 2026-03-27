@@ -727,7 +727,7 @@
         const guideType = isLast ? 'elbow' : 'branch';
         const isErr = statusCls(node.status) === "error";
         let guideInline = `--tv-guide-opacity:${isErr ? 1 : laneOpacity(prefix.length)}`;
-        if (isErr) guideInline += `;--tv-guide-color:#f87171`;
+        if (isErr) guideInline += `;--tv-guide-color:#ef4444`;
         guidesHtml += `<span class="tv-guide ${guideType}" style="${guideInline}"></span>`;
       }
 
@@ -765,11 +765,12 @@
         node._failed ? "row-failed" : "",
       ].filter(Boolean).join(" ");
 
+      const iconHtml = `<span class="tv-icon" style="background:${color}20;color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>`;
+
       rows.push(
         `<button type="button" class="${rowCls}" data-span="${esc(node.span_id)}">` +
-          `<span class="tv-tree-gutter">${guidesHtml}</span>` +
+          `<span class="tv-tree-gutter">${guidesHtml}${iconHtml}</span>` +
           `<span class="tv-row-main">` +
-            `<span class="tv-icon" style="background:${color}20;color:${color}">${ICONS[kind]||ICONS.DEFAULT}</span>` +
             `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${errHtml}${retryHtml}${inlineMeta}</span>` +
             `<span class="tv-dur">${esc(fmtDur(node.duration_ms))}</span>` +
             `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%;background:${color}"></span></span>` +
@@ -1488,6 +1489,7 @@
     closeExpandModal();
     S.shell.classList.remove("open");
     document.body.classList.remove("tv-open");
+    _clearTraceUrl();
   }
 
   async function fetchTrace(meta) {
@@ -1500,6 +1502,25 @@
     return data;
   }
 
+  function _pushTraceUrl(meta) {
+    if (S.exportMode) return;
+    try {
+      const url = new URL(window.location);
+      // Use itemId extracted from endpoint: .../items/{itemId}/trace
+      const m = (meta.endpoint || "").match(/\/items\/([^/]+)\/trace/);
+      if (m) url.searchParams.set("trace", m[1]);
+      history.replaceState(null, "", url);
+    } catch (_) {}
+  }
+
+  function _clearTraceUrl() {
+    try {
+      const url = new URL(window.location);
+      url.searchParams.delete("trace");
+      history.replaceState(null, "", url);
+    } catch (_) {}
+  }
+
   async function open(meta) {
     if (S.exportMode) return;
     S.meta = meta;
@@ -1510,6 +1531,7 @@
     S.activeTab = null;
     openDrawer();
     S.el.search.value = "";
+    _pushTraceUrl(meta);
 
     // Loading state
     S.el.title.textContent = meta.itemLabel || "Trace";
@@ -1667,6 +1689,21 @@
   }
 
   /* ── init ── */
+  function restoreFromUrl() {
+    // Called by the host page after items have rendered.
+    // Finds the trace button for the item ID in ?trace= and opens it.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const itemId = params.get("trace");
+      if (!itemId) return;
+      // Find the trace button whose endpoint contains this item ID
+      const btn = document.querySelector(
+        `.trace-drawer-btn[data-trace-endpoint*="/items/${CSS.escape(itemId)}/trace"]`
+      );
+      if (btn) openFromButton(btn);
+    } catch (_) {}
+  }
+
   function init(opts) {
     S.exportMode = !!(opts && opts.exportMode);
     ensureShell();
@@ -1676,5 +1713,5 @@
     S.ready = true;
   }
 
-  window.QymTraceViewer = { init, open, openFromButton, close: closeDrawer };
+  window.QymTraceViewer = { init, open, openFromButton, close: closeDrawer, restoreFromUrl };
 })();

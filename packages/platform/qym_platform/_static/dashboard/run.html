@@ -3323,6 +3323,8 @@
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
         renderItems();
+        // Auto-open trace if ?trace=itemId is in the URL
+        if (window.QymTraceViewer) window.QymTraceViewer.restoreFromUrl();
       }
 
       function renderSummary() {

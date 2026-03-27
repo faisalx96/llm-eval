@@ -3921,6 +3921,8 @@
         renderErrorAnalysis();
         renderMetricsTable();
         renderItems();
+        // Auto-open trace if ?trace=itemId is in the URL
+        if (window.QymTraceViewer) window.QymTraceViewer.restoreFromUrl();
       }
 
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency

@@ -5605,22 +5605,24 @@ body.tv-open { overflow: hidden; }
 /* ─── Tree connector guides ─── */
 .tv-guide {
   --tv-guide-opacity: 0.2;
-  --tv-guide-x: 31px;
-  --tv-guide-radius: 12px;
-  --tv-guide-stroke: 1.5px;
-  width: 31px;
-  flex: 0 0 31px;
+  --tv-guide-x: 17px;
+  --tv-guide-radius: 10px;
+  --tv-guide-stroke: 1.2px;
+  width: 26px;
+  flex: 0 0 26px;
   align-self: stretch;
   position: relative;
+  overflow: visible;
   opacity: var(--tv-guide-opacity);
 }
 .tv-guide.pipe::before,
 .tv-guide.branch::after {
   content: '';
   position: absolute;
+  z-index: 0;
   left: calc(var(--tv-guide-x) - (var(--tv-guide-stroke) / 2));
   top: 0;
-  bottom: 0;
+  bottom: -3px;
   width: var(--tv-guide-stroke);
   background: var(--tv-guide-color, #fff);
 }
@@ -5628,9 +5630,10 @@ body.tv-open { overflow: hidden; }
 .tv-guide.elbow::before {
   content: '';
   position: absolute;
+  z-index: 1;
   left: calc(var(--tv-guide-x) - (var(--tv-guide-stroke) / 2));
   top: 0;
-  right: -12px;
+  right: 0;
   height: calc(50% + (var(--tv-guide-stroke) / 2));
   box-sizing: border-box;
   border-left: var(--tv-guide-stroke) solid var(--tv-guide-color, #fff);
@@ -5643,8 +5646,9 @@ body.tv-open { overflow: hidden; }
   width: 100%;
   display: flex;
   align-items: stretch;
-  gap: 12px;
+  gap: 0;
   padding: 0;
+  margin-bottom: 3px;
   border: none;
   background: transparent;
   color: inherit;
@@ -5653,9 +5657,18 @@ body.tv-open { overflow: hidden; }
 }
 .tv-tree-gutter {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   flex: 0 0 auto;
   padding-left: 4px;
+  gap: 0;
+  overflow: visible;
+}
+/* Icon is now inside the gutter — no gap needed */
+.tv-tree-gutter > .tv-icon {
+  flex-shrink: 0;
+  margin: 0 4px;
+  z-index: 2;
+  position: relative;
 }
 .tv-row-main {
   flex: 1;
@@ -5663,32 +5676,32 @@ body.tv-open { overflow: hidden; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px 8px 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 6px 12px 6px 36px;
+  margin-left: -36px;
+  border-radius: 6px;
   background: transparent;
-  transition: background .12s, border-color .12s, box-shadow .12s;
+  transition: background .1s;
 }
 .tv-row:hover .tv-row-main {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.035);
 }
 .tv-row.sel .tv-row-main {
-  background: rgba(96, 165, 250, 0.06);
-  border-color: rgba(96, 165, 250, 0.15);
-  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.08);
-}
-.tv-row.row-err .tv-row-main {
-  border-left: none;
-  background: transparent;
+  background: rgba(96, 165, 250, 0.08);
 }
 .tv-row.row-err:hover .tv-row-main {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.04);
+  background: rgba(239, 68, 68, 0.06);
 }
-/* Error span: red connector (--tv-guide-color set inline in JS).
-   Branch downward pipe must stay default — only the L-connector turns red. */
-.tv-guide.branch[style*="tv-guide-color"]::after { background: #fff !important; }
+/* Error span: red connector extends upward to parent branch.
+   The ::before L-connector starts above the row to visually reach the parent. */
+.tv-guide[style*="tv-guide-color"]::before {
+  top: calc(-100% - 3px) !important;
+  height: calc(150% + (var(--tv-guide-stroke) / 2) + 3px) !important;
+}
+/* Branch downward pipe stays default — not red */
+.tv-guide.branch[style*="tv-guide-color"]::after {
+  background: #fff !important;
+  opacity: 0.2;
+}
 
 /* Toggle (right-side expand/collapse) */
 .tv-toggle {
