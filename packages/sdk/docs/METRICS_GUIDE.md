@@ -1,6 +1,6 @@
-# qym (قيِّم) Evaluation Metrics Store
+# qym (قيِّم) Evaluation Metrics Reference
 
-A comprehensive reference of metrics for evaluating LLM applications. Use this guide to select the right metrics for your use case.
+A reference catalog of metrics for evaluating LLM applications. Use this guide to select the right metrics for your use case. For how to configure and run metrics, see the [User Guide](USER_GUIDE.md#4-using-metrics).
 
 ## Table of Contents
 
@@ -14,6 +14,7 @@ A comprehensive reference of metrics for evaluating LLM applications. Use this g
 8. [Agent Metrics](#agent-metrics)
 9. [LLM-as-Judge Metrics](#llm-as-judge-metrics)
 10. [Domain-Specific Metrics](#domain-specific-metrics)
+11. [Metric Selection Checklist](#metric-selection-checklist)
 
 ---
 
@@ -21,15 +22,17 @@ A comprehensive reference of metrics for evaluating LLM applications. Use this g
 
 | Use Case | Recommended Metrics |
 |----------|-------------------|
-| **Q&A / Chatbot** | exact_match, contains_expected, relevance, helpfulness |
-| **RAG System** | faithfulness, context_relevance, answer_relevance, groundedness |
-| **Summarization** | content_coverage, factual_consistency, conciseness |
+| **Q&A / Chatbot** | exact_match, contains_expected, `relevance`\*, `correctness_llm`\* |
+| **RAG System** | `faithfulness_llm`\*, `hallucination`\*, context_relevance, answer_relevance |
+| **Summarization** | content_coverage, factual_consistency, `conciseness`\* |
 | **Code Generation** | code_runs, syntax_valid, test_pass_rate |
 | **Classification** | accuracy, precision, recall, f1_score |
 | **Creative Writing** | coherence, creativity, tone_match |
 | **Translation** | bleu_score, semantic_similarity |
-| **Agent / Tool Use** | task_completion, tool_accuracy, step_efficiency |
-| **Safety-Critical** | toxicity, pii_detection, bias_score |
+| **Agent / Tool Use** | task_completion, `tool_calling`\*, step_efficiency |
+| **Safety-Critical** | `toxicity`\*, pii_detection, bias_score |
+
+\* **Built-in LLM judge** — use the metric name as a string directly (e.g., `metrics=["relevance"]`). Requires `QYM_JUDGE_MODEL` and `QYM_JUDGE_API_KEY` to be configured. See [LLM-as-Judge Metrics](#llm-as-judge-metrics). Metrics without an asterisk are either built-in string metrics or custom functions you define.
 
 ---
 
@@ -474,9 +477,7 @@ def step_efficiency(output, expected, input_data):
 
 ## LLM-as-Judge Metrics
 
-qym includes built-in LLM judge metrics that use an OpenAI-compatible API to evaluate outputs. They return structured results with a score, label, and explanation.
-
-**Requirements:** `pip install openai` (or `pip install qym[judges]`)
+qym includes built-in LLM judge metrics that use an OpenAI-compatible API to evaluate outputs. Each returns a structured result with a numeric score, a verdict label, and the LLM's explanation.
 
 ### Built-in Judges
 
@@ -492,221 +493,9 @@ Use these as metric names directly — no code needed:
 | `conciseness` | Is the response concise or verbose? | concise / verbose | `{question}`, `{output}` |
 | `tool_calling` | Are the tool calls correct? | correct / incorrect | `{question}`, `{tool_definitions}`, `{tool_calls}` |
 
-```python
-from qym import Evaluator
-
-results = Evaluator(
-    task=my_task,
-    dataset="my_dataset",
-    metrics=["exact_match", "relevance", "faithfulness_llm"],
-).run()
-```
-
 Template variables like `{question}` and `{context}` are filled from your dataset's `input_data` dict. `{output}` and `{expected}` are filled automatically.
 
-### Configuration
-
-You must configure your LLM provider before using judge metrics. There is no default model — qym will show a clear error if configuration is missing.
-
-**Environment variables (recommended):**
-```bash
-export QYM_JUDGE_MODEL=gpt-4o-mini     # Required: model name
-export QYM_JUDGE_API_KEY=sk-...        # Required: API key (or set OPENAI_API_KEY)
-export QYM_JUDGE_BASE_URL=http://...   # Optional: base URL for vLLM, Ollama, etc.
-```
-
-**Programmatic:**
-```python
-from qym.metrics import JudgeConfig, set_default_judge_config
-
-set_default_judge_config(JudgeConfig(
-    model="gpt-4o-mini",
-    api_key="sk-...",
-    base_url="http://localhost:8000/v1",  # Optional: for vLLM / Ollama
-))
-```
-
-### Creating Custom Judges
-
-Use `create_judge()` to build your own LLM judge from a prompt template:
-
-```python
-from qym.metrics.judges import create_judge
-
-# Binary judge — pass/fail
-helpfulness = create_judge(
-    name="helpfulness",
-    prompt="""\
-Rate how helpful this response is for the user's needs.
-A helpful response solves the problem, is actionable, and is clear.
-An unhelpful response is vague, off-topic, or doesn't address the need.
-
-[User Request]: {question}
-[Response]: {output}
-
-Is the response helpful or unhelpful?""",
-    choices={"helpful": 1.0, "unhelpful": 0.0},
-)
-
-# Multi-level judge — graded scale
-answer_quality = create_judge(
-    name="answer_quality",
-    prompt="""\
-Rate the quality of this response.
-- excellent: Fully correct, well-structured, and comprehensive
-- good: Mostly correct with minor gaps
-- poor: Partially correct but missing key information
-- bad: Incorrect or completely off-topic
-
-[Question]: {question}
-[Expected Answer]: {expected}
-[Actual Response]: {output}
-
-Rate the response as excellent, good, poor, or bad.""",
-    choices={"excellent": 1.0, "good": 0.7, "poor": 0.3, "bad": 0.0},
-)
-
-results = Evaluator(
-    task=my_task,
-    dataset="my_dataset",
-    metrics=["exact_match", helpfulness, answer_quality],
-).run()
-```
-
-**How it works:** The LLM is instructed to respond with structured JSON:
-
-```json
-{"verdict": "good", "explanation": "The response covers the main points but misses edge cases."}
-```
-
-qym parses the verdict, maps it to a score via the `choices` dict, and stores everything:
-- `"good"` → score `0.7` (from choices), label `"good"`, explanation from the LLM
-
-If the LLM doesn't return valid JSON, qym falls back to extracting the verdict label from the raw text.
-
-**Per-judge LLM configuration** — use a different model/provider for a specific judge:
-
-```python
-# Use a local Ollama model for toxicity checking
-toxicity_local = create_judge(
-    name="toxicity_local",
-    prompt="Is this response toxic or non-toxic?\n[Response]: {output}",
-    choices={"non-toxic": 1.0, "toxic": 0.0},
-    judge_model="llama-3.1-8b",
-    judge_base_url="http://localhost:11434/v1",
-    judge_api_key="ollama",  # Ollama accepts any key
-)
-
-# Use GPT-4o for a high-stakes correctness check
-correctness_strict = create_judge(
-    name="correctness_strict",
-    prompt="Is this response correct?\n[Expected]: {expected}\n[Response]: {output}",
-    choices={"correct": 1.0, "incorrect": 0.0},
-    judge_model="gpt-4o",
-    judge_api_key="sk-...",
-)
-```
-
-**Other factory options:**
-- `choices` — dict mapping verdict labels to scores. Binary (2 labels) or multi-level (any number). Scores should be between 0.0 and 1.0.
-- `langfuse_prompt` — fetch prompt template from Langfuse prompt management instead of using the `prompt` parameter
-- `system_prompt` — override the default system prompt
-
-### Pairwise Comparison Judges
-
-Instead of scoring a single output on an absolute scale, pairwise judges compare two outputs (A vs B) and decide which is better. Research shows LLMs are more reliable at relative comparison than absolute scoring.
-
-Use `create_pairwise_judge()` — it works like `create_judge()` but with two special template variables: `{output_a}` and `{output_b}`.
-
-```python
-from qym.metrics.judges import create_pairwise_judge
-
-compare_quality = create_pairwise_judge(
-    name="compare_quality",
-    prompt="""\
-Compare these two responses to the same question.
-
-[Question]: {question}
-[Response A]: {output_a}
-[Response B]: {output_b}
-
-Consider: accuracy, completeness, clarity, and relevance.
-Which response is better? Answer A, B, or tie.""",
-)
-
-results = Evaluator(
-    task=my_task,
-    dataset="my-dataset",
-    metrics=[compare_quality],
-).run()
-```
-
-**How it works:** The LLM responds with:
-
-```json
-{"verdict": "A", "explanation": "Response A is more accurate and directly addresses the question."}
-```
-
-qym maps the verdict to a score:
-- `"A"` → `1.0` (your task's output wins)
-- `"tie"` → `0.5`
-- `"B"` → `0.0` (the comparison output wins)
-
-The result includes `label` (`"A"`, `"B"`, or `"tie"`) and `explanation` (the LLM's reasoning), both stored in the platform.
-
-**Where do A and B come from?**
-
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `{output_a}` | Your task's output | Always filled automatically — this is what you're evaluating |
-| `{output_b}` | `input_data["output_b"]` or `expected` | The baseline to compare against |
-
-Two common patterns:
-
-**Pattern 1: Compare against a gold-standard answer.** Your dataset's `expected` field contains the reference answer. `{output_b}` uses it by default.
-
-```python
-# Dataset has: question, expected (gold answer)
-# Task produces: output (model's answer)
-# Judge compares: output vs expected
-compare_to_gold = create_pairwise_judge(
-    name="vs_gold",
-    prompt="Which response better answers the question?\n[Question]: {question}\n[A]: {output_a}\n[B]: {output_b}",
-)
-```
-
-**Pattern 2: Compare two models' outputs.** Add an `output_b` column to your CSV with a baseline model's response. `{output_b}` reads from `input_data["output_b"]` when available.
-
-```csv
-id,question,expected,output_b
-1,"What is 2+2?","4","The answer is four."
-2,"Capital of France?","Paris","It's Paris, the capital city."
-```
-
-```python
-# Task produces output_a (new model's answer)
-# CSV provides output_b (baseline model's answer)
-# Judge compares them
-compare_models = create_pairwise_judge(
-    name="model_comparison",
-    prompt="Which response is better?\n[Question]: {question}\n[A]: {output_a}\n[B]: {output_b}",
-)
-```
-
-**Per-judge config** — same as `create_judge()`, you can pass `judge_model`, `judge_api_key`, and `judge_base_url` to use a different LLM for the comparison.
-
-### Structured Results
-
-Every LLM judge returns a `MetricResult` with:
-
-| Field | Example | Description |
-|-------|---------|-------------|
-| `score` | `0.7` | Numeric value mapped from the verdict via `choices` |
-| `label` | `"good"` | The verdict label chosen by the LLM |
-| `explanation` | `"Covers main points but..."` | The LLM's reasoning for its verdict |
-| `kind` | `"llm"` | Always `"llm"` for judge metrics |
-
-Labels and explanations are stored in the platform database and visible per-item in the dashboard. This lets you see not just the score but *why* the judge gave that score.
+You can also create custom judges (binary or multi-level grading scales) and pairwise comparison judges. For configuration, setup, and the full `create_judge()` / `create_pairwise_judge()` API, see the [User Guide — LLM Judge Metrics](USER_GUIDE.md#llm-judge-metrics).
 
 ---
 
@@ -789,50 +578,7 @@ def citation_present(output, expected):
 
 ## Creating Your Own Metrics
 
-### Template
-
-```python
-def my_custom_metric(output, expected, input_data=None):
-    """
-    Your metric description.
-
-    Args:
-        output: What the task returned
-        expected: Expected output from dataset (may be None)
-        input_data: Original input (optional, for context-aware metrics)
-
-    Returns:
-        float: Score between 0.0 and 1.0
-        OR
-        dict: {"score": float, "metadata": {...}}
-    """
-    # Handle edge cases
-    if output is None:
-        return 0.0
-    if expected is None:
-        # Decide behavior when no expected value
-        return 1.0
-
-    # Your scoring logic
-    score = calculate_score(output, expected)
-
-    # Return with metadata for debugging
-    return {
-        "score": score,
-        "metadata": {
-            "output_length": len(str(output)),
-            "reason": "your explanation"
-        }
-    }
-```
-
-### Best Practices
-
-1. **Always handle `None`** - expected can be None if dataset item has no expected_output
-2. **Return 0.0-1.0** - normalize your scores
-3. **Include metadata** - helps debugging and analysis
-4. **Make it deterministic** - same inputs should give same outputs (when possible)
-5. **Document your metric** - explain what it measures and when to use it
+For writing custom metric functions (signatures, return values, async metrics, best practices) and creating custom LLM judges, see the [User Guide — Using Metrics](USER_GUIDE.md#4-using-metrics).
 
 ---
 

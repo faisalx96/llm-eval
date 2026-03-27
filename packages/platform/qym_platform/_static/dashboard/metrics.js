@@ -110,7 +110,9 @@ function calculateItemLevelMetrics(options) {
     totalScoreCount: 0,
     totalLatencySum: 0,
     totalLatencyCount: 0,
-    correctDistribution: trackDistribution ? new Array(K + 1).fill(0) : null
+    correctDistribution: trackDistribution ? new Array(K + 1).fill(0) : null,
+    minScore: 0,
+    stddevScore: 0
   };
 
   if (!runsData || runsData.length === 0) {
@@ -133,6 +135,7 @@ function calculateItemLevelMetrics(options) {
   let totalScoreCount = 0;
   let totalLatencySum = 0;
   let totalLatencyCount = 0;
+  let allScores = [];  // collect all individual scores for min/stddev
   let itemsWithData = 0;
   let itemsWithMultipleRuns = 0;  // Only count items with K > 1 for consistency
   let itemsWithAtLeastOnePass = 0;  // Items where at least one run passed (for reliability)
@@ -172,6 +175,7 @@ function calculateItemLevelMetrics(options) {
         scores.push(score);
         totalScoreSum += score;
         totalScoreCount++;
+        allScores.push(score);
         if (isError) failedCount++;
       }
 
@@ -242,6 +246,14 @@ function calculateItemLevelMetrics(options) {
   result.totalScoreCount = totalScoreCount;
   result.totalLatencySum = totalLatencySum;
   result.totalLatencyCount = totalLatencyCount;
+  result.minScore = allScores.length > 0 ? Math.min(...allScores) : 0;
+  if (allScores.length > 1) {
+    const mean = totalScoreSum / allScores.length;
+    const sqDiffSum = allScores.reduce((sum, s) => sum + (s - mean) * (s - mean), 0);
+    result.stddevScore = Math.sqrt(sqDiffSum / allScores.length);
+  } else {
+    result.stddevScore = 0;
+  }
 
   return result;
 }

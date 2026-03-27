@@ -832,6 +832,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         "run": {
             "file_path": run.id,
             "dataset_name": run.dataset,
+            "model_name": _strip_model_provider(run.model or ""),
             "run_name": run.external_run_id or run.id,
             "metric_names": metrics,
             "config": run.run_config,

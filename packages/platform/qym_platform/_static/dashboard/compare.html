@@ -2806,7 +2806,7 @@
       <div style="font-size: 48px; margin-bottom: var(--space-md);">∅</div>
       <h2>No runs to compare</h2>
       <p>Select at least 2 runs from the dashboard to compare.</p>
-      <a href="" class="back-link" id="back-link-empty">← Back to Dashboard</a>
+      <a href="" class="back-link" id="back-link-empty" style="margin-top: var(--space-md); margin-left: 0; padding: 8px 20px; background: var(--accent-primary); color: #fff; border-radius: 6px; font-weight: 600; text-decoration: none;">← Back to Dashboard</a>
     </div>
 
     <div id="compare-content" style="display: none;">
@@ -3255,6 +3255,14 @@
       const IS_COMPARE_EXPORT = !!window.__QYM_COMPARE_EXPORT__;
       if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: IS_COMPARE_EXPORT });
 
+      function _updateCompareUrl(files) {
+        if (IS_COMPARE_EXPORT) return;
+        const params = new URLSearchParams();
+        files.forEach(f => params.append('runs', f));
+        const newUrl = window.location.pathname + '?' + params.toString();
+        window.history.replaceState(null, '', newUrl);
+      }
+
       async function loadComparisonData() {
         // If opened as export, load from embedded data
         if (IS_COMPARE_EXPORT && window.__QYM_COMPARE_DATA__) {
@@ -3272,25 +3280,35 @@
           }
         }
 
-        // Get selected files from sessionStorage
-        const filesJson = sessionStorage.getItem('compareRuns');
-        if (!filesJson) {
-          showEmpty();
-          return;
-        }
-
+        // Get run IDs from URL query params first, fall back to sessionStorage
         let files;
-        try {
-          files = JSON.parse(filesJson);
-        } catch {
-          showEmpty();
-          return;
+        const urlParams = new URLSearchParams(window.location.search);
+        const runsFromUrl = urlParams.getAll('runs');
+        if (runsFromUrl.length >= 2) {
+          files = runsFromUrl;
+          // Sync to sessionStorage so removal still works
+          sessionStorage.setItem('compareRuns', JSON.stringify(files));
+        } else {
+          const filesJson = sessionStorage.getItem('compareRuns');
+          if (!filesJson) {
+            showEmpty();
+            return;
+          }
+          try {
+            files = JSON.parse(filesJson);
+          } catch {
+            showEmpty();
+            return;
+          }
         }
 
         if (!Array.isArray(files) || files.length < 2) {
           showEmpty();
           return;
         }
+
+        // Update URL to include run IDs for shareability
+        _updateCompareUrl(files);
 
         // Fetch comparison data from API
         const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
@@ -3436,7 +3454,8 @@
               }
             }
             if (uniqueVals.size === 0 || uniqueVals.size > MAX_CARDINALITY) continue;
-            if (k === 'complexity' || k === 'domain') state.selectedCategories.add(k);
+            // Auto-select first 3 valid categories
+            if (state.selectedCategories.size < 3) state.selectedCategories.add(k);
           }
         }
 
@@ -3885,13 +3904,14 @@
         // Remove from state
         state.runs.splice(idx, 1);
 
-        // Update sessionStorage so it persists
+        // Update sessionStorage and URL so they persist
         const filesJson = sessionStorage.getItem('compareRuns');
         if (filesJson) {
           try {
             const files = JSON.parse(filesJson);
             files.splice(idx, 1);
             sessionStorage.setItem('compareRuns', JSON.stringify(files));
+            _updateCompareUrl(files);
           } catch {}
         }
 
@@ -5301,6 +5321,7 @@
           const outputCells = rowData.map((row, runIdx) => {
             const color = COLORS[runIdx % COLORS.length];
             const runInfo = state.runs[runIdx]?.run || {};
+            const runFilePath = runInfo.file_path || '';
 
             if (!row) {
               perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
@@ -5465,7 +5486,6 @@
             const rowSol = row.item_metadata?.solution || '';
             const rowSolNote = row.item_metadata?.solution_note || '';
             const reviewStatus = row.review_correction_status || '';
-            const runFilePath = runInfo.file_path || '';
 
             if (rowRc || rowRcDetail || rowSol || !itemPassed) {
               const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';

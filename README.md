@@ -87,6 +87,9 @@ cp .env.template .env
 | `LANGFUSE_HOST` | SDK | Langfuse host URL |
 | `QYM_API_KEY` | SDK | API key for platform streaming |
 | `QYM_PLATFORM_URL` | SDK | Platform URL (default: `http://localhost:8000`) |
+| `QYM_JUDGE_MODEL` | SDK | Model name for LLM judge metrics (or pass `judge_model` per judge) |
+| `QYM_JUDGE_API_KEY` | SDK | API key for LLM judge metrics (or pass `judge_api_key` per judge) |
+| `QYM_JUDGE_BASE_URL` | SDK | Base URL for LLM judge metrics (optional, or pass `judge_base_url` per judge) |
 | `QYM_DATABASE_URL` | Platform | PostgreSQL connection string |
 | `QYM_ADMIN_BOOTSTRAP_TOKEN` | Platform | One-time token for first admin user |
 | `QYM_AUTH_MODE` | Platform | `none` (default) or `proxy` |
@@ -95,11 +98,12 @@ cp .env.template .env
 
 **SDK (end users):**
 - [SDK README](packages/sdk/README.md) - Installation and usage
-- [User Guide](packages/sdk/docs/USER_GUIDE.md) - Tasks, metrics, datasets, configuration
-- [Metrics Guide](packages/sdk/docs/METRICS_GUIDE.md) - 40+ metrics by use case
+- [User Guide](packages/sdk/docs/USER_GUIDE.md) - Tasks, metrics, datasets, CLI, configuration
+- [Metrics Guide](packages/sdk/docs/METRICS_GUIDE.md) - 40+ metrics by use case, including LLM-as-judge
+- [Auto-Instrumentation Guide](packages/sdk/docs/AUTO_INSTRUMENTATION_GUIDE.md) - Automatic LLM call tracing
 
 **Platform (operators):**
-- [Platform User Guide](docs/PLATFORM_USER_GUIDE.md) - Dashboard, roles, approval workflows
+- [Platform User Guide](docs/PLATFORM_USER_GUIDE.md) - Dashboard, trace viewer, AI analysis, corrections review, roles, approval workflows
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Production deployment
 - [Admin Guide](docs/ADMIN_GUIDE.md) - User management, org structure, settings
 

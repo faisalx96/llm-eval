@@ -4,9 +4,7 @@
 
 ---
 
-**Release notes coverage stopped at commit `e2fda02`** (`feat: release notes for qym v0.9.0 with LLM-powered auto root cause analysis`).
-
-The entries below cover every commit after `e2fda02`, in chronological order.
+The entries below cover every commit after `e2fda02`, in chronological order (through `548e15a`).
 
 ---
 
@@ -140,6 +138,75 @@ The entries below cover every commit after `e2fda02`, in chronological order.
 - ✅ Simplified the approval filter in run and compare views to a single **All / Approved / Not Approved** select instead of the older multi-select pattern
 - ⏱️ The SDK now retries failed item execution with **exponential backoff + jitter**, defaults `timeout` to **300s** and `max_retries` to **2**, and records `retry_count` per item
 - 📥 Platform ingest now persists each item’s **`retry_count`** in metadata so retries remain visible after streaming to the dashboard
+
+### `15c460b` — OTEL span capture and auto-instrumentation foundation
+
+- 📡 Added **`span_completed` event type** and `SpanCompletedPayload` so the SDK can stream completed OTEL spans to the platform in real time alongside other run events
+- 🗃️ Added a **Spans table** (migration `0011`) with `trace_id`, `span_id`, `parent_span_id`, `name`, `kind`, `start_time_ns`/`end_time_ns` (nanosecond precision), `duration_ms`, `status`, `attributes`, `events`, and `links` columns, indexed on `(run_id, trace_id)`
+- 🔌 Added **trace API endpoints**: `GET /api/runs/{run_id}/spans`, `GET /api/runs/{run_id}/items/{item_id}/spans`, and `GET /api/runs/{run_id}/items/{item_id}/trace` returning spans, trace summary (span count, error count, duration), and item metadata
+- 🔧 Span ingestion uses **savepoint transactions** so a span write failure never rolls back item data
+- 🤖 **Auto-instrumentation** via `qym[otel]` — the SDK’s `QymSpanProcessor` captures completed OTEL spans from OpenInference instrumentors and streams them to the platform, with **deduplication** to prevent double-tracing when both a framework (e.g. LangChain) and a provider (e.g. OpenAI) instrumentor fire for the same call
+- 🔇 Noise filtering removes low-value spans (`connect`, `dns.resolve`, `tls.handshake`) before storage
+- 📖 Added comprehensive **AUTO_INSTRUMENTATION_GUIDE.md** covering setup, supported providers (OpenAI, Anthropic, Google, AWS Bedrock, Cohere, Mistral, Groq, Ollama, and more), frameworks (LangChain, LangGraph, LlamaIndex, CrewAI, Haystack), vector DBs (Pinecone, Chroma, Qdrant, Weaviate, Milvus), agent patterns, custom trace ID injection, privacy controls, and troubleshooting
+
+### `ceff4fc` — Trace viewer integration into dashboard
+
+- 🖥️ Embedded the **Trace Viewer** directly into single-run and compare pages, accessible per-item alongside existing Langfuse trace links
+- 🌳 Trace viewer renders a **span tree** with typed SVG icons for each span kind — LLM (chat bubble), TOOL (wrench), AGENT (person), CHAIN (link), EVALUATOR (star), RETRIEVER (search), EMBED (matrix) — color-coded by type
+- ⏱️ **Waterfall duration bars** show each span’s relative timeline position and duration within its parent
+- 📋 **Detail panel** with tabbed interface: Messages (LLM input/output chat bubbles), Response (model, tokens, cost), Input/Output (tool arguments and results), Metrics, Scores, Raw attributes — tabs appear dynamically based on span type
+- 🔎 Real-time **span search** with keyboard navigation (j/k, arrow keys, `/` to focus, Enter/Escape to expand/collapse)
+- 📊 **Header metadata chips** showing span count, total duration, total tokens, total cost, error count, and score pills
+- 🎨 CodeMirror 6-powered JSON syntax highlighting with modal expand views for large payloads
+
+### `869d9b5` — Trace viewer styling and functionality polish
+
+- 🎨 Major CSS and layout overhaul for the trace viewer — cleaner tree rendering, better spacing, and responsive panel sizing
+- 🔄 Improved span attribute extraction and display across all tab types
+
+### `6f19e0a` — Tree connectors, icon badges, and resizable panels
+
+- 🌿 Added **SVG tree connectors** linking parent and child spans with clean line paths
+- 🏷️ **Icon badges** with span-type coloring in the tree gutter
+- ↔️ **Resizable divider** between the span tree and the detail panel — drag to adjust the split
+
+### `a3097a8` — Event handling, span links, and ingest hardening
+
+- 🔗 Added **span links** support (migration `0012`) for storing cross-trace references
+- 🛡️ Platform span ingestion now handles **sanitization** of oversized attributes and malformed payloads, with test coverage for edge cases
+- 📡 SDK platform client gained **span streaming** capabilities — completed spans are batched and sent alongside item events
+- 🧪 Added platform ingest sanitization tests and SDK platform client tests for span streaming paths
+
+### `7a38f3c` — Dashboard styling for trace viewer
+
+- 🎨 Enhanced dashboard CSS with trace-viewer-aware styling, improved panel layouts, and refined typography for span detail views
+- 📐 Trace viewer tree interactions became smoother with better expand/collapse animations and click targets
+
+### `caa98a4` — Reasoning and message enrichment
+
+- 💭 LLM spans now display **"Show Thinking" expandable sections** for assistant reasoning content, extracted from span attributes or structured `input.value`/`output.value` JSON
+- 💬 **Message enrichment** reconstructs LLM chat histories from flat OTEL attributes into structured message bubbles with role, content, tool calls, and tool results
+- 🔧 Reasoning is matched to assistant messages via smart indexing, so multi-turn conversations show thinking alongside the correct response
+- 🧪 Added `test_otel_message_normalization.py` for message extraction and enrichment paths
+
+### `f56e391` — Category chip selector for metadata breakdown
+
+- 🏷️ Added an interactive **category chip selector** to metadata breakdown cards in both run and compare views — click chips to filter items by metadata category (e.g. complexity, domain) without opening dropdowns
+- 📡 Enhanced OTEL instrumentation with improved span attribute handling and SDK dependency updates
+
+### `5e08a1d` — Dashboard and trace viewer styling refinements
+
+- 🎨 Refined dashboard CSS for trace viewer panels, improved responsive behavior and visual consistency
+- 🔧 OTEL module refactored for cleaner span processing and attribute extraction
+
+### `548e15a` — Trace viewer tree layout redesign, error connectors, and detail panel
+
+- 📐 Redesigned the tree layout so span **icons sit in the gutter** with perfect pipe-to-icon centering at all nesting depths
+- 🔴 **Red L-shaped error connectors** now extend from error spans up to the parent branch, making error paths immediately visible in the tree
+- 🔇 **Framework noise auto-collapse** — pass-through wrapper spans from LangChain/LangGraph internals (ChannelRead, ChannelWrite, RunnableLambda, routing nodes) are automatically collapsed while preserving meaningful user-defined graph nodes
+- ❌ Error spans **auto-expand** on load — the first error span and all its ancestors are expanded automatically so users land on the problem immediately
+- 🔗 **Shareable trace URLs** via `?trace=itemId` query parameter for direct linking to a specific item’s trace
+- 🏷️ Error detail box in the detail panel shows error type, message, and stack trace with copy buttons
 
 ---
 

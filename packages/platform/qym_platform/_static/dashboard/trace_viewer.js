@@ -852,7 +852,7 @@
     const costStr = fmtCost(cost);
     if (costStr) header += `<span class="tv-dot"></span><span>${costStr}</span>`;
     header += `</div></div>`;
-    header += `<span class="tv-chip tv-chip-status-${stCls}">${esc(String(span.status||"UNSET").toUpperCase())}</span>`;
+    if (stCls !== "unset") header += `<span class="tv-chip tv-chip-status-${stCls}">${esc(String(span.status).toUpperCase())}</span>`;
     if (span._retry > 0) header += `<span class="tv-chip tv-chip-retry">↻ retry${span._retry > 1 ? " #" + span._retry : ""}</span>`;
     header += `</div>`;
 

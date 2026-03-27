@@ -32,15 +32,18 @@ The framework supports [Langfuse](https://langfuse.com) datasets (with full trac
 
 ## Features
 
-- **Platform Integration** - Runs stream live to [qym.sa](https://qym.sa) for centralized history, comparison, charts, and team collaboration
-- **Simple API** - Get started in minutes with a clean, Pythonic interface
-- **Async & Parallel** - Evaluate hundreds of items concurrently with 90%+ efficiency
-- **Multi-Model Support** - Compare GPT-4, Claude, Llama side-by-side in one run
-- **Real-Time Dashboard** - Terminal UI + Web UI with live progress and metrics
-- **Framework Agnostic** - Works with LangChain, OpenAI, Anthropic, or any Python function
-- **Flexible Datasets** - Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
-- **Auto-Save** - Automatically persist results to CSV/XLSX/JSON
-- **Resume Runs** - Checkpoint partial results and resume interrupted evaluations
+- **Platform Integration** — Runs stream live to [qym.sa](https://qym.sa) for centralized history, comparison, charts, and team collaboration
+- **Simple API** — Get started in minutes with a clean, Pythonic interface
+- **Async & Parallel** — Evaluate hundreds of items concurrently with 90%+ efficiency
+- **Multi-Model Support** — Compare GPT-4, Claude, Llama side-by-side in one run
+- **LLM-as-Judge Metrics** — 7 built-in judges (relevance, faithfulness, correctness, hallucination, toxicity, conciseness, tool calling) plus a `create_judge()` factory for custom judges
+- **Auto-Instrumentation** — `pip install "qym[otel]"` to automatically trace every LLM call across 15+ providers and 6+ frameworks, viewable in the embedded trace viewer
+- **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, AI root cause analysis, and corrections review
+- **Version Tracking** — Auto-detects git branch and commit per run for version leaderboards
+- **Framework Agnostic** — Works with LangChain, LangGraph, LlamaIndex, CrewAI, Haystack, OpenAI Agents, or any Python function
+- **Flexible Datasets** — Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
+- **Auto-Save & Retry** — Automatically persist results to CSV/XLSX/JSON, with exponential backoff retries on failure (default: 2 retries, 300s timeout)
+- **Resume Runs** — Checkpoint partial results and resume interrupted evaluations; Ctrl+C sends STOPPED status instead of leaving runs stuck
 
 ## Quick Start
 
@@ -146,74 +149,64 @@ results = Evaluator.run_parallel(
 
 ## Command Line Interface
 
-```bash
-# Single evaluation
-qym --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+The CLI uses noun-verb command groups. All commands support `--json` for structured output.
 
-# Single evaluation from a local CSV (no Langfuse dataset required)
-qym --task-file agent.py --task-function chat --dataset-csv datasets/qa.csv \
+```bash
+# Run an evaluation
+qym run create --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+
+# Run from a local CSV (no Langfuse dataset required)
+qym run create --task-file agent.py --task-function chat \
+  --dataset-csv datasets/qa.csv \
   --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
   --metrics exact_match
 
 # Multi-model from config
-qym --runs-config experiments.json
+qym run create --runs-config experiments.json
 
 # Resume a partially completed run
-qym resume --run-file qym_results/task/model/date/run-id.csv \
-  --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
+qym run create --task-file agent.py --task-function chat \
+  --dataset qa-set --metrics exact_match \
+  --resume-from qym_results/task/model/date/run-id.csv
+
+# Other commands
+qym run list             # List recent runs
+qym run tasks            # List distinct task names
+qym analyze run <id>     # Trigger AI root-cause analysis
+qym analyze summary <id> # Get analysis summary
+qym metric list          # List available metrics
+qym config check         # Validate platform connectivity
+qym dashboard            # Open platform in browser
+qym submit --file ...    # Upload a saved results file
 ```
+
+> Legacy invocations (`qym --task-file ...`, `qym resume --run-file ...`) are automatically rewritten.
 
 ## Dashboard
 
-qym provides both a Terminal UI (TUI) and a Web UI for monitoring evaluations.
-
 ### Terminal UI
 
-Track multiple parallel evaluations with real-time progress, latency histograms, and metrics:
+Track multiple parallel evaluations with real-time progress, latency histograms, and metrics in your terminal.
 
-### Web Dashboard
+### Platform Dashboard
 
-#### Live Evaluation UI (Per-Run)
-
-A web interface is automatically launched for each evaluation run. Click the **"Open Web UI"** link printed at startup to monitor live progress.
-
-**Features:**
-- Real-time progress tracking
-- Live metric scores and latency statistics
-- Search and filter results
-- Export to CSV
-
-#### Platform Dashboard
-
-The **qym platform** at [qym.sa](https://qym.sa) stores all your runs centrally with history, comparison, and team workflows.
-
-**Step 1: Get your API key**
-
-1. Open [qym.sa](https://qym.sa)
-2. Go to your **Profile** page (`/profile`)
-3. Under **API Keys**, click **Create New Key**
-4. Copy the generated token — it is shown only once
-
-**Step 2: Configure your environment**
-
-Add to your `.env`:
+The **qym platform** at [qym.sa](https://qym.sa) stores all your runs centrally. When `QYM_API_KEY` is set, runs stream automatically — no code changes needed.
 
 ```bash
-QYM_API_KEY=your-api-key
-QYM_PLATFORM_URL=https://qym.sa
+qym dashboard   # Opens the platform in your browser
 ```
 
-**Step 3: Run as usual**
+**Platform features:**
+- **Runs view** — paginated listing with smart grouping, version tracking (git branch/commit), metric visibility controls, and status filtering
+- **Single run view** — metadata breakdown, interactive metric drill-down, category chip selectors, HTML export for offline sharing
+- **Compare view** — side-by-side item comparison with winner badges, score range filters, root-cause/solution breakdown with Sankey visualization
+- **Charts view** — per-task cards with dataset tabs, Run/Version/Model grouping, and version leaderboard
+- **Trace viewer** — embedded per-item span tree with LLM message reconstruction, reasoning display, error path highlighting, and framework noise collapsing
+- **AI analysis** — one-click root cause analysis with an interactive playground for prompt editing, category catalogs, and correction bank
+- **Corrections review** — dedicated approval queue with bulk moderation and revision history
+- **Team workflows** — role-based visibility, approval workflows, and org-level access controls
 
-No code changes needed. When `QYM_API_KEY` is set, the SDK automatically streams events to the platform in real time as your evaluation runs. Each item start, metric score, and completion is sent as it happens — you can watch the run live on the platform dashboard.
-
-Results are still saved locally to `qym_results/` as well.
-
-**Browse runs on the platform:**
-
-```bash
-qym dashboard   # Opens the platform dashboard in your browser
-```
+**Setup:** Open [qym.sa](https://qym.sa), go to **Profile** (`/profile`), create an API key, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
 
 **Upload a previous run:**
 
@@ -221,13 +214,9 @@ qym dashboard   # Opens the platform dashboard in your browser
 qym submit --file qym_results/.../run.csv --task my_task --dataset my-dataset
 ```
 
-**Platform features:**
-- Filter by task, model, dataset, or time range
-- Compare multiple runs side-by-side
-- View charts and metrics visualizations
-- Approval workflows and team visibility controls
-
 ## Built-in Metrics
+
+### String Metrics
 
 | Metric | Description |
 |--------|-------------|
@@ -235,7 +224,44 @@ qym submit --file qym_results/.../run.csv --task my_task --dataset my-dataset
 | `contains_expected` | Check if output contains expected text |
 | `fuzzy_match` | Similarity score using sequence matching |
 
-Custom metrics are simple functions:
+### LLM Judge Metrics
+
+Use as metric names directly. Configure via env vars or Python API:
+
+| Metric | What It Evaluates |
+|--------|-------------------|
+| `relevance` | Is the response relevant to the question? |
+| `faithfulness_llm` | Is the response grounded in the context? |
+| `correctness_llm` | Does the response match the expected answer? |
+| `hallucination` | Does the response contain hallucinated content? |
+| `toxicity` | Does the response contain harmful content? |
+| `conciseness` | Is the response concise or verbose? |
+| `tool_calling` | Are the tool calls correct? |
+
+**Configuration** — add to your `.env` file:
+```bash
+QYM_JUDGE_MODEL=gpt-4o-mini      # Required: model name
+QYM_JUDGE_API_KEY=sk-...         # Required: API key (or set OPENAI_API_KEY)
+QYM_JUDGE_BASE_URL=http://...    # Optional: for vLLM, Ollama, etc.
+```
+
+Or pass directly when creating a judge in Python:
+```python
+from qym.metrics.judges import create_judge
+
+my_judge = create_judge(
+    name="my_judge",
+    prompt="Is this response helpful?\n[Question]: {question}\n[Response]: {output}",
+    choices={"helpful": 1.0, "unhelpful": 0.0},
+    judge_model="gpt-4o-mini",
+    judge_api_key="sk-...",
+    judge_base_url="http://localhost:8000/v1",  # Optional
+)
+```
+
+Create custom judges with `create_judge()` or pairwise comparison judges with `create_pairwise_judge()`. See the [User Guide](docs/USER_GUIDE.md#llm-judge-metrics) for full API details, or the [Metrics Guide](docs/METRICS_GUIDE.md) for all available metrics by use case.
+
+### Custom Metrics
 
 ```python
 def my_metric(output, expected):
@@ -245,14 +271,16 @@ def my_metric(output, expected):
 evaluator = Evaluator(
     task=my_task,
     dataset="my-dataset",
-    metrics=[my_metric, "exact_match"],  # Mix custom and built-in
+    metrics=[my_metric, "exact_match", "relevance"],  # Mix custom, string, and judge metrics
 )
 ```
 
 ## Documentation
 
-- [User Guide](docs/USER_GUIDE.md) - Tasks, metrics, datasets, configuration, and troubleshooting
-- [Metrics Guide](docs/METRICS_GUIDE.md) - 40+ metrics organized by use case (RAG, agents, safety, etc.)
+- [User Guide](docs/USER_GUIDE.md) — Tasks, metrics, datasets, CLI, configuration, and troubleshooting
+- [Metrics Guide](docs/METRICS_GUIDE.md) — 40+ metrics organized by use case, including LLM-as-judge
+- [Auto-Instrumentation Guide](docs/AUTO_INSTRUMENTATION_GUIDE.md) — Automatic LLM call tracing across 15+ providers and 6+ frameworks
+- [Platform User Guide](../../docs/PLATFORM_USER_GUIDE.md) — Dashboard, trace viewer, AI analysis, corrections review
 
 ## License
 

@@ -123,9 +123,34 @@ Auto-instrumentation uses [OpenTelemetry](https://opentelemetry.io/) — the ind
 
 The key insight: your task function runs exactly the same code it always did. The instrumentation is applied to the LLM client libraries themselves, not to your code.
 
+### Deduplication
+
+When both a framework instrumentor (e.g., LangChain) and a provider instrumentor (e.g., OpenAI) are active, they can both fire for the same LLM call. qym's `QymSpanProcessor` automatically **deduplicates** these spans so you never see the same call twice in your traces.
+
+### Noise Filtering
+
+Low-value infrastructure spans (`connect`, `dns.resolve`, `tls.handshake`) are automatically filtered out before storage to keep traces clean and focused on meaningful operations.
+
 ---
 
 ## 5. Viewing Your Traces
+
+### In the Embedded Trace Viewer (Recommended)
+
+The qym platform includes a **built-in trace viewer** embedded directly in run and compare pages. Click the trace icon on any item row to see the full span tree.
+
+**What you get:**
+
+- **Span tree** with typed SVG icons for each span kind — LLM (chat bubble), TOOL (wrench), AGENT (person), CHAIN (link), EVALUATOR (star), RETRIEVER (search), EMBED (matrix) — color-coded by type
+- **Waterfall duration bars** showing each span's relative timeline position and duration
+- **Tabbed detail panel** — Messages (LLM chat bubbles), Response (model/tokens/cost), Input/Output (tool args/results), Metrics, Scores, Raw attributes (syntax-highlighted JSON)
+- **"Show Thinking" sections** on LLM assistant messages for reasoning content (Anthropic, DeepSeek, etc.)
+- **Message enrichment** — flat OTEL attributes are reconstructed into structured chat bubbles with role, content, tool calls, and tool results
+- **Red L-shaped error connectors** — error paths are immediately visible in the tree, and the first error span auto-expands on load
+- **Framework noise auto-collapse** — LangChain/LangGraph internal wrapper spans (ChannelRead, ChannelWrite, RunnableLambda, routing nodes) are collapsed while preserving meaningful user-defined graph nodes
+- **Keyboard navigation** — `j`/`k` or arrow keys to move, `/` to focus search, Enter/Escape to expand/collapse
+- **Shareable URLs** — `?trace=itemId` query parameter for direct linking to a specific item's trace
+- **Resizable panels** — drag the divider between tree and detail panel
 
 ### In Langfuse
 
@@ -143,6 +168,9 @@ GET /api/runs/{run_id}/spans
 
 # Spans for a specific item
 GET /api/runs/{run_id}/items/{item_id}/spans
+
+# Full trace with summary (span count, error count, duration)
+GET /api/runs/{run_id}/items/{item_id}/trace
 ```
 
 Response:
@@ -425,3 +453,4 @@ If your LLM provider isn't supported by traceloop, its calls won't be auto-instr
 
 - [User Guide](./USER_GUIDE.md) — Getting started with qym
 - [Metrics Guide](./METRICS_GUIDE.md) — Available metrics and how to use them
+- [Platform User Guide](../../../docs/PLATFORM_USER_GUIDE.md) — Dashboard features including the embedded trace viewer

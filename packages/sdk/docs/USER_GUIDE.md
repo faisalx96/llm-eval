@@ -12,11 +12,12 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 6. [Running Your First Evaluation](#6-running-your-first-evaluation)
 7. [Multi-Model Comparison](#7-multi-model-comparison)
 8. [Command Line Interface](#8-command-line-interface)
-9. [Dashboard & Web UI](#9-dashboard--web-ui)
-10. [Understanding Results](#10-understanding-results)
-11. [Pause/Resume & Checkpointing](#11-pause-resume--checkpointing)
-12. [Configuration Options](#12-configuration-options)
-13. [Common Errors & Solutions](#13-common-errors--solutions)
+9. [Auto-Instrumentation & Tracing](#9-auto-instrumentation--tracing)
+10. [Dashboard & Web UI](#10-dashboard--web-ui)
+11. [Understanding Results](#11-understanding-results)
+12. [Pause/Resume & Checkpointing](#12-pause-resume--checkpointing)
+13. [Configuration Options](#13-configuration-options)
+14. [Common Errors & Solutions](#14-common-errors--solutions)
 
 ---
 
@@ -304,15 +305,42 @@ evaluator = Evaluator(
 
 The "Required Input Fields" column shows what keys your dataset's `input` dict should contain. For example, `relevance` expects `input_data["question"]`.
 
-**Configuration** — you must configure your LLM provider before using judge metrics:
+**Configuration** — you must configure your LLM provider before using judge metrics. Add to your `.env` file:
 
 ```bash
-export QYM_JUDGE_MODEL=gpt-4o-mini     # Required: model name
-export QYM_JUDGE_API_KEY=sk-...        # Required: API key (or set OPENAI_API_KEY)
-export QYM_JUDGE_BASE_URL=http://...   # Optional: for vLLM, Ollama, etc.
+QYM_JUDGE_MODEL=gpt-4o-mini      # Required: model name
+QYM_JUDGE_API_KEY=sk-...         # Required: API key (or set OPENAI_API_KEY)
+QYM_JUDGE_BASE_URL=http://...    # Optional: for vLLM, Ollama, etc.
 ```
 
-If these are not set, qym will show a clear error message explaining what's needed.
+Or pass directly when creating a custom judge in Python:
+
+```python
+from qym.metrics.judges import create_judge
+
+my_judge = create_judge(
+    name="my_judge",
+    prompt="Is this response correct?\n[Expected]: {expected}\n[Response]: {output}",
+    choices={"correct": 1.0, "incorrect": 0.0},
+    judge_model="gpt-4o-mini",
+    judge_api_key="sk-...",
+    judge_base_url="http://localhost:8000/v1",  # Optional
+)
+```
+
+You can also set a global default for all judges:
+
+```python
+from qym.metrics import JudgeConfig, set_default_judge_config
+
+set_default_judge_config(JudgeConfig(
+    model="gpt-4o-mini",
+    api_key="sk-...",
+    base_url="http://localhost:8000/v1",  # Optional
+))
+```
+
+If no configuration is provided (neither `.env`, nor per-judge params, nor global default), qym will show a clear error message explaining what's needed.
 
 **Custom judges** — create your own with `create_judge()`:
 
@@ -419,7 +447,26 @@ The pairwise judge returns:
 # The judge compares them.
 ```
 
-See the [Metrics Guide](METRICS_GUIDE.md#pairwise-comparison-judges) for full details.
+**Factory options for `create_judge()` and `create_pairwise_judge()`:**
+- `choices` — dict mapping verdict labels to scores. Binary (2 labels) or multi-level (any number). Scores should be between 0.0 and 1.0.
+- `judge_model`, `judge_api_key`, `judge_base_url` — per-judge LLM provider override
+- `langfuse_prompt` — fetch prompt template from Langfuse prompt management instead of using the `prompt` parameter
+- `system_prompt` — override the default system prompt
+
+**Reliability:** LLM judge calls include **exponential backoff with jitter** (3 attempts) so transient API failures don't cause metric errors. Template variables are substituted safely — missing variables produce a clear error rather than a silent failure.
+
+### Structured Results (MetricResult)
+
+Every LLM judge returns a `MetricResult` with:
+
+| Field | Example | Description |
+|-------|---------|-------------|
+| `score` | `0.7` | Numeric value mapped from the verdict via `choices` |
+| `label` | `"good"` | The verdict label chosen by the LLM |
+| `explanation` | `"Covers main points but..."` | The LLM's reasoning for its verdict |
+| `kind` | `"llm"` | Always `"llm"` for judge metrics |
+
+Labels and explanations are stored in the platform database and visible per-item in the dashboard. This lets you see not just the score but *why* the judge gave that score. Custom metrics can also return `MetricResult` for the same structured storage.
 
 ### Custom Metrics
 
@@ -783,11 +830,13 @@ print(f"Total items: {results.total_items}")
 ### What Happens When You Run
 
 1. **Dataset loads** (from Langfuse or local CSV)
-2. **Dashboard appears** showing live progress (TUI + Web UI)
-3. **Items run in parallel** (controlled by `max_concurrency`)
-4. **Metrics score** each output
-5. **Results save** to CSV automatically
-6. **Traces appear** in Langfuse for debugging (if credentials are set)
+2. **Version captured** — git branch and commit are auto-detected
+3. **Dashboard appears** showing live progress (TUI + platform streaming)
+4. **Items run in parallel** (controlled by `max_concurrency`), with automatic retries on failure (up to `max_retries`, default 2)
+5. **LLM calls traced** — if `qym[otel]` is installed, every LLM call is captured as a span
+6. **Metrics score** each output
+7. **Results save** to CSV automatically and stream to the platform (if `QYM_API_KEY` is set)
+8. **Traces viewable** in the embedded trace viewer and Langfuse (if configured)
 
 ### The Dashboard
 
@@ -881,28 +930,63 @@ Make sure your task accepts `model_name` or `model` parameter!
 
 ## 8. Command Line Interface
 
-### Basic Usage
+The qym CLI uses **noun-verb command groups**. All commands support `--json` for structured, automation-friendly output.
+
+### Running an Evaluation
 
 ```bash
-# Evaluate a function from a file
-qym --task-file agent.py --task-function my_task \
-         --dataset qa-dataset \
-         --metrics exact_match
+# Run an evaluation (recommended)
+qym run create --task-file agent.py --task-function my_task \
+  --dataset qa-dataset --metrics exact_match
+
+# With version tracking (auto-detected by default)
+qym run create --task-file agent.py --task-function my_task \
+  --dataset qa-dataset --metrics exact_match \
+  --git-branch main --git-commit abc1234
 ```
 
-### All CLI Options
+### `qym run create` Options
 
 ```bash
-qym \
-    --task-file agent.py \           # Python file containing your task
-    --task-function my_task \         # Function name to call
-    --dataset qa-dataset \            # Langfuse dataset name
+qym run create \
+    --task-file agent.py \            # Python file containing your task
+    --task-function my_task \          # Function name to call
+    --dataset qa-dataset \             # Langfuse dataset name
     --metrics exact_match,fuzzy_match \ # Comma-separated metrics
-    --model gpt-4 \                   # Optional: tag with model name
-    --concurrency 10 \                # Max parallel items (default: 10)
-    --output results.csv \            # Custom output path
-    --no-tui \                        # Disable terminal dashboard
-    --quiet                           # Only show final summary
+    --model gpt-4 \                    # Optional: tag with model name
+    --concurrency 10 \                 # Max parallel items (default: 10)
+    --output results.csv \             # Custom output path
+    --no-tui \                         # Disable terminal dashboard
+    --quiet \                          # Only show final summary
+    --git-branch main \                # Override auto-detected git branch
+    --git-commit abc1234               # Override auto-detected git commit
+```
+
+### Other Run Commands
+
+```bash
+qym run list           # List recent evaluation runs from the platform
+qym run get <run_id>   # Get detailed data for a specific run
+qym run tasks          # List distinct task names from the platform
+qym run failed <run_id> # Get only failed/error items from a run
+qym run compare        # Compare multiple runs side-by-side
+```
+
+### Analysis Commands
+
+```bash
+qym analyze run <run_id>      # Trigger AI root-cause analysis on a run’s items
+qym analyze summary <run_id>  # Get aggregated root-cause analysis summary
+```
+
+### Other Commands
+
+```bash
+qym metric list    # List all available evaluation metrics
+qym config show    # Show resolved platform configuration
+qym config check   # Validate connectivity to the platform API
+qym dashboard      # Open the platform dashboard in your browser
+qym submit         # Upload a saved results file to the platform
 ```
 
 ### Multi-Run Config File
@@ -939,17 +1023,17 @@ Create `experiments.json`:
 Run all experiments:
 
 ```bash
-qym --runs-config experiments.json
+qym run create --runs-config experiments.json
 ```
 
 ### Resume a Partial Run
 
-If a run is interrupted, qym writes a checkpoint CSV as items complete. Resume by pointing to the checkpoint file:
+If a run is interrupted (Ctrl+C), the SDK sends a **STOPPED** status to the platform instead of leaving the run stuck in RUNNING. qym writes a checkpoint CSV as items complete. Resume by pointing to the checkpoint file:
 
 ```bash
-qym resume --run-file qym_results/my_task/my_model/2026-01-27/my_task-my_dataset-my_model-260127-1200.csv \
-  --task-file agent.py --task-function my_task \
-  --dataset my-dataset --metrics exact_match
+qym run create --task-file agent.py --task-function my_task \
+  --dataset my-dataset --metrics exact_match \
+  --resume-from qym_results/.../run.csv
 ```
 
 Resume requirements:
@@ -959,7 +1043,7 @@ Resume requirements:
 
 Where to find the checkpoint file:
 - The checkpoint is the same CSV under `qym_results/...` and is updated as items finish.
-- On interrupt, qym prints the checkpoint path in the terminal.
+- On interrupt, qym prints the checkpoint path and a resume command in the terminal.
 
 Resume via Python API:
 
@@ -982,11 +1066,65 @@ Multi-model resume:
 - Resume is per-run. Use the specific run CSV for the model you want to resume.
 - If using a `--runs-config`, set `resume_from` inside each run’s config block.
 
+### Legacy Compatibility
+
+Old-style invocations are automatically rewritten:
+- `qym --task-file ...` → `qym run create --task-file ...`
+- `qym resume --run-file ...` → `qym run create --resume-from ...`
+
 ---
 
-## 9. Dashboard & Web UI
+## 9. Auto-Instrumentation & Tracing
 
-qym provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured Web UI for detailed analysis.
+qym can automatically capture every LLM call, tool use, and timing detail inside your task functions — without changing your code.
+
+### Quick Setup
+
+```bash
+pip install "qym[otel]"
+```
+
+That's it. When you run an evaluation, every LLM call (OpenAI, Anthropic, Google, Bedrock, Cohere, Mistral, Groq, Ollama, and more) is automatically captured and stored as a trace.
+
+### What Gets Captured
+
+- Every LLM API call (model, prompt, response, tokens, latency)
+- Every tool/function call the LLM invokes
+- Full chain of calls for agents and multi-step workflows
+- Errors on any span
+- Works with LangChain, LangGraph, LlamaIndex, CrewAI, Haystack, OpenAI Agents, and more
+
+### Viewing Traces
+
+Traces appear in two places:
+
+1. **Embedded Trace Viewer** — click the trace icon on any item in the run or compare view to see a full span tree with LLM message reconstruction, reasoning display, error highlighting, and duration waterfall. See the [Platform User Guide](../../../docs/PLATFORM_USER_GUIDE.md#trace-viewer).
+
+2. **Langfuse** — if Langfuse credentials are configured, traces are also sent there. Click the trace link on any item row to jump directly to Langfuse.
+
+3. **API** — query stored spans via `GET /api/runs/{run_id}/spans` or `GET /api/runs/{run_id}/items/{item_id}/trace`.
+
+### Privacy
+
+By default, full prompt and completion content is captured. To disable, add to your `.env`:
+
+```bash
+TRACELOOP_TRACE_CONTENT=false
+```
+
+### Disabling
+
+```python
+config = EvaluatorConfig(otel_enabled=False)
+```
+
+For the full guide — supported providers, frameworks, vector DBs, agent patterns, custom trace IDs, and troubleshooting — see the [Auto-Instrumentation Guide](AUTO_INSTRUMENTATION_GUIDE.md).
+
+---
+
+## 10. Dashboard & Web UI
+
+qym provides two interfaces for monitoring evaluations: a Terminal UI (TUI) for quick command-line monitoring, and a full-featured platform dashboard for detailed analysis, comparison, and root cause investigation.
 
 ### Terminal UI (TUI)
 
@@ -1011,110 +1149,25 @@ results = evaluator.run(
 )
 ```
 
-### Web Dashboard
+### Platform Dashboard
 
-#### Live Evaluation UI (Per-Run)
-
-When you start an evaluation, a **live Web UI** is automatically launched for that run. You'll see a clickable link in the terminal output:
-
-```
-Open Web UI: http://127.0.0.1:8000/
-```
-
-Click this link (or Cmd/Ctrl+click in most terminals) to open the live dashboard in your browser. This shows real-time progress for the current evaluation.
-
-![Dashboard Live](../../../docs/images/dashboard-live.png)
-
-**Features:**
-- Real-time progress tracking
-- Status indicators (completed, in progress, pending, failed)
-- Live metric scores
-- Latency statistics (min, P50, P90, P99, max)
-- Error breakdown by type
-- Search and filter results
-- Export to CSV
-
-##### Uploading a previous run
-
-If you ran an evaluation without platform streaming, you can upload it after the fact:
+The platform dashboard at your configured `QYM_PLATFORM_URL` provides the full evaluation management experience. Open it with:
 
 ```bash
-qym submit --file qym_results/.../run.csv --task my_task --dataset my-dataset
+qym dashboard
 ```
 
-##### Browsing runs
+The platform dashboard includes:
 
-```bash
-qym dashboard   # Opens the platform dashboard in your browser
-```
+- **Runs view** — paginated listing with smart grouping, version tracking (git branch/commit), metric visibility controls, sticky columns, and status filtering (RUNNING, PENDING, COMPLETED, FAILED, STOPPED, DRAFT, SUBMITTED, APPROVED, REJECTED)
+- **Single run view** — detailed results with metadata breakdown cards, interactive metric drill-down, category chip selectors, embedded trace viewer, root cause analysis, and self-contained HTML export for offline sharing
+- **Compare view** — side-by-side item comparison with winner badges, score range filters, domain AND-matching, root-cause/solution breakdown with Sankey visualization, and approval filtering
+- **Charts view** — per-task cards with dataset tabs, inline Run/Version/Model grouping, and a version leaderboard aggregating performance by git commit
+- **Trace viewer** — embedded per-item span tree with LLM message reconstruction, reasoning display, error path highlighting, framework noise collapsing, and keyboard navigation
+- **AI analysis** — one-click root cause analysis with a playground for prompt editing, category/detail catalogs, few-shot correction bank, and test runs
+- **Corrections review** — dedicated approval queue with bulk moderation, revision history, and synced metadata
 
-#### Historical Runs View
-
-Browse all past evaluation runs with powerful filtering:
-
-![Dashboard Runs](../../../docs/images/dashboard-runs.png)
-
-**Features:**
-- Filter by task, model, dataset, or time range
-- Sort by any column (accuracy, latency, time)
-- View run statistics at a glance
-- Select multiple runs for comparison
-- 7-day trend visualization
-
-#### Run Comparison
-
-Compare multiple runs side-by-side to identify the best model:
-
-![Dashboard Compare](../../../docs/images/dashboard-compare.png)
-
-**How to compare:**
-1. In the Historical Runs view, check the boxes next to runs you want to compare
-2. Click the "Compare Selected" button
-3. View the comparison dashboard
-
-**Comparison Features:**
-- Side-by-side run statistics
-- Metric averages comparison with bar charts
-- Winner breakdown showing which model won most items
-- Correct distribution (how many runs solved each item)
-
-**Comparison Overview Metrics:**
-- **Pass@K**: % of items where at least one run passed
-- **Pass^K**: % of items where all runs passed
-- **Max@K**: Average of best scores per item
-- **Stability**: % of items where all runs got the same score
-- **Avg Score**: Mean score across all items and runs
-- **Avg Latency**: Mean response time
-
-Each metric has an info icon (ⓘ) with a detailed tooltip explanation.
-
-**Threshold for Continuous Metrics:**
-For metrics with scores between 0-100 (not just 0 or 1), a "Pass if ≥" slider appears. This lets you define what score counts as "passing" (default: 80%). Boolean metrics (0/1 scores) automatically use 100% as the pass threshold.
-
-#### Item-by-Item Comparison
-
-Drill down into individual items across runs:
-
-![Dashboard Compare Items](../../../docs/images/dashboard-compare-items.png)
-
-**Features:**
-- View each input with expected output
-- See each model's response side-by-side
-- 5-color score scale: green (90%+) → lime (75%+) → yellow (60%+) → orange (40%+) → red (<40%)
-- Filter by winner, "All Runs Correct", "No Run Correct", or unique solves
-- Identify items that only specific models solved
-
-#### Charts View
-
-Visualize model performance across all runs:
-
-![Dashboard Charts](../../../docs/images/dashbaord-charts.png)
-
-**Features:**
-- Bar chart comparison of accuracy by model
-- Grouped by task and dataset
-- Filter by time range, task, model, or dataset
-- Quickly identify top-performing models
+See the [Platform User Guide](../../../docs/PLATFORM_USER_GUIDE.md) for full details on every feature.
 
 ### Dashboard Data Storage
 
@@ -1147,7 +1200,7 @@ Confluence publishing has been removed. Share results by linking to the dashboar
 
 ---
 
-## 10. Understanding Results
+## 11. Understanding Results
 
 ### Output Files
 
@@ -1205,7 +1258,7 @@ print(f"Avg latency: {timing['mean']:.2f}s")
 
 ---
 
-## 11. Pause/Resume & Checkpointing
+## 12. Pause/Resume & Checkpointing
 
 qym can persist **partial results** while a run is in progress and resume later if the process stops (Ctrl+C, crash, or kill).
 
@@ -1243,7 +1296,7 @@ config = {
 - Completed items (including errors) are skipped on resume.
 - `resume_rerun_errors` is not supported when appending to the same run file.
 
-## 12. Configuration Options
+## 13. Configuration Options
 
 ### Full Config Reference
 
@@ -1256,7 +1309,8 @@ evaluator = Evaluator(
     config={
         # Execution
         "max_concurrency": 10,     # Parallel items (default: 10)
-        "timeout": 30.0,           # Seconds per item (default: 30)
+        "timeout": 300.0,          # Seconds per item (default: 300)
+        "max_retries": 2,          # Retry failed items (default: 2, exponential backoff + jitter)
 
         # Naming
         "run_name": "experiment-1", # Custom run name
@@ -1264,6 +1318,13 @@ evaluator = Evaluator(
             "version": "1.0",
             "environment": "staging",
         },
+
+        # Version tracking (auto-detected from git by default)
+        "git_branch": "main",       # Override auto-detected git branch
+        "git_commit": "abc1234",    # Override auto-detected git commit
+
+        # Tracing
+        "otel_enabled": True,       # Enable auto-instrumentation (default: True)
 
         # Output
         "output_dir": "./results",  # Where to save files
@@ -1328,7 +1389,7 @@ results = Evaluator.run_parallel(runs=runs_config, max_parallel_runs=3)
 
 ---
 
-## 13. Common Errors & Solutions
+## 14. Common Errors & Solutions
 
 ### "Dataset 'X' not found"
 
@@ -1353,10 +1414,10 @@ LangfuseConnectionError: Missing Langfuse public key.
 ### "Metric 'X' not found"
 
 ```
-ValueError: Unknown metric: 'faithfulness'
+ValueError: Unknown metric: 'my_metric'
 ```
 
-**Solution**: Use only built-in metrics: `exact_match`, `contains_expected`, `fuzzy_match`. Or pass a custom function.
+**Solution**: Use a built-in metric name (`exact_match`, `contains_expected`, `fuzzy_match`, `relevance`, `faithfulness_llm`, `correctness_llm`, `hallucination`, `toxicity`, `conciseness`, `tool_calling`) or pass a custom function. Note: LLM judge metrics (like `relevance`) require configuring `QYM_JUDGE_MODEL` and `QYM_JUDGE_API_KEY`.
 
 ### "Task returned None"
 
@@ -1366,13 +1427,14 @@ Your task function doesn't return anything.
 
 ### "Rate limit exceeded" / Timeouts
 
-Your LLM provider is throttling requests.
+Your LLM provider is throttling requests. Note: qym already retries failed items up to 2 times with exponential backoff + jitter by default.
 
 **Solution**:
 ```python
 config={
     "max_concurrency": 3,  # Reduce from 10
-    "timeout": 60.0,       # Increase timeout
+    "timeout": 600.0,      # Increase timeout (default is 300s)
+    "max_retries": 3,      # Increase retries (default is 2)
 }
 ```
 

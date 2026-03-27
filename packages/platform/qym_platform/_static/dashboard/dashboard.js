@@ -1613,7 +1613,7 @@
       const th = document.createElement('th');
       th.className = 'col-metric-dynamic sortable';
       th.dataset.sort = `metric-${metric}`;
-      th.textContent = metric.toUpperCase();
+      th.textContent = metric;
       th.title = `Sort by ${metric}`;
       headerRow.insertBefore(th, latencyHeader);
     });
@@ -2067,7 +2067,8 @@
           const files = JSON.parse(btn.dataset.groupFiles);
           if (Array.isArray(files) && files.length >= 2) {
             sessionStorage.setItem('compareRuns', JSON.stringify(files));
-            window.location.href = './compare';
+            const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
+            window.location.href = './compare?' + params;
           }
         } catch {}
       });
@@ -2423,9 +2424,19 @@
     const mvs = state.modelsViewState;
 
     // Use global filters for task and dataset
-    // Models view requires exactly one task selected
-    const selectedTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
-    const selectedDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+    // Models view requires exactly one task and one dataset.
+    // If the filter explicitly selects one, use it; otherwise infer from
+    // the currently visible (filtered) runs — when all filters narrow to a
+    // single task/dataset the view should render automatically.
+    let selectedTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
+    let selectedDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+
+    if (!selectedTask || !selectedDataset) {
+      const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
+      const uniqueDatasets = new Set(state.filteredRuns.map(r => r.dataset_name));
+      if (!selectedTask && uniqueTasks.size === 1) selectedTask = [...uniqueTasks][0];
+      if (!selectedDataset && uniqueDatasets.size === 1) selectedDataset = [...uniqueDatasets][0];
+    }
 
     // If no task+dataset selected, show empty state
     if (!selectedTask || !selectedDataset) {
@@ -2520,10 +2531,16 @@
 
     if (!metricSelect) return;
 
-    // Use global filters for task and dataset
-    // Models view requires exactly one task selected
-    const currentTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
-    const currentDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+    // Use global filters for task and dataset, with inference fallback
+    let currentTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
+    let currentDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+
+    if (!currentTask || !currentDataset) {
+      const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
+      const uniqueDatasets = new Set(state.filteredRuns.map(r => r.dataset_name));
+      if (!currentTask && uniqueTasks.size === 1) currentTask = [...uniqueTasks][0];
+      if (!currentDataset && uniqueDatasets.size === 1) currentDataset = [...uniqueDatasets][0];
+    }
 
     // Get metrics for selected task+dataset
     const runsForCombo = currentTask && currentDataset
@@ -2594,7 +2611,8 @@
     if (!runsData || runsData.length === 0) {
       return {
         passAtK: 0, passHatK: 0, maxAtK: 0, consistency: 0, reliability: 0, avgScore: 0, avgLatency: 0,
-        totalItems: 0, failedCount: 0, K: 0, correctDistribution: [0], runNames: []
+        totalItems: 0, failedCount: 0, K: 0, correctDistribution: [0], runNames: [],
+        minScore: 0, stddevScore: 0
       };
     }
 
@@ -2625,6 +2643,8 @@
       failedCount: metrics.failedCount,
       totalScoreSum: metrics.totalScoreSum,
       totalScoreCount: metrics.totalScoreCount,
+      minScore: metrics.minScore,
+      stddevScore: metrics.stddevScore,
       K: metrics.K,
       correctDistribution: metrics.correctDistribution || new Array(K + 1).fill(0),
       runNames
@@ -2738,7 +2758,7 @@
         return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
       }
 
-      // For numeric metrics, show min/avg/max/total instead of pass@K/pass^K
+      // For numeric metrics, show avg/min/max + stdev/total/latency + errors
       const fmtN = window.QymMetrics.formatNumericValue;
       const statsRow1 = isNumeric ? `
           <div class="model-stats-row">
@@ -2747,12 +2767,12 @@
               <div class="stat-main">${fmtN(stats.avgScore)}</div>
             </div>
             <div class="model-stat-box">
-              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
-              <div class="stat-main">${fmtN(stats.maxAtK)}</div>
+              <div class="stat-title">Min ${infoIcon('Minimum value across all items and runs.')}</div>
+              <div class="stat-main">${fmtN(stats.minScore)}</div>
             </div>
             <div class="model-stat-box">
-              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
-              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.totalScoreSum)}</div>
+              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
+              <div class="stat-main">${fmtN(stats.maxAtK)}</div>
             </div>
           </div>
       ` : `
@@ -2775,12 +2795,16 @@
       const statsRow2 = isNumeric ? `
           <div class="model-stats-row">
             <div class="model-stat-box">
-              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
-              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
+              <div class="stat-title">StdDev ${infoIcon('Standard deviation across all items and runs. Lower = more consistent.')}</div>
+              <div class="stat-main">${fmtN(stats.stddevScore)}</div>
             </div>
             <div class="model-stat-box">
-              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
-              <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
+              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
+              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.totalScoreSum)}</div>
+            </div>
+            <div class="model-stat-box">
+              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
             </div>
           </div>
       ` : `
@@ -2805,6 +2829,7 @@
               <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
               <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
             </div>
+          </div>
       `;
 
       return `
@@ -2824,7 +2849,6 @@
           ${statsRow1}
 
           ${statsRow2}
-          </div>
 
           ${isNumeric ? '' : `<div class="model-stat-box-wide">
             <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
@@ -2858,9 +2882,9 @@
         const model = link.dataset.model;
         const stats = mvs.modelStats[model];
         if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
-          // Open compare view with selected runs
           sessionStorage.setItem('compareRuns', JSON.stringify(stats.selectedPaths));
-          window.location.href = apiUrl('compare');
+          const params = stats.selectedPaths.map(f => 'runs=' + encodeURIComponent(f)).join('&');
+          window.location.href = apiUrl('compare?' + params);
         } else {
           alert('Need at least 2 runs to compare');
         }
@@ -3099,10 +3123,10 @@
       showToast('error', 'Cannot Compare', 'Select at least 2 runs to compare');
       return;
     }
-    // Store selected runs for comparison page
     const files = Array.from(state.selectedRuns);
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
-    window.location.href = './compare';
+    const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
+    window.location.href = './compare?' + params;
   }
 
   function confirmDeleteRun(filePath, runId) {

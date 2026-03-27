@@ -566,7 +566,7 @@
       font-weight: 600;
       color: var(--text-secondary);
       margin-top: 3px;
-      text-transform: capitalize;
+      text-transform: none;
       letter-spacing: 0.2px;
     }
     /* ── Numeric metric stats row ── */
@@ -813,10 +813,10 @@
     .category-empty-state,
     .section-empty-state {
       text-align: center;
-      padding: 32px 24px;
+      padding: 16px 24px;
       color: var(--text-muted);
       font-size: var(--font-sm);
-      min-height: 168px;
+      min-height: 80px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -3257,8 +3257,8 @@
               }
             }
             if (uniqueVals.size === 0 || uniqueVals.size > MAX_CARDINALITY) continue;
-            // Auto-select complexity and domain
-            if (k === 'complexity' || k === 'domain') state.selectedCategories.add(k);
+            // Auto-select first 3 valid categories
+            if (state.selectedCategories.size < 3) state.selectedCategories.add(k);
           }
         }
 
@@ -3282,7 +3282,7 @@
         const config = run.config || {};
         el('hdr-run-name').textContent = run.run_name || '—';
         el('hdr-dataset').textContent = run.dataset_name || '—';
-        el('hdr-model').textContent = config.model || config.model_name || '—';
+        el('hdr-model').textContent = run.model_name || config.model || config.model_name || '—';
         el('hdr-total').textContent = (snap.stats || {}).total || (snap.rows || []).length;
         el('hdr-metrics').textContent = state.allMetrics.length;
 
