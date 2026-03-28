@@ -703,6 +703,32 @@
       font-weight: 500;
     }
 
+    /* ⚡ Trace overview card */
+    .trace-overview-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .trace-overview-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(100, 120, 160, 0.06);
+    }
+    .trace-overview-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .trace-overview-val {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
     .threshold-control {
       display: flex;
       align-items: center;
@@ -785,6 +811,7 @@
       border-radius: 100px;
       font-size: var(--font-xs);
       font-weight: 500;
+      font-family: var(--font-sans);
       cursor: pointer;
       transition: all 0.15s;
       border: 1px solid var(--border-subtle);
@@ -799,13 +826,18 @@
     .category-chip.selected {
       background: var(--accent-primary);
       border-color: var(--accent-primary);
-      color: #fff;
-      font-weight: 600;
+      color: var(--bg-void);
+      font-weight: 500;
+    }
+    .category-chip.selected,
+    .category-chip.selected .chip-count {
+      color: var(--bg-void) !important;
     }
     .category-chip .chip-count {
       font-size: 10px;
       opacity: 0.7;
-      font-family: var(--font-mono);
+      font-family: var(--font-sans);
+      font-weight: 500;
     }
     .category-chip.selected .chip-count {
       opacity: 0.85;
@@ -1557,27 +1589,28 @@
     .metric-edit-open:hover { opacity: 1; background: #222a36; color: #c3c9d6; }
     .metric-edit-meta { margin-top: 4px; font-size: var(--font-xs); color: var(--text-muted); }
 
-    .metric-score-row {
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 8px;
-      padding: 2px 0;
-    }
-    .metric-score-meta { display: inline-flex; align-items: center; gap: 6px; }
-    .metric-score-row.highlighted {
-      background: var(--bg-hover);
-      margin: 0 -4px;
-      padding: 2px 4px;
-      border-radius: 3px;
-    }
-    .metric-score-name { font-size: var(--font-xs); color: var(--text-muted); min-width: 80px; }
-    .metric-score-value { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 600; }
     .metric-scores-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
       margin-top: var(--space-sm);
       padding-top: var(--space-sm);
       border-top: 1px solid var(--border-subtle);
     }
+    .metric-score-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .metric-score-meta { display: inline-flex; align-items: center; gap: 6px; }
+    .metric-score-row.highlighted {
+      background: var(--bg-hover);
+    }
+    .metric-score-name { font-size: var(--font-xs); color: var(--text-muted); }
+    .metric-score-value { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 600; }
     .passfail-badge {
       font-size: 10px;
       padding: 1px 6px;
@@ -2634,11 +2667,6 @@
 
       <div id="overview-section"></div>
 
-      <div id="error-analysis-section" style="display:none;">
-        <h3 class="section-title">Error Analysis</h3>
-        <div class="comparison-stats" id="error-analysis-container"></div>
-      </div>
-
       <div id="metadata-breakdown"></div>
 
       <div id="root-cause-section"></div>
@@ -2836,6 +2864,7 @@
         allMetricMetaKeys: [],
         langfuseHost: '',
         langfuseProjectId: '',
+        hasRenderedItems: false,
       };
 
       const IS_EXPORT = !!window.__QYM_EXPORT__;
@@ -3008,6 +3037,23 @@
         var rtlChars = (text.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
         var latinChars = (text.match(/[A-Za-z]/g) || []).length;
         return rtlChars > latinChars;
+      }
+
+      function _fmtTraceNum(v) {
+        if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+        if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+        return String(v);
+      }
+      function _renderTraceChips(ts) {
+        if (!ts) return '';
+        var chips = [];
+        if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
+        if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
+        if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
+        if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
+        if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (chips.length === 0) return '';
+        return '<div class="trace-chips-row">' + chips.join('') + '</div>';
       }
 
       function renderMarkdownSafe(value) {
@@ -3220,7 +3266,7 @@
         for (const row of (snap.rows || [])) {
           const md = row.item_metadata || {};
           if (typeof md === 'object') {
-            for (const k of Object.keys(md)) { if (k !== 'task_started_at_ms') metaKeySet.add(k); }
+            for (const k of Object.keys(md)) { if (k !== 'task_started_at_ms' && k !== 'trace_stats') metaKeySet.add(k); }
             if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
             if (md.domain != null && md.domain !== '') {
               for (const d of parseMetaList(md.domain)) domainSet.add(d);
@@ -3243,7 +3289,7 @@
 
         // Auto-select categories for breakdown chips
         // Exclude keys that have their own sections or are not useful for grouping
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30; // skip keys with too many unique values
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -3318,7 +3364,6 @@
         renderSummary();
         populateMetricSelectors();
         renderOverview();
-        renderErrorAnalysis();
         buildCategoryDropdowns();
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
@@ -3457,42 +3502,6 @@
         }
       }
 
-      function buildKpiHtml() {
-        if (!state.snapshot) return '';
-        const rows = state.snapshot.rows || [];
-
-        // Compute per-metric averages
-        const metricStats = {};
-        for (const m of state.allMetrics) {
-          const mi = state.allMetrics.indexOf(m);
-          let sum = 0, cnt = 0;
-          for (const row of rows) {
-            const { score } = window.QymMetrics.getRowScore(row, mi);
-            if (score !== null) { sum += score; cnt++; }
-          }
-          metricStats[m] = cnt > 0 ? sum / cnt : 0;
-        }
-
-        const stats = state.snapshot.stats || {};
-        const total = stats.total || rows.length;
-        const completed = stats.completed || 0;
-        const failed = stats.failed || 0;
-        const successRate = total > 0 ? completed / total : 0;
-
-        let boxes = state.allMetrics.map(m => {
-          const v = metricStats[m];
-          const mType = state.metricTypes[m] || 'score';
-          const colorCls = window.QymMetrics.getMetricColorClass(v, mType);
-          const display = window.QymMetrics.formatMetricValue(v, mType);
-          return '<div class="stat-box"><div class="stat-title">' + escapeHtml(m) + '</div><div class="stat-main ' + colorCls + '">' + display + '</div></div>';
-        }).join('');
-
-        boxes += '<div class="stat-box"><div class="stat-title">Success Rate</div><div class="stat-main ' + scoreColorClass(successRate) + '">' + formatPercent(successRate) + '</div><div class="stat-detail">' + completed + ' / ' + total + '</div></div>';
-        boxes += '<div class="stat-box"><div class="stat-title">Items</div><div class="stat-main">' + total + '</div></div>';
-        if (failed > 0) boxes += '<div class="stat-box"><div class="stat-title">Errors</div><div class="stat-main score-1">' + failed + '</div></div>';
-
-        return '<div class="overview-kpis">' + boxes + '</div>';
-      }
 
       function computeScoreDistribution(metric) {
         const rows = state.snapshot.rows || [];
@@ -3778,13 +3787,37 @@
           '</div>';
         }
 
+        // ── ⚡ Trace Stats card ──
+        let traceCard = '';
+        const ts = state.run && state.run.trace_stats;
+        if (ts && ts.has_spans) {
+          const fmtV = (v) => v != null ? _fmtTraceNum(v) : '\u2014';
+          const fmtD = (v) => v != null ? v.toFixed(1) : '\u2014';
+          traceCard = '<div class="metric-card trace-overview-card">' +
+            '<div class="metric-card-header">' +
+              '<div class="metric-card-gauge">' +
+                '<div class="metric-card-info">' +
+                  '<div class="metric-card-value" style="color:var(--text-secondary);">\u26A1</div>' +
+                  '<div class="metric-card-name">Trace Stats</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="trace-overview-stats">' +
+              '<div class="trace-overview-stat"><span class="trace-overview-label">Avg Tokens</span><span class="trace-overview-val">' + fmtV(ts.avg_tokens) + '</span></div>' +
+              '<div class="trace-overview-stat"><span class="trace-overview-label">LLM Calls</span><span class="trace-overview-val">' + fmtD(ts.avg_llm_calls) + '</span></div>' +
+              '<div class="trace-overview-stat"><span class="trace-overview-label">Tool Calls</span><span class="trace-overview-val">' + fmtD(ts.avg_tool_calls) + '</span></div>' +
+              '<div class="trace-overview-stat"><span class="trace-overview-label">Tool Success</span><span class="trace-overview-val">' + (ts.tool_success_rate != null ? (ts.tool_success_rate * 100).toFixed(1) + '%' : '\u2014') + '</span></div>' +
+            '</div>' +
+          '</div>';
+        }
+
         // ── Assemble ──
         section.innerHTML =
           '<div class="overview-header">' +
             '<div><h3 class="section-title">Overview</h3>' +
             '<div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div></div>' +
           '</div>' +
-          (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '');
+          (cards || traceCard ? '<div class="metric-cards-grid">' + cards + traceCard + '</div>' : '');
 
         // ── Wire click handlers ──
         const grid = section.querySelector('.metric-cards-grid');
@@ -3835,39 +3868,6 @@
             renderItems();
           });
         });
-      }
-
-      function renderErrorAnalysis() {
-        const section = el('error-analysis-section');
-        const container = el('error-analysis-container');
-        if (!section || !container) return;
-        const rows = state.snapshot.rows || [];
-        const stats = state.snapshot.stats || {};
-        const total = stats.total || rows.length;
-        const failed = stats.failed || 0;
-
-        if (failed === 0) { section.style.display = 'none'; return; }
-        section.style.display = '';
-
-        let timeout = 0, runtime = 0, unknown = 0;
-        for (const row of rows) {
-          if (window.QymMetrics.isErrorRow(row)) {
-            const output = (row.output_full || row.output || '').toLowerCase();
-            if (output.includes('timeout')) timeout++;
-            else if (output.includes('error')) runtime++;
-            else unknown++;
-          }
-        }
-
-        const pct = total > 0 ? ((failed / total) * 100).toFixed(1) : '0.0';
-
-        container.innerHTML =
-          '<div class="stats-row-flex">' +
-            '<div class="stat-box"><div class="stat-title">Total Errors</div><div class="stat-main score-1">' + failed + ' / ' + total + '</div><div class="stat-detail">' + pct + '% error rate</div></div>' +
-            '<div class="stat-box"><div class="stat-title">Timeout</div><div class="stat-main ' + (timeout > 0 ? 'score-1' : '') + '">' + timeout + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">Runtime</div><div class="stat-main ' + (runtime > 0 ? 'score-1' : '') + '">' + runtime + '</div></div>' +
-            '<div class="stat-box"><div class="stat-title">Unknown</div><div class="stat-main ' + (unknown > 0 ? 'score-2' : '') + '">' + unknown + '</div></div>' +
-          '</div>';
       }
 
       function getApprovalState(row) {
@@ -4635,9 +4635,10 @@
       }
 
       function renderItems(scrollToTop) {
-        const anchorTop = scrollToTop ? null : getItemsGridTop();
+        const preserveAnchor = state.hasRenderedItems && !scrollToTop;
+        const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category in sync with the current filters (debounced)
-        scheduleBreakdownRender(!scrollToTop);
+        scheduleBreakdownRender(preserveAnchor);
 
         const container = el('items-grid');
         const paginationEl = el('pagination');
@@ -4882,7 +4883,7 @@
                 }
               }
             }
-            const genericEntries = Object.entries(itemMd).filter(([k]) => k !== 'task_started_at_ms' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false);
+            const genericEntries = Object.entries(itemMd).filter(([k]) => k !== 'task_started_at_ms' && k !== 'trace_stats' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false);
             let genericHtml = genericEntries.map(([k,v]) => '<span class="item-metadata-tag"><span class="meta-key">' + escapeHtml(k) + ':</span> <span class="meta-val">' + escapeHtml(String(v)) + '</span></span>').join('');
             if (badgesHtml || genericHtml) {
               const sep = badgesHtml && genericHtml ? '<span class="item-meta-sep"></span>' : '';
@@ -4895,7 +4896,7 @@
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 
@@ -4909,6 +4910,8 @@
         } else if (anchorTop != null) {
           requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
         }
+
+        state.hasRenderedItems = true;
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();

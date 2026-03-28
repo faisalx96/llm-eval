@@ -384,19 +384,57 @@ function formatMetricValue(value, metricType, decimals) {
   return formatPercent(value, decimals);
 }
 
+function pickAdaptiveDecimals(value, peerValues, formatWithDecimals, defaultDecimals = 1, maxDecimals = 3) {
+  const peers = Array.isArray(peerValues)
+    ? peerValues.filter(peer => peer !== undefined && peer !== null && !isNaN(peer) && peer !== value)
+    : [];
+  if (peers.length === 0) return defaultDecimals;
+
+  for (let decimals = defaultDecimals; decimals <= maxDecimals; decimals++) {
+    const formatted = formatWithDecimals(value, decimals);
+    const hasCollision = peers.some(peer => formatWithDecimals(peer, decimals) === formatted);
+    if (!hasCollision) return decimals;
+  }
+
+  return maxDecimals;
+}
+
+function formatMetricValueSmart(value, metricType, peerValues, defaultDecimals = 1, maxDecimals = 3) {
+  if (value === undefined || value === null || isNaN(value)) return '\u2014';
+  if (metricType === 'numeric') {
+    const decimals = pickAdaptiveDecimals(
+      value,
+      peerValues,
+      (candidate, precision) => formatNumericValue(candidate, precision),
+      Number.isInteger(value) ? 0 : defaultDecimals,
+      maxDecimals,
+    );
+    return formatNumericValue(value, decimals);
+  }
+
+  const decimals = pickAdaptiveDecimals(
+    value,
+    peerValues,
+    (candidate, precision) => formatPercent(candidate, precision),
+    defaultDecimals,
+    maxDecimals,
+  );
+  return formatPercent(value, decimals);
+}
+
 /**
  * Format a raw numeric value with appropriate precision and abbreviation.
  * @param {number} value
  * @returns {string}
  */
-function formatNumericValue(value) {
+function formatNumericValue(value, decimals = 1) {
   if (value === undefined || value === null || isNaN(value)) return '\u2014';
   const abs = Math.abs(value);
   if (abs >= 1000000) return (value / 1000000).toFixed(1) + 'M';
   if (abs >= 10000) return (value / 1000).toFixed(1) + 'K';
   if (abs >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
   if (Number.isInteger(value)) return value.toString();
-  return value.toFixed(1);
+  return value.toFixed(decimals);
 }
 
 /**
@@ -426,6 +464,7 @@ if (typeof window !== 'undefined') {
     // Formatting utilities
     formatPercent,
     formatMetricValue,
+    formatMetricValueSmart,
     formatNumericValue,
     formatLatency,
     getScoreColorClass,

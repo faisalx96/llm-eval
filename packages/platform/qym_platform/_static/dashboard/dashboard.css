@@ -678,6 +678,7 @@ html {
 .view-toggle-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-xs);
   padding: var(--space-xs) var(--space-md);
   background: transparent;
@@ -687,6 +688,7 @@ html {
   font-size: var(--font-sm);
   cursor: pointer;
   transition: all 0.15s;
+  min-width: 96px;
 }
 
 .view-toggle-btn:hover {
@@ -1295,6 +1297,7 @@ main {
   border-bottom: 1px solid var(--border-default);
   background: var(--bg-elevated, #1c2129);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .chart-dataset-tab {
@@ -1414,23 +1417,52 @@ main {
 
 .chart-col-header {
   flex: 1;
-  min-width: 120px;
+  min-width: 144px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 4px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+  overflow: hidden;
 }
 
 .chart-col-header-latency {
   flex: 1;
-  min-width: 120px;
+  min-width: 144px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 4px;
   text-align: left;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+  overflow: hidden;
+}
+
+.chart-col-header-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.chart-col-sort {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  padding-top: 1px;
 }
 
 .sortable-col {
@@ -1522,6 +1554,20 @@ main {
 }
 
 .chart-numeric-value.aggregate {
+  font-weight: 700;
+}
+
+.chart-trace-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  display: block;
+}
+
+.chart-trace-value.aggregate {
   font-weight: 700;
 }
 
@@ -1910,7 +1956,7 @@ main {
 
 .runs-table {
   --runs-col-select-width: 40px;
-  --runs-col-status-width: 168px;
+  --runs-col-status-width: 236px;
   --runs-col-run-width: 220px;
   --runs-col-task-width: 180px;
   --runs-col-model-width: 220px;
@@ -3245,10 +3291,13 @@ main {
   font-size: var(--font-xs);
   font-weight: 600;
   padding: 2px 6px;
+  line-height: 1.2;
   border-radius: 4px;
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
   color: var(--text-secondary);
+  white-space: nowrap;
+  vertical-align: middle;
 }
 .status-badge.status-SUBMITTED { color: #94a3b8; border-color: rgba(148, 163, 184, 0.35); }
 .status-badge.status-APPROVED { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
@@ -5929,10 +5978,10 @@ body.tv-open { overflow: hidden; }
 }
 .tv-thinking-label::after {
   content: "";
-  width: 6px;
-  height: 6px;
-  border-right: 1.45px solid currentColor;
-  border-bottom: 1.45px solid currentColor;
+  width: 5px;
+  height: 5px;
+  border-right: 1.3px solid currentColor;
+  border-bottom: 1.3px solid currentColor;
   transform: translateY(-1px) rotate(45deg);
   transition: transform .15s ease;
   flex-shrink: 0;
@@ -6176,6 +6225,187 @@ body.tv-open { overflow: hidden; }
 }
 @container (max-width: 380px) {
   .tv-wf { display: none; }
+}
+
+/* ═══════════════════════════════════════════════════
+   ⚡ TRACE METRICS — auto-generated operational stats
+   ═══════════════════════════════════════════════════ */
+
+/* Dashboard table: separator and columns */
+.col-trace-separator {
+  width: 2px !important;
+  min-width: 2px !important;
+  max-width: 2px !important;
+  padding: 0 !important;
+  border-left: 2px solid var(--border-default);
+  background: transparent;
+}
+th.col-trace-metric {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+td.col-trace-metric-value {
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* Run view: trace stats card section */
+.trace-stats-section {
+  margin-top: var(--space-md);
+}
+.trace-stats-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-sm);
+}
+.trace-kpis {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.trace-kpis .stat-box {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: var(--space-md);
+  text-align: center;
+}
+.trace-kpis .stat-title {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.trace-kpis .stat-main {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-secondary) !important;
+}
+
+/* Item trace chips */
+.trace-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 2px;
+}
+.trace-chip {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  column-gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: rgba(100, 120, 160, 0.12);
+  border: 1px solid rgba(100, 120, 160, 0.22);
+  border-radius: 6px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.trace-chip-icon {
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.85;
+}
+.trace-chip-value {
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.trace-chip-label {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.45px;
+}
+.trace-chip-err {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+.trace-chip-err .trace-chip-value {
+  color: var(--error);
+}
+
+/* Compare view: trace stats table */
+.trace-stats-compare {
+  margin-top: var(--space-lg);
+}
+.trace-stats-compare .section-label {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-sm);
+}
+.trace-compare-table {
+  width: 100%;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.trace-compare-table th,
+.trace-compare-table td {
+  padding: 6px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.trace-compare-table th:first-child,
+.trace-compare-table td:first-child {
+  text-align: left;
+  color: var(--text-muted);
+}
+.trace-compare-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.trace-compare-best {
+  color: var(--text-primary) !important;
+  font-weight: 600;
+}
+
+/* Charts: operational section header */
+.chart-section-header {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: var(--space-xl) 0 var(--space-md);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Metric visibility dropdown separator */
+.mv-trace-separator {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 0;
+}
+.mv-trace-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 2px 10px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* ─── Responsive ─── */

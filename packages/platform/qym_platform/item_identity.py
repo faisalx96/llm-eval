@@ -18,12 +18,14 @@ MUTABLE_METADATA_KEYS = {
     "solution_note",
     "solution_source",
     "task_started_at_ms",
+    "trace_stats",
 }
 
 POSITIONAL_ITEM_ID_PATTERNS = (
     re.compile(r"^\d+$"),
     re.compile(r"^item_\d+$"),
     re.compile(r"^row_\d+$"),
+    re.compile(r"^csv_[0-9a-f]{20}__\d{4}$"),
 )
 
 

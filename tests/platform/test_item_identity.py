@@ -33,6 +33,50 @@ def test_platform_compare_identity_falls_back_to_fingerprint_for_legacy_row_ids(
     assert identity["compare_alignment_source"] == "fingerprint"
 
 
+def test_platform_compare_identity_ignores_trace_stats_in_fingerprint():
+    first_identity = build_compare_identity(
+        item_id="row_000001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math", "trace_stats": {"total_tokens": 42, "cost_usd": 0.01}},
+        duplicate_counts={},
+    )
+
+    second_identity = build_compare_identity(
+        item_id="row_000001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math", "trace_stats": {"total_tokens": 314, "cost_usd": 0.09}},
+        duplicate_counts={},
+    )
+
+    assert first_identity["compare_item_id"] == second_identity["compare_item_id"]
+    assert first_identity["compare_alignment_source"] == "fingerprint"
+    assert second_identity["compare_alignment_source"] == "fingerprint"
+
+
+def test_platform_compare_identity_recomputes_generated_csv_item_ids():
+    first_identity = build_compare_identity(
+        item_id="csv_9d87abc4a109c976c595__0001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math"},
+        duplicate_counts={},
+    )
+
+    second_identity = build_compare_identity(
+        item_id="csv_912a92090d65db565175__0001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math"},
+        duplicate_counts={},
+    )
+
+    assert first_identity["compare_item_id"] == second_identity["compare_item_id"]
+    assert first_identity["compare_alignment_source"] == "fingerprint"
+    assert second_identity["compare_alignment_source"] == "fingerprint"
+
+
 def test_platform_finalize_compare_alignment_marks_duplicate_compare_keys_unalignable():
     payload = {
         "run": {"run_name": "legacy-run"},

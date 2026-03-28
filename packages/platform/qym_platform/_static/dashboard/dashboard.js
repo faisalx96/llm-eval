@@ -75,6 +75,84 @@
     '#2dd4bf', '#c084fc', '#fcd34d', '#6ee7b7'
   ];
 
+  // ⚡ Trace metrics — auto-derived from OTEL spans
+  function _fmtTraceNum(v) {
+    if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+    if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+    return String(Math.round(v));
+  }
+  const TRACE_METRICS = [
+    { key: 'avg_tokens',    label: '⚡ Avg Tokens',        fmt: v => v != null ? _fmtTraceNum(v) : '—' },
+    { key: 'avg_llm_calls', label: '⚡ Avg LLM Calls',    fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',   fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'tool_success_rate', label: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
+  ];
+
+  function _traceMetricsForRuns(runs = null) {
+    const sourceRuns = Array.isArray(runs)
+      ? runs
+      : ((state.filteredRuns && state.filteredRuns.length) ? state.filteredRuns : state.flatRuns);
+    if (!Array.isArray(sourceRuns) || sourceRuns.length === 0) return [];
+    return sourceRuns.some(r => r.trace_stats) ? TRACE_METRICS : [];
+  }
+
+  function _hasAnyTraceStats(runs = null) {
+    return _traceMetricsForRuns(runs).length > 0;
+  }
+
+  function _allMetricsWithTrace(runs = null, baseMetrics = state.allMetrics) {
+    return [
+      ...(baseMetrics || []),
+      ..._traceMetricsForRuns(runs).map(tm => tm.key),
+    ];
+  }
+
+  function _visibleTraceMetrics(runs = null) {
+    const traceMetrics = _traceMetricsForRuns(runs);
+    if (traceMetrics.length === 0) return [];
+    const vis = state.visibleMetrics;
+    if (vis === null) return traceMetrics;
+    return traceMetrics.filter(tm => vis.has(tm.key));
+  }
+
+  function getMetricDisplayName(metricKey) {
+    const traceMetric = TRACE_METRICS.find(tm => tm.key === metricKey);
+    return traceMetric ? traceMetric.label : metricKey;
+  }
+
+  function getTraceMetricConfig(metricKey) {
+    return TRACE_METRICS.find(tm => tm.key === metricKey) || null;
+  }
+
+  function isTraceMetricKey(metricKey) {
+    return !!getTraceMetricConfig(metricKey);
+  }
+
+  function renderTraceMetricTableCell(traceMetric, value) {
+    if (value === undefined || value === null) {
+      return '<td class="col-trace-metric-value">—</td>';
+    }
+    if (traceMetric.key === 'tool_success_rate') {
+      const metricClass = window.QymMetrics.getMetricColorClass(value, 'score');
+      return `<td class="col-trace-metric-value"><span class="metric-score ${metricClass}">${traceMetric.fmt(value)}</span></td>`;
+    }
+    return `<td class="col-trace-metric-value">${traceMetric.fmt(value)}</td>`;
+  }
+
+  function getRunComboPeerValues(runs, run, valueGetter) {
+    if (!Array.isArray(runs) || !run || typeof valueGetter !== 'function') return [];
+    return runs
+      .filter(candidate =>
+        candidate
+        && candidate.file_path !== run.file_path
+        && candidate.task_name === run.task_name
+        && candidate.model_name === run.model_name
+        && candidate.dataset_name === run.dataset_name
+      )
+      .map(candidate => valueGetter(candidate))
+      .filter(value => value !== undefined && value !== null && !isNaN(value));
+  }
+
   // ═══════════════════════════════════════════════════
   // UTILITIES
   // ═══════════════════════════════════════════════════
@@ -307,12 +385,12 @@
           values.forEach(v => { if (v !== value) stateSet.add(v); });
         } else if (stateSet.has(value)) {
           stateSet.delete(value);
-          if (stateSet.size === 0) stateSet.clear(); // back to "all"
+          if (stateSet.size === 0) stateSet.add('__none__');
         } else {
           stateSet.add(value);
         }
         // Normalize: if all selected, clear to "show all"
-        if (stateSet.size >= values.length) stateSet.clear();
+        if (!stateSet.has('__none__') && stateSet.size >= values.length) stateSet.clear();
         syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
         if (onchange) onchange();
         render();
@@ -378,7 +456,7 @@
     return ordered.concat(extras);
   }
 
-  function getVisibleMetrics(availableMetrics = state.allMetrics) {
+  function getVisibleMetrics(availableMetrics = _allMetricsWithTrace()) {
     if (!state.visibleMetrics) return availableMetrics;
     return availableMetrics.filter(m => state.visibleMetrics.has(m));
   }
@@ -415,8 +493,9 @@
       if (saved) {
         const arr = JSON.parse(saved);
         if (Array.isArray(arr)) {
-          const valid = arr.filter(m => state.allMetrics.includes(m));
-          if (valid.length > 0 && valid.length < state.allMetrics.length) {
+          const allowedMetrics = _allMetricsWithTrace(state.flatRuns, state.allMetrics);
+          const valid = arr.filter(m => allowedMetrics.includes(m));
+          if (valid.length > 0 && valid.length < allowedMetrics.length) {
             state.visibleMetrics = new Set(valid);
           } else {
             state.visibleMetrics = null;
@@ -426,20 +505,26 @@
     } catch (e) {}
   }
 
-  function populateMetricVisibility(availableMetrics = state.allMetrics) {
+  function populateMetricVisibility(availableMetrics = state.allMetrics, runs = null) {
     const wrapper = el('metric-visibility-wrapper');
     const dropdown = el('metric-visibility-dropdown');
     const btn = el('metric-visibility-btn');
     if (!wrapper || !dropdown || !btn) return;
 
-    if (availableMetrics.length === 0) {
+    const traceMetrics = _traceMetricsForRuns(runs);
+    const metricOptions = [
+      ...(availableMetrics || []),
+      ...traceMetrics.map(tm => tm.key),
+    ];
+
+    if (metricOptions.length === 0) {
       wrapper.style.display = 'none';
       return;
     }
     wrapper.style.display = '';
 
-    const visibleMetrics = new Set(getVisibleMetrics(availableMetrics));
-    const allVisible = visibleMetrics.size === availableMetrics.length;
+    const visibleMetrics = new Set(getVisibleMetrics(metricOptions));
+    const allVisible = visibleMetrics.size === metricOptions.length;
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
     dropdown.innerHTML =
       '<div class="ms-actions">' +
@@ -451,10 +536,17 @@
         const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
         const hidden = searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
         return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
-      }).join('');
+      }).join('') +
+      (traceMetrics.length > 0 ?
+        '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ Trace Stats</div>' +
+        traceMetrics.map(tm => {
+          const checked = allVisible || visibleMetrics.has(tm.key) ? 'checked' : '';
+          const hidden = searchValue && !tm.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(tm.key)}" /><span>${escapeHtml(tm.label)}</span></div>`;
+        }).join('') : '');
 
     // Update button text
-    updateMetricVisibilityBtn(availableMetrics);
+    updateMetricVisibilityBtn(metricOptions);
 
     // Wire search input for metrics
     const mvSearchInput = dropdown.querySelector('.model-search-input');
@@ -474,7 +566,7 @@
 
     dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
-        applyMetricVisibilityFromCheckboxes(availableMetrics);
+        applyMetricVisibilityFromCheckboxes(metricOptions);
       });
     });
 
@@ -484,7 +576,7 @@
       opt.addEventListener('click', (e) => {
         e.stopPropagation();
         metricCb.checked = !metricCb.checked;
-        applyMetricVisibilityFromCheckboxes(availableMetrics);
+        applyMetricVisibilityFromCheckboxes(metricOptions);
       });
     });
 
@@ -493,22 +585,22 @@
     if (selAll) selAll.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setVisibleMetricsForAvailable(availableMetrics, new Set(availableMetrics));
+      setVisibleMetricsForAvailable(metricOptions, new Set(metricOptions));
       saveMetricVisibility();
-      syncMetricVisibilityDropdownState(availableMetrics);
+      syncMetricVisibilityDropdownState(metricOptions);
       render();
     });
     if (selNone) selNone.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setVisibleMetricsForAvailable(availableMetrics, new Set());
+      setVisibleMetricsForAvailable(metricOptions, new Set());
       saveMetricVisibility();
-      syncMetricVisibilityDropdownState(availableMetrics);
+      syncMetricVisibilityDropdownState(metricOptions);
       render();
     });
   }
 
-  function syncMetricVisibilityDropdownState(availableMetrics = state.allMetrics) {
+  function syncMetricVisibilityDropdownState(availableMetrics = _allMetricsWithTrace()) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
 
@@ -520,7 +612,7 @@
     updateMetricVisibilityBtn(availableMetrics);
   }
 
-  function updateMetricVisibilityBtn(availableMetrics = state.allMetrics) {
+  function updateMetricVisibilityBtn(availableMetrics = _allMetricsWithTrace()) {
     const btn = el('metric-visibility-btn');
     if (!btn) return;
     const visibleMetrics = getVisibleMetrics(availableMetrics);
@@ -534,7 +626,7 @@
       btn.textContent = 'No Columns';
       btn.classList.add('has-selection');
     } else if (visibleMetrics.length === 1) {
-      btn.textContent = visibleMetrics[0];
+      btn.textContent = getMetricDisplayName(visibleMetrics[0]);
       btn.classList.add('has-selection');
     } else {
       btn.textContent = visibleMetrics.length + ' Columns';
@@ -542,7 +634,7 @@
     }
   }
 
-  function applyMetricVisibilityFromCheckboxes(availableMetrics = state.allMetrics) {
+  function applyMetricVisibilityFromCheckboxes(availableMetrics = _allMetricsWithTrace()) {
     const dropdown = el('metric-visibility-dropdown');
     if (!dropdown) return;
     const checked = new Set();
@@ -717,6 +809,7 @@
         file_path: run.file_path,
         timestamp: run.timestamp,
         metric_averages: run.metric_averages || {},
+        trace_stats: run.trace_stats || null,
         avg_latency_ms: run.avg_latency_ms,
         total_items: run.total_items,
         git_branch: run.git_branch || '',
@@ -928,7 +1021,16 @@
         break;
       default:
         // Handle metric column sorting (e.g., "metric-exact_match-desc")
-        if (state.sortKey.startsWith('metric-')) {
+        if (state.sortKey.startsWith('trace-')) {
+          const parts = state.sortKey.split('-');
+          const traceKey = parts.slice(1, -1).join('-');
+          const direction = parts[parts.length - 1];
+          runs.sort((a, b) => {
+            const aVal = a.trace_stats?.[traceKey] ?? -1;
+            const bVal = b.trace_stats?.[traceKey] ?? -1;
+            return direction === 'desc' ? bVal - aVal : aVal - bVal;
+          });
+        } else if (state.sortKey.startsWith('metric-')) {
           const parts = state.sortKey.split('-');
           const metricName = parts.slice(1, -1).join('-');
           const direction = parts[parts.length - 1];
@@ -1121,7 +1223,30 @@
       const metrics = orderChartMetrics(visSet ? allComboMetrics.filter(m => visSet.has(m)) : allComboMetrics);
       const modelEntries = Object.entries(combo.models);
 
-      if (metrics.length === 0) {
+      // Collect all runs across all models
+      const allRuns = [];
+      for (const [model, data] of modelEntries) {
+        for (const run of data.runsList) {
+          allRuns.push({
+            model,
+            run_id: run.run_id,
+            run_name: run.run_name || '',
+            external_run_id: run.external_run_id,
+            file_path: run.file_path,
+            timestamp: run.timestamp,
+            metric_averages: run.metric_averages || {},
+            trace_stats: run.trace_stats || null,
+            latency: run.avg_latency_ms || 0,
+            isMultiRun: data.runs > 1,
+            git_branch: run.git_branch || '',
+            git_commit: run.git_commit || '',
+          });
+        }
+      }
+
+      const visibleTraceMetrics = _visibleTraceMetrics(allRuns);
+
+      if (metrics.length === 0 && visibleTraceMetrics.length === 0) {
         return `
           <div class="chart-task-section">
             <div class="chart-task-header">
@@ -1138,33 +1263,13 @@
         `;
       }
 
-      // Collect all runs across all models
-      const allRuns = [];
-      for (const [model, data] of modelEntries) {
-        for (const run of data.runsList) {
-          allRuns.push({
-            model,
-            run_id: run.run_id,
-            run_name: run.run_name || '',
-            external_run_id: run.external_run_id,
-            file_path: run.file_path,
-            timestamp: run.timestamp,
-            metric_averages: run.metric_averages || {},
-            latency: run.avg_latency_ms || 0,
-            isMultiRun: data.runs > 1,
-            git_branch: run.git_branch || '',
-            git_commit: run.git_commit || '',
-          });
-        }
-      }
-
       // Generate unique card ID for sorting state
       const cardId = `${combo.task}|||${combo.dataset}`.replace(/[^a-zA-Z0-9]/g, '_');
 
       // Default sort by first metric descending
       if (!state.chartSortState) state.chartSortState = {};
       if (!state.chartSortState[cardId]) {
-        state.chartSortState[cardId] = { key: metrics[0] || 'latency', dir: 'desc' };
+        state.chartSortState[cardId] = { key: metrics[0] || visibleTraceMetrics[0]?.key || 'latency', dir: 'desc' };
       }
       const sortState = state.chartSortState[cardId];
 
@@ -1172,16 +1277,22 @@
       if (!state.chartGroupMode) state.chartGroupMode = {};
       const groupMode = state.chartGroupMode[cardId] || 'run';
 
+      function getRunSortValue(run, key) {
+        if (key === 'latency') return run.latency || 0;
+        if (isTraceMetricKey(key)) return run.trace_stats?.[key] ?? -1;
+        return run.metric_averages[key] ?? -1;
+      }
+
+      function getGroupSortValue(agg, key) {
+        if (key === 'latency') return agg.avgLatency;
+        if (isTraceMetricKey(key)) return agg.traceAverages?.[key] ?? -1;
+        return agg.metricAverages[key] ?? -1;
+      }
+
       // Sort helper
       function sortByState(a, b) {
-        let aVal, bVal;
-        if (sortState.key === 'latency') {
-          aVal = a.latency || 0;
-          bVal = b.latency || 0;
-        } else {
-          aVal = a.metric_averages[sortState.key] ?? -1;
-          bVal = b.metric_averages[sortState.key] ?? -1;
-        }
+        const aVal = getRunSortValue(a, sortState.key);
+        const bVal = getRunSortValue(b, sortState.key);
         return sortState.dir === 'desc' ? bVal - aVal : aVal - bVal;
       }
 
@@ -1193,12 +1304,21 @@
       });
       const numericMetrics = metrics.filter(metric => !visualMetrics.includes(metric));
       const LATENCY_COLUMN_KEY = '__latency__';
-      const displayColumns = [...visualMetrics, ...numericMetrics, LATENCY_COLUMN_KEY];
+      const traceMetricKeys = visibleTraceMetrics.map(tm => tm.key);
+      const displayColumns = [...visualMetrics, ...numericMetrics, LATENCY_COLUMN_KEY, ...traceMetricKeys];
       const metricScaleMax = {};
       for (const metric of visualMetrics) {
         const metricType = state._metricTypes?.[metric] || 'score';
         if (metricType !== 'numeric') continue;
         metricScaleMax[metric] = Math.max(...allRuns.map(run => Number(run.metric_averages?.[metric] || 0)), 0);
+      }
+      const traceMetricScaleMax = {};
+      for (const traceMetric of visibleTraceMetrics) {
+        if (traceMetric.key === 'tool_success_rate') continue;
+        traceMetricScaleMax[traceMetric.key] = Math.max(
+          ...allRuns.map(run => Number(run.trace_stats?.[traceMetric.key] || 0)),
+          0
+        );
       }
       const latencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
 
@@ -1212,12 +1332,13 @@
       const headerCells = displayColumns.map(column => {
         if (column === LATENCY_COLUMN_KEY) {
           const isActive = sortState.key === 'latency';
-          const arrow = isActive ? (sortState.dir === 'desc' ? ' \u2193' : ' \u2191') : '';
-          return `<span class="chart-col-header chart-col-header-latency sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency">Latency${arrow}</span>`;
+          const arrow = isActive ? (sortState.dir === 'desc' ? '\u2193' : '\u2191') : '';
+          return `<span class="chart-col-header chart-col-header-latency sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency" title="Avg Latency"><span class="chart-col-header-label">\u26A1 Avg Latency</span>${arrow ? `<span class="chart-col-sort">${arrow}</span>` : ''}</span>`;
         }
+        const label = getMetricDisplayName(column);
         const isActive = sortState.key === column;
-        const arrow = isActive ? (sortState.dir === 'desc' ? ' \u2193' : ' \u2191') : '';
-        return `<span class="chart-col-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${column}">${column}${arrow}</span>`;
+        const arrow = isActive ? (sortState.dir === 'desc' ? '\u2193' : '\u2191') : '';
+        return `<span class="chart-col-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${column}" title="${label}"><span class="chart-col-header-label">${label}</span>${arrow ? `<span class="chart-col-sort">${arrow}</span>` : ''}</span>`;
       }).join('');
 
       function renderMetricValueCell(metricName, value, modelIdx, isAggregate = false) {
@@ -1264,6 +1385,31 @@
         });
       }
 
+      function renderTraceMetricValueCell(metricKey, value, modelIdx, isAggregate = false) {
+        if (value === undefined || value === null) {
+          return `<div class="chart-metric-cell"><span class="metric-na">\u2014</span></div>`;
+        }
+        const traceMetric = getTraceMetricConfig(metricKey);
+        const display = traceMetric ? traceMetric.fmt(value) : String(value);
+        if (metricKey === 'tool_success_rate') {
+          return renderMiniBarCell({
+            value,
+            label: display,
+            ratio: value,
+            modelIdx,
+            isAggregate,
+          });
+        }
+        const scaleMax = traceMetricScaleMax[metricKey] || value || 1;
+        return renderMiniBarCell({
+          value,
+          label: display,
+          ratio: scaleMax > 0 ? value / scaleMax : 0,
+          modelIdx,
+          isAggregate,
+        });
+      }
+
       // --- Helper: render a single run row ---
       function renderRunRow(runData) {
         const { model, run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
@@ -1291,6 +1437,9 @@
           if (column === LATENCY_COLUMN_KEY) {
             return renderLatencyValueCell(latency, modelIdx);
           }
+          if (isTraceMetricKey(column)) {
+            return renderTraceMetricValueCell(column, runData.trace_stats?.[column], modelIdx);
+          }
           return renderMetricValueCell(column, metric_averages[column], modelIdx);
         }).join('');
         return `
@@ -1306,6 +1455,7 @@
       // --- Helper: compute group aggregates ---
       function computeGroupAgg(runs) {
         const agg = {};
+        const traceAgg = {};
         let latSum = 0, latCount = 0;
         for (const r of runs) {
           for (const m of metrics) {
@@ -1316,13 +1466,25 @@
               agg[m].count++;
             }
           }
+          for (const tm of visibleTraceMetrics) {
+            const v = r.trace_stats?.[tm.key];
+            if (v !== undefined && v !== null) {
+              if (!traceAgg[tm.key]) traceAgg[tm.key] = { sum: 0, count: 0 };
+              traceAgg[tm.key].sum += v;
+              traceAgg[tm.key].count++;
+            }
+          }
           if (r.latency) { latSum += r.latency; latCount++; }
         }
         const metricAverages = {};
         for (const m of metrics) {
           metricAverages[m] = agg[m] ? agg[m].sum / agg[m].count : undefined;
         }
-        return { metricAverages, avgLatency: latCount > 0 ? latSum / latCount : 0 };
+        const traceAverages = {};
+        for (const tm of visibleTraceMetrics) {
+          traceAverages[tm.key] = traceAgg[tm.key] ? traceAgg[tm.key].sum / traceAgg[tm.key].count : undefined;
+        }
+        return { metricAverages, traceAverages, avgLatency: latCount > 0 ? latSum / latCount : 0 };
       }
 
       // --- Helper: render a group header row ---
@@ -1331,6 +1493,9 @@
         const dataCells = displayColumns.map(column => {
           if (column === LATENCY_COLUMN_KEY) {
             return renderLatencyValueCell(agg.avgLatency, groupModelIdx, true);
+          }
+          if (isTraceMetricKey(column)) {
+            return renderTraceMetricValueCell(column, agg.traceAverages?.[column], groupModelIdx, true);
           }
           return renderMetricValueCell(column, agg.metricAverages[column], groupModelIdx, true);
         }).join('');
@@ -1377,8 +1542,8 @@
           return { key, label: g.label, runs: g.runs, agg };
         });
         sortedGroups.sort((a, b) => {
-          const aVal = a.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? a.agg.avgLatency : -1);
-          const bVal = b.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? b.agg.avgLatency : -1);
+          const aVal = getGroupSortValue(a.agg, sortState.key);
+          const bVal = getGroupSortValue(b.agg, sortState.key);
           return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
         });
 
@@ -1416,8 +1581,8 @@
           return { model, label: stripModelProvider(model), runs, agg };
         });
         sortedGroups.sort((a, b) => {
-          const aVal = a.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? a.agg.avgLatency : -1);
-          const bVal = b.agg.metricAverages[sortState.key] ?? (sortState.key === 'latency' ? b.agg.avgLatency : -1);
+          const aVal = getGroupSortValue(a.agg, sortState.key);
+          const bVal = getGroupSortValue(b.agg, sortState.key);
           return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
         });
 
@@ -1469,11 +1634,11 @@
       `;
 
       return `
-        <div class="chart-task-section">
-          <div class="chart-task-header">
-            <span class="chart-task-name">${taskName}</span>
-            <span class="chart-task-meta">${totalTaskRuns} runs \u00b7 ${allTaskModels.size} models \u00b7 ${metrics.length} metrics</span>
-          </div>
+          <div class="chart-task-section">
+            <div class="chart-task-header">
+              <span class="chart-task-name">${taskName}</span>
+              <span class="chart-task-meta">${totalTaskRuns} runs \u00b7 ${allTaskModels.size} models \u00b7 ${metrics.length + visibleTraceMetrics.length} metrics</span>
+            </div>
           <div class="chart-card">
             ${datasetTabsHtml}
             <div class="chart-card-body">
@@ -1499,8 +1664,9 @@
     // Wire up sortable column headers
     gridEl.querySelectorAll('.sortable-col').forEach(header => {
       header.addEventListener('click', (e) => {
-        const cardId = e.target.dataset.card;
-        const sortKey = e.target.dataset.sort;
+        const target = e.currentTarget;
+        const cardId = target.dataset.card;
+        const sortKey = target.dataset.sort;
         if (!cardId || !sortKey) return;
 
         const currentSort = state.chartSortState[cardId] || { key: sortKey, dir: 'desc' };
@@ -1605,8 +1771,8 @@
     const latencyHeader = headerRow.querySelector('.col-latency');
     if (!latencyHeader) return;
 
-    // Remove any existing dynamic metric columns
-    headerRow.querySelectorAll('.col-metric-dynamic').forEach(col => col.remove());
+    // Remove any existing dynamic metric columns and trace columns
+    headerRow.querySelectorAll('.col-metric-dynamic, .col-trace-separator, .col-trace-metric').forEach(col => col.remove());
 
     // Insert metric columns before LATENCY column
     metricsToShow.forEach(metric => {
@@ -1617,6 +1783,24 @@
       th.title = `Sort by ${metric}`;
       headerRow.insertBefore(th, latencyHeader);
     });
+
+    // Insert the ops separator before LATENCY and trace metric columns after LATENCY
+    const vtm = _visibleTraceMetrics(state.filteredRuns);
+    if (vtm.length > 0) {
+      const sep = document.createElement('th');
+      sep.className = 'col-trace-separator';
+      headerRow.insertBefore(sep, latencyHeader);
+      let insertAfter = latencyHeader;
+      vtm.forEach(tm => {
+        const th = document.createElement('th');
+        th.className = 'col-trace-metric sortable';
+        th.dataset.sort = `trace-${tm.key}`;
+        th.textContent = tm.label;
+        th.title = `Sort by ${tm.label}`;
+        insertAfter.insertAdjacentElement('afterend', th);
+        insertAfter = th;
+      });
+    }
 
     // Wire up sorting for all sortable columns
     headerRow.querySelectorAll('.sortable').forEach(th => {
@@ -1636,7 +1820,7 @@
     } else {
       // Default to descending for numeric/time, ascending for text
       const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency'];
-      const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-');
+      const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-') || sortField.startsWith('trace-');
       newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
     }
 
@@ -1693,6 +1877,7 @@
     const tbody = el('runs-tbody');
     const availableMetrics = getAvailableMetricsForRuns(runs);
     const metricsToShow = getVisibleMetrics(availableMetrics);
+    const visibleTraceMetrics = _visibleTraceMetrics(runs);
 
     if (state.sortKey.startsWith('metric-')) {
       const parts = state.sortKey.split('-');
@@ -1702,12 +1887,22 @@
         sortRuns(runs);
       }
     }
+    if (state.sortKey.startsWith('trace-')) {
+      const parts = state.sortKey.split('-');
+      const traceKey = parts.slice(1, -1).join('-');
+      if (!visibleTraceMetrics.some(tm => tm.key === traceKey)) {
+        state.sortKey = 'time-desc';
+        sortRuns(runs);
+      }
+    }
 
     // Update header with dynamic metric columns
     updateTableHeader(metricsToShow);
 
+    const _vtmCount = visibleTraceMetrics.length;
+    const _traceColCount = _vtmCount > 0 ? _vtmCount + 1 : 0; // +1 for separator
     if (runs.length === 0) {
-      const colCount = 11 + metricsToShow.length;
+      const colCount = 11 + metricsToShow.length + _traceColCount;
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -1741,8 +1936,8 @@
 
     let lastGroupKey = null;
     let groupCounter = 0;
-    // 11 base columns + dynamic metric columns
-    const colCount = 11 + metricsToShow.length;
+    // 11 base columns + dynamic metric columns + trace metric columns
+    const colCount = 11 + metricsToShow.length + _traceColCount;
     tbody.innerHTML = runs.map((run, idx) => {
       const groupKey = runGroupKeys[idx];
       const isGrouped = groupKey && realGroups[groupKey];
@@ -1818,7 +2013,8 @@
         }
         const mType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(value);
         const metricClass = window.QymMetrics.getMetricColorClass(value, mType);
-        const display = window.QymMetrics.formatMetricValue(value, mType);
+        const peerValues = getRunComboPeerValues(runs, run, candidate => candidate.metric_averages?.[metric]);
+        const display = window.QymMetrics.formatMetricValueSmart(value, mType, peerValues);
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span></td>`;
       }).join('');
 
@@ -1877,10 +2073,17 @@
           <td class="col-version">
             ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
-          ${metricCells}
+          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           <td class="col-latency">
             <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
-          </td>
+          </td>${(() => {
+            if (visibleTraceMetrics.length === 0) return '';
+            const ts = run.trace_stats;
+            return visibleTraceMetrics.map(tm => {
+              const v = ts ? ts[tm.key] : null;
+              return renderTraceMetricTableCell(tm, v);
+            }).join('');
+          })()}
           <td class="col-owner">
             ${run.owner ? `
               <span class="owner-name" title="${run.owner.email}">
@@ -2322,8 +2525,9 @@
 
     empty.style.display = 'none';
 
-    const availableMetrics = getAvailableMetricsForRuns(state.filteredRuns);
-    populateMetricVisibility(availableMetrics);
+    const metricSourceRuns = state.filteredRuns.length > 0 ? state.filteredRuns : state.flatRuns;
+    const availableMetrics = getAvailableMetricsForRuns(metricSourceRuns);
+    populateMetricVisibility(availableMetrics, metricSourceRuns);
 
     const displayTools = el('display-tools');
     const metricVisibilityDropdown = el('metric-visibility-dropdown');
@@ -3328,6 +3532,42 @@
     return base;
   }
 
+  function _cloneRunsData(data) {
+    if (!data) return { tasks: {}, last_updated: '', total_count: 0 };
+    try {
+      return JSON.parse(JSON.stringify(data));
+    } catch {
+      return { tasks: data.tasks || {}, last_updated: data.last_updated || '', total_count: data.total_count || 0 };
+    }
+  }
+
+  function _mergePagedRefreshData(previous, incoming) {
+    if (!incoming) return previous;
+    if (!previous || !previous.tasks) return incoming;
+
+    const merged = _cloneRunsData(previous);
+    const incomingRunIds = new Set();
+
+    for (const models of Object.values(incoming.tasks || {})) {
+      for (const runList of Object.values(models || {})) {
+        for (const run of runList || []) {
+          if (run && run.run_id) incomingRunIds.add(run.run_id);
+        }
+      }
+    }
+
+    for (const models of Object.values(merged.tasks || {})) {
+      for (const modelName of Object.keys(models || {})) {
+        models[modelName] = (models[modelName] || []).filter(run => !incomingRunIds.has(run.run_id));
+      }
+    }
+
+    _mergeTasksData(merged, incoming);
+    merged.last_updated = incoming.last_updated || merged.last_updated;
+    merged.total_count = incoming.total_count || merged.total_count;
+    return merged;
+  }
+
   function _applyRunsData(data) {
     state.runs = data;
     const { runs, metrics, metricTypes } = flattenRuns(data);
@@ -3395,8 +3635,11 @@
         state.currentUser = null;
       }
 
-      // Render first page immediately
-      _applyRunsData(data);
+      // Render first page immediately, but preserve already-loaded off-page runs during live refreshes.
+      const immediateData = totalCount > PAGE_SIZE
+        ? _mergePagedRefreshData(state.runs, data)
+        : data;
+      _applyRunsData(immediateData);
 
       // Adjust refresh cadence based on whether we have active runs.
       try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}

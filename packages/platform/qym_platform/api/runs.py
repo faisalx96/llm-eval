@@ -590,6 +590,7 @@ def legacy_list_runs(
             "git_commit": r.run_config.get("git_commit") if isinstance(r.run_config, dict) else None,
             "owner": owner_info,
             "approval": approval_info,
+            "trace_stats": r.run_metadata.get("trace_stats") if isinstance(r.run_metadata, dict) else None,
         }
 
         task = summary["task_name"]
@@ -724,6 +725,9 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     for corr in corrections:
         correction_by_item.setdefault(corr.item_id, corr)
 
+    # Read pre-computed trace stats from stored metadata
+    run_trace_stats = run.run_metadata.get("trace_stats") if isinstance(run.run_metadata, dict) else None
+
     # Build per-item score/meta for UI
     scores = db.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
     by_item: Dict[str, Dict[str, RunItemScore]] = {}
@@ -820,6 +824,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "review_correction_status": (
                     corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
                 ),
+                "trace_stats": item_metadata.get("trace_stats") if isinstance(item_metadata, dict) else None,
             }
         )
 
@@ -840,6 +845,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "status": run.status,
             "langfuse_host": lf_host,
             "langfuse_project_id": lf_project_id,
+            "trace_stats": run_trace_stats,
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
     })

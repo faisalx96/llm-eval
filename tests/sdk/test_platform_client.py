@@ -15,7 +15,7 @@ class ExamplePayload:
 def test_platform_event_stream_sanitizes_non_json_payloads(monkeypatch):
     sent_chunks = []
 
-    def fake_post_ndjson(url: str, ndjson: str, api_key: str) -> None:
+    def fake_post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) -> None:
         sent_chunks.append((url, ndjson, api_key))
 
     monkeypatch.setattr(client_module, "_post_ndjson", fake_post_ndjson)
@@ -85,7 +85,7 @@ def test_platform_event_stream_sends_late_events_during_shutdown(monkeypatch):
     first_post_started = threading.Event()
     allow_first_post = threading.Event()
 
-    def fake_post_ndjson(url: str, ndjson: str, api_key: str) -> None:
+    def fake_post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) -> None:
         events = [json.loads(line) for line in ndjson.splitlines() if line.strip()]
         sent_events.extend(events)
         if any(evt["type"] == "item_started" for evt in events):
@@ -127,3 +127,33 @@ def test_platform_event_stream_sends_late_events_during_shutdown(monkeypatch):
         time.sleep(0.01)
 
     assert [evt["type"] for evt in sent_events] == ["item_started", "item_completed"]
+
+
+def test_platform_event_stream_close_is_bounded_when_flush_is_stuck(monkeypatch):
+    entered_post = threading.Event()
+    release_post = threading.Event()
+
+    def fake_post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) -> None:
+        entered_post.set()
+        release_post.wait(timeout=1)
+
+    monkeypatch.setattr(client_module, "_post_ndjson", fake_post_ndjson)
+    monkeypatch.setattr(client_module.PlatformEventStream, "CLOSE_JOIN_TIMEOUT", 0.05)
+
+    stream = client_module.PlatformEventStream(
+        platform_url="https://platform.example",
+        api_key="secret-token",
+        run_id="run-123",
+    )
+    try:
+        assert stream._thread.daemon is True
+        stream.emit("item_started", {"item_id": "item-1", "index": 0})
+        assert entered_post.wait(timeout=1)
+
+        start = time.time()
+        stream.close()
+        elapsed = time.time() - start
+
+        assert elapsed < 0.5
+    finally:
+        release_post.set()

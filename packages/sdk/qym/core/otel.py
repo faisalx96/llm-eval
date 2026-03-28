@@ -39,6 +39,10 @@ _last_llm_end_ns: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar
     "_last_llm_end_ns", default=None,
 )
 
+_active_qym_stream: contextvars.ContextVar[Optional[Any]] = contextvars.ContextVar(
+    "_active_qym_stream", default=None,
+)
+
 
 class NullOtelManager:
     """No-op fallback when OTEL is disabled or no instrumentors are available."""
@@ -47,6 +51,12 @@ class NullOtelManager:
     qym_processor = None
 
     def shutdown(self):
+        pass
+
+    def bind_stream(self, stream):
+        return None
+
+    def reset_stream(self, token) -> None:
         pass
 
 
@@ -68,6 +78,13 @@ def _make_qym_span_processor_class():
 
         def set_stream(self, stream):
             self._stream = stream
+
+        def activate_stream(self, stream=None):
+            target = self._stream if stream is None else stream
+            return _active_qym_stream.set(target)
+
+        def reset_stream(self, token) -> None:
+            _active_qym_stream.reset(token)
 
         def on_start(self, span, parent_context=None):
             # Record LLM spans at start time so on_end can detect nested
@@ -98,6 +115,8 @@ def _make_qym_span_processor_class():
 
         def on_end(self, span):
             if not self._stream:
+                return
+            if _active_qym_stream.get(None) is not self._stream:
                 return
             if span.name in self._NOISE_SPAN_NAMES:
                 return
@@ -167,6 +186,16 @@ class OtelManager:
     def __init__(self, tracer, qym_processor: Optional[QymSpanProcessor] = None):
         self._tracer = tracer
         self.qym_processor = qym_processor
+
+    def bind_stream(self, stream):
+        if not self.qym_processor:
+            return None
+        return self.qym_processor.activate_stream(stream)
+
+    def reset_stream(self, token) -> None:
+        if not self.qym_processor or token is None:
+            return
+        self.qym_processor.reset_stream(token)
 
     def shutdown(self):
         try:

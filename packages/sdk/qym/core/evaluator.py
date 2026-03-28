@@ -787,6 +787,7 @@ class Evaluator:
         # Local UIServer has been removed - all live viewing is via the platform
         html_url = None
         self._platform_stream = None
+        otel_stream_token = None
         platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("QYM_API_KEY")
         live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
 
@@ -832,6 +833,7 @@ class Evaluator:
             # Connect QymSpanProcessor to platform stream for local DB capture
             if self._otel.enabled and self._otel.qym_processor:
                 self._otel.qym_processor.set_stream(self._platform_stream)
+                otel_stream_token = self._otel.bind_stream(self._platform_stream)
             # Seed run_started event (platform also has run record already; this is for richer metadata)
             try:
                 self._platform_stream.emit(
@@ -1216,7 +1218,10 @@ class Evaluator:
                 pass
 
         # Flush and shut down OTEL
-        self._otel.shutdown()
+        try:
+            self._otel.shutdown()
+        finally:
+            self._otel.reset_stream(otel_stream_token)
 
         # Finalize remote streaming after all spans have had a chance to emit.
         self._run_completed = False

@@ -73,7 +73,7 @@ def _sanitize_for_json(obj: Any) -> Any:
     return str(obj)
 
 
-def _post_json(url: str, payload: Dict[str, Any], api_key: str) -> Dict[str, Any]:
+def _post_json(url: str, payload: Dict[str, Any], api_key: str, *, timeout: float = 30) -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url,
@@ -84,12 +84,12 @@ def _post_json(url: str, payload: Dict[str, Any], api_key: str) -> Dict[str, Any
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=30) as resp:
+    with request.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8")
         return json.loads(body) if body else {}
 
 
-def _post_ndjson(url: str, ndjson: str, api_key: str) -> None:
+def _post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) -> None:
     data = ndjson.encode("utf-8")
     req = request.Request(
         url,
@@ -100,7 +100,7 @@ def _post_ndjson(url: str, ndjson: str, api_key: str) -> None:
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=30) as resp:
+    with request.urlopen(req, timeout=timeout) as resp:
         resp.read()
 
 
@@ -116,6 +116,10 @@ class PlatformEventStream:
     Minimal, dependency-free implementation using stdlib urllib.
     """
 
+    CLOSE_JOIN_TIMEOUT = 2.0
+    SYNC_SEND_TIMEOUT = 2.0
+    SYNC_SEND_RETRIES = 1
+
     def __init__(self, platform_url: str, api_key: str, run_id: str) -> None:
         self.platform_url = platform_url.rstrip("/")
         self.api_key = api_key
@@ -127,8 +131,8 @@ class PlatformEventStream:
         self._stop = threading.Event()
         self._closing = False
         self._closed = False
-        # Non-daemon thread ensures events are flushed before program exits
-        self._thread = threading.Thread(target=self._loop, name="qym-platform-stream", daemon=False)
+        # Daemonize so a stuck flush cannot pin the CLI after the run has finished.
+        self._thread = threading.Thread(target=self._loop, name="qym-platform-stream", daemon=True)
         self._thread.start()
 
     def next_sequence(self) -> int:
@@ -139,15 +143,25 @@ class PlatformEventStream:
     def _send_event_sync(self, evt: Dict[str, Any], *, reason: str) -> None:
         ndjson = json.dumps(evt, ensure_ascii=False) + "\n"
         _debug(f"direct emit ({reason}): {evt.get('type', '?')}")
-        for attempt in range(3):
+        for attempt in range(self.SYNC_SEND_RETRIES):
             try:
-                _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
+                _post_ndjson(
+                    f"{self.platform_url}/v1/runs/{self.run_id}/events",
+                    ndjson,
+                    self.api_key,
+                    timeout=self.SYNC_SEND_TIMEOUT,
+                )
                 _debug(f"direct emit success: {evt.get('type', '?')}")
                 return
             except Exception as e:
-                _debug(f"direct emit error (attempt {attempt + 1}/3): {e}")
-                time.sleep(0.5)
-        _debug(f"direct emit FAILED after 3 attempts: {evt.get('type', '?')}")
+                _debug(
+                    f"direct emit error (attempt {attempt + 1}/{self.SYNC_SEND_RETRIES}): {e}"
+                )
+                if attempt + 1 < self.SYNC_SEND_RETRIES:
+                    time.sleep(0.5)
+        _debug(
+            f"direct emit FAILED after {self.SYNC_SEND_RETRIES} attempt(s): {evt.get('type', '?')}"
+        )
 
     def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
         evt = {
@@ -179,10 +193,12 @@ class PlatformEventStream:
         _debug(f"close() called, queue size={qsize}, seq={self._seq}")
         self._stop.set()
         try:
-            # Wait up to 30 seconds for all events to be flushed
-            self._thread.join(timeout=30)
+            # Bound shutdown so the CLI does not appear stuck after the run is done.
+            self._thread.join(timeout=self.CLOSE_JOIN_TIMEOUT)
             if self._thread.is_alive():
-                _debug("WARNING: flush thread still alive after 30s timeout")
+                _debug(
+                    f"WARNING: flush thread still alive after {self.CLOSE_JOIN_TIMEOUT}s timeout"
+                )
             else:
                 _debug("flush thread joined successfully")
         except Exception as e:

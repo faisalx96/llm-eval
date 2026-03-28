@@ -322,6 +322,7 @@
       border-radius: 100px;
       font-size: var(--font-xs);
       font-weight: 500;
+      font-family: var(--font-sans);
       cursor: pointer;
       transition: all 0.15s;
       border: 1px solid var(--border-subtle);
@@ -336,13 +337,18 @@
     .category-chip.selected {
       background: var(--accent-primary);
       border-color: var(--accent-primary);
-      color: #fff;
-      font-weight: 600;
+      color: var(--bg-void);
+      font-weight: 500;
+    }
+    .category-chip.selected,
+    .category-chip.selected .chip-count {
+      color: var(--bg-void) !important;
     }
     .category-chip .chip-count {
       font-size: 10px;
       opacity: 0.7;
-      font-family: var(--font-mono);
+      font-family: var(--font-sans);
+      font-weight: 500;
     }
     .category-chip.selected .chip-count {
       opacity: 0.85;
@@ -809,7 +815,18 @@
 
     .fp-group .filter-select {
       min-width: unset;
-      max-width: unset;
+      max-width: 180px;
+    }
+
+    #run-winner-filter {
+      width: 100%;
+      max-width: none;
+    }
+
+    .fp-group.fp-winner-group {
+      flex: 0 1 240px;
+      min-width: 180px;
+      max-width: 260px;
     }
 
     .fp-pass-rate-row {
@@ -913,7 +930,7 @@
 
     /* Push actions to the right */
     .fp-actions-spacer {
-      flex: 1 1 0;
+      display: none;
     }
 
     .fp-actions {
@@ -921,7 +938,55 @@
       align-items: center;
       gap: 6px;
       flex-shrink: 0;
-      align-self: flex-end;
+      margin-left: auto;
+    }
+
+    @media (min-width: 1500px) {
+      .fp-filter-row {
+        display: grid;
+        grid-template-columns: 210px 170px 240px 190px 120px 180px 140px auto auto auto;
+        align-items: end;
+        column-gap: var(--space-sm);
+        row-gap: var(--space-sm);
+      }
+      .fp-group,
+      .fp-gear-wrapper,
+      .fp-actions {
+        min-width: 0;
+      }
+      .fp-group .filter-select,
+      .fp-group .multi-select-btn {
+        width: 100%;
+        max-width: none;
+      }
+      .fp-group.fp-winner-group {
+        flex: initial;
+        min-width: 0;
+        max-width: none;
+      }
+      .fp-pass-rate-group {
+        min-width: 0;
+      }
+      .fp-pass-rate-row {
+        min-width: 0;
+      }
+      .fp-pass-rate-row .filter-select {
+        width: 72px;
+        flex: 0 0 72px;
+      }
+      .fp-pass-rate-input {
+        width: 48px;
+        flex: 0 0 48px;
+      }
+      .fp-pass-rate-suffix {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .fp-actions {
+        margin-left: 0;
+        justify-self: end;
+        align-self: end;
+      }
     }
 
     .fp-btn {
@@ -1173,12 +1238,10 @@
 
     .item-run-output {
       border-left: 3px solid var(--border-default);
-      padding-left: var(--space-sm);
       background: var(--bg-elevated);
       border-radius: 0 4px 4px 0;
       padding: var(--space-sm);
     }
-
     .item-run-output .output-header {
       display: flex;
       justify-content: space-between;
@@ -1195,56 +1258,101 @@
       align-items: center;
       gap: 4px;
     }
-
-    .item-run-output .output-badges {
+    .item-run-output .output-status-cluster {
       display: flex;
-      gap: 4px;
       align-items: center;
+      gap: 10px;
     }
-
-    .item-run-output .metric-badge,
-    .item-run-output .latency-badge {
+    .item-run-output .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .item-run-output .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .item-run-output .status-dot.fail {
+      background: var(--error);
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+    }
+    .item-run-output .status-dot.pass {
+      background: var(--success);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.35);
+    }
+    .item-run-output .status-label {
+      font-size: var(--font-xs);
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .item-run-output .status-label.fail { color: var(--error); }
+    .item-run-output .status-label.pass { color: var(--success); }
+    .item-run-output .toolbar-sep {
+      color: var(--border-default);
+      font-size: 10px;
+      user-select: none;
+      line-height: 1;
+    }
+    .item-run-output .toolbar-duration {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .item-run-output .toolbar-duration svg {
+      width: 12px;
+      height: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .item-run-output .toolbar-duration span {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
-      padding: 2px 6px;
-      border-radius: 3px;
-      background: var(--bg-surface);
+      color: var(--text-secondary);
     }
-
-    .item-run-output .metric-badge.score-5 { background: var(--success-dim); color: var(--score-5); }
-    .item-run-output .metric-badge.score-4 { background: rgba(132, 204, 22, 0.15); color: var(--score-4); }
-    .item-run-output .metric-badge.score-3 { background: rgba(234, 179, 8, 0.15); color: var(--score-3); }
-    .item-run-output .metric-badge.score-2 { background: rgba(249, 115, 22, 0.15); color: var(--score-2); }
-    .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
-
-    .item-run-output .latency-badge {
-      color: var(--text-muted);
-    }
-
-    .item-run-output .start-badge {
+    .item-run-output .toolbar-time {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
-      padding: 2px 6px;
-      border-radius: 3px;
-      background: var(--bg-surface);
       color: var(--text-muted);
+      cursor: default;
     }
-
-    .item-run-output .trace-link {
+    .item-run-output .output-actions {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .item-run-output .action-chip {
       display: inline-flex;
       align-items: center;
-      padding: 1px 5px;
-      background: rgba(225, 29, 72, 0.15);
-      color: #e11d48;
-      border-radius: 3px;
-      font-size: 10px;
+      gap: 5px;
+      height: 24px;
+      padding: 0 8px;
+      border: none;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 11px;
       font-weight: 500;
+      letter-spacing: 0.01em;
+      cursor: pointer;
       text-decoration: none;
-      transition: background 0.15s;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
     }
-
-    .item-run-output .trace-link:hover {
-      background: rgba(225, 29, 72, 0.25);
+    .item-run-output .action-chip:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .item-run-output .action-chip svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+    .item-run-output .action-chip:hover svg {
+      opacity: 1;
     }
 
     .item-run-output .output-text {
@@ -1256,6 +1364,26 @@
       word-break: break-word;
       max-height: 150px;
       overflow-y: auto;
+    }
+    .compare-run-caption {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .compare-run-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .compare-run-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .metric-edit-block {
@@ -1710,11 +1838,12 @@
     }
 
     .metric-score-row {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: flex-start;
-      gap: 8px;
-      padding: 2px 0;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
     }
     .metric-score-meta {
       display: inline-flex;
@@ -1752,15 +1881,11 @@
 
     .metric-score-row.highlighted {
       background: var(--bg-hover);
-      margin: 0 -4px;
-      padding: 2px 4px;
-      border-radius: 3px;
     }
 
     .metric-score-name {
       font-size: var(--font-xs);
       color: var(--text-muted);
-      min-width: 80px;
     }
 
     .metric-score-value {
@@ -1770,6 +1895,9 @@
     }
 
     .metric-scores-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
       margin-top: var(--space-sm);
       padding-top: var(--space-sm);
       border-top: 1px solid var(--border-subtle);
@@ -2851,11 +2979,6 @@
 
       <div id="root-cause-section"></div>
 
-      <div id="error-analysis-section" style="display:none;">
-        <h3 class="section-title">Error Analysis</h3>
-        <div class="stats-row-flex" id="error-analysis-container"></div>
-      </div>
-
       <!-- Side-by-side items -->
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Comparison</h3>
@@ -2880,7 +3003,7 @@
                 <option value="unique_solve">Uniquely Solved (1 run)</option>
               </select>
             </div>
-            <div class="fp-group">
+            <div class="fp-group fp-winner-group">
               <span class="fp-label">Winner</span>
               <select id="run-winner-filter" class="filter-select">
                 <option value="any">Any Winner</option>
@@ -3080,6 +3203,7 @@
         compareAlignmentStatus: 'aligned',
         compareAlignmentIssues: [],
         compareItemIds: [],
+        hasRenderedItems: false,
       };
 
       const el = (id) => document.getElementById(id);
@@ -3411,7 +3535,7 @@
             const md = row.item_metadata || {};
             if (typeof md === 'object') {
               for (const k of Object.keys(md)) {
-                if (k !== 'task_started_at_ms') metaKeySet.add(k);
+                if (k !== 'task_started_at_ms' && k !== 'trace_stats') metaKeySet.add(k);
               }
               if (md.complexity != null && md.complexity !== '') complexitySet.add(String(md.complexity));
               if (md.domain != null && md.domain !== '') {
@@ -3439,7 +3563,7 @@
         }
 
         // Auto-select categories for breakdown chips
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30;
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -3627,7 +3751,7 @@
         }
       }
 
-      function calculateComparisonStatsForMetric(metricName) {
+      function calculateComparisonStatsForMetric(metricName, itemIdListOverride = null) {
         const stats = {
           wins: new Array(state.runs.length).fill(0),
           ties: 0,
@@ -3656,7 +3780,7 @@
           itemWinners: [], // For each item, which run won
         };
 
-        const itemIdList = state.compareItemIds || [];
+        const itemIdList = Array.isArray(itemIdListOverride) ? itemIdListOverride : (state.compareItemIds || []);
 
         // Create a map from item_id to array index for itemWinners tracking
         state.itemIdToIndex = {};
@@ -3938,7 +4062,6 @@
         renderSummaries();
         renderComparisonStats();
         renderRootCauseSection();
-        renderErrorAnalysis();
         renderMetricsTable();
         renderItems();
         // Auto-open trace if ?trace=itemId is in the URL
@@ -4443,7 +4566,9 @@
             renderItems(true);
           });
         });
+
       }
+
 
       function renderSummaries() {
         const container = el('run-summaries');
@@ -4570,12 +4695,15 @@
         // Render rows - metrics first, then latency
         const metricRows = state.allMetrics.map(metric => {
           const mType = state.metricTypes?.[metric] || 'score';
+          const peerValues = runMetricAvgs
+            .map(avgs => avgs[metric])
+            .filter(val => val !== null && val !== undefined && !isNaN(val));
           const cells = runMetricAvgs.map(avgs => {
             const val = avgs[metric];
             if (val === null) return '<td class="metric-val">—</td>';
             const isBest = val === bestValues[metric] && state.runs.length > 1;
             const cls = window.QymMetrics.getMetricColorClass(val, mType);
-            const display = window.QymMetrics.formatMetricValue(val, mType);
+            const display = window.QymMetrics.formatMetricValueSmart(val, mType, peerValues);
             return `<td class="metric-val ${cls} ${isBest ? 'best' : ''}">${display}</td>`;
           }).join('');
 
@@ -4596,56 +4724,37 @@
 
         const latencyRow = `
           <tr>
-            <td class="metric-name">Avg Latency</td>
+            <td class="metric-name">⚡ Avg Latency</td>
             ${latencyCells}
           </tr>
         `;
 
-        tbody.innerHTML = metricRows + latencyRow;
-      }
-
-      function renderErrorAnalysis() {
-        const section = el('error-analysis-section');
-        const container = el('error-analysis-container');
-        if (!section || !container) return;
-
-        let totalErrors = 0;
-        let totalItems = 0;
-
-        const perRunErrors = state.runs.map((run, idx) => {
-          const rows = run.snapshot?.rows || [];
-          const stats = run.snapshot?.stats || {};
-          const total = stats.total || rows.length;
-          const failed = stats.failed || 0;
-          totalErrors += failed;
-          totalItems += total;
-
-          let timeout = 0, runtime = 0, unknown = 0;
-          for (const row of rows) {
-            if (window.QymMetrics.isErrorRow(row)) {
-              const output = (row.output_full || row.output || '').toLowerCase();
-              if (output.includes('timeout')) timeout++;
-              else if (output.includes('error')) runtime++;
-              else unknown++;
-            }
+        // ⚡ Trace stats rows
+        const hasAnyTrace = state.runs.some(r => r.run?.trace_stats?.has_spans);
+        let traceRows = '';
+        if (hasAnyTrace) {
+          const traceDefs = [
+            { key: 'avg_tokens',     label: '\u26A1 Avg Tokens', fmt: v => v != null ? Math.round(v).toLocaleString() : '\u2014', best: 'low' },
+            { key: 'avg_llm_calls',  label: '\u26A1 LLM Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
+            { key: 'avg_tool_calls', label: '\u26A1 Tool Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
+            { key: 'tool_success_rate', label: '\u26A1 Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '\u2014', best: 'high' },
+          ];
+          for (const td of traceDefs) {
+            const vals = state.runs.map(r => {
+              const ts = r.run?.trace_stats;
+              return ts ? ts[td.key] : null;
+            });
+            const validVals = vals.filter(v => v != null && v >= 0);
+            const bestVal = validVals.length > 0 ? (td.best === 'high' ? Math.max(...validVals) : Math.min(...validVals)) : null;
+            const cells = vals.map(v => {
+              const isBest = v != null && bestVal != null && v === bestVal && validVals.length > 1;
+              return '<td class="metric-val' + (isBest ? ' best' : '') + '">' + td.fmt(v) + '</td>';
+            }).join('');
+            traceRows += '<tr class="trace-metric-row"><td class="metric-name">' + td.label + '</td>' + cells + '</tr>';
           }
-          return { name: run.run?.run_name || ('Run ' + (idx + 1)), failed, total, timeout, runtime, unknown };
-        });
-
-        if (totalErrors === 0) { section.style.display = 'none'; return; }
-        section.style.display = '';
-
-        const pct = totalItems > 0 ? ((totalErrors / totalItems) * 100).toFixed(1) : '0.0';
-
-        let html = '<div class="stats-row-flex">' +
-          '<div class="stat-box"><div class="stat-title">Total Errors (all runs)</div><div class="stat-main score-1">' + totalErrors + '</div><div class="stat-detail">' + pct + '% error rate</div></div>';
-        for (const r of perRunErrors) {
-          if (r.failed === 0) continue;
-          const rPct = r.total > 0 ? ((r.failed / r.total) * 100).toFixed(1) : '0.0';
-          html += '<div class="stat-box"><div class="stat-title">' + escapeHtml(r.name) + '</div><div class="stat-main score-1">' + r.failed + ' / ' + r.total + '</div><div class="stat-detail">' + rPct + '% | T:' + r.timeout + ' R:' + r.runtime + ' U:' + r.unknown + '</div></div>';
         }
-        html += '</div>';
-        container.innerHTML = html;
+
+        tbody.innerHTML = metricRows + latencyRow + traceRows;
       }
 
       // ── Sankey Diagram ──
@@ -5262,7 +5371,8 @@
       }
 
       function renderItems(scrollToTop = false) {
-        const anchorTop = scrollToTop ? null : getItemsGridTop();
+        const preserveAnchor = state.hasRenderedItems && !scrollToTop;
+        const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category and Root Cause Analysis in sync with filters
         renderMetadataBreakdown();
         renderRootCauseSection();
@@ -5327,8 +5437,13 @@
               perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
               return `
                 <div class="item-run-output" style="border-left-color: ${color}">
+                  <div class="compare-run-caption">
+                    <span class="compare-run-dot" style="background:${color}"></span>
+                    <span class="compare-run-name">${escapeHtml(runInfo.run_name || ('Run ' + (runIdx + 1)))}</span>
+                  </div>
                   <div class="output-header">
-                    <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)}</span>
+                    <span class="output-status-cluster"><span class="run-label">OUTPUT</span></span>
+                    <span class="output-actions"></span>
                   </div>
                   <div class="output-text" style="color:var(--text-muted);font-style:italic;">No data</div>
                 </div>
@@ -5340,6 +5455,7 @@
             const latencyMs = row.latency_ms;
             const taskStartedAtMs = row.task_started_at_ms;
             const traceId = row.trace_id;
+            const runItemId = row.item_id || itemId;
             // Use direct trace_url if available, otherwise build from trace_id (global or per-run config)
             const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId) || buildLangfuseTraceUrlFromRun(traceId, runInfo);
 
@@ -5408,21 +5524,17 @@
               }).join('');
             }
 
-            // Latency badge
-            const latencyBadge = latencyMs ? `<span class="latency-badge">${formatLatency(latencyMs)}</span>` : '';
-
-            // Task start badge (local time)
             const startInfo = formatTaskStart(taskStartedAtMs);
-            const startBadge = startInfo
-              ? `<span class="start-badge" title="${escapeAttr(startInfo.ts)}">${escapeHtml(startInfo.ts)}</span>`
-              : '';
+            const clockIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
+            const durationPart = latencyMs ? '<span class="toolbar-sep">·</span><span class="toolbar-duration">' + clockIcon + '<span>' + formatLatency(latencyMs) + '</span></span>' : '';
+            const timePart = startInfo ? '<span class="toolbar-sep">·</span><span class="toolbar-time" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
 
-            // Langfuse trace link
-            const traceLink = traceUrl ? `<a href="${traceUrl}" target="_blank" class="trace-link" title="View trace in Langfuse">Langfuse ↗</a>` : '';
-            const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(runFilePath) + '/items/' + encodeURIComponent(itemId) + '/trace');
+            const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(runFilePath) + '/items/' + encodeURIComponent(runItemId) + '/trace');
             const traceButton = !IS_COMPARE_EXPORT
-              ? `<button type="button" class="trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + itemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="13" cy="8" r="1.5" fill="currentColor" opacity=".5"/><circle cx="14" cy="12" r="1.5" fill="currentColor" opacity=".5"/></svg>Trace</button>`
+              ? `<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
               : '';
+            const copyBtn = `<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
+            const langfuseChip = traceUrl ? `<a class="action-chip" href="${escapeAttr(traceUrl)}" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>` : '';
 
             // Build metric details for this run (collected, rendered after toggle)
             const hasMetricMeta = Object.keys(metricMeta).length > 0;
@@ -5455,11 +5567,11 @@
 
             const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
 
-            // Pass/fail badge based on selected metric threshold (skip for numeric metrics)
-            let passfailBadge = '';
+            // Pass/fail indicator based on selected metric threshold (skip for numeric metrics)
             const pfIsNumeric = state.metricTypes?.[selectedMetric] === 'numeric';
+            let pfClass = '';
             if (status === 'error') {
-              passfailBadge = '<span class="passfail-badge fail">Fail</span>';
+              pfClass = 'fail';
             } else if (selectedMetric && !pfIsNumeric) {
               const mIdx = metricNames.indexOf(selectedMetric);
               if (mIdx !== -1) {
@@ -5468,16 +5580,17 @@
                 if (pfVal !== null) {
                   const pfBoolean = state.metricIsBoolean[selectedMetric];
                   const pfThreshold = pfBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
-                  passfailBadge = pfVal >= pfThreshold
-                    ? '<span class="passfail-badge pass">Pass</span>'
-                    : '<span class="passfail-badge fail">Fail</span>';
+                  pfClass = pfVal >= pfThreshold ? 'pass' : 'fail';
                 }
               }
             }
+            const statusIndicator = pfClass
+              ? `<div class="status-indicator"><div class="status-dot ${pfClass}"></div><span class="status-label ${pfClass}">${pfClass === 'pass' ? 'Pass' : 'Fail'}</span></div>`
+              : '';
 
             // Root cause + Solution badges + feedback (only for failed items)
             let rootCauseHtml = '';
-            const itemPassed = passfailBadge.includes('badge pass"');
+            const itemPassed = pfClass === 'pass';
             const rowRc = row.item_metadata?.root_cause || '';
             const rowRcDetail = row.item_metadata?.root_cause_detail || '';
             const rowRcNote = row.item_metadata?.root_cause_note || '';
@@ -5553,12 +5666,18 @@
 
             return `
               <div class="item-run-output" style="border-left-color: ${color}">
-                <div class="output-header">
-                  <span class="run-label"><span style="display:inline-block;width:8px;height:8px;background:${color};border-radius:2px;"></span> ${runInfo.run_name || 'Run ' + (runIdx + 1)} ${winnerBadge}</span>
-                  <span class="output-badges">${passfailBadge}<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>${traceButton}${startBadge}${latencyBadge}${traceLink}</span>
+                <div class="compare-run-caption">
+                  <span class="compare-run-dot" style="background:${color}"></span>
+                  <span class="compare-run-name">${escapeHtml(runInfo.run_name || ('Run ' + (runIdx + 1)))}</span>
+                  ${winnerBadge}
                 </div>
-                <div class="output-text ${status === 'error' ? 'low' : ''}">${renderMarkdownSafe(output)}</div>
+                <div class="output-header">
+                  <span class="output-status-cluster"><span class="run-label">OUTPUT</span>${statusIndicator}${durationPart}${timePart}</span>
+                  <span class="output-actions">${copyBtn}${traceButton}${langfuseChip}</span>
+                </div>
+                <div class="output-text ${status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
+                ${_renderTraceChips(row.trace_stats)}
                 ${metricEditHtml}
                 ${rootCauseHtml}
               </div>
@@ -5604,7 +5723,7 @@
 
               // Build generic tags (everything except special keys and internal keys)
               const genericEntries = Object.entries(md).filter(([k]) =>
-                k !== 'task_started_at_ms' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false
+                k !== 'task_started_at_ms' && k !== 'trace_stats' && !SPECIAL_KEYS.includes(k) && state.visibleMetadataFields[k] !== false
               );
               let genericHtml = '';
               if (genericEntries.length > 0) {
@@ -5670,6 +5789,8 @@
           requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
         }
 
+        state.hasRenderedItems = true;
+
         wireMetricEditHandlers();
         wireRootCauseHandlers();
         wireSolutionHandlers();
@@ -5719,6 +5840,23 @@
         var rtlChars = (text.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/g) || []).length;
         var latinChars = (text.match(/[A-Za-z]/g) || []).length;
         return rtlChars > latinChars;
+      }
+
+      function _fmtTraceNum(v) {
+        if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+        if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
+        return String(v);
+      }
+      function _renderTraceChips(ts) {
+        if (!ts) return '';
+        var chips = [];
+        if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
+        if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
+        if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
+        if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
+        if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (chips.length === 0) return '';
+        return '<div class="trace-chips-row">' + chips.join('') + '</div>';
       }
 
       function renderMarkdownSafe(value) {
@@ -7155,7 +7293,7 @@
         }
 
         const coreCols = [
-          { key: 'item_id', label: 'Item ID', checked: true },
+          { key: 'item_id', label: 'Aligned Item ID', checked: true },
           { key: 'input', label: inputKeys.size > 0 ? 'Input (raw)' : 'Input', checked: inputKeys.size === 0 },
           { key: 'expected', label: expectedKeys.size > 0 ? 'Expected Output (raw)' : 'Expected Output', checked: expectedKeys.size === 0 },
         ];
@@ -7296,7 +7434,7 @@
       function getCompareExportCellValue(itemId, rowData, colKey) {
         const inputRow = rowData.find(r => r);
 
-        if (colKey === 'item_id') return inputRow?.item_id || itemId;
+        if (colKey === 'item_id') return itemId;
         if (colKey === 'input') return stringify(inputRow?.input_full || inputRow?.input || '');
         if (colKey === 'expected') return stringify(inputRow?.expected_full || inputRow?.expected || '');
 

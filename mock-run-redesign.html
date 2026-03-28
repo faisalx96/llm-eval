@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run View Redesign Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-void: #101018;
+  --bg-base: #14141e;
+  --bg-surface: #1a1a28;
+  --bg-elevated: #222232;
+  --bg-hover: #2a2a3c;
+  --bg-active: #323244;
+  --text-primary: #ededf0;
+  --text-secondary: #a8a8ba;
+  --text-muted: #7a7a90;
+  --text-dim: #50505e;
+  --accent-primary: #00d4aa;
+  --accent-secondary: #00a8ff;
+  --accent-tertiary: #a855f7;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --score-1: #ef4444;
+  --score-2: #f97316;
+  --score-3: #eab308;
+  --score-4: #84cc16;
+  --score-5: #10b981;
+  --border-subtle: #252536;
+  --border-default: #333348;
+  --border-strong: #4a4a60;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 32px;
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-base: 14px;
+  --font-md: 15px;
+  --font-lg: 17px;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  background: var(--bg-void);
+  color: var(--text-primary);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow-y: auto;
+}
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg);
+}
+
+/* ── Run Header Bar ── */
+.run-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-lg);
+}
+.run-title {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+}
+.run-subtitle {
+  font-size: var(--font-sm);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.export-html-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--accent-primary);
+  color: var(--bg-void);
+  border: none;
+  border-radius: 6px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.export-html-btn:hover {
+  background: #00e8bb;
+  transform: translateY(-1px);
+}
+
+/* ── Hero Summary Card — Glassmorphism ── */
+.run-summary { margin-bottom: var(--space-xl); }
+
+.run-summary-card {
+  position: relative;
+  background: rgba(26, 26, 40, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.run-summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--accent-primary) 0%,
+    var(--accent-secondary) 45%,
+    var(--accent-tertiary) 75%,
+    transparent 100%);
+  z-index: 1;
+}
+
+.hero-top {
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-lg);
+}
+.hero-identity { flex: 1; min-width: 0; }
+.hero-run-name {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+  line-height: 1.35;
+  letter-spacing: -0.5px;
+}
+.hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: 10px;
+}
+.tag {
+  font-size: var(--font-xs);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.tag.task {
+  background: rgba(0, 212, 170, 0.08);
+  color: var(--accent-primary);
+  border: 1px solid rgba(0, 212, 170, 0.15);
+}
+
+.summary-pill {
+  font-size: var(--font-xs);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  background: rgba(34, 34, 50, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.summary-pill.pill-success {
+  color: var(--score-5);
+  border-color: rgba(16, 185, 129, 0.2);
+  background: rgba(16, 185, 129, 0.06);
+}
+.summary-pill.pill-error {
+  color: var(--score-1);
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+/* Hero status pill */
+.hero-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 16px;
+  border-radius: 100px;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+.hero-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+.hero-status.completed {
+  background: rgba(168, 85, 247, 0.1);
+  color: #c084fc;
+  border-color: rgba(168, 85, 247, 0.25);
+}
+.hero-status.completed .hero-status-dot {
+  background: #a855f7;
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.6);
+}
+
+/* Config strip */
+.hero-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 1px;
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.config-cell {
+  background: rgba(26, 26, 40, 0.4);
+  padding: 10px var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.15s;
+}
+.config-cell:hover { background: var(--bg-elevated); }
+.config-cell-dot {
+  width: 6px; height: 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.config-cell-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.config-cell-key {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 500;
+  line-height: 1;
+}
+.config-cell-val {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+/* ── Overview Section ── */
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-lg);
+  gap: var(--space-md);
+}
+.section-title {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0;
+}
+.overview-header-hint {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+  margin-top: 3px;
+  letter-spacing: 0.2px;
+}
+
+/* ── Metric Cards Grid ── */
+.metric-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.metric-card {
+  position: relative;
+  background: rgba(26, 26, 40, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  overflow: visible;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+  animation: card-enter 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Health tint overlay */
+.metric-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.04;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--card-tint, transparent);
+}
+/* Clip content that shouldn't overflow, but let gauge glow bleed */
+.metric-card-header,
+.metric-bool-bar,
+.dist-chart,
+.trace-stats-grid,
+.latency-hero,
+.latency-stat-pills {
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.metric-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  transform: translateY(-2px);
+}
+
+.metric-card > * { position: relative; z-index: 1; }
+/* Header stays at top; the chart/body area fills remaining space and centers */
+.metric-card > *:last-child:not(.metric-card-header) {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.metric-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+.metric-card-gauge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+.metric-card-info { min-width: 0; }
+
+.metric-card-value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+.metric-card-value.score-5 { color: var(--score-5); }
+.metric-card-value.score-4 { color: var(--score-4); }
+.metric-card-value.score-3 { color: var(--score-3); }
+.metric-card-value.score-2 { color: var(--score-2); }
+.metric-card-value.score-1 { color: var(--score-1); }
+
+.metric-card-name {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  letter-spacing: 0.2px;
+}
+.metric-card-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: rgba(34, 34, 50, 0.6);
+  padding: 3px 10px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+/* ── SVG Gauge Ring ── */
+.gauge-ring {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  position: relative;
+  transition: transform 0.25s;
+}
+.metric-card:hover .gauge-ring { transform: scale(1.08); }
+
+.gauge-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.gauge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 6;
+}
+.gauge-fill {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: butt;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Boolean pass/fail bar ── */
+.metric-bool-bar {
+  padding: 0;
+}
+.metric-bool-track {
+  display: flex;
+  height: 20px;
+  border-radius: 100px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+.metric-bool-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: flex 0.3s ease, opacity 0.15s ease;
+}
+.metric-bool-seg:hover { opacity: 0.85; }
+.metric-bool-seg.pass-seg { background: var(--success); color: #fff; }
+.metric-bool-seg.fail-seg { background: var(--error); color: #fff; }
+.metric-bool-legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.metric-bool-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.metric-bool-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.metric-bool-dot.pass { background: var(--success); }
+.metric-bool-dot.fail { background: var(--error); }
+
+/* ── Distribution Chart ── */
+.dist-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 8px 4px 0;
+  min-height: 80px;
+}
+.dist-chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 2px 0;
+}
+.dist-chart-col:hover {
+  background: none;
+}
+.dist-chart-col .bar-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
+  transition: color 0.15s;
+}
+.dist-chart-col:hover .bar-count {
+  color: var(--text-primary);
+}
+.dist-chart-col .bar-fill {
+  width: 80%;
+  border-radius: 3px;
+  position: relative;
+  min-width: 0;
+  transition: width 0.15s ease, opacity 0.15s ease;
+}
+.dist-chart-col:hover .bar-fill {
+  width: 90%;
+}
+.dist-chart-col .bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 50%);
+  pointer-events: none;
+}
+.dist-chart-col .bar-label {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1;
+  margin-top: 1px;
+  transition: color 0.15s;
+}
+.dist-chart-col:hover .bar-label {
+  color: var(--text-secondary);
+}
+
+/* ── Latency Card — Redesigned ── */
+.latency-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+.latency-p50-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.latency-p50-val {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent-secondary);
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.latency-p50-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+/* Percentile ruler/track — clean version */
+.latency-ruler {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.latency-ruler-track {
+  position: relative;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 100px;
+  margin: 10px 24px 28px 4px;
+}
+.latency-ruler-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  border-radius: 100px;
+  background: linear-gradient(90deg, var(--accent-secondary), #60b8ff);
+  opacity: 0.25;
+}
+.latency-ruler-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+}
+.latency-ruler-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-secondary);
+  border: 2px solid rgba(26, 26, 40, 0.9);
+  box-shadow: 0 0 6px rgba(0, 168, 255, 0.4);
+}
+.latency-ruler-dot.warn {
+  background: var(--warning);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
+}
+.latency-ruler-dot.danger {
+  background: var(--error);
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.3);
+}
+.latency-ruler-dot.muted {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  box-shadow: none;
+  border: none;
+}
+/* Label sits below each dot */
+.latency-ruler-label-below {
+  position: absolute;
+  top: 14px;
+  white-space: nowrap;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.latency-ruler-label-below b {
+  display: block;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Latency stat pills row */
+.latency-stat-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.latency-stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 168, 255, 0.05);
+  border: 1px solid rgba(0, 168, 255, 0.08);
+}
+.latency-stat-pill-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.latency-stat-pill-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-secondary);
+}
+
+/* ── Trace Stats Card — Redesigned ── */
+.trace-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.trace-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(100, 120, 160, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background 0.15s, border-color 0.15s;
+}
+.trace-stat-item:hover {
+  background: rgba(100, 120, 160, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.trace-stat-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trace-stat-icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.trace-stat-icon.tokens { background: rgba(0, 212, 170, 0.1); color: var(--accent-primary); }
+.trace-stat-icon.cost   { background: rgba(168, 85, 247, 0.1); color: var(--accent-tertiary); }
+.trace-stat-icon.llm    { background: rgba(0, 168, 255, 0.1); color: var(--accent-secondary); }
+.trace-stat-icon.tool   { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.trace-stat-icon.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.trace-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.trace-stat-val {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+.trace-stat-val.accent-teal { color: var(--accent-primary); }
+.trace-stat-val.accent-purple { color: var(--accent-tertiary); }
+.trace-stat-val.accent-blue { color: var(--accent-secondary); }
+.trace-stat-val.accent-amber { color: var(--warning); }
+
+
+/* ── Numeric stats ── */
+.metric-numeric-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.metric-num-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+.metric-num-stat:last-child { border-right: none; }
+.metric-num-stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.metric-num-stat-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.metric-num-stat-value.total-val { color: var(--accent-primary); }
+
+/* ── Side-by-side comparison ── */
+.comparison-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xl);
+  margin-top: var(--space-xl);
+}
+.comparison-wrapper > div {
+  border: 1px dashed var(--border-default);
+  border-radius: 12px;
+  padding: var(--space-lg);
+}
+.comparison-label {
+  text-align: center;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- RUN HEADER BAR -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="run-header-bar">
+    <div>
+      <div class="run-title">Run Detail</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:var(--space-sm);">
+      <button class="export-html-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        Share
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- HERO SUMMARY CARD -->
+  <!-- ═══════════════════════════════════════ -->
+  <div class="run-summary">
+    <div class="run-summary-card">
+      <div class="hero-top">
+        <div class="hero-identity">
+          <div class="hero-run-name">bird-minidev_minimax-m2.7-260327-1559</div>
+          <div class="hero-tags">
+            <span class="tag task">bird_minidev_100.csv</span>
+            <span class="summary-pill">100 items</span>
+            <span class="summary-pill pill-success">97.0% success</span>
+            <span class="summary-pill pill-error">3 errors</span>
+          </div>
+        </div>
+        <div class="hero-status completed"><span class="hero-status-dot"></span>COMPLETED</div>
+      </div>
+      <div class="hero-config">
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--accent-primary);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">MAX_CONCURRENCY</span>
+            <span class="config-cell-val">10</span>
+          </div>
+        </div>
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--accent-secondary);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">TIMEOUT</span>
+            <span class="config-cell-val">150</span>
+          </div>
+        </div>
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--accent-tertiary);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">TASK_NAME</span>
+            <span class="config-cell-val">sql_agent_task</span>
+          </div>
+        </div>
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--warning);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">RUN_CONFIG_ID</span>
+            <span class="config-cell-val">bf066144fe55917e</span>
+          </div>
+        </div>
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--score-4);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">GIT_BRANCH</span>
+            <span class="config-cell-val">main</span>
+          </div>
+        </div>
+        <div class="config-cell">
+          <div class="config-cell-dot" style="background:var(--text-muted);"></div>
+          <div class="config-cell-text">
+            <span class="config-cell-key">GIT_COMMIT</span>
+            <span class="config-cell-val">5048a4e</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ -->
+  <!-- OVERVIEW SECTION -->
+  <!-- ═══════════════════════════════════════ -->
+  <div id="overview-section">
+    <div class="overview-header">
+      <div>
+        <h3 class="section-title">Overview</h3>
+        <div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div>
+      </div>
+    </div>
+
+    <div class="metric-cards-grid" id="cards-grid"></div>
+  </div>
+
+</div>
+
+<script>
+// ── Helpers ──
+function gaugeColorHex(score) {
+  if (score >= 0.9)  return '#10b981';
+  if (score >= 0.75) return '#84cc16';
+  if (score >= 0.6)  return '#eab308';
+  if (score >= 0.4)  return '#f97316';
+  return '#ef4444';
+}
+
+function scoreColorClass(score) {
+  if (score >= 0.9)  return 'score-5';
+  if (score >= 0.75) return 'score-4';
+  if (score >= 0.6)  return 'score-3';
+  if (score >= 0.4)  return 'score-2';
+  return 'score-1';
+}
+
+function buildGaugeRing(score) {
+  const color = gaugeColorHex(score);
+  const r = 20, circ = 2 * Math.PI * r;
+  const gapDeg = 0.03;
+  const fillLen = circ * Math.max(0, score - gapDeg);
+  return '<div class="gauge-ring">' +
+    '<svg class="gauge-svg" viewBox="0 0 52 52">' +
+      '<circle class="gauge-track" cx="26" cy="26" r="' + r + '"/>' +
+      '<circle class="gauge-fill" cx="26" cy="26" r="' + r + '" ' +
+        'stroke="' + color + '" ' +
+        'style="--gauge-color:' + color + ';stroke-dasharray:' + fillLen.toFixed(2) + ' ' + circ.toFixed(2) + ';" />' +
+    '</svg>' +
+  '</div>';
+}
+
+function getDistSegmentColor(bucketIdx) {
+  const colors = [
+    '#ef4444','#ef4444','#f97316','#f97316',
+    '#eab308','#eab308','#eab308',
+    '#84cc16','#84cc16',
+    '#10b981','#10b981'
+  ];
+  return colors[bucketIdx] || '#10b981';
+}
+
+// ── Build the cards ──
+const grid = document.getElementById('cards-grid');
+let cards = '';
+let cardIdx = 0;
+
+// 1) execution_accuracy (boolean, 60%)
+{
+  const avg = 0.60, cnt = 100;
+  const passCount = 60, failCount = 40;
+  const tint = gaugeColorHex(avg);
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:' + tint + ';">' +
+    '<div class="metric-card-header">' +
+      '<div class="metric-card-gauge">' +
+        buildGaugeRing(avg) +
+        '<div class="metric-card-info">' +
+          '<div class="metric-card-value ' + scoreColorClass(avg) + '">60.0%</div>' +
+          '<div class="metric-card-name">execution_accuracy</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="metric-card-badge">100 items</span>' +
+    '</div>' +
+    '<div class="metric-bool-bar">' +
+      '<div class="metric-bool-track">' +
+        '<div class="metric-bool-seg pass-seg" style="flex:60">60</div>' +
+        '<div class="metric-bool-seg fail-seg" style="flex:40">40</div>' +
+      '</div>' +
+      '<div class="metric-bool-legend">' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass 60%</span>' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail 40%</span>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+  cardIdx++;
+}
+
+// 2) valid_sql (boolean, 96%)
+{
+  const avg = 0.96, cnt = 100;
+  const tint = gaugeColorHex(avg);
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:' + tint + ';">' +
+    '<div class="metric-card-header">' +
+      '<div class="metric-card-gauge">' +
+        buildGaugeRing(avg) +
+        '<div class="metric-card-info">' +
+          '<div class="metric-card-value ' + scoreColorClass(avg) + '">96.0%</div>' +
+          '<div class="metric-card-name">valid_sql</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="metric-card-badge">100 items</span>' +
+    '</div>' +
+    '<div class="metric-bool-bar">' +
+      '<div class="metric-bool-track">' +
+        '<div class="metric-bool-seg pass-seg" style="flex:96">96</div>' +
+        '<div class="metric-bool-seg fail-seg" style="flex:4">4</div>' +
+      '</div>' +
+      '<div class="metric-bool-legend">' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass 96%</span>' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail 4%</span>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+  cardIdx++;
+}
+
+// 3) reward_ves (score, 35.8%)
+{
+  const avg = 0.358;
+  const tint = gaugeColorHex(avg);
+  const buckets = [40, 0, 6, 12, 0, 0, 26, 0, 9, 7, 0];
+  const maxCount = Math.max(...buckets);
+  let barsHtml = '<div class="dist-chart">';
+  for (let b = 0; b <= 10; b++) {
+    const count = buckets[b];
+    const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * 100)) : 0;
+    const color = getDistSegmentColor(b);
+    const label = (b * 10) + '%';
+    barsHtml += '<div class="dist-chart-col">' +
+      '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
+      '<div class="bar-fill" style="height:' + barH + 'px;background:' + color + ';"></div>' +
+      '<span class="bar-label">' + label + '</span>' +
+    '</div>';
+  }
+  barsHtml += '</div>';
+
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:' + tint + ';">' +
+    '<div class="metric-card-header">' +
+      '<div class="metric-card-gauge">' +
+        buildGaugeRing(avg) +
+        '<div class="metric-card-info">' +
+          '<div class="metric-card-value ' + scoreColorClass(avg) + '">35.8%</div>' +
+          '<div class="metric-card-name">reward_ves</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="metric-card-badge">100 scored</span>' +
+    '</div>' +
+    barsHtml +
+  '</div>';
+  cardIdx++;
+}
+
+// 4) output_empty (boolean, 97%)
+{
+  const avg = 0.97;
+  const tint = gaugeColorHex(avg);
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:' + tint + ';">' +
+    '<div class="metric-card-header">' +
+      '<div class="metric-card-gauge">' +
+        buildGaugeRing(avg) +
+        '<div class="metric-card-info">' +
+          '<div class="metric-card-value ' + scoreColorClass(avg) + '">97.0%</div>' +
+          '<div class="metric-card-name">output_empty</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="metric-card-badge">100 items</span>' +
+    '</div>' +
+    '<div class="metric-bool-bar">' +
+      '<div class="metric-bool-track">' +
+        '<div class="metric-bool-seg pass-seg" style="flex:97">97</div>' +
+        '<div class="metric-bool-seg fail-seg" style="flex:3">3</div>' +
+      '</div>' +
+      '<div class="metric-bool-legend">' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass 97%</span>' +
+        '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail 3%</span>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+  cardIdx++;
+}
+
+// 5) Latency card — redesigned
+{
+  const latBuckets = [
+    { label: '0-8s',   color: '#10b981', count: 8 },
+    { label: '8-12s',  color: '#10b981', count: 12 },
+    { label: '12-16s', color: '#84cc16', count: 19 },
+    { label: '16-19s', color: '#84cc16', count: 18 },
+    { label: '19-22s', color: '#eab308', count: 14 },
+    { label: '22-27s', color: '#eab308', count: 11 },
+    { label: '27-32s', color: '#f97316', count: 8 },
+    { label: '32-40s', color: '#f97316', count: 7 },
+    { label: '40-60s', color: '#ef4444', count: 5 },
+    { label: '60s+',   color: '#ef4444', count: 3 }
+  ];
+  const maxCount = Math.max(...latBuckets.map(b => b.count));
+  const MAX_BAR = 90;
+  let barsHtml = '<div class="dist-chart">';
+  for (const b of latBuckets) {
+    const barH = Math.max(b.count > 0 ? 4 : 0, Math.round((b.count / maxCount) * MAX_BAR));
+    barsHtml += '<div class="dist-chart-col">' +
+      '<span class="bar-count">' + b.count + '</span>' +
+      '<div class="bar-fill" style="height:' + barH + 'px;background:' + b.color + ';"></div>' +
+      '<span class="bar-label">' + b.label + '</span>' +
+    '</div>';
+  }
+  barsHtml += '</div>';
+
+  // Ruler: only show P50, P90, P99 as 3 spaced markers (no overlap)
+  // Positions normalized: P50 at 25%, P90 at 60%, P99 at 90%
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:#00a8ff;">' +
+    // Hero row: big Mean + percentile ruler
+    '<div class="latency-hero">' +
+      '<div class="latency-p50-block">' +
+        '<div class="latency-p50-val">24s</div>' +
+        '<div class="latency-p50-label">Mean Latency</div>' +
+      '</div>' +
+      '<div class="latency-ruler">' +
+        '<div class="latency-ruler-track">' +
+          '<div class="latency-ruler-fill" style="width:100%;"></div>' +
+          // Min
+          '<div class="latency-ruler-marker" style="left:0%;">' +
+            '<div class="latency-ruler-dot muted"></div>' +
+            '<div class="latency-ruler-label-below"><b>7.8s</b>Min</div>' +
+          '</div>' +
+          // P50
+          '<div class="latency-ruler-marker" style="left:20%;">' +
+            '<div class="latency-ruler-dot"></div>' +
+            '<div class="latency-ruler-label-below"><b>18.5s</b>P50</div>' +
+          '</div>' +
+          // P90
+          '<div class="latency-ruler-marker" style="left:50%;">' +
+            '<div class="latency-ruler-dot warn"></div>' +
+            '<div class="latency-ruler-label-below"><b>39.4s</b>P90</div>' +
+          '</div>' +
+          // P99
+          '<div class="latency-ruler-marker" style="left:75%;">' +
+            '<div class="latency-ruler-dot danger"></div>' +
+            '<div class="latency-ruler-label-below"><b>1m 23s</b>P99</div>' +
+          '</div>' +
+          // Max
+          '<div class="latency-ruler-marker" style="left:100%;">' +
+            '<div class="latency-ruler-dot muted"></div>' +
+            '<div class="latency-ruler-label-below"><b>2m 45s</b>Max</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    // Histogram
+    barsHtml +
+  '</div>';
+  cardIdx++;
+}
+
+// 6) Trace Stats card — redesigned
+{
+  cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 60) + 'ms;--card-tint:transparent;">' +
+    '<div class="metric-card-header">' +
+      '<div class="metric-card-gauge">' +
+        '<div class="metric-card-info" style="display:flex;flex-direction:row;align-items:center;gap:8px;">' +
+          '<span style="font-size:18px;line-height:1;">\u26A1</span>' +
+          '<span class="metric-card-name" style="margin-top:0;font-size:var(--font-md);font-weight:600;color:var(--text-primary);">Trace Stats</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="trace-stats-grid">' +
+      // Avg Tokens
+      '<div class="trace-stat-item">' +
+        '<div class="trace-stat-top">' +
+          '<div class="trace-stat-icon tokens">\uD83D\uDCDD</div>' +
+          '<span class="trace-stat-label">Avg Tokens</span>' +
+        '</div>' +
+        '<div class="trace-stat-val accent-teal">28.9K</div>' +
+      '</div>' +
+      // LLM Calls
+      '<div class="trace-stat-item">' +
+        '<div class="trace-stat-top">' +
+          '<div class="trace-stat-icon llm">\uD83E\uDDE0</div>' +
+          '<span class="trace-stat-label">Avg LLM Calls</span>' +
+        '</div>' +
+        '<div class="trace-stat-val accent-blue">5.5</div>' +
+      '</div>' +
+      // Tool Calls
+      '<div class="trace-stat-item">' +
+        '<div class="trace-stat-top">' +
+          '<div class="trace-stat-icon tool">\uD83D\uDD27</div>' +
+          '<span class="trace-stat-label">Avg Tool Calls</span>' +
+        '</div>' +
+        '<div class="trace-stat-val accent-amber">4.5</div>' +
+      '</div>' +
+      // Tool Success — in grid with the others
+      '<div class="trace-stat-item">' +
+        '<div class="trace-stat-top">' +
+          '<div class="trace-stat-icon success">\u2713</div>' +
+          '<span class="trace-stat-label">Tool Success</span>' +
+        '</div>' +
+        '<div class="trace-stat-val" style="color:var(--success);">98.0%</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+  cardIdx++;
+}
+
+grid.innerHTML = cards;
+</script>
+</body>
+</html>

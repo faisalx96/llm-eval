@@ -51,6 +51,84 @@ from qym_platform.settings import PlatformSettings
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
 
+def _store_trace_stats(db: Session, run: Run) -> None:
+    """Compute trace metrics from stored OTEL spans and persist them.
+
+    Stores run-level stats in run.run_metadata["trace_stats"] and
+    per-item stats in each RunItem.item_metadata["trace_stats"].
+    Called once when a run completes.
+    """
+    from collections import defaultdict
+
+    spans = db.query(Span).filter(Span.run_id == run.id).all()
+    if not spans:
+        logger.warning("_store_trace_stats: no spans found for run %s", run.id)
+        return
+    logger.info("_store_trace_stats: found %d spans for run %s", len(spans), run.id)
+
+    # Map trace_id -> item_id
+    items = db.query(RunItem).filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None)).all()
+    trace_to_item: dict[str, RunItem] = {}
+    for it in items:
+        if it.trace_id:
+            trace_to_item[it.trace_id] = it
+
+    # Group spans by trace_id and compute per-item stats
+    trace_buckets: dict[str, dict] = defaultdict(
+        lambda: {"tokens": 0, "cost": 0.0, "llm_calls": 0, "tool_calls": 0, "tool_errors": 0}
+    )
+    for span in spans:
+        bucket = trace_buckets[span.trace_id]
+        attrs = span.attributes or {}
+        # OpenInference span kind is in attributes, not the OTEL span.kind column
+        oi_kind = str(
+            attrs.get("openinference.span.kind", "")
+            or attrs.get("ai.openinference.span.kind", "")
+        ).upper()
+        if oi_kind == "LLM":
+            bucket["llm_calls"] += 1
+            tokens = attrs.get("llm.token_count.total") or attrs.get("gen_ai.usage.total_tokens")
+            if tokens is not None:
+                try:
+                    bucket["tokens"] += int(float(tokens))
+                except (ValueError, TypeError):
+                    pass
+            cost = attrs.get("llm.cost.total")
+            if cost is not None:
+                try:
+                    bucket["cost"] += float(cost)
+                except (ValueError, TypeError):
+                    pass
+        elif oi_kind == "TOOL":
+            bucket["tool_calls"] += 1
+            if (span.status or "").upper() == "ERROR":
+                bucket["tool_errors"] += 1
+
+    # Store per-item stats (copy dict to force SQLAlchemy change detection on JSON column)
+    for trace_id, bucket in trace_buckets.items():
+        item = trace_to_item.get(trace_id)
+        if item:
+            md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+            md["trace_stats"] = _sanitize_for_json(bucket)
+            item.item_metadata = md
+
+    # Compute and store run-level stats
+    n = len(trace_buckets)
+    total_tool_errors = sum(b["tool_errors"] for b in trace_buckets.values())
+    total_tool_calls = sum(b["tool_calls"] for b in trace_buckets.values())
+    tool_success_rate = (1 - total_tool_errors / total_tool_calls) if total_tool_calls > 0 else None
+    run_stats = {
+        "avg_tokens": sum(b["tokens"] for b in trace_buckets.values()) / n,
+        "avg_llm_calls": sum(b["llm_calls"] for b in trace_buckets.values()) / n,
+        "avg_tool_calls": sum(b["tool_calls"] for b in trace_buckets.values()) / n,
+        "tool_success_rate": tool_success_rate,
+        "has_spans": True,
+    }
+    current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
+    current["trace_stats"] = run_stats
+    run.run_metadata = _sanitize_for_json(current)
+
+
 class CreateRunRequest(BaseModel):
     external_run_id: Optional[str] = None
     task: str
@@ -336,7 +414,6 @@ async def ingest_events(
             run.status = _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED)
             logger.debug("Run %s status -> %s", run_id, payload.final_status)
             # Allow the client to attach final metadata (e.g., langfuse_url) at completion time.
-            # This is safe because ingestion is authenticated (API key) and scoped to the run owner.
             try:
                 md = payload.summary.get("run_metadata") if isinstance(payload.summary, dict) else None
                 if isinstance(md, dict) and md:
@@ -344,6 +421,13 @@ async def ingest_events(
                     run.run_metadata = _sanitize_for_json({**current, **md})
             except Exception:
                 pass
+
+            # ⚡ Compute and store trace stats from OTEL spans
+            try:
+                db.flush()  # ensure all spans from this batch are visible
+                _store_trace_stats(db, run)
+            except Exception:
+                logger.warning("Failed to compute trace stats for run %s", run_id, exc_info=True)
 
         elif isinstance(payload, MetadataUpdatePayload):
             # Update run metadata mid-flight (e.g., langfuse_url once available)

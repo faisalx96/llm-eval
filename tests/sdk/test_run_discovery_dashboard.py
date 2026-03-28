@@ -21,6 +21,9 @@ def _build_row(
     item_id,
     output,
     score,
+    item_metadata=None,
+    item_input=None,
+    expected_output="expected",
 ):
     return serialize_checkpoint_row(
         dataset_name="dataset_a",
@@ -29,10 +32,10 @@ def _build_row(
         run_config={"max_concurrency": 4, "timeout": 30},
         trace_id=f"trace-{item_id}",
         item_id=item_id,
-        item_input=f"input-{item_id}",
-        item_metadata={},
+        item_input=item_input if item_input is not None else f"input-{item_id}",
+        item_metadata=item_metadata or {},
         output=output,
-        expected_output="expected",
+        expected_output=expected_output,
         time_seconds=0.25,
         task_started_at_ms=123,
         scores={"accuracy": score},
@@ -211,5 +214,120 @@ def test_run_discovery_compare_ids_match_reordered_legacy_rows(tmp_path):
 
     compare_ids_a = {row["input"]: row["compare_item_id"] for row in data_a["snapshot"]["rows"]}
     compare_ids_b = {row["input"]: row["compare_item_id"] for row in data_b["snapshot"]["rows"]}
+
+    assert compare_ids_a == compare_ids_b
+
+
+def test_run_discovery_compare_ids_ignore_trace_stats_differences(tmp_path):
+    results_dir = tmp_path / "qym_results"
+    csv_path_a = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-a"
+        / "2025-01-01"
+        / "run-250101-0101.csv"
+    )
+    csv_path_b = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-b"
+        / "2025-01-01"
+        / "run-250101-0202.csv"
+    )
+
+    rows_a = [
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000000",
+            output="ok",
+            score=1.0,
+            item_metadata={"trace_stats": {"total_tokens": 42, "llm_calls": 1}},
+        ),
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="row_000001",
+            output="ok",
+            score=0.0,
+            item_metadata={"trace_stats": {"total_tokens": 84, "llm_calls": 2}},
+        ),
+    ]
+    rows_b = [
+        _build_row(
+            run_metadata={"model": "provider/model-b"},
+            item_id="row_000000",
+            output="ok",
+            score=1.0,
+            item_metadata={"trace_stats": {"total_tokens": 420, "llm_calls": 3}},
+        ),
+        _build_row(
+            run_metadata={"model": "provider/model-b"},
+            item_id="row_000001",
+            output="ok",
+            score=0.0,
+            item_metadata={"trace_stats": {"total_tokens": 840, "llm_calls": 4}},
+        ),
+    ]
+    _write_checkpoint_rows(csv_path_a, ["accuracy"], rows_a)
+    _write_checkpoint_rows(csv_path_b, ["accuracy"], rows_b)
+
+    discovery = RunDiscovery(str(results_dir))
+    data_a = discovery.get_run_data(str(csv_path_a))
+    data_b = discovery.get_run_data(str(csv_path_b))
+
+    compare_ids_a = {row["input"]: row["compare_item_id"] for row in data_a["snapshot"]["rows"]}
+    compare_ids_b = {row["input"]: row["compare_item_id"] for row in data_b["snapshot"]["rows"]}
+
+    assert compare_ids_a == compare_ids_b
+
+
+def test_run_discovery_compare_ids_ignore_generated_csv_item_ids(tmp_path):
+    results_dir = tmp_path / "qym_results"
+    csv_path_a = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-a"
+        / "2025-01-01"
+        / "run-250101-0101.csv"
+    )
+    csv_path_b = (
+        results_dir
+        / "task_alpha"
+        / "provider-model-b"
+        / "2025-01-01"
+        / "run-250101-0202.csv"
+    )
+
+    shared_input = "What is 2+2?"
+    shared_expected = "4"
+
+    rows_a = [
+        _build_row(
+            run_metadata={"model": "provider/model-a"},
+            item_id="csv_9d87abc4a109c976c595__0001",
+            item_input=shared_input,
+            expected_output=shared_expected,
+            output="ok",
+            score=1.0,
+        ),
+    ]
+    rows_b = [
+        _build_row(
+            run_metadata={"model": "provider/model-b"},
+            item_id="csv_912a92090d65db565175__0001",
+            item_input=shared_input,
+            expected_output=shared_expected,
+            output="ok",
+            score=1.0,
+        ),
+    ]
+    _write_checkpoint_rows(csv_path_a, ["accuracy"], rows_a)
+    _write_checkpoint_rows(csv_path_b, ["accuracy"], rows_b)
+
+    discovery = RunDiscovery(str(results_dir))
+    data_a = discovery.get_run_data(str(csv_path_a))
+    data_b = discovery.get_run_data(str(csv_path_b))
+
+    compare_ids_a = [row["compare_item_id"] for row in data_a["snapshot"]["rows"]]
+    compare_ids_b = [row["compare_item_id"] for row in data_b["snapshot"]["rows"]]
 
     assert compare_ids_a == compare_ids_b
