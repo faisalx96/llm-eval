@@ -50,6 +50,7 @@
 
   /* ── helpers ── */
   const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>`;
+  const CHECK_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>`;
   const EXPAND_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H3v3"/><path d="M10 3h3v3"/><path d="M13 10v3h-3"/><path d="M3 10v3h3"/><path d="M3 6l4-4"/><path d="M13 6L9 2"/><path d="M3 10l4 4"/><path d="M13 10l-4 4"/></svg>`;
 
   function copyBtn(textOrFn, label) {
@@ -328,6 +329,31 @@
   function renderLabeledSection(label, bodyHtml, labelClass, actionsHtml) {
     const cls = labelClass ? ` ${labelClass}` : "";
     return `<div class="tv-io-section"><div class="tv-io-label${cls}">${esc(label)}${actionsHtml || ""}</div>${bodyHtml}</div>`;
+  }
+
+  function findLastDescendantMessagesSpan(span) {
+    let latest = null;
+    function latestTime(node) {
+      if (node?.end_time_ns != null) return Number(node.end_time_ns);
+      if (node?.start_time_ns != null) return Number(node.start_time_ns);
+      return -Infinity;
+    }
+    function visit(node) {
+      (node?._children || []).forEach(child => {
+        visit(child);
+        if (spanKind(child) !== "LLM") return;
+        const childAttrs = child.attributes || {};
+        const hasMessages =
+          extractMessages(childAttrs, "llm.input_messages").length ||
+          extractMessages(childAttrs, "llm.output_messages").length;
+        if (!hasMessages) return;
+        if (!latest || latestTime(child) > latestTime(latest) || (latestTime(child) === latestTime(latest) && child._i > latest._i)) {
+          latest = child;
+        }
+      });
+    }
+    visit(span);
+    return latest;
   }
 
   function messageSignatures(message) {
@@ -811,17 +837,22 @@
 
     // Build tabs based on span kind
     const tabs = [];
-    const inputMsgs = extractMessages(attrs, "llm.input_messages");
-    const outputMsgs = extractMessages(attrs, "llm.output_messages");
+    const messageSourceSpan = kind === "AGENT" ? (findLastDescendantMessagesSpan(span) || null) : span;
+    const messageAttrs = messageSourceSpan?.attributes || {};
+    const inputMsgs = extractMessages(messageAttrs, "llm.input_messages");
+    const outputMsgs = extractMessages(messageAttrs, "llm.output_messages");
     // Enrich messages with reasoning from input.value / output.value JSON
-    enrichReasoning(inputMsgs, attrs["input.value"]);
-    enrichReasoning(outputMsgs, attrs["output.value"]);
-    const reasoning = extractReasoning(span);
+    enrichReasoning(inputMsgs, messageAttrs["input.value"]);
+    enrichReasoning(outputMsgs, messageAttrs["output.value"]);
+    const reasoning = extractReasoning(messageSourceSpan || span);
     const scores = extractScores(span);
 
     if (kind === "LLM") {
       if (inputMsgs.length || outputMsgs.length) tabs.push({ id: "messages", label: "Messages" });
       tabs.push({ id: "response", label: "Response" });
+    } else if (kind === "AGENT") {
+      if (attrs["input.value"] || attrs["output.value"]) tabs.push({ id: "io", label: "Input / Output" });
+      if (inputMsgs.length || outputMsgs.length) tabs.push({ id: "messages", label: "Messages" });
     } else if (kind === "TOOL") {
       tabs.push({ id: "tool-io", label: "Input / Output" });
     } else if (kind === "EVALUATOR" && attrs["output.value"]) {
@@ -986,6 +1017,34 @@
     }).join("");
   }
 
+  function parseDisplayValue(value) {
+    try {
+      const parsed = typeof value === "string" ? JSON.parse(value) : value;
+      return deepParseJson(parsed);
+    } catch (_) {
+      return value == null ? "" : String(value);
+    }
+  }
+
+  function looksLikeCode(text) {
+    const body = String(text || "").trim();
+    if (!body) return false;
+    if (body.includes("```")) return true;
+    if (/\b(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b[\s\S]*\b(FROM|WHERE|JOIN|VALUES|SET)\b/i.test(body)) return true;
+    if (/^\s*(def |class |function |async function |const |let |var |import |from |return |if |for |while )/m.test(body)) return true;
+    if ((body.match(/\n/g) || []).length >= 2 && /[{}();<>]/.test(body)) return true;
+    return false;
+  }
+
+  function renderAgentOutputBody(value, className) {
+    const parsed = parseDisplayValue(value);
+    if (typeof parsed !== "string") return renderJsonBlock(value, className);
+    const body = parsed.trim();
+    if (!body) return `<div class="tv-markdown${className ? ` ${className}` : ""}"></div>`;
+    if (looksLikeCode(body)) return renderTextPlaceholder(body, `${className || ""} tv-json-preview-output`.trim());
+    return `<div class="tv-markdown${className ? ` ${className}` : ""}">${renderMarkdownLite(body)}</div>`;
+  }
+
   function renderResponse(span) {
     const a = span.attributes || {};
     const raw = a["output.value"];
@@ -1133,6 +1192,7 @@
 
   function renderIO(span) {
     const a = span.attributes || {};
+    const kind = spanKind(span);
     let html = "";
     const inp = a["input.value"];
     const out = a["output.value"];
@@ -1146,11 +1206,16 @@
       ]));
     }
     if (out) {
-      html += renderLabeledSection("Output", renderJsonBlock(out, "tv-json-preview tv-json-preview-output"), "tv-io-label-output", actionGroup([
+      const outputBody = kind === "AGENT"
+        ? renderAgentOutputBody(out, "tv-json-preview-output")
+        : renderJsonBlock(out, "tv-json-preview tv-json-preview-output");
+      html += renderLabeledSection("Output", outputBody, "tv-io-label-output", actionGroup([
         copyBtn(out, "Copy output"),
         expandBtn({
           title: "Output",
-          render: () => renderExpandedContent(renderJsonBlock(out)),
+          render: () => renderExpandedContent(kind === "AGENT"
+            ? renderAgentOutputBody(out, "")
+            : renderJsonBlock(out)),
         }, "Expand output"),
       ]));
     }
@@ -1185,10 +1250,21 @@
   // Start loading immediately
   loadCodeMirror();
 
-  function renderJsonPlaceholder(jsonStr, className) {
+  function renderCodeMirrorPlaceholder(doc, className, options = {}) {
     const id = `tv-cm-${++_cmId}`;
-    _cmData[id] = jsonStr;
+    _cmData[id] = {
+      doc,
+      mode: options.mode || "json",
+    };
     return `<div class="tv-cm${className ? ` ${className}` : ""}" data-cm-id="${id}"></div>`;
+  }
+
+  function renderJsonPlaceholder(jsonStr, className) {
+    return renderCodeMirrorPlaceholder(jsonStr, className, { mode: "json" });
+  }
+
+  function renderTextPlaceholder(text, className) {
+    return renderCodeMirrorPlaceholder(text, `${className || ""} tv-cm-text`.trim(), { mode: "text" });
   }
 
   function mountJsonFormatters(root) {
@@ -1197,33 +1273,38 @@
     loadCodeMirror().then(cm => {
       els.forEach(el => {
         const id = el.getAttribute("data-cm-id");
-        const doc = _cmData[id];
-        if (doc == null) return;
+        const payload = _cmData[id];
+        if (payload == null) return;
         delete _cmData[id];
-        const edState = cm.state.EditorState.create({
-          doc,
-          extensions: [
-            cm.view.lineNumbers(),
+        const doc = typeof payload === "string" ? payload : payload.doc;
+        const mode = typeof payload === "string" ? "json" : (payload.mode || "json");
+        const extensions = [
+          cm.view.lineNumbers(),
+          cm.view.drawSelection(),
+          cm.view.keymap.of([...cm.commands.defaultKeymap]),
+          cm.state.EditorState.readOnly.of(true),
+          cm.view.EditorView.editable.of(false),
+          cm.view.EditorView.theme({
+            "&": { fontSize: "12px", background: "var(--bg-void)", color: "var(--text-secondary)" },
+            ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)" },
+            ".cm-gutters": { background: "var(--bg-void)", border: "none", minWidth: "auto" },
+            ".cm-lineNumbers .cm-gutterElement": { color: "#50505e", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
+            ".cm-line": { padding: "0 8px" },
+            ".cm-activeLine": { background: "rgba(255,255,255,.03)" },
+            ".cm-activeLineGutter": { background: "rgba(255,255,255,.03)" },
+            ".cm-selectionBackground": { background: "rgba(0,168,255,.15) !important" },
+            ".cm-cursor": { borderLeftColor: "#00d4aa" },
+            "&.cm-focused .cm-selectionBackground": { background: "rgba(0,168,255,.2) !important" },
+          }, { dark: true }),
+        ];
+        if (mode === "json") {
+          extensions.push(
             cm.language.foldGutter(),
-            cm.view.drawSelection(),
             cm.language.bracketMatching(),
             cm.langJson.json(),
-            cm.view.keymap.of([...cm.commands.defaultKeymap, ...cm.language.foldKeymap]),
-            cm.state.EditorState.readOnly.of(true),
-            cm.view.EditorView.editable.of(false),
-            // qym theme
+            cm.view.keymap.of(cm.language.foldKeymap),
             cm.view.EditorView.theme({
-              "&": { fontSize: "12px", background: "var(--bg-void)", color: "var(--text-secondary)" },
-              ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)" },
-              ".cm-gutters": { background: "var(--bg-void)", border: "none", minWidth: "auto" },
-              ".cm-lineNumbers .cm-gutterElement": { color: "#50505e", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
               ".cm-foldGutter .cm-gutterElement": { color: "#7a7a90", padding: "0 2px 0 0", width: "12px" },
-              ".cm-line": { padding: "0 8px" },
-              ".cm-activeLine": { background: "rgba(255,255,255,.03)" },
-              ".cm-activeLineGutter": { background: "rgba(255,255,255,.03)" },
-              ".cm-selectionBackground": { background: "rgba(0,168,255,.15) !important" },
-              ".cm-cursor": { borderLeftColor: "#00d4aa" },
-              "&.cm-focused .cm-selectionBackground": { background: "rgba(0,168,255,.2) !important" },
               ".cm-matchingBracket": { background: "rgba(0,212,170,.15)", outline: "1px solid rgba(0,212,170,.3)" },
             }, { dark: true }),
             cm.language.syntaxHighlighting(cm.language.HighlightStyle.define([
@@ -1235,8 +1316,12 @@
               { tag: cm.highlight.tags.punctuation, color: "#7a7a90" },
               { tag: cm.highlight.tags.brace, color: "#7a7a90" },
               { tag: cm.highlight.tags.squareBracket, color: "#7a7a90" },
-            ])),
-          ],
+            ]))
+          );
+        }
+        const edState = cm.state.EditorState.create({
+          doc,
+          extensions,
         });
         new cm.view.EditorView({ state: edState, parent: el });
       });
@@ -1300,14 +1385,14 @@
     try {
       parsed = typeof value === "string" ? JSON.parse(value) : value;
     } catch (_) {
-      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(String(value))}</pre>`;
+      return renderTextPlaceholder(String(value), className);
     }
     parsed = deepParseJson(parsed);
     if (typeof parsed === "string") {
-      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(parsed)}</pre>`;
+      return renderTextPlaceholder(parsed, className);
     }
     if (parsed == null || typeof parsed !== "object") {
-      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(String(parsed))}</pre>`;
+      return renderTextPlaceholder(String(parsed), className);
     }
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
       parsed = nestDottedKeys(parsed);
@@ -1610,8 +1695,12 @@
       const text = typeof raw === "function" ? raw() : String(raw || "");
       if (text && navigator.clipboard) {
         navigator.clipboard.writeText(text).catch(()=>{});
-        btn.classList.add("tv-copy-ok");
-        setTimeout(() => btn.classList.remove("tv-copy-ok"), 1200);
+        btn.innerHTML = CHECK_ICON;
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.innerHTML = COPY_ICON;
+          btn.classList.remove("copied");
+        }, 1500);
       }
       return;
     }

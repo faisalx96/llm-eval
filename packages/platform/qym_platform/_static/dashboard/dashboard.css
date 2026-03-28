@@ -5952,6 +5952,14 @@ body.tv-open { overflow: hidden; }
   white-space: pre-wrap; word-break: break-word; overflow-x: auto; max-height: 500px; overflow-y: auto;
 }
 
+.tv-markdown {
+  font-size: var(--font-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
 /* ─── Reasoning (inline expander after messages) ─── */
 .tv-reasoning-expander {
   margin-top: 8px; border-radius: 6px;
@@ -6069,19 +6077,24 @@ body.tv-open { overflow: hidden; }
 }
 .tv-copy-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  background: none; border: 1px solid var(--border-subtle); border-radius: 3px;
-  color: var(--text-dim); cursor: pointer; padding: 2px 4px;
-  margin-left: 6px; vertical-align: middle; opacity: 0.5; transition: opacity .15s, color .15s, border-color .15s;
+  background: none; border: none;
+  color: var(--text-dim); cursor: pointer; padding: 2px;
+  margin-left: 6px; vertical-align: middle; opacity: 0.4; transition: opacity .15s, color .15s;
 }
+.tv-copy-btn svg,
+.tv-expand-btn svg { width: 14px; height: 14px; }
 .tv-expand-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  background: none; border: 1px solid var(--border-subtle); border-radius: 3px;
-  color: var(--text-dim); cursor: pointer; padding: 2px 4px;
-  margin-left: 0; vertical-align: middle; opacity: 0.5; transition: opacity .15s, color .15s, border-color .15s;
+  background: none; border: none;
+  color: var(--text-dim); cursor: pointer; padding: 2px;
+  margin-left: 0; vertical-align: middle; opacity: 0.4; transition: opacity .15s, color .15s;
 }
-.tv-copy-btn:hover,
-.tv-expand-btn:hover { opacity: 1; color: var(--text-secondary); border-color: var(--border-default); }
-.tv-copy-btn.tv-copy-ok { opacity: 1; color: var(--accent-green, #34d399); border-color: var(--accent-green, #34d399); }
+.tv-copy-btn:hover { opacity: 1; }
+.tv-copy-btn:hover svg { stroke: var(--accent-primary); }
+.tv-expand-btn:hover { opacity: 1; }
+.tv-expand-btn:hover svg { stroke: var(--accent-primary); }
+.tv-copy-btn.copied { opacity: 1; }
+.tv-copy-btn.copied svg { stroke: var(--accent-green, #34d399); }
 .tv-inline-actions .tv-copy-btn,
 .tv-inline-actions .tv-expand-btn,
 .tv-card-actions .tv-copy-btn,
@@ -6174,6 +6187,7 @@ body.tv-open { overflow: hidden; }
 .tv-cm .cm-editor.cm-focused { outline: none; }
 .tv-cm.tv-json-preview .cm-editor { max-height: 440px; }
 .tv-cm.tv-json-preview-output .cm-editor { max-height: 560px; }
+.tv-cm.tv-cm-text.tv-json-preview-output .cm-content { color: #00d4aa; }
 .tv-code.tv-json-preview { max-height: 440px; }
 .tv-code.tv-json-preview-output { max-height: 560px; }
 
