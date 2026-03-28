@@ -125,6 +125,13 @@
       line-height: 1.35;
       letter-spacing: -0.2px;
     }
+    .hero-run-id {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      margin-top: 4px;
+      letter-spacing: 0.2px;
+    }
     .hero-tags {
       display: flex;
       flex-wrap: wrap;
@@ -359,7 +366,8 @@
     .dist-chart {
       display: flex;
       align-items: flex-end;
-      gap: 4px;
+      gap: 6px;
+      padding-top: var(--space-md);
     }
     .dist-chart-col {
       flex: 1;
@@ -368,7 +376,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: flex-end;
-      gap: 2px;
+      gap: 3px;
       cursor: pointer;
       transition: opacity 0.15s;
     }
@@ -381,8 +389,8 @@
       line-height: 1;
     }
     .dist-chart-col .bar-fill {
-      width: 100%;
-      border-radius: 3px 3px 0 0;
+      width: 75%;
+      border-radius: 4px 4px 1px 1px;
     }
     .dist-chart-col .bar-label {
       font-size: 10px;
@@ -462,6 +470,81 @@
       margin-top: 3px;
       letter-spacing: 0.2px;
     }
+    .system-metrics-section {
+      margin-top: var(--space-md);
+      margin-bottom: var(--space-xl);
+    }
+    .system-metrics-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-dim);
+      margin-bottom: var(--space-sm);
+      padding-bottom: var(--space-sm);
+    }
+    .system-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-md);
+    }
+    @media (max-width: 900px) {
+      .system-metrics-grid { grid-template-columns: 1fr; }
+    }
+    /* When only latency or only trace, don't stretch full width */
+    .system-metrics-grid > .metric-card:only-child {
+      max-width: 600px;
+    }
+    /* Trace stats as pills in 2x2 grid */
+    .trace-pills-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-sm);
+    }
+    .trace-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-elevated);
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .trace-pill:hover {
+      background: var(--bg-hover);
+    }
+    .trace-pill-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .trace-pill-icon.tokens { background: rgba(0, 212, 170, 0.1); }
+    .trace-pill-icon.llm    { background: rgba(0, 168, 255, 0.1); }
+    .trace-pill-icon.tool   { background: rgba(245, 158, 11, 0.1); }
+    .trace-pill-icon.success { background: rgba(16, 185, 129, 0.1); }
+    .trace-pill-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .trace-pill-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .trace-pill-val {
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1;
+    }
     .overview-summary-pills {
       display: flex;
       gap: 6px;
@@ -503,6 +586,10 @@
       gap: var(--space-md);
       margin-bottom: var(--space-xl);
     }
+    @keyframes card-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
     .metric-card {
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
@@ -512,6 +599,11 @@
       flex-direction: column;
       gap: var(--space-lg);
       transition: border-color 0.2s, box-shadow 0.2s;
+      animation: card-enter 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    .metric-card > *:last-child:not(.metric-card-header) {
+      margin-top: auto;
+      margin-bottom: auto;
     }
     .metric-card:hover {
       border-color: var(--border-strong);
@@ -531,21 +623,28 @@
     .gauge-ring {
       width: 48px;
       height: 48px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       flex-shrink: 0;
+      position: relative;
       transition: transform 0.25s;
     }
     .metric-card:hover .gauge-ring {
       transform: scale(1.08);
     }
-    .gauge-ring-inner {
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      background: var(--bg-surface);
+    .gauge-svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .gauge-track {
+      fill: none;
+      stroke: var(--border-subtle);
+      stroke-width: 5;
+    }
+    .gauge-fill {
+      fill: none;
+      stroke-width: 5;
+      stroke-linecap: butt;
+      transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .metric-card-info {
       min-width: 0;
@@ -663,70 +762,152 @@
       align-self: flex-start;
     }
 
-    /* Latency badge (replaces gauge ring for latency card) */
-    .latency-badge {
-      width: 48px;
-      height: 48px;
+    /* ── Latency Card ── */
+    .latency-hero {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+    .latency-p50-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .latency-p50-val {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent-secondary);
+      line-height: 1;
+      letter-spacing: -0.5px;
+    }
+    .latency-p50-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+    }
+    .latency-ruler {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      max-width: 90%;
+    }
+    .latency-ruler-track {
+      position: relative;
+      height: 6px;
+      background: var(--bg-elevated);
+      border-radius: 100px;
+      margin: 14px 32px 32px 4px;
+    }
+    .latency-ruler-fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 100px;
+      background: linear-gradient(90deg, var(--accent-secondary), rgba(0, 168, 255, 0.3));
+      opacity: 0.3;
+    }
+    .latency-ruler-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 1;
+    }
+    .latency-ruler-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--accent-secondary);
+      border: 2px solid var(--bg-surface);
+    }
+    .latency-ruler-dot.warn {
+      background: var(--warning);
+    }
+    .latency-ruler-dot.danger {
+      background: var(--error);
+    }
+    .latency-ruler-dot.muted {
+      width: 11px;
+      height: 11px;
+      background: var(--text-muted);
+      border: 2px solid var(--bg-surface);
+    }
+    .latency-ruler-label-below {
+      position: absolute;
+      top: 16px;
+      white-space: nowrap;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.3;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .latency-ruler-label-below b {
+      display: block;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 10px;
+    }
+
+    /* ── Trace Stats Card ── */
+    .trace-stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .trace-stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 12px;
+      background: var(--bg-surface);
+      transition: background 0.15s;
+    }
+    .trace-stat-item:hover {
+      background: var(--bg-elevated);
+    }
+    .trace-stat-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .trace-stat-icon {
+      width: 20px;
+      height: 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 10px;
-      background: rgba(0, 168, 255, 0.08);
-      border: 1.5px solid rgba(0, 168, 255, 0.2);
-      flex-shrink: 0;
-      transition: transform 0.25s;
-    }
-    .metric-card:hover .latency-badge {
-      transform: scale(1.08);
-    }
-    .latency-badge-icon {
-      font-size: 20px;
-      line-height: 1;
-    }
-
-    /* Compact latency stats in card header */
-    .latency-stats-compact {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px 10px;
-      align-self: center;
-    }
-    .latency-stats-compact span {
-      font-size: 10px;
-      font-weight: 500;
-      font-family: var(--font-mono);
-      white-space: nowrap;
-      color: var(--text-muted);
-    }
-    .latency-stats-compact span b {
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-
-    /* ⚡ Trace overview card */
-    .trace-overview-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-    }
-    .trace-overview-stat {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 4px 8px;
       border-radius: 4px;
-      background: rgba(100, 120, 160, 0.06);
-    }
-    .trace-overview-label {
       font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
+      flex-shrink: 0;
     }
-    .trace-overview-val {
-      font-family: var(--font-mono);
-      font-size: 13px;
+    .trace-stat-icon.tokens { background: rgba(0, 212, 170, 0.1); }
+    .trace-stat-icon.llm    { background: rgba(0, 168, 255, 0.1); }
+    .trace-stat-icon.tool   { background: rgba(245, 158, 11, 0.1); }
+    .trace-stat-icon.success { background: rgba(16, 185, 129, 0.1); }
+    .trace-stat-label {
+      font-size: 10px;
       font-weight: 600;
-      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .trace-stat-val {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
     }
 
     .threshold-control {
@@ -2598,7 +2779,7 @@
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
-          <span class="stat-label">RUN</span>
+          <span class="stat-label">RUN ID</span>
           <span class="stat-value" id="hdr-run-name">—</span>
         </div>
         <div class="stat-cell">
@@ -3326,7 +3507,7 @@
 
         // Update header
         const config = run.config || {};
-        el('hdr-run-name').textContent = run.run_name || '—';
+        el('hdr-run-name').textContent = RUN_ID || run.run_name || '—';
         el('hdr-dataset').textContent = run.dataset_name || '—';
         el('hdr-model').textContent = run.model_name || config.model || config.model_name || '—';
         el('hdr-total').textContent = (snap.stats || {}).total || (snap.rows || []).length;
@@ -3360,6 +3541,11 @@
         el('empty').style.display = 'none';
         el('error-state').style.display = 'none';
         el('run-content').style.display = 'block';
+        // Hide stats bar cells that are now in the hero card (keep run name)
+        ['hdr-status', 'hdr-dataset', 'hdr-model', 'hdr-total', 'hdr-metrics'].forEach(id => {
+          const cell = el(id);
+          if (cell) cell.closest('.stat-cell').style.display = 'none';
+        });
 
         renderSummary();
         populateMetricSelectors();
@@ -3425,14 +3611,22 @@
           if (failed > 0) summaryPills += '<span class="summary-pill pill-error">' + failed + ' error' + (failed !== 1 ? 's' : '') + '</span>';
         }
 
+        const modelName = run.model_name || config.model || config.model_name || '';
+        const runId = run.run_id || '';
+        let modelPill = modelName ? '<span class="summary-pill">' + escapeHtml(modelName) + '</span>' : '';
+        let metricsPill = state.allMetrics.length > 0 ? '<span class="summary-pill">' + state.allMetrics.length + ' metrics</span>' : '';
+
         el('run-summary').innerHTML = '<div class="run-summary-card">' +
           '<div class="hero-top">' +
             '<div class="hero-identity">' +
               '<div class="hero-run-name">' + escapeHtml(run.run_name || '—') + '</div>' +
+              (runId ? '<div class="hero-run-id">' + escapeHtml(runId) + '</div>' : '') +
               '<div class="hero-tags">' +
                 '<span class="tag task">' + escapeHtml(run.dataset_name || '—') + '</span>' +
+                modelPill +
                 langfuseHtml +
                 summaryPills +
+                metricsPill +
               '</div>' +
             '</div>' +
             '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText + '</div>' +
@@ -3545,38 +3739,33 @@
           return [{ label: formatLatBucketLabel(0, null), min: 0, max: Infinity, color: 'var(--accent-primary)' }];
         }
 
-        // Use percentile-based boundaries to ensure bars are well-distributed
-        // Target ~6 buckets using p10, p25, p50, p75, p90 as boundaries
-        const pctls = [0, 15, 35, 55, 75, 90, 100];
-        const rawEdges = pctls.map(p => {
-          const idx = (p / 100) * (sorted.length - 1);
-          const lo = Math.floor(idx), hi = Math.ceil(idx);
-          return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-        });
+        // Fixed-interval buckets: 10 equal-width buckets up to P95,
+        // plus an 11th open-ended tail bucket for everything beyond
+        const p95Idx = Math.floor(0.95 * (sorted.length - 1));
+        const capMs = sorted[p95Idx];
 
-        // Snap to nice round numbers
-        const snap = (ms) => {
-          if (ms <= 100) return Math.round(ms / 10) * 10;
-          if (ms <= 1000) return Math.round(ms / 50) * 50;
-          if (ms <= 5000) return Math.round(ms / 250) * 250;
-          if (ms <= 30000) return Math.round(ms / 1000) * 1000;
-          if (ms <= 120000) return Math.round(ms / 5000) * 5000;
-          return Math.round(ms / 10000) * 10000;
-        };
+        // Pick a nice interval that gives exactly 10 buckets
+        const rawInterval = capMs / 10;
+        let interval;
+        if (rawInterval <= 100) interval = Math.max(10, Math.ceil(rawInterval / 10) * 10);
+        else if (rawInterval <= 500) interval = Math.ceil(rawInterval / 50) * 50;
+        else if (rawInterval <= 2000) interval = Math.ceil(rawInterval / 250) * 250;
+        else if (rawInterval <= 5000) interval = Math.ceil(rawInterval / 1000) * 1000;
+        else if (rawInterval <= 20000) interval = Math.ceil(rawInterval / 2000) * 2000;
+        else if (rawInterval <= 60000) interval = Math.ceil(rawInterval / 5000) * 5000;
+        else interval = Math.ceil(rawInterval / 10000) * 10000;
 
-        // Build unique edges, dedup after snapping
-        const edges = [0]; // always start at 0
-        for (let i = 1; i < rawEdges.length - 1; i++) {
-          const snapped = snap(rawEdges[i]);
-          if (snapped > edges[edges.length - 1]) edges.push(snapped);
-        }
-
+        // Build exactly 10 edges, then add tail
         const buckets = [];
-        for (let i = 0; i < edges.length; i++) {
-          const min = edges[i];
-          const max = i < edges.length - 1 ? edges[i + 1] : Infinity;
-          buckets.push({ min, max, label: formatLatBucketLabel(min, max === Infinity ? null : max) });
+        for (let i = 0; i < 10; i++) {
+          const bMin = i * interval;
+          const bMax = (i + 1) * interval;
+          buckets.push({ min: bMin, max: bMax, label: formatLatBucketLabel(bMin, bMax) });
         }
+        // 11th bucket: everything beyond
+        const tailMin = 10 * interval;
+        buckets.push({ min: tailMin, max: Infinity, label: formatLatBucketLabel(tailMin, null) });
+
         if (buckets.length === 0) {
           buckets.push({ min: 0, max: Infinity, label: 'all' });
         }
@@ -3622,14 +3811,18 @@
 
         function buildGaugeRing(score) {
           const color = gaugeColorHex(score);
-          const deg = (score * 360).toFixed(1);
-          return '<div class="gauge-ring" style="background:conic-gradient(' + color + ' 0deg ' + deg + 'deg, #252536 ' + deg + 'deg 360deg);">' +
-            '<div class="gauge-ring-inner"></div>' +
-          '</div>';
+          const r = 18, circ = 2 * Math.PI * r;
+          const fillLen = score >= 1 ? circ : circ * Math.max(0, score - 0.03);
+          return '<div class="gauge-ring"><svg class="gauge-svg" viewBox="0 0 48 48">' +
+            '<circle class="gauge-track" cx="24" cy="24" r="' + r + '"/>' +
+            '<circle class="gauge-fill" cx="24" cy="24" r="' + r + '" stroke="' + color + '" ' +
+            'style="stroke-dasharray:' + fillLen.toFixed(2) + ' ' + circ.toFixed(2) + ';"/>' +
+            '</svg></div>';
         }
 
         // ── Metric cards (gauge + histogram) ──
         let cards = '';
+        let cardIdx = 0;
         const MAX_BAR_PX = 100;
 
         for (const metric of state.allMetrics) {
@@ -3646,7 +3839,7 @@
           if (mType === 'numeric') {
             // ── Numeric: show min / avg / max / total ──
             const fmtN = window.QymMetrics.formatNumericValue;
-            cards += '<div class="metric-card">' +
+            cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
               '<div class="metric-card-header">' +
                 '<div class="metric-card-gauge">' +
                   '<div class="metric-card-info">' +
@@ -3663,6 +3856,7 @@
                 '<div class="metric-num-stat"><span class="metric-num-stat-label">Total</span><span class="metric-num-stat-value total-val">' + fmtN(sum) + '</span></div>' +
               '</div>' +
             '</div>';
+            cardIdx++;
 
           } else if (mType === 'boolean') {
             // ── Boolean: pass/fail split bar ──
@@ -3670,7 +3864,7 @@
             const failCount = cnt - passCount;
             const passPct = (avg * 100).toFixed(0);
             const failPct = (100 - avg * 100).toFixed(0);
-            cards += '<div class="metric-card">' +
+            cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
               '<div class="metric-card-header">' +
                 '<div class="metric-card-gauge">' +
                   buildGaugeRing(avg) +
@@ -3687,11 +3881,12 @@
                   (failCount > 0 ? '<div class="metric-bool-seg fail-seg" data-metric="' + escapeAttr(metric) + '" data-bool-filter="failed" style="flex:' + failCount + '" title="Click to filter failing items">' + (failCount > 1 ? failCount : '') + '</div>' : '') +
                 '</div>' +
                 '<div class="metric-bool-legend">' +
-                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass ' + passPct + '% (' + passCount + ')</span>' +
-                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail ' + failPct + '% (' + failCount + ')</span>' +
+                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot pass"></span> Pass ' + passPct + '%</span>' +
+                  '<span class="metric-bool-legend-item"><span class="metric-bool-dot fail"></span> Fail ' + failPct + '%</span>' +
                 '</div>' +
               '</div>' +
             '</div>';
+            cardIdx++;
 
           } else {
             // ── Score (0-1 continuous): histogram ──
@@ -3717,7 +3912,7 @@
             }
             barsHtml += '</div>';
 
-            cards += '<div class="metric-card">' +
+            cards += '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
               '<div class="metric-card-header">' +
                 '<div class="metric-card-gauge">' +
                   buildGaugeRing(avg) +
@@ -3730,17 +3925,19 @@
               '</div>' +
               barsHtml +
             '</div>';
+            cardIdx++;
           }
         }
 
         // ── Latency card ──
+        let latencyCard = '';
         const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
         if (latencies.length > 0) {
           const sorted = [...latencies].sort((a, b) => a - b);
           const minLat = sorted[0];
           const maxLat = sorted[sorted.length - 1];
           const latTotal = latencies.length;
-          const [p50, p90, p99] = computePercentiles(latencies, [50, 90, 99]);
+          const [p50, p90, p95, p99] = computePercentiles(latencies, [50, 90, 95, 99]);
           const meanLat = latencies.reduce((a, b) => a + b, 0) / latTotal;
 
           const latBuckets = buildLatencyBuckets(latencies);
@@ -3756,8 +3953,9 @@
           let barsHtml = '<div class="dist-chart">';
           for (let i = 0; i < latBuckets.length; i++) {
             const count = counts[i];
-            const barH = maxCount > 0 ? Math.max(count > 0 ? 3 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
+            const barH = maxCount > 0 ? Math.max(count > 0 ? 14 : 0, Math.round((count / maxCount) * MAX_BAR_PX)) : 0;
             const pct = latTotal > 0 ? ((count / latTotal) * 100).toFixed(0) : '0';
+            if (count === 0) continue;
             barsHtml += '<div class="dist-chart-col" data-lat-min="' + latBuckets[i].min + '" data-lat-max="' + latBuckets[i].max + '" title="' + latBuckets[i].label + ': ' + count + ' items (' + pct + '%) — Click to filter">' +
               '<span class="bar-count">' + (count > 0 ? count : '') + '</span>' +
               '<div class="bar-fill" style="height:' + barH + 'px;background:' + latBuckets[i].color + ';"></div>' +
@@ -3766,25 +3964,66 @@
           }
           barsHtml += '</div>';
 
-          cards += '<div class="metric-card">' +
-            '<div class="metric-card-header">' +
-              '<div class="metric-card-gauge">' +
-                '<div class="latency-badge"><span class="latency-badge-icon">\u23F1</span></div>' +
-                '<div class="metric-card-info">' +
-                  '<div class="metric-card-value" style="color:var(--accent-secondary);">' + formatLatency(p50) + '</div>' +
-                  '<div class="metric-card-name">Latency \u00B7 P50</div>' +
-                '</div>' +
+          // Round latency for ruler labels (no decimals)
+          const fmtRuler = (ms) => {
+            if (!ms || ms <= 0) return '—';
+            if (ms >= 60000) {
+              const m = Math.floor(ms / 60000);
+              const s = Math.round((ms % 60000) / 1000);
+              return s > 0 ? m + 'm ' + s + 's' : m + 'm';
+            } else if (ms >= 1000) {
+              return Math.round(ms / 1000) + 's';
+            }
+            return Math.round(ms) + 'ms';
+          };
+
+          // Ruler marker positions: spread evenly for readability
+          const rulerPct = (v) => maxLat > minLat ? ((v - minLat) / (maxLat - minLat) * 100).toFixed(1) : 50;
+          const rulerMarkers = [
+            { val: minLat, label: 'Min', pos: rulerPct(minLat), cls: 'muted' },
+            { val: p50,    label: 'P50', pos: rulerPct(p50), cls: '' },
+            { val: p90,    label: 'P90', pos: rulerPct(p90), cls: 'warn' },
+            { val: p95,    label: 'P95', pos: rulerPct(p95), cls: 'warn' },
+            { val: p99,    label: 'P99', pos: rulerPct(p99), cls: 'danger' },
+            { val: maxLat, label: 'Max', pos: rulerPct(maxLat), cls: 'muted' }
+          ];
+          // Filter out markers too close to neighbors (< 8% apart)
+          const MIN_GAP = 8;
+          const filtered = [rulerMarkers[0]]; // always keep Min
+          for (let i = 1; i < rulerMarkers.length - 1; i++) {
+            const prev = filtered[filtered.length - 1];
+            const next = rulerMarkers[rulerMarkers.length - 1]; // Max
+            if (Math.abs(rulerMarkers[i].pos - prev.pos) >= MIN_GAP &&
+                Math.abs(rulerMarkers[i].pos - next.pos) >= MIN_GAP) {
+              filtered.push(rulerMarkers[i]);
+            }
+          }
+          filtered.push(rulerMarkers[rulerMarkers.length - 1]); // always keep Max
+
+          let rulerHtml = '<div class="latency-ruler-fill" style="width:100%;"></div>';
+          for (const m of filtered) {
+            rulerHtml += '<div class="latency-ruler-marker" style="left:' + m.pos + '%;">' +
+              '<div class="latency-ruler-dot ' + m.cls + '"></div>' +
+              '<div class="latency-ruler-label-below"><b>' + fmtRuler(m.val) + '</b>' + m.label + '</div>' +
+            '</div>';
+          }
+
+          // Format mean as rounded integer seconds if >= 1s
+          const meanFmt = meanLat >= 1000 ? Math.round(meanLat / 1000) + 's' : formatLatency(meanLat);
+
+          latencyCard = '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
+            '<div class="latency-hero">' +
+              '<div class="latency-p50-block">' +
+                '<div class="latency-p50-val">' + meanFmt + '</div>' +
+                '<div class="latency-p50-label">Avg Latency</div>' +
               '</div>' +
-              '<div class="latency-stats-compact">' +
-                '<span>Min <b>' + formatLatency(minLat) + '</b></span>' +
-                '<span>Mean <b>' + formatLatency(meanLat) + '</b></span>' +
-                '<span>P90 <b>' + formatLatency(p90) + '</b></span>' +
-                '<span>P99 <b>' + formatLatency(p99) + '</b></span>' +
-                '<span>Max <b>' + formatLatency(maxLat) + '</b></span>' +
+              '<div class="latency-ruler">' +
+                '<div class="latency-ruler-track">' + rulerHtml + '</div>' +
               '</div>' +
             '</div>' +
             barsHtml +
           '</div>';
+          cardIdx++;
         }
 
         // ── ⚡ Trace Stats card ──
@@ -3793,23 +4032,32 @@
         if (ts && ts.has_spans) {
           const fmtV = (v) => v != null ? _fmtTraceNum(v) : '\u2014';
           const fmtD = (v) => v != null ? v.toFixed(1) : '\u2014';
-          traceCard = '<div class="metric-card trace-overview-card">' +
+          traceCard = '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
             '<div class="metric-card-header">' +
               '<div class="metric-card-gauge">' +
-                '<div class="metric-card-info">' +
-                  '<div class="metric-card-value" style="color:var(--text-secondary);">\u26A1</div>' +
-                  '<div class="metric-card-name">Trace Stats</div>' +
+                '<div class="metric-card-info" style="display:flex;flex-direction:row;align-items:center;gap:8px;">' +
+                  '<span style="font-size:16px;line-height:1;">\u26A1</span>' +
+                  '<span class="metric-card-name" style="margin-top:0;font-size:var(--font-md);font-weight:600;color:var(--text-primary);">Trace Stats</span>' +
                 '</div>' +
               '</div>' +
             '</div>' +
-            '<div class="trace-overview-stats">' +
-              '<div class="trace-overview-stat"><span class="trace-overview-label">Avg Tokens</span><span class="trace-overview-val">' + fmtV(ts.avg_tokens) + '</span></div>' +
-              '<div class="trace-overview-stat"><span class="trace-overview-label">LLM Calls</span><span class="trace-overview-val">' + fmtD(ts.avg_llm_calls) + '</span></div>' +
-              '<div class="trace-overview-stat"><span class="trace-overview-label">Tool Calls</span><span class="trace-overview-val">' + fmtD(ts.avg_tool_calls) + '</span></div>' +
-              '<div class="trace-overview-stat"><span class="trace-overview-label">Tool Success</span><span class="trace-overview-val">' + (ts.tool_success_rate != null ? (ts.tool_success_rate * 100).toFixed(1) + '%' : '\u2014') + '</span></div>' +
+            '<div class="trace-pills-row">' +
+              '<div class="trace-pill"><div class="trace-pill-icon tokens">\uD83D\uDCDD</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Tokens</span><span class="trace-pill-val" style="color:var(--accent-primary);">' + fmtV(ts.avg_tokens) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon llm">\uD83E\uDDE0</div><div class="trace-pill-text"><span class="trace-pill-label">Avg LLM Calls</span><span class="trace-pill-val" style="color:var(--accent-secondary);">' + fmtD(ts.avg_llm_calls) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon tool">\uD83D\uDD27</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Tool Calls</span><span class="trace-pill-val" style="color:var(--warning);">' + fmtD(ts.avg_tool_calls) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon success">\u2713</div><div class="trace-pill-text"><span class="trace-pill-label">Tool Success</span><span class="trace-pill-val" style="color:var(--success);">' + (ts.tool_success_rate != null ? (ts.tool_success_rate * 100).toFixed(1) + '%' : '\u2014') + '</span></div></div>' +
             '</div>' +
           '</div>';
+          cardIdx++;
         }
+
+        // ── System metrics (latency + trace) ──
+        const systemCards = (latencyCard || traceCard
+            ? '<div class="system-metrics-section">' +
+                '<div class="system-metrics-label">Qym Metrics</div>' +
+                '<div class="system-metrics-grid">' + (latencyCard || '') + (traceCard || '') + '</div>' +
+              '</div>'
+            : '');
 
         // ── Assemble ──
         section.innerHTML =
@@ -3817,10 +4065,11 @@
             '<div><h3 class="section-title">Overview</h3>' +
             '<div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div></div>' +
           '</div>' +
-          (cards || traceCard ? '<div class="metric-cards-grid">' + cards + traceCard + '</div>' : '');
+          (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '') +
+          systemCards;
 
         // ── Wire click handlers ──
-        const grid = section.querySelector('.metric-cards-grid');
+        const grid = section;
         if (!grid) return;
 
         grid.querySelectorAll('.dist-chart-col[data-bucket-min]').forEach(col => {

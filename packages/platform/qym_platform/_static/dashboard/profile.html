@@ -239,31 +239,40 @@
     .modal-box {
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
-      border-radius: 12px;
-      padding: var(--space-xl);
-      max-width: 420px;
+      border-radius: 8px;
+      max-width: 500px;
       width: 90%;
+      max-height: 80vh;
+      overflow: hidden;
+      position: relative;
     }
 
     .modal-header {
-      margin-bottom: var(--space-lg);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-md) var(--space-lg);
+      margin: 0;
+      border-bottom: 1px solid var(--border-default);
     }
 
     .modal-title {
       font-size: var(--font-lg);
-      font-weight: 600;
       color: var(--text-primary);
       margin: 0;
     }
 
-    .modal-subtitle {
+    .modal-note {
       font-size: var(--font-sm);
       color: var(--text-muted);
-      margin-top: var(--space-xs);
+      margin: 0 0 var(--space-md) 0;
+      line-height: 1.45;
     }
 
     .modal-body {
-      margin-bottom: var(--space-lg);
+      margin: 0;
+      padding: var(--space-lg);
+      display: block;
     }
 
     .form-group {
@@ -284,6 +293,25 @@
       display: flex;
       gap: var(--space-sm);
       justify-content: flex-end;
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-default);
+    }
+
+    .modal-footer .btn {
+      min-width: 0;
+    }
+
+    .key-modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: var(--space-xs);
+    }
+
+    .key-modal-close:hover {
+      color: var(--text-primary);
     }
 
     /* Token Success State */
@@ -331,6 +359,13 @@
       border-radius: 6px;
       border: 1px solid var(--border-default);
       word-break: break-all;
+    }
+
+    @media (max-width: 640px) {
+      .token-display {
+        flex-direction: column;
+        align-items: stretch;
+      }
     }
 
     /* Confirm Dialog */
@@ -464,6 +499,33 @@
       </div>
     </div>
 
+    <!-- API Keys Section -->
+    <div class="section">
+      <div class="section-title">API Keys</div>
+      <div class="keys-section">
+        <div class="keys-header">
+          <div class="keys-header-title">Your API Keys</div>
+          <button class="btn primary btn-sm" id="new-key-btn">+ New Key</button>
+        </div>
+
+        <div id="keys-container">
+          <table class="keys-table" id="keys-table" style="display: none;">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Key</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th style="width: 80px;"></th>
+              </tr>
+            </thead>
+            <tbody id="keys-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="keys-empty">No API keys yet. Create one to get started.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- LLM Configuration Section -->
     <div class="section">
       <div class="section-title">LLM Configuration</div>
@@ -498,33 +560,6 @@
         </div>
       </div>
     </div>
-
-    <!-- API Keys Section -->
-    <div class="section">
-      <div class="section-title">API Keys</div>
-      <div class="keys-section">
-        <div class="keys-header">
-          <div class="keys-header-title">Your API Keys</div>
-          <button class="btn primary btn-sm" id="new-key-btn">+ New Key</button>
-        </div>
-
-        <div id="keys-container">
-          <table class="keys-table" id="keys-table" style="display: none;">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Key</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th style="width: 80px;"></th>
-              </tr>
-            </thead>
-            <tbody id="keys-tbody"></tbody>
-          </table>
-          <div class="empty-state" id="keys-empty">No API keys yet. Create one to get started.</div>
-        </div>
-      </div>
-    </div>
   </main>
 
   <!-- Create API Key Modal -->
@@ -534,9 +569,10 @@
       <div id="create-form">
         <div class="modal-header">
           <h2 class="modal-title">Create API Key</h2>
-          <p class="modal-subtitle">API keys are used to authenticate SDK requests</p>
+          <button class="key-modal-close" id="close-create-btn" type="button" aria-label="Close create API key dialog">×</button>
         </div>
         <div class="modal-body">
+          <p class="modal-note">API keys are used to authenticate SDK requests.</p>
           <div class="form-group">
             <label class="form-label" for="key-name">Key Name</label>
             <input type="text" class="form-input" id="key-name" placeholder="e.g., dev-laptop, ci-pipeline">
@@ -552,11 +588,13 @@
       <div class="token-success" id="token-success">
         <div class="modal-header">
           <h2 class="modal-title">API Key Created</h2>
+          <button class="key-modal-close" id="close-token-btn" type="button" aria-label="Close API key dialog">×</button>
         </div>
         <div class="modal-body">
+          <p class="modal-note">Copy this key now. For security, it will not be shown again after you close this dialog.</p>
           <div class="token-warning">
             <span class="token-warning-icon">⚠</span>
-            <span class="token-warning-text">Copy this key now — you won't be able to see it again</span>
+            <span class="token-warning-text">This is the only time you can view the full token.</span>
           </div>
           <div class="token-display">
             <div class="token-value" id="token-value">—</div>
@@ -788,6 +826,8 @@
 
       newKeyBtn.addEventListener('click', showCreateModal);
       el('cancel-create-btn').addEventListener('click', hideCreateModal);
+      el('close-create-btn').addEventListener('click', hideCreateModal);
+      el('close-token-btn').addEventListener('click', hideCreateModal);
       createModal.addEventListener('click', (e) => {
         if (e.target === createModal) hideCreateModal();
       });
