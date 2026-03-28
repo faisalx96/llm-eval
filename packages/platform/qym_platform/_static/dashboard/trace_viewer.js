@@ -1303,6 +1303,12 @@
       return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(String(value))}</pre>`;
     }
     parsed = deepParseJson(parsed);
+    if (typeof parsed === "string") {
+      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(parsed)}</pre>`;
+    }
+    if (parsed == null || typeof parsed !== "object") {
+      return `<pre class="tv-code${className ? ` ${className}` : ""}">${esc(String(parsed))}</pre>`;
+    }
     if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
       parsed = nestDottedKeys(parsed);
     }

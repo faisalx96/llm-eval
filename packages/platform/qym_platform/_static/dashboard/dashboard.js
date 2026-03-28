@@ -82,10 +82,10 @@
     return String(Math.round(v));
   }
   const TRACE_METRICS = [
-    { key: 'avg_tokens',    label: '⚡ Avg Tokens',        fmt: v => v != null ? _fmtTraceNum(v) : '—' },
-    { key: 'avg_llm_calls', label: '⚡ Avg LLM Calls',    fmt: v => v != null ? v.toFixed(1) : '—' },
-    { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',   fmt: v => v != null ? v.toFixed(1) : '—' },
-    { key: 'tool_success_rate', label: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
+    { key: 'avg_tokens',    label: '⚡ Avg Tokens',        modelsLabel: '⚡ Avg Tokens',   fmt: v => v != null ? _fmtTraceNum(v) : '—' },
+    { key: 'avg_llm_calls', label: '⚡ Avg LLM Calls',     modelsLabel: '⚡ Avg LLM Calls', fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',    modelsLabel: '⚡ Avg Tool Calls', fmt: v => v != null ? v.toFixed(1) : '—' },
+    { key: 'tool_success_rate', label: '⚡ Tool Success Rate', modelsLabel: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
   ];
 
   function _traceMetricsForRuns(runs = null) {
@@ -2709,18 +2709,22 @@
 
     // Fetch item-level data for each model and calculate stats
     mvs.modelStats = {};
+    const traceSourceRuns = [];
     for (const model of Object.keys(runsByModel)) {
       const selectedPaths = selectedRunsByModel[model];
       const selectedRuns = runsByModel[model].filter(r => selectedPaths.includes(r.file_path));
+      traceSourceRuns.push(...selectedRuns);
 
       // Fetch detailed data for this model's runs
       const detailedData = await fetchModelRunsData(selectedPaths);
 
       mvs.modelStats[model] = calculateModelStatsFromItems(detailedData, mvs.selectedMetric, mvs.threshold, mvs.metricIsBoolean);
+      mvs.modelStats[model].traceAverages = calculateModelTraceStats(selectedRuns);
       mvs.modelStats[model].totalAvailable = runsByModel[model].length;
       mvs.modelStats[model].selectedCount = selectedRuns.length;
       mvs.modelStats[model].selectedPaths = selectedPaths;
     }
+    mvs.visibleTraceMetrics = _traceMetricsForRuns(traceSourceRuns);
 
     // Render model cards
     renderModelCards(runsByModel, globalK);
@@ -2855,6 +2859,25 @@
     };
   }
 
+  function calculateModelTraceStats(runs) {
+    const traceMetrics = _traceMetricsForRuns(runs);
+    if (traceMetrics.length === 0) return {};
+
+    return traceMetrics.reduce((acc, metric) => {
+      let sum = 0;
+      let count = 0;
+      (runs || []).forEach(run => {
+        const value = run?.trace_stats?.[metric.key];
+        if (value !== undefined && value !== null && Number.isFinite(Number(value))) {
+          sum += Number(value);
+          count += 1;
+        }
+      });
+      acc[metric.key] = count > 0 ? (sum / count) : null;
+      return acc;
+    }, {});
+  }
+
   function detectModelsViewMetricType(runs, metricName) {
     if (!metricName) {
       state.modelsViewState.metricIsBoolean = true;
@@ -2917,6 +2940,7 @@
     const isNumeric = mvs.metricIsNumeric;
     const mType = isNumeric ? 'numeric' : (isBoolean ? 'boolean' : 'score');
     const threshold = Math.round(mvs.threshold * 100);
+    const visibleTraceMetrics = mvs.visibleTraceMetrics || [];
 
     const models = Object.keys(runsByModel).sort((a, b) => {
       // Sort by avg score descending
@@ -2962,79 +2986,46 @@
         return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
       }
 
-      // For numeric metrics, show avg/min/max + stdev/total/latency + errors
-      const fmtN = window.QymMetrics.formatNumericValue;
-      const statsRow1 = isNumeric ? `
-          <div class="model-stats-row">
-            <div class="model-stat-box">
-              <div class="stat-title">Avg ${infoIcon(tooltips.avgScore)}</div>
-              <div class="stat-main">${fmtN(stats.avgScore)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Min ${infoIcon('Minimum value across all items and runs.')}</div>
-              <div class="stat-main">${fmtN(stats.minScore)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
-              <div class="stat-main">${fmtN(stats.maxAtK)}</div>
-            </div>
+      function renderModelStatTile(title, value, valueClass = '', tooltip = '') {
+        return `
+          <div class="model-stat-item">
+            <div class="stat-label">${title}${tooltip ? ` ${infoIcon(tooltip)}` : ''}</div>
+            <div class="stat-value ${valueClass}">${value}</div>
           </div>
-      ` : `
-          <div class="model-stats-row">
-            <div class="model-stat-box">
-              <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
-              <div class="stat-main ${getSuccessClass(stats.passAtK)}">${formatPercent(stats.passAtK)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
-              <div class="stat-main ${getSuccessClass(stats.passHatK)}">${formatPercent(stats.passHatK)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
-              <div class="stat-main ${getSuccessClass(stats.maxAtK)}">${formatPercent(stats.maxAtK)}</div>
-            </div>
-          </div>
-      `;
+        `;
+      }
 
-      const statsRow2 = isNumeric ? `
-          <div class="model-stats-row">
-            <div class="model-stat-box">
-              <div class="stat-title">StdDev ${infoIcon('Standard deviation across all items and runs. Lower = more consistent.')}</div>
-              <div class="stat-main">${fmtN(stats.stddevScore)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
-              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.totalScoreSum)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
-              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
-            </div>
-          </div>
-      ` : `
-          <div class="model-stats-row">
-            <div class="model-stat-box">
-              <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
-              <div class="stat-main ${stats.consistency !== null ? getSuccessClass(stats.consistency) : ''}">${stats.consistency !== null ? formatPercent(stats.consistency) : 'NA'}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
-              <div class="stat-main ${stats.reliability !== null ? getSuccessClass(stats.reliability) : ''}">${stats.reliability !== null ? formatPercent(stats.reliability) : 'NA'}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
-              <div class="stat-main ${getSuccessClass(stats.avgScore)}">${formatPercent(stats.avgScore)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Latency ${infoIcon(tooltips.avgLatency)}</div>
-              <div class="stat-main">${formatLatency(stats.avgLatency)}</div>
-            </div>
-            <div class="model-stat-box">
-              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
-              <div class="stat-main ${stats.failedCount > 0 ? 'failed-count' : ''}">${stats.failedCount}</div>
-            </div>
-          </div>
-      `;
+      const fmtN = window.QymMetrics.formatNumericValue;
+      const statTiles = [];
+      if (isNumeric) {
+        statTiles.push(
+          renderModelStatTile('Avg', fmtN(stats.avgScore), '', tooltips.avgScore),
+          renderModelStatTile('Min', fmtN(stats.minScore), '', 'Minimum value across all items and runs.'),
+          renderModelStatTile(`Max@${K}`, fmtN(stats.maxAtK), '', tooltips.maxAtK),
+          renderModelStatTile('StdDev', fmtN(stats.stddevScore), '', 'Standard deviation across all items and runs. Lower = more consistent.'),
+          renderModelStatTile('Total', fmtN(stats.totalScoreSum), 'accent-value', 'Sum of all values across all items and runs.'),
+          renderModelStatTile('⚡ Avg Latency', formatLatency(stats.avgLatency))
+        );
+      } else {
+        statTiles.push(
+          renderModelStatTile(`Pass@${K}`, formatPercent(stats.passAtK), getSuccessClass(stats.passAtK), tooltips.passAtK),
+          renderModelStatTile(`Pass^${K}`, formatPercent(stats.passHatK), getSuccessClass(stats.passHatK), tooltips.passHatK),
+          renderModelStatTile(`Max@${K}`, formatPercent(stats.maxAtK), getSuccessClass(stats.maxAtK), tooltips.maxAtK),
+          renderModelStatTile('Consistency', stats.consistency !== null ? formatPercent(stats.consistency) : 'NA', stats.consistency !== null ? getSuccessClass(stats.consistency) : '', tooltips.consistency),
+          renderModelStatTile('Reliability', stats.reliability !== null ? formatPercent(stats.reliability) : 'NA', stats.reliability !== null ? getSuccessClass(stats.reliability) : '', tooltips.reliability),
+          renderModelStatTile('Avg Score', formatPercent(stats.avgScore), getSuccessClass(stats.avgScore), tooltips.avgScore),
+          renderModelStatTile('Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount),
+          renderModelStatTile('⚡ Avg Latency', formatLatency(stats.avgLatency))
+        );
+      }
+
+      visibleTraceMetrics.forEach((traceMetric) => {
+        const traceValue = stats.traceAverages?.[traceMetric.key];
+        const traceClass = traceMetric.key === 'tool_success_rate' && traceValue !== null && traceValue !== undefined
+          ? getSuccessClass(traceValue)
+          : '';
+        statTiles.push(renderModelStatTile(traceMetric.modelsLabel || traceMetric.label, traceMetric.fmt(traceValue), traceClass));
+      });
 
       return `
         <div class="model-card" data-model="${model}">
@@ -3050,9 +3041,9 @@
             </div>
           </div>
 
-          ${statsRow1}
-
-          ${statsRow2}
+          <div class="model-stats-grid">
+            ${statTiles.join('')}
+          </div>
 
           ${isNumeric ? '' : `<div class="model-stat-box-wide">
             <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>

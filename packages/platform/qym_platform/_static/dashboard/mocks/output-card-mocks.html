@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Output Card — 5 Layout Options</title>
+<title>Item Card Redesign — Compare-First</title>
 <style>
   :root {
     --bg-void: #101018;
@@ -11,7 +11,6 @@
     --bg-surface: #1a1a28;
     --bg-elevated: #222232;
     --bg-hover: #2a2a3c;
-    --bg-active: #323244;
     --text-primary: #ededf0;
     --text-secondary: #a8a8ba;
     --text-muted: #7a7a90;
@@ -28,1058 +27,673 @@
     --border-subtle: #252536;
     --border-default: #333348;
     --border-strong: #4a4a60;
-    --space-xs: 4px;
-    --space-sm: 8px;
-    --space-md: 14px;
-    --space-lg: 20px;
-    --space-xl: 32px;
     --font-xs: 12px;
     --font-sm: 13px;
     --font-base: 14px;
     --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
     --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    --run-a: #00d4aa;
+    --run-b: #00a8ff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: var(--font-sans);
-    font-size: var(--font-base);
-    background: var(--bg-void);
-    color: var(--text-primary);
-    line-height: 1.4;
-    -webkit-font-smoothing: antialiased;
-  }
+  body { font-family: var(--font-sans); font-size: var(--font-base); background: var(--bg-void); color: var(--text-primary); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 
-  /* ── Page nav ── */
-  .page-nav {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    gap: 0;
-    background: var(--bg-base);
-    border-bottom: 1px solid var(--border-default);
-    padding: 0 24px;
-  }
-  .page-nav-title {
-    font-size: var(--font-sm);
-    font-weight: 600;
-    color: var(--text-muted);
-    padding: 12px 16px 12px 0;
-    border-right: 1px solid var(--border-subtle);
-    margin-right: 4px;
-    white-space: nowrap;
-  }
-  .nav-btn {
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-dim);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    font-family: var(--font-sans);
-    white-space: nowrap;
-  }
+  /* Nav */
+  .page-nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; background: var(--bg-base); border-bottom: 1px solid var(--border-default); padding: 0 24px; overflow-x: auto; }
+  .page-nav-title { font-size: var(--font-sm); font-weight: 600; color: var(--text-muted); padding: 12px 16px 12px 0; border-right: 1px solid var(--border-subtle); margin-right: 4px; white-space: nowrap; }
+  .nav-btn { padding: 12px 16px; font-size: 12px; font-weight: 600; color: var(--text-dim); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-family: var(--font-sans); white-space: nowrap; }
   .nav-btn:hover { color: var(--text-secondary); }
-  .nav-btn.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
-  }
+  .nav-btn.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
 
-  /* ── Section wrapper ── */
-  .mock-section {
-    display: none;
-    padding: 40px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
+  .mock-section { display: none; padding: 32px 40px; max-width: 1300px; margin: 0 auto; }
   .mock-section.active { display: block; }
-  .mock-title {
-    font-size: 17px;
-    font-weight: 600;
-    color: var(--accent-primary);
-    margin-bottom: 6px;
-  }
-  .mock-desc {
-    font-size: var(--font-sm);
-    color: var(--text-muted);
-    margin-bottom: var(--space-xl);
-    max-width: 780px;
-    line-height: 1.6;
-  }
+  .mock-title { font-size: 17px; font-weight: 600; color: var(--accent-primary); margin-bottom: 6px; }
+  .mock-desc { font-size: var(--font-sm); color: var(--text-muted); margin-bottom: 28px; max-width: 780px; line-height: 1.6; }
+  .view-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-dim); margin: 40px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle); }
+  .view-label:first-of-type { margin-top: 0; }
 
-  /* ── Shared: action chips ── */
-  .action-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 26px;
-    padding: 0 10px;
-    border: none;
-    border-radius: 5px;
-    background: var(--bg-surface);
-    color: var(--text-muted);
-    font-family: var(--font-sans);
-    font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
-    text-decoration: none;
-    transition: background 0.15s, color 0.15s;
-    white-space: nowrap;
-  }
-  .action-chip:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-  /* ── Shared: analysis buttons ── */
-  .analysis-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 12px;
-    border-radius: 6px;
-    border: 1px dashed var(--border-default);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--font-xs);
-    font-family: var(--font-sans);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .analysis-btn:hover {
-    border-color: var(--accent-primary);
-    color: var(--accent-primary);
-    background: rgba(0,212,170,0.05);
-  }
-
-  /* ── Shared: output text ── */
-  .output-text {
-    font-family: var(--font-mono);
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    line-height: 1.7;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  /* ═══════════════════════════════════
-     OPTION 1 — Zoned Panels
-     ═══════════════════════════════════ */
-  .o1-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .o1-status {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .o1-status-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .o1-status-label {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--error);
-  }
-  .o1-status-dot {
-    display: inline-block;
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--error);
-    box-shadow: 0 0 6px rgba(239,68,68,0.4);
-    vertical-align: middle;
-    margin-right: 6px;
-  }
-  .o1-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-  }
-  .o1-meta .sep { color: var(--border-default); }
-  .o1-status-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .o1-output { padding: 16px; }
-  .o1-metrics {
-    display: flex;
-    align-items: stretch;
-    border-top: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-base);
-  }
-  .o1-metrics-group {
-    display: flex;
-    flex-wrap: wrap;
-    flex: 1;
-  }
-  .o1-metric-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    padding: 12px 18px;
-    border-right: 1px solid var(--border-subtle);
-    min-width: 110px;
-    transition: background 0.15s;
-  }
-  .o1-metric-cell:hover { background: var(--bg-hover); }
-  .o1-metric-cell-name {
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-dim);
-  }
-  .o1-metric-cell-val {
-    font-family: var(--font-mono);
-    font-size: 16px;
-    font-weight: 700;
-  }
-  .o1-trace-group {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
-  .o1-trace-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 14px;
-    border-left: 1px solid var(--border-subtle);
-    min-width: 80px;
-    transition: background 0.15s;
-  }
-  .o1-trace-cell:hover { background: var(--bg-hover); }
-  .o1-trace-val {
-    font-family: var(--font-mono);
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-  .o1-trace-label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
-  }
-  .o1-analysis {
-    padding: 14px 16px;
-    display: flex;
-    gap: 24px;
-    flex-wrap: wrap;
-  }
-  .o1-analysis-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .o1-analysis-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-  }
-  .o1-footer {
-    padding: 8px 16px;
-    border-top: 1px solid var(--border-subtle);
-  }
-  .o1-footer button {
-    font-size: var(--font-xs);
-    color: var(--accent-primary);
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: var(--font-sans);
-    font-weight: 500;
-  }
-  .o1-footer button:hover { text-decoration: underline; }
-
-  /* ═══════════════════════════════════
-     OPTION 2 — Sidebar Stats
-     ═══════════════════════════════════ */
-  .o2-card {
-    display: grid;
-    grid-template-columns: 1fr 220px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .o2-content { display: flex; flex-direction: column; }
-  .o2-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border-subtle);
-    gap: 8px;
-  }
-  .o2-header-left { display: flex; align-items: center; gap: 10px; }
-  .o2-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    padding: 4px 10px;
-    border-radius: 5px;
-    color: var(--error);
-    background: var(--error-dim);
-  }
-  .o2-badge .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--error);
-    box-shadow: 0 0 6px rgba(239,68,68,0.5);
-  }
-  .o2-meta {
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-  }
-  .o2-header-right { display: flex; align-items: center; gap: 6px; }
-  .o2-body { padding: 16px; flex: 1; }
-  .o2-analysis {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-  }
-  .o2-analysis-slot { display: flex; flex-direction: column; gap: 4px; }
-  .o2-analysis-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-  }
-  .o2-sidebar {
-    border-left: 1px solid var(--border-default);
-    background: var(--bg-base);
-    display: flex;
-    flex-direction: column;
-  }
-  .o2-stats-section { padding: 12px 14px; }
-  .o2-stats-section + .o2-stats-section { border-top: 1px solid var(--border-subtle); }
-  .o2-stats-title {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-    margin-bottom: 10px;
-  }
-  .o2-stat-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding: 5px 0;
-  }
-  .o2-stat-row + .o2-stat-row { border-top: 1px solid rgba(37,37,54,0.6); }
-  .o2-stat-name { font-size: 11px; color: var(--text-muted); }
-  .o2-stat-val {
-    font-family: var(--font-mono);
-    font-size: var(--font-sm);
-    font-weight: 700;
-  }
-  .o2-stats-footer {
-    margin-top: auto;
-    padding: 8px 14px;
-    border-top: 1px solid var(--border-subtle);
-  }
-  .o2-stats-footer button {
-    font-size: 11px;
-    color: var(--accent-primary);
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-family: var(--font-sans);
-  }
-  .o2-stats-footer button:hover { text-decoration: underline; }
-
-  /* ═══════════════════════════════════
-     OPTION 3 — Compact Accordion
-     ═══════════════════════════════════ */
-  .o3-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .o3-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    flex-wrap: wrap;
-  }
-  .o3-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    flex-shrink: 0;
-    color: var(--error);
-    background: var(--error-dim);
-  }
-  .o3-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-  .o3-compact-meta {
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-    color: var(--text-dim);
-  }
-  .o3-metric-summary {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .o3-metric-inline { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
-  .o3-metric-inline-name { color: var(--text-dim); font-size: 10px; }
-  .o3-metric-inline-val { font-family: var(--font-mono); font-weight: 700; font-size: var(--font-xs); }
-  .o3-spacer { flex: 1; }
-  .o3-actions { display: flex; align-items: center; gap: 5px; }
-  .o3-output { padding: 0 16px 14px; }
-  .o3-output .output-text {
-    padding: 12px;
-    background: var(--bg-base);
-    border-radius: 6px;
-    border: 1px solid var(--border-subtle);
-  }
-  .o3-accordion { border-top: 1px solid var(--border-subtle); }
-  .o3-accordion details { border-bottom: 1px solid var(--border-subtle); }
-  .o3-accordion details:last-child { border-bottom: none; }
-  .o3-accordion summary {
-    list-style: none;
-    cursor: pointer;
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    transition: background 0.15s;
-    user-select: none;
-  }
-  .o3-accordion summary:hover { background: var(--bg-hover); }
-  .o3-accordion summary::-webkit-details-marker { display: none; }
-  .o3-summary-left { display: flex; align-items: center; gap: 8px; }
-  .o3-summary-icon {
-    font-size: 10px;
-    color: var(--text-dim);
-    transition: transform 0.2s;
-    width: 12px;
-    text-align: center;
-  }
-  details[open] .o3-summary-icon { transform: rotate(90deg); }
-  .o3-summary-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-  }
-  .o3-summary-preview {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-  .o3-accordion-body { padding: 4px 16px 14px 36px; }
-  .o3-trace-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
-  .o3-trace-stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 10px;
-    background: var(--bg-base);
-    border-radius: 5px;
-    border: 1px solid var(--border-subtle);
-  }
-  .o3-trace-stat-val { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text-primary); }
-  .o3-trace-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
-  .o3-analysis-row { display: flex; gap: 20px; flex-wrap: wrap; }
-  .o3-analysis-slot { display: flex; flex-direction: column; gap: 4px; }
-  .o3-analysis-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-  }
-  .o3-metric-table { width: 100%; border-collapse: collapse; }
-  .o3-metric-table td {
-    padding: 6px 10px;
-    font-size: var(--font-xs);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .o3-metric-table td:first-child { color: var(--text-muted); }
-  .o3-metric-table td:last-child { font-family: var(--font-mono); font-weight: 600; text-align: right; }
-
-  /* ═══════════════════════════════════
-     OPTION 4 — Card Grid
-     ═══════════════════════════════════ */
-  .o4-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .o4-status-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: var(--bg-elevated);
-    border-bottom: 1px solid var(--border-subtle);
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .o4-status-left { display: flex; align-items: center; gap: 10px; }
-  .o4-run-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-    font-weight: 600;
-  }
-  .o4-status-indicator { display: inline-flex; align-items: center; gap: 6px; }
-  .o4-status-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--error);
-    box-shadow: 0 0 6px rgba(239,68,68,0.4);
-  }
-  .o4-status-text { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--error); }
-  .o4-meta-info { font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-dim); }
-  .o4-status-right { display: flex; align-items: center; gap: 6px; }
-  .o4-output { padding: 16px; }
-  .o4-data-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: var(--border-subtle);
-    border-top: 1px solid var(--border-subtle);
-  }
-  .o4-scores-panel { background: var(--bg-base); padding: 14px 16px; }
-  .o4-panel-title {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-    margin-bottom: 10px;
-  }
-  .o4-scores-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .o4-score-card {
-    padding: 10px;
-    background: var(--bg-surface);
-    border-radius: 6px;
-    border: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    transition: background 0.15s;
-  }
-  .o4-score-card:hover { background: var(--bg-elevated); }
-  .o4-score-name { font-size: 10px; color: var(--text-dim); }
-  .o4-score-val { font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
-  .o4-info-panel { background: var(--bg-base); display: flex; flex-direction: column; }
-  .o4-trace-section { padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
-  .o4-trace-row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .o4-trace-item { display: flex; align-items: baseline; gap: 6px; }
-  .o4-trace-val { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 700; color: var(--text-primary); }
-  .o4-trace-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
-  .o4-analysis-section { padding: 14px 16px; flex: 1; }
-  .o4-analysis-row { display: flex; gap: 16px; flex-wrap: wrap; }
-  .o4-analysis-slot { display: flex; flex-direction: column; gap: 4px; }
-  .o4-analysis-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-  }
-  .o4-footer {
-    background: var(--bg-surface);
-    padding: 8px 16px;
-    border-top: 1px solid var(--border-subtle);
-  }
-  .o4-footer button {
-    font-size: 11px;
-    color: var(--accent-primary);
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: var(--font-sans);
-  }
-  .o4-footer button:hover { text-decoration: underline; }
-
-  /* ═══════════════════════════════════
-     OPTION 5 — Tabbed Sections
-     ═══════════════════════════════════ */
-  .o5-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .o5-status-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 16px;
-    background: var(--bg-elevated);
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .o5-status-left { display: flex; align-items: center; gap: 10px; }
-  .o5-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.7px;
-    color: var(--error);
-    background: var(--error-dim);
-  }
-  .o5-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px; }
-  .o5-meta { font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-dim); }
-  .o5-status-right { display: flex; align-items: center; gap: 6px; }
-  .o5-output-area {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .o5-tab-bar {
-    display: flex;
-    background: var(--bg-base);
-    border-bottom: 1px solid var(--border-subtle);
-    padding: 0 12px;
-  }
-  .o5-tab-btn {
-    padding: 10px 16px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-dim);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    font-family: var(--font-sans);
-  }
-  .o5-tab-btn:hover { color: var(--text-secondary); }
-  .o5-tab-btn.active {
-    color: var(--accent-primary);
-    border-bottom-color: var(--accent-primary);
-  }
-  .o5-tab-count {
-    font-size: 9px;
-    font-family: var(--font-mono);
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: var(--bg-hover);
-    color: var(--text-muted);
-    margin-left: 6px;
-    font-weight: 700;
-  }
-  .o5-tab-btn.active .o5-tab-count {
-    background: rgba(0,212,170,0.15);
-    color: var(--accent-primary);
-  }
-  .o5-tab-panel {
-    display: none;
-    padding: 14px 16px;
-    min-height: 80px;
-  }
-  .o5-tab-panel.active { display: block; }
-  .o5-scores-strip { display: flex; flex-wrap: wrap; gap: 10px; }
-  .o5-score-tile {
-    flex: 1;
-    min-width: 140px;
-    padding: 12px 14px;
-    background: var(--bg-elevated);
-    border-radius: 8px;
-    border: 1px solid var(--border-subtle);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .o5-score-tile:hover { background: var(--bg-hover); border-color: var(--border-default); }
-  .o5-score-tile-name { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
-  .o5-score-tile-val { font-family: var(--font-mono); font-size: 22px; font-weight: 700; line-height: 1; }
-  .o5-score-bar { height: 3px; border-radius: 2px; background: var(--border-subtle); margin-top: 4px; overflow: hidden; }
-  .o5-score-bar-fill { height: 100%; border-radius: 2px; }
-  .o5-trace-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 10px;
-  }
-  .o5-trace-card {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 12px 14px;
-    background: var(--bg-elevated);
-    border-radius: 8px;
-    border: 1px solid var(--border-subtle);
-  }
-  .o5-trace-card-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--text-primary); }
-  .o5-trace-card-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
-  .o5-analysis-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .o5-analysis-card {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 14px;
-    background: var(--bg-elevated);
-    border-radius: 8px;
-    border: 1px solid var(--border-subtle);
-    transition: border-color 0.15s;
-  }
-  .o5-analysis-card:hover { border-color: var(--border-default); }
-  .o5-analysis-card-label {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-  }
-  .o5-analysis-card .analysis-btn { width: 100%; justify-content: center; padding: 8px 14px; }
-
-  /* Color helpers */
+  /* Shared */
+  .output-text { font-family: var(--font-mono); font-size: var(--font-sm); color: var(--text-secondary); line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border: none; border-radius: 4px; background: var(--bg-elevated); color: var(--text-muted); font-family: var(--font-sans); font-size: 11px; font-weight: 500; cursor: pointer; text-decoration: none; transition: background 0.15s; white-space: nowrap; }
+  .chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .abtn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 5px; border: 1px dashed var(--border-default); background: transparent; color: var(--text-muted); font-size: 11px; font-family: var(--font-sans); cursor: pointer; transition: all 0.15s; }
+  .abtn:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot.fail { background: var(--error); box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+  .dot.pass { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,0.35); }
   .c-red { color: var(--score-1) !important; }
   .c-green { color: var(--score-5) !important; }
   .c-muted { color: var(--text-muted) !important; }
-  .c-pink { color: #fb7185 !important; }
-  .bg-red { background: var(--score-1) !important; }
-  .bg-green { background: var(--score-5) !important; }
+  .slabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 6px; }
+  .slabel.expected { color: var(--success); }
+  .run-caption { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle); }
+  .run-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .run-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); }
+  .winner { font-size: 10px; color: #fbbf24; font-weight: 600; }
+  .alabel { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+
+  /* ═══════════════════════════════════════════
+     OPTION 1 — Zoned Panels
+     Single: horizontal zones (header, input, expected, output-status, output, metrics-strip, analysis)
+     Compare: outputs side-by-side, then a SHARED comparison table below that's purpose-built for diffing
+  ═══════════════════════════════════════════ */
+  .o1 { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o1-iheader { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); }
+  .o1-idx { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-muted); }
+  .o1-section { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o1-section.expected { background: rgba(6,78,59,0.2); border-left: 3px solid var(--success); }
+  .o1-status-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border-subtle); gap: 6px; flex-wrap: wrap; }
+  .o1-status-left { display: flex; align-items: center; gap: 8px; }
+  .o1-slabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; }
+  .o1-status-right { display: flex; align-items: center; gap: 5px; }
+  .o1-body { padding: 14px 16px; }
+  .o1-metrics { display: flex; align-items: stretch; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); background: var(--bg-base); flex-wrap: wrap; }
+  .o1-mscores { display: flex; flex-wrap: wrap; flex: 1; }
+  .o1-mc { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 16px; border-right: 1px solid var(--border-subtle); min-width: 100px; }
+  .o1-mc:hover { background: var(--bg-hover); }
+  .o1-mc-name { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .o1-mc-val { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
+  .o1-mtrace { display: flex; flex-shrink: 0; }
+  .o1-tc { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 14px; border-left: 1px solid var(--border-subtle); min-width: 70px; }
+  .o1-tc:hover { background: var(--bg-hover); }
+  .o1-tc-val { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-primary); }
+  .o1-tc-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .o1-analysis { padding: 12px 16px; display: flex; gap: 24px; flex-wrap: wrap; }
+  .o1-agroup { display: flex; flex-direction: column; gap: 5px; }
+  .o1-footer { padding: 8px 16px; border-top: 1px solid var(--border-subtle); }
+  .o1-footer button { font-size: var(--font-xs); color: var(--accent-primary); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
+  .o1-footer button:hover { text-decoration: underline; }
+
+  /* Compare: side-by-side outputs, then shared comparison table */
+  .o1-cmp-outputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+  .o1-cmp-col { background: var(--bg-surface); display: flex; flex-direction: column; }
+  .o1-cmp-col .o1-body { flex: 1; }
+  /* Shared comparison table */
+  .o1-cmp-table { width: 100%; border-collapse: collapse; }
+  .o1-cmp-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); padding: 10px 14px; text-align: left; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); }
+  .o1-cmp-table th:not(:first-child) { text-align: center; }
+  .o1-cmp-table td { padding: 7px 14px; border-bottom: 1px solid var(--border-subtle); font-size: var(--font-xs); }
+  .o1-cmp-table td:first-child { color: var(--text-muted); }
+  .o1-cmp-table td:not(:first-child) { text-align: center; font-family: var(--font-mono); font-weight: 700; font-size: var(--font-sm); }
+  .o1-cmp-table td:last-child { font-size: 11px; }
+  .delta-pos { color: var(--success); }
+  .delta-neg { color: var(--error); }
+  .delta-eq { color: var(--text-dim); }
+
+  /* ═══════════════════════════════════════════
+     OPTION 2 — Sidebar Stats
+     Single: sidebar with all numbers
+     Compare: NO sidebar — instead, a shared scorecard table below the output columns
+  ═══════════════════════════════════════════ */
+  .o2 { display: grid; grid-template-columns: 1fr 200px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o2-main { display: flex; flex-direction: column; }
+  .o2-header { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .o2-header-left { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .o2-header-right { display: flex; align-items: center; gap: 5px; }
+  .o2-idx { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-muted); }
+  .o2-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; padding: 3px 8px; border-radius: 4px; }
+  .o2-badge.fail { color: var(--error); background: var(--error-dim); }
+  .o2-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .o2-meta { font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-dim); }
+  .o2-sect { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o2-sect.expected { background: rgba(6,78,59,0.2); border-left: 3px solid var(--success); }
+  .o2-body { padding: 14px 16px; flex: 1; }
+  .o2-analysis { padding: 12px 16px; border-top: 1px solid var(--border-subtle); display: flex; gap: 20px; flex-wrap: wrap; }
+  .o2-aslot { display: flex; flex-direction: column; gap: 4px; }
+  .o2-sidebar { border-left: 1px solid var(--border-default); background: var(--bg-base); display: flex; flex-direction: column; }
+  .o2-stats { padding: 10px 12px; }
+  .o2-stats + .o2-stats { border-top: 1px solid var(--border-subtle); }
+  .o2-stitle { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; }
+  .o2-sr { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 0; }
+  .o2-sr + .o2-sr { border-top: 1px solid rgba(37,37,54,0.6); }
+  .o2-sn { font-size: 11px; color: var(--text-muted); }
+  .o2-sv { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 700; }
+  .o2-sfooter { margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--border-subtle); }
+  .o2-sfooter button { font-size: 11px; color: var(--accent-primary); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
+  .o2-sfooter button:hover { text-decoration: underline; }
+  /* Compare */
+  .o2-cmp { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o2-cmp-outputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-subtle); }
+  .o2-cmp-col { background: var(--bg-surface); display: flex; flex-direction: column; }
+  .o2-cmp-col .o2-body { flex: 1; }
+
+  /* ═══════════════════════════════════════════
+     OPTION 3 — Compact Accordion
+     Single: compact header with inline scores, accordions for trace/analysis
+     Compare: outputs side-by-side with inline scores, shared accordion below for detailed comparison
+  ═══════════════════════════════════════════ */
+  .o3 { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o3-top { display: flex; align-items: center; gap: 8px; padding: 10px 16px; flex-wrap: wrap; }
+  .o3-idx { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-muted); }
+  .o3-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .o3-pill.fail { color: var(--error); background: var(--error-dim); }
+  .o3-pill.pass { color: var(--success); background: var(--success-dim); }
+  .o3-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .o3-cmeta { font-family: var(--font-mono); font-size: var(--font-xs); color: var(--text-dim); }
+  .o3-msum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .o3-mi { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+  .o3-mi-n { color: var(--text-dim); font-size: 10px; }
+  .o3-mi-v { font-family: var(--font-mono); font-weight: 700; font-size: var(--font-xs); }
+  .o3-spacer { flex: 1; }
+  .o3-actions { display: flex; align-items: center; gap: 5px; }
+  .o3-content { padding: 0 16px 12px; }
+  .o3-block { padding: 10px 12px; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); margin-bottom: 8px; }
+  .o3-block.expected { background: rgba(6,78,59,0.2); border-color: rgba(16,185,129,0.2); border-left: 3px solid var(--success); }
+  .o3-acc { border-top: 1px solid var(--border-subtle); }
+  .o3-acc details { border-bottom: 1px solid var(--border-subtle); }
+  .o3-acc details:last-child { border-bottom: none; }
+  .o3-acc summary { list-style: none; cursor: pointer; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; font-size: var(--font-sm); color: var(--text-secondary); transition: background 0.15s; user-select: none; }
+  .o3-acc summary:hover { background: var(--bg-hover); }
+  .o3-acc summary::-webkit-details-marker { display: none; }
+  .o3-sl { display: flex; align-items: center; gap: 8px; }
+  .o3-si { font-size: 10px; color: var(--text-dim); transition: transform 0.2s; width: 12px; }
+  details[open] .o3-si { transform: rotate(90deg); }
+  .o3-slbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); }
+  .o3-sp { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+  .o3-abody { padding: 4px 16px 14px 36px; }
+  .o3-tgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .o3-ts { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--bg-base); border-radius: 5px; border: 1px solid var(--border-subtle); }
+  .o3-ts-v { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .o3-ts-l { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .o3-arow { display: flex; gap: 20px; flex-wrap: wrap; }
+  .o3-aslot { display: flex; flex-direction: column; gap: 4px; }
+  /* Compare */
+  .o3-cmp-outputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-subtle); }
+  .o3-cmp-col { background: var(--bg-surface); }
+  .o3-cmp-col .o3-content { padding-bottom: 8px; }
+  .o3-cmp-col .o3-top { padding: 8px 14px; }
+
+  /* ═══════════════════════════════════════════
+     OPTION 4 — Unified Diff Table
+     Single: clean vertical stack
+     Compare: purpose-built comparison layout — outputs side by side,
+     then a unified metrics/trace comparison table with all runs as columns
+  ═══════════════════════════════════════════ */
+  .o4 { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o4-iheader { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); justify-content: space-between; flex-wrap: wrap; }
+  .o4-iheader-left { display: flex; align-items: center; gap: 8px; }
+  .o4-idx { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-muted); }
+  .o4-iheader-right { display: flex; align-items: center; gap: 5px; }
+  .o4-sect { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o4-sect.expected { background: rgba(6,78,59,0.2); border-left: 3px solid var(--success); }
+  .o4-status { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border-subtle); justify-content: space-between; flex-wrap: wrap; }
+  .o4-status-left { display: flex; align-items: center; gap: 8px; }
+  .o4-status-right { display: flex; align-items: center; gap: 5px; }
+  .o4-sbadge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; display: flex; align-items: center; gap: 6px; }
+  .o4-body { padding: 14px 16px; }
+  .o4-scores { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); background: var(--bg-base); }
+  .o4-score-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 4px; font-size: var(--font-xs); }
+  .o4-score-name { color: var(--text-muted); }
+  .o4-score-val { font-family: var(--font-mono); font-weight: 700; }
+  .o4-trace-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o4-trace-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: rgba(100,120,160,0.12); border: 1px solid rgba(100,120,160,0.22); font-family: var(--font-mono); font-size: 11px; }
+  .o4-trace-chip-val { font-weight: 700; color: var(--text-primary); }
+  .o4-trace-chip-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .o4-analysis { padding: 12px 16px; display: flex; gap: 24px; flex-wrap: wrap; }
+  .o4-agroup { display: flex; flex-direction: column; gap: 5px; }
+  .o4-footer { padding: 8px 16px; border-top: 1px solid var(--border-subtle); }
+  .o4-footer button { font-size: var(--font-xs); color: var(--accent-primary); background: none; border: none; cursor: pointer; font-family: var(--font-sans); }
+  .o4-footer button:hover { text-decoration: underline; }
+  /* Compare */
+  .o4-cmp { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o4-cmp-outputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-subtle); }
+  .o4-cmp-col { background: var(--bg-surface); display: flex; flex-direction: column; }
+  .o4-cmp-col .o4-body { flex: 1; }
+  /* Unified comparison table */
+  .o4-cmp-section { padding: 12px 16px; }
+  .o4-cmp-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; }
+  .o4-cmp-grid { display: grid; grid-template-columns: 140px 1fr 1fr auto; gap: 0; border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden; }
+  .o4-cmp-grid.three-col { grid-template-columns: 140px 1fr 1fr; }
+  .o4-cmp-cell { padding: 7px 12px; border-bottom: 1px solid var(--border-subtle); font-size: var(--font-xs); display: flex; align-items: center; }
+  .o4-cmp-cell:nth-last-child(-n+4) { border-bottom: none; }
+  .o4-cmp-grid.three-col .o4-cmp-cell:nth-last-child(-n+3) { border-bottom: none; }
+  .o4-cmp-cell.header { background: var(--bg-elevated); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); font-size: 9px; }
+  .o4-cmp-cell.metric-name { color: var(--text-muted); background: var(--bg-base); }
+  .o4-cmp-cell.val { font-family: var(--font-mono); font-weight: 700; font-size: var(--font-sm); justify-content: center; background: var(--bg-base); }
+  .o4-cmp-cell.delta { justify-content: center; font-family: var(--font-mono); font-weight: 600; font-size: 11px; background: var(--bg-base); }
+  .o4-cmp-cell.better { background: rgba(16,185,129,0.06); }
+  .o4-cmp-cell.worse { background: rgba(239,68,68,0.06); }
+
+  /* ═══════════════════════════════════════════
+     OPTION 5 — Tabbed with Compare Diff
+     Single: tabs for scores/trace/analysis
+     Compare: outputs side-by-side, then tabs with compare-aware content (side-by-side scores, diff view)
+  ═══════════════════════════════════════════ */
+  .o5 { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o5-iheader { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); justify-content: space-between; flex-wrap: wrap; }
+  .o5-iheader-left { display: flex; align-items: center; gap: 8px; }
+  .o5-idx { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-muted); }
+  .o5-iheader-right { display: flex; align-items: center; gap: 5px; }
+  .o5-sect { padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o5-sect.expected { background: rgba(6,78,59,0.2); border-left: 3px solid var(--success); }
+  .o5-status { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border-subtle); justify-content: space-between; flex-wrap: wrap; }
+  .o5-body { padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .o5-tabs { display: flex; background: var(--bg-base); border-bottom: 1px solid var(--border-subtle); padding: 0 12px; }
+  .o5-tbtn { padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-family: var(--font-sans); }
+  .o5-tbtn:hover { color: var(--text-secondary); }
+  .o5-tbtn.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+  .o5-tc { font-size: 9px; font-family: var(--font-mono); padding: 1px 5px; border-radius: 3px; background: var(--bg-hover); color: var(--text-muted); margin-left: 5px; font-weight: 700; }
+  .o5-tbtn.active .o5-tc { background: rgba(0,212,170,0.15); color: var(--accent-primary); }
+  .o5-tpanel { display: none; padding: 14px 16px; }
+  .o5-tpanel.active { display: block; }
+  .o5-sstrip { display: flex; flex-wrap: wrap; gap: 8px; }
+  .o5-stile { flex: 1; min-width: 130px; padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; }
+  .o5-stile:hover { background: var(--bg-hover); }
+  .o5-stile-name { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .o5-stile-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; line-height: 1; }
+  .o5-sbar { height: 3px; border-radius: 2px; background: var(--border-subtle); margin-top: 3px; overflow: hidden; }
+  .o5-sbar-fill { height: 100%; border-radius: 2px; }
+  .o5-trgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .o5-trcard { padding: 10px 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); }
+  .o5-trcard-val { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--text-primary); }
+  .o5-trcard-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-top: 2px; }
+  .o5-agrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .o5-acard { padding: 12px; background: var(--bg-elevated); border-radius: 6px; border: 1px solid var(--border-subtle); }
+  .o5-acard-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 6px; }
+  .o5-acard .abtn { width: 100%; justify-content: center; }
+  /* Compare */
+  .o5-cmp { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; }
+  .o5-cmp-outputs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-subtle); }
+  .o5-cmp-col { background: var(--bg-surface); display: flex; flex-direction: column; }
+  .o5-cmp-col .o5-body { flex: 1; border-bottom: none; }
+  /* Diff table in tab */
+  .o5-diff-rows { display: flex; flex-direction: column; gap: 6px; }
+  .o5-diff-row { display: grid; grid-template-columns: 130px 1fr 40px 1fr 60px; gap: 0; align-items: center; padding: 6px 10px; background: var(--bg-elevated); border-radius: 5px; border: 1px solid var(--border-subtle); font-size: var(--font-xs); }
+  .o5-diff-metric { color: var(--text-muted); }
+  .o5-diff-val { font-family: var(--font-mono); font-weight: 700; font-size: var(--font-sm); text-align: center; }
+  .o5-diff-arrow { text-align: center; color: var(--text-dim); font-size: 10px; }
+  .o5-diff-delta { text-align: center; font-family: var(--font-mono); font-weight: 600; font-size: 11px; padding: 2px 6px; border-radius: 3px; }
 </style>
 </head>
 <body>
 
-<!-- ── Navigation ── -->
 <nav class="page-nav">
-  <span class="page-nav-title">Output Card Mocks</span>
-  <button class="nav-btn active" onclick="showSection(0)">1 &mdash; Zoned</button>
-  <button class="nav-btn" onclick="showSection(1)">2 &mdash; Sidebar</button>
-  <button class="nav-btn" onclick="showSection(2)">3 &mdash; Accordion</button>
-  <button class="nav-btn" onclick="showSection(3)">4 &mdash; Grid</button>
-  <button class="nav-btn" onclick="showSection(4)">5 &mdash; Tabbed</button>
+  <span class="page-nav-title">Item Card Mocks</span>
+  <button class="nav-btn active" onclick="showSection(0)">1 — Zoned</button>
+  <button class="nav-btn" onclick="showSection(1)">2 — Sidebar</button>
+  <button class="nav-btn" onclick="showSection(2)">3 — Accordion</button>
+  <button class="nav-btn" onclick="showSection(3)">4 — Diff Table</button>
+  <button class="nav-btn" onclick="showSection(4)">5 — Tabbed</button>
 </nav>
 
 <!-- ═══════════ OPTION 1 — Zoned Panels ═══════════ -->
-<section class="mock-section active" id="section-0">
+<section class="mock-section active" id="s0">
   <h2 class="mock-title">Option 1 — Zoned Panels</h2>
-  <p class="mock-desc">Breaks the card into distinct horizontal zones with clear boundaries. Each zone has one job: status bar, output content, a unified metrics strip (scores + trace stats merged into cells), and an analysis row.</p>
-  <div class="o1-card">
-    <div class="o1-status">
-      <div class="o1-status-left">
-        <span class="o1-status-label"><span class="o1-status-dot"></span>OUTPUT</span>
-        <span style="color:var(--border-default);">&middot;</span>
-        <div class="o1-meta"><span>Fail</span><span class="sep">&middot;</span><span>1m 5s</span><span class="sep">&middot;</span><span>2026-03-28 14:54:59</span></div>
-      </div>
-      <div class="o1-status-right">
-        <button class="action-chip">Copy</button>
-        <a class="action-chip" href="#">Trace</a>
-        <a class="action-chip c-pink" href="#">Langfuse</a>
-      </div>
+  <p class="mock-desc">Single: horizontal zones. Compare: outputs side-by-side (just status + text), then a shared comparison table below where you scan all metrics/trace at once with deltas.</p>
+
+  <div class="view-label">Single Run View</div>
+  <div class="o1">
+    <div class="o1-iheader"><span class="o1-idx">#4</span><span style="font-size:var(--font-xs);color:var(--text-dim);">(Item 4)</span></div>
+    <div class="o1-section"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o1-section expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o1-status-row">
+      <div class="o1-status-left"><span class="o1-slabel c-red"><span class="dot fail"></span> Fail</span><span class="o2-meta" style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s &middot; 14:54:59</span></div>
+      <div class="o1-status-right"><button class="chip">Copy</button><a class="chip" href="#">Trace</a><a class="chip c-pink" href="#" style="color:#fb7185;">Langfuse</a></div>
     </div>
-    <div class="o1-output">
-      <div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div>
-    </div>
+    <div class="o1-body"><div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div></div>
     <div class="o1-metrics">
-      <div class="o1-metrics-group">
-        <div class="o1-metric-cell"><span class="o1-metric-cell-name">execution_accuracy</span><span class="o1-metric-cell-val c-red">0.0%</span></div>
-        <div class="o1-metric-cell"><span class="o1-metric-cell-name">valid_sql</span><span class="o1-metric-cell-val c-green">100.0%</span></div>
-        <div class="o1-metric-cell"><span class="o1-metric-cell-name">reward_ves</span><span class="o1-metric-cell-val c-red">0.0%</span></div>
-        <div class="o1-metric-cell"><span class="o1-metric-cell-name">output_empty</span><span class="o1-metric-cell-val c-green">100.0%</span></div>
+      <div class="o1-mscores">
+        <div class="o1-mc"><span class="o1-mc-name">exec_accuracy</span><span class="o1-mc-val c-red">0.0%</span></div>
+        <div class="o1-mc"><span class="o1-mc-name">valid_sql</span><span class="o1-mc-val c-green">100.0%</span></div>
+        <div class="o1-mc"><span class="o1-mc-name">reward_ves</span><span class="o1-mc-val c-red">0.0%</span></div>
+        <div class="o1-mc"><span class="o1-mc-name">output_empty</span><span class="o1-mc-val c-green">100.0%</span></div>
       </div>
-      <div class="o1-trace-group">
-        <div class="o1-trace-cell"><span class="o1-trace-val">33.8K</span><span class="o1-trace-label">Tokens</span></div>
-        <div class="o1-trace-cell"><span class="o1-trace-val">7</span><span class="o1-trace-label">LLM Calls</span></div>
-        <div class="o1-trace-cell"><span class="o1-trace-val">6</span><span class="o1-trace-label">Tool Calls</span></div>
-        <div class="o1-trace-cell"><span class="o1-trace-val c-muted">0</span><span class="o1-trace-label">Tool Errors</span></div>
+      <div class="o1-mtrace">
+        <div class="o1-tc"><span class="o1-tc-val">33.8K</span><span class="o1-tc-label">Tokens</span></div>
+        <div class="o1-tc"><span class="o1-tc-val">7</span><span class="o1-tc-label">LLM</span></div>
+        <div class="o1-tc"><span class="o1-tc-val">6</span><span class="o1-tc-label">Tools</span></div>
+        <div class="o1-tc"><span class="o1-tc-val c-muted">0</span><span class="o1-tc-label">Errors</span></div>
       </div>
     </div>
     <div class="o1-analysis">
-      <div class="o1-analysis-group"><span class="o1-analysis-label">Root Cause</span><button class="analysis-btn">+ Root Cause</button></div>
-      <div class="o1-analysis-group"><span class="o1-analysis-label">Category</span><button class="analysis-btn">+ Category</button></div>
-      <div class="o1-analysis-group"><span class="o1-analysis-label">Solution</span><button class="analysis-btn">+ Solution</button></div>
+      <div class="o1-agroup"><span class="alabel">Root Cause</span><button class="abtn">+ Root Cause</button></div>
+      <div class="o1-agroup"><span class="alabel">Category</span><button class="abtn">+ Category</button></div>
+      <div class="o1-agroup"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div>
     </div>
     <div class="o1-footer"><button>&#9654; Metric Details</button></div>
+  </div>
+
+  <div class="view-label">Compare View (2 Runs)</div>
+  <div class="o1" style="max-width:none;">
+    <div class="o1-iheader"><span class="o1-idx">#4</span><span style="font-size:var(--font-xs);color:var(--text-dim);">(Item 4)</span></div>
+    <div class="o1-section"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o1-section expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text" style="font-size:12px;">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE ...</div></div>
+    <div class="o1-cmp-outputs">
+      <div class="o1-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-a)"></span><span class="run-name">baseline_v2</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot fail"></span><span style="font-size:11px;font-weight:700;color:var(--error);">FAIL</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o1-body"><div class="output-text" style="font-size:12px;">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ... ORDER BY s."School"</div></div>
+      </div>
+      <div class="o1-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-b)"></span><span class="run-name">improved_v3</span><span class="winner">&#9733; Winner</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot pass"></span><span style="font-size:11px;font-weight:700;color:var(--success);">PASS</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">42s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o1-body"><div class="output-text" style="font-size:12px;">SELECT T2.Street || ', ' || T2.City || ', ' || T2.State || ' ' || T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE ...</div></div>
+      </div>
+    </div>
+    <!-- Shared comparison table -->
+    <table class="o1-cmp-table">
+      <tr><th>Metric</th><th style="color:var(--run-a);">baseline_v2</th><th style="color:var(--run-b);">improved_v3</th><th>Delta</th></tr>
+      <tr><td>execution_accuracy</td><td class="c-red">0.0%</td><td class="c-green">100.0%</td><td class="delta-pos">+100%</td></tr>
+      <tr><td>valid_sql</td><td class="c-green">100.0%</td><td class="c-green">100.0%</td><td class="delta-eq">=</td></tr>
+      <tr><td>reward_ves</td><td class="c-red">0.0%</td><td class="c-green">100.0%</td><td class="delta-pos">+100%</td></tr>
+      <tr><td>output_empty</td><td class="c-green">100.0%</td><td class="c-green">100.0%</td><td class="delta-eq">=</td></tr>
+      <tr><td style="border-top:2px solid var(--border-default);">Tokens</td><td style="border-top:2px solid var(--border-default);color:var(--text-primary);">33.8K</td><td style="border-top:2px solid var(--border-default);color:var(--text-primary);">21.2K</td><td style="border-top:2px solid var(--border-default);" class="delta-pos">-37%</td></tr>
+      <tr><td>LLM Calls</td><td style="color:var(--text-primary);">7</td><td style="color:var(--text-primary);">5</td><td class="delta-pos">-29%</td></tr>
+      <tr><td>Duration</td><td style="color:var(--text-primary);">1m 5s</td><td style="color:var(--text-primary);">42s</td><td class="delta-pos">-35%</td></tr>
+    </table>
+    <div class="o1-analysis">
+      <div class="o1-agroup"><span class="alabel">Root Cause (baseline_v2)</span><button class="abtn">+ Root Cause</button></div>
+      <div class="o1-agroup"><span class="alabel">Category</span><button class="abtn">+ Category</button></div>
+      <div class="o1-agroup"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div>
+    </div>
   </div>
 </section>
 
 <!-- ═══════════ OPTION 2 — Sidebar Stats ═══════════ -->
-<section class="mock-section" id="section-1">
+<section class="mock-section" id="s1">
   <h2 class="mock-title">Option 2 — Sidebar Stats</h2>
-  <p class="mock-desc">All numeric data (metric scores + trace stats) moves into a dedicated right sidebar column. The main column is reserved for output text and analysis. Clean content/data split.</p>
-  <div class="o2-card">
-    <div class="o2-content">
-      <div class="o2-header">
-        <div class="o2-header-left">
-          <span class="o2-badge"><span class="dot"></span>Fail</span>
-          <span class="o2-meta">1m 5s &middot; 2026-03-28 14:54:59</span>
-        </div>
-        <div class="o2-header-right">
-          <button class="action-chip">Copy</button>
-          <a class="action-chip" href="#">Trace</a>
-          <a class="action-chip c-pink" href="#">Langfuse</a>
-        </div>
-      </div>
-      <div class="o2-body">
-        <div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div>
-      </div>
-      <div class="o2-analysis">
-        <div class="o2-analysis-slot"><span class="o2-analysis-label">Root Cause</span><button class="analysis-btn">+ Root Cause</button></div>
-        <div class="o2-analysis-slot"><span class="o2-analysis-label">Category</span><button class="analysis-btn">+ Category</button></div>
-        <div class="o2-analysis-slot"><span class="o2-analysis-label">Solution</span><button class="analysis-btn">+ Solution</button></div>
-      </div>
+  <p class="mock-desc">Single: sidebar with all numbers. Compare: drops the sidebar entirely — outputs side-by-side, then a shared scorecard table designed for diffing.</p>
+
+  <div class="view-label">Single Run View</div>
+  <div class="o2">
+    <div class="o2-main">
+      <div class="o2-header"><div class="o2-header-left"><span class="o2-idx">#4</span><span class="o2-badge fail"><span class="dot"></span>Fail</span><span class="o2-meta">1m 5s &middot; 14:54:59</span></div><div class="o2-header-right"><button class="chip">Copy</button><a class="chip" href="#">Trace</a><a class="chip" href="#" style="color:#fb7185;">Langfuse</a></div></div>
+      <div class="o2-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+      <div class="o2-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+      <div class="o2-body"><div class="slabel">OUTPUT</div><div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div></div>
+      <div class="o2-analysis"><div class="o2-aslot"><span class="alabel">Root Cause</span><button class="abtn">+ Root Cause</button></div><div class="o2-aslot"><span class="alabel">Category</span><button class="abtn">+ Category</button></div><div class="o2-aslot"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div></div>
     </div>
     <div class="o2-sidebar">
-      <div class="o2-stats-section">
-        <div class="o2-stats-title">Scores</div>
-        <div class="o2-stat-row"><span class="o2-stat-name">execution_accuracy</span><span class="o2-stat-val c-red">0.0%</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">valid_sql</span><span class="o2-stat-val c-green">100.0%</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">reward_ves</span><span class="o2-stat-val c-red">0.0%</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">output_empty</span><span class="o2-stat-val c-green">100.0%</span></div>
-      </div>
-      <div class="o2-stats-section">
-        <div class="o2-stats-title">Trace</div>
-        <div class="o2-stat-row"><span class="o2-stat-name">Tokens</span><span class="o2-stat-val" style="color:var(--text-primary)">33.8K</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">LLM Calls</span><span class="o2-stat-val" style="color:var(--text-primary)">7</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">Tool Calls</span><span class="o2-stat-val" style="color:var(--text-primary)">6</span></div>
-        <div class="o2-stat-row"><span class="o2-stat-name">Tool Errors</span><span class="o2-stat-val c-muted">0</span></div>
-      </div>
-      <div class="o2-stats-footer"><button>&#9654; Metric Details</button></div>
+      <div class="o2-stats"><div class="o2-stitle">Scores</div><div class="o2-sr"><span class="o2-sn">exec_accuracy</span><span class="o2-sv c-red">0.0%</span></div><div class="o2-sr"><span class="o2-sn">valid_sql</span><span class="o2-sv c-green">100.0%</span></div><div class="o2-sr"><span class="o2-sn">reward_ves</span><span class="o2-sv c-red">0.0%</span></div><div class="o2-sr"><span class="o2-sn">output_empty</span><span class="o2-sv c-green">100.0%</span></div></div>
+      <div class="o2-stats"><div class="o2-stitle">Trace</div><div class="o2-sr"><span class="o2-sn">Tokens</span><span class="o2-sv" style="color:var(--text-primary)">33.8K</span></div><div class="o2-sr"><span class="o2-sn">LLM Calls</span><span class="o2-sv" style="color:var(--text-primary)">7</span></div><div class="o2-sr"><span class="o2-sn">Tool Calls</span><span class="o2-sv" style="color:var(--text-primary)">6</span></div><div class="o2-sr"><span class="o2-sn">Tool Errors</span><span class="o2-sv c-muted">0</span></div></div>
+      <div class="o2-sfooter"><button>&#9654; Metric Details</button></div>
     </div>
+  </div>
+
+  <div class="view-label">Compare View (2 Runs)</div>
+  <div class="o2-cmp">
+    <div class="o2-header"><div class="o2-header-left"><span class="o2-idx">#4</span></div></div>
+    <div class="o2-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o2-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text" style="font-size:12px;">SELECT T2.Street, T2.City, T2.State ... WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o2-cmp-outputs">
+      <div class="o2-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-a)"></span><span class="run-name">baseline_v2</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot fail"></span><span style="font-size:11px;font-weight:700;color:var(--error);">FAIL</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o2-body"><div class="output-text" style="font-size:12px;">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ... ORDER BY s."School"</div></div>
+      </div>
+      <div class="o2-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-b)"></span><span class="run-name">improved_v3</span><span class="winner">&#9733; Winner</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot pass"></span><span style="font-size:11px;font-weight:700;color:var(--success);">PASS</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">42s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o2-body"><div class="output-text" style="font-size:12px;">SELECT T2.Street || ', ' || T2.City || ', ' || T2.State || ' ' || T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ...</div></div>
+      </div>
+    </div>
+    <!-- Shared scorecard -->
+    <table class="o1-cmp-table">
+      <tr><th>Metric</th><th style="color:var(--run-a);">baseline_v2</th><th style="color:var(--run-b);">improved_v3</th><th>Delta</th></tr>
+      <tr><td>execution_accuracy</td><td class="c-red">0.0%</td><td class="c-green">100.0%</td><td class="delta-pos">+100%</td></tr>
+      <tr><td>valid_sql</td><td class="c-green">100.0%</td><td class="c-green">100.0%</td><td class="delta-eq">=</td></tr>
+      <tr><td>reward_ves</td><td class="c-red">0.0%</td><td class="c-green">100.0%</td><td class="delta-pos">+100%</td></tr>
+      <tr><td style="border-top:2px solid var(--border-default);">Tokens</td><td style="border-top:2px solid var(--border-default);color:var(--text-primary);">33.8K</td><td style="border-top:2px solid var(--border-default);color:var(--text-primary);">21.2K</td><td style="border-top:2px solid var(--border-default);" class="delta-pos">-37%</td></tr>
+      <tr><td>LLM Calls</td><td style="color:var(--text-primary);">7</td><td style="color:var(--text-primary);">5</td><td class="delta-pos">-29%</td></tr>
+    </table>
+    <div class="o2-analysis"><div class="o2-aslot"><span class="alabel">Root Cause (baseline_v2)</span><button class="abtn">+ Root Cause</button></div><div class="o2-aslot"><span class="alabel">Category</span><button class="abtn">+ Category</button></div></div>
   </div>
 </section>
 
 <!-- ═══════════ OPTION 3 — Compact Accordion ═══════════ -->
-<section class="mock-section" id="section-2">
+<section class="mock-section" id="s2">
   <h2 class="mock-title">Option 3 — Compact Accordion</h2>
-  <p class="mock-desc">Starts compact: only the status line with inline metric summaries and output text are visible. Trace stats, analysis, and metric details collapse into accordion sections. Expand what you need.</p>
-  <div class="o3-card">
-    <div class="o3-header">
-      <span class="o3-pill"><span class="dot"></span>Fail</span>
-      <span class="o3-compact-meta">1m 5s &middot; 14:54:59</span>
-      <div class="o3-metric-summary">
-        <span class="o3-metric-inline"><span class="o3-metric-inline-name">exec_acc</span> <span class="o3-metric-inline-val c-red">0.0%</span></span>
-        <span class="o3-metric-inline"><span class="o3-metric-inline-name">valid_sql</span> <span class="o3-metric-inline-val c-green">100%</span></span>
-        <span class="o3-metric-inline"><span class="o3-metric-inline-name">reward</span> <span class="o3-metric-inline-val c-red">0.0%</span></span>
-        <span class="o3-metric-inline"><span class="o3-metric-inline-name">empty</span> <span class="o3-metric-inline-val c-green">100%</span></span>
-      </div>
+  <p class="mock-desc">Single: inline scores in header, accordions for trace/analysis. Compare: outputs side-by-side with just pass/fail + inline scores. Shared accordion below for detailed comparison.</p>
+
+  <div class="view-label">Single Run View</div>
+  <div class="o3">
+    <div class="o3-top">
+      <span class="o3-idx">#4</span>
+      <span class="o3-pill fail"><span class="dot"></span>Fail</span>
+      <span class="o3-cmeta">1m 5s &middot; 14:54:59</span>
+      <div class="o3-msum"><span class="o3-mi"><span class="o3-mi-n">exec_acc</span> <span class="o3-mi-v c-red">0.0%</span></span><span class="o3-mi"><span class="o3-mi-n">valid_sql</span> <span class="o3-mi-v c-green">100%</span></span><span class="o3-mi"><span class="o3-mi-n">reward</span> <span class="o3-mi-v c-red">0.0%</span></span><span class="o3-mi"><span class="o3-mi-n">empty</span> <span class="o3-mi-v c-green">100%</span></span></div>
       <span class="o3-spacer"></span>
-      <div class="o3-actions">
-        <button class="action-chip">Copy</button>
-        <a class="action-chip" href="#">Trace</a>
-        <a class="action-chip c-pink" href="#">Langfuse</a>
+      <div class="o3-actions"><button class="chip">Copy</button><a class="chip" href="#">Trace</a><a class="chip" href="#" style="color:#fb7185;">Langfuse</a></div>
+    </div>
+    <div class="o3-content">
+      <div class="o3-block"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+      <div class="o3-block expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+      <div class="o3-block"><div class="slabel">OUTPUT</div><div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div></div>
+    </div>
+    <div class="o3-acc">
+      <details><summary><div class="o3-sl"><span class="o3-si">&#9654;</span><span class="o3-slbl">Trace Stats</span></div><span class="o3-sp">33.8K tokens &middot; 7 LLM &middot; 6 tools</span></summary><div class="o3-abody"><div class="o3-tgrid"><div class="o3-ts"><span class="o3-ts-v">33.8K</span><span class="o3-ts-l">Tokens</span></div><div class="o3-ts"><span class="o3-ts-v">7</span><span class="o3-ts-l">LLM Calls</span></div><div class="o3-ts"><span class="o3-ts-v">6</span><span class="o3-ts-l">Tool Calls</span></div><div class="o3-ts"><span class="o3-ts-v c-muted">0</span><span class="o3-ts-l">Tool Errors</span></div></div></div></details>
+      <details><summary><div class="o3-sl"><span class="o3-si">&#9654;</span><span class="o3-slbl">Analysis</span></div><span class="o3-sp" style="color:var(--text-dim);">No root cause assigned</span></summary><div class="o3-abody"><div class="o3-arow"><div class="o3-aslot"><span class="alabel">Root Cause</span><button class="abtn">+ Root Cause</button></div><div class="o3-aslot"><span class="alabel">Category</span><button class="abtn">+ Category</button></div><div class="o3-aslot"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div></div></div></details>
+    </div>
+  </div>
+
+  <div class="view-label">Compare View (2 Runs)</div>
+  <div class="o3" style="max-width:none;">
+    <div class="o3-top"><span class="o3-idx">#4</span></div>
+    <div class="o3-content">
+      <div class="o3-block"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+      <div class="o3-block expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text" style="font-size:12px;">SELECT T2.Street, T2.City ... WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    </div>
+    <div class="o3-cmp-outputs">
+      <div class="o3-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-a)"></span><span class="run-name">baseline_v2</span></div>
+        <div class="o3-top" style="padding:6px 14px;">
+          <span class="o3-pill fail"><span class="dot"></span>Fail</span><span class="o3-cmeta">1m 5s</span>
+          <div class="o3-msum"><span class="o3-mi"><span class="o3-mi-n">exec</span> <span class="o3-mi-v c-red">0%</span></span><span class="o3-mi"><span class="o3-mi-n">sql</span> <span class="o3-mi-v c-green">100%</span></span></div>
+          <span class="o3-spacer"></span><button class="chip">Trace</button>
+        </div>
+        <div class="o3-content"><div class="o3-block"><div class="output-text" style="font-size:12px;">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ... ORDER BY s."School"</div></div></div>
+      </div>
+      <div class="o3-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-b)"></span><span class="run-name">improved_v3</span><span class="winner">&#9733; Winner</span></div>
+        <div class="o3-top" style="padding:6px 14px;">
+          <span class="o3-pill pass"><span class="dot"></span>Pass</span><span class="o3-cmeta">42s</span>
+          <div class="o3-msum"><span class="o3-mi"><span class="o3-mi-n">exec</span> <span class="o3-mi-v c-green">100%</span></span><span class="o3-mi"><span class="o3-mi-n">sql</span> <span class="o3-mi-v c-green">100%</span></span></div>
+          <span class="o3-spacer"></span><button class="chip">Trace</button>
+        </div>
+        <div class="o3-content"><div class="o3-block"><div class="output-text" style="font-size:12px;">SELECT T2.Street || ', ' || T2.City || ', ' || T2.State || ' ' || T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ...</div></div></div>
       </div>
     </div>
-    <div class="o3-output">
-      <div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div>
-    </div>
-    <div class="o3-accordion">
-      <details>
-        <summary>
-          <div class="o3-summary-left"><span class="o3-summary-icon">&#9654;</span><span class="o3-summary-label">Trace Stats</span></div>
-          <div class="o3-summary-preview"><span>33.8K tokens</span><span style="color:var(--border-default);">&middot;</span><span>7 LLM</span><span style="color:var(--border-default);">&middot;</span><span>6 tools</span></div>
-        </summary>
-        <div class="o3-accordion-body">
-          <div class="o3-trace-grid">
-            <div class="o3-trace-stat"><span class="o3-trace-stat-val">33.8K</span><span class="o3-trace-stat-label">Tokens</span></div>
-            <div class="o3-trace-stat"><span class="o3-trace-stat-val">7</span><span class="o3-trace-stat-label">LLM Calls</span></div>
-            <div class="o3-trace-stat"><span class="o3-trace-stat-val">6</span><span class="o3-trace-stat-label">Tool Calls</span></div>
-            <div class="o3-trace-stat"><span class="o3-trace-stat-val c-muted">0</span><span class="o3-trace-stat-label">Tool Errors</span></div>
-          </div>
-        </div>
-      </details>
-      <details>
-        <summary>
-          <div class="o3-summary-left"><span class="o3-summary-icon">&#9654;</span><span class="o3-summary-label">Analysis</span></div>
-          <div class="o3-summary-preview"><span style="color:var(--text-dim);">No root cause assigned</span></div>
-        </summary>
-        <div class="o3-accordion-body">
-          <div class="o3-analysis-row">
-            <div class="o3-analysis-slot"><span class="o3-analysis-label">Root Cause</span><button class="analysis-btn">+ Root Cause</button></div>
-            <div class="o3-analysis-slot"><span class="o3-analysis-label">Category</span><button class="analysis-btn">+ Category</button></div>
-            <div class="o3-analysis-slot"><span class="o3-analysis-label">Solution</span><button class="analysis-btn">+ Solution</button></div>
-          </div>
-        </div>
-      </details>
-      <details>
-        <summary>
-          <div class="o3-summary-left"><span class="o3-summary-icon">&#9654;</span><span class="o3-summary-label">Metric Details</span></div>
-        </summary>
-        <div class="o3-accordion-body">
-          <table class="o3-metric-table">
-            <tr><td>execution_accuracy</td><td class="c-red">0.0%</td></tr>
-            <tr><td>valid_sql</td><td class="c-green">100.0%</td></tr>
-            <tr><td>reward_ves</td><td class="c-red">0.0%</td></tr>
-            <tr><td>output_empty</td><td class="c-green">100.0%</td></tr>
+    <div class="o3-acc">
+      <details><summary><div class="o3-sl"><span class="o3-si">&#9654;</span><span class="o3-slbl">Score &amp; Trace Comparison</span></div><span class="o3-sp">exec_acc: 0% &rarr; 100% &middot; tokens: -37%</span></summary>
+        <div class="o3-abody">
+          <table class="o1-cmp-table" style="margin-bottom:12px;">
+            <tr><th>Metric</th><th style="color:var(--run-a);">baseline_v2</th><th style="color:var(--run-b);">improved_v3</th><th>Delta</th></tr>
+            <tr><td>exec_accuracy</td><td class="c-red">0%</td><td class="c-green">100%</td><td class="delta-pos">+100%</td></tr>
+            <tr><td>valid_sql</td><td class="c-green">100%</td><td class="c-green">100%</td><td class="delta-eq">=</td></tr>
+            <tr><td>Tokens</td><td style="color:var(--text-primary)">33.8K</td><td style="color:var(--text-primary)">21.2K</td><td class="delta-pos">-37%</td></tr>
+            <tr><td>LLM Calls</td><td style="color:var(--text-primary)">7</td><td style="color:var(--text-primary)">5</td><td class="delta-pos">-29%</td></tr>
           </table>
         </div>
       </details>
+      <details><summary><div class="o3-sl"><span class="o3-si">&#9654;</span><span class="o3-slbl">Analysis (baseline_v2)</span></div><span class="o3-sp" style="color:var(--text-dim);">No root cause</span></summary><div class="o3-abody"><div class="o3-arow"><div class="o3-aslot"><span class="alabel">Root Cause</span><button class="abtn">+ Root Cause</button></div><div class="o3-aslot"><span class="alabel">Category</span><button class="abtn">+ Category</button></div></div></div></details>
     </div>
   </div>
 </section>
 
-<!-- ═══════════ OPTION 4 — Card Grid ═══════════ -->
-<section class="mock-section" id="section-3">
-  <h2 class="mock-title">Option 4 — Card Grid</h2>
-  <p class="mock-desc">Two-column grid below the output: left = score mini-cards in a 2x2 grid, right = trace stats + analysis stacked. Spreads data horizontally instead of vertically.</p>
-  <div class="o4-card">
-    <div class="o4-status-bar">
-      <div class="o4-status-left">
-        <span class="o4-run-label">OUTPUT</span>
-        <span class="o4-status-indicator"><span class="o4-status-dot"></span><span class="o4-status-text">Fail</span></span>
-        <span class="o4-meta-info">1m 5s &middot; 2026-03-28 14:54:59</span>
-      </div>
-      <div class="o4-status-right">
-        <button class="action-chip">Copy</button>
-        <a class="action-chip" href="#">Trace</a>
-        <a class="action-chip c-pink" href="#">Langfuse</a>
-      </div>
+<!-- ═══════════ OPTION 4 — Unified Diff Table ═══════════ -->
+<section class="mock-section" id="s3">
+  <h2 class="mock-title">Option 4 — Unified Diff Table</h2>
+  <p class="mock-desc">Single: clean vertical stack with score pills + trace chips (closest to current). Compare: purpose-built comparison grid — outputs side by side, then a structured grid with metric name / run A / run B / delta columns. Best for scanning differences fast.</p>
+
+  <div class="view-label">Single Run View</div>
+  <div class="o4">
+    <div class="o4-iheader"><div class="o4-iheader-left"><span class="o4-idx">#4</span><span style="font-size:var(--font-xs);color:var(--text-dim);">(Item 4)</span></div><div class="o4-iheader-right"><button class="chip">Copy</button><a class="chip" href="#">Trace</a><a class="chip" href="#" style="color:#fb7185;">Langfuse</a></div></div>
+    <div class="o4-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o4-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o4-status"><div class="o4-status-left"><span class="o4-sbadge c-red"><span class="dot fail"></span>Fail</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s &middot; 14:54:59</span></div></div>
+    <div class="o4-body"><div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div></div>
+    <div class="o4-scores">
+      <span class="o4-score-pill"><span class="o4-score-name">exec_accuracy</span><span class="o4-score-val c-red">0.0%</span></span>
+      <span class="o4-score-pill"><span class="o4-score-name">valid_sql</span><span class="o4-score-val c-green">100.0%</span></span>
+      <span class="o4-score-pill"><span class="o4-score-name">reward_ves</span><span class="o4-score-val c-red">0.0%</span></span>
+      <span class="o4-score-pill"><span class="o4-score-name">output_empty</span><span class="o4-score-val c-green">100.0%</span></span>
     </div>
-    <div class="o4-output">
-      <div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div>
+    <div class="o4-trace-row">
+      <span class="o4-trace-chip"><span class="o4-trace-chip-val">33.8K</span><span class="o4-trace-chip-label">Tokens</span></span>
+      <span class="o4-trace-chip"><span class="o4-trace-chip-val">7</span><span class="o4-trace-chip-label">LLM Calls</span></span>
+      <span class="o4-trace-chip"><span class="o4-trace-chip-val">6</span><span class="o4-trace-chip-label">Tool Calls</span></span>
+      <span class="o4-trace-chip"><span class="o4-trace-chip-val c-muted">0</span><span class="o4-trace-chip-label">Tool Errors</span></span>
     </div>
-    <div class="o4-data-grid">
-      <div class="o4-scores-panel">
-        <div class="o4-panel-title">Metric Scores</div>
-        <div class="o4-scores-grid">
-          <div class="o4-score-card"><span class="o4-score-name">execution_accuracy</span><span class="o4-score-val c-red">0.0%</span></div>
-          <div class="o4-score-card"><span class="o4-score-name">valid_sql</span><span class="o4-score-val c-green">100.0%</span></div>
-          <div class="o4-score-card"><span class="o4-score-name">reward_ves</span><span class="o4-score-val c-red">0.0%</span></div>
-          <div class="o4-score-card"><span class="o4-score-name">output_empty</span><span class="o4-score-val c-green">100.0%</span></div>
-        </div>
-      </div>
-      <div class="o4-info-panel">
-        <div class="o4-trace-section">
-          <div class="o4-panel-title">Trace</div>
-          <div class="o4-trace-row">
-            <div class="o4-trace-item"><span class="o4-trace-val">33.8K</span><span class="o4-trace-label">Tokens</span></div>
-            <div class="o4-trace-item"><span class="o4-trace-val">7</span><span class="o4-trace-label">LLM</span></div>
-            <div class="o4-trace-item"><span class="o4-trace-val">6</span><span class="o4-trace-label">Tools</span></div>
-            <div class="o4-trace-item"><span class="o4-trace-val c-muted">0</span><span class="o4-trace-label">Errors</span></div>
-          </div>
-        </div>
-        <div class="o4-analysis-section">
-          <div class="o4-panel-title">Analysis</div>
-          <div class="o4-analysis-row">
-            <div class="o4-analysis-slot"><span class="o4-analysis-label">Root Cause</span><button class="analysis-btn">+ Root Cause</button></div>
-            <div class="o4-analysis-slot"><span class="o4-analysis-label">Category</span><button class="analysis-btn">+ Category</button></div>
-            <div class="o4-analysis-slot"><span class="o4-analysis-label">Solution</span><button class="analysis-btn">+ Solution</button></div>
-          </div>
-        </div>
-      </div>
+    <div class="o4-analysis">
+      <div class="o4-agroup"><span class="alabel">Root Cause</span><button class="abtn">+ Root Cause</button></div>
+      <div class="o4-agroup"><span class="alabel">Category</span><button class="abtn">+ Category</button></div>
+      <div class="o4-agroup"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div>
     </div>
     <div class="o4-footer"><button>&#9654; Metric Details</button></div>
   </div>
+
+  <div class="view-label">Compare View (2 Runs)</div>
+  <div class="o4-cmp">
+    <div class="o4-iheader"><div class="o4-iheader-left"><span class="o4-idx">#4</span><span style="font-size:var(--font-xs);color:var(--text-dim);">(Item 4)</span></div></div>
+    <div class="o4-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o4-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text" style="font-size:12px;">SELECT T2.Street, T2.City, T2.State ... WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o4-cmp-outputs">
+      <div class="o4-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-a)"></span><span class="run-name">baseline_v2</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot fail"></span><span style="font-size:11px;font-weight:700;color:var(--error);">FAIL</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o4-body"><div class="output-text" style="font-size:12px;">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ... ORDER BY s."School"</div></div>
+      </div>
+      <div class="o4-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-b)"></span><span class="run-name">improved_v3</span><span class="winner">&#9733; Winner</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot pass"></span><span style="font-size:11px;font-weight:700;color:var(--success);">PASS</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">42s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o4-body"><div class="output-text" style="font-size:12px;">SELECT T2.Street || ', ' || T2.City || ', ' || T2.State || ' ' || T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE ...</div></div>
+      </div>
+    </div>
+    <!-- Unified comparison grid -->
+    <div class="o4-cmp-section">
+      <div class="o4-cmp-section-title">Scores &amp; Trace Comparison</div>
+      <div class="o4-cmp-grid">
+        <div class="o4-cmp-cell header">Metric</div>
+        <div class="o4-cmp-cell header" style="justify-content:center;"><span class="run-dot" style="background:var(--run-a);width:6px;height:6px;margin-right:6px;"></span>baseline_v2</div>
+        <div class="o4-cmp-cell header" style="justify-content:center;"><span class="run-dot" style="background:var(--run-b);width:6px;height:6px;margin-right:6px;"></span>improved_v3</div>
+        <div class="o4-cmp-cell header" style="justify-content:center;">Delta</div>
+
+        <div class="o4-cmp-cell metric-name">execution_accuracy</div>
+        <div class="o4-cmp-cell val worse c-red">0.0%</div>
+        <div class="o4-cmp-cell val better c-green">100.0%</div>
+        <div class="o4-cmp-cell delta better" style="color:var(--success);">+100%</div>
+
+        <div class="o4-cmp-cell metric-name">valid_sql</div>
+        <div class="o4-cmp-cell val c-green">100.0%</div>
+        <div class="o4-cmp-cell val c-green">100.0%</div>
+        <div class="o4-cmp-cell delta" style="color:var(--text-dim);">=</div>
+
+        <div class="o4-cmp-cell metric-name">reward_ves</div>
+        <div class="o4-cmp-cell val worse c-red">0.0%</div>
+        <div class="o4-cmp-cell val better c-green">100.0%</div>
+        <div class="o4-cmp-cell delta better" style="color:var(--success);">+100%</div>
+
+        <div class="o4-cmp-cell metric-name">output_empty</div>
+        <div class="o4-cmp-cell val c-green">100.0%</div>
+        <div class="o4-cmp-cell val c-green">100.0%</div>
+        <div class="o4-cmp-cell delta" style="color:var(--text-dim);">=</div>
+
+        <div class="o4-cmp-cell metric-name" style="border-top:2px solid var(--border-default);">Tokens</div>
+        <div class="o4-cmp-cell val" style="border-top:2px solid var(--border-default);color:var(--text-primary);">33.8K</div>
+        <div class="o4-cmp-cell val better" style="border-top:2px solid var(--border-default);color:var(--text-primary);">21.2K</div>
+        <div class="o4-cmp-cell delta better" style="border-top:2px solid var(--border-default);color:var(--success);">-37%</div>
+
+        <div class="o4-cmp-cell metric-name">LLM Calls</div>
+        <div class="o4-cmp-cell val" style="color:var(--text-primary);">7</div>
+        <div class="o4-cmp-cell val better" style="color:var(--text-primary);">5</div>
+        <div class="o4-cmp-cell delta better" style="color:var(--success);">-29%</div>
+
+        <div class="o4-cmp-cell metric-name">Duration</div>
+        <div class="o4-cmp-cell val" style="color:var(--text-primary);">1m 5s</div>
+        <div class="o4-cmp-cell val better" style="color:var(--text-primary);">42s</div>
+        <div class="o4-cmp-cell delta better" style="color:var(--success);">-35%</div>
+      </div>
+    </div>
+    <div class="o4-analysis">
+      <div class="o4-agroup"><span class="alabel">Root Cause (baseline_v2)</span><button class="abtn">+ Root Cause</button></div>
+      <div class="o4-agroup"><span class="alabel">Category</span><button class="abtn">+ Category</button></div>
+      <div class="o4-agroup"><span class="alabel">Solution</span><button class="abtn">+ Solution</button></div>
+    </div>
+  </div>
 </section>
 
-<!-- ═══════════ OPTION 5 — Tabbed Sections ═══════════ -->
-<section class="mock-section" id="section-4">
-  <h2 class="mock-title">Option 5 — Tabbed Sections</h2>
-  <p class="mock-desc">Output always visible. Tabs (Scores / Trace / Analysis) show one data panel at a time with generous spacing, larger numbers, and progress bars. Only one view at a time.</p>
-  <div class="o5-card">
-    <div class="o5-status-header">
-      <div class="o5-status-left">
-        <span class="o5-badge"><span class="dot"></span>Fail</span>
-        <span class="o5-meta">1m 5s &middot; 2026-03-28 14:54:59</span>
+<!-- ═══════════ OPTION 5 — Tabbed with Compare Diff ═══════════ -->
+<section class="mock-section" id="s4">
+  <h2 class="mock-title">Option 5 — Tabbed with Compare Diff</h2>
+  <p class="mock-desc">Single: tabs for Scores/Trace/Analysis. Compare: outputs side-by-side, then tabs become compare-aware — Scores tab shows side-by-side, Diff tab shows deltas row by row.</p>
+
+  <div class="view-label">Single Run View</div>
+  <div class="o5">
+    <div class="o5-iheader"><div class="o5-iheader-left"><span class="o5-idx">#4</span><span style="font-size:var(--font-xs);color:var(--text-dim);">(Item 4)</span></div><div class="o5-iheader-right"><button class="chip">Copy</button><a class="chip" href="#">Trace</a><a class="chip" href="#" style="color:#fb7185;">Langfuse</a></div></div>
+    <div class="o5-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o5-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text">SELECT T2.Street, T2.City, T2.State, T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ON T1.CDSCode = T2.CDSCode WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o5-status"><div style="display:flex;align-items:center;gap:6px;"><span class="dot fail"></span><span style="font-size:11px;font-weight:700;color:var(--error);">FAIL</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s &middot; 14:54:59</span></div></div>
+    <div class="o5-body"><div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div></div>
+    <div class="o5-tabs">
+      <button class="o5-tbtn active" onclick="switchO5('s-','scores',this)">Scores <span class="o5-tc">4</span></button>
+      <button class="o5-tbtn" onclick="switchO5('s-','trace',this)">Trace <span class="o5-tc">4</span></button>
+      <button class="o5-tbtn" onclick="switchO5('s-','analysis',this)">Analysis</button>
+    </div>
+    <div class="o5-tpanel active" id="s-scores"><div class="o5-sstrip"><div class="o5-stile"><span class="o5-stile-name">exec_accuracy</span><span class="o5-stile-val c-red">0.0%</span><div class="o5-sbar"><div class="o5-sbar-fill bg-red" style="width:0%"></div></div></div><div class="o5-stile"><span class="o5-stile-name">valid_sql</span><span class="o5-stile-val c-green">100%</span><div class="o5-sbar"><div class="o5-sbar-fill bg-green" style="width:100%"></div></div></div><div class="o5-stile"><span class="o5-stile-name">reward_ves</span><span class="o5-stile-val c-red">0.0%</span><div class="o5-sbar"><div class="o5-sbar-fill bg-red" style="width:0%"></div></div></div><div class="o5-stile"><span class="o5-stile-name">output_empty</span><span class="o5-stile-val c-green">100%</span><div class="o5-sbar"><div class="o5-sbar-fill bg-green" style="width:100%"></div></div></div></div></div>
+    <div class="o5-tpanel" id="s-trace"><div class="o5-trgrid"><div class="o5-trcard"><span class="o5-trcard-val">33.8K</span><span class="o5-trcard-label">Tokens</span></div><div class="o5-trcard"><span class="o5-trcard-val">7</span><span class="o5-trcard-label">LLM Calls</span></div><div class="o5-trcard"><span class="o5-trcard-val">6</span><span class="o5-trcard-label">Tool Calls</span></div><div class="o5-trcard"><span class="o5-trcard-val c-muted">0</span><span class="o5-trcard-label">Tool Errors</span></div></div></div>
+    <div class="o5-tpanel" id="s-analysis"><div class="o5-agrid"><div class="o5-acard"><span class="o5-acard-label">Root Cause</span><button class="abtn">+ Root Cause</button></div><div class="o5-acard"><span class="o5-acard-label">Category</span><button class="abtn">+ Category</button></div><div class="o5-acard"><span class="o5-acard-label">Solution</span><button class="abtn">+ Solution</button></div></div></div>
+  </div>
+
+  <div class="view-label">Compare View (2 Runs)</div>
+  <div class="o5-cmp">
+    <div class="o5-iheader"><div class="o5-iheader-left"><span class="o5-idx">#4</span></div></div>
+    <div class="o5-sect"><div class="slabel">INPUT</div><div class="output-text">What are the full street addresses of all schools with more than 30 students enrolled in grades K-12 but not in ages 5-17?</div></div>
+    <div class="o5-sect expected"><div class="slabel expected">EXPECTED OUTPUT</div><div class="output-text" style="font-size:12px;">SELECT T2.Street, T2.City ... WHERE T1."Enrollment (K-12)" - T1."Enrollment (Ages 5-17)" > 30</div></div>
+    <div class="o5-cmp-outputs">
+      <div class="o5-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-a)"></span><span class="run-name">baseline_v2</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot fail"></span><span style="font-size:11px;font-weight:700;color:var(--error);">FAIL</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">1m 5s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o5-body"><div class="output-text" style="font-size:12px;">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ... ORDER BY s."School"</div></div>
       </div>
-      <div class="o5-status-right">
-        <button class="action-chip">Copy</button>
-        <a class="action-chip" href="#">Trace</a>
-        <a class="action-chip c-pink" href="#">Langfuse</a>
-      </div>
-    </div>
-    <div class="o5-output-area">
-      <div class="output-text">SELECT s."School" AS school_name, COALESCE(s."Street", '') || ', ' || COALESCE(s."City", '') || ', ' || COALESCE(s."State", '') || ' ' || COALESCE(s."Zip", '') AS full_street_address FROM frpm AS f JOIN schools AS s ON f."CDSCode" = s."CDSCode" WHERE s."School" IS NOT NULL AND f."Enrollment (K-12)" - f."Enrollment (Ages 5-17)" > 30 ORDER BY s."School"</div>
-    </div>
-    <div class="o5-tab-bar">
-      <button class="o5-tab-btn active" onclick="switchO5Tab('scores', this)">Scores <span class="o5-tab-count">4</span></button>
-      <button class="o5-tab-btn" onclick="switchO5Tab('trace', this)">Trace <span class="o5-tab-count">4</span></button>
-      <button class="o5-tab-btn" onclick="switchO5Tab('analysis', this)">Analysis</button>
-    </div>
-    <div class="o5-tab-panel active" id="o5-tab-scores">
-      <div class="o5-scores-strip">
-        <div class="o5-score-tile"><span class="o5-score-tile-name">execution_accuracy</span><span class="o5-score-tile-val c-red">0.0%</span><div class="o5-score-bar"><div class="o5-score-bar-fill bg-red" style="width:0%;"></div></div></div>
-        <div class="o5-score-tile"><span class="o5-score-tile-name">valid_sql</span><span class="o5-score-tile-val c-green">100.0%</span><div class="o5-score-bar"><div class="o5-score-bar-fill bg-green" style="width:100%;"></div></div></div>
-        <div class="o5-score-tile"><span class="o5-score-tile-name">reward_ves</span><span class="o5-score-tile-val c-red">0.0%</span><div class="o5-score-bar"><div class="o5-score-bar-fill bg-red" style="width:0%;"></div></div></div>
-        <div class="o5-score-tile"><span class="o5-score-tile-name">output_empty</span><span class="o5-score-tile-val c-green">100.0%</span><div class="o5-score-bar"><div class="o5-score-bar-fill bg-green" style="width:100%;"></div></div></div>
-      </div>
-    </div>
-    <div class="o5-tab-panel" id="o5-tab-trace">
-      <div class="o5-trace-grid">
-        <div class="o5-trace-card"><span class="o5-trace-card-val">33.8K</span><span class="o5-trace-card-label">Tokens</span></div>
-        <div class="o5-trace-card"><span class="o5-trace-card-val">7</span><span class="o5-trace-card-label">LLM Calls</span></div>
-        <div class="o5-trace-card"><span class="o5-trace-card-val">6</span><span class="o5-trace-card-label">Tool Calls</span></div>
-        <div class="o5-trace-card"><span class="o5-trace-card-val c-muted">0</span><span class="o5-trace-card-label">Tool Errors</span></div>
-      </div>
-    </div>
-    <div class="o5-tab-panel" id="o5-tab-analysis">
-      <div class="o5-analysis-grid">
-        <div class="o5-analysis-card"><span class="o5-analysis-card-label">Root Cause</span><button class="analysis-btn">+ Root Cause</button></div>
-        <div class="o5-analysis-card"><span class="o5-analysis-card-label">Category</span><button class="analysis-btn">+ Category</button></div>
-        <div class="o5-analysis-card"><span class="o5-analysis-card-label">Solution</span><button class="analysis-btn">+ Solution</button></div>
+      <div class="o5-cmp-col">
+        <div class="run-caption"><span class="run-dot" style="background:var(--run-b)"></span><span class="run-name">improved_v3</span><span class="winner">&#9733; Winner</span></div>
+        <div style="padding:6px 14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border-subtle);"><span class="dot pass"></span><span style="font-size:11px;font-weight:700;color:var(--success);">PASS</span><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-dim);">42s</span><span style="flex:1;"></span><button class="chip">Trace</button></div>
+        <div class="o5-body"><div class="output-text" style="font-size:12px;">SELECT T2.Street || ', ' || T2.City || ', ' || T2.State || ' ' || T2.Zip FROM frpm AS T1 INNER JOIN schools AS T2 ...</div></div>
       </div>
     </div>
+    <div class="o5-tabs">
+      <button class="o5-tbtn active" onclick="switchO5('c-','scores',this)">Scores</button>
+      <button class="o5-tbtn" onclick="switchO5('c-','trace',this)">Trace</button>
+      <button class="o5-tbtn" onclick="switchO5('c-','diff',this)">Diff</button>
+      <button class="o5-tbtn" onclick="switchO5('c-','analysis',this)">Analysis</button>
+    </div>
+    <div class="o5-tpanel active" id="c-scores">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;"><span class="run-dot" style="background:var(--run-a);width:6px;height:6px;"></span><span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;">baseline_v2</span></div><div class="o5-sstrip"><div class="o5-stile"><span class="o5-stile-name">exec_acc</span><span class="o5-stile-val c-red" style="font-size:18px;">0%</span></div><div class="o5-stile"><span class="o5-stile-name">valid_sql</span><span class="o5-stile-val c-green" style="font-size:18px;">100%</span></div></div></div>
+        <div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;"><span class="run-dot" style="background:var(--run-b);width:6px;height:6px;"></span><span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;">improved_v3</span></div><div class="o5-sstrip"><div class="o5-stile"><span class="o5-stile-name">exec_acc</span><span class="o5-stile-val c-green" style="font-size:18px;">100%</span></div><div class="o5-stile"><span class="o5-stile-name">valid_sql</span><span class="o5-stile-val c-green" style="font-size:18px;">100%</span></div></div></div>
+      </div>
+    </div>
+    <div class="o5-tpanel" id="c-trace">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;"><span class="run-dot" style="background:var(--run-a);width:6px;height:6px;"></span><span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;">baseline_v2</span></div><div class="o5-trgrid"><div class="o5-trcard"><span class="o5-trcard-val" style="font-size:16px;">33.8K</span><span class="o5-trcard-label">Tokens</span></div><div class="o5-trcard"><span class="o5-trcard-val" style="font-size:16px;">7</span><span class="o5-trcard-label">LLM</span></div></div></div>
+        <div><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;"><span class="run-dot" style="background:var(--run-b);width:6px;height:6px;"></span><span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;">improved_v3</span></div><div class="o5-trgrid"><div class="o5-trcard"><span class="o5-trcard-val" style="font-size:16px;">21.2K</span><span class="o5-trcard-label">Tokens</span></div><div class="o5-trcard"><span class="o5-trcard-val" style="font-size:16px;">5</span><span class="o5-trcard-label">LLM</span></div></div></div>
+      </div>
+    </div>
+    <div class="o5-tpanel" id="c-diff">
+      <div class="o5-diff-rows">
+        <div class="o5-diff-row"><span class="o5-diff-metric">exec_accuracy</span><span class="o5-diff-val c-red">0%</span><span class="o5-diff-arrow">&#8594;</span><span class="o5-diff-val c-green">100%</span><span class="o5-diff-delta" style="color:var(--success);background:rgba(16,185,129,0.12);">+100%</span></div>
+        <div class="o5-diff-row"><span class="o5-diff-metric">valid_sql</span><span class="o5-diff-val c-green">100%</span><span class="o5-diff-arrow">&#8594;</span><span class="o5-diff-val c-green">100%</span><span class="o5-diff-delta" style="color:var(--text-dim);background:var(--bg-base);">=</span></div>
+        <div class="o5-diff-row"><span class="o5-diff-metric">Tokens</span><span class="o5-diff-val">33.8K</span><span class="o5-diff-arrow">&#8594;</span><span class="o5-diff-val">21.2K</span><span class="o5-diff-delta" style="color:var(--success);background:rgba(16,185,129,0.12);">-37%</span></div>
+        <div class="o5-diff-row"><span class="o5-diff-metric">LLM Calls</span><span class="o5-diff-val">7</span><span class="o5-diff-arrow">&#8594;</span><span class="o5-diff-val">5</span><span class="o5-diff-delta" style="color:var(--success);background:rgba(16,185,129,0.12);">-29%</span></div>
+        <div class="o5-diff-row"><span class="o5-diff-metric">Duration</span><span class="o5-diff-val">1m 5s</span><span class="o5-diff-arrow">&#8594;</span><span class="o5-diff-val">42s</span><span class="o5-diff-delta" style="color:var(--success);background:rgba(16,185,129,0.12);">-35%</span></div>
+      </div>
+    </div>
+    <div class="o5-tpanel" id="c-analysis"><div class="o5-agrid"><div class="o5-acard"><span class="o5-acard-label">Root Cause (baseline_v2)</span><button class="abtn">+ Root Cause</button></div><div class="o5-acard"><span class="o5-acard-label">Category</span><button class="abtn">+ Category</button></div><div class="o5-acard"><span class="o5-acard-label">Solution</span><button class="abtn">+ Solution</button></div></div></div>
   </div>
 </section>
 
 <script>
-  function showSection(idx) {
-    document.querySelectorAll('.mock-section').forEach((s, i) => s.classList.toggle('active', i === idx));
-    document.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  function showSection(i) {
+    document.querySelectorAll('.mock-section').forEach((s,j) => s.classList.toggle('active', j===i));
+    document.querySelectorAll('.nav-btn').forEach((b,j) => b.classList.toggle('active', j===i));
   }
-  function switchO5Tab(name, btn) {
-    document.querySelectorAll('.o5-tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.o5-tab-panel').forEach(p => p.classList.remove('active'));
-    document.getElementById('o5-tab-' + name).classList.add('active');
+  function switchO5(prefix, name, btn) {
+    const tabBar = btn.closest('.o5-tabs');
+    const card = btn.closest('.o5, .o5-cmp');
+    tabBar.querySelectorAll('.o5-tbtn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    card.querySelectorAll('.o5-tpanel').forEach(p => { if(p.id.startsWith(prefix)) p.classList.remove('active'); });
+    document.getElementById(prefix + name).classList.add('active');
   }
 </script>
 </body>

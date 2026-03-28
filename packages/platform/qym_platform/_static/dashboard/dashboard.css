@@ -3581,16 +3581,20 @@ main {
 .model-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .model-stat-item {
   text-align: center;
-  padding: var(--space-md);
+  padding: 12px 12px 10px;
   background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   position: relative;
+  min-height: 92px;
+  display: grid;
+  align-content: center;
 }
 
 .model-stat-item .stat-label {
@@ -3598,12 +3602,14 @@ main {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
   position: relative;
+  min-height: 30px;
+  line-height: 1.15;
 }
 
 .model-stat-item .stat-label .info-icon {
@@ -3659,10 +3665,11 @@ main {
 }
 
 .model-stat-item .stat-value {
-  font-size: var(--font-lg);
+  font-size: 18px;
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.1;
 }
 
 .model-stat-item .stat-value.score-5 { color: var(--score-5); }
@@ -3670,6 +3677,8 @@ main {
 .model-stat-item .stat-value.score-3 { color: var(--score-3); }
 .model-stat-item .stat-value.score-2 { color: var(--score-2); }
 .model-stat-item .stat-value.score-1 { color: var(--score-1); }
+.model-stat-item .stat-value.failed-count { color: var(--error); }
+.model-stat-item .stat-value.accent-value { color: var(--accent-primary); }
 
 /* Model Card Footer */
 .model-card-footer {
@@ -3901,17 +3910,20 @@ main {
 .model-stats-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .model-stat-box {
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: var(--space-md);
+  padding: 10px 14px;
   text-align: center;
   transition: border-color 0.15s;
+  display: grid;
+  align-content: center;
+  min-height: 96px;
 }
 
 .model-stat-box:hover {
@@ -3924,18 +3936,21 @@ main {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: var(--space-xs);
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-height: 30px;
+  line-height: 1.2;
 }
 
 .model-stat-box .stat-main {
   font-family: var(--font-mono);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.15;
 }
 
 .model-stat-box .stat-main.score-5 { color: var(--score-5); }
@@ -3944,6 +3959,7 @@ main {
 .model-stat-box .stat-main.score-2 { color: var(--score-2); }
 .model-stat-box .stat-main.score-1 { color: var(--score-1); }
 .model-stat-box .stat-main.failed-count { color: var(--error); }
+
 
 /* Info icon (i) for tooltips */
 .stat-info-icon {
