@@ -1147,12 +1147,23 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Top Stats Bar -->
-  <header class="stats-bar">
+  <header class="stats-bar has-user-pill-space">
     <div class="stats-bar-left">
       <a href="/" class="logo" style="text-decoration:none;">
         <img src="./static/qym_text.png" alt="Qym" class="logo-text-img" style="cursor:pointer;" />
       </a>
-      <span style="color: var(--text-dim); font-size: var(--font-sm); margin-left: 4px;">/ Corrections Review</span>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">PAGE</span>
+          <span class="stat-value">
+            <span class="shell-breadcrumb">
+              <span class="shell-breadcrumb-parent">Reviews</span>
+              <span class="shell-breadcrumb-sep">/</span>
+              <span class="shell-breadcrumb-current">Corrections</span>
+            </span>
+          </span>
+        </div>
+      </div>
     </div>
     <div style="margin-left: auto; display: flex; align-items: center; gap: var(--space-sm);">
       <div class="header-user-dropdown header-user-dropdown-inline" id="header-user-dropdown">

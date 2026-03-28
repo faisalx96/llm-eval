@@ -655,15 +655,21 @@
   </div>
 
   <!-- Top Stats Bar -->
-  <header class="stats-bar">
+  <header class="stats-bar has-user-pill-space">
     <div class="stats-bar-left">
       <a href="/" class="logo" style="text-decoration:none;">
         <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
-          <span class="stat-label">ADMIN PANEL</span>
-          <span class="stat-value" style="font-size: var(--font-sm);">Manage Users & Settings</span>
+          <span class="stat-label">PAGE</span>
+          <span class="stat-value">
+            <span class="shell-breadcrumb">
+              <span class="shell-breadcrumb-parent">Platform</span>
+              <span class="shell-breadcrumb-sep">/</span>
+              <span class="shell-breadcrumb-current">Admin</span>
+            </span>
+          </span>
         </div>
       </div>
     </div>
@@ -932,4 +938,3 @@
   <script src="./static/admin.js"></script>
 </body>
 </html>
-

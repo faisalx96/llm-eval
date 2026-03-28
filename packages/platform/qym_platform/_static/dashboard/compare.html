@@ -55,20 +55,21 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 7px 16px;
-      font-size: var(--font-sm);
+      padding: 5px 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
       font-family: var(--font-sans);
-      color: var(--bg-void);
-      background: var(--accent-primary);
-      border: none;
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.08);
+      border: 1px solid rgba(0, 212, 170, 0.22);
       border-radius: var(--radius-md);
       cursor: pointer;
       transition: background 0.15s, transform 0.1s;
       white-space: nowrap;
     }
     .export-html-btn:hover {
-      background: #00e8bb;
+      background: rgba(0, 212, 170, 0.14);
+      border-color: rgba(0, 212, 170, 0.34);
       transform: translateY(-1px);
     }
     .export-html-btn:active { transform: translateY(0); }
@@ -564,6 +565,18 @@
       gap: 1px;
     }
 
+    .breakdown-detail-value {
+      font-size: var(--font-md);
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .breakdown-detail-value.score-5 { color: var(--score-5); }
+    .breakdown-detail-value.score-4 { color: var(--score-4); }
+    .breakdown-detail-value.score-3 { color: var(--score-3); }
+    .breakdown-detail-value.score-2 { color: var(--score-2); }
+    .breakdown-detail-value.score-1 { color: var(--score-1); }
+
     .breakdown-detail-label {
       font-family: var(--font-sans);
       font-size: 9px;
@@ -1057,17 +1070,20 @@
     }
 
     .fp-btn.fp-export {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-      color: var(--bg-void);
-      font-size: var(--font-sm);
+      background: rgba(0, 212, 170, 0.08);
+      border-color: rgba(0, 212, 170, 0.22);
+      color: var(--accent-primary);
+      border-radius: var(--radius-md);
+      padding: 5px 10px;
+      gap: 6px;
+      font-size: var(--font-xs);
       font-weight: 500;
     }
 
     .fp-btn.fp-export:hover {
-      background: #00e6b8;
-      border-color: #00e6b8;
-      color: var(--bg-void);
+      background: rgba(0, 212, 170, 0.14);
+      border-color: rgba(0, 212, 170, 0.34);
+      color: var(--accent-primary);
     }
 
     /* Row 2: Search */
@@ -2909,6 +2925,16 @@
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
+          <span class="stat-label">PAGE</span>
+          <span class="stat-value">
+            <span class="shell-breadcrumb">
+              <span class="shell-breadcrumb-parent">Runs</span>
+              <span class="shell-breadcrumb-sep">/</span>
+              <span class="shell-breadcrumb-current">Compare</span>
+            </span>
+          </span>
+        </div>
+        <div class="stat-cell">
           <span class="stat-label">COMPARING</span>
           <span class="stat-value" id="run-count">—</span>
         </div>
@@ -4239,8 +4265,12 @@
 
           for (const g of groupStats) {
             const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
-            const consStr = g.consistency !== null ? formatPercent(g.consistency, 0) : '—';
-            const consClass = g.consistency !== null ? scoreColorClass(g.consistency) : '';
+            const consStr = g.consistency !== null
+              ? window.QymMetrics.formatMetricValue(g.consistency, 'score', 0)
+              : '—';
+            const consClass = g.consistency !== null
+              ? window.QymMetrics.getMetricColorClass(g.consistency, 'score')
+              : '';
 
             let cardValClass = '';
             if (bdKey === 'complexity') {
@@ -4276,7 +4306,7 @@
               </div>
               <div class="breakdown-card-details">
                 <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="${consClass}">${consStr}</span></span>`}
+                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="breakdown-detail-value ${consClass}">${consStr}</span></span>`}
               </div>
             </div>`;
           }

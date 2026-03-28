@@ -75,7 +75,7 @@
     }
     /* ─── Hero Summary Card ─── */
     .run-summary {
-      margin-bottom: var(--space-xl);
+      margin-bottom: var(--space-lg);
     }
     .run-summary-card {
       position: relative;
@@ -247,6 +247,286 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       line-height: 1.3;
+    }
+
+    .hero-top {
+      padding: 14px 16px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .hero-identity {
+      flex: 1;
+      min-width: 0;
+    }
+    .hero-eyebrow {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .hero-headline {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .hero-run-name {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      word-break: break-word;
+      line-height: 1.25;
+      letter-spacing: -0.2px;
+      min-width: 0;
+    }
+    .hero-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+      flex-shrink: 0;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .hero-actions .export-html-btn {
+      background: rgba(0, 212, 170, 0.08);
+      color: var(--accent-primary);
+      border: 1px solid rgba(0, 212, 170, 0.22);
+      padding: 5px 10px;
+      font-size: var(--font-xs);
+    }
+    .hero-actions .export-html-btn:hover {
+      background: rgba(0, 212, 170, 0.14);
+      border-color: rgba(0, 212, 170, 0.34);
+    }
+    .hero-actions .export-html-download {
+      background: transparent;
+      color: var(--text-secondary);
+      border-color: var(--border-default);
+    }
+    .hero-actions .export-html-download:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .hero-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: var(--font-sm);
+      font-weight: 500;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .hero-link-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+    .hero-link-btn.langfuse {
+      color: #fb7185;
+      border-color: rgba(225, 29, 72, 0.28);
+      background: rgba(225, 29, 72, 0.08);
+    }
+    .hero-link-btn.langfuse:hover {
+      background: rgba(225, 29, 72, 0.14);
+      border-color: rgba(225, 29, 72, 0.4);
+    }
+    .hero-id-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: 6px;
+    }
+    .hero-id-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 9px;
+      border-radius: 100px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      min-width: 0;
+      max-width: min(420px, 100%);
+    }
+    .hero-id-pill-label {
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 10px;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .hero-id-pill-value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .hero-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 6px 12px;
+      padding: 0 16px 10px;
+    }
+    .hero-meta-item {
+      min-width: 0;
+      padding: 0;
+    }
+    .hero-meta-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+      margin-bottom: 2px;
+    }
+    .hero-meta-value {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      line-height: 1.25;
+      min-height: 1.25em;
+      word-break: break-word;
+    }
+    .hero-meta-value.mono {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+    }
+    .hero-meta-value.nowrap {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+    }
+    .run-summary-card .context-section {
+      margin-bottom: 0;
+      border: 0;
+      border-top: 1px solid var(--border-subtle);
+      border-radius: 0;
+      background: transparent;
+    }
+    .run-summary-card .context-grid {
+      border-top-color: var(--border-subtle);
+      border-top: 0;
+    }
+    .context-section {
+      margin-bottom: var(--space-xl);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .context-section > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .context-section > summary::-webkit-details-marker {
+      display: none;
+    }
+    .context-section-title {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+    .context-section-title .section-title {
+      margin-bottom: 0;
+      font-size: var(--font-sm);
+    }
+    .context-section-hint {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .context-section-caret {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      transition: transform 0.15s ease;
+      flex-shrink: 0;
+    }
+    .context-section[open] .context-section-caret {
+      transform: rotate(180deg);
+    }
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1px;
+      background: var(--border-subtle);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .context-cell {
+      background: rgba(26, 26, 40, 0.7);
+      padding: 7px 9px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+    }
+    .context-cell-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      margin-top: 5px;
+      opacity: 0.7;
+      background: var(--accent-primary);
+    }
+    .context-cell-text {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .context-cell-key {
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 500;
+      line-height: 1.1;
+    }
+    .context-cell-val {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-primary);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.2;
+    }
+    .context-section-empty {
+      padding: 0 16px 12px;
+      color: var(--text-muted);
+      font-size: 13px;
     }
 
     /* Stats section */
@@ -457,9 +737,9 @@
     .overview-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: var(--space-lg);
-      gap: var(--space-md);
+      align-items: flex-end;
+      margin-bottom: 12px;
+      gap: 12px;
     }
     .overview-header .section-title {
       margin-bottom: 0;
@@ -469,6 +749,84 @@
       color: var(--text-dim);
       margin-top: 3px;
       letter-spacing: 0.2px;
+    }
+    .overview-summary-strip {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+    }
+    .overview-summary-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(63, 63, 92, 0.52);
+      background: rgba(26, 26, 40, 0.5);
+      min-width: 0;
+    }
+    .overview-summary-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .overview-summary-icon svg {
+      width: 12px;
+      height: 12px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .overview-summary-pill.total .overview-summary-icon {
+      color: var(--accent-secondary);
+      background: rgba(0, 168, 255, 0.12);
+    }
+    .overview-summary-pill.completed .overview-summary-icon {
+      color: var(--score-5);
+      background: rgba(16, 185, 129, 0.12);
+    }
+    .overview-summary-pill.errors .overview-summary-icon {
+      color: var(--score-1);
+      background: rgba(239, 68, 68, 0.12);
+    }
+    .overview-summary-pill.success .overview-summary-icon {
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.12);
+    }
+    .overview-summary-text {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+    }
+    .overview-summary-value {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .overview-summary-value.score-5 { color: var(--score-5); }
+    .overview-summary-value.score-4 { color: var(--score-4); }
+    .overview-summary-value.score-3 { color: var(--score-3); }
+    .overview-summary-value.score-2 { color: var(--score-2); }
+    .overview-summary-value.score-1 { color: var(--score-1); }
+    .overview-summary-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
     }
     .system-metrics-section {
       margin-top: var(--space-md);
@@ -490,6 +848,64 @@
     }
     @media (max-width: 900px) {
       .system-metrics-grid { grid-template-columns: 1fr; }
+      .hero-top {
+        flex-direction: column;
+      }
+      .hero-right {
+        width: 100%;
+        align-items: flex-start;
+        justify-content: space-between;
+      }
+      .hero-actions {
+        justify-content: flex-start;
+      }
+      .hero-meta-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      .overview-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .overview-summary-strip {
+        justify-content: flex-start;
+      }
+    }
+    @media (max-width: 640px) {
+      .run-container {
+        padding: var(--space-md);
+      }
+      .hero-meta-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .hero-actions > * {
+        width: 100%;
+        justify-content: center;
+      }
+      .overview-summary-strip {
+        gap: 6px;
+      }
+      .overview-summary-pill {
+        padding: 6px 9px;
+      }
+      .trace-pills-row {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 520px) {
+      .overview-summary-strip {
+        width: 100%;
+      }
+      .overview-summary-pill {
+        width: calc(50% - 3px);
+        justify-content: flex-start;
+      }
+      .hero-meta-grid {
+        grid-template-columns: 1fr;
+      }
     }
     /* When only latency or only trace, don't stretch full width */
     .system-metrics-grid > .metric-card:only-child {
@@ -823,19 +1239,6 @@
       width: 11px;
       height: 11px;
       border-radius: 50%;
-      background: var(--accent-secondary);
-      border: 2px solid var(--bg-surface);
-    }
-    .latency-ruler-dot.warn {
-      background: var(--warning);
-    }
-    .latency-ruler-dot.danger {
-      background: var(--error);
-    }
-    .latency-ruler-dot.muted {
-      width: 11px;
-      height: 11px;
-      background: var(--text-muted);
       border: 2px solid var(--bg-surface);
     }
     .latency-ruler-label-below {
@@ -1149,19 +1552,25 @@
       margin-left: 4px;
     }
     .breakdown-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
       gap: var(--space-sm);
     }
     .breakdown-card {
       background: var(--bg-elevated);
       border-radius: 6px;
-      padding: var(--space-sm) var(--space-md);
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      gap: 2px;
       border: 1px solid var(--border-subtle);
       transition: border-color 0.15s;
+      flex: 0 1 auto;
+      width: fit-content;
+      min-width: 220px;
+      max-width: 100%;
+      min-height: 0;
     }
     .breakdown-card:hover { border-color: var(--border-default); }
     .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(251, 191, 36, 0.3); }
@@ -1199,9 +1608,11 @@
       gap: var(--space-sm);
     }
     .breakdown-card-scores {
-      display: flex;
-      gap: var(--space-md);
-      margin: 2px 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, max-content));
+      column-gap: 16px;
+      row-gap: 0;
+      margin: 1px 0 0;
     }
     .breakdown-card-scores .score-col {
       display: flex;
@@ -1253,8 +1664,8 @@
     .breakdown-card-score.score-1 { color: var(--score-1); }
     .breakdown-card-details {
       display: flex;
-      gap: var(--space-md);
-      margin-top: 2px;
+      gap: var(--space-sm);
+      margin-top: 0;
     }
     .breakdown-detail {
       font-family: var(--font-mono);
@@ -1421,16 +1832,19 @@
       line-height: 1;
     }
     .fp-btn.fp-export {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-      color: var(--bg-void);
-      font-size: var(--font-sm);
+      background: rgba(0, 212, 170, 0.08);
+      border-color: rgba(0, 212, 170, 0.22);
+      color: var(--accent-primary);
+      border-radius: var(--radius-md);
+      padding: 5px 10px;
+      gap: 6px;
+      font-size: var(--font-xs);
       font-weight: 500;
     }
     .fp-btn.fp-export:hover {
-      background: #00e6b8;
-      border-color: #00e6b8;
-      color: var(--bg-void);
+      background: rgba(0, 212, 170, 0.14);
+      border-color: rgba(0, 212, 170, 0.34);
+      color: var(--accent-primary);
     }
     .fp-search-row { padding: 0 var(--space-md) var(--space-sm); }
     .fp-search {
@@ -2779,28 +3193,14 @@
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
-          <span class="stat-label">RUN ID</span>
-          <span class="stat-value" id="hdr-run-name">—</span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">STATUS</span>
-          <span class="stat-value" id="hdr-status">—</span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">DATASET</span>
-          <span class="stat-value" id="hdr-dataset">—</span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">MODEL</span>
-          <span class="stat-value" id="hdr-model">—</span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">TOTAL ITEMS</span>
-          <span class="stat-value" id="hdr-total">—</span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">METRICS</span>
-          <span class="stat-value" id="hdr-metrics">—</span>
+          <span class="stat-label">PAGE</span>
+          <span class="stat-value">
+            <span class="shell-breadcrumb">
+              <span class="shell-breadcrumb-parent">Runs</span>
+              <span class="shell-breadcrumb-sep">/</span>
+              <span class="shell-breadcrumb-current">Run Detail</span>
+            </span>
+          </span>
         </div>
       </div>
     </div>
@@ -2827,23 +3227,6 @@
     </div>
 
     <div id="run-content" style="display:none;">
-      <div class="run-header-bar">
-        <div>
-          <div class="run-title">Run Detail</div>
-          <div class="run-subtitle" id="run-subtitle">—</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:var(--space-sm);">
-          <button class="export-html-btn export-html-download" id="export-download-btn" style="display:none;" title="Download a new file with your edits baked in">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download with Changes
-          </button>
-          <button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-            Share
-          </button>
-        </div>
-      </div>
-
       <div class="run-summary" id="run-summary"></div>
 
       <div id="overview-section"></div>
@@ -3183,6 +3566,44 @@
         } catch { return null; }
       }
 
+      function formatIsoDateTime(value) {
+        if (!value) return '—';
+        try {
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return String(value);
+          return d.toLocaleString([], {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+        } catch {
+          return String(value);
+        }
+      }
+
+      function formatDurationMs(ms) {
+        if (ms == null || !Number.isFinite(Number(ms)) || Number(ms) < 0) return '—';
+        const totalMs = Number(ms);
+        if (totalMs < 1000) return Math.round(totalMs) + 'ms';
+        if (totalMs < 60000) return (totalMs / 1000).toFixed(totalMs >= 10000 ? 0 : 1) + 's';
+        const totalSeconds = Math.round(totalMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours > 0) return hours + 'h ' + minutes + 'm';
+        if (minutes > 0) return minutes + 'm ' + seconds + 's';
+        return totalSeconds + 's';
+      }
+
+      function formatFieldLabel(key) {
+        if (!key) return '';
+        return String(key)
+          .replace(/[_-]+/g, ' ')
+          .replace(/\b\w/g, (m) => m.toUpperCase());
+      }
+
       function buildLangfuseTraceUrl(traceId) {
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
         const host = state.langfuseHost.replace(/\/$/, '');
@@ -3505,18 +3926,6 @@
           if (state.visibleMetricMetaFields[k] === undefined) state.visibleMetricMetaFields[k] = true;
         }
 
-        // Update header
-        const config = run.config || {};
-        el('hdr-run-name').textContent = RUN_ID || run.run_name || '—';
-        el('hdr-dataset').textContent = run.dataset_name || '—';
-        el('hdr-model').textContent = run.model_name || config.model || config.model_name || '—';
-        el('hdr-total').textContent = (snap.stats || {}).total || (snap.rows || []).length;
-        el('hdr-metrics').textContent = state.allMetrics.length;
-
-        const statusText = (run.status || 'unknown').toUpperCase();
-        const statusEl = el('hdr-status');
-        statusEl.textContent = statusText;
-
         document.title = '\u0642\u064A\u0651\u0650\u0645 \u2022 ' + (run.run_name || 'Run Detail');
       }
 
@@ -3541,13 +3950,8 @@
         el('empty').style.display = 'none';
         el('error-state').style.display = 'none';
         el('run-content').style.display = 'block';
-        // Hide stats bar cells that are now in the hero card (keep run name)
-        ['hdr-status', 'hdr-dataset', 'hdr-model', 'hdr-total', 'hdr-metrics'].forEach(id => {
-          const cell = el(id);
-          if (cell) cell.closest('.stat-cell').style.display = 'none';
-        });
-
         renderSummary();
+        wireTopActions();
         populateMetricSelectors();
         renderOverview();
         buildCategoryDropdowns();
@@ -3562,76 +3966,153 @@
         const run = state.run;
         const config = run.config || {};
         const metadata = run.metadata || {};
-
-        el('run-subtitle').textContent = run.run_name || '—';
-
-        const configColors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
-        let configHtml = '';
-        if (config && typeof config === 'object' && Object.keys(config).length > 0) {
-          const hiddenConfigKeys = new Set(['run_name', 'max_metric_concurrency', 'MAX_METRIC_CONCURRENCY']);
-          const entries = Object.entries(config).filter(([k]) => !hiddenConfigKeys.has(k));
-          if (entries.length > 0) {
-            configHtml = '<div class="hero-config">' + entries.map(([k,v], i) => {
-              const color = configColors[i % configColors.length];
-              return '<div class="config-cell">' +
-                '<span class="config-cell-dot" style="background:' + color + '"></span>' +
-                '<div class="config-cell-text">' +
-                  '<div class="config-cell-key">' + escapeHtml(k) + '</div>' +
-                  '<div class="config-cell-val" title="' + escapeAttr(String(v ?? '')) + '">' + escapeHtml(String(v ?? '')) + '</div>' +
-                '</div>' +
-              '</div>';
-            }).join('') + '</div>';
-          }
-        }
-
-        let langfuseHtml = '';
-        const lfUrl = metadata?.langfuse_url;
-        if (lfUrl) {
-          langfuseHtml = '<a href="' + escapeAttr(lfUrl) + '" target="_blank" class="langfuse-link">Langfuse &#8599;</a>';
-        } else if (state.langfuseHost && state.langfuseProjectId) {
-          const url = state.langfuseHost.replace(/\/$/, '') + '/project/' + state.langfuseProjectId;
-          langfuseHtml = '<a href="' + escapeAttr(url) + '" target="_blank" class="langfuse-link">Langfuse &#8599;</a>';
-        }
-
         const statusClass = (run.status || '').toLowerCase();
         const statusText = escapeHtml((run.status || 'unknown').toUpperCase());
+        const modelName = run.model_name || config.model || config.model_name || '';
+        const runId = run.run_id || RUN_ID || '';
+        const taskName = run.task_name || metadata.task_name || config.task || '—';
+        const owner = run.owner || {};
+        const ownerLabel = owner.display_name || owner.email || owner.id || '—';
+        const teamName = run.team_name || '—';
+        const startedAt = run.started_at || run.created_at || '';
+        const endedAt = run.ended_at || '';
+        let runtimeMs = run.duration_ms;
+        if ((runtimeMs == null || runtimeMs === '') && startedAt && !endedAt) {
+          const startedTime = new Date(startedAt).getTime();
+          if (!Number.isNaN(startedTime)) runtimeMs = Date.now() - startedTime;
+        }
+        const runtimeText = runtimeMs != null ? formatDurationMs(runtimeMs) : '—';
+        const versionText = [run.git_branch, run.git_commit].filter(Boolean).join(' • ');
 
-        // Summary pills (items, success rate, errors) for the hero card
-        let summaryPills = '';
-        const snap = state.snapshot || {};
-        const snapStats = snap.stats || {};
-        const total = snapStats.total || (snap.rows || []).length;
-        const completed = snapStats.completed || 0;
-        const failed = snapStats.failed || 0;
-        const successRate = total > 0 ? completed / total : 0;
-        if (total > 0) {
-          summaryPills += '<span class="summary-pill">' + total + ' items</span>';
-          const srClass = successRate >= 0.95 ? ' pill-success' : (successRate >= 0.8 ? ' pill-warn' : ' pill-error');
-          summaryPills += '<span class="summary-pill' + srClass + '">' + formatPercent(successRate) + ' success</span>';
-          if (failed > 0) summaryPills += '<span class="summary-pill pill-error">' + failed + ' error' + (failed !== 1 ? 's' : '') + '</span>';
+        let langfuseUrl = metadata?.langfuse_url || '';
+        if (!langfuseUrl && state.langfuseHost && state.langfuseProjectId) {
+          langfuseUrl = state.langfuseHost.replace(/\/$/, '') + '/project/' + state.langfuseProjectId;
         }
 
-        const modelName = run.model_name || config.model || config.model_name || '';
-        const runId = run.run_id || '';
-        let modelPill = modelName ? '<span class="summary-pill">' + escapeHtml(modelName) + '</span>' : '';
-        let metricsPill = state.allMetrics.length > 0 ? '<span class="summary-pill">' + state.allMetrics.length + ' metrics</span>' : '';
+        function metaItem(label, value, options) {
+          const opts = options || {};
+          if (value == null || value === '') return '';
+          const text = String(value);
+          const classes = ['hero-meta-value'];
+          if (opts.mono) classes.push('mono');
+          if (opts.nowrap) classes.push('nowrap');
+          return '<div class="hero-meta-item">' +
+            '<div class="hero-meta-label">' + escapeHtml(label) + '</div>' +
+            '<div class="' + classes.join(' ') + '" title="' + escapeAttr(text) + '">' + escapeHtml(text) + '</div>' +
+          '</div>';
+        }
+
+        let actionsHtml =
+          '<button class="export-html-btn export-html-download" id="export-download-btn" style="display:none;" title="Download a new file with your edits baked in">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+            'Download with Changes' +
+          '</button>' +
+          '<button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
+            'Share' +
+          '</button>';
+        if (langfuseUrl) {
+          actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="hero-link-btn langfuse">Langfuse &#8599;</a>';
+        }
+
+        const metaHtml = [
+          metaItem('Task', taskName),
+          metaItem('Dataset', run.dataset_name || '—'),
+          metaItem('Model', modelName || '—'),
+          metaItem('Owner', ownerLabel === '—' ? '' : ownerLabel),
+          metaItem('Team', teamName === '—' ? '' : teamName),
+          metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),
+          metaItem('Runtime', runtimeText, { nowrap: true }),
+          metaItem('Version', versionText, { mono: true, nowrap: true }),
+        ].filter(Boolean).join('');
+        const executionContextHtml = buildExecutionContextSectionHtml();
 
         el('run-summary').innerHTML = '<div class="run-summary-card">' +
           '<div class="hero-top">' +
             '<div class="hero-identity">' +
-              '<div class="hero-run-name">' + escapeHtml(run.run_name || '—') + '</div>' +
-              (runId ? '<div class="hero-run-id">' + escapeHtml(runId) + '</div>' : '') +
-              '<div class="hero-tags">' +
-                '<span class="tag task">' + escapeHtml(run.dataset_name || '—') + '</span>' +
-                modelPill +
-                langfuseHtml +
-                summaryPills +
-                metricsPill +
+              '<div class="hero-eyebrow">Run Detail</div>' +
+              '<div class="hero-headline">' +
+                '<div class="hero-run-name">' + escapeHtml(run.run_name || runId || '—') + '</div>' +
               '</div>' +
             '</div>' +
-            '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText + '</div>' +
+            '<div class="hero-right">' +
+              '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText + '</div>' +
+              '<div class="hero-actions">' + actionsHtml + '</div>' +
+            '</div>' +
           '</div>' +
-          configHtml +
+          '<div class="hero-meta-grid">' + metaHtml + '</div>' +
+          executionContextHtml +
+        '</div>';
+      }
+
+      function wireTopActions() {
+        const shareBtn = el('export-share-btn');
+        if (shareBtn && !shareBtn.dataset.boundShare && !IS_EXPORT) {
+          shareBtn.dataset.boundShare = '1';
+          shareBtn.addEventListener('click', function() {
+            const runId = state.run?.file_path || RUN_ID;
+            if (!runId) return;
+            window.open(apiUrl('api/runs/' + runId + '/export-html'), '_blank');
+          });
+        }
+
+        const dlBtn = el('export-download-btn');
+        if (dlBtn && !dlBtn.dataset.boundDownload) {
+          dlBtn.dataset.boundDownload = '1';
+          dlBtn.addEventListener('click', downloadExportHtml);
+        }
+      }
+
+      function buildExecutionContextSectionHtml() {
+        const run = state.run || {};
+        const config = run.config || {};
+        const metadata = run.metadata || {};
+        const hiddenConfigKeys = new Set([
+          'run_name', 'task_name', 'task', 'git_branch', 'git_commit',
+          'model', 'model_name', 'dataset', 'dataset_name',
+          'max_metric_concurrency', 'MAX_METRIC_CONCURRENCY'
+        ]);
+        const hiddenMetadataKeys = new Set([
+          'langfuse_url', 'langfuse_host', 'langfuse_project_id', 'trace_stats',
+          'snapshot', 'rows', 'metric_names', 'task_name', 'model',
+          'model_name', 'dataset', 'dataset_name', 'total_items',
+          'git_branch', 'git_commit'
+        ]);
+        const colors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
+        const entries = [];
+        const seenKeys = new Set();
+
+        Object.entries(config).forEach(([key, value]) => {
+          if (hiddenConfigKeys.has(key) || value == null || value === '') return;
+          seenKeys.add(String(key).toLowerCase());
+          entries.push({ key: key, value: stringify(value), group: 'Config' });
+        });
+
+        Object.entries(metadata).forEach(([key, value]) => {
+          if (hiddenMetadataKeys.has(key) || value == null || value === '') return;
+          if (seenKeys.has(String(key).toLowerCase())) return;
+          entries.push({ key: key, value: stringify(value), group: 'Metadata' });
+        });
+
+        if (!entries.length) {
+          return '';
+        }
+
+        const cellsHtml = entries.map((entry, index) => {
+          const color = colors[index % colors.length];
+          const keyLabel = formatFieldLabel(entry.key);
+          const sourceLabel = entry.group === 'Metadata' ? 'Metadata' : 'Config';
+          return '<div class="context-cell">' +
+            '<span class="context-cell-dot" style="background:' + color + '"></span>' +
+            '<div class="context-cell-text">' +
+              '<div class="context-cell-key">' + escapeHtml(keyLabel + ' • ' + sourceLabel) + '</div>' +
+              '<div class="context-cell-val" title="' + escapeAttr(entry.value) + '">' + escapeHtml(entry.value) + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        return '<div class="context-section">' +
+          '<div class="context-grid">' + cellsHtml + '</div>' +
         '</div>';
       }
 
@@ -3798,7 +4279,21 @@
         const total = stats.total || rows.length;
         const completed = stats.completed || 0;
         const failed = stats.failed || 0;
-        const successRate = total > 0 ? completed / total : 0;
+        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
+        const summaryItem = (kind, label, valueHtml, iconHtml) =>
+          '<div class="overview-summary-pill ' + kind + '">' +
+            '<span class="overview-summary-icon">' + iconHtml + '</span>' +
+            '<span class="overview-summary-text">' +
+              '<span class="overview-summary-value">' + valueHtml + '</span>' +
+              '<span class="overview-summary-label">' + label + '</span>' +
+            '</span>' +
+          '</div>';
+        const runSummaryHtml =
+          '<div class="overview-summary-strip">' +
+            summaryItem('total', 'Items', String(total), '<svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>') +
+            summaryItem('completed', 'Completed', String(completed), '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>') +
+            summaryItem('errors', 'Errors', String(failed), '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>') +
+          '</div>';
 
         // ── Gauge color (hex for conic-gradient) ──
         function gaugeColorHex(score) {
@@ -3931,7 +4426,6 @@
 
         // ── Latency card ──
         let latencyCard = '';
-        const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
         if (latencies.length > 0) {
           const sorted = [...latencies].sort((a, b) => a - b);
           const minLat = sorted[0];
@@ -3980,12 +4474,12 @@
           // Ruler marker positions: spread evenly for readability
           const rulerPct = (v) => maxLat > minLat ? ((v - minLat) / (maxLat - minLat) * 100).toFixed(1) : 50;
           const rulerMarkers = [
-            { val: minLat, label: 'Min', pos: rulerPct(minLat), cls: 'muted' },
-            { val: p50,    label: 'P50', pos: rulerPct(p50), cls: '' },
-            { val: p90,    label: 'P90', pos: rulerPct(p90), cls: 'warn' },
-            { val: p95,    label: 'P95', pos: rulerPct(p95), cls: 'warn' },
-            { val: p99,    label: 'P99', pos: rulerPct(p99), cls: 'danger' },
-            { val: maxLat, label: 'Max', pos: rulerPct(maxLat), cls: 'muted' }
+            { val: minLat, label: 'Min', pos: rulerPct(minLat), color: 'var(--score-5)' },
+            { val: p50,    label: 'P50', pos: rulerPct(p50),    color: 'var(--score-4)' },
+            { val: p90,    label: 'P90', pos: rulerPct(p90),    color: 'var(--score-3)' },
+            { val: p95,    label: 'P95', pos: rulerPct(p95),    color: 'var(--score-3)' },
+            { val: p99,    label: 'P99', pos: rulerPct(p99),    color: 'var(--score-2)' },
+            { val: maxLat, label: 'Max', pos: rulerPct(maxLat), color: 'var(--score-1)' }
           ];
           // Filter out markers too close to neighbors (< 8% apart)
           const MIN_GAP = 8;
@@ -4003,7 +4497,7 @@
           let rulerHtml = '<div class="latency-ruler-fill" style="width:100%;"></div>';
           for (const m of filtered) {
             rulerHtml += '<div class="latency-ruler-marker" style="left:' + m.pos + '%;">' +
-              '<div class="latency-ruler-dot ' + m.cls + '"></div>' +
+              '<div class="latency-ruler-dot" style="background:' + m.color + ';"></div>' +
               '<div class="latency-ruler-label-below"><b>' + fmtRuler(m.val) + '</b>' + m.label + '</div>' +
             '</div>';
           }
@@ -4064,6 +4558,7 @@
           '<div class="overview-header">' +
             '<div><h3 class="section-title">Overview</h3>' +
             '<div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div></div>' +
+            runSummaryHtml +
           '</div>' +
           (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '') +
           systemCards;
@@ -4522,8 +5017,7 @@
               const bdDisplay = window.QymMetrics.formatMetricValue(g.avgScore, bdMType, 0);
               html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '">' +
                 '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + bdColorCls + '">' + bdDisplay + '</span></div><div class="score-col" style="margin-left:auto;"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div></div>' +
-                '<div class="breakdown-card-details"><span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ' + latStr + '</span></div></div>';
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + bdColorCls + '">' + bdDisplay + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latStr + '</span></div></div></div>';
           }
           html += '</div></div>';
         }
@@ -6473,7 +6967,6 @@
         var dlBtn = el('export-download-btn');
         if (dlBtn) {
           dlBtn.style.display = '';
-          dlBtn.addEventListener('click', downloadExportHtml);
         }
         // Hide back link (no server)
         var backLink = el('back-link-header');
@@ -6509,21 +7002,6 @@
         URL.revokeObjectURL(url);
         showToast('success', 'Downloaded', 'File with your annotations is ready to share');
       }
-
-
-
-      // ── Share button (live mode — server export) ──
-      if (!IS_EXPORT) {
-        var shareBtn = el('export-share-btn');
-        if (shareBtn) {
-          shareBtn.addEventListener('click', function() {
-            var runId = state.run?.file_path || RUN_ID;
-            if (!runId) return;
-            window.open(apiUrl('api/runs/' + runId + '/export-html'), '_blank');
-          });
-        }
-      }
-
       // ── Initialize ──
       loadHeaderUser();
       loadRunData();

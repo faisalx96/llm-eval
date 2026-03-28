@@ -552,6 +552,27 @@ html {
   color: var(--accent-primary);
 }
 
+.shell-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 500;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.shell-breadcrumb-parent,
+.shell-breadcrumb-sep {
+  color: var(--text-dim);
+}
+
+.shell-breadcrumb-current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .trend-chart {
   display: flex;
   align-items: flex-end;

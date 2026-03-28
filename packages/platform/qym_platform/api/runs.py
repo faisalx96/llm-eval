@@ -727,6 +727,8 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
 
     # Read pre-computed trace stats from stored metadata
     run_trace_stats = run.run_metadata.get("trace_stats") if isinstance(run.run_metadata, dict) else None
+    run_config = run.run_config if isinstance(run.run_config, dict) else {}
+    run_metadata = run.run_metadata if isinstance(run.run_metadata, dict) else {}
 
     # Build per-item score/meta for UI
     scores = db.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
@@ -832,17 +834,53 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
 
     # Extract Langfuse host/project_id from run metadata (langfuse_url fallback)
     lf_host, lf_project_id = _extract_langfuse_ids(run.run_metadata or {})
+    owner = db.query(User).filter(User.id == run.owner_user_id).first()
+    team_name = None
+    owner_info = None
+    if owner:
+        owner_info = {
+            "id": owner.id,
+            "email": owner.email,
+            "display_name": owner.display_name or owner.email.split("@")[0],
+        }
+        if owner.team_unit_id:
+            team = db.query(OrgUnit).filter(OrgUnit.id == owner.team_unit_id).first()
+            if team:
+                team_name = team.name
+
+    started_at = run.started_at or run.created_at
+    ended_at = run.ended_at
+    duration_ms = None
+    if started_at and ended_at and ended_at >= started_at:
+        duration_ms = (ended_at - started_at).total_seconds() * 1000.0
+
+    run_name = ""
+    if isinstance(run_config, dict):
+        run_name = run_config.get("run_name", "")
+    if not run_name:
+        run_name = run.external_run_id or run.id
 
     return finalize_compare_alignment({
         "run": {
+            "run_id": run.id,
             "file_path": run.id,
+            "task_name": run.task,
             "dataset_name": run.dataset,
             "model_name": _strip_model_provider(run.model or ""),
-            "run_name": run.external_run_id or run.id,
+            "run_name": run_name,
+            "external_run_id": run.external_run_id or "",
             "metric_names": metrics,
-            "config": run.run_config,
-            "metadata": run.run_metadata,
+            "config": run_config,
+            "metadata": run_metadata,
             "status": run.status,
+            "owner": owner_info,
+            "team_name": team_name,
+            "started_at": _iso(started_at) if started_at else "",
+            "ended_at": _iso(ended_at) if ended_at else "",
+            "created_at": _iso(run.created_at) if run.created_at else "",
+            "duration_ms": duration_ms,
+            "git_branch": run_config.get("git_branch"),
+            "git_commit": run_config.get("git_commit"),
             "langfuse_host": lf_host,
             "langfuse_project_id": lf_project_id,
             "trace_stats": run_trace_stats,
