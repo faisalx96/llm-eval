@@ -21,14 +21,17 @@ class PlatformSettings(BaseSettings):
     # Auth
     auth_mode: str = Field(default="none")  # none|proxy_headers|oidc|saml (SSO later)
     admin_bootstrap_token: str = Field(default="")
+    allow_legacy_empty_api_key_scopes: bool = Field(default=True)
 
     # Database (required - no SQLite fallback)
     database_url: str = Field(description="PostgreSQL connection string (required)")
+
+    # Secrets
+    llm_config_encryption_key: str = Field(default="")
 
     # Visibility
     hidden_tasks: str = Field(default="", description="Comma-separated task names to hide from listings")
 
     # Storage (raw artifacts)
     artifact_store_path: str = Field(default="./artifacts")
-
 

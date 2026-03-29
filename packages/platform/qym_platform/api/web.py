@@ -10,7 +10,15 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.db.models import ApiKey, OrgUnit, OrgUnitType, User, UserRole
 from qym_platform.deps import get_db
+from qym_platform.secrets import (
+    build_llm_config_storage,
+    encryption_available,
+    llm_config_api_key_hint,
+    llm_config_has_api_key,
+    resolve_llm_api_key,
+)
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.settings import PlatformSettings
 
 
 def _require_admin(principal: Principal) -> None:
@@ -209,12 +217,11 @@ def get_llm_config(
 ) -> Dict[str, Any]:
     """Return the current user's LLM configuration (API key masked)."""
     cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    raw_key = cfg.get("llm_api_key", "")
     return {
         "llm_base_url": cfg.get("llm_base_url", "https://api.openai.com/v1"),
         "llm_model": cfg.get("llm_model", "gpt-4o-mini"),
-        "llm_api_key_set": bool(raw_key),
-        "llm_api_key_hint": ("••••" + raw_key[-4:]) if len(raw_key) >= 4 else "",
+        "llm_api_key_set": llm_config_has_api_key(cfg),
+        "llm_api_key_hint": llm_config_api_key_hint(cfg),
     }
 
 
@@ -225,6 +232,7 @@ def update_llm_config(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Save LLM configuration for the current user."""
+    settings = PlatformSettings()
     user = db.query(User).filter(User.id == principal.user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -233,13 +241,26 @@ def update_llm_config(
     existing = user.llm_config if isinstance(user.llm_config, dict) else {}
     api_key = req.llm_api_key.strip()
     if api_key == "__KEEP__":
-        api_key = existing.get("llm_api_key", "")
+        try:
+            api_key = resolve_llm_api_key(existing, settings)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
-    user.llm_config = {
-        "llm_base_url": req.llm_base_url.strip().rstrip("/"),
-        "llm_api_key": api_key,
-        "llm_model": req.llm_model.strip(),
-    }
+    if api_key:
+        if not encryption_available(settings):
+            raise HTTPException(status_code=400, detail="LLM config encryption is not configured")
+        user.llm_config = build_llm_config_storage(
+            base_url=req.llm_base_url,
+            model=req.llm_model,
+            api_key=api_key,
+            settings=settings,
+        )
+    else:
+        user.llm_config = {
+            "llm_base_url": req.llm_base_url.strip().rstrip("/"),
+            "llm_api_key_last4": "",
+            "llm_model": req.llm_model.strip(),
+        }
     db.commit()
     return {"ok": True}
 
@@ -249,8 +270,12 @@ async def test_llm_config(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Test the user's LLM connection with a lightweight call."""
+    settings = PlatformSettings()
     cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    api_key = cfg.get("llm_api_key", "")
+    try:
+        api_key = resolve_llm_api_key(cfg, settings)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not api_key:
         raise HTTPException(status_code=400, detail="No API key configured")
 
@@ -420,4 +445,3 @@ def admin_delete_user(
     db.delete(user)
     db.commit()
     return {"ok": True, "deleted_id": user_id}
-

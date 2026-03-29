@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
 from qym_platform.deps import get_db
+from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
+from qym_platform.secrets import llm_config_has_api_key, resolve_llm_api_key
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
     ROOT_CAUSE_CATEGORIES,
@@ -26,6 +28,7 @@ from qym_platform.services.llm_analyzer import (
     get_few_shot_examples,
 )
 from qym_platform.services.root_cause_changes import apply_root_cause_change, build_ai_state
+from qym_platform.settings import PlatformSettings
 
 router = APIRouter(tags=["analysis"])
 
@@ -84,12 +87,16 @@ class TestRequest(BaseModel):
 def _get_llm_config(principal: Principal) -> dict[str, Any]:
     """Extract and validate LLM config from the current user."""
     cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    if not cfg.get("llm_api_key"):
+    if not llm_config_has_api_key(cfg):
         raise HTTPException(
             status_code=400,
             detail="LLM not configured. Please set up your LLM provider in your Profile page.",
         )
-    return cfg
+    try:
+        api_key = resolve_llm_api_key(cfg, PlatformSettings())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {**cfg, "llm_api_key": api_key}
 
 
 def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any] | None:
@@ -252,11 +259,12 @@ async def analyze_run_items(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Trigger LLM-powered root cause analysis for selected items in a run."""
-    llm_config = _get_llm_config(principal)
-
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    llm_config = _get_llm_config(principal)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
 
@@ -439,6 +447,8 @@ def analyze_preview(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     item = (
         db.query(RunItem)
@@ -479,11 +489,12 @@ async def analyze_test(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Run analysis on 1-3 items with custom config. Does NOT save to DB."""
-    llm_config = _get_llm_config(principal)
-
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    llm_config = _get_llm_config(principal)
 
     items = (
         db.query(RunItem)
@@ -569,6 +580,8 @@ def get_corrections(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     corrections = (
         db.query(ReviewCorrection)
@@ -620,6 +633,8 @@ def get_analysis_config(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
     total = len(items)
@@ -648,8 +663,8 @@ def get_analysis_config(
     all_categories, category_details_map = _collect_task_root_cause_catalog(db, run, items)
 
     return {
-        "llm_configured": bool(cfg.get("llm_api_key")),
-        "model": cfg.get("llm_model") if cfg.get("llm_api_key") else None,
+        "llm_configured": llm_config_has_api_key(cfg),
+        "model": cfg.get("llm_model") if llm_config_has_api_key(cfg) else None,
         "total_items": total,
         "items_with_root_cause": with_rc,
         "items_ai_assigned": ai_assigned,
@@ -1060,6 +1075,7 @@ def list_corrections(
         .join(Run, Run.id == ReviewCorrection.run_id)
         .filter(ReviewCorrection.is_active.is_(True))
     )
+    active_query = apply_reviewable_run_filter(active_query, db, principal)
     def apply_filter_set(base_query, *, exclude: Optional[str] = None):
         query_obj = base_query
         if task and exclude != "task":
@@ -1249,6 +1265,9 @@ def get_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
+    run = db.query(Run).filter(Run.id == c.run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
     return _serialize_corrections_with_history(db, [c])[0]
 
 
@@ -1268,6 +1287,8 @@ def update_correction(
     run = db.query(Run).filter(Run.id == c.run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
     item = (
         db.query(RunItem)
         .filter(RunItem.run_id == c.run_id, RunItem.item_id == c.item_id)
@@ -1319,6 +1340,9 @@ def approve_correction(
     correction = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not correction:
         raise HTTPException(status_code=404, detail="Correction not found")
+    run = db.query(Run).filter(Run.id == correction.run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     target = correction
     if not correction.is_active:
@@ -1358,6 +1382,9 @@ def reject_correction(
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
     _require_active_candidate(c)
+    run = db.query(Run).filter(Run.id == c.run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     c.status = CorrectionStatus.REJECTED
     c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
@@ -1379,6 +1406,9 @@ def reset_correction(
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
     _require_active_candidate(c)
+    run = db.query(Run).filter(Run.id == c.run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     c.status = CorrectionStatus.PENDING
     c.reviewed_by_user_id = None
@@ -1416,6 +1446,15 @@ def bulk_correction_action(
 
     if not corrections:
         raise HTTPException(status_code=404, detail="No corrections found")
+
+    runs_by_id = {
+        run.id: run
+        for run in db.query(Run).filter(Run.id.in_({c.run_id for c in corrections})).all()
+    }
+    for correction in corrections:
+        run = runs_by_id.get(correction.run_id)
+        if not run or not can_review_run(db, principal, run):
+            raise HTTPException(status_code=403, detail="Access denied")
 
     now = datetime.utcnow()
     reviewer_id = principal.user.id if principal.auth_type != "none" else None
@@ -1461,6 +1500,9 @@ def delete_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
+    run = db.query(Run).filter(Run.id == c.run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
     _delete_active_candidate(db, c)
     db.commit()
     return {"ok": True, "deleted_id": correction_id}

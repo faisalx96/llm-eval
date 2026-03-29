@@ -5,4 +5,8 @@ echo "Running migrations..."
 alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
 
 echo "Starting API..."
-exec uvicorn qym_platform.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/packages/platform
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
+exec uvicorn qym_platform.main:app --host 0.0.0.0 --port 8000

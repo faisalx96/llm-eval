@@ -16,6 +16,7 @@ from qym_platform.settings import PlatformSettings
 class Principal:
     user: User
     auth_type: str  # api_key|proxy_headers|none
+    scopes: tuple[str, ...] = ()
 
 
 def _bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -53,7 +54,20 @@ def require_api_key_principal(
     user = db.query(User).filter(User.id == row.user_id).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=403, detail="User disabled")
-    return Principal(user=user, auth_type="api_key")
+    scopes = tuple(str(scope).strip() for scope in (row.scopes or []) if str(scope).strip())
+    return Principal(user=user, auth_type="api_key", scopes=scopes)
+
+
+def require_api_key_scope(principal: Principal, required_scope: str) -> None:
+    if principal.auth_type != "api_key":
+        return
+    if required_scope in principal.scopes:
+        return
+
+    settings = PlatformSettings()
+    if settings.allow_legacy_empty_api_key_scopes and not principal.scopes:
+        return
+    raise HTTPException(status_code=403, detail=f"API key missing required scope: {required_scope}")
 
 
 def require_ui_principal(
@@ -99,5 +113,4 @@ def require_ui_principal(
         return Principal(user=user, auth_type="bootstrap")
 
     raise HTTPException(status_code=401, detail="Missing user identity headers")
-
 

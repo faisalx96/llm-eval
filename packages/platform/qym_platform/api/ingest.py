@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from qym_platform.auth import Principal, require_api_key_principal
+from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
 from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
 from qym_platform.deps import get_db
 from qym_platform.events import (
@@ -166,6 +166,7 @@ def create_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_api_key_principal),
 ) -> Dict[str, Any]:
+    require_api_key_scope(principal, "runs:write")
     run = Run(
         external_run_id=req.external_run_id,
         created_by_user_id=principal.user.id,
@@ -195,6 +196,7 @@ async def ingest_events(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_api_key_principal),
 ) -> JSONResponse:
+    require_api_key_scope(principal, "runs:write")
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -491,6 +493,7 @@ async def upload_run(
     principal: Principal = Depends(require_api_key_principal),
 ) -> Dict[str, Any]:
     """Upload a saved results file (CSV/JSON/XLSX) and ingest into DB."""
+    require_api_key_scope(principal, "runs:write")
     filename = (file.filename or "").lower()
     raw = await file.read()
     if not raw:

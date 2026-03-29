@@ -33,6 +33,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.item_identity import build_compare_identity, finalize_compare_alignment
+from qym_platform.permissions import can_modify_run, can_view_run, manager_team_ids
 from qym_platform.services.root_cause_changes import apply_root_cause_change
 
 
@@ -119,32 +120,6 @@ def _user_team_subtree_ids(db: Session, user: User) -> set[str]:
     # Get all ancestors of the user's team (including the team itself)
     closures = db.query(OrgUnitClosure).filter(OrgUnitClosure.descendant_id == user.team_unit_id).all()
     return {c.ancestor_id for c in closures}
-
-
-def _manager_team_ids(db: Session, manager_user_id: str) -> set[str]:
-    """Get all team IDs where this user is the manager."""
-    teams = db.query(OrgUnit).filter(
-        OrgUnit.type == OrgUnitType.TEAM,
-        OrgUnit.manager_user_id == manager_user_id
-    ).all()
-    return {t.id for t in teams}
-
-
-def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
-    """Check if the principal can approve/reject this run."""
-    # Must be authenticated
-    if principal.auth_type == "none":
-        return False
-    # Get the run owner's team
-    owner = db.query(User).filter(User.id == run.owner_user_id).first()
-    if not owner or not owner.team_unit_id:
-        return False
-    # Get the team
-    team = db.query(OrgUnit).filter(OrgUnit.id == owner.team_unit_id).first()
-    if not team:
-        return False
-    # Only the team's manager can approve
-    return team.manager_user_id == principal.user.id
 
 
 def _iso(dt: Optional[datetime]) -> str:
@@ -418,7 +393,7 @@ def legacy_list_runs(
     elif principal.user.role == UserRole.EMPLOYEE:
         q = q.filter(Run.owner_user_id == principal.user.id)
     elif principal.user.role == UserRole.MANAGER:
-        managed_team_ids = _manager_team_ids(db, principal.user.id)
+        managed_team_ids = manager_team_ids(db, principal.user.id)
         if managed_team_ids:
             team_users = db.query(User.id).filter(User.team_unit_id.in_(managed_team_ids)).all()
             team_user_ids = {u.id for u in team_users}
@@ -654,40 +629,6 @@ def legacy_compare(
     }
 
 
-def _can_view_run(db: Session, principal: Principal, run: Run) -> bool:
-    """Check if the principal can view this run based on visibility rules."""
-    # Local dev mode: allow all
-    if principal.auth_type == "none":
-        return True
-
-    # Admin can view all
-    if principal.user.role == UserRole.ADMIN:
-        return True
-
-    # Owner can always view their own runs
-    if run.owner_user_id == principal.user.id:
-        return True
-
-    # Manager can view runs from their managed teams
-    if principal.user.role == UserRole.MANAGER:
-        owner = db.query(User).filter(User.id == run.owner_user_id).first()
-        if owner and owner.team_unit_id:
-            managed_team_ids = _manager_team_ids(db, principal.user.id)
-            if owner.team_unit_id in managed_team_ids:
-                return True
-        return False
-
-    # GM/VP can view approved runs (or submitted if policy allows)
-    if principal.user.role in {UserRole.GM, UserRole.VP}:
-        gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
-        if gm_vp_approved_only:
-            return run.status == RunWorkflowStatus.APPROVED
-        else:
-            return run.status in {RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED}
-
-    return False
-
-
 def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
     """Check if the principal can approve/reject this run (must be the team's manager or admin)."""
     # Local dev mode: allow all
@@ -707,7 +648,7 @@ def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
     if not owner or not owner.team_unit_id:
         return False
 
-    managed_team_ids = _manager_team_ids(db, principal.user.id)
+    managed_team_ids = manager_team_ids(db, principal.user.id)
     return owner.team_unit_id in managed_team_ids
 
 
@@ -899,7 +840,7 @@ def export_run_html(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not _can_view_run(db, principal, run):
+    if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
     data = _build_run_data(db, run)
@@ -976,7 +917,7 @@ def legacy_run_data(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         return {"error": "Run not found"}
-    if not _can_view_run(db, principal, run):
+    if not can_view_run(db, principal, run):
         return {"error": "Access denied"}
 
     return _build_run_data(db, run)
@@ -1000,6 +941,8 @@ def update_metric(
     run = db.query(Run).filter(Run.id == file_path).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Find the item by index
     item = (
@@ -1133,6 +1076,8 @@ def update_root_cause(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     item = (
         db.query(RunItem)
@@ -1177,6 +1122,8 @@ def delete_run(
     run = db.query(Run).filter(Run.id == file_path).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Permission denied")
 
     # Admin can always delete
     if principal.user.role == UserRole.ADMIN:
@@ -1189,7 +1136,7 @@ def delete_run(
         owner = db.query(User).filter(User.id == run.owner_user_id).first()
         if not owner or not owner.team_unit_id:
             raise HTTPException(status_code=403, detail="Permission denied")
-        managed_team_ids = _manager_team_ids(db, principal.user.id)
+        managed_team_ids = manager_team_ids(db, principal.user.id)
         if owner.team_unit_id not in managed_team_ids:
             raise HTTPException(status_code=403, detail="Permission denied")
     else:
@@ -1308,7 +1255,7 @@ def get_run_spans(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not _can_view_run(db, principal, run):
+    if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
     spans = (
@@ -1331,7 +1278,7 @@ def get_item_spans(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not _can_view_run(db, principal, run):
+    if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
     item = (
@@ -1361,7 +1308,7 @@ def get_item_trace(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not _can_view_run(db, principal, run):
+    if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
     item = (

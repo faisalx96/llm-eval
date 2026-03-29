@@ -43,13 +43,19 @@ pip install -e packages/sdk
 
 ### Platform
 
-**With Docker (recommended):**
+**With Docker (development, hot reload):**
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+```
+
+Platform available at http://localhost:8000.
+
+**With Docker (production-style baseline):**
 
 ```bash
 docker compose -f docker/docker-compose.yml up --build
 ```
-
-Platform available at http://localhost:8000.
 
 **Without Docker:**
 
@@ -63,6 +69,7 @@ Set environment variables:
 QYM_DATABASE_URL=postgresql+psycopg2://qym:qym@localhost:5432/qym
 QYM_ADMIN_BOOTSTRAP_TOKEN=test
 QYM_AUTH_MODE=none
+QYM_LLM_CONFIG_ENCRYPTION_KEY=<fernet-key>
 ```
 
 Run migrations and start:
@@ -92,7 +99,8 @@ cp .env.template .env
 | `QYM_JUDGE_BASE_URL` | SDK | Base URL for LLM judge metrics (optional, or pass `judge_base_url` per judge) |
 | `QYM_DATABASE_URL` | Platform | PostgreSQL connection string |
 | `QYM_ADMIN_BOOTSTRAP_TOKEN` | Platform | One-time token for first admin user |
-| `QYM_AUTH_MODE` | Platform | `none` (default) or `proxy` |
+| `QYM_AUTH_MODE` | Platform | `none` (local dev) or `proxy_headers` |
+| `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Platform | Fernet key used to encrypt stored user LLM API keys |
 
 ## Documentation
 

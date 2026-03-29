@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  api:
+    environment:
+      QYM_ENVIRONMENT: dev
+      QYM_BASE_URL: http://localhost:8000
+      QYM_DATABASE_URL: postgresql+psycopg2://qym:qym@db:5432/qym
+      QYM_ADMIN_BOOTSTRAP_TOKEN: test
+      QYM_AUTH_MODE: none
+    volumes:
+      - ../packages/platform/qym_platform/_static:/app/packages/platform/qym_platform/_static
+      - ../packages/platform/qym_platform/api:/app/packages/platform/qym_platform/api
+    command:
+      - uvicorn
+      - qym_platform.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/packages/platform
