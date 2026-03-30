@@ -1,5 +1,5 @@
 """
-Example showing automatic DeepEval metrics discovery and usage.
+Example showing metric usage with built-in and custom metrics.
 
 Demonstrates:
 - Smart argument resolution (model, trace_id)
@@ -90,7 +90,7 @@ Python is a **high-level**, interpreted programming language. Key features:
 
 def main():    
     
-    # Example: Mix DeepEval metrics with custom metrics
+    # Example: Mix built-in metrics with custom metrics
     def response_length_check(output: str) -> float:
         """Custom metric: Check if response is appropriate length."""
         length = len(output)
@@ -105,7 +105,6 @@ def main():
         task=ai_assistant,
         dataset="saudi-qa-verification-v1",
         metrics=[
-            # "answer_relevancy", # DeepEval metric
             # response_length_check,  # Custom metric
             "exact_match"          # Simple comparison
         ],

@@ -48,7 +48,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-deepeval = ["deepeval>=0.20.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

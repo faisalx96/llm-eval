@@ -10,7 +10,7 @@ metric_app = typer.Typer(help="Inspect available evaluation metrics.")
 @metric_app.command("list")
 def metric_list() -> None:
     """List all available evaluation metrics."""
-    from ..metrics import builtin_metrics, has_deepeval
+    from ..metrics import builtin_metrics
 
     metrics_data = []
     for name, metric_func in sorted(builtin_metrics.items()):
@@ -26,7 +26,6 @@ def metric_list() -> None:
         output({
             "metrics": metrics_data,
             "total": len(metrics_data),
-            "deepeval_available": has_deepeval(),
         })
     else:
         from rich.table import Table
@@ -37,10 +36,4 @@ def metric_list() -> None:
         for m in metrics_data:
             table.add_row(m["name"], m["description"])
         err_console.print(table)
-
-        source = "including DeepEval" if has_deepeval() else "built-in only"
-        err_console.print(f"\nTotal: {len(metrics_data)} metrics ({source})")
-        if not has_deepeval():
-            err_console.print(
-                "[dim]Install DeepEval for 40+ advanced metrics: pip install qym[deepeval][/dim]"
-            )
+        err_console.print(f"\nTotal: {len(metrics_data)} metrics")

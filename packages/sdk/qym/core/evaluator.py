@@ -1378,7 +1378,7 @@ class Evaluator:
         elif len(params) == 2:
             args = (output, expected)
         elif len(params) == 3:
-            # For DeepEval metrics that need input_data
+            # For metrics that need input_data
             args = (output, expected, input_data)
         else:
             # Try with keyword arguments for flexibility
