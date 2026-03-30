@@ -277,7 +277,7 @@ Error spans show an error detail box with error type, message, and stack trace, 
 
 ### Setup
 
-Traces require auto-instrumentation. Install `pip install "qym[otel]"` and run your evaluation — every LLM call is captured automatically. See the [Auto-Instrumentation Guide](../packages/sdk/docs/AUTO_INSTRUMENTATION_GUIDE.md) for details.
+Traces require SDK instrumentation support. Install `qym`, run your evaluation, and supported LLM calls will be captured automatically when tracing is enabled.
 
 ---
 
@@ -455,7 +455,7 @@ Old-style invocations like `qym --task-file ...` and `qym resume --run-file ...`
 
 ## Admin Panel
 
-Access at `/admin` (ADMIN role only). See the [Admin Guide](ADMIN_GUIDE.md) for details on:
+Access at `/admin` (ADMIN role only). The platform README covers bootstrap, org structure, API keys, and admin settings. From the admin panel you can:
 - User management
 - Organization structure (Sector → Department → Team)
 - Platform settings (visibility rules, hidden tasks)

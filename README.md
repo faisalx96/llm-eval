@@ -4,7 +4,7 @@
 
 ---
 
-<h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
+<h3 align="center">Evaluate LLM Systems With A Python SDK And Shared Review Platform</h3>
 
 <p align="center">
   <img src="docs/images/qym_icon.png" alt="" height="20" />
@@ -13,107 +13,144 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
-## Project Structure
+## What Is qym?
 
-This is a monorepo with two packages:
+qym (قيِّم) is an evaluation operating system for LLM products. It combines a fast Python SDK for running evaluations with a centralized platform for monitoring runs, comparing results, diagnosing failures, and managing review workflows.
 
+At the core, qym gives teams a simple evaluation workflow: define a task, choose a dataset, apply metrics, run the evaluation, then inspect the results locally or in the shared platform.
+
+## What Problem It Solves
+
+LLM evaluation is often fragmented across scripts, notebooks, spreadsheets, and disconnected dashboards. Teams can generate scores, but usually cannot do so consistently, at scale, or with enough visibility into why systems fail.
+
+qym solves this by making evaluation structured, repeatable, observable, and team-ready.
+
+## What qym Adds
+
+- A simple evaluation workflow built around tasks, datasets, and metrics
+- High-throughput async execution for large-scale evaluation runs
+- Multi-model benchmarking in the same workflow
+- Support for both Langfuse datasets and local CSV datasets
+- Built-in metrics, custom metrics, and LLM-as-judge evaluation
+- Automatic tracing of LLM calls, tools, reasoning steps, latency, tokens, and errors
+- A live platform for run history, comparison, charts, and version tracking
+- AI-powered root cause analysis for understanding failure patterns
+- Human review, approval, and correction workflows for governance and continuous improvement
+
+## Why It Matters
+
+- It reduces manual evaluation effort
+- It makes model and prompt iteration faster
+- It improves confidence in quality before deployment
+- It gives teams a clear view of regressions, failure causes, and performance trends
+- It turns evaluation from an isolated developer activity into a managed organizational capability
+
+## Platform Value
+
+qym is not just a scoring tool. The platform adds operational visibility and collaboration through:
+
+- Live run streaming
+- Side-by-side run and model comparison
+- Embedded trace viewer
+- Version-aware dashboards
+- Role-based access and approval workflows
+- Review queues and reusable correction history
+
+## Bottom Line
+
+qym turns LLM evaluation from scattered testing into a centralized, observable, and reviewable system for improving LLM quality at scale.
+
+## Packages
+
+| Package | What it is for | Install / Access |
+|---------|-----------------|------------------|
+| **SDK** (`packages/sdk`) | Run evaluations from Python or CLI | `pip install qym` |
+| **Platform** (`packages/platform`) | Shared dashboard, review, analysis, admin, and history | Self-host with Docker / `pip install -e packages/platform`, or use a hosted deployment if you have one |
+
+## Choose Your Path
+
+- **I want to run evaluations**: start with the [SDK README](packages/sdk/README.md)
+- **I want to operate or self-host the platform**: see the [Platform README](packages/platform/README.md)
+- **I want deployment and admin docs**: use the docs linked below
+- **I want to contribute to the repo**: use the development setup below
+
+## Quick Start
+
+### Run an evaluation with the SDK
+
+```bash
+pip install qym
 ```
+
+```python
+from qym import Evaluator
+
+
+def my_task(question):
+    return call_your_llm(question)
+
+
+results = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", "contains"],
+).run()
+```
+
+### Use the platform
+
+- **Hosted**: use your team's hosted qym platform URL and API key, if you have one
+- **Self-hosted**: run the platform locally with Docker or install `qym-platform` from `packages/platform`
+
+## Repository Layout
+
+```text
 packages/
-  sdk/        # qym — the Python SDK (pip install qym)
-  platform/   # qym_platform — the web dashboard (FastAPI + Postgres)
-docker/       # Docker Compose setup for the platform
-docs/         # Guides and documentation
-examples/     # Runnable example scripts
+  sdk/        qym SDK package
+  platform/   qym-platform web application
+docker/       Docker Compose and container assets
+docs/         Product and operator documentation
+examples/     Runnable examples
+tests/        SDK and platform tests
 ```
-
-| Package | Description | Install |
-|---------|-------------|---------|
-| **SDK** (`packages/sdk`) | Evaluation framework — task runner, metrics, CLI | `pip install qym` |
-| **Platform** (`packages/platform`) | Web dashboard — run history, comparison, admin | Docker Compose or `pip install -e packages/platform` |
-
-**End users:** See the [SDK README](packages/sdk/README.md) for installation and usage.
 
 ## Development Setup
 
-### SDK
+Install both packages in editable mode:
 
 ```bash
-pip install -e packages/sdk
+pip install -e packages/sdk[dev] -e packages/platform
 ```
 
-### Platform
+Useful commands:
 
-**With Docker (development, hot reload):**
+```bash
+pytest -q
+black .
+isort .
+mypy packages/sdk/qym
+```
+
+Run the platform with Docker:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
 ```
 
-Platform available at http://localhost:8000.
-
-**With Docker (production-style baseline):**
-
-```bash
-docker compose -f docker/docker-compose.yml up --build
-```
-
-**Without Docker:**
-
-```bash
-pip install -e packages/platform
-```
-
-Set environment variables:
-
-```bash
-QYM_DATABASE_URL=postgresql+psycopg2://qym:qym@localhost:5432/qym
-QYM_ADMIN_BOOTSTRAP_TOKEN=test
-QYM_AUTH_MODE=none
-QYM_LLM_CONFIG_ENCRYPTION_KEY=<fernet-key>
-```
-
-Run migrations and start:
-
-```bash
-alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
-qym-platform
-```
-
-### Environment Variables
-
-Copy the template and fill in your values:
-
-```bash
-cp .env.template .env
-```
-
-| Variable | Used By | Description |
-|----------|---------|-------------|
-| `LANGFUSE_PUBLIC_KEY` | SDK | Langfuse public key |
-| `LANGFUSE_SECRET_KEY` | SDK | Langfuse secret key |
-| `LANGFUSE_HOST` | SDK | Langfuse host URL |
-| `QYM_API_KEY` | SDK | API key for platform streaming |
-| `QYM_PLATFORM_URL` | SDK | Platform URL (default: `http://localhost:8000`) |
-| `QYM_JUDGE_MODEL` | SDK | Model name for LLM judge metrics (or pass `judge_model` per judge) |
-| `QYM_JUDGE_API_KEY` | SDK | API key for LLM judge metrics (or pass `judge_api_key` per judge) |
-| `QYM_JUDGE_BASE_URL` | SDK | Base URL for LLM judge metrics (optional, or pass `judge_base_url` per judge) |
-| `QYM_DATABASE_URL` | Platform | PostgreSQL connection string |
-| `QYM_ADMIN_BOOTSTRAP_TOKEN` | Platform | One-time token for first admin user |
-| `QYM_AUTH_MODE` | Platform | `none` (local dev) or `proxy_headers` |
-| `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Platform | Fernet key used to encrypt stored user LLM API keys |
+For non-Docker platform setup and admin operations, see the [Platform README](packages/platform/README.md).
 
 ## Documentation
 
-**SDK (end users):**
-- [SDK README](packages/sdk/README.md) - Installation and usage
-- [User Guide](packages/sdk/docs/USER_GUIDE.md) - Tasks, metrics, datasets, CLI, configuration
-- [Metrics Guide](packages/sdk/docs/METRICS_GUIDE.md) - 40+ metrics by use case, including LLM-as-judge
-- [Auto-Instrumentation Guide](packages/sdk/docs/AUTO_INSTRUMENTATION_GUIDE.md) - Automatic LLM call tracing
+**SDK**
 
-**Platform (operators):**
-- [Platform User Guide](docs/PLATFORM_USER_GUIDE.md) - Dashboard, trace viewer, AI analysis, corrections review, roles, approval workflows
-- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Production deployment
-- [Admin Guide](docs/ADMIN_GUIDE.md) - User management, org structure, settings
+- [SDK README](packages/sdk/README.md) - installation, Python API, CLI, and metrics overview
+- [User Guide](packages/sdk/docs/USER_GUIDE.md) - tasks, datasets, configuration, and troubleshooting
+- [Metric Bank](packages/sdk/docs/METRIC_BANK.md) - metric reference and usage patterns
+
+**Platform**
+
+- [Platform README](packages/platform/README.md) - local setup and operator overview
+- [Platform User Guide](packages/platform/docs/USER_GUIDE.md) - dashboard workflows and analysis features
 
 ## License
 

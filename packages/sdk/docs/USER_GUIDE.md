@@ -47,23 +47,23 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 > - It's in the same directory where you run your script
 > - You have `python-dotenv` installed (`pip install python-dotenv`)
 
-### Step 3: Connect to the qym platform
+### Step 3: Connect to a qym platform deployment
 
-The qym platform at [qym.sa](https://qym.sa) is the central dashboard where all evaluation runs are stored, compared, and shared.
+The qym platform is the central dashboard where evaluation runs can be stored, compared, and shared.
 
 To connect, you need an API key:
 
-1. Open [qym.sa](https://qym.sa) in your browser
-2. Go to your **Profile** page (`/profile`)
-3. Under **API Keys**, click **Create New Key**
-4. Give it a name and click **Create**
-5. Copy the generated token — it is shown only once
+1. Open your qym platform deployment in a browser
+2. Go to the profile or settings page
+3. Find the API key management section
+4. Create a new key
+5. Copy the generated token if it is shown only once
 
 Add the key to your `.env` file:
 
 ```bash
 QYM_API_KEY=your-api-key
-QYM_PLATFORM_URL=https://qym.sa
+QYM_PLATFORM_URL=https://your-qym-platform.example.com
 ```
 
 When `QYM_API_KEY` is set, your evaluation runs are automatically streamed to the platform in real time — no code changes needed. You can watch runs live on the dashboard, browse history, and compare results across models.
@@ -268,18 +268,20 @@ Metrics determine how well your task performs.
 | Metric Name | What It Does | Returns |
 |-------------|--------------|---------|
 | `"exact_match"` | Checks if output equals expected exactly | 1.0 or 0.0 |
-| `"contains_expected"` | Checks if expected is substring of output | 1.0 or 0.0 |
+| `"contains"` | Checks if expected is substring of output | 1.0 or 0.0 |
 | `"fuzzy_match"` | Similarity score (Levenshtein-based) | 0.0 to 1.0 |
 
 ```python
 evaluator = Evaluator(
     task=my_task,
     dataset="my-dataset",
-    metrics=["exact_match", "contains_expected"],  # Use strings for built-in
+    metrics=["exact_match", "contains"],  # Use strings for built-in
 )
 ```
 
 > ⚠️ **Important**: Built-in metrics compare your task's output to the `expected_output` field in your dataset. If your dataset has no `expected_output`, these metrics will receive `None` and may not work as expected.
+
+Use the [Metric Bank](METRIC_BANK.md) for a broader catalog of metric ideas, tradeoffs, and use-case-driven recommendations. This section focuses on how metrics work in qym rather than acting as the full metric reference.
 
 ### LLM Judge Metrics
 
@@ -833,7 +835,7 @@ print(f"Total items: {results.total_items}")
 2. **Version captured** — git branch and commit are auto-detected
 3. **Dashboard appears** showing live progress (TUI + platform streaming)
 4. **Items run in parallel** (controlled by `max_concurrency`), with automatic retries on failure (up to `max_retries`, default 2)
-5. **LLM calls traced** — if `qym[otel]` is installed, every LLM call is captured as a span
+5. **LLM calls traced** — supported LLM calls are captured as spans when tracing is enabled
 6. **Metrics score** each output
 7. **Results save** to CSV automatically and stream to the platform (if `QYM_API_KEY` is set)
 8. **Traces viewable** in the embedded trace viewer and Langfuse (if configured)
@@ -901,7 +903,7 @@ results = Evaluator.run_parallel(
             "name": "Summarization",
             "task": summarize_task,
             "dataset": "docs-dataset",
-            "metrics": ["contains_expected"],
+            "metrics": ["contains"],
             "models": ["gpt-4"],  # 1 model × this task
         },
     ],
@@ -1081,10 +1083,10 @@ qym can automatically capture every LLM call, tool use, and timing detail inside
 ### Quick Setup
 
 ```bash
-pip install "qym[otel]"
+pip install qym
 ```
 
-That's it. When you run an evaluation, every LLM call (OpenAI, Anthropic, Google, Bedrock, Cohere, Mistral, Groq, Ollama, and more) is automatically captured and stored as a trace.
+Instrumentation support is included in the base install. When you run an evaluation, LLM calls from supported providers and frameworks are automatically captured and stored as traces.
 
 ### What Gets Captured
 
@@ -1098,7 +1100,7 @@ That's it. When you run an evaluation, every LLM call (OpenAI, Anthropic, Google
 
 Traces appear in two places:
 
-1. **Embedded Trace Viewer** — click the trace icon on any item in the run or compare view to see a full span tree with LLM message reconstruction, reasoning display, error highlighting, and duration waterfall. See the [Platform User Guide](../../../docs/PLATFORM_USER_GUIDE.md#trace-viewer).
+1. **Embedded Trace Viewer** — click the trace icon on any item in the run or compare view to see a full span tree with LLM message reconstruction, reasoning display, error highlighting, and duration waterfall. See the [Platform User Guide](../../../packages/platform/docs/USER_GUIDE.md#trace-viewer).
 
 2. **Langfuse** — if Langfuse credentials are configured, traces are also sent there. Click the trace link on any item row to jump directly to Langfuse.
 
@@ -1117,8 +1119,6 @@ TRACELOOP_TRACE_CONTENT=false
 ```python
 config = EvaluatorConfig(otel_enabled=False)
 ```
-
-For the full guide — supported providers, frameworks, vector DBs, agent patterns, custom trace IDs, and troubleshooting — see the [Auto-Instrumentation Guide](AUTO_INSTRUMENTATION_GUIDE.md).
 
 ---
 
@@ -1167,7 +1167,7 @@ The platform dashboard includes:
 - **AI analysis** — one-click root cause analysis with a playground for prompt editing, category/detail catalogs, few-shot correction bank, and test runs
 - **Corrections review** — dedicated approval queue with bulk moderation, revision history, and synced metadata
 
-See the [Platform User Guide](../../../docs/PLATFORM_USER_GUIDE.md) for full details on every feature.
+See the [Platform User Guide](../../../packages/platform/docs/USER_GUIDE.md) for full details on every feature.
 
 ### Dashboard Data Storage
 
@@ -1417,7 +1417,7 @@ LangfuseConnectionError: Missing Langfuse public key.
 ValueError: Unknown metric: 'my_metric'
 ```
 
-**Solution**: Use a built-in metric name (`exact_match`, `contains_expected`, `fuzzy_match`, `relevance`, `faithfulness_llm`, `correctness_llm`, `hallucination`, `toxicity`, `conciseness`, `tool_calling`) or pass a custom function. Note: LLM judge metrics (like `relevance`) require configuring `QYM_JUDGE_MODEL` and `QYM_JUDGE_API_KEY`.
+**Solution**: Use a built-in metric name (`exact_match`, `contains`, `fuzzy_match`, `relevance`, `faithfulness_llm`, `correctness_llm`, `hallucination`, `toxicity`, `conciseness`, `tool_calling`) or pass a custom function. Note: LLM judge metrics (like `relevance`) require configuring `QYM_JUDGE_MODEL` and `QYM_JUDGE_API_KEY`.
 
 ### "Task returned None"
 

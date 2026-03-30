@@ -1,6 +1,6 @@
-# qym (قيِّم) Evaluation Metrics Reference
+# qym (قيِّم) Metric Bank
 
-A reference catalog of metrics for evaluating LLM applications. Use this guide to select the right metrics for your use case. For how to configure and run metrics, see the [User Guide](USER_GUIDE.md#4-using-metrics).
+A reference bank of metrics for evaluating LLM applications. Use this document to browse metric ideas by use case and evaluation style. For how to configure and run metrics, see the [User Guide](USER_GUIDE.md#4-using-metrics).
 
 ## Table of Contents
 

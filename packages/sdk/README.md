@@ -6,7 +6,7 @@
 <p align="center"><em>قيِّم • evaluate</em></p> -->
 ---
 
-<h3 align="center">A Fast, Async Framework for LLM Evaluation</h3>
+<h3 align="center">Run Repeatable LLM Evaluations From Python Or The CLI</h3>
 
 <p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg" alt="Python 3.9+" /></a>
@@ -15,29 +15,29 @@
 
 <p align="center">
   <a href="#overview">Overview</a> |
-  <a href="#quick-start">Installation</a> |
+  <a href="#quick-start">Quick Start</a> |
   <a href="#features">Features</a> |
   <a href="#command-line-interface">CLI</a> |
   <a href="docs/USER_GUIDE.md">User Guide</a> |
-  <a href="docs/METRICS_GUIDE.md">Metrics</a>
+  <a href="docs/METRIC_BANK.md">Metrics</a>
 </p>
 
 ## Overview
 
-Evaluate your LLM applications with just 3 lines of code. qym is a fast, async evaluation framework for testing and benchmarking LLM applications. It provides a structured approach to evaluation, ensuring consistency and high-quality outputs while reducing the trial-and-error typically associated with manual testing.
+qym is the Python SDK for evaluating LLM applications with repeatable datasets, metrics, and run history. It is designed for prompts, RAG pipelines, and agent workflows that need something more disciplined than manual spot-checking.
 
-All runs are automatically streamed to the **qym platform** at [qym.sa](https://qym.sa) — a central dashboard where you can browse run history, compare models side-by-side, visualize metrics, and collaborate with your team.
+You can run evaluations from Python or the CLI, score outputs with built-in and LLM-as-judge metrics, and optionally stream runs to a qym platform deployment for shared review and comparison.
 
-The framework supports [Langfuse](https://langfuse.com) datasets (with full tracing) or local CSV files, and includes 40+ built-in metrics for RAG, agents, safety, and more.
+The SDK supports [Langfuse](https://langfuse.com) datasets with tracing or local CSV files for lightweight offline evaluation.
 
 ## Features
 
-- **Platform Integration** — Runs stream live to [qym.sa](https://qym.sa) for centralized history, comparison, charts, and team collaboration
+- **Platform Integration** — Runs can stream to a qym platform deployment for centralized history, comparison, charts, and team collaboration
 - **Simple API** — Get started in minutes with a clean, Pythonic interface
 - **Async & Parallel** — Evaluate hundreds of items concurrently with 90%+ efficiency
 - **Multi-Model Support** — Compare GPT-4, Claude, Llama side-by-side in one run
-- **LLM-as-Judge Metrics** — 7 built-in judges (relevance, faithfulness, correctness, hallucination, toxicity, conciseness, tool calling) plus a `create_judge()` factory for custom judges
-- **Auto-Instrumentation** — `pip install "qym[otel]"` to automatically trace every LLM call across 15+ providers and 6+ frameworks, viewable in the embedded trace viewer
+- **LLM-as-Judge Metrics** — Built-in judges for relevance, faithfulness, correctness, hallucination, toxicity, conciseness, and tool calling, plus a `create_judge()` factory for custom judges
+- **Auto-Instrumentation** — Instrumentation support is included in the base install so supported LLM calls can be traced without a separate extra
 - **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, AI root cause analysis, and corrections review
 - **Version Tracking** — Auto-detects git branch and commit per run for version leaderboards
 - **Framework Agnostic** — Works with LangChain, LangGraph, LlamaIndex, CrewAI, Haystack, OpenAI Agents, or any Python function
@@ -65,10 +65,10 @@ LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
 
 # qym Platform (optional — syncs runs to a central dashboard)
 QYM_API_KEY=your-api-key
-QYM_PLATFORM_URL=https://qym.sa
+QYM_PLATFORM_URL=https://your-qym-platform.example.com
 ```
 
-**To get your API key:** Open [qym.sa](https://qym.sa), go to **Profile** (`/profile`), and create a new API key under the **API Keys** section. The token is shown only once — copy it and set it as `QYM_API_KEY`. When set, your evaluation runs are automatically streamed to the platform in real time.
+**To get your API key:** Use the API key flow provided by your qym platform deployment. Set `QYM_API_KEY` and `QYM_PLATFORM_URL` to enable automatic streaming of evaluation runs.
 
 > **Using CSV datasets?** Langfuse credentials are optional. Without them, evaluations still run but without tracing.
 
@@ -77,7 +77,7 @@ QYM_PLATFORM_URL=https://qym.sa
 You need three things:
 1. **Task function** - Takes input (and optionally `model_name`), returns output
 2. **Dataset** - Langfuse dataset name or a local CSV file
-3. **Metrics** - Built-in (`exact_match`, `contains_expected`, `fuzzy_match`) or custom functions
+3. **Metrics** - Built-in (`exact_match`, `contains`, `fuzzy_match`) or custom functions
 
 ```python
 from qym import Evaluator
@@ -90,7 +90,7 @@ def my_llm_task(question):
 evaluator = Evaluator(
     task=my_llm_task,
     dataset="my-langfuse-dataset",  # Dataset name in Langfuse
-    metrics=["exact_match", "contains_expected"],
+    metrics=["exact_match", "contains"],
 )
 results = evaluator.run()
 ```
@@ -139,7 +139,7 @@ Or use `run_parallel` for different tasks:
 results = Evaluator.run_parallel(
     runs=[
         {"name": "QA Task", "task": qa_task, "dataset": "qa-set", "metrics": ["exact_match"], "models": ["gpt-4", "claude-3"]},
-        {"name": "Summary Task", "task": summarize, "dataset": "docs", "metrics": ["contains_expected"], "models": ["gpt-4"]},
+        {"name": "Summary Task", "task": summarize, "dataset": "docs", "metrics": ["contains"], "models": ["gpt-4"]},
     ],
     show_tui=True,
     auto_save=True,
@@ -190,7 +190,7 @@ Track multiple parallel evaluations with real-time progress, latency histograms,
 
 ### Platform Dashboard
 
-The **qym platform** at [qym.sa](https://qym.sa) stores all your runs centrally. When `QYM_API_KEY` is set, runs stream automatically — no code changes needed.
+The **qym platform** stores runs centrally. When `QYM_API_KEY` and `QYM_PLATFORM_URL` are set, runs stream automatically with no code changes needed.
 
 ```bash
 qym dashboard   # Opens the platform in your browser
@@ -206,7 +206,7 @@ qym dashboard   # Opens the platform in your browser
 - **Corrections review** — dedicated approval queue with bulk moderation and revision history
 - **Team workflows** — role-based visibility, approval workflows, and org-level access controls
 
-**Setup:** Open [qym.sa](https://qym.sa), go to **Profile** (`/profile`), create an API key, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
+**Setup:** Set `QYM_PLATFORM_URL` to your deployment, create an API key there, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
 
 **Upload a previous run:**
 
@@ -221,7 +221,7 @@ qym submit --file qym_results/.../run.csv --task my_task --dataset my-dataset
 | Metric | Description |
 |--------|-------------|
 | `exact_match` | Exact string match between output and expected |
-| `contains_expected` | Check if output contains expected text |
+| `contains` | Check if output contains expected text |
 | `fuzzy_match` | Similarity score using sequence matching |
 
 ### LLM Judge Metrics
@@ -259,7 +259,7 @@ my_judge = create_judge(
 )
 ```
 
-Create custom judges with `create_judge()` or pairwise comparison judges with `create_pairwise_judge()`. See the [User Guide](docs/USER_GUIDE.md#llm-judge-metrics) for full API details, or the [Metrics Guide](docs/METRICS_GUIDE.md) for all available metrics by use case.
+Create custom judges with `create_judge()` or pairwise comparison judges with `create_pairwise_judge()`. See the [User Guide](docs/USER_GUIDE.md#llm-judge-metrics) for full API details, or the [Metric Bank](docs/METRIC_BANK.md) for all available metrics by use case.
 
 ### Custom Metrics
 
@@ -278,9 +278,8 @@ evaluator = Evaluator(
 ## Documentation
 
 - [User Guide](docs/USER_GUIDE.md) — Tasks, metrics, datasets, CLI, configuration, and troubleshooting
-- [Metrics Guide](docs/METRICS_GUIDE.md) — 40+ metrics organized by use case, including LLM-as-judge
-- [Auto-Instrumentation Guide](docs/AUTO_INSTRUMENTATION_GUIDE.md) — Automatic LLM call tracing across 15+ providers and 6+ frameworks
-- [Platform User Guide](../../docs/PLATFORM_USER_GUIDE.md) — Dashboard, trace viewer, AI analysis, corrections review
+- [Metric Bank](docs/METRIC_BANK.md) — metric reference organized by use case, including LLM-as-judge
+- [Platform User Guide](../../packages/platform/docs/USER_GUIDE.md) — Dashboard, trace viewer, AI analysis, corrections review
 
 ## License
 
