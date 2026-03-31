@@ -467,7 +467,6 @@ async def analyze_single_item(
             model=model,
             messages=messages,
             temperature=temperature if temperature is not None else 0.2,
-            max_tokens=max_tokens if max_tokens is not None else 16384,
         )
         # Use JSON response format when supported (OpenAI, compatible providers)
         try:

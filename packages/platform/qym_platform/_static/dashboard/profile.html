@@ -543,6 +543,7 @@
           <p style="font-size:var(--font-sm);color:var(--text-muted);margin:0 0 var(--space-md) 0;">
             Configure an OpenAI-compatible LLM provider to enable automated root cause analysis on evaluation runs.
           </p>
+          <div id="llm-config-warning" style="display:none;margin:0 0 var(--space-md) 0;padding:12px 14px;border:1px solid rgba(180, 83, 9, 0.25);border-radius:10px;background:rgba(245, 158, 11, 0.12);color:var(--text-primary);font-size:var(--font-sm);line-height:1.5;"></div>
           <div class="form-group">
             <label class="form-label" for="llm-base-url">Base URL</label>
             <input type="text" class="form-input" id="llm-base-url" placeholder="https://api.openai.com/v1">
@@ -909,11 +910,37 @@
       }
 
       // ── LLM Configuration ──────────────────────────────────
+      let llmConfigState = { storageReady: true };
+
+      function renderLLMConfigStorageState(storageReady) {
+        llmConfigState.storageReady = !!storageReady;
+        const warning = el('llm-config-warning');
+        const saveBtn = el('llm-save-btn');
+        const testBtn = el('llm-test-btn');
+
+        if (llmConfigState.storageReady) {
+          warning.style.display = 'none';
+          warning.innerHTML = '';
+          saveBtn.disabled = false;
+          testBtn.disabled = false;
+          return;
+        }
+
+        warning.style.display = 'block';
+        warning.innerHTML = `
+          <strong>LLM secret storage is not configured.</strong><br>
+          Set <code>QYM_LLM_CONFIG_ENCRYPTION_KEY</code> on the platform server, then reload this page. You can generate one with <code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code>.
+        `;
+        saveBtn.disabled = true;
+        testBtn.disabled = true;
+      }
+
       async function loadLLMConfig() {
         try {
           const res = await fetch(apiUrl('v1/me/llm-config'));
           if (!res.ok) return;
           const cfg = await res.json();
+          renderLLMConfigStorageState(cfg.llm_config_storage_ready !== false);
           el('llm-base-url').value = cfg.llm_base_url || '';
           el('llm-model').value = cfg.llm_model || '';
           el('llm-api-key').value = '';
@@ -946,6 +973,10 @@
         btn.disabled = true;
         btn.textContent = 'Saving...';
         try {
+          if (!llmConfigState.storageReady) {
+            showToast('error', 'Encryption Required', 'Set QYM_LLM_CONFIG_ENCRYPTION_KEY on the platform server before saving LLM settings');
+            return;
+          }
           // If key field is blank and a key was already set, fetch current to preserve it
           let apiKey = el('llm-api-key').value.trim();
           if (!apiKey) {
@@ -979,7 +1010,7 @@
         } catch (err) {
           showToast('error', 'Error', err.message || 'Failed to save');
         } finally {
-          btn.disabled = false;
+          btn.disabled = !llmConfigState.storageReady;
           btn.textContent = 'Save';
         }
       });
@@ -989,6 +1020,10 @@
         btn.disabled = true;
         btn.textContent = 'Testing...';
         try {
+          if (!llmConfigState.storageReady) {
+            showToast('error', 'Encryption Required', 'Set QYM_LLM_CONFIG_ENCRYPTION_KEY on the platform server before testing LLM settings');
+            return;
+          }
           const res = await fetch(apiUrl('v1/me/llm-config/test'), { method: 'POST' });
           const data = await res.json();
           if (!res.ok) {
@@ -999,7 +1034,7 @@
         } catch (err) {
           showToast('error', 'Error', err.message || 'Connection test failed');
         } finally {
-          btn.disabled = false;
+          btn.disabled = !llmConfigState.storageReady;
           btn.textContent = 'Test Connection';
         }
       });

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.db.models import ApiKey, OrgUnit, OrgUnitType, User, UserRole
 from qym_platform.deps import get_db
+from qym_platform.openai_compat import create_chat_completion_compat
 from qym_platform.secrets import (
     build_llm_config_storage,
     encryption_available,
@@ -216,12 +217,14 @@ def get_llm_config(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Return the current user's LLM configuration (API key masked)."""
+    settings = PlatformSettings()
     cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
     return {
         "llm_base_url": cfg.get("llm_base_url", "https://api.openai.com/v1"),
         "llm_model": cfg.get("llm_model", "gpt-4o-mini"),
         "llm_api_key_set": llm_config_has_api_key(cfg),
         "llm_api_key_hint": llm_config_api_key_hint(cfg),
+        "llm_config_storage_ready": encryption_available(settings),
     }
 
 
@@ -287,7 +290,8 @@ async def test_llm_config(
     )
     model = cfg.get("llm_model", "gpt-4o-mini")
     try:
-        resp = await client.chat.completions.create(
+        resp = await create_chat_completion_compat(
+            client,
             model=model,
             messages=[{"role": "user", "content": "Reply with: ok"}],
             max_tokens=4,

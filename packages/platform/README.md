@@ -48,6 +48,12 @@ QYM_AUTH_MODE=none
 QYM_LLM_CONFIG_ENCRYPTION_KEY=<fernet-key>
 ```
 
+Generate a Fernet key with:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
 Run migrations and start the app:
 
 ```bash

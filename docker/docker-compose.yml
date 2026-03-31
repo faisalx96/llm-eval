@@ -25,7 +25,7 @@ services:
       QYM_DATABASE_URL: ${QYM_DATABASE_URL:-postgresql+psycopg2://qym:qym@db:5432/qym}
       QYM_ADMIN_BOOTSTRAP_TOKEN: ${QYM_ADMIN_BOOTSTRAP_TOKEN:-}
       QYM_AUTH_MODE: ${QYM_AUTH_MODE:-proxy_headers}
-      QYM_LLM_CONFIG_ENCRYPTION_KEY: ${QYM_LLM_CONFIG_ENCRYPTION_KEY:-}
+      QYM_LLM_CONFIG_ENCRYPTION_KEY: 64jhtf1giKj9yQFc332dtE9eGmhgi7rYpekfooX4-Ik=
     ports:
       - "8000:8000"
     depends_on:

@@ -489,6 +489,7 @@ async def upload_run(
     task: str = Form(...),
     dataset: str = Form(...),
     model: Optional[str] = Form(default=None),
+    external_run_id: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_api_key_principal),
 ) -> Dict[str, Any]:
@@ -501,7 +502,7 @@ async def upload_run(
 
     # Create run as completed by default (file upload is post-hoc)
     run = Run(
-        external_run_id=None,
+        external_run_id=external_run_id,
         created_by_user_id=principal.user.id,
         owner_user_id=principal.user.id,
         task=task,
@@ -598,6 +599,24 @@ async def upload_run(
         metrics = [c.replace("_score", "") for c in fieldnames if c.endswith("_score") and "__meta__" not in c]
         run.metrics = metrics
         rows = list(reader)
+
+        if rows:
+            first = rows[0]
+            if not run.external_run_id and first.get("run_name"):
+                run.external_run_id = first["run_name"]
+            if first.get("dataset_name"):
+                run.dataset = first["dataset_name"]
+            if first.get("run_metadata"):
+                try:
+                    run.run_metadata = _sanitize_for_json(json.loads(first["run_metadata"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if first.get("run_config"):
+                try:
+                    run.run_config = _sanitize_for_json(json.loads(first["run_config"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
         fingerprint_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
             raw_meta = row.get("item_metadata") or ""

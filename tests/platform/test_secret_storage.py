@@ -105,10 +105,11 @@ def test_llm_config_is_encrypted_and_masked(client, session_factory, monkeypatch
 
     get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
     assert get_response.status_code == 200
+    assert get_response.json()["llm_config_storage_ready"] is True
     assert get_response.json()["llm_api_key_set"] is True
     assert get_response.json()["llm_api_key_hint"] == "••••1234"
 
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {"calls": []}
 
     class FakeAsyncOpenAI:
         def __init__(self, *, base_url: str, api_key: str):
@@ -119,6 +120,14 @@ def test_llm_config_is_encrypted_and_masked(client, session_factory, monkeypatch
             )
 
         async def _create(self, **kwargs):
+            captured["calls"].append(kwargs)
+            if "max_tokens" in kwargs:
+                raise Exception(
+                    "Error code: 400 - {'error': {'message': "
+                    "\"Unsupported parameter: 'max_tokens' is not supported with this model. "
+                    "Use 'max_completion_tokens' instead.\", 'type': 'invalid_request_error', "
+                    "'param': 'max_tokens', 'code': 'unsupported_parameter'}}"
+                )
             return types.SimpleNamespace(
                 choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="ok"))]
             )
@@ -127,6 +136,12 @@ def test_llm_config_is_encrypted_and_masked(client, session_factory, monkeypatch
     test_response = client.post("/v1/me/llm-config/test", headers=_headers("user@example.com"))
     assert test_response.status_code == 200
     assert captured["api_key"] == "sk-secret-1234"
+    calls = captured["calls"]
+    assert isinstance(calls, list)
+    assert len(calls) == 2
+    assert calls[0]["max_tokens"] == 4
+    assert calls[1]["max_completion_tokens"] == 4
+    assert "max_tokens" not in calls[1]
 
 
 def test_legacy_plaintext_llm_config_is_readable_and_rewritten_on_update(client, session_factory) -> None:
@@ -141,6 +156,7 @@ def test_legacy_plaintext_llm_config_is_readable_and_rewritten_on_update(client,
 
     get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
     assert get_response.status_code == 200
+    assert get_response.json()["llm_config_storage_ready"] is True
     assert get_response.json()["llm_api_key_set"] is True
     assert get_response.json()["llm_api_key_hint"] == "••••9999"
 
@@ -161,3 +177,40 @@ def test_legacy_plaintext_llm_config_is_readable_and_rewritten_on_update(client,
         assert "llm_api_key" not in user.llm_config
         assert user.llm_config["llm_api_key_encrypted"]
         assert user.llm_config["llm_api_key_last4"] == "9999"
+
+
+def test_llm_config_reports_missing_encryption_key(monkeypatch, session_factory) -> None:
+    monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
+    monkeypatch.delenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", raising=False)
+    _seed_user(session_factory)
+
+    app = create_app()
+
+    def override_get_db():
+        db = session_factory()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
+            assert get_response.status_code == 200
+            assert get_response.json()["llm_config_storage_ready"] is False
+
+            update_response = client.put(
+                "/v1/me/llm-config",
+                headers=_headers("user@example.com"),
+                json={
+                    "llm_base_url": "https://api.openai.com/v1",
+                    "llm_api_key": "sk-secret-1234",
+                    "llm_model": "gpt-4o-mini",
+                },
+            )
+            assert update_response.status_code == 400
+            assert update_response.json()["detail"] == "LLM config encryption is not configured"
+    finally:
+        app.dependency_overrides.clear()
