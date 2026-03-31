@@ -61,8 +61,11 @@
       globalK: 5,
       threshold: 0.8,
       metricIsBoolean: false,
+      metricIsNumeric: false,
+      visibleStatKeys: null,  // null = all visible; [] = none; otherwise explicit keys
       modelRunSelections: {},  // model_name -> [run_file_paths] (custom selection)
       modelStats: {},          // model_name -> computed stats
+      visibleTraceMetrics: [],
     },
   };
 
@@ -87,6 +90,8 @@
     { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',    modelsLabel: '⚡ Avg Tool Calls', fmt: v => v != null ? v.toFixed(1) : '—' },
     { key: 'tool_success_rate', label: '⚡ Tool Success Rate', modelsLabel: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
   ];
+  const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'avgLatency', 'correctDistribution'];
+  const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'avgLatency'];
 
   function _traceMetricsForRuns(runs = null) {
     const sourceRuns = Array.isArray(runs)
@@ -645,6 +650,223 @@
     saveMetricVisibility();
     syncMetricVisibilityDropdownState(availableMetrics);
     render();
+  }
+
+  // ═══════════════════════════════════════════════════
+  // MODELS VIEW STAT VISIBILITY
+  // ═══════════════════════════════════════════════════
+
+  function getModelsViewStatOptions(runs = null) {
+    const mvs = state.modelsViewState;
+    if (!mvs.selectedMetric) return [];
+
+    const baseKeys = mvs.metricIsNumeric ? MODELS_VIEW_NUMERIC_STAT_KEYS : MODELS_VIEW_SCORE_STAT_KEYS;
+    const K = Math.max(0, Number(mvs.globalK) || 0);
+    const traceMetrics = Array.isArray(runs) ? _traceMetricsForRuns(runs) : (mvs.visibleTraceMetrics || []);
+
+    const baseOptions = baseKeys.map((key) => {
+      switch (key) {
+        case 'passAtK':
+          return { key, label: `Pass@${K}` };
+        case 'passHatK':
+          return { key, label: `Pass^${K}` };
+        case 'maxAtK':
+          return { key, label: `Max@${K}` };
+        case 'consistency':
+          return { key, label: 'Consistency' };
+        case 'reliability':
+          return { key, label: 'Reliability' };
+        case 'avgScore':
+          return { key, label: mvs.metricIsNumeric ? 'Avg' : 'Avg Score' };
+        case 'failedCount':
+          return { key, label: 'Errors' };
+        case 'avgLatency':
+          return { key, label: 'Avg Latency' };
+        case 'correctDistribution':
+          return { key, label: 'Correct Distribution' };
+        case 'minScore':
+          return { key, label: 'Min' };
+        case 'stddevScore':
+          return { key, label: 'StdDev' };
+        case 'totalScoreSum':
+          return { key, label: 'Total' };
+        default:
+          return { key, label: key };
+      }
+    });
+
+    const traceOptions = traceMetrics.map((traceMetric) => ({
+      key: `trace:${traceMetric.key}`,
+      label: traceMetric.modelsLabel || traceMetric.label,
+    }));
+
+    return [...baseOptions, ...traceOptions];
+  }
+
+  function getAllModelsViewStatKeys() {
+    return Array.from(new Set([
+      ...MODELS_VIEW_SCORE_STAT_KEYS,
+      ...MODELS_VIEW_NUMERIC_STAT_KEYS,
+      ...TRACE_METRICS.map(metric => `trace:${metric.key}`),
+    ]));
+  }
+
+  function getVisibleModelsViewStatKeys(availableOptions) {
+    const visible = state.modelsViewState.visibleStatKeys;
+    const availableKeys = (availableOptions || []).map(option => option.key);
+    if (visible === null) return availableKeys;
+    if (!Array.isArray(visible)) return availableKeys;
+    return availableKeys.filter(key => visible.includes(key));
+  }
+
+  function setVisibleModelsViewStatsForAvailable(availableOptions, checkedKeys) {
+    const availableKeys = (availableOptions || []).map(option => option.key);
+    const knownKeys = getAllModelsViewStatKeys();
+    const selectedKeys = Array.from(checkedKeys || []);
+    const currentVisible = Array.isArray(state.modelsViewState.visibleStatKeys)
+      ? state.modelsViewState.visibleStatKeys
+      : null;
+    const preserved = currentVisible === null
+      ? knownKeys.filter(key => !availableKeys.includes(key))
+      : currentVisible.filter(key => !availableKeys.includes(key));
+    const merged = Array.from(new Set([...preserved, ...selectedKeys]));
+    state.modelsViewState.visibleStatKeys = merged.length === knownKeys.length ? null : merged;
+  }
+
+  function updateModelsStatVisibilityBtn(availableOptions) {
+    const wrapper = el('models-stat-visibility-wrapper');
+    const btn = el('models-stat-visibility-btn');
+    if (!wrapper || !btn) return;
+
+    if (!availableOptions || availableOptions.length === 0) {
+      wrapper.style.display = 'none';
+      return;
+    }
+
+    wrapper.style.display = '';
+    const visibleKeys = getVisibleModelsViewStatKeys(availableOptions);
+    if (visibleKeys.length === availableOptions.length) {
+      btn.textContent = 'Shown Metrics';
+      btn.classList.remove('has-selection');
+    } else if (visibleKeys.length === 0) {
+      btn.textContent = 'No Metrics';
+      btn.classList.add('has-selection');
+    } else if (visibleKeys.length === 1) {
+      const only = availableOptions.find(option => option.key === visibleKeys[0]);
+      btn.textContent = only ? only.label : '1 Metric';
+      btn.classList.add('has-selection');
+    } else {
+      btn.textContent = `${visibleKeys.length} Metrics`;
+      btn.classList.add('has-selection');
+    }
+  }
+
+  function syncModelsStatVisibilityDropdownState(availableOptions) {
+    const dropdown = el('models-stat-visibility-dropdown');
+    if (!dropdown) return;
+
+    const visibleKeys = new Set(getVisibleModelsViewStatKeys(availableOptions));
+    const allVisible = visibleKeys.size === (availableOptions || []).length;
+    dropdown.querySelectorAll('input[data-model-stat-key]').forEach(cb => {
+      cb.checked = allVisible || visibleKeys.has(cb.dataset.modelStatKey);
+    });
+    updateModelsStatVisibilityBtn(availableOptions);
+  }
+
+  function applyModelsStatVisibilityFromCheckboxes(availableOptions) {
+    const dropdown = el('models-stat-visibility-dropdown');
+    if (!dropdown) return;
+
+    const checkedKeys = new Set();
+    dropdown.querySelectorAll('input[data-model-stat-key]').forEach(cb => {
+      if (cb.checked) checkedKeys.add(cb.dataset.modelStatKey);
+    });
+
+    setVisibleModelsViewStatsForAvailable(availableOptions, checkedKeys);
+    syncModelsStatVisibilityDropdownState(availableOptions);
+    renderModelsView();
+  }
+
+  function populateModelsStatVisibility(runs = null) {
+    const wrapper = el('models-stat-visibility-wrapper');
+    const dropdown = el('models-stat-visibility-dropdown');
+    if (!wrapper || !dropdown) return;
+
+    const options = getModelsViewStatOptions(runs);
+    if (options.length === 0) {
+      wrapper.style.display = 'none';
+      dropdown.classList.remove('open');
+      dropdown.innerHTML = '';
+      return;
+    }
+
+    wrapper.style.display = '';
+    const visibleKeys = new Set(getVisibleModelsViewStatKeys(options));
+    const allVisible = visibleKeys.size === options.length;
+    const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
+
+    dropdown.innerHTML =
+      '<div class="ms-actions">' +
+        '<button class="ms-action-btn" id="models-stat-select-all">All</button>' +
+        '<button class="ms-action-btn" id="models-stat-select-none">None</button>' +
+      '</div>' +
+      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search shown metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      options.map((option) => {
+        const checked = allVisible || visibleKeys.has(option.key) ? 'checked' : '';
+        const hidden = searchValue && !option.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-model-stat-key="${escapeHtml(option.key)}" /><span>${escapeHtml(option.label)}</span></div>`;
+      }).join('');
+
+    updateModelsStatVisibilityBtn(options);
+
+    const searchInput = dropdown.querySelector('.model-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        dropdown.querySelectorAll('.multi-select-option').forEach((opt) => {
+          const statCb = opt.querySelector('input[data-model-stat-key]');
+          if (!statCb) return;
+          const option = options.find(item => item.key === statCb.dataset.modelStatKey);
+          const label = option ? option.label : statCb.dataset.modelStatKey;
+          opt.style.display = label.toLowerCase().includes(q) ? '' : 'none';
+        });
+      });
+      searchInput.addEventListener('click', (e) => e.stopPropagation());
+      searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+
+    dropdown.querySelectorAll('input[data-model-stat-key]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        applyModelsStatVisibilityFromCheckboxes(options);
+      });
+    });
+
+    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
+      const statCb = opt.querySelector('input[data-model-stat-key]');
+      if (!statCb) return;
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        statCb.checked = !statCb.checked;
+        applyModelsStatVisibilityFromCheckboxes(options);
+      });
+    });
+
+    const selectAllBtn = dropdown.querySelector('#models-stat-select-all');
+    const selectNoneBtn = dropdown.querySelector('#models-stat-select-none');
+    if (selectAllBtn) selectAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setVisibleModelsViewStatsForAvailable(options, new Set(options.map(option => option.key)));
+      syncModelsStatVisibilityDropdownState(options);
+      renderModelsView();
+    });
+    if (selectNoneBtn) selectNoneBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setVisibleModelsViewStatsForAvailable(options, new Set());
+      syncModelsStatVisibilityDropdownState(options);
+      renderModelsView();
+    });
   }
 
   // ═══════════════════════════════════════════════════
@@ -2531,12 +2753,16 @@
 
     const displayTools = el('display-tools');
     const metricVisibilityDropdown = el('metric-visibility-dropdown');
+    const modelsStatVisibilityDropdown = el('models-stat-visibility-dropdown');
     const showDisplayTools = state.currentView === 'table' || state.currentView === 'charts';
     if (displayTools) {
       displayTools.style.display = showDisplayTools ? 'flex' : 'none';
     }
     if (!showDisplayTools && metricVisibilityDropdown) {
       metricVisibilityDropdown.classList.remove('open');
+    }
+    if (state.currentView !== 'models' && modelsStatVisibilityDropdown) {
+      modelsStatVisibilityDropdown.classList.remove('open');
     }
 
     // Show current view (Charts, Table/Runs, or Models)
@@ -2621,6 +2847,7 @@
     const modelsEmpty = el('models-empty');
     const modelsGrid = el('models-grid');
     const modelsRanking = el('models-ranking');
+    const modelsStatVisibilityWrapper = el('models-stat-visibility-wrapper');
 
     // Populate dropdowns if not already populated
     populateModelsViewDropdowns();
@@ -2647,6 +2874,7 @@
       if (modelsEmpty) modelsEmpty.style.display = 'flex';
       if (modelsGrid) modelsGrid.innerHTML = '';
       if (modelsRanking) modelsRanking.style.display = 'none';
+      if (modelsStatVisibilityWrapper) modelsStatVisibilityWrapper.style.display = 'none';
       return;
     }
 
@@ -2667,6 +2895,7 @@
     if (matchingRuns.length === 0) {
       if (modelsGrid) modelsGrid.innerHTML = '<div class="models-empty"><h3>No runs found</h3><p>No runs match the selected task and dataset</p></div>';
       if (modelsRanking) modelsRanking.style.display = 'none';
+      if (modelsStatVisibilityWrapper) modelsStatVisibilityWrapper.style.display = 'none';
       return;
     }
 
@@ -2703,6 +2932,7 @@
 
     // Detect if metric is boolean
     detectModelsViewMetricType(matchingRuns, mvs.selectedMetric);
+    populateModelsStatVisibility(matchingRuns);
 
     // Show loading state
     if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading"><img src="./static/qym_icon.png" alt="" class="loading-icon" /><span>Loading run data...</span></div>';
@@ -2725,6 +2955,7 @@
       mvs.modelStats[model].selectedPaths = selectedPaths;
     }
     mvs.visibleTraceMetrics = _traceMetricsForRuns(traceSourceRuns);
+    populateModelsStatVisibility(traceSourceRuns);
 
     // Render model cards
     renderModelCards(runsByModel, globalK);
@@ -2941,6 +3172,8 @@
     const mType = isNumeric ? 'numeric' : (isBoolean ? 'boolean' : 'score');
     const threshold = Math.round(mvs.threshold * 100);
     const visibleTraceMetrics = mvs.visibleTraceMetrics || [];
+    const availableStatOptions = getModelsViewStatOptions();
+    const visibleStatKeys = new Set(getVisibleModelsViewStatKeys(availableStatOptions));
 
     const models = Object.keys(runsByModel).sort((a, b) => {
       // Sort by avg score descending
@@ -2997,35 +3230,41 @@
 
       const fmtN = window.QymMetrics.formatNumericValue;
       const statTiles = [];
+      function addStatTile(key, title, value, valueClass = '', tooltip = '') {
+        if (!visibleStatKeys.has(key)) return;
+        statTiles.push(renderModelStatTile(title, value, valueClass, tooltip));
+      }
       if (isNumeric) {
-        statTiles.push(
-          renderModelStatTile('Avg', fmtN(stats.avgScore), '', tooltips.avgScore),
-          renderModelStatTile('Min', fmtN(stats.minScore), '', 'Minimum value across all items and runs.'),
-          renderModelStatTile(`Max@${K}`, fmtN(stats.maxAtK), '', tooltips.maxAtK),
-          renderModelStatTile('StdDev', fmtN(stats.stddevScore), '', 'Standard deviation across all items and runs. Lower = more consistent.'),
-          renderModelStatTile('Total', fmtN(stats.totalScoreSum), 'accent-value', 'Sum of all values across all items and runs.'),
-          renderModelStatTile('⚡ Avg Latency', formatLatency(stats.avgLatency))
-        );
+        addStatTile('avgScore', 'Avg', fmtN(stats.avgScore), '', tooltips.avgScore);
+        addStatTile('minScore', 'Min', fmtN(stats.minScore), '', 'Minimum value across all items and runs.');
+        addStatTile('maxAtK', `Max@${K}`, fmtN(stats.maxAtK), '', tooltips.maxAtK);
+        addStatTile('stddevScore', 'StdDev', fmtN(stats.stddevScore), '', 'Standard deviation across all items and runs. Lower = more consistent.');
+        addStatTile('totalScoreSum', 'Total', fmtN(stats.totalScoreSum), 'accent-value', 'Sum of all values across all items and runs.');
+        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency));
       } else {
-        statTiles.push(
-          renderModelStatTile(`Pass@${K}`, formatPercent(stats.passAtK), getSuccessClass(stats.passAtK), tooltips.passAtK),
-          renderModelStatTile(`Pass^${K}`, formatPercent(stats.passHatK), getSuccessClass(stats.passHatK), tooltips.passHatK),
-          renderModelStatTile(`Max@${K}`, formatPercent(stats.maxAtK), getSuccessClass(stats.maxAtK), tooltips.maxAtK),
-          renderModelStatTile('Consistency', stats.consistency !== null ? formatPercent(stats.consistency) : 'NA', stats.consistency !== null ? getSuccessClass(stats.consistency) : '', tooltips.consistency),
-          renderModelStatTile('Reliability', stats.reliability !== null ? formatPercent(stats.reliability) : 'NA', stats.reliability !== null ? getSuccessClass(stats.reliability) : '', tooltips.reliability),
-          renderModelStatTile('Avg Score', formatPercent(stats.avgScore), getSuccessClass(stats.avgScore), tooltips.avgScore),
-          renderModelStatTile('Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount),
-          renderModelStatTile('⚡ Avg Latency', formatLatency(stats.avgLatency))
-        );
+        addStatTile('passAtK', `Pass@${K}`, formatPercent(stats.passAtK), getSuccessClass(stats.passAtK), tooltips.passAtK);
+        addStatTile('passHatK', `Pass^${K}`, formatPercent(stats.passHatK), getSuccessClass(stats.passHatK), tooltips.passHatK);
+        addStatTile('maxAtK', `Max@${K}`, formatPercent(stats.maxAtK), getSuccessClass(stats.maxAtK), tooltips.maxAtK);
+        addStatTile('consistency', 'Consistency', stats.consistency !== null ? formatPercent(stats.consistency) : 'NA', stats.consistency !== null ? getSuccessClass(stats.consistency) : '', tooltips.consistency);
+        addStatTile('reliability', 'Reliability', stats.reliability !== null ? formatPercent(stats.reliability) : 'NA', stats.reliability !== null ? getSuccessClass(stats.reliability) : '', tooltips.reliability);
+        addStatTile('avgScore', 'Avg Score', formatPercent(stats.avgScore), getSuccessClass(stats.avgScore), tooltips.avgScore);
+        addStatTile('failedCount', 'Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount);
+        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency));
       }
 
       visibleTraceMetrics.forEach((traceMetric) => {
+        if (!visibleStatKeys.has(`trace:${traceMetric.key}`)) return;
         const traceValue = stats.traceAverages?.[traceMetric.key];
         const traceClass = traceMetric.key === 'tool_success_rate' && traceValue !== null && traceValue !== undefined
           ? getSuccessClass(traceValue)
           : '';
         statTiles.push(renderModelStatTile(traceMetric.modelsLabel || traceMetric.label, traceMetric.fmt(traceValue), traceClass));
       });
+
+      const showDistribution = !isNumeric && visibleStatKeys.has('correctDistribution');
+      const statsGridHtml = statTiles.length > 0
+        ? `<div class="model-stats-grid">${statTiles.join('')}</div>`
+        : '<div class="model-stats-empty">No summary metrics selected.</div>';
 
       return `
         <div class="model-card" data-model="${model}">
@@ -3041,11 +3280,9 @@
             </div>
           </div>
 
-          <div class="model-stats-grid">
-            ${statTiles.join('')}
-          </div>
+          ${statsGridHtml}
 
-          ${isNumeric ? '' : `<div class="model-stat-box-wide">
+          ${showDistribution ? `<div class="model-stat-box-wide">
             <div class="stat-title">Correct Distribution ${infoIcon(tooltips.correctDist)}</div>
             <div class="distribution-bar">${distBar}</div>
             <div class="distribution-legend">
@@ -3053,7 +3290,7 @@
               <span class="dist-legend-item"><span style="color:var(--warning)">■</span> 1-${K-1} runs</span>
               <span class="dist-legend-item"><span style="color:var(--success)">■</span> ${K} runs</span>
             </div>
-          </div>`}
+          </div>` : ''}
 
           <div class="model-card-footer">
             <span class="latency">${stats.totalItems} items</span>
@@ -3854,7 +4091,7 @@
   // ═══════════════════════════════════════════════════
 
   // Generic multi-select dropdown toggles
-  ['filter-task-btn', 'filter-dataset-btn', 'filter-model-btn', 'filter-version-btn', 'filter-status-btn', 'metric-visibility-btn'].forEach(id => {
+  ['filter-task-btn', 'filter-dataset-btn', 'filter-model-btn', 'filter-version-btn', 'filter-status-btn', 'metric-visibility-btn', 'models-stat-visibility-btn'].forEach(id => {
     el(id)?.addEventListener('click', (e) => {
       e.stopPropagation();
       const wrapper = e.target.closest('.multi-select-wrapper');
@@ -4186,7 +4423,14 @@
           $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.currentView));
         }
         if (parsed.modelsViewState) {
-          state.modelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
+          const restoredModelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
+          if (restoredModelsViewState.visibleStatKeys !== null && !Array.isArray(restoredModelsViewState.visibleStatKeys)) {
+            restoredModelsViewState.visibleStatKeys = null;
+          }
+          if (!Array.isArray(restoredModelsViewState.visibleTraceMetrics)) {
+            restoredModelsViewState.visibleTraceMetrics = [];
+          }
+          state.modelsViewState = restoredModelsViewState;
         }
         if (parsed.filterTasks) state.filterTasks = new Set(parsed.filterTasks);
         if (parsed.filterModels) state.filterModels = new Set(parsed.filterModels);

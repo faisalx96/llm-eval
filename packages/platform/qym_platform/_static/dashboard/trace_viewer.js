@@ -38,7 +38,7 @@
     AGENT:     `<svg viewBox="0 0 16 16"><circle cx="8" cy="4" r="3" fill="currentColor"/><path d="M2.5 14.5c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5z" fill="currentColor" opacity=".75"/></svg>`,
     CHAIN:     `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 9l-1.2 1.2a2.4 2.4 0 0 1-3.4-3.4L5.2 4a2.4 2.4 0 0 1 3.4 3.4"/><path d="M9 7l1.2-1.2a2.4 2.4 0 0 1 3.4 3.4L10.8 12a2.4 2.4 0 0 1-3.4-3.4"/></svg>`,
     EVALUATOR: `<svg viewBox="0 0 16 16"><path d="M8 1.5l2 4 4.4.7-3.2 3.1.75 4.4L8 11.5l-3.95 2.2.75-4.4-3.2-3.1L7 5.5z" fill="currentColor"/></svg>`,
-    RETRIEVER: `<svg viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4.3" fill="currentColor" opacity=".3"/><circle cx="6.8" cy="6.8" r="2.5" fill="currentColor"/><rect x="10" y="10.2" width="2.2" height="4.5" rx="1" transform="rotate(-45 11 12.5)" fill="currentColor"/></svg>`,
+    RETRIEVER: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><ellipse cx="8" cy="3.5" rx="4.5" ry="2"/><path d="M3.5 3.5v7c0 1.1 2 2 4.5 2s4.5-.9 4.5-2v-7"/><path d="M3.5 7c0 1.1 2 2 4.5 2s4.5-.9 4.5-2"/><path d="M3.5 10.5c0 1.1 2 2 4.5 2s4.5-.9 4.5-2"/></svg>`,
     EMBED:     `<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".85"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".45"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".45"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity=".85"/></svg>`,
     DEFAULT:   `<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5" fill="currentColor" opacity=".7"/></svg>`,
   };
@@ -52,6 +52,8 @@
   const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>`;
   const CHECK_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>`;
   const EXPAND_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H3v3"/><path d="M10 3h3v3"/><path d="M13 10v3h-3"/><path d="M3 10v3h3"/><path d="M3 6l4-4"/><path d="M13 6L9 2"/><path d="M3 10l4 4"/><path d="M13 10l-4 4"/></svg>`;
+  const EXPAND_ALL_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5 8 9l4.5-4.5"/><path d="M3.5 8.5 8 13l4.5-4.5"/></svg>`;
+  const COLLAPSE_ALL_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11.5 8 7l4.5 4.5"/><path d="M3.5 7.5 8 3l4.5 4.5"/></svg>`;
 
   function copyBtn(textOrFn, label) {
     const id = `tv-cb-${++_copyId}`;
@@ -73,6 +75,10 @@
     const inner = (buttons || []).filter(Boolean).join("");
     if (!inner) return "";
     return `<span class="${cls || "tv-inline-actions"}">${inner}</span>`;
+  }
+
+  function hasChildren(node) {
+    return !!(node && Array.isArray(node._children) && node._children.length);
   }
 
   function esc(v) {
@@ -166,11 +172,14 @@
     // trivially short routing spans from LangChain/LangGraph internals.
     _collapseNoise(roots, byId);
 
+    const tree = { roots, byId, nodes };
+    _dedupeGlobalLlmSpans(tree);
+
     // Recompute depths after collapsing
     function setDepths(n, d) { n._depth = d; n._children.forEach(c => setDepths(c, d+1)); }
     roots.forEach(r => setDepths(r, 0));
 
-    return { roots, byId, nodes };
+    return tree;
   }
 
   // Names of spans that are always noise from framework internals.
@@ -205,6 +214,169 @@
     return true;
   }
 
+  function _spanStart(node) {
+    return node?.start_time_ns == null ? null : Number(node.start_time_ns);
+  }
+
+  function _spanEnd(node) {
+    if (node?.end_time_ns != null) return Number(node.end_time_ns);
+    return _spanStart(node);
+  }
+
+  function _overlapRatio(a, b) {
+    const as = _spanStart(a), ae = _spanEnd(a), bs = _spanStart(b), be = _spanEnd(b);
+    if (as == null || ae == null || bs == null || be == null) return 0;
+    const overlap = Math.max(0, Math.min(ae, be) - Math.max(as, bs));
+    const base = Math.max(1, Math.min(ae - as, be - bs));
+    return overlap / base;
+  }
+
+  function _messageSig(attrs, prefix) {
+    const msgs = extractMessages(attrs || {}, prefix);
+    if (!msgs.length) return "";
+    return msgs.map(m => `${String(m.role || "").toLowerCase()}:${String(m.content || "")}`).join("|").slice(0, 4000);
+  }
+
+  function _llmSignature(node) {
+    const attrs = node.attributes || {};
+    const model = spanModel(node) || "";
+    const input = String(attrs["input.value"] || _messageSig(attrs, "llm.input_messages") || "").slice(0, 4000);
+    const output = String(attrs["output.value"] || _messageSig(attrs, "llm.output_messages") || "").slice(0, 4000);
+    return `${model}::${input}::${output}`;
+  }
+
+  function _spanRichness(node) {
+    const attrs = node.attributes || {};
+    let score = 0;
+    if (attrs["input.value"]) score += 2;
+    if (attrs["output.value"]) score += 2;
+    if (_messageSig(attrs, "llm.input_messages")) score += 3;
+    if (_messageSig(attrs, "llm.output_messages")) score += 3;
+    if (spanModel(node)) score += 1;
+    score += Math.min(2, (Number(node.duration_ms) || 0) / 1000);
+    return score;
+  }
+
+  const _PROVIDER_LLM_NAME_RE = /^(ChatCompletion|Completion|Responses?|response)$/i;
+
+  function _llmKeepPriority(node) {
+    let score = _spanRichness(node);
+    if (_PROVIDER_LLM_NAME_RE.test(String(node?.name || ""))) score -= 4;
+    return score;
+  }
+
+  function _durationSimilarity(a, b) {
+    const ad = Math.max(1, Number(a?.duration_ms) || 0);
+    const bd = Math.max(1, Number(b?.duration_ms) || 0);
+    return Math.min(ad, bd) / Math.max(ad, bd);
+  }
+
+  function _tokenSimilarity(a, b) {
+    const at = spanTokens(a);
+    const bt = spanTokens(b);
+    if (at == null || bt == null) return true;
+    return Math.abs(at - bt) <= Math.max(2, Math.round(Math.max(at, bt) * 0.02));
+  }
+
+  function _sameModel(a, b) {
+    const am = spanModel(a);
+    const bm = spanModel(b);
+    return !!am && !!bm && am === bm;
+  }
+
+  function _llmLooksDuplicate(a, b) {
+    if (spanKind(a) !== "LLM" || spanKind(b) !== "LLM") return false;
+    if (!_sameModel(a, b)) return false;
+    if (_overlapRatio(a, b) < 0.9) return false;
+    if (_durationSimilarity(a, b) < 0.85) return false;
+    if (!_tokenSimilarity(a, b)) return false;
+
+    const as = _llmSignature(a);
+    const bs = _llmSignature(b);
+    if (as && bs && as === bs) return true;
+
+    const aProviderish = _PROVIDER_LLM_NAME_RE.test(String(a.name || ""));
+    const bProviderish = _PROVIDER_LLM_NAME_RE.test(String(b.name || ""));
+    return aProviderish !== bProviderish;
+  }
+
+  function _pruneNodes(childList, toRemove) {
+    for (let i = childList.length - 1; i >= 0; i--) {
+      const node = childList[i];
+      _pruneNodes(node._children || [], toRemove);
+      if (toRemove.has(node)) childList.splice(i, 1);
+    }
+  }
+
+  function _dedupeGlobalLlmSpans(tree) {
+    const llms = (tree?.nodes || []).filter(n => spanKind(n) === "LLM");
+    if (llms.length < 2) return;
+
+    const toRemove = new Set();
+    for (let i = 0; i < llms.length; i++) {
+      const a = llms[i];
+      if (toRemove.has(a)) continue;
+      for (let j = i + 1; j < llms.length; j++) {
+        const b = llms[j];
+        if (toRemove.has(b)) continue;
+        if (!_llmLooksDuplicate(a, b)) continue;
+        const keep = _llmKeepPriority(a) >= _llmKeepPriority(b) ? a : b;
+        toRemove.add(keep === a ? b : a);
+      }
+    }
+
+    if (!toRemove.size) return;
+    _pruneNodes(tree.roots, toRemove);
+  }
+
+  function _dedupeSiblingSpans(childList) {
+    if (!Array.isArray(childList) || childList.length < 2) return;
+
+    const toRemove = new Set();
+
+    // Hide low-level chroma DB calls when a higher-level retriever span already
+    // represents the same retrieval operation under the same parent.
+    for (const node of childList) {
+      const attrs = node.attributes || {};
+      if (String(attrs["db.system"] || "").toLowerCase() !== "chroma") continue;
+      const hasRetrieverSibling = childList.some(other =>
+        other !== node &&
+        spanKind(other) === "RETRIEVER" &&
+        _overlapRatio(node, other) > 0.5
+      );
+      if (hasRetrieverSibling) toRemove.add(node);
+    }
+
+    // Collapse duplicate LLM siblings from framework + provider instrumentation.
+    const llmGroups = new Map();
+    for (const node of childList) {
+      if (spanKind(node) !== "LLM") continue;
+      const sig = _llmSignature(node);
+      if (!sig || sig === "::") continue;
+      if (!llmGroups.has(sig)) llmGroups.set(sig, []);
+      llmGroups.get(sig).push(node);
+    }
+    for (const group of llmGroups.values()) {
+      if (group.length < 2) continue;
+      const overlapping = group.filter(a =>
+        group.some(b => a !== b && _overlapRatio(a, b) > 0.85)
+      );
+      if (overlapping.length < 2) continue;
+      let keep = overlapping[0];
+      for (const node of overlapping.slice(1)) {
+        if (_spanRichness(node) > _spanRichness(keep)) keep = node;
+      }
+      for (const node of overlapping) {
+        if (node !== keep) toRemove.add(node);
+      }
+    }
+
+    if (!toRemove.size) return;
+    for (let i = childList.length - 1; i >= 0; i--) {
+      if (toRemove.has(childList[i])) childList.splice(i, 1);
+    }
+  }
+
   function _collapseNoise(childList, byId) {
     for (let i = childList.length - 1; i >= 0; i--) {
       const node = childList[i];
@@ -230,6 +402,7 @@
         childList.splice(i, 1, ...node._children);
       }
     }
+    _dedupeSiblingSpans(childList);
   }
 
   function computeBounds(data) {
@@ -329,6 +502,191 @@
   function renderLabeledSection(label, bodyHtml, labelClass, actionsHtml) {
     const cls = labelClass ? ` ${labelClass}` : "";
     return `<div class="tv-io-section"><div class="tv-io-label${cls}">${esc(label)}${actionsHtml || ""}</div>${bodyHtml}</div>`;
+  }
+
+  function parseValue(value) {
+    if (value == null) return null;
+    try {
+      return deepParseJson(typeof value === "string" ? JSON.parse(value) : value);
+    } catch (_) {
+      return value;
+    }
+  }
+
+  function summarizeDocMeta(meta) {
+    if (!meta || typeof meta !== "object" || Array.isArray(meta)) return [];
+    const keys = ["source", "title", "id", "document_id", "chunk", "chunk_id", "page", "section"];
+    const items = [];
+    keys.forEach((key) => {
+      if (meta[key] != null && meta[key] !== "") items.push([key, meta[key]]);
+    });
+    return items.slice(0, 4);
+  }
+
+  function normalizeRetrieverDoc(candidate, index) {
+    if (candidate == null) return null;
+    if (typeof candidate === "string") {
+      const text = candidate.trim();
+      if (!text) return null;
+      return { title: "Document", text, metadata: {}, score: null, raw: candidate, index };
+    }
+    if (typeof candidate !== "object") {
+      const text = String(candidate).trim();
+      if (!text) return null;
+      return { title: "Document", text, metadata: {}, score: null, raw: candidate, index };
+    }
+
+    const meta = candidate.metadata && typeof candidate.metadata === "object" ? candidate.metadata : {};
+    const nested = candidate.document && typeof candidate.document === "object" ? candidate.document : null;
+    const text =
+      candidate.page_content ||
+      candidate.pageContent ||
+      candidate.content ||
+      candidate.text ||
+      candidate.document_text ||
+      candidate.chunk_text ||
+      (typeof candidate.document === "string" ? candidate.document : "") ||
+      (nested ? (nested.page_content || nested.pageContent || nested.content || nested.text || "") : "");
+
+    const title =
+      meta.title ||
+      candidate.title ||
+      meta.name ||
+      candidate.name ||
+      meta.source ||
+      nested?.title ||
+      "Document";
+
+    const score =
+      candidate.score ??
+      candidate.relevance_score ??
+      candidate.relevanceScore ??
+      candidate.distance ??
+      nested?.score ??
+      null;
+
+    const mergedMeta = { ...(nested?.metadata || {}), ...meta };
+    const docText = String(text || "").trim();
+    if (!docText) return null;
+    return {
+      title: String(title || "document"),
+      text: docText,
+      metadata: mergedMeta,
+      score: score == null || score === "" ? null : score,
+      raw: candidate,
+      index,
+    };
+  }
+
+  function extractRetrieverDocs(span) {
+    const attrs = span.attributes || {};
+    const out = parseValue(attrs["output.value"]);
+    const candidates = [];
+
+    function pushMany(value) {
+      if (value == null) return;
+      if (Array.isArray(value)) candidates.push(...value);
+      else candidates.push(value);
+    }
+
+    if (Array.isArray(out)) {
+      pushMany(out);
+    } else if (out && typeof out === "object") {
+      [
+        "documents",
+        "docs",
+        "source_documents",
+        "sourceDocuments",
+        "retrieved_documents",
+        "retrievedDocs",
+        "matches",
+        "results",
+        "items",
+        "contexts",
+      ].forEach((key) => pushMany(out[key]));
+      if (!candidates.length) pushMany(out);
+    }
+
+    return candidates
+      .map((candidate, index) => normalizeRetrieverDoc(candidate, index))
+      .filter(Boolean);
+  }
+
+  function formatDocScore(score) {
+    if (score == null || score === "") return null;
+    const n = Number(score);
+    if (!Number.isFinite(n)) return String(score);
+    return n.toFixed(Math.abs(n) < 1 ? 3 : 2);
+  }
+
+  function renderDocMetaChips(doc) {
+    const chips = summarizeDocMeta(doc.metadata).map(([key, value]) =>
+      `<span class="tv-chip tv-doc-chip"><span class="tv-doc-chip-k">${esc(key)}</span><span class="tv-doc-chip-v">${esc(String(value))}</span></span>`
+    );
+    const score = formatDocScore(doc.score);
+    if (score) chips.unshift(`<span class="tv-chip tv-doc-chip tv-doc-chip-score">Score ${esc(score)}</span>`);
+    return chips.join("");
+  }
+
+  function renderDocuments(span) {
+    const attrs = span.attributes || {};
+    const docs = extractRetrieverDocs(span);
+    const query = attrs["input.value"] == null ? "" : String(attrs["input.value"]);
+    if (!docs.length) return `<div class="tv-empty-d">No documents found in span output</div>`;
+
+    let html = `<div class="tv-docs-shell">`;
+    html += `<div class="tv-docs-head">`;
+    html += `<div class="tv-docs-title-wrap"><div class="tv-docs-title">Retrieved Documents</div><div class="tv-docs-meta"><div class="tv-docs-sub">Context returned by this retriever span</div><span class="tv-chip tv-docs-count">${docs.length} retrieved</span></div></div>`;
+    html += actionGroup([
+      copyBtn(() => JSON.stringify(docs.map(d => d.raw), null, 2), "Copy documents"),
+      expandBtn({
+        title: "Retrieved Documents",
+        render: () => renderExpandedContent(renderDocuments(span)),
+      }, "Expand documents"),
+    ], "tv-card-actions");
+    html += `</div>`;
+
+    if (query) {
+      html += renderLabeledSection(
+        "Query",
+        `<div class="tv-doc-query tv-markdown">${esc(query)}</div>`,
+        "tv-io-label-input"
+      );
+    }
+
+    html += `<div class="tv-doc-grid">`;
+    docs.forEach((doc, index) => {
+      const metaHtml = renderDocMetaChips(doc);
+      const title = String(doc.title || "Document");
+      const secondary = `Document ${index + 1}`;
+      const expandPayload = {
+        title: `${title} #${index + 1}`,
+        render: () => renderExpandedContent(
+          `<div class="tv-doc-card tv-doc-card-expanded">` +
+            `<div class="tv-doc-card-head"><div class="tv-doc-title-wrap"><span class="tv-doc-icon">${ICONS.RETRIEVER}</span><div class="tv-doc-title-block"><div class="tv-doc-title">${esc(title)}</div><div class="tv-doc-index">${esc(secondary)}</div></div></div></div>` +
+            `<div class="tv-doc-body tv-markdown">${esc(doc.text)}</div>` +
+            (metaHtml ? `<div class="tv-doc-meta">${metaHtml}</div>` : "") +
+          `</div>`
+        ),
+      };
+
+      html += `<article class="tv-doc-card">`;
+      html += `<div class="tv-doc-card-head">`;
+      html += `<div class="tv-doc-title-wrap">`;
+      html += `<span class="tv-doc-icon">${ICONS.RETRIEVER}</span>`;
+      html += `<div class="tv-doc-title-block"><div class="tv-doc-title">${esc(title)}</div><div class="tv-doc-index">${esc(secondary)}</div></div>`;
+      html += `</div>`;
+      html += actionGroup([
+        copyBtn(doc.text, "Copy document text"),
+        expandBtn(expandPayload, "Expand document"),
+      ], "tv-card-actions");
+      html += `</div>`;
+      html += `<div class="tv-doc-body tv-markdown">${esc(doc.text)}</div>`;
+      if (metaHtml) html += `<div class="tv-doc-meta">${metaHtml}</div>`;
+      html += `</article>`;
+    });
+    html += `</div></div>`;
+    return html;
   }
 
   function findLastDescendantMessagesSpan(span) {
@@ -713,12 +1071,59 @@
     else { S.el.warning.style.display = "none"; }
   }
 
+  function allExpandableSpanIds() {
+    const tree = S.data?._tree;
+    if (!tree) return [];
+    return tree.nodes.filter(hasChildren).map(node => node.span_id);
+  }
+
+  function areAllSpansExpanded() {
+    const ids = allExpandableSpanIds();
+    return !!ids.length && ids.every(id => S.expanded.has(id));
+  }
+
+  function updateTreeToggleButton() {
+    const btn = S.el.treeToggle;
+    const tree = S.data?._tree;
+    if (!btn) return;
+    if (!tree || !tree.nodes.length) {
+      btn.disabled = true;
+      btn.innerHTML = EXPAND_ALL_ICON;
+      btn.setAttribute("data-tree-toggle-mode", "expand");
+      btn.setAttribute("title", "Expand spans");
+      btn.setAttribute("aria-label", "Expand spans");
+      return;
+    }
+    const allExpanded = areAllSpansExpanded();
+    btn.disabled = false;
+    btn.innerHTML = allExpanded ? COLLAPSE_ALL_ICON : EXPAND_ALL_ICON;
+    btn.setAttribute("data-tree-toggle-mode", allExpanded ? "collapse" : "expand");
+    btn.setAttribute("title", allExpanded ? "Collapse spans" : "Expand spans");
+    btn.setAttribute("aria-label", allExpanded ? "Collapse spans" : "Expand spans");
+  }
+
+  function setTreeExpansion(expandAll) {
+    const tree = S.data?._tree;
+    if (!tree) return;
+    if (expandAll) {
+      S.expanded = new Set(allExpandableSpanIds());
+    } else {
+      S.expanded = new Set(tree.roots.filter(hasChildren).map(node => node.span_id));
+      if (tree.roots[0]) {
+        S.selected = tree.roots[0].span_id;
+        S.activeTab = null;
+      }
+    }
+    renderTree();
+  }
+
   /* ── rendering: span tree ── */
   function renderTree() {
     const tree = S.data?._tree;
     if (!tree || !tree.nodes.length) {
       S.el.list.innerHTML = `<div class="tv-empty"><div class="tv-empty-t">No trace data</div><div class="tv-empty-d">This item may not have tracing enabled.</div></div>`;
       S.el.detail.innerHTML = "";
+      updateTreeToggleButton();
       return;
     }
     applySearch(tree);
@@ -815,6 +1220,7 @@
     const visibleRoots = tree.roots.filter(r => r._visible);
     visibleRoots.forEach((r, i) => visit(r, i === visibleRoots.length - 1, []));
     S.el.list.innerHTML = rows.join("");
+    updateTreeToggleButton();
     renderDetail();
   }
 
@@ -855,6 +1261,9 @@
       if (inputMsgs.length || outputMsgs.length) tabs.push({ id: "messages", label: "Messages" });
     } else if (kind === "TOOL") {
       tabs.push({ id: "tool-io", label: "Input / Output" });
+    } else if (kind === "RETRIEVER") {
+      if (extractRetrieverDocs(span).length) tabs.push({ id: "documents", label: "Documents" });
+      if (attrs["input.value"] || attrs["output.value"]) tabs.push({ id: "io", label: "Input / Output" });
     } else if (kind === "EVALUATOR" && attrs["output.value"]) {
       tabs.push({ id: "metrics", label: "Metrics" });
       if (scores.length) tabs.push({ id: "scores", label: "Scores" });
@@ -913,6 +1322,7 @@
     else if (S.activeTab === "response") content += renderResponse(span);
     else if (S.activeTab === "tool-io") content += renderToolIO(span);
     else if (S.activeTab === "metrics") content += renderMetrics(span);
+    else if (S.activeTab === "documents") content += renderDocuments(span);
     else if (S.activeTab === "io") content += renderIO(span);
     else if (S.activeTab === "scores") content += renderScores(scores);
     else if (S.activeTab === "raw") content += renderRaw(span);
@@ -979,7 +1389,7 @@
         ? `${m._resolvedToolName} Result`
         : `${String(m.role || "message")} Message`;
       const expandRender = role === "tool" && msgText
-        ? () => renderExpandedContent(renderJsonBlock(msgText))
+        ? () => renderExpandedContent(renderValueBlock(msgText))
         : () => renderMessageBubble(m, "", false);
       const actions = actionGroup([
         msgText ? copyBtn(msgText, "Copy message") : "",
@@ -1037,12 +1447,23 @@
   }
 
   function renderAgentOutputBody(value, className) {
+    return renderValueBlock(value, className);
+  }
+
+  function valueToneClass(className) {
+    const cls = String(className || "");
+    if (cls.includes("tv-json-preview-output")) return " tv-value-block-output";
+    if (cls.includes("tv-json-preview")) return " tv-value-block-input";
+    return "";
+  }
+
+  function renderValueBlock(value, className) {
     const parsed = parseDisplayValue(value);
     if (typeof parsed !== "string") return renderJsonBlock(value, className);
     const body = parsed.trim();
     if (!body) return `<div class="tv-markdown${className ? ` ${className}` : ""}"></div>`;
     if (looksLikeCode(body)) return renderTextPlaceholder(body, `${className || ""} tv-json-preview-output`.trim());
-    return `<div class="tv-markdown${className ? ` ${className}` : ""}">${renderMarkdownLite(body)}</div>`;
+    return `<div class="tv-value-block${valueToneClass(className)}"><div class="tv-markdown">${renderMarkdownLite(body)}</div></div>`;
   }
 
   function renderResponse(span) {
@@ -1165,10 +1586,10 @@
         copyBtn(inp, "Copy input"),
         expandBtn({
           title: `${toolName} Input`,
-          render: () => renderExpandedContent(renderJsonBlock(inp)),
+          render: () => renderExpandedContent(renderValueBlock(inp)),
         }, "Expand tool call"),
       ]));
-      html += `<div class="tv-msg-body">${renderJsonBlock(inp, "tv-json-preview")}</div>`;
+      html += `<div class="tv-msg-body">${renderValueBlock(inp, "tv-json-preview")}</div>`;
       html += `</div>`;
     }
 
@@ -1179,10 +1600,10 @@
         copyBtn(out, "Copy output"),
         expandBtn({
           title: `${toolName} Result`,
-          render: () => renderExpandedContent(renderJsonBlock(out)),
+          render: () => renderExpandedContent(renderValueBlock(out)),
         }, "Expand result"),
       ]));
-      html += `<div class="tv-msg-body">${renderJsonBlock(out, "tv-json-preview tv-json-preview-output")}</div>`;
+      html += `<div class="tv-msg-body">${renderValueBlock(out, "tv-json-preview tv-json-preview-output")}</div>`;
       html += `</div>`;
     }
 
@@ -1197,25 +1618,25 @@
     const inp = a["input.value"];
     const out = a["output.value"];
     if (inp) {
-      html += renderLabeledSection("Input", renderJsonBlock(inp, "tv-json-preview"), "tv-io-label-input", actionGroup([
+      html += renderLabeledSection("Input", renderValueBlock(inp, "tv-json-preview"), "tv-io-label-input", actionGroup([
         copyBtn(inp, "Copy input"),
         expandBtn({
           title: "Input",
-          render: () => renderExpandedContent(renderJsonBlock(inp)),
+          render: () => renderExpandedContent(renderValueBlock(inp)),
         }, "Expand input"),
       ]));
     }
     if (out) {
       const outputBody = kind === "AGENT"
         ? renderAgentOutputBody(out, "tv-json-preview-output")
-        : renderJsonBlock(out, "tv-json-preview tv-json-preview-output");
+        : renderValueBlock(out, "tv-json-preview tv-json-preview-output");
       html += renderLabeledSection("Output", outputBody, "tv-io-label-output", actionGroup([
         copyBtn(out, "Copy output"),
         expandBtn({
           title: "Output",
           render: () => renderExpandedContent(kind === "AGENT"
             ? renderAgentOutputBody(out, "")
-            : renderJsonBlock(out)),
+            : renderValueBlock(out)),
         }, "Expand output"),
       ]));
     }
@@ -1485,17 +1906,22 @@
             <div class="tv-warning" style="display:none"></div>
           </div>
           <div class="tv-header-right">
-            <div class="tv-search-wrap">
-              <input type="text" class="tv-search" placeholder="Filter spans..." aria-label="Search spans">
-              <span class="tv-search-icon"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-            </div>
             <button type="button" class="tv-close" data-trace-close="1" aria-label="Close">
               <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
           </div>
         </div>
         <div class="tv-body">
-          <div class="tv-list"></div>
+          <div class="tv-list-pane">
+            <div class="tv-list-toolbar">
+              <div class="tv-search-wrap">
+                <input type="text" class="tv-search" placeholder="Filter spans..." aria-label="Search spans">
+                <span class="tv-search-icon"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+              </div>
+              <button type="button" class="tv-header-btn tv-icon-btn" data-tree-toggle-mode="expand" title="Expand spans" aria-label="Expand spans">${EXPAND_ALL_ICON}</button>
+            </div>
+            <div class="tv-list"></div>
+          </div>
           <div class="tv-divider"></div>
           <div class="tv-detail"></div>
         </div>
@@ -1521,9 +1947,11 @@
     S.el.title = el.querySelector(".tv-title");
     S.el.meta = el.querySelector(".tv-meta");
     S.el.warning = el.querySelector(".tv-warning");
+    S.el.listPane = el.querySelector(".tv-list-pane");
     S.el.list = el.querySelector(".tv-list");
     S.el.detail = el.querySelector(".tv-detail");
     S.el.search = el.querySelector(".tv-search");
+    S.el.treeToggle = el.querySelector(".tv-header-btn");
     S.el.modalLayer = el.querySelector(".tv-modal-layer");
     S.el.modalTitle = el.querySelector(".tv-modal-title");
     S.el.modalBody = el.querySelector(".tv-modal-body");
@@ -1541,12 +1969,12 @@
       e.preventDefault();
       divider.classList.add("active");
       const startX = e.clientX;
-      const startW = S.el.list.getBoundingClientRect().width;
+      const startW = S.el.listPane.getBoundingClientRect().width;
       const bodyW = body.getBoundingClientRect().width;
       const onMove = (ev) => {
         const dx = ev.clientX - startX;
         const newW = Math.max(200, Math.min(bodyW - 200, startW + dx));
-        S.el.list.style.flex = `0 0 ${newW}px`;
+        S.el.listPane.style.flex = `0 0 ${newW}px`;
       };
       const onUp = () => {
         divider.classList.remove("active");
@@ -1629,23 +2057,19 @@
     S.el.meta.innerHTML = `<span class="tv-chip">Loading...</span>`;
     S.el.list.innerHTML = `<div class="tv-loading">Loading trace...</div>`;
     S.el.detail.innerHTML = "";
+    updateTreeToggleButton();
 
     try {
       const data = await fetchTrace(meta);
       data._tree = buildTree(data.spans);
       S.data = data;
 
-      // Auto-expand roots
-      data._tree.roots.forEach(r => S.expanded.add(r.span_id));
+      // Default to a fully expanded tree.
+      S.expanded = new Set(allExpandableSpanIds());
 
       // Auto-expand error path or select first
       const errorId = autoExpandErrors(data._tree);
       S.selected = errorId || data._tree.roots[0]?.span_id || null;
-
-      // Also expand children of first root for nice default view
-      if (!errorId && data._tree.roots[0]) {
-        data._tree.roots[0]._children.forEach(c => S.expanded.add(c.span_id));
-      }
 
       renderHeader(meta, data);
       renderTree();
@@ -1708,6 +2132,12 @@
       e.preventDefault(); e.stopPropagation();
       const btn = e.target.closest("[data-expand-id]");
       openExpandModal(_expandData[btn.getAttribute("data-expand-id")]);
+      return;
+    }
+    if (e.target.closest("[data-tree-toggle-mode]")) {
+      e.preventDefault();
+      const btn = e.target.closest("[data-tree-toggle-mode]");
+      setTreeExpansion(btn.getAttribute("data-tree-toggle-mode") === "expand");
       return;
     }
     if (e.target.closest("[data-trace-copy]")) {

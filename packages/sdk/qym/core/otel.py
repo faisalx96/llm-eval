@@ -21,6 +21,7 @@ import contextvars
 import functools
 import json as _json
 import logging
+import os
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -600,6 +601,11 @@ _PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.groq", "GroqInstrumentor"),
 ]
 
+_EXTRA_OTEL_INSTRUMENTORS: List[Tuple[str, str]] = [
+    # Direct Chroma DB client instrumentation (separate from OpenInference).
+    ("opentelemetry.instrumentation.chromadb", "ChromaInstrumentor"),
+]
+
 
 def _register_instrumentors(provider):
     """Register all available OpenInference instrumentors on the given TracerProvider."""
@@ -634,6 +640,9 @@ def _register_instrumentors(provider):
         _try_register(module_path, class_name)
 
     for module_path, class_name in _FRAMEWORK_INSTRUMENTORS:
+        _try_register(module_path, class_name)
+
+    for module_path, class_name in _EXTRA_OTEL_INSTRUMENTORS:
         _try_register(module_path, class_name)
 
     _instrumentor_logger.setLevel(_prev_level)
@@ -694,10 +703,26 @@ def create_otel_manager(config) -> Any:
             _patch_openai_enrichments()
             _patch_anthropic_enrichments()
 
-            # Optional: Phoenix OTLP export for dual tracing
-            import os
-            phoenix_enabled = getattr(config, "phoenix_enabled", False) or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"
-            phoenix_endpoint = getattr(config, "phoenix_endpoint", None) or os.environ.get("PHOENIX_ENDPOINT")
+            # Optional: Phoenix OTLP export for dual tracing.
+            # Auto-enable if an endpoint is configured, matching the
+            # "auto-detect when creds/config exist" pattern used for Langfuse.
+            if os.path.exists(".env"):
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    pass
+
+            phoenix_endpoint = (
+                getattr(config, "phoenix_endpoint", None)
+                or os.environ.get("PHOENIX_ENDPOINT")
+                or os.environ.get("PHOENIX_COLLECTOR_ENDPOINT")
+            )
+            phoenix_enabled = (
+                getattr(config, "phoenix_enabled", False)
+                or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"
+                or bool(phoenix_endpoint)
+            )
             if phoenix_enabled and phoenix_endpoint:
                 try:
                     from opentelemetry.sdk.trace.export import BatchSpanProcessor
