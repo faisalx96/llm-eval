@@ -1182,17 +1182,10 @@
         errHtml = `<span class="tv-err-badge" title="${esc(errInfo?.message || 'Error')}"><svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".15"/><path d="M8 4v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.5" r="1" fill="currentColor"/></svg></span>`;
       }
 
-      // Retry badge
-      let retryHtml = "";
-      if (node._retry > 0) {
-        retryHtml = `<span class="tv-retry-badge">↻ retry${node._retry > 1 ? " #" + node._retry : ""}</span>`;
-      }
-
       const rowCls = [
         "tv-row",
         sel ? "sel" : "",
         stCls === "error" ? "row-err" : "",
-        node._retry > 0 ? "row-retry" : "",
         node._failed ? "row-failed" : "",
       ].filter(Boolean).join(" ");
 
@@ -1202,7 +1195,7 @@
         `<button type="button" class="${rowCls}" data-span="${esc(node.span_id)}">` +
           `<span class="tv-tree-gutter">${guidesHtml}${iconHtml}</span>` +
           `<span class="tv-row-main">` +
-            `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${errHtml}${retryHtml}${inlineMeta}</span>` +
+            `<span class="tv-name-group"><span class="tv-name">${esc(node.name||"(unnamed)")}</span>${errHtml}${inlineMeta}</span>` +
             `<span class="tv-dur">${esc(fmtDur(node.duration_ms))}</span>` +
             `<span class="tv-wf"><span class="tv-wf-track"></span><span class="tv-wf-bar ${stCls}" style="left:${left}%;width:${Math.min(width,100)}%;background:${color}"></span></span>` +
             toggleHtml +
@@ -1293,7 +1286,6 @@
     if (costStr) header += `<span class="tv-dot"></span><span>${costStr}</span>`;
     header += `</div></div>`;
     if (stCls !== "unset") header += `<span class="tv-chip tv-chip-status-${stCls}">${esc(String(span.status).toUpperCase())}</span>`;
-    if (span._retry > 0) header += `<span class="tv-chip tv-chip-retry">↻ retry${span._retry > 1 ? " #" + span._retry : ""}</span>`;
     header += `</div>`;
 
     // Error detail block

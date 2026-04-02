@@ -2222,6 +2222,15 @@ body.chart-col-resize-active {
   flex: 0 0 auto;
 }
 
+.runs-table tbody tr.grouped-run-start td {
+  border-top: 1px solid var(--border-default);
+}
+
+.runs-table tbody tr.grouped-run-end td {
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow: inset 0 -1px 0 var(--border-default);
+}
+
 /* Column-specific styles */
 .col-select {
   width: var(--runs-col-select-width);
@@ -6043,21 +6052,13 @@ body.tv-open { overflow: hidden; }
 }
 .tv-tokens-icon { flex-shrink: 0; }
 
-/* Error & retry badges (inline in span row) */
+/* Error badges (inline in span row) */
 .tv-err-badge {
   display: inline-flex; align-items: center; color: var(--error); flex-shrink: 0;
 }
 .tv-err-badge svg {
   width: 14px;
   height: 14px;
-}
-.tv-retry-badge {
-  display: none;
-  color: #f59e0b; font-size: 10px; font-weight: 600;
-  white-space: nowrap; flex-shrink: 0;
-}
-.tv-chip-retry {
-  color: #f59e0b; border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.06);
 }
 
 /* Error detail block (in detail panel header) */
@@ -6659,7 +6660,7 @@ body.tv-open { overflow: hidden; }
 
 /* ─── Responsive (container query for list panel width) ─── */
 @container (max-width: 500px) {
-  .tv-inline-model, .tv-inline-tokens, .tv-retry-badge { display: none; }
+  .tv-inline-model, .tv-inline-tokens { display: none; }
 }
 @container (max-width: 380px) {
   .tv-wf { display: none; }

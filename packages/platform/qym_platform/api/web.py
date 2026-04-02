@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import ApiKey, OrgUnit, OrgUnitType, User, UserRole
 from qym_platform.deps import get_db
 from qym_platform.openai_compat import create_chat_completion_compat
@@ -152,8 +153,8 @@ def list_api_keys(
                 "name": k.name,
                 "prefix": k.prefix,
                 "scopes": k.scopes,
-                "created_at": k.created_at.isoformat() if k.created_at else None,
-                "revoked_at": k.revoked_at.isoformat() if k.revoked_at else None,
+                "created_at": to_api_timestamp(k.created_at),
+                "revoked_at": to_api_timestamp(k.revoked_at),
             }
             for k in keys
         ]
@@ -188,7 +189,6 @@ def revoke_api_key(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Revoke an API key (soft delete)."""
-    from datetime import datetime
     key = (
         db.query(ApiKey)
         .filter(ApiKey.id == key_id, ApiKey.user_id == principal.user.id)
@@ -198,7 +198,7 @@ def revoke_api_key(
         raise HTTPException(status_code=404, detail="API key not found")
     if key.revoked_at:
         raise HTTPException(status_code=400, detail="API key already revoked")
-    key.revoked_at = datetime.utcnow()
+    key.revoked_at = utc_now_naive()
     db.commit()
     return {"ok": True, "id": key_id}
 

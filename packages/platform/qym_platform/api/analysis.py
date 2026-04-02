@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, or_, tuple_
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
 from qym_platform.deps import get_db
 from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
@@ -614,7 +615,7 @@ def get_corrections(
                 "expected_snapshot": c.expected_snapshot,
                 "output_snapshot": c.output_snapshot,
                 "status": c.status.value if hasattr(c.status, "value") else (c.status or "pending"),
-                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "created_at": to_api_timestamp(c.created_at),
             }
             for c in corrections
         ]
@@ -784,11 +785,11 @@ def _serialize_review_fields(
         "human_solution": c.human_solution,
         "human_solution_note": c.human_solution_note,
         "corrected_by": _serialize_user(users_by_id.get(c.corrected_by_user_id)),
-        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "created_at": to_api_timestamp(c.created_at),
         "status": c.status.value if hasattr(c.status, "value") else c.status,
         "is_active": bool(c.is_active),
         "reviewed_by": _serialize_user(users_by_id.get(c.reviewed_by_user_id)),
-        "reviewed_at": c.reviewed_at.isoformat() if c.reviewed_at else None,
+        "reviewed_at": to_api_timestamp(c.reviewed_at),
         "review_comment": c.review_comment or "",
     }
 
@@ -856,7 +857,7 @@ def _build_history_map(
                     "before_state": revision.before_state or {},
                     "after_state": revision.after_state or {},
                     "backfilled_from_legacy": bool(revision.backfilled_from_legacy),
-                    "created_at": revision.created_at.isoformat() if revision.created_at else None,
+                    "created_at": to_api_timestamp(revision.created_at),
                     "review": (
                         _serialize_review_fields(
                             review_candidate,
@@ -878,7 +879,7 @@ def _build_history_map(
                     "before_state": {},
                     "after_state": {},
                     "backfilled_from_legacy": True,
-                    "created_at": orphan.created_at.isoformat() if orphan.created_at else None,
+                    "created_at": to_api_timestamp(orphan.created_at),
                     "review": _serialize_review_fields(orphan, users_by_id=users_by_id, runs_by_id=runs_by_id),
                 }
             )
@@ -903,7 +904,7 @@ def _build_history_map(
                 "before_state": {},
                 "after_state": {},
                 "backfilled_from_legacy": True,
-                "created_at": candidate.created_at.isoformat() if candidate.created_at else None,
+                "created_at": to_api_timestamp(candidate.created_at),
                 "review": _serialize_review_fields(candidate, users_by_id=users_by_id, runs_by_id=runs_by_id),
             }
             for candidate in candidates
@@ -1363,7 +1364,7 @@ def approve_correction(
         correction=target,
         reviewer_id=principal.user.id if principal.auth_type != "none" else None,
         comment=(request.get("comment") or "").strip(),
-        reviewed_at=datetime.utcnow(),
+        reviewed_at=utc_now_naive(),
     )
 
     db.commit()
@@ -1388,7 +1389,7 @@ def reject_correction(
 
     c.status = CorrectionStatus.REJECTED
     c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
-    c.reviewed_at = datetime.utcnow()
+    c.reviewed_at = utc_now_naive()
     c.review_comment = (request.get("comment") or "").strip()
 
     db.commit()
@@ -1456,7 +1457,7 @@ def bulk_correction_action(
         if not run or not can_review_run(db, principal, run):
             raise HTTPException(status_code=403, detail="Access denied")
 
-    now = datetime.utcnow()
+    now = utc_now_naive()
     reviewer_id = principal.user.id if principal.auth_type != "none" else None
     affected = 0
 

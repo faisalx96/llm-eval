@@ -83,5 +83,7 @@ def test_build_run_data_includes_hero_fields():
             assert run_payload["git_commit"] == "abc123"
             assert run_payload["started_at"]
             assert run_payload["created_at"]
+            assert run_payload["started_at"].endswith("Z")
+            assert run_payload["created_at"].endswith("Z")
     finally:
         engine.dispose()

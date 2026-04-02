@@ -1,10 +1,20 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 import asyncio
-from qym.core.evaluator import Evaluator
+from qym.core.evaluator import Evaluator, _graceful_interrupt_signals
 from qym.core.dataset import CsvDataset
+import signal
 
 class TestEvaluator:
+    def test_graceful_interrupt_signals_translate_sigterm_to_keyboard_interrupt(self):
+        previous = signal.getsignal(signal.SIGTERM)
+        with _graceful_interrupt_signals():
+            handler = signal.getsignal(signal.SIGTERM)
+            assert callable(handler)
+            with pytest.raises(KeyboardInterrupt):
+                handler(signal.SIGTERM, None)
+        assert signal.getsignal(signal.SIGTERM) == previous
+
     def test_init(self, mock_task, mock_langfuse, mock_dataset):
         """Test basic initialization of Evaluator with DI."""
         with patch("qym.core.evaluator.auto_detect_task"):

@@ -7,7 +7,7 @@ services:
       QYM_BASE_URL: http://localhost:8000
       QYM_DATABASE_URL: postgresql+psycopg2://qym:qym@db:5432/qym
       QYM_ADMIN_BOOTSTRAP_TOKEN: test
-      QYM_AUTH_MODE: none
+      QYM_AUTH_MODE: proxy_headers
     volumes:
       - ../packages/platform/qym_platform/_static:/app/packages/platform/qym_platform/_static
       - ../packages/platform/qym_platform/api:/app/packages/platform/qym_platform/api

@@ -68,6 +68,13 @@
       modelStats: {},          // model_name -> computed stats
       visibleTraceMetrics: [],
     },
+    runsFetchMeta: {
+      totalCount: 0,
+      hasLoadedAllPages: false,
+      lastFullFetchAt: 0,
+      inFlight: false,
+      pendingOptions: null,
+    },
   };
 
   // Chart color palette - extended for more models
@@ -2272,6 +2279,8 @@
       const groupKey = runGroupKeys[idx];
       const isGrouped = groupKey && realGroups[groupKey];
       const isFirstInGroup = isGrouped && groupKey !== lastGroupKey;
+      const nextGroupKey = runGroupKeys[idx + 1];
+      const isLastInGroup = isGrouped && nextGroupKey !== groupKey;
       let groupHeaderHtml = '';
 
       if (isFirstInGroup) {
@@ -2351,6 +2360,13 @@
       const dt = formatDate(run.timestamp);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
+      const rowClasses = [
+        isSelected ? 'selected' : '',
+        isFocused ? 'focused' : '',
+        isGrouped ? 'grouped-run' : '',
+        isGrouped && isFirstInGroup ? 'grouped-run-start' : '',
+        isGrouped && isLastInGroup ? 'grouped-run-end' : '',
+      ].filter(Boolean).join(' ');
 
       // Generate metric columns
       const metricCells = metricsToShow.map(metric => {
@@ -2370,7 +2386,7 @@
       const approval = run.approval || null;
 
       const role = (state.currentUser && state.currentUser.role) || '';
-      const canApprove = role === 'MANAGER' && status === 'SUBMITTED';
+      const canApprove = (role === 'MANAGER' || role === 'ADMIN') && status === 'SUBMITTED';
       // Runs submitted via SDK/file upload land as COMPLETED/FAILED; those should be submittable for approval.
       // Managers don't submit - they approve/reject. Only non-managers can submit.
       const canSubmit = role !== 'MANAGER' && (status === 'COMPLETED' || status === 'FAILED');
@@ -2392,7 +2408,7 @@
 
       return `${groupHeaderHtml}
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}" ${groupDataAttr} ${hiddenAttr}
-            class="${isSelected ? 'selected' : ''} ${isFocused ? 'focused' : ''} ${isGrouped ? 'grouped-run' : ''}">
+            class="${rowClasses}">
           <td class="col-select" onclick="event.stopPropagation()">
             <label class="custom-checkbox">
               <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
@@ -2537,7 +2553,7 @@
           } else {
             showToast('error', 'Submit Failed', 'Could not submit run');
           }
-          await fetchRuns();
+          await fetchRuns({ refreshAllPages: true });
         } catch (err) {
           console.error('Submit failed', err);
           showToast('error', 'Submit Failed', err.message || 'Could not submit run');
@@ -3739,7 +3755,7 @@
           // Remove from selection if selected
           state.selectedRuns.delete(filePath);
           // Refresh data
-          await fetchRuns();
+          await fetchRuns({ refreshAllPages: true });
         } else {
           const data = await response.json();
           alert('Failed to delete: ' + (data.error || 'Unknown error'));
@@ -3800,7 +3816,7 @@
       newConfirmBtn.textContent = 'Delete';
 
       // Refresh data
-      await fetchRuns();
+      await fetchRuns({ refreshAllPages: true });
 
       if (errorCount > 0) {
         alert(`Deleted ${successCount} run(s). Failed to delete ${errorCount} run(s).`);
@@ -3847,7 +3863,7 @@
 
         if (response.ok) {
           modal.style.display = 'none';
-          await fetchRuns();
+          await fetchRuns({ refreshAllPages: true });
         } else {
           const data = await response.json();
           alert(`Failed to ${action}: ` + (data.detail || 'Unknown error'));
@@ -3897,6 +3913,23 @@
   // ═══════════════════════════════════════════════════
 
   const PAGE_SIZE = 100;
+  const LIVE_REFRESH_INTERVAL_MS = 15000;
+  const IDLE_REFRESH_INTERVAL_MS = 60000;
+  const FULL_REFRESH_STALE_MS = 5 * 60 * 1000;
+
+  function hasActiveRuns(runs = state.flatRuns) {
+    return (runs || []).some(r => {
+      const status = String(r.status || '').toUpperCase();
+      return status === 'RUNNING' || status === 'PENDING';
+    });
+  }
+
+  function queueRunsFetch(options) {
+    const current = state.runsFetchMeta.pendingOptions || { refreshAllPages: false };
+    state.runsFetchMeta.pendingOptions = {
+      refreshAllPages: Boolean(current.refreshAllPages || (options && options.refreshAllPages)),
+    };
+  }
 
   function _mergeTasksData(base, incoming) {
     if (!incoming || !incoming.tasks) return base;
@@ -3986,7 +4019,18 @@
     try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
   }
 
-  async function fetchRuns() {
+  async function fetchRuns(options = {}) {
+    const fetchOptions = {
+      refreshAllPages: false,
+      ...options,
+    };
+
+    if (state.runsFetchMeta.inFlight) {
+      queueRunsFetch(fetchOptions);
+      return;
+    }
+
+    state.runsFetchMeta.inFlight = true;
     try {
       // Fetch first page and current user in parallel
       const [runsResponse, meResponse] = await Promise.all([
@@ -4006,6 +4050,8 @@
 
       const data = await runsResponse.json();
       const totalCount = data.total_count || 0;
+      const previousTotalCount = state.runsFetchMeta.totalCount || 0;
+      state.runsFetchMeta.totalCount = totalCount;
 
       try {
         state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
@@ -4022,14 +4068,36 @@
       // Adjust refresh cadence based on whether we have active runs.
       try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
 
-      // Fetch remaining pages in the background
-      _fetchRemainingPages(data, totalCount);
+      const activeRunsPresent = hasActiveRuns();
+      const totalCountChanged = previousTotalCount > 0 && previousTotalCount !== totalCount;
+      const fullRefreshExpired = (Date.now() - (state.runsFetchMeta.lastFullFetchAt || 0)) > FULL_REFRESH_STALE_MS;
+      const shouldFetchAllPages = totalCount > PAGE_SIZE && (
+        fetchOptions.refreshAllPages ||
+        !state.runsFetchMeta.hasLoadedAllPages ||
+        (!activeRunsPresent && (totalCountChanged || fullRefreshExpired))
+      );
+
+      if (shouldFetchAllPages) {
+        await _fetchRemainingPages(data, totalCount);
+        state.runsFetchMeta.hasLoadedAllPages = true;
+        state.runsFetchMeta.lastFullFetchAt = Date.now();
+        state.runsFetchMeta.totalCount = totalCount;
+      } else {
+        state.runsFetchMeta.hasLoadedAllPages = state.flatRuns.length >= totalCount;
+      }
     } catch (err) {
       console.error('Failed to fetch runs:', err);
       el('loading').innerHTML = `
         <span style="color:var(--error);">Failed to load runs</span>
         <span>Is the server running?</span>
       `;
+    } finally {
+      state.runsFetchMeta.inFlight = false;
+      if (state.runsFetchMeta.pendingOptions) {
+        const pending = state.runsFetchMeta.pendingOptions;
+        state.runsFetchMeta.pendingOptions = null;
+        fetchRuns(pending);
+      }
     }
   }
 
@@ -4530,7 +4598,7 @@
     }
 
     try {
-      await fetchRuns();
+      await fetchRuns({ refreshAllPages: true });
     } catch {}
 
     try {
@@ -4629,7 +4697,7 @@
       // Authenticated - proceed with dashboard
       restoreDashboardState();
       startHeartbeat();
-      fetchRuns();
+      fetchRuns({ refreshAllPages: true });
     } catch (err) {
       console.error('Auth check error:', err);
       showAuthError();
@@ -4644,13 +4712,12 @@
   let runsRefreshId = null;
   function updateRunsRefreshCadence() {
     try {
-      const anyActive = (state.flatRuns || []).some(r => { const s = String(r.status || '').toUpperCase(); return s === 'RUNNING' || s === 'PENDING'; });
-      const intervalMs = anyActive ? 2000 : 60000;
+      const intervalMs = hasActiveRuns() ? LIVE_REFRESH_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
       if (runsRefreshId) clearInterval(runsRefreshId);
       runsRefreshId = setInterval(fetchRuns, intervalMs);
     } catch {
       if (runsRefreshId) clearInterval(runsRefreshId);
-      runsRefreshId = setInterval(fetchRuns, 60000);
+      runsRefreshId = setInterval(fetchRuns, IDLE_REFRESH_INTERVAL_MS);
     }
   }
   updateRunsRefreshCadence();

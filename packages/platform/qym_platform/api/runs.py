@@ -13,6 +13,7 @@ from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
@@ -123,7 +124,7 @@ def _user_team_subtree_ids(db: Session, user: User) -> set[str]:
 
 
 def _iso(dt: Optional[datetime]) -> str:
-    return (dt or datetime.utcnow()).isoformat()
+    return to_api_timestamp(dt or utc_now_naive()) or ""
 
 
 def _serialize_span(span: Span) -> Dict[str, Any]:
@@ -424,7 +425,7 @@ def legacy_list_runs(
     runs: List[Run] = q.offset(offset).limit(limit).all()
 
     if not runs:
-        return {"tasks": {}, "last_updated": datetime.utcnow().isoformat(), "total_count": total_count}
+        return {"tasks": {}, "last_updated": to_api_timestamp(utc_now_naive()), "total_count": total_count}
 
     run_ids = [r.id for r in runs]
 
@@ -572,7 +573,7 @@ def legacy_list_runs(
         model = summary["model_name"] or "nomodel"
         tasks.setdefault(task, {}).setdefault(model, []).append(summary)
 
-    return {"tasks": tasks, "last_updated": datetime.utcnow().isoformat(), "total_count": total_count}
+    return {"tasks": tasks, "last_updated": to_api_timestamp(utc_now_naive()), "total_count": total_count}
 
 
 @router.get("/api/compare")
@@ -1207,7 +1208,7 @@ def approve_run(
         raise HTTPException(status_code=400, detail="Missing approval record")
     approval.decision = ApprovalDecision.APPROVED
     approval.decision_by_user_id = principal.user.id
-    approval.decision_at = datetime.utcnow()
+    approval.decision_at = utc_now_naive()
     approval.comment = str(body.get("comment") or "")
     run.status = RunWorkflowStatus.APPROVED
     db.commit()
@@ -1234,7 +1235,7 @@ def reject_run(
         raise HTTPException(status_code=400, detail="Missing approval record")
     approval.decision = ApprovalDecision.REJECTED
     approval.decision_by_user_id = principal.user.id
-    approval.decision_at = datetime.utcnow()
+    approval.decision_at = utc_now_naive()
     approval.comment = str(body.get("comment") or "")
     run.status = RunWorkflowStatus.REJECTED
     db.commit()

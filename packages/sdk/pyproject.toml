@@ -32,19 +32,10 @@ dependencies = [
     "python-bidi>=0.4.2",
     "arabic-reshaper>=3.0.0",
     "openpyxl>=3.0.0",
-    # Auto-instrumentation: all instrumentors included so tracing works
-    # out of the box with any supported provider or framework.
+    # Auto-instrumentation: keep the core integrations qym supports directly.
     "openinference-instrumentation-openai>=0.1.0",
-    "openinference-instrumentation-anthropic>=0.1.0",
     "openinference-instrumentation-langchain>=0.1.0",
-    "openinference-instrumentation-bedrock>=0.1.0",
-    "openinference-instrumentation-mistralai>=0.1.0",
-    "openinference-instrumentation-groq>=0.1.0",
     "openinference-instrumentation-litellm>=0.1.0",
-    "openinference-instrumentation-llama-index>=0.1.0",
-    "openinference-instrumentation-crewai>=0.1.0",
-    "openinference-instrumentation-haystack>=0.1.0",
-    "openinference-instrumentation-dspy>=0.1.0",
 ]
 
 [project.optional-dependencies]

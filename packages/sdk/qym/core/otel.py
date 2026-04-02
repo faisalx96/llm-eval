@@ -596,31 +596,18 @@ def _patch_anthropic_enrichments():
 # Instrumentor registration
 # ---------------------------------------------------------------------------
 
-# OpenInference instrumentors (same library Phoenix uses).
+# OpenInference instrumentors qym treats as first-class built-ins.
 #
-# All instrumentors are registered — both framework-level (LangChain, etc.)
-# and provider-level (OpenAI, etc.).  When both are active, provider spans
-# nest correctly inside framework spans via OTEL context propagation.
-#
-# The only deduplication is on qym's enrichment patches (tool span emission,
-# reasoning capture): these are skipped when a framework instrumentor is
-# active, since the framework already captures tool calls and LLM details.
+# Keep this list intentionally small. Other integrations can still show up via
+# direct OTel instrumentor discovery when installed in the environment.
 
 _FRAMEWORK_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.langchain", "LangChainInstrumentor"),
-    ("openinference.instrumentation.llama_index", "LlamaIndexInstrumentor"),
-    ("openinference.instrumentation.crewai", "CrewAIInstrumentor"),
-    ("openinference.instrumentation.haystack", "HaystackInstrumentor"),
-    ("openinference.instrumentation.dspy", "DSPyInstrumentor"),
     ("openinference.instrumentation.litellm", "LiteLLMInstrumentor"),
 ]
 
 _PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.openai", "OpenAIInstrumentor"),
-    ("openinference.instrumentation.anthropic", "AnthropicInstrumentor"),
-    ("openinference.instrumentation.bedrock", "BedrockInstrumentor"),
-    ("openinference.instrumentation.mistralai", "MistralAIInstrumentor"),
-    ("openinference.instrumentation.groq", "GroqInstrumentor"),
 ]
 
 # Do not auto-register official OTel instrumentors when qym already registers

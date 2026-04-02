@@ -54,7 +54,7 @@ async function loadCurrentUser() {
 
 function showAuthError() {
   document.querySelector('.admin-container').innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
+    <div style="display: flex; flex: 1; width: 100%; align-items: center; justify-content: center; min-height: calc(100vh - 100px);">
       <div style="text-align: center; max-width: 360px; padding: 40px;">
         <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
         <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
@@ -71,7 +71,7 @@ function showAuthError() {
 
 function showAccessDenied() {
   document.querySelector('.admin-container').innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
+    <div style="display: flex; flex: 1; width: 100%; align-items: center; justify-content: center; min-height: calc(100vh - 100px);">
       <div style="text-align: center; max-width: 400px; padding: 40px;">
         <div style="font-size: 64px; margin-bottom: 24px; color: var(--error);">⊘</div>
         <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Access Denied</h1>
@@ -885,4 +885,3 @@ function populateHeaderUser() {
   if (email) email.textContent = currentUser.email;
   if (role) role.textContent = currentUser.role;
 }
-

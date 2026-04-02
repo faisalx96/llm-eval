@@ -7,6 +7,7 @@ from typing import Any, Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
 from qym_platform.db.models import (
     AuditLog,
     CorrectionStatus,
@@ -416,7 +417,7 @@ def apply_root_cause_change(
 
     item.item_metadata = build_item_metadata(item.item_metadata if isinstance(item.item_metadata, dict) else {}, after_state)
 
-    created_at = revision_created_at or datetime.utcnow()
+    created_at = to_storage_utc(revision_created_at) or utc_now_naive()
     revision = RootCauseRevision(
         run_id=run.id,
         item_id=item.item_id,

@@ -50,7 +50,7 @@ def run_create(
     git_commit: Optional[str] = typer.Option(None, "--git-commit", help="Override auto-detected git commit hash"),
 ) -> None:
     """Execute an LLM evaluation run."""
-    from ..core.evaluator import Evaluator
+    from ..core.evaluator import Evaluator, _graceful_interrupt_signals
     from ..core.multi_runner import MultiModelRunner
     from ..core.dataset import CsvDataset
     from ..core.checkpoint import load_checkpoint_state
@@ -87,9 +87,10 @@ def run_create(
         show_tui = not quiet and not no_progress and not no_ui
         runner = MultiModelRunner(run_specs, console=err_console)
         try:
-            results = asyncio.run(
-                runner.arun(show_tui=show_tui, auto_save=True, save_format="csv")
-            )
+            with _graceful_interrupt_signals():
+                results = asyncio.run(
+                    runner.arun(show_tui=show_tui, auto_save=True, save_format="csv")
+                )
         except RuntimeError as exc:
             output_error("failure", str(exc))
             raise typer.Exit(code=ExitCode.FAILURE)

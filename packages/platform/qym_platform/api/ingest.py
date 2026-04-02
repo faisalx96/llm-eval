@@ -8,7 +8,6 @@ import math
 import sys
 
 csv.field_size_limit(sys.maxsize)
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 
@@ -31,6 +30,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
+from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
 from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
 from qym_platform.deps import get_db
 from qym_platform.events import (
@@ -178,7 +178,7 @@ def create_run(
         run_metadata=req.run_metadata,
         run_config=req.run_config,
         status=RunWorkflowStatus.RUNNING,
-        started_at=datetime.utcnow(),
+        started_at=utc_now_naive(),
     )
     db.add(run)
     db.commit()
@@ -298,7 +298,7 @@ async def ingest_events(
                 md["total_items"] = int(payload.total_items)
             run.run_metadata = md
             run.run_config = _sanitize_for_json(payload.run_config)
-            run.started_at = payload.started_at
+            run.started_at = to_storage_utc(payload.started_at)
             run.status = RunWorkflowStatus.RUNNING
             logger.debug("Run %s status -> RUNNING", run_id)
 
@@ -411,7 +411,7 @@ async def ingest_events(
                 item.trace_url = payload.trace_url
 
         elif isinstance(payload, RunCompletedPayload):
-            run.ended_at = payload.ended_at
+            run.ended_at = to_storage_utc(payload.ended_at)
             _FINAL_STATUS = {"COMPLETED": RunWorkflowStatus.COMPLETED, "FAILED": RunWorkflowStatus.FAILED, "STOPPED": RunWorkflowStatus.STOPPED}
             run.status = _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED)
             logger.debug("Run %s status -> %s", run_id, payload.final_status)
@@ -512,8 +512,8 @@ async def upload_run(
         run_metadata={},
         run_config={},
         status=RunWorkflowStatus.COMPLETED,
-        started_at=datetime.utcnow(),
-        ended_at=datetime.utcnow(),
+        started_at=utc_now_naive(),
+        ended_at=utc_now_naive(),
     )
     db.add(run)
     db.commit()

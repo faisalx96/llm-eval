@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.datetime_utils import to_api_timestamp
 from qym_platform.db.models import (
     OrgUnit,
     OrgUnitClosure,
@@ -106,7 +107,7 @@ def _org_unit_to_dict(unit: OrgUnit, db: Session) -> Dict[str, Any]:
         "type": unit.type.value,
         "parent_id": unit.parent_id,
         "manager": manager,
-        "created_at": unit.created_at.isoformat() if unit.created_at else None,
+        "created_at": to_api_timestamp(unit.created_at),
     }
 
 
@@ -461,7 +462,7 @@ def list_users(
             "role": u.role.value,
             "team": team,
             "is_active": u.is_active,
-            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "created_at": to_api_timestamp(u.created_at),
         })
 
     return {"users": result}
@@ -639,4 +640,3 @@ def update_settings(
 
     rows = db.query(PlatformSetting).all()
     return {"settings": {r.key: r.value for r in rows}}
-

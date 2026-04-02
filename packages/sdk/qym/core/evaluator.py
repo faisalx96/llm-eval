@@ -8,6 +8,8 @@ import inspect
 import json as _json
 import os
 import random
+import signal
+import threading
 import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple, Set
@@ -16,7 +18,7 @@ import time
 import subprocess
 from pathlib import Path
 import copy
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import re
 
 from rich.console import Console
@@ -77,6 +79,51 @@ from ..platform.defaults import DEFAULT_PLATFORM_URL
 
 def _utc_now_str() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _interrupt_signal_numbers() -> List[int]:
+    signals: List[int] = []
+    for name in ("SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"):
+        signum = getattr(signal, name, None)
+        if signum is not None:
+            signals.append(signum)
+    return signals
+
+
+@contextmanager
+def _graceful_interrupt_signals():
+    """Temporarily map catchable termination signals to KeyboardInterrupt."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    previous_handlers: Dict[int, Any] = {}
+
+    def _raise_keyboard_interrupt(signum, frame):
+        raise KeyboardInterrupt()
+
+    try:
+        for signum in _interrupt_signal_numbers():
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, _raise_keyboard_interrupt)
+    except Exception:
+        for signum, handler in previous_handlers.items():
+            try:
+                signal.signal(signum, handler)
+            except Exception:
+                pass
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        for signum, handler in previous_handlers.items():
+            try:
+                signal.signal(signum, handler)
+            except Exception:
+                pass
+
 try:
     from ..platform.client import PlatformClient, PlatformEventStream  # type: ignore
 except Exception:  # pragma: no cover
@@ -743,7 +790,8 @@ class Evaluator:
 
         # Run the async evaluation
         try:
-            result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
+            with _graceful_interrupt_signals():
+                result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
         except KeyboardInterrupt:
             # asyncio.run() tears down the event loop on Ctrl+C before arun's
             # finalization code can send run_completed. Send STOPPED synchronously here.
@@ -1380,14 +1428,15 @@ class Evaluator:
             pass
 
         try:
-            results = asyncio.run(
-                runner.arun(
-                    show_tui=show_tui,
-                    auto_save=auto_save,
-                    save_format=save_format,
-                    max_parallel_runs=max_parallel_runs,
+            with _graceful_interrupt_signals():
+                results = asyncio.run(
+                    runner.arun(
+                        show_tui=show_tui,
+                        auto_save=auto_save,
+                        save_format=save_format,
+                        max_parallel_runs=max_parallel_runs,
+                    )
                 )
-            )
         except KeyboardInterrupt:
             incomplete = [ev for ev in getattr(runner, "_active_evaluators", []) if not getattr(ev, "_run_completed", False)]
             if incomplete:

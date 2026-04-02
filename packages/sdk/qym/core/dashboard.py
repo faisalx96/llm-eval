@@ -349,17 +349,12 @@ class RunDashboard:
             "langfuse": [],
             "platform": [],
         }
-        instrumentors: List[str] = []
         for state in self.states.values():
             trace_info = (state.run_info or {}).get("trace") or {}
             destinations = trace_info.get("destinations") or {}
             for key in destination_values:
                 if key in destinations:
                     destination_values[key].append(bool(destinations.get(key)))
-            for name in (trace_info.get("instrumentors") or []):
-                text = str(name).strip()
-                if text and text not in instrumentors:
-                    instrumentors.append(text)
 
         destinations = Text()
         destinations.append("Trace: ", style="bold white")
@@ -369,16 +364,9 @@ class RunDashboard:
         destinations.append("  •  ", style="dim")
         self._append_destination_status(destinations, "Platform", destination_values["platform"])
 
-        instr = Text()
-        instr.append("Instr: ", style="bold white")
-        instr.append(", ".join(instrumentors[:4]) if instrumentors else "none", style="cyan" if instrumentors else "dim")
-        if len(instrumentors) > 4:
-            instr.append(f" +{len(instrumentors) - 4}", style="dim")
-
         grid = Table.grid(expand=True)
-        grid.add_column(justify="left", ratio=3)
-        grid.add_column(justify="right", ratio=2)
-        grid.add_row(destinations, instr)
+        grid.add_column(justify="left", ratio=1)
+        grid.add_row(destinations)
         return grid
 
     def _append_destination_status(self, text: Text, label: str, values: Sequence[bool]) -> None:
