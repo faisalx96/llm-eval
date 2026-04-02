@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
+import asyncio
 from qym.core.evaluator import Evaluator
 from qym.core.dataset import CsvDataset
 
@@ -115,6 +116,7 @@ class TestEvaluator:
         message = evaluator._notify_observer.call_args.kwargs["message"]
         assert method == "on_warning"
         assert "sync-threadpool" in message
+        assert "mock_task" in message
         assert "20" in message
         assert "AsyncOpenAI" in message
 
@@ -167,3 +169,157 @@ class TestEvaluator:
         evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
 
         evaluator._notify_observer.assert_not_called()
+
+    def test_sync_threadpool_advisory_emitted_once_per_unique_task(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator_one = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory-one", "max_concurrency": 5, "otel_enabled": False},
+            )
+            evaluator_two = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory-two", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        advisory_registry = set()
+        evaluator_one._sync_threadpool_advisory_registry = advisory_registry
+        evaluator_two._sync_threadpool_advisory_registry = advisory_registry
+        evaluator_one._notify_observer = MagicMock()
+        evaluator_two._notify_observer = MagicMock()
+
+        evaluator_one._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+        evaluator_two._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        evaluator_one._notify_observer.assert_called_once()
+        evaluator_two._notify_observer.assert_not_called()
+        assert advisory_registry == {"mock_task"}
+
+    def test_sync_threadpool_advisory_emitted_per_distinct_task(self, tmp_path, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        def task_one(_input):
+            return "ok"
+
+        def task_two(_input):
+            return "ok"
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator_one = Evaluator(
+                task=task_one,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-task-one", "max_concurrency": 5, "otel_enabled": False},
+            )
+            evaluator_two = Evaluator(
+                task=task_two,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-task-two", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        advisory_registry = set()
+        evaluator_one._sync_threadpool_advisory_registry = advisory_registry
+        evaluator_two._sync_threadpool_advisory_registry = advisory_registry
+        evaluator_one._notify_observer = MagicMock()
+        evaluator_two._notify_observer = MagicMock()
+
+        evaluator_one._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+        evaluator_two._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        evaluator_one._notify_observer.assert_called_once()
+        evaluator_two._notify_observer.assert_called_once()
+        assert advisory_registry == {"task_one", "task_two"}
+
+    @pytest.mark.asyncio
+    async def test_async_cancellation_emits_stopped_to_platform(self, tmp_path, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        class FakeHandle:
+            run_id = "run-123"
+            live_url = "http://example/live/run-123"
+
+        class FakePlatformClient:
+            def __init__(self, platform_url=None, api_key=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+
+            def create_run(self, **kwargs):
+                return FakeHandle()
+
+        class FakePlatformEventStream:
+            instances = []
+
+            def __init__(self, platform_url=None, api_key=None, run_id=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+                self.run_id = run_id
+                self.events = []
+                FakePlatformEventStream.instances.append(self)
+
+            def emit(self, event_type, payload, sync=False):
+                self.events.append((event_type, payload, sync))
+
+            def close(self):
+                return None
+
+        async def slow_task(_input):
+            await asyncio.sleep(5)
+            return "ok"
+
+        monkeypatch.setattr("qym.core.evaluator.PlatformClient", FakePlatformClient)
+        monkeypatch.setattr("qym.core.evaluator.PlatformEventStream", FakePlatformEventStream)
+
+        evaluator = Evaluator(
+            task=slow_task,
+            dataset=ds,
+            metrics=[],
+            config={
+                "run_name": "async-cancel",
+                "max_concurrency": 1,
+                "otel_enabled": False,
+                "platform_api_key": "test-key",
+                "platform_url": "http://example",
+            },
+        )
+
+        task = asyncio.create_task(evaluator.arun(show_tui=False, auto_save=False))
+        await asyncio.sleep(0.05)
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert FakePlatformEventStream.instances
+        events = FakePlatformEventStream.instances[-1].events
+        completed = [payload for event_type, payload, _sync in events if event_type == "run_completed"]
+        assert completed
+        assert completed[-1]["final_status"] == "STOPPED"

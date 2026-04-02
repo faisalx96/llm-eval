@@ -675,12 +675,19 @@ class Evaluator:
         if effective < 12:
             return
 
+        task_name = str(getattr(self, "_task_name", "") or "task")
+        advisory_registry = getattr(self, "_sync_threadpool_advisory_registry", None)
+        if advisory_registry is not None:
+            if task_name in advisory_registry:
+                return
+            advisory_registry.add(task_name)
+
         self._sync_threadpool_advisory_emitted = True
         run_label = "run" if parallel == 1 else "runs"
         item_label = "item" if effective == 1 else "items"
         warning_msg = (
-            "Task mode: sync-threadpool. qym is running this task in worker threads because "
-            f"it is synchronous. That is valid, but at the current effective concurrency "
+            f"Task '{task_name}' is running in sync-threadpool mode. qym is running this task "
+            "in worker threads because it is synchronous. That is valid, but at the current effective concurrency "
             f"(up to {effective} in-flight {item_label} across {parallel} parallel {run_label}) "
             "a fully async client may scale better for I/O-bound workloads and reduce thread overhead. "
             "If this task mainly makes network calls, consider switching from blocking clients such as "
@@ -1043,6 +1050,8 @@ class Evaluator:
             pending_entries.append((idx, item_id, item))
 
 
+        cancel_exc: Optional[BaseException] = None
+
         with live_context as live:
             if dashboard and live:
                 dashboard.bind(live)
@@ -1190,8 +1199,9 @@ class Evaluator:
 
             try:
                 await asyncio.gather(*worker_tasks)
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, asyncio.CancelledError) as exc:
                 interrupted = True
+                cancel_exc = exc
                 # Stop scheduling new work
                 while not work_queue.empty():
                     try:
@@ -1209,6 +1219,10 @@ class Evaluator:
                 except asyncio.TimeoutError:
                     for task in worker_tasks:
                         task.cancel()
+                except asyncio.CancelledError:
+                    for task in worker_tasks:
+                        task.cancel()
+                    await asyncio.gather(*worker_tasks, return_exceptions=True)
             finally:
                 if writer_task:
                     await write_queue.join()
@@ -1317,6 +1331,9 @@ class Evaluator:
                 executor.shutdown(wait=False)
         except Exception:
             pass
+
+        if cancel_exc is not None:
+            raise cancel_exc
 
         return result
 

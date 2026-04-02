@@ -220,6 +220,7 @@ class MultiModelRunner:
 
         # Track active evaluators so interrupt handler can send STOPPED
         _active_evaluators: list = []
+        advisory_tasks_emitted: set[str] = set()
 
         async def _run_spec_inner(spec: RunSpec):
             observer = dashboard.create_observer(spec.name)
@@ -231,6 +232,7 @@ class MultiModelRunner:
                 config=spec.config,
                 observer=observer,
             )
+            evaluator._sync_threadpool_advisory_registry = advisory_tasks_emitted
             _active_evaluators.append(evaluator)
             evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=effective_parallel)
             try:
@@ -249,6 +251,7 @@ class MultiModelRunner:
 
         final_panel = None
         interrupted = False
+        cancel_exc: Optional[BaseException] = None
         if live_enabled:
             dashboard_bound = False
             try:
@@ -264,8 +267,9 @@ class MultiModelRunner:
                     dashboard_bound = True
                     try:
                         results = await asyncio.gather(*tasks, return_exceptions=True)
-                    except KeyboardInterrupt:
+                    except (KeyboardInterrupt, asyncio.CancelledError) as exc:
                         interrupted = True
+                        cancel_exc = exc
                         for task in tasks:
                             task.cancel()
                         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -279,6 +283,9 @@ class MultiModelRunner:
 
         if live_enabled and final_panel is not None:
             self.console.print(final_panel)
+
+        if cancel_exc is not None:
+            raise cancel_exc
 
         errors: List[Tuple[RunSpec, Exception]] = []
         final_results: List[EvaluationResult] = []

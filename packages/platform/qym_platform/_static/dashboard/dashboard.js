@@ -51,6 +51,7 @@
     aggregations: null,
     chartData: null,  // Aggregated data for charts
     chartDatasetTab: {},  // {taskName: datasetName} — active dataset tab per task card
+    chartFirstColWidth: 320,
     allMetrics: [],   // All unique metric names across runs
     visibleMetrics: null, // null = all visible; Set of visible metric names
     allModels: [],    // All unique model names
@@ -77,6 +78,9 @@
     '#4ade80', '#818cf8', '#fb7185', '#a3e635',
     '#2dd4bf', '#c084fc', '#fcd34d', '#6ee7b7'
   ];
+  const CHART_FIRST_COL_DEFAULT_WIDTH = 320;
+  const CHART_FIRST_COL_MIN_WIDTH = 280;
+  const CHART_FIRST_COL_MAX_WIDTH = 720;
 
   // ⚡ Trace metrics — auto-derived from OTEL spans
   function _fmtTraceNum(v) {
@@ -182,6 +186,19 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function clampChartFirstColWidth(width) {
+    const numericWidth = Number(width);
+    if (!Number.isFinite(numericWidth)) return CHART_FIRST_COL_DEFAULT_WIDTH;
+    return Math.min(CHART_FIRST_COL_MAX_WIDTH, Math.max(CHART_FIRST_COL_MIN_WIDTH, Math.round(numericWidth)));
+  }
+
+  function applyChartFirstColWidth(width) {
+    const nextWidth = clampChartFirstColWidth(width);
+    state.chartFirstColWidth = nextWidth;
+    document.documentElement.style.setProperty('--chart-first-col-width', `${nextWidth}px`);
+    return nextWidth;
   }
 
   function formatDate(isoStr) {
@@ -1498,13 +1515,37 @@
       if (!state.chartGroupMode) state.chartGroupMode = {};
       const groupMode = state.chartGroupMode[cardId] || 'run';
 
+      function getChartSortDirection(key) {
+        return key === 'model' ? 'asc' : 'desc';
+      }
+
+      function compareChartSortValues(aVal, bVal, dir) {
+        const aMissing = aVal === undefined || aVal === null || aVal === '';
+        const bMissing = bVal === undefined || bVal === null || bVal === '';
+        if (aMissing || bMissing) {
+          if (aMissing && bMissing) return 0;
+          return aMissing ? 1 : -1;
+        }
+        if (typeof aVal === 'string' || typeof bVal === 'string') {
+          const cmp = String(aVal).localeCompare(String(bVal), undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          });
+          return dir === 'desc' ? -cmp : cmp;
+        }
+        return dir === 'desc' ? bVal - aVal : aVal - bVal;
+      }
+
       function getRunSortValue(run, key) {
+        if (key === 'model') return stripModelProvider(run.model || '');
         if (key === 'latency') return run.latency || 0;
         if (isTraceMetricKey(key)) return run.trace_stats?.[key] ?? -1;
         return run.metric_averages[key] ?? -1;
       }
 
-      function getGroupSortValue(agg, key) {
+      function getGroupSortValue(group, key) {
+        if (key === 'model') return group.sortModel || group.label || '';
+        const agg = group.agg || group;
         if (key === 'latency') return agg.avgLatency;
         if (isTraceMetricKey(key)) return agg.traceAverages?.[key] ?? -1;
         return agg.metricAverages[key] ?? -1;
@@ -1514,7 +1555,12 @@
       function sortByState(a, b) {
         const aVal = getRunSortValue(a, sortState.key);
         const bVal = getRunSortValue(b, sortState.key);
-        return sortState.dir === 'desc' ? bVal - aVal : aVal - bVal;
+        const cmp = compareChartSortValues(aVal, bVal, sortState.dir);
+        if (cmp !== 0) return cmp;
+        if (sortState.key === 'model') {
+          return compareChartSortValues(a.timestamp || '', b.timestamp || '', 'desc');
+        }
+        return 0;
       }
 
       if (allRuns.length === 0) return '';
@@ -1543,9 +1589,15 @@
       }
       const latencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
 
-      if (!displayColumns.some(column => (column === LATENCY_COLUMN_KEY ? 'latency' : column) === sortState.key)) {
+      const firstColSortKey = groupMode === 'version' ? null : 'model';
+      const availableSortKeys = [
+        ...(firstColSortKey ? [firstColSortKey] : []),
+        ...displayColumns.map(column => (column === LATENCY_COLUMN_KEY ? 'latency' : column)),
+      ];
+
+      if (!availableSortKeys.includes(sortState.key)) {
         sortState.key = displayColumns[0] === LATENCY_COLUMN_KEY ? 'latency' : displayColumns[0];
-        sortState.dir = 'desc';
+        sortState.dir = getChartSortDirection(sortState.key);
         state.chartSortState[cardId] = sortState;
       }
 
@@ -1763,9 +1815,11 @@
           return { key, label: g.label, runs: g.runs, agg };
         });
         sortedGroups.sort((a, b) => {
-          const aVal = getGroupSortValue(a.agg, sortState.key);
-          const bVal = getGroupSortValue(b.agg, sortState.key);
-          return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
+          return compareChartSortValues(
+            getGroupSortValue(a, sortState.key),
+            getGroupSortValue(b, sortState.key),
+            sortState.dir
+          );
         });
 
         for (const g of sortedGroups) {
@@ -1799,12 +1853,14 @@
         const sortedGroups = Object.entries(groups).map(([model, runs]) => {
           const agg = computeGroupAgg(runs);
           runs.sort(sortByState);
-          return { model, label: stripModelProvider(model), runs, agg };
+          return { model, label: stripModelProvider(model), sortModel: stripModelProvider(model), runs, agg };
         });
         sortedGroups.sort((a, b) => {
-          const aVal = getGroupSortValue(a.agg, sortState.key);
-          const bVal = getGroupSortValue(b.agg, sortState.key);
-          return sortState.dir === 'desc' ? (bVal ?? -1) - (aVal ?? -1) : (aVal ?? -1) - (bVal ?? -1);
+          return compareChartSortValues(
+            getGroupSortValue(a, sortState.key),
+            getGroupSortValue(b, sortState.key),
+            sortState.dir
+          );
         });
 
         for (const g of sortedGroups) {
@@ -1823,32 +1879,48 @@
       // Check if version grouping should be available (any runs have git_commit)
       const hasVersions = allRuns.some(r => r.git_commit);
 
-      // Segmented control sits in the table header's first column
       const isGrouped = groupMode !== 'run';
       const expandCollapseBtn = isGrouped
         ? `<button class="chart-expand-collapse-btn" data-card="${cardId}">${hasExpandedGroups ? 'Collapse all' : 'Expand all'}</button>`
         : '';
 
-      const firstColHtml = `
-        <span class="chart-col-header-run">
+      const controlsHtml = `
+        <div class="chart-table-toolbar">
           <span class="chart-segment-control" data-card="${cardId}">
             <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Run</button>
             <button class="chart-segment-btn ${groupMode === 'version' ? 'active' : ''}" data-mode="version" ${!hasVersions ? 'disabled title="No version data available"' : ''}>Version</button>
             <button class="chart-segment-btn ${groupMode === 'model' ? 'active' : ''}" data-mode="model">Model</button>
           </span>
           ${expandCollapseBtn}
+        </div>
+      `;
+
+      const firstColHtml = `
+        <span class="chart-col-header-run">
+          <span class="chart-first-col-header-wrap">
+            ${firstColSortKey
+              ? `<button class="chart-first-col-sort sortable-col ${sortState.key === firstColSortKey ? 'active' : ''}" type="button" data-card="${cardId}" data-sort="${firstColSortKey}" title="Sort by ${firstColLabel.toLowerCase()}">
+                  <span class="chart-col-header-label">${firstColLabel}</span>
+                  ${sortState.key === firstColSortKey ? `<span class="chart-col-sort">${sortState.dir === 'desc' ? '\u2193' : '\u2191'}</span>` : ''}
+                </button>`
+              : `<span class="chart-first-col-title">${firstColLabel}</span>`}
+            <button class="chart-col-resizer" type="button" title="Drag to resize first column. Double-click to reset width" aria-label="Resize first column"></button>
+          </span>
         </span>
       `;
 
       const metricChartsHtml = `
-        <div class="chart-table-scroll">
-          <div class="chart-table" data-card-id="${cardId}">
-            <div class="chart-table-header">
-              ${firstColHtml}
-              ${headerCells}
-            </div>
-            <div class="chart-table-body">
-              ${rowsHtml}
+        <div class="chart-table-shell">
+          ${controlsHtml}
+          <div class="chart-table-scroll">
+            <div class="chart-table" data-card-id="${cardId}">
+              <div class="chart-table-header">
+                ${firstColHtml}
+                ${headerCells}
+              </div>
+              <div class="chart-table-body">
+                ${rowsHtml}
+              </div>
             </div>
           </div>
         </div>
@@ -1895,7 +1967,7 @@
           currentSort.dir = currentSort.dir === 'desc' ? 'asc' : 'desc';
         } else {
           currentSort.key = sortKey;
-          currentSort.dir = 'desc';
+          currentSort.dir = getChartSortDirection(sortKey);
         }
         state.chartSortState[cardId] = currentSort;
         renderChartsView();
@@ -1975,6 +2047,43 @@
           state.chartDatasetTab[taskName] = dataset;
           renderChartsView();
         }
+      });
+    });
+
+    // Wire up first-column resize handles
+    gridEl.querySelectorAll('.chart-col-resizer').forEach(handle => {
+      handle.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        applyChartFirstColWidth(CHART_FIRST_COL_DEFAULT_WIDTH);
+        saveDashboardState();
+      });
+
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+
+        const startX = e.clientX;
+        const startWidth = state.chartFirstColWidth || CHART_FIRST_COL_DEFAULT_WIDTH;
+        const activeHandle = e.currentTarget;
+        activeHandle.classList.add('active');
+        document.body.classList.add('chart-col-resize-active');
+
+        const onMove = (moveEvent) => {
+          applyChartFirstColWidth(startWidth + (moveEvent.clientX - startX));
+        };
+
+        const onEnd = () => {
+          activeHandle.classList.remove('active');
+          document.body.classList.remove('chart-col-resize-active');
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onEnd);
+          window.removeEventListener('pointercancel', onEnd);
+          saveDashboardState();
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onEnd);
+        window.addEventListener('pointercancel', onEnd);
       });
     });
   }
@@ -4450,6 +4559,7 @@
       filterVersions: [...state.filterVersions],
       filterDatasets: [...state.filterDatasets],
       quickFilter: state.quickFilter,
+      chartFirstColWidth: state.chartFirstColWidth,
     };
     sessionStorage.setItem('dashboardState', JSON.stringify(stateToSave));
   }
@@ -4482,9 +4592,12 @@
           state.quickFilter = parsed.quickFilter;
           $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));
         }
+        applyChartFirstColWidth(parsed.chartFirstColWidth || CHART_FIRST_COL_DEFAULT_WIDTH);
       } catch (e) {
         console.warn('Failed to restore dashboard state:', e);
       }
+    } else {
+      applyChartFirstColWidth(CHART_FIRST_COL_DEFAULT_WIDTH);
     }
   }
 
