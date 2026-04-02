@@ -28,6 +28,10 @@ class TaskAdapter(ABC):
         """Run the task synchronously."""
         return asyncio.run(self.arun(input_data, trace, model_name=model_name))
 
+    def execution_mode(self) -> str:
+        """Return the adapter execution mode for advisory/diagnostics."""
+        return "unknown"
+
 
 class FunctionAdapter(TaskAdapter):
     """Adapter for regular Python functions with smart argument resolution."""
@@ -142,6 +146,9 @@ class FunctionAdapter(TaskAdapter):
 
         return tuple(args), kwargs
 
+    def execution_mode(self) -> str:
+        return "async" if self._is_async else "sync-threadpool"
+
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run function with proper tracing."""
         # Update trace with input
@@ -244,6 +251,9 @@ class FunctionAdapter(TaskAdapter):
 
 class LangChainAdapter(TaskAdapter):
     """Adapter for LangChain chains and agents."""
+
+    def execution_mode(self) -> str:
+        return "async" if hasattr(self.task, "ainvoke") else "sync-threadpool"
     
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run LangChain component with Langfuse callback."""
@@ -302,6 +312,9 @@ class LangChainAdapter(TaskAdapter):
 
 class OpenAIAdapter(TaskAdapter):
     """Adapter for OpenAI client calls."""
+
+    def execution_mode(self) -> str:
+        return "async" if inspect.iscoroutinefunction(self.task) else "sync-threadpool"
     
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
         """Run OpenAI API call with tracing."""

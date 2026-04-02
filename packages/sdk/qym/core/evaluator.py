@@ -41,6 +41,7 @@ from .observers import (
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric
+from ..utils.env import load_cwd_dotenv
 
 
 def _strip_model_provider(model_name: Optional[str]) -> str:
@@ -295,6 +296,9 @@ class Evaluator:
         self.task = task
         self._raw_metrics = list(metrics)
         self.metrics = self._prepare_metrics(metrics)
+
+        # Load only the caller's cwd .env before any config/env auto-detection.
+        load_cwd_dotenv()
         
         # Initialize OpenLLMetry auto-instrumentation FIRST so TracerProvider exists
         # before Langfuse (which will attach its processor to the same provider).
@@ -482,6 +486,14 @@ class Evaluator:
             "metric_names": list(self.metrics.keys()),
             "langfuse_host": getattr(self, 'langfuse_host', None),
             "langfuse_project_id": getattr(self, 'langfuse_project_id', None),
+            "trace": {
+                "destinations": {
+                    "phoenix": bool(getattr(self._otel, "phoenix_enabled", False)),
+                    "langfuse": bool(self.langfuse_enabled),
+                    "platform": False,
+                },
+                "instrumentors": list(getattr(self._otel, "registered_instrumentors", []) or []),
+            },
         }
 
         if result is not None:
@@ -496,14 +508,7 @@ class Evaluator:
     
     def _init_langfuse(self) -> Any:
         """Initialize Langfuse client with error handling."""
-        # Auto-load .env file if it exists
-        if os.path.exists('.env'):
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except ImportError:
-                logger.warning("python-dotenv not installed, skipping .env loading")
-                pass  # dotenv not installed, skip
+        load_cwd_dotenv()
         
         # Get credentials from config or environment
         public_key = self.config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
@@ -587,7 +592,7 @@ class Evaluator:
 
         This is intentionally a lightweight check that does not validate credentials.
         """
-        # Note: do not auto-load .env here; _init_langfuse already best-effort loads it.
+        load_cwd_dotenv()
         public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
         return bool(public_key and secret_key)
@@ -644,6 +649,45 @@ class Evaluator:
             except Exception as e:
                 logger.error(f"Observer callback {method} failed: {e}")
                 pass
+
+    def _maybe_emit_sync_threadpool_advisory(self, *, parallel_runs: int = 1) -> None:
+        """Emit a low-priority advisory for sync-threadpool tasks at high concurrency."""
+        if getattr(self, "_sync_threadpool_advisory_emitted", False):
+            return
+
+        try:
+            mode = str(self.task_adapter.execution_mode() or "unknown")
+        except Exception:
+            mode = "unknown"
+        if mode != "sync-threadpool":
+            return
+
+        try:
+            per_run = max(1, int(self.max_concurrency or 1))
+        except Exception:
+            per_run = 1
+        try:
+            parallel = max(1, int(parallel_runs or 1))
+        except Exception:
+            parallel = 1
+        effective = per_run * parallel
+
+        if effective < 12:
+            return
+
+        self._sync_threadpool_advisory_emitted = True
+        run_label = "run" if parallel == 1 else "runs"
+        item_label = "item" if effective == 1 else "items"
+        warning_msg = (
+            "Task mode: sync-threadpool. qym is running this task in worker threads because "
+            f"it is synchronous. That is valid, but at the current effective concurrency "
+            f"(up to {effective} in-flight {item_label} across {parallel} parallel {run_label}) "
+            "a fully async client may scale better for I/O-bound workloads and reduce thread overhead. "
+            "If this task mainly makes network calls, consider switching from blocking clients such as "
+            "OpenAI() to async equivalents such as AsyncOpenAI()."
+        )
+        logger.warning(warning_msg)
+        self._notify_observer("on_warning", message=warning_msg)
     
     def run(
         self,
@@ -893,6 +937,8 @@ class Evaluator:
                 vertical_overflow="crop",
             )
 
+        self._maybe_emit_sync_threadpool_advisory(parallel_runs=1)
+
         # Checkpoint/resume setup
         checkpoint_path = None
         checkpoint_writer = None
@@ -963,6 +1009,9 @@ class Evaluator:
             "resume_metric_totals": resume_metric_totals,
             "resume_metric_counts": resume_metric_counts,
         }
+        run_info.setdefault("trace", {})
+        run_info["trace"].setdefault("destinations", {})
+        run_info["trace"]["destinations"]["platform"] = bool(self._platform_stream)
 
         self._notify_observer(
             "on_run_start",

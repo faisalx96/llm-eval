@@ -19,15 +19,23 @@ Enrichments (applied before instrumentors patch the SDK):
 """
 import contextvars
 import functools
+import importlib
+import inspect
 import json as _json
 import logging
 import os
+import pkgutil
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from ..utils.env import load_cwd_dotenv
 
 logger = logging.getLogger(__name__)
 
 _initialized = False
+_registered_instrumentors: List[str] = []
+_phoenix_enabled: bool = False
+_phoenix_endpoint: Optional[str] = None
 
 # Track emitted tool_call_ids per trace context to avoid duplicates
 _emitted_tool_ids: contextvars.ContextVar[Set[str]] = contextvars.ContextVar(
@@ -50,6 +58,9 @@ class NullOtelManager:
 
     enabled = False
     qym_processor = None
+    registered_instrumentors: List[str] = []
+    phoenix_enabled: bool = False
+    phoenix_endpoint: Optional[str] = None
 
     def shutdown(self):
         pass
@@ -184,9 +195,20 @@ class OtelManager:
 
     enabled = True
 
-    def __init__(self, tracer, qym_processor: Optional[QymSpanProcessor] = None):
+    def __init__(
+        self,
+        tracer,
+        qym_processor: Optional[QymSpanProcessor] = None,
+        *,
+        registered_instrumentors: Optional[List[str]] = None,
+        phoenix_enabled: bool = False,
+        phoenix_endpoint: Optional[str] = None,
+    ):
         self._tracer = tracer
         self.qym_processor = qym_processor
+        self.registered_instrumentors = list(registered_instrumentors or [])
+        self.phoenix_enabled = phoenix_enabled
+        self.phoenix_endpoint = phoenix_endpoint
 
     def bind_stream(self, stream):
         if not self.qym_processor:
@@ -601,11 +623,15 @@ _PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
     ("openinference.instrumentation.groq", "GroqInstrumentor"),
 ]
 
-_EXTRA_OTEL_INSTRUMENTORS: List[Tuple[str, str]] = [
-    # Direct Chroma DB client instrumentation (separate from OpenInference).
-    ("opentelemetry.instrumentation.chromadb", "ChromaInstrumentor"),
-]
-
+# Do not auto-register official OTel instrumentors when qym already registers
+# an OpenInference equivalent for the same surface area; that creates redundant
+# spans for the same logical operation.
+_OTEL_DISCOVERY_SKIP: Set[str] = {
+    "anthropic",
+    "langchain",
+    "openai",
+    "openai_v2",
+}
 
 def _register_instrumentors(provider):
     """Register all available OpenInference instrumentors on the given TracerProvider."""
@@ -615,7 +641,22 @@ def _register_instrumentors(provider):
     _prev_level = _instrumentor_logger.level
     _instrumentor_logger.setLevel(logging.CRITICAL)
 
-    registered = []
+    registered: List[str] = []
+
+    def _record_registered(name: str) -> None:
+        if name and name not in registered:
+            registered.append(name)
+
+    def _display_name(module_path: str) -> str:
+        leaf = module_path.rsplit(".", 1)[-1].strip().lower()
+        aliases = {
+            "llama_index": "llama-index",
+            "openai_v2": "openai",
+            "openai_agents_v2": "openai-agents",
+            "google_genai": "google-genai",
+            "mistralai": "mistral",
+        }
+        return aliases.get(leaf, leaf.replace("_", "-"))
 
     def _try_register(module_path, class_name):
         try:
@@ -624,12 +665,43 @@ def _register_instrumentors(provider):
             instrumentor = instrumentor_cls()
             if not getattr(instrumentor, '_is_instrumented_by_opentelemetry', False):
                 instrumentor.instrument(tracer_provider=provider)
-                registered.append(class_name)
+                _record_registered(_display_name(module_path))
                 return True
         except ImportError:
             pass
         except Exception as e:
             logger.debug(f"Failed to register {class_name}: {e}")
+        return False
+
+    def _try_register_first_instrumentor(module_path):
+        try:
+            mod = importlib.import_module(module_path)
+        except ImportError:
+            return False
+        except Exception as e:
+            logger.debug(f"Failed to import {module_path}: {e}")
+            return False
+
+        classes = []
+        for _, obj in inspect.getmembers(mod, inspect.isclass):
+            if obj.__module__ != mod.__name__:
+                continue
+            if not obj.__name__.endswith("Instrumentor"):
+                continue
+            if obj.__name__ == "BaseInstrumentor":
+                continue
+            if not hasattr(obj, "instrument"):
+                continue
+            classes.append(obj)
+        for instrumentor_cls in classes:
+            try:
+                instrumentor = instrumentor_cls()
+                if not getattr(instrumentor, "_is_instrumented_by_opentelemetry", False):
+                    instrumentor.instrument(tracer_provider=provider)
+                    _record_registered(_display_name(module_path))
+                    return True
+            except Exception as e:
+                logger.debug(f"Failed to register {instrumentor_cls.__name__}: {e}")
         return False
 
     # Provider instrumentors MUST register first so framework instrumentors
@@ -642,8 +714,18 @@ def _register_instrumentors(provider):
     for module_path, class_name in _FRAMEWORK_INSTRUMENTORS:
         _try_register(module_path, class_name)
 
-    for module_path, class_name in _EXTRA_OTEL_INSTRUMENTORS:
-        _try_register(module_path, class_name)
+    # Register any installed official OTel instrumentors as a catch-all for
+    # libraries qym doesn't explicitly know about yet (e.g. chromadb).
+    try:
+        instr_pkg = importlib.import_module("opentelemetry.instrumentation")
+        for mod_info in pkgutil.iter_modules(instr_pkg.__path__):
+            name = mod_info.name
+            if name.startswith("_") or name in _OTEL_DISCOVERY_SKIP:
+                continue
+            module_path = f"opentelemetry.instrumentation.{name}"
+            _try_register_first_instrumentor(module_path)
+    except Exception as e:
+        logger.debug(f"OTel instrumentor discovery failed: {e}")
 
     _instrumentor_logger.setLevel(_prev_level)
 
@@ -665,7 +747,7 @@ def create_otel_manager(config) -> Any:
     Langfuse adds its own LangfuseSpanProcessor to the same provider
     later (in _init_langfuse), so all spans reach both destinations.
     """
-    global _initialized
+    global _initialized, _registered_instrumentors, _phoenix_enabled, _phoenix_endpoint
 
     if not getattr(config, "otel_enabled", True):
         return NullOtelManager()
@@ -692,6 +774,7 @@ def create_otel_manager(config) -> Any:
             # Register instrumentors — framework instrumentors first so we
             # know whether to skip provider-level enrichments.
             registered = _register_instrumentors(provider)
+            _registered_instrumentors = list(registered)
             if not registered:
                 logger.debug("No OpenInference instrumentors found — auto-instrumentation inactive")
 
@@ -706,12 +789,7 @@ def create_otel_manager(config) -> Any:
             # Optional: Phoenix OTLP export for dual tracing.
             # Auto-enable if an endpoint is configured, matching the
             # "auto-detect when creds/config exist" pattern used for Langfuse.
-            if os.path.exists(".env"):
-                try:
-                    from dotenv import load_dotenv
-                    load_dotenv()
-                except ImportError:
-                    pass
+            load_cwd_dotenv()
 
             phoenix_endpoint = (
                 getattr(config, "phoenix_endpoint", None)
@@ -723,6 +801,8 @@ def create_otel_manager(config) -> Any:
                 or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"
                 or bool(phoenix_endpoint)
             )
+            _phoenix_enabled = bool(phoenix_enabled and phoenix_endpoint)
+            _phoenix_endpoint = phoenix_endpoint
             if phoenix_enabled and phoenix_endpoint:
                 try:
                     from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -747,4 +827,10 @@ def create_otel_manager(config) -> Any:
         provider.add_span_processor(qym_processor)
 
     tracer = trace.get_tracer("qym")
-    return OtelManager(tracer, qym_processor)
+    return OtelManager(
+        tracer,
+        qym_processor,
+        registered_instrumentors=_registered_instrumentors,
+        phoenix_enabled=_phoenix_enabled,
+        phoenix_endpoint=_phoenix_endpoint,
+    )

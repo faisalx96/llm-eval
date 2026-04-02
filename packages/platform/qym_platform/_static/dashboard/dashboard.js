@@ -92,7 +92,6 @@
   ];
   const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'avgLatency', 'correctDistribution'];
   const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'avgLatency'];
-
   function _traceMetricsForRuns(runs = null) {
     const sourceRuns = Array.isArray(runs)
       ? runs
@@ -2204,15 +2203,32 @@
         const isCollapsed = state._collapsedGroups[groupKey] === true; // default expanded
         const arrow = isCollapsed ? '▶' : '▼';
         const memberFilePaths = members.map(m => m.run.file_path);
+        const selectedGroupRunCount = memberFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
+        const allGroupRunsSelected = selectedGroupRunCount === memberFilePaths.length;
+        const someGroupRunsSelected = selectedGroupRunCount > 0 && !allGroupRunsSelected;
 
-        groupHeaderHtml = `<tr class="run-group-header" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
+        groupHeaderHtml = `<tr class="run-group-header${isCollapsed ? ' collapsed' : ''}" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
           <td colspan="${colCount}" style="padding:6px 0;background:var(--bg-elevated);cursor:pointer;user-select:none;">
             <div class="group-header-content">
-              <span class="group-toggle-arrow" style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;margin-right:4px;">${arrow}</span>
-              <span style="font-size:var(--font-xs);color:var(--accent-primary);font-weight:600;">${escapeHtml(baseLabel)}</span>
-              <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:4px;">${tsLabel}</span>
-              <span style="font-size:var(--font-xs);color:var(--text-muted);margin-left:8px;">${groupSize} runs</span>
-              <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();" style="margin-left:12px;">Compare</button>
+              <div class="group-header-main">
+                <span class="group-toggle-arrow">${arrow}</span>
+                <label class="custom-checkbox group-select-checkbox" onclick="event.stopPropagation();" title="Select all runs in this group">
+                  <input
+                    type="checkbox"
+                    class="group-select-input"
+                    data-group-files='${JSON.stringify(memberFilePaths)}'
+                    ${allGroupRunsSelected ? 'checked' : ''}
+                    ${someGroupRunsSelected ? 'data-indeterminate="true"' : ''}
+                  />
+                  <span class="checkmark"></span>
+                </label>
+                <span class="group-header-title" title="${escapeHtml(baseLabel)}">${escapeHtml(baseLabel)}</span>
+                ${tsLabel ? `<span class="group-header-timestamp">${tsLabel}</span>` : ''}
+                <span class="group-header-count">${groupSize} runs</span>
+              </div>
+              <div class="group-header-actions">
+                <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();">Compare</button>
+              </div>
             </div>
           </td>
         </tr>`;
@@ -2476,6 +2492,7 @@
         const wasCollapsed = state._collapsedGroups[groupKey] === true;
         state._collapsedGroups[groupKey] = !wasCollapsed;
         const nowExpanded = !state._collapsedGroups[groupKey];
+        header.classList.toggle('collapsed', !nowExpanded);
         const arrow = header.querySelector('.group-toggle-arrow');
         if (arrow) arrow.textContent = nowExpanded ? '▼' : '▶';
         tbody.querySelectorAll(`tr[data-member-of="${groupKey}"]`).forEach(row => {
@@ -2495,6 +2512,19 @@
             const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
             window.location.href = './compare?' + params;
           }
+        } catch {}
+      });
+    });
+
+    tbody.querySelectorAll('.group-select-input').forEach(input => {
+      if (input.dataset.indeterminate === 'true') input.indeterminate = true;
+      input.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+      input.addEventListener('change', (e) => {
+        e.stopPropagation();
+        try {
+          toggleGroupSelection(JSON.parse(input.dataset.groupFiles));
         } catch {}
       });
     });
@@ -3542,6 +3572,17 @@
 
   function clearSelection() {
     state.selectedRuns.clear();
+    render();
+  }
+
+  function toggleGroupSelection(filePaths) {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+    const allSelected = filePaths.every(filePath => state.selectedRuns.has(filePath));
+    if (allSelected) {
+      filePaths.forEach(filePath => state.selectedRuns.delete(filePath));
+    } else {
+      filePaths.forEach(filePath => state.selectedRuns.add(filePath));
+    }
     render();
   }
 

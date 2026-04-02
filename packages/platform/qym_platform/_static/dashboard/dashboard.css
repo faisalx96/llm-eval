@@ -2089,7 +2089,54 @@ main {
 .runs-table tbody tr.run-group-header td .group-header-content {
   position: sticky;
   left: 12px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: calc(100vw - 48px);
+}
+.runs-table tbody tr.run-group-header td .group-header-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.runs-table tbody tr.run-group-header td .group-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.runs-table tbody tr.run-group-header td .group-toggle-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: var(--accent-primary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.runs-table tbody tr.run-group-header td .group-select-checkbox {
+  flex: 0 0 auto;
+}
+.runs-table tbody tr.run-group-header.collapsed td .group-select-checkbox {
+  display: none;
+}
+.runs-table tbody tr.run-group-header td .group-header-title {
+  font-size: var(--font-xs);
+  color: var(--accent-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(52vw, 420px);
+}
+.runs-table tbody tr.run-group-header td .group-header-timestamp,
+.runs-table tbody tr.run-group-header td .group-header-count {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 /* Column-specific styles */
@@ -2153,6 +2200,21 @@ main {
 
 .custom-checkbox input[type="checkbox"]:checked + .checkmark::after {
   display: block;
+}
+
+.custom-checkbox input[type="checkbox"]:indeterminate + .checkmark {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.custom-checkbox input[type="checkbox"]:indeterminate + .checkmark::after {
+  display: block;
+  width: 8px;
+  height: 2px;
+  border: 0;
+  background: var(--bg-base);
+  transform: none;
+  border-radius: 999px;
 }
 
 .custom-checkbox input[type="checkbox"]:focus + .checkmark {

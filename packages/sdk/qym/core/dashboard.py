@@ -336,8 +336,63 @@ class RunDashboard:
         grid.add_column(justify="left")
         grid.add_column(justify="right")
         grid.add_row(title, stats)
+        trace_line = self._render_trace_header()
+        content: RenderableType = grid if trace_line is None else Group(grid, Text(""), trace_line)
+        return Panel(content, style="white", box=box.ROUNDED, padding=(0, 1))
 
-        return Panel(grid, style="white", box=box.ROUNDED, padding=(0, 1))
+    def _render_trace_header(self) -> Optional[RenderableType]:
+        if not self.states:
+            return None
+
+        destination_values: Dict[str, List[bool]] = {
+            "phoenix": [],
+            "langfuse": [],
+            "platform": [],
+        }
+        instrumentors: List[str] = []
+        for state in self.states.values():
+            trace_info = (state.run_info or {}).get("trace") or {}
+            destinations = trace_info.get("destinations") or {}
+            for key in destination_values:
+                if key in destinations:
+                    destination_values[key].append(bool(destinations.get(key)))
+            for name in (trace_info.get("instrumentors") or []):
+                text = str(name).strip()
+                if text and text not in instrumentors:
+                    instrumentors.append(text)
+
+        destinations = Text()
+        destinations.append("Trace: ", style="bold white")
+        self._append_destination_status(destinations, "Phoenix", destination_values["phoenix"])
+        destinations.append("  •  ", style="dim")
+        self._append_destination_status(destinations, "Langfuse", destination_values["langfuse"])
+        destinations.append("  •  ", style="dim")
+        self._append_destination_status(destinations, "Platform", destination_values["platform"])
+
+        instr = Text()
+        instr.append("Instr: ", style="bold white")
+        instr.append(", ".join(instrumentors[:4]) if instrumentors else "none", style="cyan" if instrumentors else "dim")
+        if len(instrumentors) > 4:
+            instr.append(f" +{len(instrumentors) - 4}", style="dim")
+
+        grid = Table.grid(expand=True)
+        grid.add_column(justify="left", ratio=3)
+        grid.add_column(justify="right", ratio=2)
+        grid.add_row(destinations, instr)
+        return grid
+
+    def _append_destination_status(self, text: Text, label: str, values: Sequence[bool]) -> None:
+        text.append(f"{label} ", style="white")
+        if not values:
+            text.append("off", style="dim")
+            return
+        if all(values):
+            text.append("on", style="green")
+            return
+        if any(values):
+            text.append("mixed", style="yellow")
+            return
+        text.append("off", style="red")
 
     def _render_main(self) -> RenderableType:
         table = Table(

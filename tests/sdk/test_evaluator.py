@@ -85,3 +85,85 @@ class TestEvaluator:
         res = await evaluator._evaluate_item(0, item, tracker)
         assert res["success"] is True
         assert res["output"] == "ok"
+
+
+    def test_sync_threadpool_advisory_emitted_for_high_effective_concurrency(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        evaluator._notify_observer = MagicMock()
+        evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        evaluator._notify_observer.assert_called_once()
+        method = evaluator._notify_observer.call_args.args[0]
+        message = evaluator._notify_observer.call_args.kwargs["message"]
+        assert method == "on_warning"
+        assert "sync-threadpool" in message
+        assert "20" in message
+        assert "AsyncOpenAI" in message
+
+    def test_sync_threadpool_advisory_not_emitted_below_threshold(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory-low", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        evaluator._notify_observer = MagicMock()
+        evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=2)
+
+        evaluator._notify_observer.assert_not_called()
+
+    def test_sync_threadpool_advisory_not_emitted_for_async_mode(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "async"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "async-mode", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        evaluator._notify_observer = MagicMock()
+        evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        evaluator._notify_observer.assert_not_called()

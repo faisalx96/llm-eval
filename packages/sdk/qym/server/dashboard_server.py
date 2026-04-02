@@ -11,11 +11,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+from ..utils.env import load_cwd_dotenv
+
+load_cwd_dotenv()
 
 try:
     from importlib.resources import files as pkg_files

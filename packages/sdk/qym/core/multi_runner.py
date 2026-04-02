@@ -232,6 +232,7 @@ class MultiModelRunner:
                 observer=observer,
             )
             _active_evaluators.append(evaluator)
+            evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=effective_parallel)
             try:
                 result = await evaluator.arun(
                     show_tui=False,

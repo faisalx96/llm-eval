@@ -259,6 +259,125 @@ function calculateItemLevelMetrics(options) {
 }
 
 /**
+ * Calculate strict grouped item outcomes for two K-run model groups.
+ *
+ * Only items present with a non-null score in all selected runs are eligible.
+ * Errors are treated as score 0 via getRowScore(), so they count as failures.
+ *
+ * @param {Object} options
+ * @param {Array} options.runsData
+ * @param {Array<string>} options.leftRunIds
+ * @param {Array<string>} options.rightRunIds
+ * @param {number} options.threshold
+ * @param {Function} options.getMetricIndex
+ * @param {Function} options.getItemId
+ * @param {Function} options.getRunId
+ * @returns {Object}
+ */
+function calculateGroupedOutcomeBuckets(options) {
+  const {
+    runsData,
+    leftRunIds,
+    rightRunIds,
+    threshold,
+    getMetricIndex,
+    getItemId,
+    getRunId,
+  } = options || {};
+
+  const bucketKeys = ['a_sweeps_b', 'b_sweeps_a', 'both_pass', 'both_fail'];
+  const result = {
+    eligibleItems: 0,
+    leftRunCount: Array.isArray(leftRunIds) ? leftRunIds.length : 0,
+    rightRunCount: Array.isArray(rightRunIds) ? rightRunIds.length : 0,
+    buckets: bucketKeys.reduce((acc, key) => {
+      acc[key] = { count: 0, percentage: 0, itemIds: [] };
+      return acc;
+    }, {}),
+  };
+
+  if (!Array.isArray(runsData) || !runsData.length) return result;
+  if (!Array.isArray(leftRunIds) || !leftRunIds.length) return result;
+  if (!Array.isArray(rightRunIds) || !rightRunIds.length) return result;
+  if (typeof getMetricIndex !== 'function' || typeof getItemId !== 'function' || typeof getRunId !== 'function') {
+    return result;
+  }
+
+  const runMap = new Map();
+  runsData.forEach((runData) => {
+    const runId = getRunId(runData);
+    if (runId !== undefined && runId !== null && !runMap.has(runId)) {
+      runMap.set(runId, runData);
+    }
+  });
+
+  const leftRuns = leftRunIds.map(runId => runMap.get(runId)).filter(Boolean);
+  const rightRuns = rightRunIds.map(runId => runMap.get(runId)).filter(Boolean);
+  if (leftRuns.length !== leftRunIds.length || rightRuns.length !== rightRunIds.length) {
+    return result;
+  }
+
+  const selectedRuns = [...leftRuns, ...rightRuns];
+  const itemIds = new Set();
+  selectedRuns.forEach((runData) => {
+    const rows = runData?.snapshot?.rows || [];
+    rows.forEach((row) => {
+      const itemId = getItemId(row);
+      if (itemId !== undefined && itemId !== null && itemId !== '') itemIds.add(itemId);
+    });
+  });
+
+  function collectPasses(groupRuns) {
+    const values = [];
+    for (const runData of groupRuns) {
+      const rows = runData?.snapshot?.rows || [];
+      const row = rows.find(candidate => getItemId(candidate) === currentItemId);
+      if (!row) return null;
+      const metricIdx = getMetricIndex(runData);
+      if (metricIdx < 0) return null;
+      const { score } = getRowScore(row, metricIdx);
+      if (score === null) return null;
+      values.push(score >= threshold);
+    }
+    return values;
+  }
+
+  let currentItemId = null;
+  itemIds.forEach((itemId) => {
+    currentItemId = itemId;
+    const leftPasses = collectPasses(leftRuns);
+    if (!leftPasses || leftPasses.length !== leftRuns.length) return;
+    const rightPasses = collectPasses(rightRuns);
+    if (!rightPasses || rightPasses.length !== rightRuns.length) return;
+
+    result.eligibleItems += 1;
+
+    const leftAllPass = leftPasses.every(Boolean);
+    const leftAllFail = leftPasses.every(value => !value);
+    const rightAllPass = rightPasses.every(Boolean);
+    const rightAllFail = rightPasses.every(value => !value);
+
+    let bucketKey = null;
+    if (leftAllPass && rightAllFail) bucketKey = 'a_sweeps_b';
+    else if (leftAllFail && rightAllPass) bucketKey = 'b_sweeps_a';
+    else if (leftAllPass && rightAllPass) bucketKey = 'both_pass';
+    else if (leftAllFail && rightAllFail) bucketKey = 'both_fail';
+
+    if (!bucketKey) return;
+    result.buckets[bucketKey].count += 1;
+    result.buckets[bucketKey].itemIds.push(itemId);
+  });
+
+  bucketKeys.forEach((key) => {
+    result.buckets[key].percentage = result.eligibleItems > 0
+      ? result.buckets[key].count / result.eligibleItems
+      : 0;
+  });
+
+  return result;
+}
+
+/**
  * Format a decimal as a percentage string
  * @param {number} value - Value between 0 and 1
  * @param {number} [decimals=1] - Number of decimal places
@@ -458,6 +577,7 @@ if (typeof window !== 'undefined') {
     parseScoreValue,
     // Metrics calculation
     calculateItemLevelMetrics,
+    calculateGroupedOutcomeBuckets,
     // Type detection
     detectMetricType,
     detectMetricTypeFromAvg,
