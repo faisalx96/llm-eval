@@ -16,6 +16,7 @@ from .run import run_app
 from .metric import metric_app
 from .analyze import analyze_app
 from .config_cmd import config_app
+from ..utils.env import get_platform_url_env
 
 app = typer.Typer(
     name="qym",
@@ -49,9 +50,7 @@ def dashboard(
     no_open: bool = typer.Option(False, "--no-open", help="Do not open browser"),
 ) -> None:
     """Open the qym platform dashboard in your browser."""
-    from ..platform.defaults import DEFAULT_PLATFORM_URL
-
-    url = platform_url or os.getenv("QYM_PLATFORM_URL") or DEFAULT_PLATFORM_URL
+    url = platform_url or get_platform_url_env()
     url = url.rstrip("/")
 
     if is_json_mode():
@@ -77,7 +76,6 @@ def submit(
 ) -> None:
     """Upload a saved results file to the platform."""
     from urllib import request as urlrequest
-    from ..platform.defaults import DEFAULT_PLATFORM_URL
     from ._legacy import _encode_multipart_formdata
 
     key = api_key or os.getenv("QYM_API_KEY")
@@ -98,7 +96,7 @@ def submit(
         files={"file": (file_path.name, raw, ctype)},
     )
 
-    platform_url = os.getenv("QYM_PLATFORM_URL") or DEFAULT_PLATFORM_URL
+    platform_url = get_platform_url_env()
     platform_url = platform_url.rstrip("/")
     url = platform_url + "/v1/runs:upload"
 

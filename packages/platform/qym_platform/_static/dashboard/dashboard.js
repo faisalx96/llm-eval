@@ -4174,6 +4174,9 @@
 
       try {
         state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
+        if (state.currentUser && window.QymAuth) {
+          window.QymAuth.maybePromptBootstrapAdmin(state.currentUser);
+        }
       } catch {
         state.currentUser = null;
       }
@@ -4234,22 +4237,12 @@
     const headerMeta = document.querySelector('.stats-bar .header-meta');
     if (headerMeta) headerMeta.style.display = 'none';
 
-    // Replace main content with login page
     const main = document.querySelector('main');
-    main.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 60px);">
-        <div style="text-align: center; max-width: 360px; padding: 40px;">
-          <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
-          <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
-          <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the evaluation dashboard</p>
-
-          <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-            Sign in with SSO
-          </button>
-        </div>
-      </div>
-    `;
+    if (window.QymAuth) {
+      window.QymAuth.renderAuthGate(main, {
+        message: 'Sign in to access the evaluation dashboard',
+      });
+    }
   }
 
   function updateProfileLink() {

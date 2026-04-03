@@ -24,6 +24,16 @@ def _run_owner(db: Session, run: Run) -> User | None:
     return db.query(User).filter(User.id == run.owner_user_id).first()
 
 
+def _same_team(db: Session, principal: Principal, run: Run) -> bool:
+    """Check if the principal and run owner are on the same team."""
+    if not principal.user.team_unit_id:
+        return False
+    owner = _run_owner(db, run)
+    if not owner or not owner.team_unit_id:
+        return False
+    return owner.team_unit_id == principal.user.team_unit_id
+
+
 def can_view_run(db: Session, principal: Principal, run: Run) -> bool:
     if principal.auth_type == "none":
         return True
@@ -31,6 +41,10 @@ def can_view_run(db: Session, principal: Principal, run: Run) -> bool:
         return True
     if run.owner_user_id == principal.user.id:
         return True
+
+    # Team members can view each other's runs
+    if principal.user.role == UserRole.EMPLOYEE:
+        return _same_team(db, principal, run)
 
     if principal.user.role == UserRole.MANAGER:
         owner = _run_owner(db, run)
@@ -68,13 +82,18 @@ def can_review_run(db: Session, principal: Principal, run: Run) -> bool:
         return True
     if principal.user.role == UserRole.ADMIN:
         return True
-    if principal.user.role != UserRole.MANAGER:
-        return False
 
-    owner = _run_owner(db, run)
-    if not owner or not owner.team_unit_id:
-        return False
-    return owner.team_unit_id in manager_team_ids(db, principal.user.id)
+    # Team members can review their own and each other's runs
+    if principal.user.role == UserRole.EMPLOYEE:
+        return run.owner_user_id == principal.user.id or _same_team(db, principal, run)
+
+    if principal.user.role == UserRole.MANAGER:
+        owner = _run_owner(db, run)
+        if not owner or not owner.team_unit_id:
+            return False
+        return owner.team_unit_id in manager_team_ids(db, principal.user.id)
+
+    return False
 
 
 def apply_reviewable_run_filter(query: Query, db: Session, principal: Principal) -> Query:

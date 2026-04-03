@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import os
+from ..utils.env import get_platform_url_env
 
 #
 # Platform URL policy:
 # - End users should not have to pass the platform URL every time.
-# - For internal deployments, set QYM_PLATFORM_URL globally (e.g. via managed env/profile).
-# - For local dev, we fall back to localhost.
+# - Prefer QYM_PLATFORM_URL for SDK usage.
+# - Accept QYM_BASE_URL as a compatibility alias.
+# - For local dev, fall back to localhost.
 #
 
-DEFAULT_PLATFORM_URL = os.getenv("QYM_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+DEFAULT_PLATFORM_URL = get_platform_url_env("http://localhost:8000")

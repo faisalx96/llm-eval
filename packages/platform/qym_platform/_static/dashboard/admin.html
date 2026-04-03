@@ -6,6 +6,7 @@
   <title>قيِّم • Admin</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
+  <script src="./static/auth.js"></script>
   <style>
     /* Admin-specific styles */
     .admin-container {
@@ -143,9 +144,15 @@
     .role-badge.role-EMPLOYEE { background: var(--bg-elevated); color: var(--text-muted); }
 
     /* Action buttons in table */
+    .table-actions-cell {
+      white-space: nowrap;
+      width: 1%;
+    }
+
     .table-actions {
       display: flex;
       gap: var(--space-xs);
+      align-items: center;
     }
 
     .table-btn {

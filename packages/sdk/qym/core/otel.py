@@ -785,7 +785,7 @@ def create_otel_manager(config) -> Any:
             )
             phoenix_enabled = (
                 getattr(config, "phoenix_enabled", False)
-                or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"
+                or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"  # legacy compatibility
                 or bool(phoenix_endpoint)
             )
             _phoenix_enabled = bool(phoenix_enabled and phoenix_endpoint)

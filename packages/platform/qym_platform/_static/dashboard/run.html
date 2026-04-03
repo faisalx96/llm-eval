@@ -6,6 +6,7 @@
   <title>قيِّم • Run Detail</title>
   <link rel="icon" type="image/png" href="../static/qym_icon.png">
   <link rel="stylesheet" href="../static/dashboard.css">
+  <script src="../static/auth.js"></script>
   <script src="../static/metrics.js"></script>
   <script src="../static/trace_viewer.js"></script>
   <script src="../static/playground.js"></script>
@@ -3492,10 +3493,12 @@
         }
         try {
           const res = await fetch(apiUrl('v1/me'));
+          if (window.QymAuth && window.QymAuth.handle401(res)) return;
           if (!res.ok) throw new Error('Failed to load current user');
           const me = await res.json();
           populateHeaderUser(me);
           setupHeaderUserDropdown();
+          if (window.QymAuth) await window.QymAuth.maybePromptBootstrapAdmin(me);
         } catch {
           hideHeaderUserDropdown();
         }

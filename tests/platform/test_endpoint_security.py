@@ -160,6 +160,17 @@ def _seed_api_key(session: Session, *, token: str, scopes: list[str]) -> None:
     session.commit()
 
 
+def test_proxy_headers_auto_provisions_new_user(client, session_factory):
+    response = client.get("/api/runs", headers=_headers("new.user@example.com"))
+    assert response.status_code == 200
+
+    with session_factory() as session:
+        user = session.query(User).filter(User.email == "new.user@example.com").first()
+        assert user is not None
+        assert user.role == UserRole.EMPLOYEE
+        assert user.display_name == "New User"
+
+
 def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     with session_factory() as session:
         _seed_platform_data(session)

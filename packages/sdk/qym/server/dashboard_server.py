@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..utils.env import load_cwd_dotenv
+from ..utils.env import get_langfuse_host_env, load_cwd_dotenv
 
 load_cwd_dotenv()
 
@@ -221,7 +221,7 @@ class DashboardServer:
                     index = server.discovery.scan()
                     data = index.to_dict()
                     # Rebuild Langfuse URLs dynamically if we have the IDs
-                    langfuse_host = os.environ.get("LANGFUSE_HOST", "").rstrip("/")
+                    langfuse_host = get_langfuse_host_env()
                     langfuse_project_id = get_langfuse_project_id()
                     if langfuse_host and langfuse_project_id:
                         for run in data.get("runs", []):
@@ -294,7 +294,7 @@ class DashboardServer:
                         if str(data.get("run", {}).get("compare_alignment_status") or "") != "aligned"
                     ]
                     # Include Langfuse config for trace URLs
-                    langfuse_host = os.environ.get("LANGFUSE_HOST", "")
+                    langfuse_host = get_langfuse_host_env()
                     langfuse_project_id = get_langfuse_project_id()
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(

@@ -6,6 +6,7 @@
   <title>قيِّم • Profile</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
+  <script src="./static/auth.js"></script>
   <style>
     .profile-container {
       padding: var(--space-lg) var(--space-xl);
@@ -505,6 +506,19 @@
       </div>
     </div>
 
+    <!-- Admin Bootstrap Banner (hidden by default) -->
+    <div class="section" id="bootstrap-banner" style="display:none;">
+      <div style="padding:16px 20px;border-radius:8px;border:1px solid rgba(0,212,170,0.2);background:rgba(0,212,170,0.06);">
+        <div style="font-size:var(--font-sm);font-weight:600;color:var(--text-primary);margin-bottom:6px;">Grant Admin Access</div>
+        <div style="font-size:var(--font-xs);color:var(--text-muted);margin-bottom:12px;">Enter the bootstrap token to grant your account admin access.</div>
+        <div style="display:flex;gap:8px;">
+          <input type="password" id="bootstrap-token-input" placeholder="Bootstrap token" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-primary);font-size:var(--font-sm);font-family:var(--font-mono);outline:none;" />
+          <button id="bootstrap-submit-btn" style="padding:8px 16px;border-radius:6px;border:none;background:var(--accent-primary);color:var(--bg-void);font-size:var(--font-sm);font-weight:600;cursor:pointer;">Promote</button>
+        </div>
+        <div id="bootstrap-error" style="display:none;margin-top:8px;font-size:var(--font-xs);color:var(--error);"></div>
+      </div>
+    </div>
+
     <!-- API Keys Section -->
     <div class="section">
       <div class="section-title">API Keys</div>
@@ -656,6 +670,7 @@
 
       async function loadMe() {
         const res = await fetch(apiUrl('v1/me'));
+        if (window.QymAuth && window.QymAuth.handle401(res)) return;
         if (!res.ok) throw new Error('Failed to load /v1/me');
         const me = await res.json();
 
@@ -668,6 +683,33 @@
         // Populate header user dropdown
         populateHeaderUser(me);
         setupHeaderUserDropdown();
+        // Allow any non-admin OIDC user to self-promote with the bootstrap token.
+        if (me.can_bootstrap_admin && me.role !== 'ADMIN') {
+          var banner = el('bootstrap-banner');
+          if (banner) {
+            banner.style.display = '';
+            el('bootstrap-submit-btn').addEventListener('click', async function() {
+              var token = el('bootstrap-token-input').value.trim();
+              var errEl = el('bootstrap-error');
+              if (!token) { errEl.textContent = 'Token is required'; errEl.style.display = ''; return; }
+              errEl.style.display = 'none';
+              try {
+                var r = await fetch('/v1/auth/bootstrap-admin', {
+                  method: 'POST', credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ bootstrap_token: token }),
+                });
+                if (r.ok) { window.location.reload(); return; }
+                var body = await r.json().catch(function() { return {}; });
+                errEl.textContent = body.detail || 'Bootstrap failed';
+                errEl.style.display = '';
+              } catch(e) {
+                errEl.textContent = 'Bootstrap failed';
+                errEl.style.display = '';
+              }
+            });
+          }
+        }
       }
 
       function getInitials(name) {
@@ -1045,20 +1087,11 @@
       });
 
       function showAuthError() {
-        document.querySelector('.profile-container').innerHTML = `
-          <div style="display: flex; align-items: center; justify-content: center; height: calc(100vh - 100px);">
-            <div style="text-align: center; max-width: 360px; padding: 40px;">
-              <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
-              <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
-              <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access your profile</p>
-
-              <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-                Sign in with SSO
-              </button>
-            </div>
-          </div>
-        `;
+        if (window.QymAuth) {
+          window.QymAuth.renderAuthGate('.profile-container', {
+            message: 'Sign in to access your profile',
+          });
+        }
       }
     })();
   </script>

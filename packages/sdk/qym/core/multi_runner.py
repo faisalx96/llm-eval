@@ -145,7 +145,8 @@ class MultiModelRunner:
             first_config = self.specs[0].config
             public_key = first_config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
             secret_key = first_config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
-            host = first_config.langfuse_host or os.getenv('LANGFUSE_HOST') or 'https://cloud.langfuse.com'
+            from ..utils.env import get_langfuse_host_env
+            host = first_config.langfuse_host or get_langfuse_host_env('https://cloud.langfuse.com')
             
             # Use the timeout from the first config as a reasonable default
             timeout = first_config.timeout

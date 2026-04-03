@@ -7,12 +7,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.auth_oidc import auth_mode_is_oidc, get_session_user_and_provider, sanitize_next
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     Approval,
@@ -37,6 +38,7 @@ from qym_platform.deps import get_db
 from qym_platform.item_identity import build_compare_identity, finalize_compare_alignment
 from qym_platform.permissions import can_modify_run, can_view_run, manager_team_ids
 from qym_platform.services.root_cause_changes import apply_root_cause_change
+from qym_platform.settings import PlatformSettings
 
 
 router = APIRouter()
@@ -107,6 +109,16 @@ def _platform_static_admin_index() -> Path:
 
 def _platform_static_dashboard_run() -> Path:
     return _platform_static_dir() / "dashboard" / "run.html"
+
+
+def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[RedirectResponse]:
+    settings = PlatformSettings()
+    if not auth_mode_is_oidc(settings):
+        return None
+    if get_session_user_and_provider(db, request):
+        return None
+    next_value = sanitize_next(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
+    return RedirectResponse(url=f"/login?next={next_value}", status_code=303)
 
 
 def _get_setting(db: Session, key: str, default: str = "") -> str:
@@ -313,64 +325,76 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     }
 
 
-@router.get("/")
-def dashboard_index() -> FileResponse:
+@router.get("/", response_model=None)
+def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_dashboard_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Dashboard UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
-@router.get("/profile")
-def profile_index() -> FileResponse:
+@router.get("/profile", response_model=None)
+def profile_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_profile_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Profile UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
-@router.get("/admin")
-def admin_index() -> FileResponse:
+@router.get("/admin", response_model=None)
+def admin_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_admin_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Admin UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
-@router.get("/compare")
-def compare_index() -> FileResponse:
+@router.get("/compare", response_model=None)
+def compare_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_dashboard_compare()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Compare UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
-@router.get("/trash")
-def trash_index() -> FileResponse:
+@router.get("/trash", response_model=None)
+def trash_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_dir() / "dashboard" / "trash.html"
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Trash UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
-@router.get("/reviews")
-def reviews_index() -> FileResponse:
+@router.get("/reviews", response_model=None)
+def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_dir() / "dashboard" / "reviews.html"
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Reviews UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
-
-@router.get("/admin")
-def admin_index() -> FileResponse:
-    idx = _platform_static_admin_index()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Admin UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
-
-
-@router.get("/run/{run_id:path}")
-def run_ui(run_id: str) -> FileResponse:
+@router.get("/run/{run_id:path}", response_model=None)
+def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
     idx = _platform_static_dashboard_run()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Run UI not found")
@@ -401,7 +425,12 @@ def legacy_list_runs(
     elif principal.user.role == UserRole.ADMIN:
         pass  # Admin sees all runs
     elif principal.user.role == UserRole.EMPLOYEE:
-        q = q.filter(Run.owner_user_id == principal.user.id)
+        if principal.user.team_unit_id:
+            teammates = db.query(User.id).filter(User.team_unit_id == principal.user.team_unit_id).all()
+            team_user_ids = {u.id for u in teammates}
+            q = q.filter(Run.owner_user_id.in_(team_user_ids))
+        else:
+            q = q.filter(Run.owner_user_id == principal.user.id)
     elif principal.user.role == UserRole.MANAGER:
         managed_team_ids = manager_team_ids(db, principal.user.id)
         if managed_team_ids:
@@ -618,7 +647,7 @@ def legacy_compare(
             runs_data.append(data)
 
     # Top-level Langfuse config from env vars
-    lf_host = os.getenv("LANGFUSE_HOST", "")
+    lf_host = os.getenv("LANGFUSE_HOST") or os.getenv("LANGFUSE_BASE_URL", "")
     lf_project_id = os.getenv("LANGFUSE_PROJECT_ID", "")
     # Fallback: extract from the first run's langfuse_url if env vars are incomplete
     if (not lf_host or not lf_project_id) and runs_data:

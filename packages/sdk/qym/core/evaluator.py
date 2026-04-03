@@ -75,6 +75,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 from ..platform.defaults import DEFAULT_PLATFORM_URL
+from ..utils.env import get_langfuse_host_env
 
 
 def _utc_now_str() -> str:
@@ -560,7 +561,7 @@ class Evaluator:
         # Get credentials from config or environment
         public_key = self.config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
         secret_key = self.config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
-        host = self.config.langfuse_host or os.getenv('LANGFUSE_HOST')
+        host = self.config.langfuse_host or get_langfuse_host_env()
         
         # Validate required credentials
         if not public_key:

@@ -45,6 +45,11 @@ QYM_DATABASE_URL=postgresql+psycopg2://qym:qym@localhost:5432/qym
 QYM_BASE_URL=http://localhost:8000
 QYM_ADMIN_BOOTSTRAP_TOKEN=test
 QYM_AUTH_MODE=none
+QYM_AUTH_SESSION_SECRET=<random-secret>
+QYM_AUTH_GOOGLE_CLIENT_ID=<google-client-id>
+QYM_AUTH_GOOGLE_CLIENT_SECRET=<google-client-secret>
+QYM_AUTH_GITHUB_CLIENT_ID=<github-client-id>
+QYM_AUTH_GITHUB_CLIENT_SECRET=<github-client-secret>
 QYM_LLM_CONFIG_ENCRYPTION_KEY=<fernet-key>
 ```
 
@@ -92,7 +97,10 @@ Set these on the platform service:
 | `QYM_DATABASE_URL` | SQLAlchemy database URL. Postgres is required. |
 | `QYM_BASE_URL` | Public base URL used to generate `live_url` links. |
 | `QYM_ADMIN_BOOTSTRAP_TOKEN` | One-time bootstrap token for the first admin user. |
-| `QYM_AUTH_MODE` | Use `none` for local dev or `proxy_headers` in deployed environments. |
+| `QYM_AUTH_MODE` | `none` for local dev, `proxy_headers` behind an identity-aware proxy, or `oidc` for native browser login. |
+| `QYM_AUTH_SESSION_SECRET` | Session signing secret required when `QYM_AUTH_MODE=oidc`. |
+| `QYM_AUTH_GOOGLE_CLIENT_ID` / `QYM_AUTH_GOOGLE_CLIENT_SECRET` | Enable Google login in native OIDC mode. |
+| `QYM_AUTH_GITHUB_CLIENT_ID` / `QYM_AUTH_GITHUB_CLIENT_SECRET` | Enable GitHub login in native OIDC mode. |
 | `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Fernet key used to encrypt stored user LLM API keys. |
 
 ### Migrations

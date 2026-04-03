@@ -11,6 +11,7 @@ from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
 
 from ..platform.defaults import DEFAULT_PLATFORM_URL
+from ..utils.env import get_platform_url_env
 from ._exit_codes import ExitCode
 
 
@@ -42,9 +43,7 @@ class PlatformAPIClient:
         platform_url: Optional[str] = None,
         api_key: Optional[str] = None,
     ):
-        self.platform_url = (
-            platform_url or os.getenv("QYM_PLATFORM_URL") or DEFAULT_PLATFORM_URL
-        ).rstrip("/")
+        self.platform_url = (platform_url or get_platform_url_env(DEFAULT_PLATFORM_URL)).rstrip("/")
         self.api_key = api_key or os.getenv("QYM_API_KEY")
 
     def _headers(self) -> dict[str, str]:

@@ -7,6 +7,7 @@ import typer
 from ._exit_codes import ExitCode
 from ._output import is_json_mode, output, output_error, err_console
 from ._platform_api import PlatformAPIClient, PlatformAPIError
+from ..utils.env import get_langfuse_host_env, get_platform_url_env
 
 config_app = typer.Typer(help="Platform configuration and connectivity.")
 
@@ -14,11 +15,9 @@ config_app = typer.Typer(help="Platform configuration and connectivity.")
 @config_app.command("show")
 def config_show() -> None:
     """Show resolved platform configuration."""
-    from ..platform.defaults import DEFAULT_PLATFORM_URL
-
-    platform_url = os.getenv("QYM_PLATFORM_URL") or DEFAULT_PLATFORM_URL
+    platform_url = get_platform_url_env()
     api_key = os.getenv("QYM_API_KEY")
-    langfuse_host = os.getenv("LANGFUSE_HOST")
+    langfuse_host = get_langfuse_host_env()
     langfuse_public = os.getenv("LANGFUSE_PUBLIC_KEY")
 
     data = {

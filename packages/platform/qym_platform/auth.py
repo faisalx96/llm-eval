@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from qym_platform.db.models import ApiKey, User, UserRole
+from qym_platform.db.models import ApiKey, User, UserIdentity, UserRole
+from qym_platform.auth_oidc import get_session_user_and_provider
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, verify_api_key
 from qym_platform.settings import PlatformSettings
@@ -15,8 +17,48 @@ from qym_platform.settings import PlatformSettings
 @dataclass(frozen=True)
 class Principal:
     user: User
-    auth_type: str  # api_key|proxy_headers|none
+    auth_type: str  # api_key|proxy_headers|oidc|none
     scopes: tuple[str, ...] = ()
+    provider: Optional[str] = None
+
+
+def _default_display_name(email: str) -> str:
+    local = (email or "").split("@", 1)[0].strip()
+    if not local:
+        return email
+    parts = [part for part in local.replace(".", " ").replace("_", " ").replace("-", " ").split() if part]
+    if not parts:
+        return email
+    return " ".join(part.capitalize() for part in parts)
+
+
+def _provision_proxy_header_user(db: Session, email: str) -> User:
+    user = User(
+        email=email,
+        display_name=_default_display_name(email),
+        role=UserRole.EMPLOYEE,
+    )
+    db.add(user)
+    db.flush()
+    db.add(
+        UserIdentity(
+            user_id=user.id,
+            provider="proxy_headers",
+            subject=email,
+            email=email,
+            raw_claims={"email": email},
+        )
+    )
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(User).filter(User.email == email).first()
+        if existing and existing.is_active:
+            return existing
+        raise
+    db.refresh(user)
+    return user
 
 
 def _bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -71,6 +113,7 @@ def require_api_key_scope(principal: Principal, required_scope: str) -> None:
 
 
 def require_ui_principal(
+    request: Request,
     db: Session = Depends(get_db),
     x_user_email: Optional[str] = Header(default=None, alias="X-User-Email"),
     x_email: Optional[str] = Header(default=None, alias="X-Email"),
@@ -82,9 +125,10 @@ def require_ui_principal(
     - Support first-admin bootstrap via X-Admin-Bootstrap == QYM_ADMIN_BOOTSTRAP_TOKEN
     """
     settings = PlatformSettings()
+    auth_mode = str(settings.auth_mode).lower()
 
     # Local dev mode: no auth headers required. Create or reuse a stable dev user.
-    if str(settings.auth_mode).lower() == "none":
+    if auth_mode == "none":
         email = "dev@local"
         user = db.query(User).filter(User.email == email).first()
         if not user:
@@ -94,23 +138,32 @@ def require_ui_principal(
             db.refresh(user)
         return Principal(user=user, auth_type="none")
 
+    if auth_mode == "oidc":
+        resolved = get_session_user_and_provider(db, request)
+        if resolved:
+            user, provider = resolved
+            return Principal(user=user, auth_type="oidc", provider=provider)
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     email = (x_user_email or x_email or "").strip().lower()
 
     if email:
         user = db.query(User).filter(User.email == email).first()
         if user and user.is_active:
-            return Principal(user=user, auth_type="proxy_headers")
+            return Principal(user=user, auth_type="proxy_headers", provider="proxy_headers")
+        if auth_mode == "proxy_headers" and settings.auto_provision_users:
+            user = _provision_proxy_header_user(db, email)
+            return Principal(user=user, auth_type="proxy_headers", provider="proxy_headers")
 
     # Bootstrap if allowed and no users exist
     has_any = db.query(User.id).limit(1).first() is not None
     if not has_any and settings.admin_bootstrap_token and x_admin_bootstrap == settings.admin_bootstrap_token:
         if not email:
             raise HTTPException(status_code=400, detail="Bootstrap requires X-User-Email")
-        user = User(email=email, display_name=email, role="VP")  # bootstrap as top admin
+        user = User(email=email, display_name=email, role=UserRole.ADMIN)
         db.add(user)
         db.commit()
         db.refresh(user)
-        return Principal(user=user, auth_type="bootstrap")
+        return Principal(user=user, auth_type="proxy_headers", provider="proxy_headers")
 
     raise HTTPException(status_code=401, detail="Missing user identity headers")
-

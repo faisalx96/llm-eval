@@ -123,12 +123,23 @@ def me(
                         if s:
                             sector = {"id": s.id, "name": s.name}
 
+    admin_exists = db.query(User.id).filter(User.role == UserRole.ADMIN, User.is_active == True).first() is not None
+    can_bootstrap_admin = (
+        principal.auth_type == "oidc"
+        and u.role != UserRole.ADMIN
+        and bool(PlatformSettings().admin_bootstrap_token)
+    )
+
     return {
         "id": u.id,
         "email": u.email,
         "display_name": u.display_name,
         "title": u.title,
         "role": u.role.value if hasattr(u.role, "value") else u.role,
+        "auth_type": principal.auth_type,
+        "auth_provider": principal.provider,
+        "needs_admin_bootstrap": not admin_exists,
+        "can_bootstrap_admin": can_bootstrap_admin,
         "team": team,
         "department": department,
         "sector": sector,

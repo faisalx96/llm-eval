@@ -1,5 +1,6 @@
 """Environment loading helpers."""
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -22,3 +23,28 @@ def load_cwd_dotenv(*, override: bool = False) -> Optional[str]:
 
     load_dotenv(dotenv_path=dotenv_path, override=override)
     return str(dotenv_path)
+
+
+def get_platform_url_env(default: str = "http://localhost:8000") -> str:
+    """Return the SDK platform URL, preferring QYM_PLATFORM_URL.
+
+    QYM_BASE_URL is accepted as a compatibility alias because some deployed
+    environments already set it for the platform service itself.
+    """
+    return (
+        os.getenv("QYM_PLATFORM_URL")
+        or os.getenv("QYM_BASE_URL")
+        or default
+    ).rstrip("/")
+
+
+def get_langfuse_host_env(default: str = "") -> str:
+    """Return the Langfuse host, preferring LANGFUSE_HOST.
+
+    LANGFUSE_BASE_URL is accepted as a compatibility alias.
+    """
+    return (
+        os.getenv("LANGFUSE_HOST")
+        or os.getenv("LANGFUSE_BASE_URL")
+        or default
+    ).rstrip("/")

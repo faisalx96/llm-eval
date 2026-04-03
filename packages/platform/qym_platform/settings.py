@@ -21,7 +21,13 @@ class PlatformSettings(BaseSettings):
     # Auth
     auth_mode: str = Field(default="none")  # none|proxy_headers|oidc|saml (SSO later)
     admin_bootstrap_token: str = Field(default="")
+    auto_provision_users: bool = Field(default=True)
     allow_legacy_empty_api_key_scopes: bool = Field(default=True)
+    auth_session_secret: str = Field(default="")
+    auth_google_client_id: str = Field(default="")
+    auth_google_client_secret: str = Field(default="")
+    auth_github_client_id: str = Field(default="")
+    auth_github_client_secret: str = Field(default="")
 
     # Database (required - no SQLite fallback)
     database_url: str = Field(description="PostgreSQL connection string (required)")
@@ -34,4 +40,3 @@ class PlatformSettings(BaseSettings):
 
     # Storage (raw artifacts)
     artifact_store_path: str = Field(default="./artifacts")
-

@@ -43,6 +43,7 @@ async function loadCurrentUser() {
     }
     if (res.ok) {
       currentUser = await res.json();
+      if (window.QymAuth) await window.QymAuth.maybePromptBootstrapAdmin(currentUser);
       return 'ok';
     }
     return 'error';
@@ -53,20 +54,11 @@ async function loadCurrentUser() {
 }
 
 function showAuthError() {
-  document.querySelector('.admin-container').innerHTML = `
-    <div style="display: flex; flex: 1; width: 100%; align-items: center; justify-content: center; min-height: calc(100vh - 100px);">
-      <div style="text-align: center; max-width: 360px; padding: 40px;">
-        <img src="./static/qym_icon.png" alt="قيِّم" style="height: 64px; margin-bottom: 24px;" />
-        <h1 style="font-size: 24px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">قيِّم Platform</h1>
-        <p style="color: var(--text-muted); margin-bottom: 32px;">Sign in to access the admin panel</p>
-
-        <button onclick="location.reload()" style="width: 100%; padding: 12px 24px; background: var(--accent-primary); color: var(--bg-base); border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-          Sign in with SSO
-        </button>
-      </div>
-    </div>
-  `;
+  if (window.QymAuth) {
+    window.QymAuth.renderAuthGate('.admin-container', {
+      message: 'Sign in to access the admin panel',
+    });
+  }
 }
 
 function showAccessDenied() {
@@ -296,20 +288,22 @@ function renderUsers(searchQuery = '') {
             ${user.is_active ? 'Active' : 'Inactive'}
           </span>
         </td>
-        <td class="table-actions">
-          <a href="#" class="action-icon edit-action" onclick="editUser('${user.id}'); return false;" title="Edit user">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-          </a>
-          ${isCurrentUser ? '' : `
-          <a href="#" class="action-icon delete-action" onclick="deleteUser('${user.id}', '${escapeHtml(user.email)}'); return false;" title="Delete user">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </a>`}
+        <td class="table-actions-cell">
+          <div class="table-actions">
+            <a href="#" class="action-icon edit-action" onclick="editUser('${user.id}'); return false;" title="Edit user">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </a>
+            ${isCurrentUser ? '' : `
+            <a href="#" class="action-icon delete-action" onclick="deleteUser('${user.id}', '${escapeHtml(user.email)}'); return false;" title="Delete user">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </a>`}
+          </div>
         </td>
       </tr>
     `;

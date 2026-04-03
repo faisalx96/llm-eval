@@ -14,6 +14,7 @@ from ._exit_codes import ExitCode
 from ._output import is_json_mode, output, output_error, err_console, status
 from ._platform_api import PlatformAPIClient, PlatformAPIError
 from ._legacy import load_function_from_file, load_multi_run_specs
+from ..utils.env import get_platform_url_env
 
 run_app = typer.Typer(help="Manage evaluation runs.")
 
@@ -180,7 +181,7 @@ def run_create(
         if live_mode:
             config["live_mode"] = live_mode
         else:
-            purl = platform_url or os.getenv("QYM_PLATFORM_URL")
+            purl = platform_url or get_platform_url_env()
             pkey = platform_api_key or os.getenv("QYM_API_KEY")
             if purl and pkey:
                 config["live_mode"] = "auto"

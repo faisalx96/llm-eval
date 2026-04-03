@@ -6,6 +6,7 @@
   <title>قيِّم • Reviews</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
+  <script src="./static/auth.js"></script>
   <style>
     /* ═══════════════════════════════════════════════════
        REVIEWS PAGE — Correction Bank Management
@@ -1422,10 +1423,12 @@
     async function loadHeaderUser() {
       try {
         const res = await fetch(apiUrl('v1/me'));
+        if (window.QymAuth && window.QymAuth.handle401(res)) return;
         if (!res.ok) throw new Error('Failed to load current user');
         const me = await res.json();
         populateHeaderUser(me);
         setupHeaderUserDropdown();
+        if (window.QymAuth) await window.QymAuth.maybePromptBootstrapAdmin(me);
       } catch {
         hideHeaderUserDropdown();
       }
