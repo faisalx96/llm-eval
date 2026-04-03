@@ -17,6 +17,7 @@ from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
+    AuditLog,
     OrgUnit,
     OrgUnitClosure,
     OrgUnitType,
@@ -344,6 +345,14 @@ def compare_index() -> FileResponse:
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
+@router.get("/trash")
+def trash_index() -> FileResponse:
+    idx = _platform_static_dir() / "dashboard" / "trash.html"
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Trash UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
 @router.get("/reviews")
 def reviews_index() -> FileResponse:
     idx = _platform_static_dir() / "dashboard" / "reviews.html"
@@ -384,7 +393,7 @@ def legacy_list_runs(
     - GM/VP: approved runs only in their subtree (configurable via policy)
     - Local dev mode (auth_type == "none"): show everything
     """
-    q = db.query(Run).order_by(Run.created_at.desc())
+    q = Run.active(db).order_by(Run.created_at.desc())
 
     # Local dev mode: show everything to reduce friction
     if principal.auth_type == "none":
@@ -488,6 +497,11 @@ def legacy_list_runs(
         error_count = agg["error_count"]
         success_count = total_items - error_count
         completed_count = agg["completed"]
+        started_at = r.started_at or r.created_at
+        ended_at = r.ended_at
+        duration_ms = None
+        if started_at and ended_at and ended_at >= started_at:
+            duration_ms = (ended_at - started_at).total_seconds() * 1000.0
 
         expected_total = None
         if isinstance(r.run_metadata, dict):
@@ -545,7 +559,7 @@ def legacy_list_runs(
             "task_name": r.task,
             "model_name": _strip_model_provider(r.model or ""),
             "dataset_name": r.dataset,
-            "timestamp": _iso(r.started_at or r.created_at),
+            "timestamp": _iso(started_at),
             "file_path": r.id,
             "metrics": metrics,
             "metric_averages": metric_averages,
@@ -557,6 +571,7 @@ def legacy_list_runs(
             "error_count": error_count,
             "success_rate": (success_count / total_items) if total_items else 0.0,
             "avg_latency_ms": agg["avg_latency"],
+            "duration_ms": duration_ms,
             "langfuse_url": r.run_metadata.get("langfuse_url") if isinstance(r.run_metadata, dict) else None,
             "langfuse_dataset_id": r.run_metadata.get("langfuse_dataset_id") if isinstance(r.run_metadata, dict) else None,
             "langfuse_run_id": r.run_metadata.get("langfuse_run_id") if isinstance(r.run_metadata, dict) else None,
@@ -838,7 +853,7 @@ def export_run_html(
     principal: Principal = Depends(require_ui_principal),
 ) -> HTMLResponse:
     """Export a run page as a self-contained HTML file with all assets inlined."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -909,13 +924,60 @@ def export_run_html(
     )
 
 
+@router.get("/api/runs/trash")
+def list_deleted_runs(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> List[Dict[str, Any]]:
+    """List soft-deleted runs (admin only)."""
+    if principal.user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    deleted_runs = (
+        db.query(Run)
+        .filter(Run.deleted_at.isnot(None))
+        .order_by(Run.deleted_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    # Gather deleter display names
+    deleter_ids = {r.deleted_by_user_id for r in deleted_runs if r.deleted_by_user_id}
+    deleters = {}
+    if deleter_ids:
+        for u in db.query(User).filter(User.id.in_(deleter_ids)).all():
+            deleters[u.id] = u.display_name or u.email
+
+    result = []
+    for r in deleted_runs:
+        run_name = ""
+        if isinstance(r.run_config, dict):
+            run_name = r.run_config.get("run_name", "")
+        if not run_name:
+            run_name = r.external_run_id or ""
+        result.append({
+            "id": r.id,
+            "run_name": run_name,
+            "task": r.task,
+            "dataset": r.dataset,
+            "model": r.model,
+            "status": r.status.value if r.status else None,
+            "owner_user_id": r.owner_user_id,
+            "deleted_at": to_api_timestamp(r.deleted_at),
+            "deleted_by_user_id": r.deleted_by_user_id,
+            "deleted_by_name": deleters.get(r.deleted_by_user_id, ""),
+            "created_at": to_api_timestamp(r.created_at),
+        })
+    return result
+
+
 @router.get("/api/runs/{run_id}")
 def legacy_run_data(
     run_id: str,
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         return {"error": "Run not found"}
     if not can_view_run(db, principal, run):
@@ -939,7 +1001,7 @@ def update_metric(
     if not file_path or metric_name is None or row_index is None:
         raise HTTPException(status_code=400, detail="file_path, row_index, and metric_name required")
 
-    run = db.query(Run).filter(Run.id == file_path).first()
+    run = Run.active(db).filter(Run.id == file_path).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
@@ -1074,7 +1136,7 @@ def update_root_cause(
     if not item_id or not run_id:
         raise HTTPException(status_code=400, detail="item_id and run_id required")
 
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
@@ -1120,7 +1182,7 @@ def delete_run(
     if not file_path:
         raise HTTPException(status_code=400, detail="file_path required")
 
-    run = db.query(Run).filter(Run.id == file_path).first()
+    run = Run.active(db).filter(Run.id == file_path).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
@@ -1143,19 +1205,55 @@ def delete_run(
     else:
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    # Delete related data first (foreign key constraints)
-    # Clean up spans table (created by tracing, not in ORM models)
-    try:
-        db.execute(text("DELETE FROM spans WHERE run_id = :rid"), {"rid": run.id})
-    except Exception:
-        pass  # Table may not exist in all deployments
-    db.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).delete()
-    db.query(RootCauseRevision).filter(RootCauseRevision.run_id == run.id).delete()
-    db.query(RunItemScore).filter(RunItemScore.run_id == run.id).delete()
-    db.query(RunItem).filter(RunItem.run_id == run.id).delete()
-    db.query(RunEvent).filter(RunEvent.run_id == run.id).delete()
-    db.query(Approval).filter(Approval.run_id == run.id).delete()
-    db.delete(run)
+    # Soft-delete: mark as deleted instead of removing data
+    snapshot = run.audit_snapshot()
+    run.deleted_at = utc_now_naive()
+    run.deleted_by_user_id = principal.user.id
+
+    audit = AuditLog(
+        actor_user_id=principal.user.id,
+        action="run.deleted",
+        entity_type="run",
+        entity_id=run.id,
+        before=snapshot,
+        after={"deleted_at": run.deleted_at.isoformat()},
+    )
+    db.add(audit)
+    db.commit()
+
+    return {"ok": True}
+
+
+@router.post("/api/runs/restore")
+def restore_run(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Restore a soft-deleted run (admin only)."""
+    if principal.user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    run_id = request.get("run_id")
+    if not run_id:
+        raise HTTPException(status_code=400, detail="run_id required")
+
+    run = db.query(Run).filter(Run.id == run_id, Run.deleted_at.isnot(None)).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Deleted run not found")
+
+    run.deleted_at = None
+    run.deleted_by_user_id = None
+
+    audit = AuditLog(
+        actor_user_id=principal.user.id,
+        action="run.restored",
+        entity_type="run",
+        entity_id=run.id,
+        before={"deleted_at": True},
+        after={},
+    )
+    db.add(audit)
     db.commit()
 
     return {"ok": True}
@@ -1167,7 +1265,7 @@ def submit_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.owner_user_id != principal.user.id:
@@ -1195,7 +1293,7 @@ def approve_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
@@ -1222,7 +1320,7 @@ def reject_run(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
@@ -1253,7 +1351,7 @@ def get_run_spans(
     principal: Principal = Depends(require_ui_principal),
 ):
     """Return all OTEL spans captured for a run, ordered by start time."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -1276,7 +1374,7 @@ def get_item_spans(
     principal: Principal = Depends(require_ui_principal),
 ):
     """Return OTEL spans for a specific run item, looked up via trace_id."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -1306,7 +1404,7 @@ def get_item_trace(
     principal: Principal = Depends(require_ui_principal),
 ):
     """Return trace metadata + spans for an individual run item."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):

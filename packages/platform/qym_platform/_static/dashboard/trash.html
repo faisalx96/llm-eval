@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Deleted Runs</title>
+  <link rel="icon" type="image/png" href="./static/qym_icon.png">
+  <link rel="stylesheet" href="./static/dashboard.css">
+  <style>
+    .trash-container {
+      padding: var(--space-lg) var(--space-xl);
+      overflow-y: auto;
+      height: calc(100vh - 44px);
+    }
+
+    .section {
+      margin-bottom: var(--space-xl);
+    }
+
+    .section-title {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: var(--space-md);
+    }
+
+    .trash-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .summary-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-md);
+    }
+
+    .summary-label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 4px;
+    }
+
+    .summary-value {
+      font-size: var(--font-lg);
+      font-weight: 600;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .summary-note {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-default);
+    }
+
+    .panel-title {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .panel-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .trash-table-wrap {
+      overflow: auto;
+    }
+
+    .trash-table {
+      width: 100%;
+      min-width: 1060px;
+      border-collapse: collapse;
+    }
+
+    .trash-table th {
+      text-align: left;
+      padding: var(--space-sm) var(--space-lg);
+      font-size: var(--font-xs);
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-default);
+      white-space: nowrap;
+    }
+
+    .trash-table td {
+      padding: var(--space-md) var(--space-lg);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-default);
+      vertical-align: middle;
+    }
+
+    .trash-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .trash-run-name {
+      color: var(--text-primary);
+      font-weight: 500;
+      word-break: break-word;
+    }
+
+    .trash-run-id {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+
+    .trash-chip {
+      display: inline-block;
+      max-width: 220px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+    }
+
+    .trash-meta {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .trash-meta-sub {
+      font-size: var(--font-xs);
+      color: var(--text-dim);
+      margin-top: 2px;
+      font-family: var(--font-mono);
+    }
+
+    .trash-actions {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .restore-btn {
+      min-width: 92px;
+    }
+
+    .restore-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      padding: var(--space-xl);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .empty-state-title {
+      font-size: var(--font-lg);
+      color: var(--text-primary);
+      margin-bottom: var(--space-sm);
+    }
+
+    .panel-tools {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    @media (max-width: 800px) {
+      .trash-container {
+        padding: var(--space-md);
+      }
+
+      .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="toast-container" id="toast-container"></div>
+
+  <div class="header-user-dropdown" id="header-user-dropdown">
+    <button class="trigger" id="header-user-trigger">
+      <span class="avatar" id="header-user-avatar">?</span>
+      <span class="name" id="header-user-name">User</span>
+      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="menu" id="header-user-menu">
+      <div class="menu-header">
+        <div class="avatar" id="header-menu-avatar">?</div>
+        <div class="info">
+          <div class="email" id="header-user-email"></div>
+          <div class="role" id="header-user-role"></div>
+        </div>
+      </div>
+      <nav class="menu-nav">
+        <a href="/" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Dashboard
+        </a>
+        <a href="/profile" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Profile
+        </a>
+        <a href="/reviews" class="menu-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4"></path>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          Corrections Review
+        </a>
+        <a href="/admin" class="menu-item" id="header-admin-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Admin Panel
+        </a>
+      </nav>
+    </div>
+  </div>
+
+  <header class="stats-bar has-user-pill-space">
+    <div class="stats-bar-left">
+      <a href="/" class="logo" style="text-decoration:none;">
+        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+      </a>
+      <div class="stat-cells">
+        <div class="stat-cell">
+          <span class="stat-label">Page</span>
+          <span class="stat-value">
+            <span class="shell-breadcrumb">
+              <span class="shell-breadcrumb-parent">Runs</span>
+              <span class="shell-breadcrumb-sep">/</span>
+              <span class="shell-breadcrumb-current">Deleted Runs</span>
+            </span>
+          </span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-label">Deleted</span>
+          <span class="stat-value" id="trash-count">—</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="trash-container">
+    <div class="section">
+      <div class="section-title">Overview</div>
+      <div class="trash-summary">
+        <div class="summary-card">
+          <div class="summary-label">Visible Rows</div>
+          <div class="summary-value" id="trash-stat-visible">0</div>
+          <div class="summary-note">Latest deleted runs available for recovery.</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Access Level</div>
+          <div class="summary-value" id="trash-stat-role">—</div>
+          <div class="summary-note">Only admins can restore runs.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Recovery Queue</div>
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">Deleted Runs</div>
+            <div class="panel-subtitle">Soft-deleted runs remain here until restored.</div>
+          </div>
+        </div>
+        <div id="trash-content"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const BASE_URL = (() => {
+        const loc = window.location;
+        let base = loc.pathname;
+        if (!base.endsWith('/')) {
+          base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
+        }
+        return loc.origin + base;
+      })();
+
+      function apiUrl(path) {
+        const cleanPath = String(path || '').replace(/^\.?\//, '');
+        return BASE_URL + cleanPath;
+      }
+
+      const el = (id) => document.getElementById(id);
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        return name.substring(0, 2).toUpperCase();
+      }
+
+      function formatDateTime(isoStr) {
+        if (!isoStr) return { primary: '—', secondary: '' };
+        const d = new Date(isoStr);
+        return {
+          primary: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          secondary: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        };
+      }
+
+      function showToast(type, title, message) {
+        const container = el('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+          <div class="toast-icon">${type === 'success' ? '✓' : '✗'}</div>
+          <div class="toast-content">
+            <div class="toast-title">${escapeHtml(title)}</div>
+            <div class="toast-message">${escapeHtml(message)}</div>
+          </div>
+          <button class="toast-close" type="button" aria-label="Close notification">×</button>
+        `;
+        toast.querySelector('.toast-close')?.addEventListener('click', () => toast.remove());
+        container.appendChild(toast);
+        setTimeout(() => {
+          toast.classList.add('toast-exit');
+          setTimeout(() => toast.remove(), 300);
+        }, 4000);
+      }
+
+      function populateHeaderUser(user) {
+        if (!user) return;
+        const displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
+        const initials = getInitials(displayName);
+
+        if (el('header-user-avatar')) el('header-user-avatar').textContent = initials;
+        if (el('header-user-name')) el('header-user-name').textContent = displayName;
+        if (el('header-menu-avatar')) el('header-menu-avatar').textContent = initials;
+        if (el('header-user-email')) el('header-user-email').textContent = user.email || '';
+        if (el('header-user-role')) el('header-user-role').textContent = user.role || '';
+        if (el('header-admin-link')) el('header-admin-link').style.display = user.role === 'ADMIN' ? '' : 'none';
+        if (el('trash-stat-role')) el('trash-stat-role').textContent = user.role || '—';
+      }
+
+      function setupHeaderUserDropdown() {
+        const dropdown = el('header-user-dropdown');
+        const trigger = el('header-user-trigger');
+        if (!dropdown || !trigger || trigger.dataset.initialized) return;
+        trigger.dataset.initialized = 'true';
+
+        trigger.addEventListener('click', (event) => {
+          event.stopPropagation();
+          dropdown.classList.toggle('open');
+        });
+
+        document.addEventListener('click', (event) => {
+          if (!dropdown.contains(event.target)) dropdown.classList.remove('open');
+        });
+
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') dropdown.classList.remove('open');
+        });
+      }
+
+      function updateStats(count) {
+        if (el('trash-count')) el('trash-count').textContent = String(count);
+        if (el('trash-stat-visible')) el('trash-stat-visible').textContent = String(count);
+      }
+
+      function renderEmptyState(title, message) {
+        const content = el('trash-content');
+        if (!content) return;
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-title">${escapeHtml(title)}</div>
+            <div>${escapeHtml(message)}</div>
+          </div>
+        `;
+      }
+
+      function renderTrashTable(runs) {
+        const content = el('trash-content');
+        if (!content) return;
+
+        if (!runs.length) {
+          renderEmptyState('No Deleted Runs', 'The trash is currently empty.');
+          return;
+        }
+
+        content.innerHTML = `
+          <div class="trash-table-wrap">
+            <table class="trash-table">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Task</th>
+                  <th>Model</th>
+                  <th>Dataset</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Deleted</th>
+                  <th>Deleted By</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${runs.map((run) => {
+                  const created = formatDateTime(run.created_at);
+                  const deleted = formatDateTime(run.deleted_at);
+                  const runName = run.run_name || run.id.slice(0, 8);
+                  return `
+                    <tr id="row-${escapeHtml(run.id)}">
+                      <td>
+                        <div class="trash-run-name">${escapeHtml(runName)}</div>
+                        <div class="trash-run-id">${escapeHtml(run.id)}</div>
+                      </td>
+                      <td><span class="trash-chip" title="${escapeHtml(run.task || '')}">${escapeHtml(run.task || '—')}</span></td>
+                      <td><span class="trash-chip" title="${escapeHtml(run.model || '')}">${escapeHtml(run.model || '—')}</span></td>
+                      <td><span class="trash-chip" title="${escapeHtml(run.dataset || '')}">${escapeHtml(run.dataset || '—')}</span></td>
+                      <td><span class="status-badge status-${escapeHtml(run.status || 'PENDING')}">${escapeHtml(run.status || '—')}</span></td>
+                      <td>
+                        <div class="trash-meta">${escapeHtml(created.primary)}</div>
+                        <div class="trash-meta-sub">${escapeHtml(created.secondary)}</div>
+                      </td>
+                      <td>
+                        <div class="trash-meta">${escapeHtml(deleted.primary)}</div>
+                        <div class="trash-meta-sub">${escapeHtml(deleted.secondary)}</div>
+                      </td>
+                      <td>
+                        <div class="trash-meta">${escapeHtml(run.deleted_by_name || run.deleted_by_user_id || '—')}</div>
+                      </td>
+                      <td class="trash-actions">
+                        <button class="btn btn-secondary restore-btn" type="button" data-run-id="${escapeHtml(run.id)}">Restore</button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        content.querySelectorAll('.restore-btn').forEach((button) => {
+          button.addEventListener('click', () => restoreRun(button.dataset.runId));
+        });
+      }
+
+      async function loadMe() {
+        const res = await fetch(apiUrl('v1/me'));
+        if (!res.ok) throw new Error('Failed to load current user');
+        const me = await res.json();
+        populateHeaderUser(me);
+        setupHeaderUserDropdown();
+      }
+
+      async function loadTrash() {
+        try {
+          const res = await fetch(apiUrl('api/runs/trash'), { credentials: 'include' });
+          if (res.status === 403) {
+            updateStats(0);
+            renderEmptyState('Admin Access Required', 'Only admins can view and restore deleted runs.');
+            return;
+          }
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to load deleted runs');
+          }
+
+          const runs = await res.json();
+          if (!Array.isArray(runs)) throw new Error('Unexpected response format');
+          updateStats(runs.length);
+          renderTrashTable(runs);
+        } catch (err) {
+          updateStats(0);
+          renderEmptyState('Load Failed', err.message || 'Could not load deleted runs.');
+        }
+      }
+
+      async function restoreRun(runId) {
+        const button = document.querySelector(`button.restore-btn[data-run-id="${CSS.escape(runId)}"]`);
+        if (button) {
+          button.disabled = true;
+          button.textContent = 'Restoring...';
+        }
+
+        try {
+          const res = await fetch(apiUrl('api/runs/restore'), {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run_id: runId }),
+          });
+
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || 'Restore failed');
+          }
+
+          document.getElementById(`row-${runId}`)?.remove();
+          const remaining = document.querySelectorAll('.trash-table tbody tr').length;
+          updateStats(remaining);
+          if (remaining === 0) {
+            renderEmptyState('No Deleted Runs', 'The trash is currently empty.');
+          }
+          showToast('success', 'Run Restored', 'The run was restored successfully.');
+        } catch (err) {
+          if (button) {
+            button.disabled = false;
+            button.textContent = 'Restore';
+          }
+          showToast('error', 'Restore Failed', err.message || 'Could not restore run.');
+        }
+      }
+
+      async function init() {
+        try {
+          await loadMe();
+        } catch {
+          setupHeaderUserDropdown();
+        }
+        await loadTrash();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

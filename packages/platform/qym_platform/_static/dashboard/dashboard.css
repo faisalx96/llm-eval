@@ -2054,8 +2054,62 @@ body.chart-col-resize-active {
 .table-container {
   height: 100%;
   min-height: 0;
-  overflow: auto;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.table-pagination {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px 4px;
+  color: var(--text-muted);
+}
+
+.table-pagination-info,
+.table-pagination-page {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.table-pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-page-btn {
+  appearance: none;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.table-page-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.table-page-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .runs-table {
@@ -2636,6 +2690,10 @@ body.chart-col-resize-active {
   white-space: nowrap;
 }
 
+.col-duration {
+  white-space: nowrap;
+}
+
 .timestamp {
   font-size: var(--font-sm);
   color: var(--text-muted);
@@ -2643,6 +2701,15 @@ body.chart-col-resize-active {
 }
 
 .timestamp .date { color: var(--text-secondary); }
+.timestamp .timestamp-sep {
+  color: var(--text-dim);
+  margin: 0 6px;
+}
+.duration-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+}
 .timestamp .time { color: var(--text-muted); }
 
 .runs-table th.col-actions {

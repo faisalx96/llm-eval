@@ -4483,10 +4483,11 @@
             { val: p99,    label: 'P99', pos: rulerPct(p99),    color: 'var(--score-2)' },
             { val: maxLat, label: 'Max', pos: rulerPct(maxLat), color: 'var(--score-1)' }
           ];
-          // Filter out markers too close to neighbors (< 8% apart)
+          // Filter out markers too close to neighbors (< 8% apart),
+          // but always keep P50 visible even when it sits near Min/Max.
           const MIN_GAP = 8;
-          const filtered = [rulerMarkers[0]]; // always keep Min
-          for (let i = 1; i < rulerMarkers.length - 1; i++) {
+          const filtered = [rulerMarkers[0], rulerMarkers[1]]; // always keep Min + P50
+          for (let i = 2; i < rulerMarkers.length - 1; i++) {
             const prev = filtered[filtered.length - 1];
             const next = rulerMarkers[rulerMarkers.length - 1]; // Max
             if (Math.abs(rulerMarkers[i].pos - prev.pos) >= MIN_GAP &&

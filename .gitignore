@@ -96,3 +96,6 @@ AGENTS.md
 
 # Results
 qym_results/
+
+# Backups
+docker/backups/

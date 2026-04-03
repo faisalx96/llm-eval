@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qym}
       POSTGRES_DB: ${POSTGRES_DB:-qym}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qym -d qym"]
       interval: 5s
@@ -36,6 +38,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  db-backup:
+    image: postgres:16
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-qym}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-qym}
+      PGDATABASE: ${POSTGRES_DB:-qym}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+    volumes:
+      - ${QYM_BACKUP_PATH:-./backups}:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/bash", "/backup.sh"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
 
 # Optional (future): Redis/worker for async ingestion + exports
 #  redis:

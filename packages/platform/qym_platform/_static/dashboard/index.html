@@ -50,6 +50,13 @@
           </svg>
           Admin Panel
         </a>
+        <a href="/trash" class="menu-item" id="header-trash-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Deleted Runs
+        </a>
       </nav>
     </div>
   </div>
@@ -227,30 +234,41 @@
 
     <!-- Table View -->
     <div id="table-view" class="table-container" style="display:none;">
-      <table class="runs-table">
-        <thead>
-          <tr id="table-header-row">
-            <th class="col-select">
-              <label class="custom-checkbox">
-                <input type="checkbox" id="select-all" title="Select all"/>
-                <span class="checkmark"></span>
-              </label>
-            </th>
-            <th class="col-status sortable" data-sort="status">STATUS</th>
-            <th class="col-run sortable" data-sort="run">RUN</th>
-            <th class="col-task sortable" data-sort="task">TASK</th>
-            <th class="col-model sortable" data-sort="model">MODEL</th>
-            <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
-            <th class="col-version sortable" data-sort="version">VERSION</th>
-            <!-- Dynamic metric columns inserted here by JS -->
-            <th class="col-latency sortable" data-sort="latency">⚡ AVG LATENCY</th>
-            <th class="col-owner sortable" data-sort="owner">OWNER</th>
-            <th class="col-time sortable" data-sort="time">TIME</th>
-            <th class="col-actions">ACTIONS</th>
-          </tr>
-        </thead>
-        <tbody id="runs-tbody"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="runs-table">
+          <thead>
+            <tr id="table-header-row">
+              <th class="col-select">
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="select-all" title="Select all"/>
+                  <span class="checkmark"></span>
+                </label>
+              </th>
+              <th class="col-status sortable" data-sort="status">STATUS</th>
+              <th class="col-run sortable" data-sort="run">RUN</th>
+              <th class="col-task sortable" data-sort="task">TASK</th>
+              <th class="col-model sortable" data-sort="model">MODEL</th>
+              <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
+              <th class="col-version sortable" data-sort="version">VERSION</th>
+              <!-- Dynamic metric columns inserted here by JS -->
+              <th class="col-latency sortable" data-sort="latency">⚡ AVG LATENCY</th>
+              <th class="col-owner sortable" data-sort="owner">OWNER</th>
+              <th class="col-time sortable" data-sort="time">DATE</th>
+              <th class="col-duration sortable" data-sort="duration">DURATION</th>
+              <th class="col-actions">ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-pagination" id="table-pagination">
+        <div class="table-pagination-info" id="table-pagination-info">Showing 0-0 of 0 runs</div>
+        <div class="table-pagination-controls">
+          <button class="table-page-btn" id="table-page-prev" type="button">Previous</button>
+          <span class="table-pagination-page" id="table-pagination-page">Page 1 of 1</span>
+          <button class="table-page-btn" id="table-page-next" type="button">Next</button>
+        </div>
+      </div>
     </div>
 
     <!-- Grid View -->

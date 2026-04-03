@@ -20,7 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from qym_platform.db.base import Base
 
@@ -194,11 +194,34 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Soft-delete
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None, index=True)
+    deleted_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+
     # Relationships (lazy="noload" — use selectinload() explicitly when needed)
     items: Mapped[list["RunItem"]] = relationship("RunItem", lazy="noload", foreign_keys="RunItem.run_id")
     scores: Mapped[list["RunItemScore"]] = relationship("RunItemScore", lazy="noload", foreign_keys="RunItemScore.run_id")
     approval_rel: Mapped[Optional["Approval"]] = relationship("Approval", uselist=False, lazy="noload", foreign_keys="Approval.run_id")
     owner_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_user_id], lazy="noload")
+
+    @classmethod
+    def active(cls, db: Session):
+        """Return a query for non-deleted runs."""
+        return db.query(cls).filter(cls.deleted_at.is_(None))
+
+    def audit_snapshot(self) -> dict[str, Any]:
+        """Serialize key fields for audit log entries."""
+        return {
+            "id": self.id,
+            "task": self.task,
+            "dataset": self.dataset,
+            "model": self.model,
+            "status": self.status.value if self.status else None,
+            "owner_user_id": self.owner_user_id,
+            "created_by_user_id": self.created_by_user_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "external_run_id": self.external_run_id,
+        }
 
 
 class RunItem(Base):

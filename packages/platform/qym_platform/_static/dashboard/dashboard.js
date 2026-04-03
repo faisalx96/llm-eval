@@ -39,6 +39,8 @@
     flatRuns: [],
     filteredRuns: [],
     sortKey: 'time-desc',
+    tablePage: 1,
+    tableFilterKey: '',
     quickFilter: 'all',
     filterTasks: new Set(),
     filterModels: new Set(),  // Multi-select for models
@@ -85,6 +87,7 @@
     '#4ade80', '#818cf8', '#fb7185', '#a3e635',
     '#2dd4bf', '#c084fc', '#fcd34d', '#6ee7b7'
   ];
+  const TABLE_PAGE_SIZE = 50;
   const CHART_FIRST_COL_DEFAULT_WIDTH = 320;
   const CHART_FIRST_COL_MIN_WIDTH = 280;
   const CHART_FIRST_COL_MAX_WIDTH = 720;
@@ -250,6 +253,20 @@
     return Math.round(ms) + 'ms';
   }
 
+  function formatDurationMs(ms) {
+    if (ms == null || !Number.isFinite(Number(ms)) || Number(ms) < 0) return '—';
+    const totalMs = Number(ms);
+    if (totalMs < 1000) return Math.round(totalMs) + 'ms';
+    if (totalMs < 60000) return (totalMs / 1000).toFixed(totalMs >= 10000 ? 0 : 1) + 's';
+    const totalSeconds = Math.round(totalMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return hours + 'h ' + minutes + 'm';
+    if (minutes > 0) return minutes + 'm ' + seconds + 's';
+    return totalSeconds + 's';
+  }
+
   function isToday(isoStr) {
     const d = new Date(isoStr);
     const now = new Date();
@@ -299,6 +316,67 @@
 
   function isEmptyFilterValue(value) {
     return value === null || value === undefined || String(value).trim() === '';
+  }
+
+  function getTableFilterKey() {
+    return JSON.stringify({
+      quickFilter: state.quickFilter,
+      tasks: [...state.filterTasks].sort(),
+      models: [...state.filterModels].sort(),
+      datasets: [...state.filterDatasets].sort(),
+      statuses: [...state.filterStatuses].sort(),
+      versions: [...state.filterVersions].sort(),
+    });
+  }
+
+  function getTablePageCount(totalRuns = state.filteredRuns.length) {
+    return Math.max(1, Math.ceil((totalRuns || 0) / TABLE_PAGE_SIZE));
+  }
+
+  function clampTablePage(totalRuns = state.filteredRuns.length) {
+    const pageCount = getTablePageCount(totalRuns);
+    if (!Number.isFinite(state.tablePage) || state.tablePage < 1) state.tablePage = 1;
+    if (state.tablePage > pageCount) state.tablePage = pageCount;
+    return pageCount;
+  }
+
+  function getTablePageSlice(runs = state.filteredRuns) {
+    const totalRuns = Array.isArray(runs) ? runs.length : 0;
+    const pageCount = clampTablePage(totalRuns);
+    const start = totalRuns === 0 ? 0 : (state.tablePage - 1) * TABLE_PAGE_SIZE;
+    const end = Math.min(start + TABLE_PAGE_SIZE, totalRuns);
+    return {
+      totalRuns,
+      pageCount,
+      start,
+      end,
+      pageRuns: Array.isArray(runs) ? runs.slice(start, end) : [],
+    };
+  }
+
+  function setTablePage(page, options = {}) {
+    const { syncFocus = false } = options;
+    const { totalRuns, pageCount } = getTablePageSlice(state.filteredRuns);
+    const nextPage = Math.min(Math.max(1, Number(page) || 1), pageCount);
+    state.tablePage = nextPage;
+    if (syncFocus) {
+      state.focusedIndex = totalRuns > 0 ? (nextPage - 1) * TABLE_PAGE_SIZE : -1;
+    }
+  }
+
+  function renderTablePagination(meta) {
+    const infoEl = el('table-pagination-info');
+    const pageEl = el('table-pagination-page');
+    const prevBtn = el('table-page-prev');
+    const nextBtn = el('table-page-next');
+    if (!infoEl || !pageEl || !prevBtn || !nextBtn) return;
+
+    const { totalRuns, pageCount, start, end } = meta;
+    const startLabel = totalRuns === 0 ? 0 : start + 1;
+    infoEl.textContent = `Showing ${startLabel}-${end} of ${totalRuns} runs`;
+    pageEl.textContent = `Page ${pageCount === 0 ? 0 : state.tablePage} of ${pageCount}`;
+    prevBtn.disabled = state.tablePage <= 1;
+    nextBtn.disabled = state.tablePage >= pageCount;
   }
 
   function getFilterOptionLabel(value, labelFn = null) {
@@ -1264,6 +1342,12 @@
       case 'latency-asc':
         runs.sort((a, b) => (a.avg_latency_ms || 0) - (b.avg_latency_ms || 0));
         break;
+      case 'duration-desc':
+        runs.sort((a, b) => (b.duration_ms || 0) - (a.duration_ms || 0));
+        break;
+      case 'duration-asc':
+        runs.sort((a, b) => (a.duration_ms || 0) - (b.duration_ms || 0));
+        break;
       default:
         // Handle metric column sorting (e.g., "metric-exact_match-desc")
         if (state.sortKey.startsWith('trace-')) {
@@ -2156,7 +2240,7 @@
       newKey = sortField.startsWith('metric-') ? `${sortField}-${direction}` : `${sortField}-${direction}`;
     } else {
       // Default to descending for numeric/time, ascending for text
-      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency'];
+      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency', 'duration'];
       const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-') || sortField.startsWith('trace-');
       newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
     }
@@ -2210,18 +2294,18 @@
   }
 
   function renderTableView() {
-    const runs = state.filteredRuns;
+    const allRuns = state.filteredRuns;
     const tbody = el('runs-tbody');
-    const availableMetrics = getAvailableMetricsForRuns(runs);
+    const availableMetrics = getAvailableMetricsForRuns(allRuns);
     const metricsToShow = getVisibleMetrics(availableMetrics);
-    const visibleTraceMetrics = _visibleTraceMetrics(runs);
+    const visibleTraceMetrics = _visibleTraceMetrics(allRuns);
 
     if (state.sortKey.startsWith('metric-')) {
       const parts = state.sortKey.split('-');
       const metricName = parts.slice(1, -1).join('-');
       if (!metricsToShow.includes(metricName)) {
         state.sortKey = 'time-desc';
-        sortRuns(runs);
+        sortRuns(allRuns);
       }
     }
     if (state.sortKey.startsWith('trace-')) {
@@ -2229,7 +2313,7 @@
       const traceKey = parts.slice(1, -1).join('-');
       if (!visibleTraceMetrics.some(tm => tm.key === traceKey)) {
         state.sortKey = 'time-desc';
-        sortRuns(runs);
+        sortRuns(allRuns);
       }
     }
 
@@ -2238,8 +2322,8 @@
 
     const _vtmCount = visibleTraceMetrics.length;
     const _traceColCount = _vtmCount > 0 ? _vtmCount + 1 : 0; // +1 for separator
-    if (runs.length === 0) {
-      const colCount = 11 + metricsToShow.length + _traceColCount;
+    if (allRuns.length === 0) {
+      const colCount = 12 + metricsToShow.length + _traceColCount;
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -2247,8 +2331,17 @@
           </td>
         </tr>
       `;
+      renderTablePagination({ totalRuns: 0, pageCount: 1, start: 0, end: 0 });
+      const selectAllCheckbox = el('select-all');
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      }
       return;
     }
+
+    const pagination = getTablePageSlice(allRuns);
+    const runs = pagination.pageRuns;
 
     // #7: Group runs by task + base timestamp (same batch = same task, same YYMMDD-HHMM)
     const groupMap = {};  // groupKey -> { runs: [{run, idx}], ... }
@@ -2273,13 +2366,14 @@
 
     let lastGroupKey = null;
     let groupCounter = 0;
-    // 11 base columns + dynamic metric columns + trace metric columns
-    const colCount = 11 + metricsToShow.length + _traceColCount;
-    tbody.innerHTML = runs.map((run, idx) => {
-      const groupKey = runGroupKeys[idx];
+    // 12 base columns + dynamic metric columns + trace metric columns
+    const colCount = 12 + metricsToShow.length + _traceColCount;
+    tbody.innerHTML = runs.map((run, pageIdx) => {
+      const idx = pagination.start + pageIdx;
+      const groupKey = runGroupKeys[pageIdx];
       const isGrouped = groupKey && realGroups[groupKey];
       const isFirstInGroup = isGrouped && groupKey !== lastGroupKey;
-      const nextGroupKey = runGroupKeys[idx + 1];
+      const nextGroupKey = runGroupKeys[pageIdx + 1];
       const isLastInGroup = isGrouped && nextGroupKey !== groupKey;
       let groupHeaderHtml = '';
 
@@ -2358,6 +2452,7 @@
       const hiddenAttr = (isGrouped && isCollapsed) ? 'style="display:none;"' : '';
       const groupDataAttr = isGrouped ? `data-member-of="${escapeHtml(groupKey)}"` : '';
       const dt = formatDate(run.timestamp);
+      const durationText = formatDurationMs(run.duration_ms);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
       const rowClasses = [
@@ -2376,7 +2471,7 @@
         }
         const mType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(value);
         const metricClass = window.QymMetrics.getMetricColorClass(value, mType);
-        const peerValues = getRunComboPeerValues(runs, run, candidate => candidate.metric_averages?.[metric]);
+        const peerValues = getRunComboPeerValues(allRuns, run, candidate => candidate.metric_averages?.[metric]);
         const display = window.QymMetrics.formatMetricValueSmart(value, mType, peerValues);
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span></td>`;
       }).join('');
@@ -2456,10 +2551,14 @@
             ` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
           <td class="col-time">
-            <span class="timestamp">
+            <span class="timestamp" title="${escapeHtml(dt.full)}">
               <span class="date">${dt.date}</span>
+              <span class="timestamp-sep">·</span>
               <span class="time">${dt.time}</span>
             </span>
+          </td>
+          <td class="col-duration">
+            <span class="duration-value">${durationText}</span>
           </td>
           <td class="col-actions">
             ${canApprove ? `
@@ -2520,7 +2619,7 @@
     tbody.querySelectorAll('tr[data-idx]').forEach(tr => {
       const idx = parseInt(tr.dataset.idx);
       const filePath = decodeURIComponent(tr.dataset.file);
-      const run = runs[idx];
+      const run = state.filteredRuns[idx];
 
       const checkbox = tr.querySelector('.row-checkbox');
       if (checkbox) {
@@ -2653,6 +2752,16 @@
         } catch {}
       });
     });
+
+    renderTablePagination(pagination);
+
+    const selectAllCheckbox = el('select-all');
+    if (selectAllCheckbox) {
+      const visibleFilePaths = runs.map(run => run.file_path);
+      const selectedCount = visibleFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
+      selectAllCheckbox.checked = visibleFilePaths.length > 0 && selectedCount === visibleFilePaths.length;
+      selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < visibleFilePaths.length;
+    }
   }
 
   // ═══════════════════════════════════════════════════
@@ -2889,6 +2998,12 @@
     loading.style.display = 'none';
 
     const runs = filterRuns();
+    const tableFilterKey = getTableFilterKey();
+    if (tableFilterKey !== state.tableFilterKey) {
+      state.tableFilterKey = tableFilterKey;
+      state.tablePage = 1;
+      state.focusedIndex = -1;
+    }
 
     if (state.flatRuns.length === 0) {
       empty.style.display = 'flex';
@@ -3687,10 +3802,13 @@
   }
 
   function selectAll() {
-    if (state.selectedRuns.size === state.filteredRuns.length) {
-      state.selectedRuns.clear();
+    const { pageRuns } = getTablePageSlice(state.filteredRuns);
+    const visibleFilePaths = pageRuns.map(run => run.file_path);
+    const allVisibleSelected = visibleFilePaths.length > 0 && visibleFilePaths.every(filePath => state.selectedRuns.has(filePath));
+    if (allVisibleSelected) {
+      visibleFilePaths.forEach(filePath => state.selectedRuns.delete(filePath));
     } else {
-      state.filteredRuns.forEach(r => state.selectedRuns.add(r.file_path));
+      visibleFilePaths.forEach(filePath => state.selectedRuns.add(filePath));
     }
     render();
   }
@@ -3884,6 +4002,7 @@
     const newIdx = state.focusedIndex + delta;
     if (newIdx >= 0 && newIdx < state.filteredRuns.length) {
       state.focusedIndex = newIdx;
+      setTablePage(Math.floor(newIdx / TABLE_PAGE_SIZE) + 1);
       render();
 
       // Scroll into view
@@ -4167,10 +4286,14 @@
       roleEl.textContent = u.role || '';
     }
 
-    // Show admin menu item for ADMIN users
+    // Show admin menu items for ADMIN users
     const adminLink = el('header-admin-link');
     if (adminLink) {
       adminLink.style.display = u.role === 'ADMIN' ? '' : 'none';
+    }
+    const trashLink = el('header-trash-link');
+    if (trashLink) {
+      trashLink.style.display = u.role === 'ADMIN' ? '' : 'none';
     }
 
     // Setup dropdown toggle
@@ -4407,6 +4530,14 @@
 
   // Select all checkbox
   el('select-all').addEventListener('change', selectAll);
+  el('table-page-prev')?.addEventListener('click', () => {
+    setTablePage(state.tablePage - 1, { syncFocus: true });
+    render();
+  });
+  el('table-page-next')?.addEventListener('click', () => {
+    setTablePage(state.tablePage + 1, { syncFocus: true });
+    render();
+  });
 
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);
@@ -4438,12 +4569,14 @@
         if (!e.shiftKey) {
           e.preventDefault();
           state.focusedIndex = 0;
+          setTablePage(1);
           render();
         }
         break;
       case 'G':
         e.preventDefault();
         state.focusedIndex = state.filteredRuns.length - 1;
+        setTablePage(getTablePageCount(state.filteredRuns.length));
         render();
         break;
       case 'Enter':

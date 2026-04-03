@@ -260,7 +260,7 @@ async def analyze_run_items(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Trigger LLM-powered root cause analysis for selected items in a run."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
@@ -445,7 +445,7 @@ def analyze_preview(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Return the exact LLM messages for an item with custom config (no LLM call)."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -490,7 +490,7 @@ async def analyze_test(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Run analysis on 1-3 items with custom config. Does NOT save to DB."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -578,7 +578,7 @@ def get_corrections(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Return approved correction bank entries for the run's task."""
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -631,7 +631,7 @@ def get_analysis_config(
     """Return analysis configuration for the frontend."""
     cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
 
-    run = db.query(Run).filter(Run.id == run_id).first()
+    run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
@@ -722,7 +722,7 @@ def _run_display_name(run: Optional[Run]) -> str:
 def _load_runs_map(db: Session, run_ids: set[str]) -> Dict[str, Run]:
     if not run_ids:
         return {}
-    runs = db.query(Run).filter(Run.id.in_(sorted(run_ids))).all()
+    runs = Run.active(db).filter(Run.id.in_(sorted(run_ids))).all()
     return {run.id: run for run in runs}
 
 
@@ -1000,7 +1000,7 @@ def _approve_candidate(
 def _delete_active_candidate(db: Session, correction: ReviewCorrection) -> None:
     _require_active_candidate(correction)
 
-    run = db.query(Run).filter(Run.id == correction.run_id).first()
+    run = Run.active(db).filter(Run.id == correction.run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     item = (
@@ -1266,7 +1266,7 @@ def get_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
-    run = db.query(Run).filter(Run.id == c.run_id).first()
+    run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
     return _serialize_corrections_with_history(db, [c])[0]
@@ -1285,7 +1285,7 @@ def update_correction(
         raise HTTPException(status_code=404, detail="Correction not found")
     _require_active_candidate(c)
 
-    run = db.query(Run).filter(Run.id == c.run_id).first()
+    run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_review_run(db, principal, run):
@@ -1341,7 +1341,7 @@ def approve_correction(
     correction = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not correction:
         raise HTTPException(status_code=404, detail="Correction not found")
-    run = db.query(Run).filter(Run.id == correction.run_id).first()
+    run = Run.active(db).filter(Run.id == correction.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -1383,7 +1383,7 @@ def reject_correction(
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
     _require_active_candidate(c)
-    run = db.query(Run).filter(Run.id == c.run_id).first()
+    run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -1407,7 +1407,7 @@ def reset_correction(
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
     _require_active_candidate(c)
-    run = db.query(Run).filter(Run.id == c.run_id).first()
+    run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -1450,7 +1450,7 @@ def bulk_correction_action(
 
     runs_by_id = {
         run.id: run
-        for run in db.query(Run).filter(Run.id.in_({c.run_id for c in corrections})).all()
+        for run in Run.active(db).filter(Run.id.in_({c.run_id for c in corrections})).all()
     }
     for correction in corrections:
         run = runs_by_id.get(correction.run_id)
@@ -1501,7 +1501,7 @@ def delete_correction(
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
-    run = db.query(Run).filter(Run.id == c.run_id).first()
+    run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
     _delete_active_candidate(db, c)

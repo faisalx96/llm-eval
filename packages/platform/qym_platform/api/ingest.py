@@ -200,6 +200,8 @@ async def ingest_events(
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    if run.deleted_at is not None:
+        raise HTTPException(status_code=410, detail=f"Run was deleted on {run.deleted_at.isoformat()}")
     if run.owner_user_id != principal.user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
