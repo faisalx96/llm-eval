@@ -285,6 +285,25 @@ def _obj_get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
+def _serialize_span_value(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") or text.startswith("["):
+            try:
+                return _json.dumps(_json.loads(text), ensure_ascii=False, default=str)
+            except Exception:
+                return value
+        return value
+
+    try:
+        return _json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        return str(value)
+
+
 def _block_type(block: Any) -> str:
     return str(_obj_get(block, "type", "") or "")
 
@@ -445,9 +464,9 @@ def _emit_tool_spans(tracer, messages):
         span.set_attribute("openinference.span.kind", "TOOL")
         span.set_attribute("tool.name", tool_name)
         if tool_args:
-            span.set_attribute("input.value", str(tool_args)[:4000])
+            span.set_attribute("input.value", _serialize_span_value(tool_args))
         if content:
-            span.set_attribute("output.value", str(content)[:4000])
+            span.set_attribute("output.value", _serialize_span_value(content))
 
         # Detect error results in tool output and flag the span.
         # Common patterns: {"error": ...} JSON or plain error strings.

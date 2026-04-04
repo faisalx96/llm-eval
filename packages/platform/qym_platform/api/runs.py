@@ -119,6 +119,10 @@ def _platform_static_project_settings() -> Path:
     return _platform_static_dir() / "dashboard" / "project_settings.html"
 
 
+def _platform_static_overview() -> Path:
+    return _platform_static_dir() / "dashboard" / "overview.html"
+
+
 def _project_path_prefix(request: Request, project_slug: str) -> str:
     path = request.url.path
     marker = f"/projects/{project_slug}"
@@ -422,6 +426,17 @@ def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
 @router.get("/projects/{project_slug}/reviews", response_model=None)
 def project_reviews_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
     return reviews_index(request=request, db=db)
+
+
+@router.get("/projects/{project_slug}/overview", response_model=None)
+def project_overview(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_overview()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Overview UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
 @router.get("/projects/{project_slug}/settings", response_model=None)

@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Navigation Mock</title>
+  <link rel="icon" type="image/png" href="qym_icon.png">
+  <style>
+    /* ══════════════════════════════════════════════════
+       DESIGN TOKENS — exact match to dashboard.css
+       ══════════════════════════════════════════════════ */
+    :root {
+      --bg-void: #101018;
+      --bg-base: #14141e;
+      --bg-surface: #1a1a28;
+      --bg-elevated: #222232;
+      --bg-hover: #2a2a3c;
+      --bg-active: #323244;
+
+      --text-primary: #ededf0;
+      --text-secondary: #a8a8ba;
+      --text-muted: #7a7a90;
+      --text-dim: #50505e;
+
+      --accent-primary: #00d4aa;
+      --accent-secondary: #00a8ff;
+      --accent-tertiary: #a855f7;
+
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --info: #3b82f6;
+
+      --border-subtle: #252536;
+      --border-default: #333348;
+      --border-strong: #4a4a60;
+
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 14px;
+      --space-lg: 20px;
+      --space-xl: 32px;
+
+      --font-xs: 12px;
+      --font-sm: 13px;
+      --font-base: 14px;
+      --font-md: 15px;
+      --font-lg: 17px;
+
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+
+      --sidebar-width: 240px;
+      --topbar-height: 44px;
+    }
+
+    /* ══════════════════════════════════════════════════
+       RESET & BASE
+       ══════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.4;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(120,120,150,0.55) rgba(255,255,255,0.04);
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(122,122,144,0.6);
+      border-radius: 999px;
+      border: 2px solid transparent;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,212,170,0.6); }
+
+    /* ══════════════════════════════════════════════════
+       LAYOUT SHELL
+       ══════════════════════════════════════════════════ */
+    .app-shell {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════════════════
+       SIDEBAR
+       ══════════════════════════════════════════════════ */
+    .sidebar {
+      width: var(--sidebar-width);
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      z-index: 200;
+      position: relative;
+      transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      margin-left: 0;
+    }
+
+    /* ── Collapsed: slide the whole panel off-screen ── */
+    .sidebar.collapsed {
+      margin-left: calc(-1 * var(--sidebar-width));
+    }
+
+    /* ── Topbar hamburger (visible when collapsed) ── */
+    .topbar-toggle {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      padding: 0;
+      flex-shrink: 0;
+      margin-right: var(--space-sm);
+    }
+
+    .topbar-toggle:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+      border-color: var(--border-default);
+    }
+
+    .topbar-toggle svg { width: 18px; height: 18px; }
+
+    .sidebar.collapsed ~ .main-area .topbar-toggle { display: flex; }
+
+    /* ── Sidebar close button (inside sidebar, top-right) ── */
+    .sidebar-close-btn {
+      position: absolute;
+      top: var(--space-md);
+      right: var(--space-md);
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 210;
+      transition: all 0.15s ease;
+      padding: 0;
+    }
+
+    .sidebar-close-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .sidebar-close-btn svg { width: 16px; height: 16px; }
+
+    /* ── Logo ── */
+    .sidebar-logo {
+      padding: var(--space-md) var(--space-md) 0;
+      display: flex;
+      align-items: center;
+    }
+
+    .sidebar-logo a {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+      padding: var(--space-xs) 2px;
+    }
+
+    .sidebar-logo img {
+      height: 22px;
+      opacity: 0.92;
+      transition: opacity 0.15s ease;
+    }
+
+    .sidebar-logo a:hover img { opacity: 1; }
+
+    /* ── Project Switcher ── */
+    .sidebar-project {
+      padding: var(--space-sm) var(--space-md) var(--space-sm);
+      position: relative;
+    }
+
+    .project-trigger {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      width: 100%;
+      padding: var(--space-sm) 10px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .project-trigger:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+
+    .project-trigger.open {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(0,212,170,0.12);
+    }
+
+    .project-trigger-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .project-trigger-icon svg { color: var(--bg-void); }
+
+    .project-trigger-text {
+      flex: 1;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .project-trigger-chevron {
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: transform 0.15s ease;
+    }
+
+    .project-trigger.open .project-trigger-chevron { transform: rotate(180deg); }
+
+    /* ── Project Popover ── */
+    .project-popover {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: var(--space-md);
+      right: var(--space-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+      z-index: 300;
+      overflow: hidden;
+      animation: popoverIn 0.15s ease;
+    }
+
+    @keyframes popoverIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .popover-search {
+      padding: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .popover-search input {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 5px;
+      padding: 6px 10px;
+      font-size: var(--font-sm);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .popover-search input::placeholder { color: var(--text-dim); }
+    .popover-search input:focus { border-color: var(--accent-primary); }
+
+    .popover-list {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: var(--space-xs);
+    }
+
+    .popover-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+
+    .popover-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .popover-item.active {
+      background: rgba(0,212,170,0.08);
+      color: var(--accent-primary);
+    }
+
+    .popover-item-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .popover-item.active .popover-item-icon {
+      background: rgba(0,212,170,0.15);
+      color: var(--accent-primary);
+    }
+
+    .popover-item:not(.active) .popover-item-icon {
+      background: var(--bg-active);
+      color: var(--text-muted);
+    }
+
+    .popover-item-check {
+      margin-left: auto;
+      color: var(--accent-primary);
+    }
+
+    .popover-footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: var(--space-xs);
+    }
+
+    .popover-footer-btn {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: all 0.1s ease;
+    }
+
+    .popover-footer-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    /* ── Nav Items ── */
+    .sidebar-nav {
+      flex: 1;
+      padding: var(--space-sm) var(--space-md);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .nav-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: var(--space-md) 10px var(--space-xs);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      position: relative;
+      border: none;
+      background: none;
+      width: 100%;
+      font-family: var(--font-sans);
+    }
+
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 6px;
+      bottom: 6px;
+      width: 2px;
+      background: var(--accent-primary);
+      border-radius: 1px;
+    }
+
+    .nav-item-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      color: inherit;
+      opacity: 0.7;
+    }
+
+    .nav-item.active .nav-item-icon { opacity: 1; color: var(--accent-primary); }
+    .nav-item:hover .nav-item-icon { opacity: 1; }
+
+    .nav-item-badge {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+      font-family: var(--font-mono);
+    }
+
+    .nav-item-badge.count {
+      background: var(--bg-active);
+      color: var(--text-muted);
+    }
+
+    .nav-item-badge.admin-tag {
+      background: rgba(168,85,247,0.12);
+      color: var(--accent-tertiary);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── User Section (Bottom) ── */
+    .sidebar-footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: var(--space-sm) var(--space-md);
+      position: relative;
+    }
+
+    .user-trigger {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: var(--space-sm) 10px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: background 0.12s ease;
+      font-family: var(--font-sans);
+    }
+
+    .user-trigger:hover { background: var(--bg-hover); }
+
+    .user-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--bg-void);
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+    }
+
+    .user-info {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .user-name {
+      font-size: var(--font-sm);
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-email {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .user-trigger-dots {
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    /* ── User Popover ── */
+    .user-popover {
+      position: absolute;
+      bottom: calc(100% + 4px);
+      left: var(--space-md);
+      right: var(--space-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      box-shadow: 0 -8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.03);
+      z-index: 300;
+      overflow: hidden;
+      animation: userPopIn 0.15s ease;
+    }
+
+    @keyframes userPopIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .user-popover-header {
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-popover-header .user-avatar { width: 34px; height: 34px; font-size: 12px; }
+    .user-popover-header .user-name { font-size: var(--font-base); }
+
+    .user-popover-header .user-role {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent-primary);
+      background: rgba(0,212,170,0.1);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+      display: inline-block;
+      margin-top: 2px;
+    }
+
+    .user-popover-list { padding: var(--space-xs); }
+
+    .user-popover-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+
+    .user-popover-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .user-popover-item.danger { color: var(--error); }
+    .user-popover-item.danger:hover { background: rgba(239,68,68,0.08); }
+
+    .user-popover-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: var(--space-xs) var(--space-sm);
+    }
+
+    .user-popover-item svg { width: 15px; height: 15px; opacity: 0.65; }
+
+    /* ══════════════════════════════════════════════════
+       TOP BAR + BREADCRUMBS
+       ══════════════════════════════════════════════════ */
+    .main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .topbar {
+      height: var(--topbar-height);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 var(--space-lg);
+      flex-shrink: 0;
+    }
+
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      font-size: var(--font-sm);
+      min-width: 0;
+    }
+
+    .breadcrumb-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 4px;
+      transition: all 0.12s ease;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .breadcrumb-item:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .breadcrumb-item.current {
+      color: var(--text-primary);
+      font-weight: 500;
+      cursor: default;
+    }
+
+    .breadcrumb-item.current:hover { background: transparent; }
+
+    .breadcrumb-sep {
+      color: var(--text-dim);
+      margin: 0 2px;
+      font-size: var(--font-xs);
+      user-select: none;
+    }
+
+    .topbar-stats {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .topbar-stat {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    .topbar-stat-value {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+    }
+
+    .topbar-stat-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ══════════════════════════════════════════════════
+       CONTENT AREA
+       ══════════════════════════════════════════════════ */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg-base);
+    }
+
+    .content-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: var(--space-xl) var(--space-lg);
+    }
+
+    .page-header {
+      margin-bottom: var(--space-xl);
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .page-subtitle {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: var(--space-lg);
+    }
+
+    .tab {
+      padding: var(--space-sm) var(--space-md);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.12s ease;
+      font-family: var(--font-sans);
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      margin-bottom: -1px;
+    }
+
+    .tab:hover { color: var(--text-secondary); }
+
+    .tab.active {
+      color: var(--accent-primary);
+      border-bottom-color: var(--accent-primary);
+      font-weight: 500;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .card + .card { margin-top: var(--space-lg); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .card-title {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .card-subtitle {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .card-body { padding: var(--space-lg); }
+    .card-body.flush { padding: 0; }
+
+    /* ── Add Member Bar ── */
+    .add-member-bar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+
+    .form-select,
+    .form-input {
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
+      color: var(--text-primary);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      outline: none;
+    }
+
+    .form-select:focus,
+    .form-input:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(0,212,170,0.15);
+    }
+
+    .form-input { flex: 1; min-width: 0; }
+
+    .btn {
+      padding: var(--space-sm) var(--space-md);
+      border-radius: 6px;
+      font-size: var(--font-sm);
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+
+    .btn-primary:hover { background: #00e6b8; }
+
+    .btn-secondary {
+      background: var(--bg-elevated);
+      border-color: var(--border-default);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 6px 8px;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .btn-danger-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      padding: 6px 8px;
+    }
+
+    .btn-danger-ghost:hover {
+      color: var(--error);
+      background: rgba(239,68,68,0.08);
+    }
+
+    .btn-sm { padding: 4px 10px; font-size: var(--font-xs); }
+
+    /* ── Members Table ── */
+    .members-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .members-table th {
+      text-align: left;
+      padding: var(--space-sm) var(--space-lg);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .members-table td {
+      padding: var(--space-md) var(--space-lg);
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: middle;
+    }
+
+    .members-table tbody tr { transition: background 0.1s ease; }
+    .members-table tbody tr:hover { background: var(--bg-hover); }
+    .members-table tbody tr:last-child td { border-bottom: none; }
+
+    .member-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .member-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+    }
+
+    .member-name {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .role-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .role-badge.manager {
+      background: rgba(0,212,170,0.12);
+      color: var(--accent-primary);
+    }
+
+    .role-badge.member {
+      background: var(--bg-active);
+      color: var(--text-muted);
+    }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      justify-content: flex-end;
+    }
+
+    .table-actions svg { width: 14px; height: 14px; }
+
+    .text-mono {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+
+    /* ══════════════════════════════════════════════════
+       SECTION DIVIDER (between mock views)
+       ══════════════════════════════════════════════════ */
+    .mock-divider {
+      border: none;
+      border-top: 2px dashed var(--border-strong);
+      margin: var(--space-xl) 0;
+    }
+
+    .mock-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: var(--bg-elevated);
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      margin-bottom: var(--space-md);
+    }
+
+    /* ══════════════════════════════════════════════════
+       PROFILE VIEW
+       ══════════════════════════════════════════════════ */
+    .profile-card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-lg);
+      padding: var(--space-lg);
+    }
+
+    .profile-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--bg-void);
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+    }
+
+    .profile-info-primary {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .profile-info-secondary {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .profile-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .profile-field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 4px;
+    }
+
+    .profile-field-value {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+    }
+
+    /* ── Project Cards ── */
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-md);
+    }
+
+    .project-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: var(--space-lg);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .project-card:hover {
+      border-color: var(--border-strong);
+      background: var(--bg-elevated);
+    }
+
+    .project-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .project-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .project-card-icon svg { width: 16px; height: 16px; }
+
+    .project-card-name {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .project-card-slug {
+      font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+    }
+
+    .project-card-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      margin-top: var(--space-md);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .project-card-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* ── LLM Config ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-md);
+    }
+
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+
+    .form-group.full-width { grid-column: 1 / -1; }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .form-group .form-input {
+      width: 100%;
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ════════════════════════════════════════════════
+         SIDEBAR
+         ════════════════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+      <!-- Close button -->
+      <button class="sidebar-close-btn" onclick="toggleSidebar()" title="Close sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><polyline points="3 12 7 8"/><polyline points="3 12 7 16"/></svg>
+      </button>
+
+      <!-- Logo -->
+      <div class="sidebar-logo">
+        <a href="/">
+          <img src="qym_text.png" alt="قيِّم" />
+        </a>
+      </div>
+
+      <!-- Project Switcher -->
+      <div class="sidebar-project">
+        <button class="project-trigger open" onclick="toggleProjectPopover()">
+          <span class="project-trigger-icon">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
+          </span>
+          <span class="project-trigger-text">SQL Evaluation</span>
+          <span class="project-trigger-chevron">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </button>
+
+        <!-- Project Popover (shown open for mock) -->
+        <div class="project-popover" id="projectPopover">
+          <div class="popover-search">
+            <input type="text" placeholder="Search projects…" />
+          </div>
+          <div class="popover-list">
+            <div class="popover-item active">
+              <span class="popover-item-icon">SE</span>
+              <span>SQL Evaluation</span>
+              <span class="popover-item-check">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </div>
+            <div class="popover-item">
+              <span class="popover-item-icon">CR</span>
+              <span>Code Review Agent</span>
+            </div>
+            <div class="popover-item">
+              <span class="popover-item-icon">QA</span>
+              <span>QA Automation</span>
+            </div>
+            <div class="popover-item">
+              <span class="popover-item-icon">CS</span>
+              <span>Customer Support Bot</span>
+            </div>
+          </div>
+          <div class="popover-footer">
+            <button class="popover-footer-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Create Project
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="#" data-tooltip="Dashboard">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="Runs">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="nav-item-label">Runs</span>
+          <span class="nav-item-badge count">147</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="Reviews">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span class="nav-item-label">Reviews</span>
+          <span class="nav-item-badge count">12</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="Models">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+          <span class="nav-item-label">Models</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="Traces">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span class="nav-item-label">Traces</span>
+        </a>
+
+        <div class="nav-section-label">Manage</div>
+
+        <a class="nav-item active" href="#" data-tooltip="Project Settings">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="nav-item-label">Project Settings</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="API Keys">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <span class="nav-item-label">API Keys</span>
+        </a>
+        <a class="nav-item" href="#" data-tooltip="Admin">
+          <svg class="nav-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="nav-item-label">Admin</span>
+          <span class="nav-item-badge admin-tag">Admin</span>
+        </a>
+      </nav>
+
+      <!-- User Footer -->
+      <div class="sidebar-footer">
+        <!-- User Popover (shown for mock) -->
+        <div class="user-popover" id="userPopover" style="display: none;">
+          <div class="user-popover-header">
+            <div class="user-avatar">FB</div>
+            <div class="user-info">
+              <div class="user-name">Faisal</div>
+              <span class="user-role">Admin</span>
+            </div>
+          </div>
+          <div class="user-popover-list">
+            <div class="user-popover-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Profile
+            </div>
+            <div class="user-popover-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Settings
+            </div>
+            <div class="user-popover-divider"></div>
+            <div class="user-popover-item danger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </div>
+          </div>
+        </div>
+
+        <button class="user-trigger" onclick="toggleUserPopover()">
+          <div class="user-avatar">FB</div>
+          <div class="user-info">
+            <div class="user-name">Faisal</div>
+            <div class="user-email">faisal@qym.dev</div>
+          </div>
+          <span class="user-trigger-dots">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ════════════════════════════════════════════════
+         MAIN AREA
+         ════════════════════════════════════════════════ -->
+    <div class="main-area">
+
+      <!-- Top Bar -->
+      <header class="topbar">
+        <button class="topbar-toggle" onclick="toggleSidebar()" title="Open sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <nav class="breadcrumbs">
+          <a class="breadcrumb-item" href="#">SQL Evaluation</a>
+          <span class="breadcrumb-sep">/</span>
+          <a class="breadcrumb-item" href="#">Settings</a>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-item current">Members</span>
+        </nav>
+        <div class="topbar-stats">
+          <div class="topbar-stat">
+            <span class="topbar-stat-dot" style="background: var(--accent-primary)"></span>
+            <span class="topbar-stat-value">147</span> runs
+          </div>
+          <div class="topbar-stat">
+            <span class="topbar-stat-dot" style="background: var(--success)"></span>
+            <span class="topbar-stat-value">82.4%</span> success
+          </div>
+          <div class="topbar-stat">
+            <span class="topbar-stat-dot" style="background: var(--accent-secondary)"></span>
+            <span class="topbar-stat-value">6</span> models
+          </div>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="content">
+        <div class="content-inner">
+
+          <!-- ═══ VIEW 1: PROJECT SETTINGS (Members) ═══ -->
+          <div class="page-header">
+            <h1 class="page-title">Project Settings</h1>
+            <p class="page-subtitle">Manage members, permissions, and API keys for SQL Evaluation.</p>
+          </div>
+
+          <div class="tabs">
+            <button class="tab">General</button>
+            <button class="tab active">Members</button>
+            <button class="tab">API Keys</button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Members</div>
+                <div class="card-subtitle">5 members in this project</div>
+              </div>
+            </div>
+
+            <!-- Add member -->
+            <div class="add-member-bar">
+              <input class="form-input" type="text" placeholder="Search users by email…" style="flex: 2;" />
+              <select class="form-select" style="width: 140px; flex: none;">
+                <option>Member</option>
+                <option>Manager</option>
+              </select>
+              <button class="btn btn-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add
+              </button>
+            </div>
+
+            <!-- Members table -->
+            <div class="card-body flush">
+              <table class="members-table">
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Added</th>
+                    <th style="text-align:right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar" style="background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%); color: var(--bg-void);">FB</div>
+                        <span class="member-name">Faisal</span>
+                      </div>
+                    </td>
+                    <td><span class="text-mono">faisal@qym.dev</span></td>
+                    <td><span class="role-badge manager">Manager</span></td>
+                    <td style="color: var(--text-muted); font-size: 12px;">Mar 28, 2026</td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn-ghost btn-sm" title="Edit role">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar" style="background: rgba(168,85,247,0.2); color: var(--accent-tertiary);">NA</div>
+                        <span class="member-name">Noura Al-Rashidi</span>
+                      </div>
+                    </td>
+                    <td><span class="text-mono">noura@company.sa</span></td>
+                    <td><span class="role-badge manager">Manager</span></td>
+                    <td style="color: var(--text-muted); font-size: 12px;">Mar 28, 2026</td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn-ghost btn-sm" title="Edit role">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-danger-ghost btn-sm" title="Remove member">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar" style="background: rgba(0,168,255,0.2); color: var(--accent-secondary);">AK</div>
+                        <span class="member-name">Ahmed Khalil</span>
+                      </div>
+                    </td>
+                    <td><span class="text-mono">ahmed.k@company.sa</span></td>
+                    <td><span class="role-badge member">Member</span></td>
+                    <td style="color: var(--text-muted); font-size: 12px;">Mar 30, 2026</td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn-ghost btn-sm" title="Edit role">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-danger-ghost btn-sm" title="Remove member">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar" style="background: rgba(245,158,11,0.2); color: var(--warning);">RM</div>
+                        <span class="member-name">Reem Mansour</span>
+                      </div>
+                    </td>
+                    <td><span class="text-mono">reem.m@company.sa</span></td>
+                    <td><span class="role-badge member">Member</span></td>
+                    <td style="color: var(--text-muted); font-size: 12px;">Apr 1, 2026</td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn-ghost btn-sm" title="Edit role">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-danger-ghost btn-sm" title="Remove member">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar" style="background: rgba(16,185,129,0.2); color: var(--success);">HT</div>
+                        <span class="member-name">Hassan Tariq</span>
+                      </div>
+                    </td>
+                    <td><span class="text-mono">hassan.t@company.sa</span></td>
+                    <td><span class="role-badge member">Member</span></td>
+                    <td style="color: var(--text-muted); font-size: 12px;">Apr 2, 2026</td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn-ghost btn-sm" title="Edit role">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                        <button class="btn-danger-ghost btn-sm" title="Remove member">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+
+          <!-- ═══ DIVIDER ═══ -->
+          <hr class="mock-divider" />
+          <div class="mock-label">Profile View (alternate page content)</div>
+
+          <!-- ═══ VIEW 2: PROFILE ═══ -->
+          <div class="page-header">
+            <h1 class="page-title">Profile</h1>
+            <p class="page-subtitle">Your account details and project memberships.</p>
+          </div>
+
+          <!-- Account Card -->
+          <div class="card">
+            <div class="profile-card-header">
+              <div class="profile-avatar">FB</div>
+              <div>
+                <div class="profile-info-primary">Faisal</div>
+                <div class="profile-info-secondary">faisal@qym.dev</div>
+              </div>
+              <span class="role-badge manager" style="margin-left: auto;">Admin</span>
+            </div>
+            <div class="profile-fields">
+              <div>
+                <div class="profile-field-label">Display Name</div>
+                <div class="profile-field-value">Faisal</div>
+              </div>
+              <div>
+                <div class="profile-field-label">Email</div>
+                <div class="profile-field-value" style="font-family: var(--font-mono); font-size: 12px;">faisal@qym.dev</div>
+              </div>
+              <div>
+                <div class="profile-field-label">Role</div>
+                <div class="profile-field-value">Admin</div>
+              </div>
+              <div>
+                <div class="profile-field-label">Default Project</div>
+                <div class="profile-field-value">SQL Evaluation</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Projects Card -->
+          <div class="card" style="margin-top: var(--space-lg);">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Your Projects</div>
+                <div class="card-subtitle">Projects you have access to</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="project-grid">
+                <div class="project-card">
+                  <div class="project-card-top">
+                    <div class="project-card-icon" style="background: rgba(0,212,170,0.12);">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>
+                    </div>
+                    <span class="role-badge manager">Manager</span>
+                  </div>
+                  <div class="project-card-name">SQL Evaluation</div>
+                  <div class="project-card-slug">sql-evaluation</div>
+                  <div class="project-card-meta">
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      5 members
+                    </span>
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      147 runs
+                    </span>
+                  </div>
+                </div>
+                <div class="project-card">
+                  <div class="project-card-top">
+                    <div class="project-card-icon" style="background: rgba(168,85,247,0.12);">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-tertiary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>
+                    </div>
+                    <span class="role-badge member">Member</span>
+                  </div>
+                  <div class="project-card-name">Code Review Agent</div>
+                  <div class="project-card-slug">code-review-agent</div>
+                  <div class="project-card-meta">
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      3 members
+                    </span>
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      52 runs
+                    </span>
+                  </div>
+                </div>
+                <div class="project-card">
+                  <div class="project-card-top">
+                    <div class="project-card-icon" style="background: rgba(0,168,255,0.12);">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-secondary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>
+                    </div>
+                    <span class="role-badge manager">Manager</span>
+                  </div>
+                  <div class="project-card-name">QA Automation</div>
+                  <div class="project-card-slug">qa-automation</div>
+                  <div class="project-card-meta">
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      8 members
+                    </span>
+                    <span class="project-card-meta-item">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      89 runs
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- LLM Config Card -->
+          <div class="card" style="margin-top: var(--space-lg);">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Review LLM Configuration</div>
+                <div class="card-subtitle">Provider settings for AI-assisted reviews</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group full-width">
+                  <label class="form-label">Base URL</label>
+                  <input class="form-input" type="text" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Model</label>
+                  <input class="form-input" type="text" placeholder="gpt-4o" value="gpt-4o" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">API Key</label>
+                  <input class="form-input" type="password" placeholder="sk-..." value="sk-1234567890" />
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <button class="btn btn-secondary btn-sm">Test Connection</button>
+              <button class="btn btn-primary btn-sm">Save</button>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // ── Sidebar slide ──
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      // Close popovers when hiding
+      if (isCollapsed) {
+        document.getElementById('projectPopover').style.display = 'none';
+        document.querySelector('.project-trigger').classList.remove('open');
+        document.getElementById('userPopover').style.display = 'none';
+      }
+      localStorage.setItem('sidebar-collapsed', isCollapsed);
+    }
+
+    // Restore state on load
+    if (localStorage.getItem('sidebar-collapsed') === 'true') {
+      document.getElementById('sidebar').classList.add('collapsed');
+    }
+
+    // ── Popovers ──
+    function toggleProjectPopover() {
+      const pop = document.getElementById('projectPopover');
+      const trigger = document.querySelector('.project-trigger');
+      const isVisible = pop.style.display !== 'none';
+      pop.style.display = isVisible ? 'none' : 'block';
+      trigger.classList.toggle('open', !isVisible);
+    }
+
+    function toggleUserPopover() {
+      const pop = document.getElementById('userPopover');
+      const isVisible = pop.style.display !== 'none';
+      pop.style.display = isVisible ? 'none' : 'block';
+    }
+
+    // Close popovers on outside click
+    document.addEventListener('click', (e) => {
+      const projectPop = document.getElementById('projectPopover');
+      const userPop = document.getElementById('userPopover');
+      const trigger = document.querySelector('.project-trigger');
+
+      if (!e.target.closest('.sidebar-project')) {
+        projectPop.style.display = 'none';
+        trigger.classList.remove('open');
+      }
+      if (!e.target.closest('.sidebar-footer')) {
+        userPop.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

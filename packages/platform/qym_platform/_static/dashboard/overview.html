@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Dashboard</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <style>
+    .overview { max-width: 1120px; margin: 0 auto; padding: var(--space-lg); }
+    .overview-header { margin-bottom: var(--space-lg); }
+    .overview-header h1 { font-size: 22px; font-weight: 600; margin: 0; }
+    .overview-header p { color: var(--text-muted); font-size: var(--font-sm); margin-top: 6px; }
+    .overview-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-md); margin-bottom: var(--space-lg); }
+    .stat-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; padding: var(--space-lg); }
+    .stat-card-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-sm); }
+    .stat-card-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--text-primary); }
+    .stat-card-sub { font-size: var(--font-xs); color: var(--text-muted); margin-top: 4px; }
+    .stat-card-sub.positive { color: var(--success); }
+    .overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg); }
+    .overview-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; }
+    .overview-card-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .overview-card-title { font-size: var(--font-md); font-weight: 600; }
+    .overview-card-link { color: var(--accent-primary); text-decoration: none; font-size: var(--font-xs); }
+    .overview-card-link:hover { text-decoration: underline; }
+    .overview-card-body { padding: 0; }
+    .recent-table { width: 100%; border-collapse: collapse; }
+    .recent-table th { text-align: left; padding: var(--space-sm) var(--space-lg); font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elevated); }
+    .recent-table td { padding: var(--space-sm) var(--space-lg); font-size: var(--font-sm); color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); }
+    .recent-table tr:hover { background: var(--bg-hover); }
+    .recent-table tr:last-child td { border-bottom: none; }
+    .run-link { color: var(--accent-primary); text-decoration: none; font-family: var(--font-mono); font-size: 12px; }
+    .run-link:hover { text-decoration: underline; }
+    .review-item { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .review-item:last-child { border-bottom: none; }
+    .review-item:hover { background: var(--bg-hover); }
+    .review-id { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); }
+    .review-cause { font-size: var(--font-sm); margin-left: var(--space-sm); }
+    .review-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: rgba(245,158,11,0.12); color: var(--warning); font-family: var(--font-mono); }
+    .score-bar { display: inline-block; height: 6px; border-radius: 3px; min-width: 20px; vertical-align: middle; margin-right: 6px; }
+    .trend-placeholder { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: var(--font-sm); margin-top: var(--space-lg); }
+    .empty-state { padding: var(--space-xl); text-align: center; color: var(--text-dim); font-size: var(--font-sm); }
+  </style>
+</head>
+<body>
+  <main class="overview">
+    <div class="overview-header">
+      <h1 id="overview-title">Dashboard</h1>
+      <p id="overview-subtitle">Project overview and recent activity.</p>
+    </div>
+
+    <div class="overview-stats" id="overview-stats">
+      <div class="stat-card"><div class="stat-card-label">Total Runs</div><div class="stat-card-value" id="ov-runs">—</div><div class="stat-card-sub" id="ov-runs-sub"></div></div>
+      <div class="stat-card"><div class="stat-card-label">Avg Success</div><div class="stat-card-value" id="ov-success">—</div><div class="stat-card-sub" id="ov-success-sub"></div></div>
+      <div class="stat-card"><div class="stat-card-label">Models</div><div class="stat-card-value" id="ov-models">—</div><div class="stat-card-sub" id="ov-models-sub"></div></div>
+      <div class="stat-card"><div class="stat-card-label">Items Evaluated</div><div class="stat-card-value" id="ov-items">—</div><div class="stat-card-sub" id="ov-items-sub"></div></div>
+    </div>
+
+    <div class="overview-grid">
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">Recent Runs</span>
+          <a class="overview-card-link" id="view-all-runs" href="#">View all →</a>
+        </div>
+        <div class="overview-card-body">
+          <table class="recent-table" id="recent-runs-table">
+            <thead><tr><th>Run</th><th>Model</th><th>Score</th><th>Date</th></tr></thead>
+            <tbody id="recent-runs-body">
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">Pending Reviews</span>
+          <a class="overview-card-link" id="view-all-reviews" href="#">View all →</a>
+        </div>
+        <div class="overview-card-body" id="pending-reviews-body">
+          <div class="empty-state">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="trend-placeholder">7-day trend chart</div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      function apiUrl(path) {
+        const root = window.QymShell ? window.location.origin + '/' : window.location.origin + '/';
+        return root + String(path || '').replace(/^\/+/, '');
+      }
+
+      function esc(v) { const d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
+
+      function projectUrl(slug, sub) {
+        return '/projects/' + encodeURIComponent(slug) + (sub ? '/' + sub : '');
+      }
+
+      function relativeTime(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+      }
+
+      async function load() {
+        // Wait for shell
+        if (window.QymShell && !window.__QYM_USER__) {
+          await new Promise(r => document.addEventListener('qym:shell-ready', r, { once: true }));
+        }
+
+        const ctx = window.QymShell ? window.QymShell.getPageContext() : {};
+        const project = window.QymShell ? window.QymShell.getProject() : null;
+        const slug = ctx.projectSlug || (project && project.slug) || '';
+
+        if (slug) {
+          document.getElementById('view-all-runs').href = projectUrl(slug);
+          document.getElementById('view-all-reviews').href = projectUrl(slug, 'reviews');
+        }
+
+        // Fetch recent runs
+        try {
+          const runsUrl = slug ? `api/runs?limit=5&offset=0&project_slug=${encodeURIComponent(slug)}` : 'api/runs?limit=5&offset=0';
+          const res = await fetch(apiUrl(runsUrl));
+          if (!res.ok) throw new Error('Failed');
+          const data = await res.json();
+          const runs = data.runs || [];
+          const totalRuns = data.total || runs.length;
+
+          // Stats
+          document.getElementById('ov-runs').textContent = totalRuns;
+          const models = new Set(runs.map(r => r.model).filter(Boolean));
+          document.getElementById('ov-models').textContent = models.size || '—';
+
+          // Avg success
+          const scores = runs.map(r => {
+            const m = r.metrics || {};
+            const firstMetric = Object.keys(m)[0];
+            return firstMetric && m[firstMetric] && m[firstMetric].avg != null ? m[firstMetric].avg : null;
+          }).filter(v => v !== null);
+          if (scores.length) {
+            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+            document.getElementById('ov-success').textContent = (avg * 100).toFixed(1) + '%';
+          }
+
+          // Total items
+          const totalItems = runs.reduce((acc, r) => acc + (r.total_items || 0), 0);
+          document.getElementById('ov-items').textContent = totalItems.toLocaleString();
+
+          // Recent runs table
+          const tbody = document.getElementById('recent-runs-body');
+          if (!runs.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No runs yet</td></tr>';
+          } else {
+            tbody.innerHTML = runs.slice(0, 5).map(r => {
+              const name = (r.run_config && r.run_config.run_name) || r.id.slice(0, 8);
+              const model = r.model || '—';
+              const m = r.metrics || {};
+              const firstMetric = Object.keys(m)[0];
+              const score = firstMetric && m[firstMetric] && m[firstMetric].avg != null ? (m[firstMetric].avg * 100).toFixed(0) + '%' : '—';
+              const scoreColor = firstMetric && m[firstMetric] && m[firstMetric].avg >= 0.75 ? 'var(--success)' : 'var(--warning)';
+              const runUrl = slug ? projectUrl(slug, 'runs/' + r.id) : '/run/' + r.id;
+              return '<tr>'
+                + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
+                + '<td style="font-family:var(--font-mono);font-size:11px">' + esc(model) + '</td>'
+                + '<td><span class="score-bar" style="width:' + (score !== '—' ? score : '0%') + ';background:' + scoreColor + '"></span>' + esc(score) + '</td>'
+                + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.created_at) + '</td>'
+                + '</tr>';
+            }).join('');
+          }
+
+          // Update topbar stats
+          if (window.QymShell) {
+            window.QymShell.setTopbarStats([
+              { label: 'runs', value: totalRuns, color: 'var(--accent-primary)' },
+              { label: 'models', value: models.size, color: 'var(--accent-secondary)' },
+            ]);
+          }
+        } catch (e) {
+          console.error('[Overview] Failed to load runs:', e);
+          document.getElementById('recent-runs-body').innerHTML = '<tr><td colspan="4" class="empty-state">Failed to load</td></tr>';
+        }
+
+        // Fetch pending reviews count
+        try {
+          const corrUrl = slug ? `api/corrections?limit=3&status=pending&project_slug=${encodeURIComponent(slug)}` : 'api/corrections?limit=3&status=pending';
+          const res = await fetch(apiUrl(corrUrl));
+          if (res.ok) {
+            const data = await res.json();
+            const items = data.corrections || data.items || [];
+            const total = data.total || items.length;
+            const body = document.getElementById('pending-reviews-body');
+            if (!items.length) {
+              body.innerHTML = '<div class="empty-state">No pending reviews</div>';
+            } else {
+              body.innerHTML = items.map(c => {
+                return '<div class="review-item">'
+                  + '<div><span class="review-id">#' + esc(String(c.id || '')) + '</span><span class="review-cause">' + esc(c.ai_root_cause || c.human_root_cause || '—') + '</span></div>'
+                  + '<span class="review-badge">Pending</span>'
+                  + '</div>';
+              }).join('')
+              + (total > 3 ? '<div class="review-item" style="justify-content:center;color:var(--text-dim);font-size:12px;">+ ' + (total - 3) + ' more pending</div>' : '');
+            }
+          }
+        } catch (e) {
+          console.error('[Overview] Failed to load reviews:', e);
+        }
+      }
+
+      load();
+    })();
+  </script>
+</body>
+</html>

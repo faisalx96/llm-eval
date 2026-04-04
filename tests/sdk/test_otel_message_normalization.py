@@ -1,8 +1,11 @@
+import json
+
 from qym.core.otel import (
     _extract_reasoning_text,
     _extract_tool_calls_from_message,
     _extract_tool_results_from_message,
     _normalize_message_content,
+    _serialize_span_value,
 )
 
 
@@ -94,3 +97,15 @@ def test_extract_reasoning_text_from_anthropic_thinking_blocks():
     message = type("Msg", (), {"reasoning": None, "content": [Thinking()]})()
 
     assert _extract_reasoning_text(message) == "Hidden chain summary"
+
+
+def test_serialize_span_value_keeps_large_sql_results_intact():
+    payload = {
+        "columns": ["School Name", "Street"],
+        "rows": [[f"School {i}", "313 West Winton Avenue" * 6] for i in range(200)],
+    }
+
+    serialized = _serialize_span_value(json.dumps(payload))
+    parsed = json.loads(serialized)
+
+    assert parsed == payload

@@ -6,12 +6,13 @@
   <title>قيِّم • Deleted Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
   <link rel="stylesheet" href="./static/dashboard.css">
+  <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
+  <script src="./static/shell.js"></script>
   <style>
     .trash-container {
       padding: var(--space-lg) var(--space-xl);
       overflow-y: auto;
-      height: calc(100vh - 44px);
     }
 
     .section {
@@ -209,83 +210,6 @@
   </style>
 </head>
 <body>
-  <div class="toast-container" id="toast-container"></div>
-
-  <div class="header-user-dropdown" id="header-user-dropdown">
-    <button class="trigger" id="header-user-trigger">
-      <span class="avatar" id="header-user-avatar">?</span>
-      <span class="name" id="header-user-name">User</span>
-      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
-    <div class="menu" id="header-user-menu">
-      <div class="menu-header">
-        <div class="avatar" id="header-menu-avatar">?</div>
-        <div class="info">
-          <div class="email" id="header-user-email"></div>
-          <div class="role" id="header-user-role"></div>
-        </div>
-      </div>
-      <nav class="menu-nav">
-        <a href="/" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-          Dashboard
-        </a>
-        <a href="/profile" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          Profile
-        </a>
-        <a href="/reviews" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 11l3 3L22 4"></path>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-          </svg>
-          Corrections Review
-        </a>
-        <a href="/admin" class="menu-item" id="header-admin-link">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-          Admin Panel
-        </a>
-      </nav>
-    </div>
-  </div>
-
-  <header class="stats-bar has-user-pill-space">
-    <div class="stats-bar-left">
-      <a href="/" class="logo" style="text-decoration:none;">
-        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
-      </a>
-      <div class="stat-cells">
-        <div class="stat-cell">
-          <span class="stat-label">Page</span>
-          <span class="stat-value">
-            <span class="shell-breadcrumb">
-              <span class="shell-breadcrumb-parent">Runs</span>
-              <span class="shell-breadcrumb-sep">/</span>
-              <span class="shell-breadcrumb-current">Deleted Runs</span>
-            </span>
-          </span>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-label">Deleted</span>
-          <span class="stat-value" id="trash-count">—</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
   <main class="trash-container">
     <div class="section">
       <div class="section-title">Overview</div>

@@ -93,7 +93,7 @@
     filterDatasets: new Set(),
     filterStatuses: new Set(),
     filterVersions: new Set(),
-    currentView: 'charts',  // Default to charts view
+    currentView: window.__QYM_INITIAL_VIEW__ || new URLSearchParams(window.location.search).get('view') || 'charts',
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -4414,28 +4414,31 @@
 
     state.runsFetchMeta.inFlight = true;
     try {
-      // Fetch first page and current user in parallel
-      const meResponse = await fetch(apiUrl('v1/me')).catch(() => null);
-      if (meResponse && meResponse.ok) {
-        state.currentUser = await meResponse.json();
-        if (state.currentUser && window.QymAuth) {
-          window.QymAuth.maybePromptBootstrapAdmin(state.currentUser);
+      // Use shell's cached user if available, otherwise fetch
+      if (window.__QYM_USER__) {
+        state.currentUser = window.__QYM_USER__;
+      } else {
+        const meResponse = await fetch(apiUrl('v1/me')).catch(() => null);
+        if (meResponse && meResponse.ok) {
+          state.currentUser = await meResponse.json();
+          window.__QYM_USER__ = state.currentUser;
+        } else {
+          state.currentUser = null;
         }
-        updateProfileLink();
+      }
+      if (state.currentUser) {
         if (!resolveProjectContext(state.currentUser)) {
           state.runsFetchMeta.hasLoadedAllPages = false;
           showProjectSelectorPage();
           return;
         }
-      } else {
-        state.currentUser = null;
       }
 
       const projectSlug = state.currentProject && state.currentProject.slug ? `&project_slug=${encodeURIComponent(state.currentProject.slug)}` : '';
       const runsResponse = await fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=0${projectSlug}`));
 
       // Handle authentication errors
-      if (runsResponse.status === 401 || (meResponse && meResponse.status === 401)) {
+      if (runsResponse.status === 401) {
         showAuthError();
         return;
       }
@@ -5119,6 +5122,18 @@
   // Check auth first before loading dashboard
   async function checkAuthAndInit() {
     try {
+      // If shell is present, wait for it to fetch the user
+      if (window.QymShell && !window.__QYM_USER__) {
+        await new Promise(r => document.addEventListener('qym:shell-ready', r, { once: true }));
+      }
+      if (window.__QYM_USER__) {
+        state.currentUser = window.__QYM_USER__;
+        restoreDashboardState();
+        startHeartbeat();
+        fetchRuns({ refreshAllPages: true });
+        return;
+      }
+      // Fallback: fetch directly (no shell, or shell failed)
       const res = await fetch(apiUrl('v1/me'));
       if (res.status === 401) {
         showAuthError();
