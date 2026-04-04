@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import case, func, text
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -19,10 +19,8 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     AuditLog,
-    OrgUnit,
-    OrgUnitClosure,
-    OrgUnitType,
-    PlatformSetting,
+    Project,
+    ProjectMembership,
     ReviewCorrection,
     RootCauseRevision,
     Run,
@@ -36,7 +34,13 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.item_identity import build_compare_identity, finalize_compare_alignment
-from qym_platform.permissions import can_modify_run, can_view_run, manager_team_ids
+from qym_platform.permissions import (
+    can_approve_run as permission_can_approve_run,
+    can_delete_run,
+    can_modify_run,
+    can_view_run,
+    has_project_access,
+)
 from qym_platform.services.root_cause_changes import apply_root_cause_change
 from qym_platform.settings import PlatformSettings
 
@@ -111,6 +115,28 @@ def _platform_static_dashboard_run() -> Path:
     return _platform_static_dir() / "dashboard" / "run.html"
 
 
+def _platform_static_project_settings() -> Path:
+    return _platform_static_dir() / "dashboard" / "project_settings.html"
+
+
+def _project_path_prefix(request: Request, project_slug: str) -> str:
+    path = request.url.path
+    marker = f"/projects/{project_slug}"
+    idx = path.find(marker)
+    if idx < 0:
+        return ""
+    return path[:idx]
+
+
+def _resolve_project_by_slug_for_ui(db: Session, principal: Principal, project_slug: str) -> Project:
+    project = db.query(Project).filter(Project.slug == project_slug, Project.is_active.is_(True)).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not has_project_access(db, principal, project.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return project
+
+
 def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[RedirectResponse]:
     settings = PlatformSettings()
     if not auth_mode_is_oidc(settings):
@@ -119,21 +145,6 @@ def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[Redirect
         return None
     next_value = sanitize_next(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
     return RedirectResponse(url=f"/login?next={next_value}", status_code=303)
-
-
-def _get_setting(db: Session, key: str, default: str = "") -> str:
-    """Get a platform setting value."""
-    row = db.query(PlatformSetting).filter(PlatformSetting.key == key).first()
-    return row.value if row else default
-
-
-def _user_team_subtree_ids(db: Session, user: User) -> set[str]:
-    """Get all org unit IDs in the user's team's subtree (ancestors)."""
-    if not user.team_unit_id:
-        return set()
-    # Get all ancestors of the user's team (including the team itself)
-    closures = db.query(OrgUnitClosure).filter(OrgUnitClosure.descendant_id == user.team_unit_id).all()
-    return {c.ancestor_id for c in closures}
 
 
 def _iso(dt: Optional[datetime]) -> str:
@@ -268,6 +279,11 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
             "display_name": owner.display_name or owner.email.split("@")[0],
         }
 
+    project = db.query(Project).filter(Project.id == run.project_id).first()
+    project_info = None
+    if project:
+        project_info = {"id": project.id, "slug": project.slug, "name": project.name}
+
     # Get approval info if exists
     approval_info = None
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
@@ -321,12 +337,24 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
         "status": run.status,
         "run_config": run.run_config if isinstance(run.run_config, dict) else {},
         "owner": owner_info,
+        "project": project_info,
         "approval": approval_info,
     }
 
 
 @router.get("/", response_model=None)
 def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_dashboard_index()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Dashboard UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
+@router.get("/projects/{project_slug}", response_model=None)
+def dashboard_project_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
@@ -390,6 +418,23 @@ def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
         raise HTTPException(status_code=404, detail="Reviews UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
+
+@router.get("/projects/{project_slug}/reviews", response_model=None)
+def project_reviews_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    return reviews_index(request=request, db=db)
+
+
+@router.get("/projects/{project_slug}/settings", response_model=None)
+def project_settings_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_project_settings()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Project settings UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
 @router.get("/run/{run_id:path}", response_model=None)
 def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
     redirect = _maybe_redirect_to_login(request, db)
@@ -401,53 +446,49 @@ def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
+@router.get("/projects/{project_slug}/runs/{run_id:path}", response_model=None)
+def project_run_ui(project_slug: str, run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    return run_ui(run_id=run_id, request=request, db=db)
+
+
 @router.get("/api/runs")
 def legacy_list_runs(
     limit: int = Query(default=100, le=500),
     offset: int = Query(default=0, ge=0),
+    project_slug: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """List runs with visibility based on role and org structure.
-
-    Visibility rules:
-    - ADMIN: all runs (platform administration)
-    - EMPLOYEE: own runs only
-    - MANAGER: runs from their managed team(s)
-    - GM/VP: approved runs only in their subtree (configurable via policy)
-    - Local dev mode (auth_type == "none"): show everything
-    """
     q = Run.active(db).order_by(Run.created_at.desc())
 
-    # Local dev mode: show everything to reduce friction
-    if principal.auth_type == "none":
-        pass  # no filter
-    elif principal.user.role == UserRole.ADMIN:
-        pass  # Admin sees all runs
-    elif principal.user.role == UserRole.EMPLOYEE:
-        if principal.user.team_unit_id:
-            teammates = db.query(User.id).filter(User.team_unit_id == principal.user.team_unit_id).all()
-            team_user_ids = {u.id for u in teammates}
-            q = q.filter(Run.owner_user_id.in_(team_user_ids))
-        else:
-            q = q.filter(Run.owner_user_id == principal.user.id)
-    elif principal.user.role == UserRole.MANAGER:
-        managed_team_ids = manager_team_ids(db, principal.user.id)
-        if managed_team_ids:
-            team_users = db.query(User.id).filter(User.team_unit_id.in_(managed_team_ids)).all()
-            team_user_ids = {u.id for u in team_users}
-            team_user_ids.add(principal.user.id)
-            q = q.filter(Run.owner_user_id.in_(team_user_ids))
-        else:
-            q = q.filter(Run.owner_user_id == principal.user.id)
-    elif principal.user.role in {UserRole.GM, UserRole.VP}:
-        gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
-        if gm_vp_approved_only:
-            q = q.filter(Run.status == RunWorkflowStatus.APPROVED)
-        else:
-            q = q.filter(Run.status.in_([RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED]))
+    selected_project = None
+    if project_slug:
+        selected_project = db.query(Project).filter(Project.slug == project_slug, Project.is_active.is_(True)).first()
+        if not selected_project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not has_project_access(db, principal, selected_project.id):
+            raise HTTPException(status_code=403, detail="Access denied")
     else:
-        q = q.filter(Run.owner_user_id == principal.user.id)
+        if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
+            selected_project = db.query(Project).filter(Project.is_active.is_(True)).order_by(Project.name).first()
+        else:
+            selected_project = (
+                db.query(Project)
+                .join(ProjectMembership, ProjectMembership.project_id == Project.id)
+                .filter(ProjectMembership.user_id == principal.user.id, Project.is_active.is_(True))
+                .order_by(Project.name)
+                .first()
+            )
+
+    if selected_project:
+        q = q.filter(Run.project_id == selected_project.id)
+    else:
+        return {
+            "tasks": {},
+            "last_updated": to_api_timestamp(utc_now_naive()),
+            "total_count": 0,
+            "project": None,
+        }
 
     # Filter out hidden tasks
     from qym_platform.settings import PlatformSettings
@@ -463,7 +504,12 @@ def legacy_list_runs(
     runs: List[Run] = q.offset(offset).limit(limit).all()
 
     if not runs:
-        return {"tasks": {}, "last_updated": to_api_timestamp(utc_now_naive()), "total_count": total_count}
+        return {
+            "tasks": {},
+            "last_updated": to_api_timestamp(utc_now_naive()),
+            "total_count": total_count,
+            "project": {"id": selected_project.id, "slug": selected_project.slug, "name": selected_project.name},
+        }
 
     run_ids = [r.id for r in runs]
 
@@ -617,7 +663,12 @@ def legacy_list_runs(
         model = summary["model_name"] or "nomodel"
         tasks.setdefault(task, {}).setdefault(model, []).append(summary)
 
-    return {"tasks": tasks, "last_updated": to_api_timestamp(utc_now_naive()), "total_count": total_count}
+    return {
+        "tasks": tasks,
+        "last_updated": to_api_timestamp(utc_now_naive()),
+        "total_count": total_count,
+        "project": {"id": selected_project.id, "slug": selected_project.slug, "name": selected_project.name},
+    }
 
 
 @router.get("/api/compare")
@@ -675,26 +726,8 @@ def legacy_compare(
 
 
 def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
-    """Check if the principal can approve/reject this run (must be the team's manager or admin)."""
-    # Local dev mode: allow all
-    if principal.auth_type == "none":
-        return True
-
-    # Admin can approve all
-    if principal.user.role == UserRole.ADMIN:
-        return True
-
-    # Only managers can approve
-    if principal.user.role != UserRole.MANAGER:
-        return False
-
-    # Manager must be the team manager for the run owner's team
-    owner = db.query(User).filter(User.id == run.owner_user_id).first()
-    if not owner or not owner.team_unit_id:
-        return False
-
-    managed_team_ids = manager_team_ids(db, principal.user.id)
-    return owner.team_unit_id in managed_team_ids
+    """Check if the principal can approve or reject this run."""
+    return permission_can_approve_run(db, principal, run)
 
 
 def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
@@ -821,7 +854,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     # Extract Langfuse host/project_id from run metadata (langfuse_url fallback)
     lf_host, lf_project_id = _extract_langfuse_ids(run.run_metadata or {})
     owner = db.query(User).filter(User.id == run.owner_user_id).first()
-    team_name = None
+    project = db.query(Project).filter(Project.id == run.project_id).first()
     owner_info = None
     if owner:
         owner_info = {
@@ -829,10 +862,9 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "email": owner.email,
             "display_name": owner.display_name or owner.email.split("@")[0],
         }
-        if owner.team_unit_id:
-            team = db.query(OrgUnit).filter(OrgUnit.id == owner.team_unit_id).first()
-            if team:
-                team_name = team.name
+    project_info = None
+    if project:
+        project_info = {"id": project.id, "slug": project.slug, "name": project.name}
 
     started_at = run.started_at or run.created_at
     ended_at = run.ended_at
@@ -860,7 +892,8 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "metadata": run_metadata,
             "status": run.status,
             "owner": owner_info,
-            "team_name": team_name,
+            "team_name": project.name if project else None,
+            "project": project_info,
             "started_at": _iso(started_at) if started_at else "",
             "ended_at": _iso(ended_at) if ended_at else "",
             "created_at": _iso(run.created_at) if run.created_at else "",
@@ -898,13 +931,13 @@ def export_run_html(
 
     # Inline dashboard.css
     run_html = run_html.replace(
-        '<link rel="stylesheet" href="../static/dashboard.css">',
+        '<link rel="stylesheet" href="/static/dashboard.css">',
         f"<style>\n{css_content}\n</style>",
     )
 
     # Inline metrics.js
     run_html = run_html.replace(
-        '<script src="../static/metrics.js"></script>',
+        '<script src="/static/metrics.js"></script>',
         f"<script>\n{metrics_js}\n</script>",
     )
 
@@ -912,16 +945,16 @@ def export_run_html(
     if trace_viewer_path.exists():
         trace_viewer_js = trace_viewer_path.read_text(encoding="utf-8")
         run_html = run_html.replace(
-            '<script src="../static/trace_viewer.js"></script>',
+            '<script src="/static/trace_viewer.js"></script>',
             f"<script>\n{trace_viewer_js}\n</script>",
         )
 
     # Remove playground.js (not needed in export)
-    run_html = run_html.replace('<script src="../static/playground.js"></script>', "")
+    run_html = run_html.replace('<script src="/static/playground.js"></script>', "")
 
     # Remove favicon (would be a broken link)
     run_html = run_html.replace(
-        '<link rel="icon" type="image/png" href="../static/qym_icon.png">', ""
+        '<link rel="icon" type="image/png" href="/static/qym_icon.png">', ""
     )
 
     # Serialize data — escape </script> sequences in JSON to prevent premature tag closing
@@ -1214,24 +1247,7 @@ def delete_run(
     run = Run.active(db).filter(Run.id == file_path).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_modify_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Permission denied")
-
-    # Admin can always delete
-    if principal.user.role == UserRole.ADMIN:
-        pass
-    # Owner can delete their own runs
-    elif run.owner_user_id == principal.user.id:
-        pass
-    # Manager can delete runs from their managed teams
-    elif principal.user.role == UserRole.MANAGER:
-        owner = db.query(User).filter(User.id == run.owner_user_id).first()
-        if not owner or not owner.team_unit_id:
-            raise HTTPException(status_code=403, detail="Permission denied")
-        managed_team_ids = manager_team_ids(db, principal.user.id)
-        if owner.team_unit_id not in managed_team_ids:
-            raise HTTPException(status_code=403, detail="Permission denied")
-    else:
+    if not can_delete_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Permission denied")
 
     # Soft-delete: mark as deleted instead of removing data
@@ -1327,9 +1343,8 @@ def approve_run(
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
         raise HTTPException(status_code=400, detail="Run not submitted")
-    # Check if the principal can approve this run (must be the team's manager)
     if not _can_approve_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Only the team manager can approve")
+        raise HTTPException(status_code=403, detail="Only a project manager or admin can approve")
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:
         raise HTTPException(status_code=400, detail="Missing approval record")
@@ -1354,9 +1369,8 @@ def reject_run(
         raise HTTPException(status_code=404, detail="Run not found")
     if run.status != RunWorkflowStatus.SUBMITTED:
         raise HTTPException(status_code=400, detail="Run not submitted")
-    # Check if the principal can reject this run (must be the team's manager)
     if not _can_approve_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Only the team manager can reject")
+        raise HTTPException(status_code=403, detail="Only a project manager or admin can reject")
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:
         raise HTTPException(status_code=400, detail="Missing approval record")

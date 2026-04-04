@@ -141,7 +141,7 @@ def resolve_or_provision_user(db: Session, identity: ProviderIdentity) -> User:
         user = User(
             email=identity.email,
             display_name=_default_display_name(identity.email, identity.display_name),
-            role=UserRole.EMPLOYEE,
+            role=UserRole.MEMBER,
             is_active=True,
         )
         db.add(user)

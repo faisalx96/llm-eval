@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Reviews</title>
-  <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
-  <script src="./static/auth.js"></script>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/auth.js"></script>
   <style>
     /* ═══════════════════════════════════════════════════
        REVIEWS PAGE — Correction Bank Management
@@ -1150,8 +1150,8 @@
   <!-- Top Stats Bar -->
   <header class="stats-bar has-user-pill-space">
     <div class="stats-bar-left">
-      <a href="/" class="logo" style="text-decoration:none;">
-        <img src="./static/qym_text.png" alt="Qym" class="logo-text-img" style="cursor:pointer;" />
+      <a href="/" class="logo" id="logo-link" style="text-decoration:none;">
+        <img src="/static/qym_text.png" alt="Qym" class="logo-text-img" style="cursor:pointer;" />
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
@@ -1191,7 +1191,7 @@
               </svg>
               Profile
             </a>
-            <a href="/reviews" class="menu-item">
+            <a href="/reviews" class="menu-item" id="header-reviews-link">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 11l3 3L22 4"></path>
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
@@ -1355,18 +1355,20 @@
 
     /* ── Helpers ─────────────────────────────────── */
 
-    const BASE_URL = (() => {
-      const loc = window.location;
-      let base = loc.pathname;
-      if (!base.endsWith('/')) {
-        base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
-      }
-      return loc.origin + base;
+    const API_ROOT = `${window.location.origin}/`;
+    const CURRENT_PROJECT_SLUG = (() => {
+      const match = window.location.pathname.match(/\/projects\/([^/]+)/);
+      return match ? decodeURIComponent(match[1]) : '';
     })();
 
     function apiUrl(path) {
       const clean = path.replace(/^\.?\//, '');
-      return BASE_URL + clean;
+      return API_ROOT + clean;
+    }
+
+    function projectUrl(slug, suffix = '') {
+      const clean = String(suffix || '').replace(/^\/+/, '');
+      return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
     }
 
     const $ = (sel) => document.querySelector(sel);
@@ -1399,8 +1401,17 @@
       if (name) name.textContent = displayName;
       if (menuAvatar) menuAvatar.textContent = initials;
       if (email) email.textContent = user.email || '';
-      if (role) role.textContent = user.role || '';
+      if (role) {
+        const projectRole = Array.isArray(user.projects)
+          ? user.projects.find((project) => project.slug === CURRENT_PROJECT_SLUG)?.role
+          : '';
+        role.textContent = user.role + (projectRole ? ` · ${projectRole}` : '');
+      }
       if (adminLink) adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
+      const reviewsLink = el('header-reviews-link');
+      if (reviewsLink) reviewsLink.href = CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG, 'reviews') : '/reviews';
+      const logoLink = el('logo-link');
+      if (logoLink) logoLink.href = CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG) : '/';
     }
 
     function setupHeaderUserDropdown() {
@@ -1599,6 +1610,7 @@
         if (state.confMin > 0) params.set('conf_min', String(state.confMin));
         if (state.confMax < 100) params.set('conf_max', String(state.confMax));
         if (state.searchQuery) params.set('search', state.searchQuery);
+        if (CURRENT_PROJECT_SLUG) params.set('project_slug', CURRENT_PROJECT_SLUG);
 
         const qs = params.toString();
         const resp = await fetch(apiUrl(`api/corrections${qs ? '?' + qs : ''}`));

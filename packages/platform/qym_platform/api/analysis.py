@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
-from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
+from qym_platform.db.models import CorrectionStatus, Project, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
 from qym_platform.deps import get_db
 from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
 from qym_platform.secrets import llm_config_has_api_key, resolve_llm_api_key
@@ -1024,6 +1024,7 @@ def _delete_active_candidate(db: Session, correction: ReviewCorrection) -> None:
 
 @router.get("/api/corrections")
 def list_corrections(
+    project_slug: Optional[str] = Query(None),
     task: Optional[List[str]] = Query(None),
     dataset: Optional[List[str]] = Query(None),
     model: Optional[List[str]] = Query(None),
@@ -1077,6 +1078,11 @@ def list_corrections(
         .filter(ReviewCorrection.is_active.is_(True))
     )
     active_query = apply_reviewable_run_filter(active_query, db, principal)
+    if project_slug:
+        project = db.query(Project).filter(Project.slug == project_slug, Project.is_active.is_(True)).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        active_query = active_query.filter(Run.project_id == project.id)
     def apply_filter_set(base_query, *, exclude: Optional[str] = None):
         query_obj = base_query
         if task and exclude != "task":

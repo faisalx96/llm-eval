@@ -20,6 +20,7 @@ class Principal:
     auth_type: str  # api_key|proxy_headers|oidc|none
     scopes: tuple[str, ...] = ()
     provider: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 def _default_display_name(email: str) -> str:
@@ -36,7 +37,7 @@ def _provision_proxy_header_user(db: Session, email: str) -> User:
     user = User(
         email=email,
         display_name=_default_display_name(email),
-        role=UserRole.EMPLOYEE,
+        role=UserRole.MEMBER,
     )
     db.add(user)
     db.flush()
@@ -97,7 +98,7 @@ def require_api_key_principal(
     if not user or not user.is_active:
         raise HTTPException(status_code=403, detail="User disabled")
     scopes = tuple(str(scope).strip() for scope in (row.scopes or []) if str(scope).strip())
-    return Principal(user=user, auth_type="api_key", scopes=scopes)
+    return Principal(user=user, auth_type="api_key", scopes=scopes, project_id=row.project_id)
 
 
 def require_api_key_scope(principal: Principal, required_scope: str) -> None:

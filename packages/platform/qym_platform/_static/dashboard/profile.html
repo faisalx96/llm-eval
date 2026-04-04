@@ -4,1095 +4,305 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Profile</title>
-  <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
-  <script src="./static/auth.js"></script>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/auth.js"></script>
   <style>
-    .profile-container {
-      padding: var(--space-lg) var(--space-xl);
-      overflow-y: auto;
-      height: calc(100vh - 44px);
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: var(--space-lg);
     }
-
-    .section {
-      margin-bottom: var(--space-xl);
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
     }
-
-    .section-title {
-      font-size: var(--font-sm);
-      font-weight: 600;
+    .hero h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .hero p {
+      margin: 6px 0 0;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: var(--space-md);
     }
-
-    .info-grid {
+    .actions {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: var(--space-md);
     }
-
-    .info-item {
+    .panel {
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
-      border-radius: 6px;
-      padding: var(--space-md);
+      border-radius: 10px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-lg);
     }
-
-    .info-label {
+    .panel h2 {
+      margin: 0 0 var(--space-md);
+      font-size: var(--font-md);
+    }
+    .kv-label {
       font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.3px;
+      letter-spacing: 0.5px;
       margin-bottom: 4px;
     }
-
-    .info-value {
-      font-size: var(--font-sm);
+    .kv-value {
       color: var(--text-primary);
       font-family: var(--font-mono);
       word-break: break-word;
     }
-
-    /* API Keys */
-    .keys-section {
-      background: var(--bg-surface);
+    .project-list {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .project-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      background: var(--bg-elevated);
       border: 1px solid var(--border-default);
       border-radius: 8px;
-      overflow: hidden;
+      padding: 12px 14px;
     }
-
-    .keys-header {
-      display: flex;
-      justify-content: space-between;
+    .project-meta strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .project-meta span {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .role-pill {
+      display: inline-flex;
       align-items: center;
-      padding: var(--space-md) var(--space-lg);
-      border-bottom: 1px solid var(--border-default);
-    }
-
-    .keys-header-title {
-      font-size: var(--font-sm);
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .keys-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .keys-table th {
-      text-align: left;
-      padding: var(--space-sm) var(--space-lg);
-      font-size: var(--font-xs);
-      font-weight: 500;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-      background: var(--bg-elevated);
-      border-bottom: 1px solid var(--border-default);
-    }
-
-    .keys-table td {
-      padding: var(--space-md) var(--space-lg);
-      font-size: var(--font-sm);
-      color: var(--text-secondary);
-      border-bottom: 1px solid var(--border-default);
-    }
-
-    .keys-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .keys-table .key-name {
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-
-    .keys-table .key-token {
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: var(--font-xs);
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-
-    .status-badge.active {
-      background: rgba(0, 212, 170, 0.15);
-      color: var(--accent-primary);
-    }
-
-    .status-badge.revoked {
-      background: rgba(255, 100, 100, 0.15);
-      color: #ff6b6b;
-    }
-
-    .keys-table .key-actions {
-      text-align: right;
-    }
-
-    .empty-state {
-      padding: var(--space-xl);
-      text-align: center;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-
-    .btn {
-      padding: 6px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      cursor: pointer;
-      font-size: var(--font-sm);
-      font-weight: 500;
-      transition: all 0.15s ease;
-    }
-
-    .btn.primary {
-      border-color: rgba(0, 212, 170, 0.35);
-      background: rgba(0, 212, 170, 0.12);
-      color: var(--accent-primary);
-    }
-
-    .btn:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
-
-    .btn.primary:hover {
-      background: rgba(0, 212, 170, 0.18);
-    }
-
-    .btn.danger {
-      border-color: rgba(255, 100, 100, 0.35);
-      color: #ff6b6b;
-    }
-
-    .btn.danger:hover {
-      background: rgba(255, 100, 100, 0.12);
-    }
-
-    .btn.sm, .btn.btn-sm {
+      border-radius: 999px;
       padding: 4px 10px;
+      background: rgba(0, 212, 170, 0.08);
+      border: 1px solid rgba(0, 212, 170, 0.22);
+      color: var(--accent-primary);
       font-size: var(--font-xs);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
     }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--space-md);
     }
-
-    .form-input {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 4px;
-      padding: 8px 12px;
-      color: var(--text-primary);
-      font-size: var(--font-sm);
-      outline: none;
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .field label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .form-input, .form-textarea {
       width: 100%;
       box-sizing: border-box;
-    }
-
-    .form-input:focus {
-      border-color: var(--accent-primary);
-    }
-
-    .form-input::placeholder {
-      color: var(--text-muted);
-    }
-
-    .btn.copied {
-      background: rgba(0, 212, 170, 0.2);
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
-    }
-
-    /* Modal Overlay */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-overlay.visible {
-      display: flex;
-    }
-
-    .modal-box {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      max-width: 500px;
-      width: 90%;
-      max-height: 80vh;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-md) var(--space-lg);
-      margin: 0;
-      border-bottom: 1px solid var(--border-default);
-    }
-
-    .modal-title {
-      font-size: var(--font-lg);
-      color: var(--text-primary);
-      margin: 0;
-    }
-
-    .modal-note {
-      font-size: var(--font-sm);
-      color: var(--text-muted);
-      margin: 0 0 var(--space-md) 0;
-      line-height: 1.45;
-    }
-
-    .modal-body {
-      margin: 0;
-      padding: var(--space-lg);
-      display: block;
-    }
-
-    .form-group {
-      margin-bottom: var(--space-md);
-    }
-
-    .form-label {
-      display: block;
-      font-size: var(--font-xs);
-      font-weight: 500;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-      margin-bottom: var(--space-xs);
-    }
-
-    .modal-footer {
-      display: flex;
-      gap: var(--space-sm);
-      justify-content: flex-end;
-      padding: var(--space-md) var(--space-lg);
-      border-top: 1px solid var(--border-default);
-    }
-
-    .modal-footer .btn {
-      min-width: 0;
-    }
-
-    .key-modal-close {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 20px;
-      cursor: pointer;
-      padding: var(--space-xs);
-    }
-
-    .key-modal-close:hover {
-      color: var(--text-primary);
-    }
-
-    /* Token Success State */
-    .token-success {
-      display: none;
-    }
-
-    .token-success.visible {
-      display: block;
-    }
-
-    .token-warning {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      padding: var(--space-md);
-      background: rgba(255, 193, 7, 0.1);
-      border: 1px solid rgba(255, 193, 7, 0.3);
-      border-radius: 6px;
-      margin-bottom: var(--space-md);
-    }
-
-    .token-warning-icon {
-      font-size: 18px;
-    }
-
-    .token-warning-text {
-      font-size: var(--font-sm);
-      color: #ffc107;
-    }
-
-    .token-display {
-      display: flex;
-      gap: var(--space-sm);
-      align-items: center;
-    }
-
-    .token-value {
-      flex: 1;
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      color: var(--text-primary);
       background: var(--bg-elevated);
-      padding: 10px 12px;
+      border: 1px solid var(--border-default);
       border-radius: 6px;
-      border: 1px solid var(--border-default);
-      word-break: break-all;
-    }
-
-    @media (max-width: 640px) {
-      .token-display {
-        flex-direction: column;
-        align-items: stretch;
-      }
-    }
-
-    /* Confirm Dialog */
-    .confirm-overlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .confirm-overlay.visible {
-      display: flex;
-    }
-
-    .confirm-dialog {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-lg);
-      max-width: 400px;
-      width: 90%;
-    }
-
-    .confirm-title {
-      font-size: var(--font-md);
-      font-weight: 600;
       color: var(--text-primary);
-      margin-bottom: var(--space-sm);
-    }
-
-    .confirm-message {
+      padding: 10px 12px;
       font-size: var(--font-sm);
-      color: var(--text-secondary);
-      margin-bottom: var(--space-lg);
+      font-family: var(--font-sans);
     }
-
-    .confirm-actions {
-      display: flex;
-      gap: var(--space-sm);
-      justify-content: flex-end;
+    .form-textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+    .inline-note {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      margin-top: 10px;
+    }
+    .message {
+      margin-top: var(--space-sm);
+      color: var(--accent-primary);
+      font-size: var(--font-sm);
     }
   </style>
 </head>
 <body>
-  <!-- Toast Notifications -->
-  <div class="toast-container" id="toast-container"></div>
-
-  <!-- User Menu -->
-  <div class="header-user-dropdown" id="header-user-dropdown">
-    <button class="trigger" id="header-user-trigger">
-      <span class="avatar" id="header-user-avatar">?</span>
-      <span class="name" id="header-user-name">User</span>
-      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
-    <div class="menu" id="header-user-menu">
-      <div class="menu-header">
-        <div class="avatar" id="header-menu-avatar">?</div>
-        <div class="info">
-          <div class="email" id="header-user-email"></div>
-          <div class="role" id="header-user-role"></div>
-        </div>
-      </div>
-      <nav class="menu-nav">
-        <a href="/" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-          Dashboard
-        </a>
-        <a href="/admin" class="menu-item" id="header-admin-link">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-          Admin Panel
-        </a>
-      </nav>
-    </div>
-  </div>
-
-  <header class="stats-bar has-user-pill-space">
+  <header class="stats-bar">
     <div class="stats-bar-left">
       <a href="/" class="logo" style="text-decoration:none;">
-        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+        <img src="/static/qym_text.png" alt="قيِّم" class="logo-text-img" />
       </a>
-      <div class="stat-cells">
-        <div class="stat-cell">
-          <span class="stat-label">PAGE</span>
-          <span class="stat-value">
-            <span class="shell-breadcrumb">
-              <span class="shell-breadcrumb-parent">Account</span>
-              <span class="shell-breadcrumb-sep">/</span>
-              <span class="shell-breadcrumb-current">Profile</span>
-            </span>
-          </span>
-        </div>
-      </div>
     </div>
   </header>
 
-  <main class="profile-container">
-    <!-- Identity Section -->
-    <div class="section">
-      <div class="section-title">Identity</div>
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">Email</div>
-          <div class="info-value" id="me-email">—</div>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>Profile</h1>
+        <p>Your access is now project-scoped. API keys live inside each project’s settings page.</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-secondary" href="/" id="open-default-project">Open Project</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Account</h2>
+      <div class="grid" id="account-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Projects</h2>
+      <div class="project-list" id="projects-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Review LLM</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label for="llm-base-url">Base URL</label>
+          <input class="form-input" id="llm-base-url" placeholder="https://api.openai.com/v1">
         </div>
-        <div class="info-item">
-          <div class="info-label">Name</div>
-          <div class="info-value" id="me-name">—</div>
+        <div class="field">
+          <label for="llm-model">Model</label>
+          <input class="form-input" id="llm-model" placeholder="gpt-4o-mini">
         </div>
-        <div class="info-item">
-          <div class="info-label">Role</div>
-          <div class="info-value" id="me-role">—</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Team</div>
-          <div class="info-value" id="me-team">—</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Department</div>
-          <div class="info-value" id="me-department">—</div>
+        <div class="field">
+          <label for="llm-api-key">API Key</label>
+          <input class="form-input" id="llm-api-key" type="password" placeholder="sk-...">
         </div>
       </div>
-    </div>
-
-    <!-- Admin Bootstrap Banner (hidden by default) -->
-    <div class="section" id="bootstrap-banner" style="display:none;">
-      <div style="padding:16px 20px;border-radius:8px;border:1px solid rgba(0,212,170,0.2);background:rgba(0,212,170,0.06);">
-        <div style="font-size:var(--font-sm);font-weight:600;color:var(--text-primary);margin-bottom:6px;">Grant Admin Access</div>
-        <div style="font-size:var(--font-xs);color:var(--text-muted);margin-bottom:12px;">Enter the bootstrap token to grant your account admin access.</div>
-        <div style="display:flex;gap:8px;">
-          <input type="password" id="bootstrap-token-input" placeholder="Bootstrap token" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-primary);font-size:var(--font-sm);font-family:var(--font-mono);outline:none;" />
-          <button id="bootstrap-submit-btn" style="padding:8px 16px;border-radius:6px;border:none;background:var(--accent-primary);color:var(--bg-void);font-size:var(--font-sm);font-weight:600;cursor:pointer;">Promote</button>
-        </div>
-        <div id="bootstrap-error" style="display:none;margin-top:8px;font-size:var(--font-xs);color:var(--error);"></div>
+      <div class="inline-note" id="llm-note"></div>
+      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="save-llm-btn" type="button">Save</button>
+        <button class="btn btn-secondary" id="test-llm-btn" type="button">Test</button>
       </div>
-    </div>
-
-    <!-- API Keys Section -->
-    <div class="section">
-      <div class="section-title">API Keys</div>
-      <div class="keys-section">
-        <div class="keys-header">
-          <div class="keys-header-title">Your API Keys</div>
-          <button class="btn primary btn-sm" id="new-key-btn">+ New Key</button>
-        </div>
-
-        <div id="keys-container">
-          <table class="keys-table" id="keys-table" style="display: none;">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Key</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th style="width: 80px;"></th>
-              </tr>
-            </thead>
-            <tbody id="keys-tbody"></tbody>
-          </table>
-          <div class="empty-state" id="keys-empty">No API keys yet. Create one to get started.</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- LLM Configuration Section -->
-    <div class="section">
-      <div class="section-title">LLM Configuration</div>
-      <div class="keys-section">
-        <div class="keys-header">
-          <div class="keys-header-title">Auto Root-Cause Analysis Provider</div>
-        </div>
-        <div style="padding: var(--space-lg);">
-          <p style="font-size:var(--font-sm);color:var(--text-muted);margin:0 0 var(--space-md) 0;">
-            Configure an OpenAI-compatible LLM provider to enable automated root cause analysis on evaluation runs.
-          </p>
-          <div id="llm-config-warning" style="display:none;margin:0 0 var(--space-md) 0;padding:12px 14px;border:1px solid rgba(180, 83, 9, 0.25);border-radius:10px;background:rgba(245, 158, 11, 0.12);color:var(--text-primary);font-size:var(--font-sm);line-height:1.5;"></div>
-          <div class="form-group">
-            <label class="form-label" for="llm-base-url">Base URL</label>
-            <input type="text" class="form-input" id="llm-base-url" placeholder="https://api.openai.com/v1">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="llm-api-key">API Key</label>
-            <div style="display:flex;gap:var(--space-sm);align-items:center;">
-              <input type="password" class="form-input" id="llm-api-key" placeholder="sk-..." style="flex:1;">
-              <button class="btn btn-sm" id="llm-key-toggle" type="button" title="Show/Hide">Show</button>
-            </div>
-            <div id="llm-key-hint" style="font-size:var(--font-xs);color:var(--text-muted);margin-top:4px;"></div>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="llm-model">Model</label>
-            <input type="text" class="form-input" id="llm-model" placeholder="gpt-4o-mini">
-          </div>
-          <div style="display:flex;gap:var(--space-sm);justify-content:flex-end;margin-top:var(--space-md);">
-            <button class="btn" id="llm-test-btn">Test Connection</button>
-            <button class="btn primary" id="llm-save-btn">Save</button>
-          </div>
-        </div>
-      </div>
-    </div>
+      <div class="message" id="llm-message"></div>
+    </section>
   </main>
-
-  <!-- Create API Key Modal -->
-  <div class="modal-overlay" id="create-key-modal">
-    <div class="modal-box">
-      <!-- Create Form (initial state) -->
-      <div id="create-form">
-        <div class="modal-header">
-          <h2 class="modal-title">Create API Key</h2>
-          <button class="key-modal-close" id="close-create-btn" type="button" aria-label="Close create API key dialog">×</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-note">API keys are used to authenticate SDK requests.</p>
-          <div class="form-group">
-            <label class="form-label" for="key-name">Key Name</label>
-            <input type="text" class="form-input" id="key-name" placeholder="e.g., dev-laptop, ci-pipeline">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" id="cancel-create-btn">Cancel</button>
-          <button class="btn primary" id="confirm-create-btn">Create Key</button>
-        </div>
-      </div>
-
-      <!-- Token Display (after creation) -->
-      <div class="token-success" id="token-success">
-        <div class="modal-header">
-          <h2 class="modal-title">API Key Created</h2>
-          <button class="key-modal-close" id="close-token-btn" type="button" aria-label="Close API key dialog">×</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-note">Copy this key now. For security, it will not be shown again after you close this dialog.</p>
-          <div class="token-warning">
-            <span class="token-warning-icon">⚠</span>
-            <span class="token-warning-text">This is the only time you can view the full token.</span>
-          </div>
-          <div class="token-display">
-            <div class="token-value" id="token-value">—</div>
-            <button class="btn primary" id="copy-token-btn">Copy</button>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn primary" id="done-btn">Done</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="confirm-overlay" id="confirm-overlay">
-    <div class="confirm-dialog">
-      <div class="confirm-title" id="confirm-title">Confirm</div>
-      <div class="confirm-message" id="confirm-message">Are you sure?</div>
-      <div class="confirm-actions">
-        <button class="btn" id="confirm-cancel-btn">Cancel</button>
-        <button class="btn danger" id="confirm-ok-btn">Revoke</button>
-      </div>
-    </div>
-  </div>
 
   <script>
     (() => {
       'use strict';
 
-      const BASE_URL = (() => {
-        const loc = window.location;
-        let base = loc.pathname;
-        if (!base.endsWith('/')) {
-          base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
-        }
-        return loc.origin + base;
-      })();
-
       function apiUrl(path) {
-        const cleanPath = String(path || '').replace(/^\.?\//, '');
-        return BASE_URL + cleanPath;
+        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
-      const el = (id) => document.getElementById(id);
-      const back = el('back-link');
-      if (back) back.href = apiUrl('');
-
-      function formatDate(isoStr) {
-        if (!isoStr) return '—';
-        const d = new Date(isoStr);
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
-      async function loadMe() {
-        const res = await fetch(apiUrl('v1/me'));
-        if (window.QymAuth && window.QymAuth.handle401(res)) return;
-        if (!res.ok) throw new Error('Failed to load /v1/me');
-        const me = await res.json();
-
-        el('me-email').textContent = me.email || '—';
-        el('me-name').textContent = me.display_name || '—';
-        el('me-role').textContent = me.role || '—';
-        el('me-team').textContent = me.team?.name || '—';
-        el('me-department').textContent = me.department?.name || '—';
-
-        // Populate header user dropdown
-        populateHeaderUser(me);
-        setupHeaderUserDropdown();
-        // Allow any non-admin OIDC user to self-promote with the bootstrap token.
-        if (me.can_bootstrap_admin && me.role !== 'ADMIN') {
-          var banner = el('bootstrap-banner');
-          if (banner) {
-            banner.style.display = '';
-            el('bootstrap-submit-btn').addEventListener('click', async function() {
-              var token = el('bootstrap-token-input').value.trim();
-              var errEl = el('bootstrap-error');
-              if (!token) { errEl.textContent = 'Token is required'; errEl.style.display = ''; return; }
-              errEl.style.display = 'none';
-              try {
-                var r = await fetch('/v1/auth/bootstrap-admin', {
-                  method: 'POST', credentials: 'same-origin',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ bootstrap_token: token }),
-                });
-                if (r.ok) { window.location.reload(); return; }
-                var body = await r.json().catch(function() { return {}; });
-                errEl.textContent = body.detail || 'Bootstrap failed';
-                errEl.style.display = '';
-              } catch(e) {
-                errEl.textContent = 'Bootstrap failed';
-                errEl.style.display = '';
-              }
-            });
-          }
-        }
+      function projectUrl(slug, suffix = '') {
+        const clean = String(suffix || '').replace(/^\/+/, '');
+        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
       }
 
-      function getInitials(name) {
-        if (!name) return '?';
-        const parts = name.trim().split(/\s+/);
-        if (parts.length >= 2) {
-          return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-        }
-        return name.substring(0, 2).toUpperCase();
+      async function loadProfile() {
+        const [meRes, cfgRes] = await Promise.all([
+          fetch(apiUrl('v1/me')),
+          fetch(apiUrl('v1/me/llm-config')),
+        ]);
+        if (window.QymAuth && window.QymAuth.handle401(meRes)) return;
+        if (!meRes.ok) throw new Error('Failed to load profile');
+        if (!cfgRes.ok) throw new Error('Failed to load review LLM config');
+
+        const me = await meRes.json();
+        const cfg = await cfgRes.json();
+        renderProfile(me, cfg);
       }
 
-      function populateHeaderUser(user) {
-        if (!user) return;
+      function renderProfile(me, cfg) {
+        const defaultProject = me.default_project;
+        document.getElementById('open-default-project').href = defaultProject ? projectUrl(defaultProject.slug) : '/';
 
-        const displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
-        const initials = getInitials(displayName);
-
-        // Update trigger
-        const avatar = el('header-user-avatar');
-        const name = el('header-user-name');
-        if (avatar) avatar.textContent = initials;
-        if (name) name.textContent = displayName;
-
-        // Update menu header
-        const menuAvatar = el('header-menu-avatar');
-        const email = el('header-user-email');
-        const role = el('header-user-role');
-        if (menuAvatar) menuAvatar.textContent = initials;
-        if (email) email.textContent = user.email || '';
-        if (role) role.textContent = user.role || '';
-
-        // Show admin link only for admins
-        const adminLink = el('header-admin-link');
-        if (adminLink) {
-          adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
-        }
-      }
-
-      function setupHeaderUserDropdown() {
-        const dropdown = el('header-user-dropdown');
-        const trigger = el('header-user-trigger');
-        if (!dropdown || !trigger) return;
-
-        if (trigger.dataset.initialized) return;
-        trigger.dataset.initialized = 'true';
-
-        trigger.addEventListener('click', (e) => {
-          e.stopPropagation();
-          dropdown.classList.toggle('open');
-        });
-
-        document.addEventListener('click', (e) => {
-          if (!dropdown.contains(e.target)) {
-            dropdown.classList.remove('open');
-          }
-        });
-
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') {
-            dropdown.classList.remove('open');
-          }
-        });
-      }
-
-      async function loadKeys() {
-        const res = await fetch(apiUrl('v1/me/api-keys'));
-        if (!res.ok) throw new Error('Failed to load API keys');
-        const data = await res.json();
-        renderKeys(data.api_keys || []);
-      }
-
-      function renderKeys(keys) {
-        const table = el('keys-table');
-        const tbody = el('keys-tbody');
-        const empty = el('keys-empty');
-
-        if (keys.length === 0) {
-          table.style.display = 'none';
-          empty.style.display = 'block';
-          return;
-        }
-
-        table.style.display = 'table';
-        empty.style.display = 'none';
-        tbody.innerHTML = keys.map(k => {
-          const isRevoked = !!k.revoked_at;
-          return `
-            <tr>
-              <td class="key-name">${escapeHtml(k.name || 'Unnamed')}</td>
-              <td class="key-token">${escapeHtml(k.prefix)}••••••••</td>
-              <td><span class="status-badge ${isRevoked ? 'revoked' : 'active'}">${isRevoked ? 'Revoked' : 'Active'}</span></td>
-              <td>${formatDate(k.created_at)}</td>
-              <td class="key-actions">${isRevoked ? '' : `<button class="btn btn-sm danger revoke-btn" data-id="${k.id}">Revoke</button>`}</td>
-            </tr>
-          `;
-        }).join('');
-
-        tbody.querySelectorAll('.revoke-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            showConfirm('Revoke API Key', 'This key will stop working immediately. This cannot be undone.', () => revokeKey(id));
-          });
-        });
-      }
-
-      function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-      }
-
-      const confirmOverlay = el('confirm-overlay');
-      let confirmCallback = null;
-
-      function showConfirm(title, message, onConfirm) {
-        el('confirm-title').textContent = title;
-        el('confirm-message').textContent = message;
-        confirmCallback = onConfirm;
-        confirmOverlay.classList.add('visible');
-      }
-
-      function hideConfirm() {
-        confirmOverlay.classList.remove('visible');
-        confirmCallback = null;
-      }
-
-      el('confirm-cancel-btn').addEventListener('click', hideConfirm);
-      el('confirm-ok-btn').addEventListener('click', async () => {
-        if (confirmCallback) await confirmCallback();
-        hideConfirm();
-      });
-      confirmOverlay.addEventListener('click', (e) => {
-        if (e.target === confirmOverlay) hideConfirm();
-      });
-
-      async function revokeKey(id) {
-        const res = await fetch(apiUrl(`v1/me/api-keys/${id}`), { method: 'DELETE' });
-        if (!res.ok) {
-          alert('Failed to revoke: ' + await res.text());
-          return;
-        }
-        await loadKeys();
-      }
-
-      const createModal = el('create-key-modal');
-      const createForm = el('create-form');
-      const tokenSuccess = el('token-success');
-      const newKeyBtn = el('new-key-btn');
-
-      function showCreateModal() {
-        createForm.style.display = 'block';
-        tokenSuccess.classList.remove('visible');
-        createModal.classList.add('visible');
-        el('key-name').value = '';
-        setTimeout(() => el('key-name').focus(), 100);
-      }
-
-      function hideCreateModal() {
-        createModal.classList.remove('visible');
-        createForm.style.display = 'block';
-        tokenSuccess.classList.remove('visible');
-      }
-
-      newKeyBtn.addEventListener('click', showCreateModal);
-      el('cancel-create-btn').addEventListener('click', hideCreateModal);
-      el('close-create-btn').addEventListener('click', hideCreateModal);
-      el('close-token-btn').addEventListener('click', hideCreateModal);
-      createModal.addEventListener('click', (e) => {
-        if (e.target === createModal) hideCreateModal();
-      });
-
-      el('done-btn').addEventListener('click', () => {
-        hideCreateModal();
-        loadKeys();
-      });
-
-      el('confirm-create-btn').addEventListener('click', async () => {
-        const name = (el('key-name').value || 'default').trim();
-        const scopes = ['runs:write', 'runs:read'];
-        const btn = el('confirm-create-btn');
-        btn.disabled = true;
-        btn.textContent = 'Creating...';
-
-        try {
-          const res = await fetch(apiUrl('v1/me/api-keys'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, scopes }),
-          });
-          if (!res.ok) throw new Error(await res.text() || 'Create failed');
-          const data = await res.json();
-
-          createForm.style.display = 'none';
-          tokenSuccess.classList.add('visible');
-          el('token-value').textContent = data.token || '—';
-          el('copy-token-btn').textContent = 'Copy';
-          el('copy-token-btn').classList.remove('copied');
-        } catch (err) {
-          alert('Failed to create API key: ' + err.message);
-        } finally {
-          btn.disabled = false;
-          btn.textContent = 'Create Key';
-        }
-      });
-
-      el('copy-token-btn').addEventListener('click', async () => {
-        const text = el('token-value').textContent || '';
-        const btn = el('copy-token-btn');
-        try {
-          await navigator.clipboard.writeText(text);
-          btn.classList.add('copied');
-          btn.textContent = 'Copied!';
-          setTimeout(() => {
-            btn.classList.remove('copied');
-            btn.textContent = 'Copy';
-          }, 2000);
-        } catch {
-          window.prompt('Copy this token:', text);
-        }
-      });
-
-      // ── Toast notifications ──────────────────────────────────
-      function showToast(type, title, message) {
-        const container = el('toast-container');
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.innerHTML = `
-          <div class="toast-icon">${type === 'success' ? '✓' : '✗'}</div>
-          <div class="toast-content">
-            <div class="toast-title">${escapeHtml(title)}</div>
-            <div class="toast-message">${escapeHtml(message)}</div>
+        document.getElementById('account-grid').innerHTML = [
+          ['Display Name', me.display_name || '—'],
+          ['Email', me.email || '—'],
+          ['Global Role', me.role || '—'],
+          ['Default Project', defaultProject ? defaultProject.name : '—'],
+        ].map(([label, value]) => `
+          <div class="panel" style="margin:0; padding:14px;">
+            <div class="kv-label">${escapeHtml(label)}</div>
+            <div class="kv-value">${escapeHtml(value)}</div>
           </div>
-          <button class="toast-close" onclick="this.parentElement.remove()">×</button>
-        `;
-        container.appendChild(toast);
-        setTimeout(() => {
-          toast.classList.add('toast-exit');
-          setTimeout(() => toast.remove(), 300);
-        }, 4000);
+        `).join('');
+
+        const projects = Array.isArray(me.projects) ? me.projects : [];
+        document.getElementById('projects-list').innerHTML = projects.length ? projects.map((project) => `
+          <div class="project-card">
+            <div class="project-meta">
+              <strong>${escapeHtml(project.name)}</strong>
+              <span>${escapeHtml(project.slug)}</span>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <span class="role-pill">${escapeHtml(project.role || 'MEMBER')}</span>
+              <a class="btn btn-secondary" href="${projectUrl(project.slug)}">Open</a>
+              <a class="btn btn-secondary" href="${projectUrl(project.slug, 'settings')}">Settings</a>
+            </div>
+          </div>
+        `).join('') : '<div class="inline-note">You do not belong to any active projects yet.</div>';
+
+        document.getElementById('llm-base-url').value = cfg.llm_base_url || 'https://api.openai.com/v1';
+        document.getElementById('llm-model').value = cfg.llm_model || 'gpt-4o-mini';
+        document.getElementById('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
+        document.getElementById('llm-note').textContent = cfg.llm_api_key_set
+          ? `Stored key: ${cfg.llm_api_key_hint || 'configured'}`
+          : 'No review LLM key stored yet.';
       }
 
-      // ── LLM Configuration ──────────────────────────────────
-      let llmConfigState = { storageReady: true };
+      async function saveConfig(testOnly) {
+        const message = document.getElementById('llm-message');
+        const apiKey = document.getElementById('llm-api-key').value.trim();
+        const payload = {
+          llm_base_url: document.getElementById('llm-base-url').value.trim() || 'https://api.openai.com/v1',
+          llm_model: document.getElementById('llm-model').value.trim() || 'gpt-4o-mini',
+          llm_api_key: apiKey || '__KEEP__',
+        };
 
-      function renderLLMConfigStorageState(storageReady) {
-        llmConfigState.storageReady = !!storageReady;
-        const warning = el('llm-config-warning');
-        const saveBtn = el('llm-save-btn');
-        const testBtn = el('llm-test-btn');
+        const path = testOnly ? 'v1/me/llm-config/test' : 'v1/me/llm-config';
+        const method = testOnly ? 'POST' : 'PUT';
+        message.textContent = testOnly ? 'Testing…' : 'Saving…';
 
-        if (llmConfigState.storageReady) {
-          warning.style.display = 'none';
-          warning.innerHTML = '';
-          saveBtn.disabled = false;
-          testBtn.disabled = false;
+        const res = await fetch(apiUrl(path), {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          message.textContent = data.detail || 'Request failed';
           return;
         }
-
-        warning.style.display = 'block';
-        warning.innerHTML = `
-          <strong>LLM secret storage is not configured.</strong><br>
-          Set <code>QYM_LLM_CONFIG_ENCRYPTION_KEY</code> on the platform server, then reload this page. You can generate one with <code>python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code>.
-        `;
-        saveBtn.disabled = true;
-        testBtn.disabled = true;
-      }
-
-      async function loadLLMConfig() {
-        try {
-          const res = await fetch(apiUrl('v1/me/llm-config'));
-          if (!res.ok) return;
-          const cfg = await res.json();
-          renderLLMConfigStorageState(cfg.llm_config_storage_ready !== false);
-          el('llm-base-url').value = cfg.llm_base_url || '';
-          el('llm-model').value = cfg.llm_model || '';
-          el('llm-api-key').value = '';
-          const hint = el('llm-key-hint');
-          if (cfg.llm_api_key_set) {
-            hint.textContent = 'Current key: ' + cfg.llm_api_key_hint;
-          } else {
-            hint.textContent = 'No API key configured';
-          }
-          el('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
-        } catch (err) {
-          console.error('Failed to load LLM config:', err);
+        message.textContent = testOnly ? `Connected: ${data.model || payload.llm_model}` : 'Saved';
+        if (!testOnly) {
+          document.getElementById('llm-api-key').value = '';
+          await loadProfile();
         }
       }
 
-      el('llm-key-toggle').addEventListener('click', () => {
-        const input = el('llm-api-key');
-        const btn = el('llm-key-toggle');
-        if (input.type === 'password') {
-          input.type = 'text';
-          btn.textContent = 'Hide';
-        } else {
-          input.type = 'password';
-          btn.textContent = 'Show';
-        }
+      document.getElementById('save-llm-btn').addEventListener('click', () => saveConfig(false));
+      document.getElementById('test-llm-btn').addEventListener('click', () => saveConfig(true));
+      loadProfile().catch((error) => {
+        document.getElementById('account-grid').innerHTML = `<div class="inline-note">${escapeHtml(error.message)}</div>`;
       });
-
-      el('llm-save-btn').addEventListener('click', async () => {
-        const btn = el('llm-save-btn');
-        btn.disabled = true;
-        btn.textContent = 'Saving...';
-        try {
-          if (!llmConfigState.storageReady) {
-            showToast('error', 'Encryption Required', 'Set QYM_LLM_CONFIG_ENCRYPTION_KEY on the platform server before saving LLM settings');
-            return;
-          }
-          // If key field is blank and a key was already set, fetch current to preserve it
-          let apiKey = el('llm-api-key').value.trim();
-          if (!apiKey) {
-            // Fetch current config to check if key exists
-            const checkRes = await fetch(apiUrl('v1/me/llm-config'));
-            const checkCfg = await checkRes.json();
-            if (!checkCfg.llm_api_key_set) {
-              showToast('error', 'Missing API Key', 'Please enter an API key');
-              return;
-            }
-            // Key is already set, send a sentinel so the backend knows to keep it
-            apiKey = '__KEEP__';
-          }
-          const body = {
-            llm_base_url: el('llm-base-url').value.trim() || 'https://api.openai.com/v1',
-            llm_api_key: apiKey,
-            llm_model: el('llm-model').value.trim() || 'gpt-4o-mini',
-          };
-          const res = await fetch(apiUrl('v1/me/llm-config'), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            showToast('error', 'Save Failed', err.detail || 'Could not save LLM configuration');
-            return;
-          }
-          showToast('success', 'Saved', 'LLM configuration updated');
-          await loadLLMConfig();
-        } catch (err) {
-          showToast('error', 'Error', err.message || 'Failed to save');
-        } finally {
-          btn.disabled = !llmConfigState.storageReady;
-          btn.textContent = 'Save';
-        }
-      });
-
-      el('llm-test-btn').addEventListener('click', async () => {
-        const btn = el('llm-test-btn');
-        btn.disabled = true;
-        btn.textContent = 'Testing...';
-        try {
-          if (!llmConfigState.storageReady) {
-            showToast('error', 'Encryption Required', 'Set QYM_LLM_CONFIG_ENCRYPTION_KEY on the platform server before testing LLM settings');
-            return;
-          }
-          const res = await fetch(apiUrl('v1/me/llm-config/test'), { method: 'POST' });
-          const data = await res.json();
-          if (!res.ok) {
-            showToast('error', 'Connection Failed', data.detail || 'Could not connect to LLM provider');
-            return;
-          }
-          showToast('success', 'Connection OK', 'Successfully connected to ' + (data.model || 'LLM'));
-        } catch (err) {
-          showToast('error', 'Error', err.message || 'Connection test failed');
-        } finally {
-          btn.disabled = !llmConfigState.storageReady;
-          btn.textContent = 'Test Connection';
-        }
-      });
-
-      Promise.all([loadMe(), loadKeys(), loadLLMConfig()]).catch(err => {
-        console.error(err);
-        showAuthError();
-      });
-
-      function showAuthError() {
-        if (window.QymAuth) {
-          window.QymAuth.renderAuthGate('.profile-container', {
-            message: 'Sign in to access your profile',
-          });
-        }
-      }
     })();
   </script>
 </body>

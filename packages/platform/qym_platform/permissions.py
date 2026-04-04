@@ -4,106 +4,76 @@ from sqlalchemy import false
 from sqlalchemy.orm import Query, Session
 
 from qym_platform.auth import Principal
-from qym_platform.db.models import OrgUnit, OrgUnitType, PlatformSetting, Run, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import ProjectMembership, ProjectRole, Run, UserRole
 
 
-def _get_setting(db: Session, key: str, default: str = "") -> str:
-    row = db.query(PlatformSetting).filter(PlatformSetting.key == key).first()
-    return row.value if row else default
+def get_project_membership(db: Session, user_id: str, project_id: str) -> ProjectMembership | None:
+    return (
+        db.query(ProjectMembership)
+        .filter(ProjectMembership.user_id == user_id, ProjectMembership.project_id == project_id)
+        .first()
+    )
 
 
-def manager_team_ids(db: Session, manager_user_id: str) -> set[str]:
-    teams = db.query(OrgUnit).filter(
-        OrgUnit.type == OrgUnitType.TEAM,
-        OrgUnit.manager_user_id == manager_user_id,
-    ).all()
-    return {t.id for t in teams}
+def visible_project_ids(db: Session, principal: Principal) -> set[str]:
+    if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
+        rows = db.query(ProjectMembership.project_id).distinct().all()
+        return {row[0] for row in rows}
+    rows = db.query(ProjectMembership.project_id).filter(ProjectMembership.user_id == principal.user.id).all()
+    return {row[0] for row in rows}
 
 
-def _run_owner(db: Session, run: Run) -> User | None:
-    return db.query(User).filter(User.id == run.owner_user_id).first()
+def has_project_access(db: Session, principal: Principal, project_id: str) -> bool:
+    if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
+        return True
+    return get_project_membership(db, principal.user.id, project_id) is not None
 
 
-def _same_team(db: Session, principal: Principal, run: Run) -> bool:
-    """Check if the principal and run owner are on the same team."""
-    if not principal.user.team_unit_id:
-        return False
-    owner = _run_owner(db, run)
-    if not owner or not owner.team_unit_id:
-        return False
-    return owner.team_unit_id == principal.user.team_unit_id
+def is_project_manager(db: Session, principal: Principal, project_id: str) -> bool:
+    if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
+        return True
+    membership = get_project_membership(db, principal.user.id, project_id)
+    return bool(membership and membership.role == ProjectRole.MANAGER)
+
+
+def can_manage_project_members(db: Session, principal: Principal, project_id: str) -> bool:
+    return is_project_manager(db, principal, project_id)
 
 
 def can_view_run(db: Session, principal: Principal, run: Run) -> bool:
-    if principal.auth_type == "none":
-        return True
-    if principal.user.role == UserRole.ADMIN:
-        return True
-    if run.owner_user_id == principal.user.id:
-        return True
-
-    # Team members can view each other's runs
-    if principal.user.role == UserRole.EMPLOYEE:
-        return _same_team(db, principal, run)
-
-    if principal.user.role == UserRole.MANAGER:
-        owner = _run_owner(db, run)
-        if not owner or not owner.team_unit_id:
-            return False
-        return owner.team_unit_id in manager_team_ids(db, principal.user.id)
-
-    if principal.user.role in {UserRole.GM, UserRole.VP}:
-        gm_vp_approved_only = _get_setting(db, "gm_vp_approved_only", "true").lower() == "true"
-        if gm_vp_approved_only:
-            return run.status == RunWorkflowStatus.APPROVED
-        return run.status in {RunWorkflowStatus.SUBMITTED, RunWorkflowStatus.APPROVED}
-
-    return False
+    return has_project_access(db, principal, run.project_id)
 
 
 def can_modify_run(db: Session, principal: Principal, run: Run) -> bool:
-    if principal.auth_type == "none":
-        return True
-    if principal.user.role == UserRole.ADMIN:
-        return True
-    if run.owner_user_id == principal.user.id:
-        return True
-    if principal.user.role != UserRole.MANAGER:
-        return False
-
-    owner = _run_owner(db, run)
-    if not owner or not owner.team_unit_id:
-        return False
-    return owner.team_unit_id in manager_team_ids(db, principal.user.id)
+    return has_project_access(db, principal, run.project_id)
 
 
 def can_review_run(db: Session, principal: Principal, run: Run) -> bool:
-    if principal.auth_type == "none":
+    return has_project_access(db, principal, run.project_id)
+
+
+def can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
+    if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
         return True
-    if principal.user.role == UserRole.ADMIN:
+    if run.owner_user_id == principal.user.id:
+        return False
+    return is_project_manager(db, principal, run.project_id)
+
+
+def can_delete_run(db: Session, principal: Principal, run: Run) -> bool:
+    if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
         return True
-
-    # Team members can review their own and each other's runs
-    if principal.user.role == UserRole.EMPLOYEE:
-        return run.owner_user_id == principal.user.id or _same_team(db, principal, run)
-
-    if principal.user.role == UserRole.MANAGER:
-        owner = _run_owner(db, run)
-        if not owner or not owner.team_unit_id:
-            return False
-        return owner.team_unit_id in manager_team_ids(db, principal.user.id)
-
-    return False
+    if run.owner_user_id == principal.user.id:
+        return True
+    return is_project_manager(db, principal, run.project_id)
 
 
 def apply_reviewable_run_filter(query: Query, db: Session, principal: Principal) -> Query:
     if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
         return query
-    if principal.user.role != UserRole.MANAGER:
+
+    project_ids = visible_project_ids(db, principal)
+    if not project_ids:
         return query.filter(false())
 
-    team_ids = manager_team_ids(db, principal.user.id)
-    if not team_ids:
-        return query.filter(false())
-
-    return query.join(User, User.id == Run.owner_user_id).filter(User.team_unit_id.in_(team_ids))
+    return query.filter(Run.project_id.in_(project_ids))

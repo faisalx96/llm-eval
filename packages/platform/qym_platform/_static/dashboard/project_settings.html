@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Project Settings</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/auth.js"></script>
+  <style>
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: var(--space-lg);
+    }
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .hero p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+    }
+    .actions {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-lg);
+    }
+    .panel h2 {
+      margin: 0 0 var(--space-md);
+      font-size: var(--font-md);
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--space-md);
+    }
+    .summary-item {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .summary-item .label {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .summary-item .value {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      word-break: break-word;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+    .form-input, .form-select {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-primary);
+      padding: 10px 12px;
+      font-size: var(--font-sm);
+      font-family: var(--font-sans);
+    }
+    .table-wrap {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      min-width: 940px;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-default);
+      vertical-align: top;
+    }
+    th {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--bg-elevated);
+    }
+    .row-meta {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      margin-top: 4px;
+    }
+    .row-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .token-box {
+      background: rgba(0, 212, 170, 0.08);
+      border: 1px solid rgba(0, 212, 170, 0.24);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      color: var(--accent-primary);
+      word-break: break-all;
+      margin-bottom: var(--space-md);
+      display: none;
+    }
+    .note {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+  </style>
+</head>
+<body>
+  <header class="stats-bar">
+    <div class="stats-bar-left">
+      <a href="/" class="logo" style="text-decoration:none;">
+        <img src="/static/qym_text.png" alt="قيِّم" class="logo-text-img" />
+      </a>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1 id="project-title">Project Settings</h1>
+        <p id="project-subtitle">Manage members and project-scoped API keys.</p>
+      </div>
+      <div class="actions">
+        <a class="btn btn-secondary" id="back-dashboard-link" href="/">Dashboard</a>
+        <a class="btn btn-secondary" id="reviews-link" href="/">Reviews</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Overview</h2>
+      <div class="summary-grid" id="project-summary"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Members</h2>
+      <div class="toolbar" id="member-form">
+        <select class="form-select" id="member-user"></select>
+        <select class="form-select" id="member-role">
+          <option value="MEMBER">MEMBER</option>
+          <option value="MANAGER">MANAGER</option>
+        </select>
+        <button class="btn btn-primary" id="add-member-btn" type="button">Add Member</button>
+      </div>
+      <div class="note" id="member-note"></div>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Role</th>
+              <th>Added</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="members-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>API Keys</h2>
+      <div class="token-box" id="new-token-box"></div>
+      <div class="toolbar">
+        <input class="form-input" id="key-name" placeholder="Key name">
+        <input class="form-input" id="key-scopes" value="runs:write,runs:read" placeholder="runs:write,runs:read">
+        <button class="btn btn-primary" id="create-key-btn" type="button">Create Key</button>
+      </div>
+      <div class="note">Keys are bound to this project. New runs inherit the project from the key automatically.</div>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Prefix</th>
+              <th>Creator</th>
+              <th>Scopes</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="keys-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      function apiUrl(path) {
+        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function projectSlug() {
+        const match = window.location.pathname.match(/\/projects\/([^/]+)\/settings$/);
+        return match ? decodeURIComponent(match[1]) : '';
+      }
+
+      function projectUrl(slug, suffix = '') {
+        const clean = String(suffix || '').replace(/^\/+/, '');
+        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
+      }
+
+      function ts(value) {
+        if (!value) return '—';
+        return new Date(value).toLocaleString();
+      }
+
+      let state = {
+        me: null,
+        project: null,
+        members: [],
+        users: [],
+        apiKeys: [],
+      };
+
+      async function fetchJson(path, options) {
+        const res = await fetch(apiUrl(path), options);
+        if (window.QymAuth && window.QymAuth.handle401(res)) return null;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+        return data;
+      }
+
+      function canManageMembers() {
+        return state.me?.role === 'ADMIN' || state.project?.role === 'MANAGER';
+      }
+
+      function canRevokeKey(key) {
+        return state.me?.role === 'ADMIN' || canManageMembers() || key.creator?.id === state.me?.id;
+      }
+
+      async function load() {
+        const slug = projectSlug();
+        const [me, project, users, membersPayload] = await Promise.all([
+          fetchJson('v1/me'),
+          fetchJson(`v1/projects/by-slug/${encodeURIComponent(slug)}`),
+          fetchJson('v1/users'),
+          fetchJson(`v1/projects/by-slug/${encodeURIComponent(slug)}`).then((p) => fetchJson(`v1/projects/${p.id}/members`)),
+        ]);
+        state.me = me;
+        state.project = project;
+        state.users = users || [];
+        state.members = (membersPayload && membersPayload.members) || [];
+        state.apiKeys = (await fetchJson(`v1/projects/${project.id}/api-keys`)).api_keys || [];
+        render();
+      }
+
+      function render() {
+        const slug = state.project.slug;
+        document.getElementById('project-title').textContent = state.project.name;
+        document.getElementById('project-subtitle').textContent = state.project.description || state.project.slug;
+        document.getElementById('back-dashboard-link').href = projectUrl(slug);
+        document.getElementById('reviews-link').href = projectUrl(slug, 'reviews');
+        document.getElementById('project-summary').innerHTML = [
+          ['Slug', state.project.slug],
+          ['Role', state.project.role || 'MEMBER'],
+          ['Members', String(state.members.length)],
+          ['Status', state.project.is_active ? 'ACTIVE' : 'ARCHIVED'],
+        ].map(([label, value]) => `
+          <div class="summary-item">
+            <div class="label">${escapeHtml(label)}</div>
+            <div class="value">${escapeHtml(value)}</div>
+          </div>
+        `).join('');
+
+        const currentIds = new Set(state.members.map((member) => member.user_id));
+        document.getElementById('member-user').innerHTML = state.users
+          .filter((user) => !currentIds.has(user.id))
+          .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.email)} (${escapeHtml(user.email)})</option>`)
+          .join('');
+
+        document.getElementById('member-form').style.display = canManageMembers() ? 'grid' : 'none';
+        document.getElementById('member-note').textContent = canManageMembers()
+          ? 'Managers and admins can add, remove, and promote members inside this project.'
+          : 'You can view memberships here. Member management is limited to project managers and admins.';
+
+        document.getElementById('members-tbody').innerHTML = state.members.map((member) => `
+          <tr>
+            <td>
+              <div>${escapeHtml(member.display_name || member.email)}</div>
+              <div class="row-meta">${escapeHtml(member.email)}</div>
+            </td>
+            <td>
+              ${canManageMembers()
+                ? `<select class="form-select" data-member-role="${escapeHtml(member.user_id)}">
+                    <option value="MEMBER" ${member.role === 'MEMBER' ? 'selected' : ''}>MEMBER</option>
+                    <option value="MANAGER" ${member.role === 'MANAGER' ? 'selected' : ''}>MANAGER</option>
+                  </select>`
+                : escapeHtml(member.role)}
+            </td>
+            <td>${escapeHtml(ts(member.created_at))}</td>
+            <td>
+              ${canManageMembers()
+                ? `<div class="row-actions">
+                    <button class="btn btn-secondary" type="button" data-member-save="${escapeHtml(member.user_id)}">Save</button>
+                    <button class="btn btn-danger" type="button" data-member-remove="${escapeHtml(member.user_id)}">Remove</button>
+                  </div>`
+                : '—'}
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('[data-member-save]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const userId = button.dataset.memberSave;
+            const role = document.querySelector(`[data-member-role="${CSS.escape(userId)}"]`).value;
+            await fetchJson(`v1/projects/${state.project.id}/members/${userId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ role }),
+            });
+            await load();
+          });
+        });
+
+        document.querySelectorAll('[data-member-remove]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            if (!window.confirm('Remove this member from the project?')) return;
+            await fetchJson(`v1/projects/${state.project.id}/members/${button.dataset.memberRemove}`, {
+              method: 'DELETE',
+            });
+            await load();
+          });
+        });
+
+        document.getElementById('keys-tbody').innerHTML = state.apiKeys.map((key) => `
+          <tr>
+            <td>${escapeHtml(key.name || 'default')}</td>
+            <td><span class="row-meta">${escapeHtml(key.prefix || '')}</span></td>
+            <td>${escapeHtml(key.creator?.display_name || key.creator?.email || '—')}</td>
+            <td>${escapeHtml((key.scopes || []).join(', '))}</td>
+            <td>${key.revoked_at ? `Revoked ${escapeHtml(ts(key.revoked_at))}` : 'Active'}</td>
+            <td>
+              ${!key.revoked_at && canRevokeKey(key)
+                ? `<button class="btn btn-danger" type="button" data-key-revoke="${escapeHtml(key.id)}">Revoke</button>`
+                : '—'}
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('[data-key-revoke]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            if (!window.confirm('Revoke this API key?')) return;
+            await fetchJson(`v1/projects/${state.project.id}/api-keys/${button.dataset.keyRevoke}`, { method: 'DELETE' });
+            await load();
+          });
+        });
+      }
+
+      document.getElementById('add-member-btn').addEventListener('click', async () => {
+        const userId = document.getElementById('member-user').value;
+        if (!userId) return;
+        await fetchJson(`v1/projects/${state.project.id}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            role: document.getElementById('member-role').value,
+          }),
+        });
+        await load();
+      });
+
+      document.getElementById('create-key-btn').addEventListener('click', async () => {
+        const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('key-name').value.trim() || 'default',
+            scopes: document.getElementById('key-scopes').value.split(',').map((value) => value.trim()).filter(Boolean),
+          }),
+        });
+        const box = document.getElementById('new-token-box');
+        box.style.display = 'block';
+        box.textContent = `Save this token now. It will not be shown again:\n${data.token}`;
+        document.getElementById('key-name').value = '';
+        await load();
+      });
+
+      load().catch((error) => {
+        document.querySelector('main').innerHTML = `<div class="page"><div class="panel">${escapeHtml(error.message)}</div></div>`;
+      });
+    })();
+  </script>
+</body>
+</html>

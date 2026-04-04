@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
 from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
-from qym_platform.db.models import Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
+from qym_platform.db.models import Project, Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
 from qym_platform.deps import get_db
 from qym_platform.events import (
     ItemCompletedPayload,
@@ -167,7 +167,10 @@ def create_run(
     principal: Principal = Depends(require_api_key_principal),
 ) -> Dict[str, Any]:
     require_api_key_scope(principal, "runs:write")
+    if not principal.project_id:
+        raise HTTPException(status_code=403, detail="API key is not bound to a project")
     run = Run(
+        project_id=principal.project_id,
         external_run_id=req.external_run_id,
         created_by_user_id=principal.user.id,
         owner_user_id=principal.user.id,
@@ -185,7 +188,12 @@ def create_run(
     db.refresh(run)
 
     settings = PlatformSettings()
-    live_url = f"{settings.base_url.rstrip('/')}/run/{run.id}"
+    project = db.query(Project).filter(Project.id == run.project_id).first()
+    if project and project.slug:
+        live_path = f"/projects/{project.slug}/runs/{run.id}"
+    else:
+        live_path = f"/run/{run.id}"
+    live_url = f"{settings.base_url.rstrip('/')}{live_path}"
     return {"run_id": run.id, "live_url": live_url}
 
 
@@ -203,6 +211,8 @@ async def ingest_events(
     if run.deleted_at is not None:
         raise HTTPException(status_code=410, detail=f"Run was deleted on {run.deleted_at.isoformat()}")
     if run.owner_user_id != principal.user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if principal.project_id and run.project_id != principal.project_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
     item_cache: Dict[str, Optional[RunItem]] = {}

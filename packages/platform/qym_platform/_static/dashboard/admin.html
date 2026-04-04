@@ -4,944 +4,353 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Admin</title>
-  <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
-  <script src="./static/auth.js"></script>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/auth.js"></script>
   <style>
-    /* Admin-specific styles */
-    .admin-container {
-      display: flex;
-      height: calc(100vh - 44px);
-    }
-
-    .admin-sidebar {
-      width: 220px;
-      background: var(--bg-surface);
-      border-right: 1px solid var(--border-default);
-      padding: var(--space-md);
-      flex-shrink: 0;
-    }
-
-    .admin-nav {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .admin-nav-item {
-      margin-bottom: var(--space-xs);
-    }
-
-    .admin-nav-link {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      padding: var(--space-sm) var(--space-md);
-      color: var(--text-secondary);
-      text-decoration: none;
-      border-radius: 6px;
-      font-size: var(--font-sm);
-      transition: all 0.15s;
-    }
-
-    .admin-nav-link:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
-
-    .admin-nav-link.active {
-      background: var(--accent-primary);
-      color: var(--bg-void);
-    }
-
-    .admin-nav-link .nav-icon {
-      font-size: 16px;
-    }
-
-    .admin-content {
-      flex: 1;
-      overflow: auto;
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
       padding: var(--space-lg);
-      background: var(--bg-base);
     }
-
-    .admin-header {
+    .page-header {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
+      gap: var(--space-md);
       margin-bottom: var(--space-lg);
-      padding-bottom: var(--space-md);
-      border-bottom: 1px solid var(--border-default);
     }
-
-    .admin-header h1 {
-      font-size: var(--font-lg);
-      font-weight: 600;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
+    .page-header h1 {
+      margin: 0;
+      font-size: 28px;
     }
-
-    .admin-header h1 .header-icon {
-      font-size: 20px;
-      color: var(--accent-primary);
+    .page-header p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
     }
-
-    /* Data table */
-    .data-table {
-      width: 100%;
-      border-collapse: collapse;
+    .section {
       background: var(--bg-surface);
-      border-radius: 8px;
-      overflow: hidden;
       border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-lg);
     }
-
-    .data-table th,
-    .data-table td {
-      padding: var(--space-md);
-      text-align: left;
-      border-bottom: 1px solid var(--border-subtle);
+    .section h2 {
+      margin: 0 0 var(--space-md);
+      font-size: var(--font-md);
     }
-
-    .data-table th {
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      box-sizing: border-box;
       background: var(--bg-elevated);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-primary);
+      padding: 10px 12px;
+      font-size: var(--font-sm);
+      font-family: var(--font-sans);
+    }
+    .form-textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+    .table-wrap {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      min-width: 920px;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-default);
+      vertical-align: top;
+    }
+    th {
       font-size: var(--font-xs);
-      font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-    }
-
-    .data-table td {
-      font-size: var(--font-sm);
-      color: var(--text-secondary);
-    }
-
-    .data-table tbody tr:hover {
-      background: var(--bg-hover);
-    }
-
-    .data-table tbody tr:last-child td {
-      border-bottom: none;
-    }
-
-    /* Role badge */
-    .role-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: var(--font-xs);
-      font-weight: 500;
-      text-transform: uppercase;
-    }
-
-    .role-badge.role-ADMIN { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
-    .role-badge.role-VP { background: rgba(0, 212, 170, 0.2); color: var(--accent-primary); }
-    .role-badge.role-GM { background: rgba(0, 168, 255, 0.2); color: var(--accent-secondary); }
-    .role-badge.role-MANAGER { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
-    .role-badge.role-EMPLOYEE { background: var(--bg-elevated); color: var(--text-muted); }
-
-    /* Action buttons in table */
-    .table-actions-cell {
-      white-space: nowrap;
-      width: 1%;
-    }
-
-    .table-actions {
-      display: flex;
-      gap: var(--space-xs);
-      align-items: center;
-    }
-
-    .table-btn {
-      padding: 4px 10px;
-      font-size: var(--font-xs);
-      border-radius: 4px;
-      border: 1px solid var(--border-default);
       background: var(--bg-elevated);
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: all 0.15s;
     }
-
-    .table-btn:hover {
-      background: var(--bg-hover);
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
+    .row-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
-
-    .table-btn.danger:hover {
-      border-color: var(--error);
-      color: var(--error);
-    }
-
-    /* Admin subtitle */
-    .admin-subtitle {
-      font-size: var(--font-sm);
+    .row-meta {
       color: var(--text-muted);
+      font-size: var(--font-xs);
       margin-top: 4px;
     }
-
-    /* User Stats */
-    .user-stats {
-      display: flex;
-      gap: var(--space-md);
-      margin-bottom: var(--space-lg);
-    }
-
-    .stat-card {
-      flex: 1;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-md);
-      display: flex;
-      align-items: center;
-      gap: var(--space-md);
-    }
-
-    .stat-card-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-    }
-
-    .stat-card-icon.total { background: rgba(107, 114, 128, 0.15); }
-    .stat-card-icon.admin { background: rgba(168, 85, 247, 0.15); }
-    .stat-card-icon.vp { background: rgba(0, 212, 170, 0.15); }
-    .stat-card-icon.gm { background: rgba(0, 168, 255, 0.15); }
-    .stat-card-icon.manager { background: rgba(251, 191, 36, 0.15); }
-    .stat-card-icon.employee { background: rgba(107, 114, 128, 0.15); }
-
-    .stat-card-content {
-      flex: 1;
-    }
-
-    .stat-card-value {
-      font-size: var(--font-lg);
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .stat-card-label {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    /* User cell in table */
-    .user-cell {
-      display: flex;
-      align-items: center;
-      gap: var(--space-md);
-    }
-
-    .user-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 600;
-      color: white;
-      flex-shrink: 0;
-    }
-
-    .user-info {
-      min-width: 0;
-    }
-
-    .user-name {
-      font-size: var(--font-sm);
-      font-weight: 500;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-    }
-
-    .user-name .you-badge {
-      font-size: 10px;
-      padding: 1px 6px;
-      background: rgba(0, 212, 170, 0.15);
+    .message {
       color: var(--accent-primary);
-      border-radius: 4px;
-      font-weight: 500;
-    }
-
-    .user-email {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-
-    /* Status indicator */
-    .status-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: var(--font-xs);
-      color: var(--text-secondary);
-    }
-
-    .status-indicator .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    .status-indicator.active .status-dot {
-      background: #10b981;
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-    }
-
-    .status-indicator.inactive .status-dot {
-      background: var(--text-muted);
-    }
-
-    /* Action icons */
-    .action-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      transition: all 0.15s;
-      text-decoration: none;
-    }
-
-    .action-icon.edit-action {
-      color: var(--accent-primary);
-      background: rgba(0, 212, 170, 0.1);
-    }
-
-    .action-icon.edit-action:hover {
-      background: rgba(0, 212, 170, 0.2);
-    }
-
-    .action-icon.delete-action {
-      color: var(--error);
-      background: rgba(239, 68, 68, 0.1);
-    }
-
-    .action-icon.delete-action:hover {
-      background: rgba(239, 68, 68, 0.2);
-    }
-
-    /* Org tree */
-    .org-tree {
-      padding: var(--space-md);
-    }
-
-    .org-node {
-      margin-bottom: var(--space-sm);
-    }
-
-    .org-node-header {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      padding: var(--space-sm) var(--space-md);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .org-node-header:hover {
-      border-color: var(--accent-primary);
-    }
-
-    .org-node-header.expanded {
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-    }
-
-    .org-node-toggle {
-      width: 18px;
-      height: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--text-muted);
-      transition: transform 0.2s;
-    }
-
-    .org-node-toggle.expanded {
-      transform: rotate(90deg);
-    }
-
-    .org-node-icon {
-      font-size: 14px;
-    }
-
-    .org-node-icon.sector { color: var(--accent-tertiary); }
-    .org-node-icon.department { color: var(--accent-secondary); }
-    .org-node-icon.team { color: var(--accent-primary); }
-
-    .org-node-name {
-      flex: 1;
       font-size: var(--font-sm);
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .org-node-type {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .org-node-manager {
-      font-size: var(--font-xs);
-      color: var(--text-secondary);
-      background: var(--bg-elevated);
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
-
-    .org-node-children {
-      margin-left: var(--space-xl);
-      padding-left: var(--space-md);
-      border-left: 2px solid var(--border-default);
       margin-top: var(--space-sm);
-    }
-
-    .org-node-actions {
-      display: flex;
-      gap: var(--space-xs);
-    }
-
-    /* Settings form */
-    .settings-section {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: var(--space-lg);
-      margin-bottom: var(--space-lg);
-    }
-
-    .settings-section h2 {
-      font-size: var(--font-md);
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: var(--space-md);
-      padding-bottom: var(--space-sm);
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .settings-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-md) 0;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .settings-row:last-child {
-      border-bottom: none;
-    }
-
-    .settings-label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .settings-label .label-title {
-      font-size: var(--font-sm);
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .settings-label .label-desc {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-    }
-
-    /* Toggle switch */
-    .toggle-switch {
-      position: relative;
-      width: 44px;
-      height: 24px;
-    }
-
-    .toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle-slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 24px;
-      transition: 0.3s;
-    }
-
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 18px;
-      width: 18px;
-      left: 2px;
-      bottom: 2px;
-      background: var(--text-muted);
-      border-radius: 50%;
-      transition: 0.3s;
-    }
-
-    .toggle-switch input:checked + .toggle-slider {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-    }
-
-    .toggle-switch input:checked + .toggle-slider:before {
-      background: var(--bg-void);
-      transform: translateX(20px);
-    }
-
-    /* Empty state */
-    .empty-state {
-      text-align: center;
-      padding: var(--space-xl);
-      color: var(--text-muted);
-    }
-
-    .empty-state .empty-icon {
-      font-size: 48px;
-      margin-bottom: var(--space-md);
-    }
-
-    .empty-state p {
-      font-size: var(--font-sm);
-      margin-bottom: var(--space-md);
-    }
-
-    /* Modal form styles */
-    .modal-form {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-md);
-    }
-
-    .modal-form .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-xs);
-    }
-
-    .modal-form label {
-      font-size: var(--font-sm);
-      font-weight: 500;
-      color: var(--text-secondary);
-    }
-
-    .modal-form input,
-    .modal-form select {
-      padding: var(--space-sm) var(--space-md);
-      font-size: var(--font-sm);
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      color: var(--text-primary);
-    }
-
-    .modal-form input:focus,
-    .modal-form select:focus {
-      outline: none;
-      border-color: var(--accent-primary);
-    }
-
-    /* Back link */
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-xs);
-      color: var(--text-muted);
-      text-decoration: none;
-      font-size: var(--font-sm);
-      margin-bottom: var(--space-md);
-    }
-
-    .back-link:hover {
-      color: var(--accent-primary);
-    }
-
-    /* Search box */
-    .admin-search {
-      display: flex;
-      align-items: center;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      padding: 0 var(--space-md);
-      width: 250px;
-    }
-
-    .admin-search input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      padding: var(--space-sm);
-      font-size: var(--font-sm);
-      color: var(--text-primary);
-    }
-
-    .admin-search input:focus {
-      outline: none;
-    }
-
-    .admin-search input::placeholder {
-      color: var(--text-muted);
-    }
-
-    .admin-search .search-icon {
-      color: var(--text-muted);
     }
   </style>
 </head>
 <body>
-  <!-- Toast Notifications -->
-  <div class="toast-container" id="toast-container"></div>
-
-  <!-- User Menu -->
-  <div class="header-user-dropdown" id="header-user-dropdown">
-    <button class="trigger" id="header-user-trigger">
-      <span class="avatar" id="header-user-avatar">?</span>
-      <span class="name" id="header-user-name">User</span>
-      <svg class="arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="6 9 12 15 18 9"></polyline>
-      </svg>
-    </button>
-    <div class="menu" id="header-user-menu">
-      <div class="menu-header">
-        <div class="avatar" id="header-menu-avatar">?</div>
-        <div class="info">
-          <div class="email" id="header-user-email"></div>
-          <div class="role" id="header-user-role"></div>
-        </div>
-      </div>
-      <nav class="menu-nav">
-        <a href="/" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-          Dashboard
-        </a>
-        <a href="/profile" class="menu-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          Profile
-        </a>
-      </nav>
-    </div>
-  </div>
-
-  <!-- Top Stats Bar -->
-  <header class="stats-bar has-user-pill-space">
+  <header class="stats-bar">
     <div class="stats-bar-left">
       <a href="/" class="logo" style="text-decoration:none;">
-        <img src="./static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+        <img src="/static/qym_text.png" alt="قيِّم" class="logo-text-img" />
       </a>
-      <div class="stat-cells">
-        <div class="stat-cell">
-          <span class="stat-label">PAGE</span>
-          <span class="stat-value">
-            <span class="shell-breadcrumb">
-              <span class="shell-breadcrumb-parent">Platform</span>
-              <span class="shell-breadcrumb-sep">/</span>
-              <span class="shell-breadcrumb-current">Admin</span>
-            </span>
-          </span>
-        </div>
-      </div>
     </div>
   </header>
 
-  <!-- Admin Container -->
-  <div class="admin-container">
-    <!-- Sidebar Navigation -->
-    <aside class="admin-sidebar">
-      <nav>
-        <ul class="admin-nav">
-          <li class="admin-nav-item">
-            <a href="#users" class="admin-nav-link active" data-page="users">
-              <span class="nav-icon">👤</span>
-              <span>Users</span>
-            </a>
-          </li>
-          <li class="admin-nav-item">
-            <a href="#org" class="admin-nav-link" data-page="org">
-              <span class="nav-icon">🏢</span>
-              <span>Organization</span>
-            </a>
-          </li>
-          <li class="admin-nav-item">
-            <a href="#settings" class="admin-nav-link" data-page="settings">
-              <span class="nav-icon">⚙️</span>
-              <span>Settings</span>
-            </a>
-          </li>
-        </ul>
-      </nav>
-    </aside>
+  <main class="page">
+    <section class="page-header">
+      <div>
+        <h1>Admin</h1>
+        <p>Manage members and project lifecycle. Project memberships and API keys live on each project.</p>
+      </div>
+    </section>
 
-    <!-- Main Content -->
-    <main class="admin-content">
-      <!-- Users Page -->
-      <section id="users-page" class="admin-page">
-        <div class="admin-header">
-          <div>
-            <h1>Users</h1>
-            <p class="admin-subtitle">Manage user accounts and permissions</p>
-          </div>
-          <div style="display: flex; gap: var(--space-md); align-items: center;">
-            <div class="admin-search">
-              <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              <input type="text" id="user-search" placeholder="Search users..." />
-            </div>
-            <button class="btn btn-primary" id="add-user-btn">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="8.5" cy="7" r="4"></circle>
-                <line x1="20" y1="8" x2="20" y2="14"></line>
-                <line x1="23" y1="11" x2="17" y2="11"></line>
-              </svg>
-              Add User
-            </button>
-          </div>
-        </div>
+    <section class="section">
+      <h2>Create Project</h2>
+      <div class="toolbar">
+        <input class="form-input" id="new-project-name" placeholder="Project name">
+        <input class="form-input" id="new-project-slug" placeholder="project-slug">
+        <input class="form-input" id="new-project-description" placeholder="Description">
+        <button class="btn btn-primary" id="create-project-btn" type="button">Create Project</button>
+      </div>
+      <div class="message" id="project-message"></div>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th>Members</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="projects-tbody"></tbody>
+        </table>
+      </div>
+    </section>
 
-        <!-- User Stats -->
-        <div class="user-stats" id="user-stats"></div>
-
-        <!-- Users Table -->
-        <table class="data-table" id="users-table">
+    <section class="section">
+      <h2>Create User</h2>
+      <div class="toolbar">
+        <input class="form-input" id="new-user-email" placeholder="name@example.com">
+        <input class="form-input" id="new-user-name" placeholder="Display name">
+        <select class="form-select" id="new-user-role">
+          <option value="MEMBER">MEMBER</option>
+          <option value="ADMIN">ADMIN</option>
+        </select>
+        <button class="btn btn-primary" id="create-user-btn" type="button">Create User</button>
+      </div>
+      <div class="message" id="user-message"></div>
+      <div class="table-wrap" style="margin-top:14px;">
+        <table>
           <thead>
             <tr>
               <th>User</th>
               <th>Role</th>
-              <th>Org Unit</th>
-              <th>Status</th>
+              <th>Active</th>
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="users-tbody">
-            <!-- Users populated by JS -->
-          </tbody>
+          <tbody id="users-tbody"></tbody>
         </table>
-      </section>
-
-      <!-- Organization Page -->
-      <section id="org-page" class="admin-page" style="display: none;">
-        <div class="admin-header">
-          <h1><span class="header-icon">🏢</span> Organization Structure</h1>
-          <div style="display: flex; gap: var(--space-md);">
-            <button class="btn btn-secondary" id="rebuild-closure-btn" title="Rebuild org closure table">🔄 Rebuild Closure</button>
-            <button class="btn btn-primary" id="add-org-unit-btn">+ Add Unit</button>
-          </div>
-        </div>
-        <div class="org-tree" id="org-tree">
-          <!-- Org tree populated by JS -->
-        </div>
-      </section>
-
-      <!-- Settings Page -->
-      <section id="settings-page" class="admin-page" style="display: none;">
-        <div class="admin-header">
-          <h1><span class="header-icon">⚙️</span> Platform Settings</h1>
-        </div>
-
-        <div class="settings-section">
-          <h2>Visibility Rules</h2>
-          <div class="settings-row">
-            <div class="settings-label">
-              <span class="label-title">GM/VP Approved-Only Visibility</span>
-              <span class="label-desc">When enabled, GM and VP users can only view runs that have been approved.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="setting-gm-vp-approved-only" checked />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="settings-row">
-            <div class="settings-label">
-              <span class="label-title">Manager Full Subtree Access</span>
-              <span class="label-desc">When enabled, managers can view all runs from their entire org subtree, not just direct reports.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="setting-manager-full-subtree" checked />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <h2>Platform Behavior</h2>
-          <div class="settings-row">
-            <div class="settings-label">
-              <span class="label-title">Allow Self-Registration</span>
-              <span class="label-desc">When enabled, users can create accounts through the UI without admin approval.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="setting-self-registration" />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-          <div class="settings-row">
-            <div class="settings-label">
-              <span class="label-title">Require Approval for Runs</span>
-              <span class="label-desc">When enabled, all runs must be approved by a manager before being visible to GM/VP.</span>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="setting-require-approval" checked />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; gap: var(--space-md);">
-          <button class="btn btn-secondary" id="reset-settings-btn">Reset to Defaults</button>
-          <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <!-- Add/Edit User Modal -->
-  <div class="modal" id="user-modal" style="display: none;">
-    <div class="modal-content modal-medium">
-      <div class="modal-header">
-        <h2 id="user-modal-title">Add User</h2>
-        <button class="modal-close" onclick="closeModal('user-modal')">×</button>
       </div>
-      <div class="modal-body">
-        <form class="modal-form" id="user-form">
-          <input type="hidden" id="user-id" />
-          <div class="form-group">
-            <label for="user-email">Email <span style="color: var(--error);">*</span></label>
-            <input type="email" id="user-email" required placeholder="user@example.com" />
-          </div>
-          <div class="form-group">
-            <label for="user-display-name">Display Name</label>
-            <input type="text" id="user-display-name" placeholder="John Doe" />
-          </div>
-          <div class="form-group">
-            <label for="user-role">Role</label>
-            <select id="user-role">
-              <option value="EMPLOYEE">Employee</option>
-              <option value="MANAGER">Manager</option>
-              <option value="GM">General Manager</option>
-              <option value="VP">Vice President</option>
-              <option value="ADMIN">Admin</option>
-            </select>
-          </div>
-          <div class="form-group" id="user-org-unit-group">
-            <label for="user-team" id="user-org-unit-label">Team</label>
-            <select id="user-team">
-              <option value="">None</option>
-              <!-- Org units populated by JS based on role -->
-            </select>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('user-modal')">Cancel</button>
-        <button class="btn btn-primary" id="save-user-btn">Save</button>
-      </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
-  <!-- Add/Edit Org Unit Modal -->
-  <div class="modal" id="org-unit-modal" style="display: none;">
-    <div class="modal-content modal-medium">
-      <div class="modal-header">
-        <h2 id="org-unit-modal-title">Add Organization Unit</h2>
-        <button class="modal-close" onclick="closeModal('org-unit-modal')">×</button>
-      </div>
-      <div class="modal-body">
-        <form class="modal-form" id="org-unit-form">
-          <input type="hidden" id="org-unit-id" />
-          <div class="form-group">
-            <label for="org-unit-name">Name <span style="color: var(--error);">*</span></label>
-            <input type="text" id="org-unit-name" required placeholder="Engineering" />
-          </div>
-          <div class="form-group">
-            <label for="org-unit-type">Type</label>
-            <select id="org-unit-type">
-              <option value="SECTOR">Sector</option>
-              <option value="DEPARTMENT">Department</option>
-              <option value="TEAM">Team</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="org-unit-parent">Parent Unit</label>
-            <select id="org-unit-parent">
-              <option value="">None (Top Level)</option>
-              <!-- Parent options populated by JS -->
-            </select>
-          </div>
-          <div class="form-group" id="manager-group">
-            <label for="org-unit-manager">Team Manager</label>
-            <select id="org-unit-manager">
-              <option value="">No Manager</option>
-              <!-- Managers populated by JS -->
-            </select>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('org-unit-modal')">Cancel</button>
-        <button class="btn btn-primary" id="save-org-unit-btn">Save</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    (() => {
+      'use strict';
 
-  <!-- Delete Confirmation Modal -->
-  <div class="modal" id="delete-confirm-modal" style="display: none;">
-    <div class="modal-content modal-small">
-      <div class="modal-header">
-        <h2>Confirm Delete</h2>
-        <button class="modal-close" onclick="closeModal('delete-confirm-modal')">×</button>
-      </div>
-      <div class="modal-body">
-        <p id="delete-confirm-message">Are you sure you want to delete this item?</p>
-        <p class="warning-text">This action cannot be undone.</p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal('delete-confirm-modal')">Cancel</button>
-        <button class="btn btn-danger" id="confirm-delete-btn">Delete</button>
-      </div>
-    </div>
-  </div>
+      function apiUrl(path) {
+        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+      }
 
-  <script src="./static/admin.js"></script>
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      let state = { users: [], projects: [] };
+
+      async function fetchJson(path, options) {
+        const res = await fetch(apiUrl(path), options);
+        if (window.QymAuth && window.QymAuth.handle401(res)) return null;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Request failed');
+        return data;
+      }
+
+      async function load() {
+        const [me, users, projectsPayload] = await Promise.all([
+          fetchJson('v1/me'),
+          fetchJson('v1/admin/users'),
+          fetchJson('v1/projects'),
+        ]);
+        if (!me || me.role !== 'ADMIN') throw new Error('Admin access required');
+        state.users = users || [];
+        state.projects = (projectsPayload && projectsPayload.projects) || [];
+        renderUsers();
+        renderProjects();
+      }
+
+      function renderProjects() {
+        document.getElementById('projects-tbody').innerHTML = state.projects.map((project) => `
+          <tr>
+            <td>
+              <input class="form-input" data-project-name="${escapeHtml(project.id)}" value="${escapeHtml(project.name)}">
+              <div class="row-meta">${escapeHtml(project.slug)}</div>
+            </td>
+            <td><input class="form-input" data-project-description="${escapeHtml(project.id)}" value="${escapeHtml(project.description || '')}"></td>
+            <td>
+              <label style="display:flex; gap:8px; align-items:center;">
+                <input type="checkbox" data-project-active="${escapeHtml(project.id)}" ${project.is_active ? 'checked' : ''}>
+                <span>${project.is_active ? 'ACTIVE' : 'ARCHIVED'}</span>
+              </label>
+            </td>
+            <td>${escapeHtml(String(project.member_count || 0))}</td>
+            <td>
+              <div class="row-actions">
+                <button class="btn btn-secondary" type="button" data-project-save="${escapeHtml(project.id)}">Save</button>
+                <a class="btn btn-secondary" href="/projects/${encodeURIComponent(project.slug)}/settings">Settings</a>
+                <button class="btn btn-danger" type="button" data-project-delete="${escapeHtml(project.id)}">Delete / Archive</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('[data-project-save]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.dataset.projectSave;
+            const name = document.querySelector(`[data-project-name="${CSS.escape(id)}"]`).value.trim();
+            const description = document.querySelector(`[data-project-description="${CSS.escape(id)}"]`).value.trim();
+            const isActive = document.querySelector(`[data-project-active="${CSS.escape(id)}"]`).checked;
+            await fetchJson(`v1/admin/projects/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, description, is_active: isActive }),
+            });
+            document.getElementById('project-message').textContent = 'Project updated';
+            await load();
+          });
+        });
+
+        document.querySelectorAll('[data-project-delete]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            if (!window.confirm('Delete or archive this project?')) return;
+            await fetchJson(`v1/admin/projects/${button.dataset.projectDelete}`, { method: 'DELETE' });
+            document.getElementById('project-message').textContent = 'Project removed';
+            await load();
+          });
+        });
+      }
+
+      function renderUsers() {
+        document.getElementById('users-tbody').innerHTML = state.users.map((user) => `
+          <tr>
+            <td>
+              <input class="form-input" data-user-name="${escapeHtml(user.id)}" value="${escapeHtml(user.display_name || '')}">
+              <div class="row-meta">${escapeHtml(user.email)}</div>
+            </td>
+            <td>
+              <select class="form-select" data-user-role="${escapeHtml(user.id)}">
+                <option value="MEMBER" ${user.role === 'MEMBER' ? 'selected' : ''}>MEMBER</option>
+                <option value="ADMIN" ${user.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
+              </select>
+            </td>
+            <td>
+              <label style="display:flex; gap:8px; align-items:center;">
+                <input type="checkbox" data-user-active="${escapeHtml(user.id)}" ${user.is_active ? 'checked' : ''}>
+                <span>${user.is_active ? 'ACTIVE' : 'DISABLED'}</span>
+              </label>
+            </td>
+            <td>
+              <div class="row-actions">
+                <button class="btn btn-secondary" type="button" data-user-save="${escapeHtml(user.id)}">Save</button>
+                <button class="btn btn-danger" type="button" data-user-delete="${escapeHtml(user.id)}">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+
+        document.querySelectorAll('[data-user-save]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            const id = button.dataset.userSave;
+            const displayName = document.querySelector(`[data-user-name="${CSS.escape(id)}"]`).value.trim();
+            const role = document.querySelector(`[data-user-role="${CSS.escape(id)}"]`).value;
+            const isActive = document.querySelector(`[data-user-active="${CSS.escape(id)}"]`).checked;
+            await fetchJson(`v1/admin/users/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ display_name: displayName, role, is_active: isActive }),
+            });
+            document.getElementById('user-message').textContent = 'User updated';
+            await load();
+          });
+        });
+
+        document.querySelectorAll('[data-user-delete]').forEach((button) => {
+          button.addEventListener('click', async () => {
+            if (!window.confirm('Delete this user?')) return;
+            await fetchJson(`v1/admin/users/${button.dataset.userDelete}`, { method: 'DELETE' });
+            document.getElementById('user-message').textContent = 'User deleted';
+            await load();
+          });
+        });
+      }
+
+      document.getElementById('create-project-btn').addEventListener('click', async () => {
+        await fetchJson('v1/admin/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('new-project-name').value.trim(),
+            slug: document.getElementById('new-project-slug').value.trim(),
+            description: document.getElementById('new-project-description').value.trim(),
+          }),
+        });
+        document.getElementById('project-message').textContent = 'Project created';
+        document.getElementById('new-project-name').value = '';
+        document.getElementById('new-project-slug').value = '';
+        document.getElementById('new-project-description').value = '';
+        await load();
+      });
+
+      document.getElementById('create-user-btn').addEventListener('click', async () => {
+        await fetchJson('v1/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('new-user-email').value.trim(),
+            display_name: document.getElementById('new-user-name').value.trim(),
+            role: document.getElementById('new-user-role').value,
+            is_active: true,
+          }),
+        });
+        document.getElementById('user-message').textContent = 'User created';
+        document.getElementById('new-user-email').value = '';
+        document.getElementById('new-user-name').value = '';
+        await load();
+      });
+
+      load().catch((error) => {
+        document.querySelector('main').innerHTML = `<div class="page"><div class="section">${escapeHtml(error.message)}</div></div>`;
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -26,17 +26,13 @@ from qym_platform.db.base import Base
 
 
 class UserRole(str, enum.Enum):
-    EMPLOYEE = "EMPLOYEE"
-    MANAGER = "MANAGER"
-    GM = "GM"
-    VP = "VP"
+    MEMBER = "MEMBER"
     ADMIN = "ADMIN"
 
 
-class OrgUnitType(str, enum.Enum):
-    TEAM = "TEAM"
-    DEPARTMENT = "DEPARTMENT"
-    SECTOR = "SECTOR"
+class ProjectRole(str, enum.Enum):
+    MEMBER = "MEMBER"
+    MANAGER = "MANAGER"
 
 
 class RunWorkflowStatus(str, enum.Enum):
@@ -63,11 +59,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(200), default="")
     title: Mapped[str] = mapped_column(String(200), default="")
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.EMPLOYEE)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.MEMBER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Each user belongs to exactly one TEAM org unit (nullable during bootstrap/migration)
-    team_unit_id: Mapped[Optional[str]] = mapped_column(ForeignKey("org_units.id"), nullable=True, index=True)
-    # Per-user LLM provider config for auto root-cause analysis
     llm_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -80,7 +73,7 @@ class UserIdentity(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    provider: Mapped[str] = mapped_column(String(50))  # oidc|saml|proxy_headers|local
+    provider: Mapped[str] = mapped_column(String(50))
     subject: Mapped[str] = mapped_column(String(512))
     email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
     raw_claims: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -88,66 +81,37 @@ class UserIdentity(Base):
     __table_args__ = (UniqueConstraint("provider", "subject", name="uq_identity_provider_subject"),)
 
 
-class OrgEdge(Base):
-    __tablename__ = "org_edges"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    manager_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    employee_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    effective_from: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    __table_args__ = (UniqueConstraint("manager_id", "employee_id", "effective_from", name="uq_org_edge"),)
-
-
-class OrgClosure(Base):
-    """Ancestor/descendant closure for fast subtree authorization (legacy, user-based)."""
-
-    __tablename__ = "org_closure"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ancestor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    descendant_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
-    depth: Mapped[int] = mapped_column(Integer)  # 0=self
-
-    __table_args__ = (UniqueConstraint("ancestor_id", "descendant_id", name="uq_org_closure"),)
-
-
-class OrgUnit(Base):
-    """Org unit: SECTOR → DEPARTMENT → TEAM hierarchy."""
-
-    __tablename__ = "org_units"
+class Project(Base):
+    __tablename__ = "projects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    type: Mapped[OrgUnitType] = mapped_column(Enum(OrgUnitType), nullable=False, index=True)
-    parent_id: Mapped[Optional[str]] = mapped_column(ForeignKey("org_units.id"), nullable=True, index=True)
-    # Only TEAM units have a manager; nullable for DEPARTMENT/SECTOR
-    manager_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProjectMembership(Base):
+    __tablename__ = "project_memberships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[ProjectRole] = mapped_column(Enum(ProjectRole), default=ProjectRole.MEMBER, index=True)
+    added_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint("name", "type", "parent_id", name="uq_org_unit_name_type_parent"),
+        UniqueConstraint("project_id", "user_id", name="uq_project_membership_project_user"),
+        Index("ix_project_memberships_project_role", "project_id", "role"),
     )
 
 
-class OrgUnitClosure(Base):
-    """Ancestor/descendant closure for OrgUnit hierarchy (fast subtree queries)."""
-
-    __tablename__ = "org_unit_closure"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ancestor_id: Mapped[str] = mapped_column(ForeignKey("org_units.id"), index=True)
-    descendant_id: Mapped[str] = mapped_column(ForeignKey("org_units.id"), index=True)
-    depth: Mapped[int] = mapped_column(Integer)  # 0=self
-
-    __table_args__ = (UniqueConstraint("ancestor_id", "descendant_id", name="uq_org_unit_closure"),)
-
-
 class PlatformSetting(Base):
-    """Platform-wide settings/policy toggles (key-value store)."""
-
     __tablename__ = "platform_settings"
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -160,9 +124,10 @@ class ApiKey(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     prefix: Mapped[str] = mapped_column(String(16), index=True)
-    key_hash: Mapped[bytes] = mapped_column(LargeBinary)  # store hash only
+    key_hash: Mapped[bytes] = mapped_column(LargeBinary)
     scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -176,6 +141,7 @@ class Run(Base):
     __tablename__ = "runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     external_run_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -194,11 +160,9 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Soft-delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None, index=True)
     deleted_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    # Relationships (lazy="noload" — use selectinload() explicitly when needed)
     items: Mapped[list["RunItem"]] = relationship("RunItem", lazy="noload", foreign_keys="RunItem.run_id")
     scores: Mapped[list["RunItemScore"]] = relationship("RunItemScore", lazy="noload", foreign_keys="RunItemScore.run_id")
     approval_rel: Mapped[Optional["Approval"]] = relationship("Approval", uselist=False, lazy="noload", foreign_keys="Approval.run_id")
@@ -206,13 +170,12 @@ class Run(Base):
 
     @classmethod
     def active(cls, db: Session):
-        """Return a query for non-deleted runs."""
         return db.query(cls).filter(cls.deleted_at.is_(None))
 
     def audit_snapshot(self) -> dict[str, Any]:
-        """Serialize key fields for audit log entries."""
         return {
             "id": self.id,
+            "project_id": self.project_id,
             "task": self.task,
             "dataset": self.dataset,
             "model": self.model,
@@ -308,8 +271,6 @@ class RunEvent(Base):
 
 
 class Span(Base):
-    """OTEL span data captured from evaluations for native trace storage."""
-
     __tablename__ = "spans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -342,8 +303,6 @@ class CorrectionStatus(str, enum.Enum):
 
 
 class RootCauseRevision(Base):
-    """Append-only history of root-cause analysis state changes for a run item."""
-
     __tablename__ = "root_cause_revisions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -364,8 +323,6 @@ class RootCauseRevision(Base):
 
 
 class ReviewCorrection(Base):
-    """Review candidate snapshots linked to specific root-cause revisions."""
-
     __tablename__ = "review_corrections"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -373,13 +330,11 @@ class ReviewCorrection(Base):
     item_id: Mapped[str] = mapped_column(String(200), index=True)
     task: Mapped[str] = mapped_column(String(200), index=True)
 
-    # Snapshot of item context at correction time (avoids joins for retrieval)
     input_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
     expected_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
     output_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
     scores_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    # What the AI suggested
     ai_root_cause: Mapped[str] = mapped_column(String(200))
     ai_root_cause_detail: Mapped[str] = mapped_column(String(200), default="")
     ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
@@ -387,31 +342,23 @@ class ReviewCorrection(Base):
     ai_solution: Mapped[str] = mapped_column(String(200), default="")
     ai_solution_note: Mapped[str] = mapped_column(Text, default="")
 
-    # What the human corrected to
     human_root_cause: Mapped[str] = mapped_column(String(200))
     human_root_cause_detail: Mapped[str] = mapped_column(String(200), default="")
     human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     human_solution: Mapped[str] = mapped_column(String(200), default="")
     human_solution_note: Mapped[str] = mapped_column(Text, default="")
 
-    corrected_by_user_id: Mapped[Optional[str]] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True
-    )
-    revision_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("root_cause_revisions.id"), nullable=True, index=True
-    )
+    corrected_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    revision_id: Mapped[Optional[int]] = mapped_column(ForeignKey("root_cause_revisions.id"), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    # Approval workflow
     status: Mapped[CorrectionStatus] = mapped_column(
         Enum(CorrectionStatus, values_callable=lambda e: [x.value for x in e]),
         default=CorrectionStatus.PENDING,
         index=True,
     )
-    reviewed_by_user_id: Mapped[Optional[str]] = mapped_column(
-        ForeignKey("users.id"), nullable=True
-    )
+    reviewed_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     review_comment: Mapped[str] = mapped_column(Text, default="")
 

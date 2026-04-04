@@ -12,15 +12,32 @@
 
   // Compute the base URL for API calls, handling reverse proxy scenarios
   // e.g., if served at https://proxy.example/workspace/8080/, API calls should go to that base
+  function getAppRootPath() {
+    const path = window.location.pathname;
+    const patterns = [
+      /\/projects\/[^/]+\/runs\/[^/]+$/,
+      /\/projects\/[^/]+\/reviews$/,
+      /\/projects\/[^/]+$/,
+      /\/run\/[^/]+$/,
+      /\/reviews$/,
+      /\/profile$/,
+      /\/admin$/,
+      /\/trash$/,
+      /\/compare$/,
+    ];
+    for (const pattern of patterns) {
+      if (pattern.test(path)) {
+        const next = path.replace(pattern, '/');
+        return next.endsWith('/') ? next : `${next}/`;
+      }
+    }
+    if (path.endsWith('/')) return path;
+    return (path.substring(0, path.lastIndexOf('/') + 1) || '/');
+  }
+
   const BASE_URL = (() => {
     const loc = window.location;
-    // Get the pathname and ensure it ends with /
-    let base = loc.pathname;
-    // If pathname doesn't end with /, get the directory part
-    if (!base.endsWith('/')) {
-      base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
-    }
-    return loc.origin + base;
+    return loc.origin + getAppRootPath();
   })();
 
   // Helper to build API URLs
@@ -28,6 +45,35 @@
     // Remove leading ./ or / from path
     const cleanPath = path.replace(/^\.?\//, '');
     return BASE_URL + cleanPath;
+  }
+
+  function getProjectSlugFromPath() {
+    const match = window.location.pathname.match(/\/projects\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  function getProjectStorageKey() {
+    return 'qym:last-project-slug';
+  }
+
+  function getStoredProjectSlug() {
+    try {
+      return window.localStorage.getItem(getProjectStorageKey()) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function storeProjectSlug(slug) {
+    try {
+      window.localStorage.setItem(getProjectStorageKey(), slug || '');
+    } catch {}
+  }
+
+  function projectUrl(slug, suffix = '') {
+    const encoded = encodeURIComponent(slug || '');
+    const cleanSuffix = String(suffix || '').replace(/^\/+/, '');
+    return apiUrl(`projects/${encoded}${cleanSuffix ? `/${cleanSuffix}` : ''}`);
   }
 
   // ═══════════════════════════════════════════════════
@@ -58,6 +104,8 @@
     visibleMetrics: null, // null = all visible; Set of visible metric names
     allModels: [],    // All unique model names
     currentUser: null,
+    availableProjects: [],
+    currentProject: null,
     // Models view state (uses global filterTasks/filterDatasets for task+dataset)
     modelsViewState: {
       selectedMetric: '',
@@ -2039,8 +2087,7 @@
         const target = e.target.closest('.chart-bar-label');
         const filePath = target?.dataset.file;
         if (filePath) {
-          // Navigate to run detail page
-          window.location.href = apiUrl(`run/${encodeURIComponent(filePath)}`);
+          openRun(filePath);
         }
       });
     });
@@ -2480,11 +2527,13 @@
       const langfuseUrl = run.langfuse_url;
       const approval = run.approval || null;
 
-      const role = (state.currentUser && state.currentUser.role) || '';
-      const canApprove = (role === 'MANAGER' || role === 'ADMIN') && status === 'SUBMITTED';
-      // Runs submitted via SDK/file upload land as COMPLETED/FAILED; those should be submittable for approval.
-      // Managers don't submit - they approve/reject. Only non-managers can submit.
-      const canSubmit = role !== 'MANAGER' && (status === 'COMPLETED' || status === 'FAILED');
+      const globalRole = (state.currentUser && state.currentUser.role) || '';
+      const projectRole = (state.currentProject && state.currentProject.role) || '';
+      const isOwner = !!(state.currentUser && run.owner && run.owner.id === state.currentUser.id);
+      const isProjectManager = globalRole === 'ADMIN' || projectRole === 'MANAGER';
+      const canApprove = isProjectManager && !isOwner && status === 'SUBMITTED';
+      const canSubmit = isOwner && (status === 'COMPLETED' || status === 'FAILED');
+      const canDelete = globalRole === 'ADMIN' || isProjectManager || isOwner;
       const progressText = (status === 'RUNNING' && run.progress_total)
         ? `${run.progress_completed || 0}/${run.progress_total}`
         : (status === 'RUNNING' ? `${run.progress_completed || 0}` : '');
@@ -2601,12 +2650,14 @@
                 <img src="./static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
               </a>
             ` : ''}
+            ${canDelete ? `
             <a href="#" class="action-icon delete-run" title="Delete" onclick="event.stopPropagation()">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
             </a>
+            ` : ''}
           </td>
         </tr>
       `;
@@ -2734,7 +2785,7 @@
           if (Array.isArray(files) && files.length >= 2) {
             sessionStorage.setItem('compareRuns', JSON.stringify(files));
             const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-            window.location.href = './compare?' + params;
+            window.location.href = apiUrl('compare?' + params);
           }
         } catch {}
       });
@@ -3831,7 +3882,11 @@
 
   function openRun(filePath) {
     sessionStorage.setItem('dashboardRunFile', filePath);
-    window.location.href = `./run/${encodeURIComponent(filePath)}`;
+    if (state.currentProject && state.currentProject.slug) {
+      window.location.href = projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`);
+      return;
+    }
+    window.location.href = apiUrl(`run/${encodeURIComponent(filePath)}`);
   }
 
   function openComparison() {
@@ -3842,7 +3897,7 @@
     const files = Array.from(state.selectedRuns);
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-    window.location.href = './compare?' + params;
+    window.location.href = apiUrl('compare?' + params);
   }
 
   function confirmDeleteRun(filePath, runId) {
@@ -4099,7 +4154,14 @@
   }
 
   function _applyRunsData(data) {
+    showDashboardChrome();
     state.runs = data;
+    if (data && data.project) {
+      state.currentProject = data.project;
+      if (state.currentProject && state.currentProject.slug) {
+        storeProjectSlug(state.currentProject.slug);
+      }
+    }
     const { runs, metrics, metricTypes } = flattenRuns(data);
     state.flatRuns = runs;
     state.allMetrics = metrics;
@@ -4120,9 +4182,10 @@
     if (fetched >= totalCount) return;
 
     const pagePromises = [];
+    const projectSlug = state.currentProject && state.currentProject.slug ? `&project_slug=${encodeURIComponent(state.currentProject.slug)}` : '';
     for (let offset = fetched; offset < totalCount; offset += PAGE_SIZE) {
       pagePromises.push(
-        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}`))
+        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}${projectSlug}`))
           .then(r => r.ok ? r.json() : null)
           .catch(() => null)
       );
@@ -4136,6 +4199,206 @@
     // Re-apply with full data
     _applyRunsData(data);
     try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
+  }
+
+  function renderProjectChooser(projects) {
+    const modal = el('project-chooser');
+    const list = el('project-chooser-list');
+    if (!modal || !list) return;
+    const loading = el('loading');
+    if (loading) loading.style.display = 'none';
+    const empty = el('empty');
+    if (empty) empty.style.display = 'none';
+    list.innerHTML = (projects || []).map(project => `
+      <button class="project-choice-btn" data-project-choice="${escapeHtml(project.slug)}">
+        <span class="project-choice-name">${escapeHtml(project.name)}</span>
+        <span class="project-choice-role">${escapeHtml(project.role || '')}</span>
+      </button>
+    `).join('');
+    list.querySelectorAll('[data-project-choice]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slug = btn.getAttribute('data-project-choice') || '';
+        if (!slug) return;
+        storeProjectSlug(slug);
+        window.location.href = projectUrl(slug);
+      });
+    });
+    modal.style.display = '';
+  }
+
+  function hideProjectChooser() {
+    const modal = el('project-chooser');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function canCreateProjects() {
+    const user = state.currentUser || {};
+    if (user.role === 'ADMIN') return true;
+    return (state.availableProjects || []).some(project => project.role === 'MANAGER');
+  }
+
+  function showDashboardChrome() {
+    const commandBar = document.querySelector('.command-bar');
+    if (commandBar) commandBar.style.display = '';
+    const comparePanel = el('compare-panel');
+    if (comparePanel) comparePanel.style.display = state.selectedRuns.size ? '' : 'none';
+    const footer = document.querySelector('.status-bar');
+    if (footer) footer.style.display = '';
+    const statsBar = document.querySelector('.stats-bar .stat-cells');
+    if (statsBar) statsBar.style.display = '';
+  }
+
+  function hideDashboardChrome() {
+    const commandBar = document.querySelector('.command-bar');
+    if (commandBar) commandBar.style.display = 'none';
+    const comparePanel = el('compare-panel');
+    if (comparePanel) comparePanel.style.display = 'none';
+    const footer = document.querySelector('.status-bar');
+    if (footer) footer.style.display = 'none';
+    const statsBar = document.querySelector('.stats-bar .stat-cells');
+    if (statsBar) statsBar.style.display = 'none';
+  }
+
+  async function createProjectFromSelector() {
+    const nameInput = el('project-create-name');
+    const slugInput = el('project-create-slug');
+    const descInput = el('project-create-description');
+    const errorEl = el('project-selector-message');
+    if (!nameInput) return;
+    const payload = {
+      name: (nameInput.value || '').trim(),
+      slug: (slugInput && slugInput.value || '').trim(),
+      description: (descInput && descInput.value || '').trim(),
+    };
+    if (!payload.name) {
+      if (errorEl) errorEl.textContent = 'Project name is required';
+      return;
+    }
+    if (errorEl) errorEl.textContent = 'Creating project...';
+    try {
+      const response = await fetch(apiUrl('v1/projects'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to create project');
+      }
+      if (errorEl) errorEl.textContent = '';
+      storeProjectSlug(data.slug || '');
+      window.location.href = projectUrl(data.slug || '');
+    } catch (err) {
+      if (errorEl) errorEl.textContent = err.message || 'Failed to create project';
+    }
+  }
+
+  function showProjectSelectorPage() {
+    hideProjectChooser();
+    hideDashboardChrome();
+    const loading = el('loading');
+    if (loading) loading.style.display = 'none';
+    const empty = el('empty');
+    const projects = state.availableProjects || [];
+    const createAllowed = canCreateProjects();
+    if (empty) {
+      empty.style.display = '';
+      empty.innerHTML = `
+        <div class="project-hub">
+          <div class="project-hub-hero">
+            <div>
+              <div class="project-hub-title">Projects</div>
+              <div class="project-hub-subtitle">${projects.length
+                ? 'Select a project to open its runs, reviews, and settings.'
+                : (createAllowed
+                    ? 'Create your first project to start organizing runs, memberships, approvals, and API keys.'
+                    : 'You are not a member of any project yet. Ask a project manager to add you to an existing project.')}</div>
+            </div>
+          </div>
+          <div class="project-hub-grid">
+            <section class="project-hub-panel ${projects.length ? '' : 'project-hub-empty'}">
+              <h3>${projects.length ? 'Your Projects' : 'No Projects Available'}</h3>
+              <p>${projects.length
+                ? 'Projects are your workspace boundary. Access, approvals, and API keys are scoped here.'
+                : 'Once you join a project, it will appear here and become your entry point into the app.'}</p>
+              ${projects.length ? `
+                <div class="project-hub-list">
+                  ${projects.map(project => `
+                    <button class="project-hub-card" data-project-selector="${escapeHtml(project.slug)}">
+                      <span class="project-hub-card-main">
+                        <span class="project-hub-card-name">${escapeHtml(project.name)}</span>
+                        <span class="project-hub-card-meta">
+                          <span class="project-hub-pill">${escapeHtml(project.role || '')}</span>
+                          <span>${escapeHtml(project.slug || '')}</span>
+                        </span>
+                      </span>
+                      <span class="project-hub-arrow">›</span>
+                    </button>
+                  `).join('')}
+                </div>
+              ` : `
+                <div class="project-hub-empty-note">${createAllowed
+                  ? 'Use the creation panel to the right to create the first project.'
+                  : 'You need to be added to a project before you can access runs or reviews.'}</div>
+              `}
+            </section>
+            <aside class="project-hub-panel">
+              <h3>${createAllowed ? 'Create Project' : 'Access'}</h3>
+              <p>${createAllowed
+                ? 'Project creators automatically become managers of the new project.'
+                : 'Project managers control membership. If you need access, ask to be invited to a project.'}</p>
+              ${createAllowed ? `
+                <div class="project-hub-actions">
+                  <input id="project-create-name" class="form-input" placeholder="Project name" />
+                  <input id="project-create-slug" class="form-input" placeholder="project-slug (optional)" />
+                  <input id="project-create-description" class="form-input" placeholder="Description (optional)" />
+                  <button id="project-create-submit" class="btn btn-primary" type="button">Create Project</button>
+                  <div id="project-selector-message" class="project-hub-message"></div>
+                </div>
+              ` : `
+                <div class="project-hub-message">No action is available here until you are added to a project.</div>
+              `}
+            </aside>
+          </div>
+        </div>
+      `;
+    }
+    document.querySelectorAll('[data-project-selector]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slug = btn.getAttribute('data-project-selector') || '';
+        if (!slug) return;
+        storeProjectSlug(slug);
+        window.location.href = projectUrl(slug);
+      });
+    });
+    const createBtn = el('project-create-submit');
+    if (createBtn) createBtn.addEventListener('click', createProjectFromSelector);
+  }
+
+  function resolveProjectContext(me) {
+    const projects = Array.isArray(me?.projects) ? me.projects : [];
+    state.availableProjects = projects;
+
+    const currentSlug = getProjectSlugFromPath();
+    if (currentSlug) {
+      const current = projects.find(project => project.slug === currentSlug) || null;
+      state.currentProject = current || (me?.role === 'ADMIN' ? { slug: currentSlug, name: currentSlug, role: 'ADMIN' } : null);
+      if (state.currentProject) {
+        storeProjectSlug(state.currentProject.slug);
+        hideProjectChooser();
+        return true;
+      }
+      throw new Error('Project not found');
+    }
+
+    if (projects.length === 0) {
+      state.currentProject = null;
+      hideProjectChooser();
+      return false;
+    }
+    state.currentProject = null;
+    hideProjectChooser();
+    return false;
   }
 
   async function fetchRuns(options = {}) {
@@ -4152,10 +4415,24 @@
     state.runsFetchMeta.inFlight = true;
     try {
       // Fetch first page and current user in parallel
-      const [runsResponse, meResponse] = await Promise.all([
-        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=0`)),
-        fetch(apiUrl('v1/me')).catch(() => null),
-      ]);
+      const meResponse = await fetch(apiUrl('v1/me')).catch(() => null);
+      if (meResponse && meResponse.ok) {
+        state.currentUser = await meResponse.json();
+        if (state.currentUser && window.QymAuth) {
+          window.QymAuth.maybePromptBootstrapAdmin(state.currentUser);
+        }
+        updateProfileLink();
+        if (!resolveProjectContext(state.currentUser)) {
+          state.runsFetchMeta.hasLoadedAllPages = false;
+          showProjectSelectorPage();
+          return;
+        }
+      } else {
+        state.currentUser = null;
+      }
+
+      const projectSlug = state.currentProject && state.currentProject.slug ? `&project_slug=${encodeURIComponent(state.currentProject.slug)}` : '';
+      const runsResponse = await fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=0${projectSlug}`));
 
       // Handle authentication errors
       if (runsResponse.status === 401 || (meResponse && meResponse.status === 401)) {
@@ -4171,15 +4448,6 @@
       const totalCount = data.total_count || 0;
       const previousTotalCount = state.runsFetchMeta.totalCount || 0;
       state.runsFetchMeta.totalCount = totalCount;
-
-      try {
-        state.currentUser = meResponse && meResponse.ok ? await meResponse.json() : null;
-        if (state.currentUser && window.QymAuth) {
-          window.QymAuth.maybePromptBootstrapAdmin(state.currentUser);
-        }
-      } catch {
-        state.currentUser = null;
-      }
 
       // Render first page immediately, but preserve already-loaded off-page runs during live refreshes.
       const immediateData = totalCount > PAGE_SIZE
@@ -4226,14 +4494,7 @@
   function showAuthError() {
     // Hide everything except header logo
     el('loading').style.display = 'none';
-    const commandBar = document.querySelector('.command-bar');
-    if (commandBar) commandBar.style.display = 'none';
-    const comparePanel = el('compare-panel');
-    if (comparePanel) comparePanel.style.display = 'none';
-    const footer = document.querySelector('.status-bar');
-    if (footer) footer.style.display = 'none';
-    const statsBar = document.querySelector('.stats-bar .stat-cells');
-    if (statsBar) statsBar.style.display = 'none';
+    hideDashboardChrome();
     const headerMeta = document.querySelector('.stats-bar .header-meta');
     if (headerMeta) headerMeta.style.display = 'none';
 
@@ -4276,7 +4537,8 @@
 
     const roleEl = el('header-user-role');
     if (roleEl) {
-      roleEl.textContent = u.role || '';
+      const projectRole = state.currentProject && state.currentProject.role ? ` · ${state.currentProject.role}` : '';
+      roleEl.textContent = `${u.role || ''}${projectRole}`;
     }
 
     // Show admin menu items for ADMIN users
@@ -4289,8 +4551,53 @@
       trashLink.style.display = u.role === 'ADMIN' ? '' : 'none';
     }
 
+    const reviewsLink = el('header-reviews-link');
+    if (reviewsLink && state.currentProject && state.currentProject.slug) {
+      reviewsLink.href = projectUrl(state.currentProject.slug, 'reviews');
+    }
+
+    const settingsLink = el('header-project-settings-link');
+    if (settingsLink && state.currentProject && state.currentProject.slug) {
+      settingsLink.href = projectUrl(state.currentProject.slug, 'settings');
+      settingsLink.style.display = '';
+    } else if (settingsLink) {
+      settingsLink.style.display = 'none';
+    }
+
+    renderProjectSwitcher();
+
     // Setup dropdown toggle
     setupHeaderUserDropdown();
+  }
+
+  function renderProjectSwitcher() {
+    const wrapper = el('project-switcher');
+    const trigger = el('project-switcher-btn');
+    const menu = el('project-switcher-menu');
+    if (!wrapper || !trigger || !menu) return;
+
+    const projects = state.availableProjects || [];
+    if (!projects.length) {
+      wrapper.style.display = 'none';
+      return;
+    }
+
+    wrapper.style.display = '';
+    trigger.textContent = state.currentProject && state.currentProject.name ? state.currentProject.name : 'Choose Project';
+    menu.innerHTML = projects.map(project => `
+      <button class="project-switcher-item${state.currentProject && state.currentProject.slug === project.slug ? ' active' : ''}" data-project-switch="${escapeHtml(project.slug)}">
+        <span>${escapeHtml(project.name)}</span>
+        <span>${escapeHtml(project.role || '')}</span>
+      </button>
+    `).join('');
+    menu.querySelectorAll('[data-project-switch]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slug = btn.getAttribute('data-project-switch') || '';
+        if (!slug) return;
+        storeProjectSlug(slug);
+        window.location.href = projectUrl(slug);
+      });
+    });
   }
 
   function setupHeaderUserDropdown() {

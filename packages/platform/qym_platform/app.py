@@ -11,9 +11,9 @@ from qym_platform.auth_oidc import auth_mode_is_oidc, origin_matches_base
 from qym_platform.api.auth import router as auth_router
 from qym_platform.settings import PlatformSettings
 from qym_platform.api.web import router as web_router
+from qym_platform.api.projects import router as projects_router
 from qym_platform.api.runs import router as runs_router
 from qym_platform.api.ingest import router as ingest_router
-from qym_platform.api.org import router as org_router
 from qym_platform.api.analysis import router as analysis_router
 
 
@@ -70,10 +70,9 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(web_router)
+    app.include_router(projects_router)
     app.include_router(analysis_router)  # before runs_router (its {run_id:path} is a catch-all)
     app.include_router(runs_router)
     app.include_router(ingest_router)
-    app.include_router(org_router)
 
     return app
-

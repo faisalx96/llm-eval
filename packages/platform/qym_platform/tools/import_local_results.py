@@ -8,7 +8,17 @@ from sqlalchemy.orm import Session
 
 from qym.core.run_discovery import RunDiscovery  # legacy parser
 from qym_platform.db.session import SessionLocal
-from qym_platform.db.models import Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import (
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    Run,
+    RunItem,
+    RunItemScore,
+    RunWorkflowStatus,
+    User,
+    UserRole,
+)
 
 
 def _flatten_index(index_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -29,11 +39,37 @@ def _ensure_owner(db: Session, email: str) -> User:
     user = db.query(User).filter(User.email == email).first()
     if user:
         return user
-    user = User(email=email, display_name=email, role=UserRole.VP)
+    user = User(email=email, display_name=email, role=UserRole.MEMBER)
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
+
+def _ensure_import_project(db: Session, owner: User) -> Project:
+    project = db.query(Project).filter(Project.slug == "imported-results").first()
+    if project:
+        return project
+    project = Project(
+        name="Imported Results",
+        slug="imported-results",
+        description="Imported legacy runs",
+        created_by_user_id=owner.id,
+        is_active=True,
+    )
+    db.add(project)
+    db.flush()
+    db.add(
+        ProjectMembership(
+            project_id=project.id,
+            user_id=owner.id,
+            role=ProjectRole.MANAGER,
+            added_by_user_id=owner.id,
+        )
+    )
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 def main() -> None:
@@ -53,6 +89,7 @@ def main() -> None:
     db = SessionLocal()
     try:
         owner = _ensure_owner(db, args.owner_email)
+        project = _ensure_import_project(db, owner)
         imported = 0
 
         for r in runs:
@@ -64,6 +101,7 @@ def main() -> None:
                 continue
 
             run = Run(
+                project_id=project.id,
                 external_run_id=str(data.get("run", {}).get("run_name") or ""),
                 created_by_user_id=owner.id,
                 owner_user_id=owner.id,
@@ -140,4 +178,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Run Detail</title>
-  <link rel="icon" type="image/png" href="../static/qym_icon.png">
-  <link rel="stylesheet" href="../static/dashboard.css">
-  <script src="../static/auth.js"></script>
-  <script src="../static/metrics.js"></script>
-  <script src="../static/trace_viewer.js"></script>
-  <script src="../static/playground.js"></script>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/trace_viewer.js"></script>
+  <script src="/static/playground.js"></script>
   <style>
     .run-container {
       padding: var(--space-lg);
@@ -3171,7 +3171,7 @@
           </svg>
           Profile
         </a>
-        <a href="/reviews" class="menu-item">
+        <a href="/reviews" class="menu-item" id="header-reviews-link">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 11l3 3L22 4"></path>
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
@@ -3191,7 +3191,7 @@
   <header class="stats-bar has-user-pill-space">
     <div class="stats-bar-left">
       <a href="/" class="logo" id="logo-link" style="text-decoration:none;">
-        <img src="../static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
+        <img src="/static/qym_text.png" alt="قيِّم" class="logo-text-img" style="cursor:pointer;" />
       </a>
       <div class="stat-cells">
         <div class="stat-cell">
@@ -3340,31 +3340,36 @@
     (() => {
       'use strict';
 
-      const BASE_URL = (() => {
-        const path = window.location.pathname;
-        const runIdx = path.indexOf('/run/');
-        if (runIdx >= 0) {
-          const base = path.substring(0, runIdx + 1);
-          return window.location.origin + base;
-        }
-        let base = path;
-        if (!base.endsWith('/')) base = base.substring(0, base.lastIndexOf('/') + 1) || '/';
-        return window.location.origin + base;
+      const API_ROOT = `${window.location.origin}/`;
+      const CURRENT_PROJECT_SLUG = (() => {
+        const match = window.location.pathname.match(/\/projects\/([^/]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
       })();
 
       const RUN_ID = (() => {
         const path = window.location.pathname;
-        const runIdx = path.indexOf('/run/');
-        return runIdx >= 0 ? path.substring(runIdx + 5) : null;
+        const projectMatch = path.match(/\/projects\/[^/]+\/runs\/(.+)$/);
+        if (projectMatch) return decodeURIComponent(projectMatch[1]);
+        const runMatch = path.match(/\/run\/(.+)$/);
+        return runMatch ? decodeURIComponent(runMatch[1]) : null;
       })();
 
       function apiUrl(path) {
-        return BASE_URL + path.replace(/^\.?\/?/, '');
+        return API_ROOT + path.replace(/^\.?\/?/, '');
+      }
+
+      function projectUrl(slug, suffix) {
+        const clean = String(suffix || '').replace(/^\/+/, '');
+        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
+      }
+
+      function dashboardUrl() {
+        return CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG) : '/';
       }
 
       // Fix back links and logo link
       try {
-        const backUrl = apiUrl('');
+        const backUrl = dashboardUrl();
         document.getElementById('back-link-header').href = backUrl;
         document.getElementById('back-link-error').href = backUrl;
         document.getElementById('back-link-empty').href = backUrl;
@@ -3465,8 +3470,15 @@
         if (name) name.textContent = displayName;
         if (menuAvatar) menuAvatar.textContent = initials;
         if (email) email.textContent = user.email || '';
-        if (role) role.textContent = user.role || '';
+        if (role) {
+          const projectRole = Array.isArray(user.projects)
+            ? user.projects.find((project) => project.slug === CURRENT_PROJECT_SLUG)?.role
+            : '';
+          role.textContent = user.role + (projectRole ? ` · ${projectRole}` : '');
+        }
         if (adminLink) adminLink.style.display = user.role === 'ADMIN' ? '' : 'none';
+        const reviewsLink = el('header-reviews-link');
+        if (reviewsLink) reviewsLink.href = CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG, 'reviews') : '/reviews';
       }
 
       function setupHeaderUserDropdown() {
@@ -3808,6 +3820,16 @@
       // ── Data loading ──
 
       async function loadRunData() {
+        function syncProjectLinks(project) {
+          if (!project || !project.slug) return;
+          document.getElementById('back-link-header').href = projectUrl(project.slug);
+          document.getElementById('back-link-error').href = projectUrl(project.slug);
+          document.getElementById('back-link-empty').href = projectUrl(project.slug);
+          document.getElementById('logo-link').href = projectUrl(project.slug);
+          const reviewsLink = el('header-reviews-link');
+          if (reviewsLink) reviewsLink.href = projectUrl(project.slug, 'reviews');
+        }
+
         if (window.__QYM_EXPORT_DATA__) {
           var data = window.__QYM_EXPORT_DATA__;
           // Check localStorage for saved edits
@@ -3821,6 +3843,7 @@
           state.langfuseHost = data.run.langfuse_host || '';
           state.langfuseProjectId = data.run.langfuse_project_id || '';
           state._exportStorageKey = storageKey;
+          syncProjectLinks(data.run.project);
           processRun();
           render();
           if (IS_EXPORT) applyExportMode();
@@ -3837,6 +3860,7 @@
           state.snapshot = data.snapshot;
           state.langfuseHost = data.run.langfuse_host || '';
           state.langfuseProjectId = data.run.langfuse_project_id || '';
+          syncProjectLinks(data.run.project);
           processRun();
           render();
         } catch (err) {
@@ -3978,7 +4002,7 @@
         const taskName = run.task_name || metadata.task_name || config.task || '—';
         const owner = run.owner || {};
         const ownerLabel = owner.display_name || owner.email || owner.id || '—';
-        const teamName = run.team_name || '—';
+        const projectName = (run.project && run.project.name) || run.team_name || '—';
         const startedAt = run.started_at || run.created_at || '';
         const endedAt = run.ended_at || '';
         let runtimeMs = run.duration_ms;
@@ -4025,7 +4049,7 @@
           metaItem('Dataset', run.dataset_name || '—'),
           metaItem('Model', modelName || '—'),
           metaItem('Owner', ownerLabel === '—' ? '' : ownerLabel),
-          metaItem('Team', teamName === '—' ? '' : teamName),
+          metaItem('Project', projectName === '—' ? '' : projectName),
           metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),
           metaItem('Runtime', runtimeText, { nowrap: true }),
           metaItem('Version', versionText, { mono: true, nowrap: true }),
