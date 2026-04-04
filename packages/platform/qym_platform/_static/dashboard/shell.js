@@ -33,6 +33,8 @@
       /\/projects\/[^/]+\/reviews$/,
       /\/projects\/[^/]+\/settings$/,
       /\/projects\/[^/]+\/overview$/,
+      /\/projects\/[^/]+\/charts$/,
+      /\/projects\/[^/]+\/models$/,
       /\/projects\/[^/]+$/,
       /\/run\/[^/]+$/,
       /\/reviews$/,
@@ -69,13 +71,9 @@
       let page = 'runs'; // default project page
       let subId = null;
 
-      if (rest === '' || rest === 'runs') {
-        // Check ?view= param for Charts/Runs/Models
-        const view = search.get('view');
-        if (view === 'charts') page = 'charts';
-        else if (view === 'models') page = 'models';
-        else page = 'runs';
-      }
+      if (rest === '' || rest === 'runs') page = 'runs';
+      else if (rest === 'charts') page = 'charts';
+      else if (rest === 'models') page = 'models';
       else if (rest === 'overview') page = 'overview';
       else if (rest === 'reviews') page = 'reviews';
       else if (rest === 'settings') page = 'settings';
@@ -84,16 +82,19 @@
       return { projectSlug: slug, page: page, subId: subId };
     }
 
-    // Legacy run detail: /run/{id}
+    // Legacy run detail: /run/{id} — keep project context from last known project
+    const lastSlug = localStorage.getItem('qym:last-project-slug') || null;
     const runMatch = pathname.match(/\/run\/(.+)$/);
-    if (runMatch) return { projectSlug: null, page: 'run-detail', subId: runMatch[1] };
+    if (runMatch) return { projectSlug: lastSlug, page: 'run-detail', subId: runMatch[1] };
 
-    // Global pages
+    // Global pages — truly no project
     if (pathname.endsWith('/admin')) return { projectSlug: null, page: 'admin', subId: null };
     if (pathname.endsWith('/profile')) return { projectSlug: null, page: 'profile', subId: null };
     if (pathname.endsWith('/trash')) return { projectSlug: null, page: 'trash', subId: null };
-    if (pathname.endsWith('/compare')) return { projectSlug: null, page: 'compare', subId: null };
-    if (pathname.endsWith('/reviews')) return { projectSlug: null, page: 'reviews', subId: null };
+
+    // Compare and reviews without project prefix — keep project context
+    if (pathname.endsWith('/compare')) return { projectSlug: lastSlug, page: 'compare', subId: null };
+    if (pathname.endsWith('/reviews')) return { projectSlug: lastSlug, page: 'reviews', subId: null };
 
     // Root = projects landing
     return { projectSlug: null, page: 'projects', subId: null };
@@ -122,6 +123,70 @@
     let url = root + 'projects/' + encodeURIComponent(slug);
     if (subPage && subPage !== 'runs') url += '/' + subPage;
     return url;
+  }
+
+  function isModifiedEvent(e) {
+    return !!(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0);
+  }
+
+  function getRelativeAppPath(pathname) {
+    var root = getAppRootPath();
+    if (!pathname.startsWith(root)) return null;
+    return pathname.slice(root.length).replace(/^\/+/, '');
+  }
+
+  function isNavigableAppPath(pathname) {
+    var relative = getRelativeAppPath(pathname);
+    if (relative === null) return false;
+    if (relative === '') return true;
+    return [
+      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|reviews|settings))?$/,
+      /^projects\/[^/]+\/runs\/[^/]+$/,
+      /^run\/[^/]+$/,
+      /^reviews$/,
+      /^profile$/,
+      /^admin$/,
+      /^trash$/,
+      /^compare$/,
+    ].some(function (pattern) {
+      return pattern.test(relative);
+    });
+  }
+
+  function canInterceptLink(link, e) {
+    if (!link) return false;
+    if (isModifiedEvent(e)) return false;
+    if (link.hasAttribute('download')) return false;
+    if ((link.getAttribute('target') || '').toLowerCase() === '_blank') return false;
+
+    var href = link.getAttribute('href');
+    if (!href || href === '#' || href.startsWith('#')) return false;
+
+    var targetUrl;
+    try {
+      targetUrl = new URL(href, window.location.href);
+    } catch (err) {
+      return false;
+    }
+
+    if (targetUrl.origin !== window.location.origin) return false;
+    if (!isNavigableAppPath(targetUrl.pathname)) return false;
+
+    return targetUrl.pathname + targetUrl.search !== window.location.pathname + window.location.search;
+  }
+
+  function closeShellPopovers() {
+    var projPopover = document.getElementById('shell-project-popover');
+    var projTrigger = document.getElementById('shell-project-trigger');
+    var userPopover = document.getElementById('shell-user-popover');
+    if (projPopover) projPopover.classList.remove('open');
+    if (projTrigger) projTrigger.classList.remove('open');
+    if (userPopover) userPopover.classList.remove('open');
+  }
+
+  function setNavigationPending(isPending) {
+    var content = document.getElementById('shell-content');
+    if (content) content.classList.toggle('is-navigating', !!isPending);
   }
 
   // ══════════════════════════════════════════════════
@@ -182,11 +247,10 @@
     // Project-scoped nav items
     const projectNav = [
       buildNavItem('Dashboard', 'overview', 'dashboard', { href: projectSlug ? projectUrl(projectSlug, 'overview') : '#' }),
-      buildNavItem('Charts', 'charts', 'charts', { href: projectSlug ? projectUrl(projectSlug) + '?view=charts' : '#' }),
+      buildNavItem('Charts', 'charts', 'charts', { href: projectSlug ? projectUrl(projectSlug, 'charts') : '#' }),
       buildNavItem('Runs', 'runs', 'runs', { href: projectSlug ? projectUrl(projectSlug) : '#' }),
-      buildNavItem('Models', 'models', 'models', { href: projectSlug ? projectUrl(projectSlug) + '?view=models' : '#' }),
+      buildNavItem('Models', 'models', 'models', { href: projectSlug ? projectUrl(projectSlug, 'models') : '#' }),
       buildNavItem('Reviews', 'reviews', 'reviews', { href: projectSlug ? projectUrl(projectSlug, 'reviews') : '#' }),
-      buildNavItem('Traces', 'traces', 'traces', { href: '#' }),
       buildNavItem('Project Settings', 'settings', 'settings', { href: projectSlug ? projectUrl(projectSlug, 'settings') : '#' }),
     ].join('');
 
@@ -199,22 +263,12 @@
       +   '</a>'
       + '</div>'
 
-      // Project Switcher
-      + '<div class="sidebar-project">'
-      +   '<button class="project-trigger" id="shell-project-trigger">'
-      +     '<span class="project-trigger-icon">' + iconRaw('project', 10, 10) + '</span>'
-      +     '<span class="project-trigger-text">' + projectName + '</span>'
-      +     '<span class="project-trigger-chevron">' + iconRaw('chevronDown', 12, 12) + '</span>'
-      +   '</button>'
-      +   '<div class="project-popover" id="shell-project-popover">'
-      +     '<div class="popover-search"><input type="text" placeholder="Search projects…" id="shell-project-search" /></div>'
-      +     '<div class="popover-list" id="shell-project-list"></div>'
-      +     '<div class="popover-footer"><button class="popover-footer-btn" id="shell-create-project-btn">' + iconRaw('plus') + ' Create Project</button></div>'
-      +   '</div>'
-      + '</div>'
 
       // Nav
       + '<nav class="sidebar-nav">'
+      +   '<div class="global-nav-items">'
+      +     buildNavItem('Projects', 'projects', 'project', { href: root })
+      +   '</div>'
       +   '<div class="project-nav-items">' + projectNav + '</div>'
       +   '<div class="nav-section-label">Platform</div>'
       +   buildNavItem('Admin', 'admin', 'admin', { href: root + 'admin', badge: 'Admin', badgeClass: 'admin-tag' })
@@ -287,12 +341,11 @@
   };
 
   function computeBreadcrumbs(ctx) {
-    const root = getAppRootPath();
     var crumbs = [];
 
     if (ctx.projectSlug && _currentProject) {
-      // Project-scoped page
-      crumbs.push({ label: _currentProject.name, href: projectUrl(ctx.projectSlug) });
+      // First crumb = project switcher
+      crumbs.push({ label: _currentProject.name, projectSwitcher: true });
 
       if (ctx.page === 'run-detail') {
         crumbs.push({ label: 'Runs', href: projectUrl(ctx.projectSlug) });
@@ -304,7 +357,6 @@
         crumbs.push({ label: PAGE_LABELS[ctx.page] || ctx.page, current: true });
       }
     } else if (ctx.page === 'run-detail') {
-      // Legacy /run/{id} URL
       crumbs.push({ label: ctx.subId || 'Run Detail', current: true });
     } else {
       crumbs.push({ label: PAGE_LABELS[ctx.page] || 'Home', current: true });
@@ -314,19 +366,36 @@
   }
 
   function renderBreadcrumbs(crumbs) {
-    var el = document.getElementById('shell-breadcrumbs');
-    if (!el) return;
+    var bcEl = document.getElementById('shell-breadcrumbs');
+    if (!bcEl) return;
     var html = '';
     for (var i = 0; i < crumbs.length; i++) {
       if (i > 0) html += '<span class="breadcrumb-sep">/</span>';
       var c = crumbs[i];
-      if (c.current) {
+      if (c.projectSwitcher) {
+        // Embedded project switcher as breadcrumb segment
+        html += '<div class="breadcrumb-project" id="breadcrumb-project">'
+          + '<button class="breadcrumb-project-btn" id="shell-project-trigger">'
+          +   '<span class="project-trigger-icon">' + iconRaw('project', 10, 10) + '</span>'
+          +   '<span class="project-trigger-text">' + esc(c.label) + '</span>'
+          +   '<span class="project-trigger-chevron">' + iconRaw('chevronDown', 10, 10) + '</span>'
+          + '</button>'
+          + '<div class="project-popover" id="shell-project-popover">'
+          +   '<div class="popover-search"><input type="text" placeholder="Search projects…" id="shell-project-search" /></div>'
+          +   '<div class="popover-list" id="shell-project-list"></div>'
+          +   '<div class="popover-footer"><button class="popover-footer-btn" id="shell-create-project-btn">' + iconRaw('plus') + ' Create Project</button></div>'
+          + '</div>'
+          + '</div>';
+      } else if (c.current) {
         html += '<span class="breadcrumb-item current">' + esc(c.label) + '</span>';
       } else {
         html += '<a class="breadcrumb-item" href="' + c.href + '">' + esc(c.label) + '</a>';
       }
     }
-    el.innerHTML = html;
+    bcEl.innerHTML = html;
+
+    // Rebind project switcher events if it was rendered
+    bindProjectSwitcherEvents();
   }
 
   // ══════════════════════════════════════════════════
@@ -408,38 +477,40 @@
   // EVENT BINDING
   // ══════════════════════════════════════════════════
 
-  function bindEvents() {
-    var sidebar = document.getElementById('qym-sidebar');
-
-    // Collapse toggle
-    var collapseBtn = document.getElementById('shell-collapse-btn');
-    if (collapseBtn) {
-      collapseBtn.addEventListener('click', function () { toggleSidebar(); });
-    }
-
-    // Project trigger
+  function bindProjectSwitcherEvents() {
     var projTrigger = document.getElementById('shell-project-trigger');
     var projPopover = document.getElementById('shell-project-popover');
-    if (projTrigger && projPopover) {
-      projTrigger.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var isOpen = projPopover.classList.toggle('open');
-        projTrigger.classList.toggle('open', isOpen);
-        if (isOpen) {
-          renderProjectList();
-          var searchInput = document.getElementById('shell-project-search');
-          if (searchInput) { searchInput.value = ''; searchInput.focus(); }
-        }
-      });
-    }
+    if (!projTrigger || !projPopover || projTrigger.dataset.bound) return;
+    projTrigger.dataset.bound = '1';
 
-    // Project search
+    projTrigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var isOpen = projPopover.classList.toggle('open');
+      projTrigger.classList.toggle('open', isOpen);
+      if (isOpen) {
+        renderProjectList();
+        var searchInput = document.getElementById('shell-project-search');
+        if (searchInput) { searchInput.value = ''; searchInput.focus(); }
+      }
+    });
+
     var projSearch = document.getElementById('shell-project-search');
     if (projSearch) {
       projSearch.addEventListener('input', function () {
         renderProjectList(projSearch.value);
       });
     }
+  }
+
+  function bindEvents() {
+    // Collapse toggle
+    var collapseBtn = document.getElementById('shell-collapse-btn');
+    if (collapseBtn) {
+      collapseBtn.addEventListener('click', function () { toggleSidebar(); });
+    }
+
+    // Project switcher (in breadcrumbs)
+    bindProjectSwitcherEvents();
 
     // User trigger
     var userTrigger = document.getElementById('shell-user-trigger');
@@ -462,7 +533,9 @@
 
     // Close popovers on outside click
     document.addEventListener('click', function (e) {
-      if (projPopover && !e.target.closest('.sidebar-project')) {
+      var projPopover = document.getElementById('shell-project-popover');
+      var projTrigger = document.getElementById('shell-project-trigger');
+      if (projPopover && !e.target.closest('.breadcrumb-project')) {
         projPopover.classList.remove('open');
         if (projTrigger) projTrigger.classList.remove('open');
       }
@@ -474,6 +547,8 @@
     // Close on Escape
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
+        var projPopover = document.getElementById('shell-project-popover');
+        var projTrigger = document.getElementById('shell-project-trigger');
         if (projPopover) { projPopover.classList.remove('open'); if (projTrigger) projTrigger.classList.remove('open'); }
         if (userPopover) userPopover.classList.remove('open');
       }
@@ -513,8 +588,176 @@
 
   function switchProject(slug) {
     localStorage.setItem('qym:last-project-slug', slug);
-    // Navigate to the project's default page (runs)
-    window.location.href = projectUrl(slug);
+    navigateTo(projectUrl(slug));
+  }
+
+  // ══════════════════════════════════════════════════
+  // AJAX NAVIGATION (SPA-like content swap)
+  // ══════════════════════════════════════════════════
+
+  var _navigating = false;
+
+  function navigateTo(url, opts) {
+    opts = opts || {};
+    if (_navigating) return;
+    _navigating = true;
+
+    var content = document.getElementById('shell-content');
+    if (!content) { window.location.href = url; return; }
+
+    closeShellPopovers();
+    setNavigationPending(true);
+
+    fetchAndSwap(url, opts).then(function () {
+      _navigating = false;
+      setNavigationPending(false);
+    }).catch(function (err) {
+      _navigating = false;
+      setNavigationPending(false);
+      console.error('[QymShell] Navigation failed, falling back:', err);
+      window.location.href = url;
+    });
+  }
+
+  async function fetchAndSwap(url, opts) {
+    opts = opts || {};
+    var res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var html = await res.text();
+
+    // Parse the fetched HTML
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(html, 'text/html');
+
+    // Update page title
+    var newTitle = doc.querySelector('title');
+    if (newTitle) document.title = newTitle.textContent;
+
+    // Collect page-specific <style> tags from <head>
+    var newStyles = doc.querySelectorAll('head > style');
+
+    // Collect all body content (this is what shell would wrap)
+    var newBody = doc.body;
+
+    // Remove any shell-related scripts from the new content (shell.js, auth.js)
+    // They're already loaded — we don't want to re-execute them
+    newBody.querySelectorAll('script[src*="shell.js"], script[src*="auth.js"]').forEach(function (s) { s.remove(); });
+
+    // Extract scripts before inserting content (they need to be re-created to execute)
+    var scriptInfos = [];
+    newBody.querySelectorAll('script').forEach(function (script) {
+      if (script.src && (script.src.indexOf('shell.js') !== -1 || script.src.indexOf('auth.js') !== -1)) return;
+      scriptInfos.push({
+        src: script.src || null,
+        text: script.textContent || '',
+        type: script.type || '',
+      });
+      script.remove();
+    });
+
+    // Get the content area
+    var content = document.getElementById('shell-content');
+    if (!content) throw new Error('No shell-content');
+
+    // Remove old page-specific styles
+    document.querySelectorAll('style[data-shell-page]').forEach(function (s) { s.remove(); });
+
+    // Inject new page-specific styles
+    newStyles.forEach(function (style) {
+      var s = document.createElement('style');
+      s.setAttribute('data-shell-page', '1');
+      s.textContent = style.textContent;
+      document.head.appendChild(s);
+    });
+
+    var fragment = document.createDocumentFragment();
+    while (newBody.firstChild) {
+      fragment.appendChild(newBody.firstChild);
+    }
+    content.replaceChildren(fragment);
+
+    if (opts.historyMode !== 'none') {
+      history.pushState({ qym: true }, '', url);
+    }
+
+    _routeCtx = parseRoute();
+    setActiveNav(_routeCtx.page);
+
+    var sidebar = document.getElementById('qym-sidebar');
+    if (_routeCtx.projectSlug && _user && _user.projects) {
+      _currentProject = _user.projects.find(function (p) { return p.slug === _routeCtx.projectSlug; }) || null;
+      if (sidebar) {
+        sidebar.classList.remove('no-project');
+        rebuildNavHrefs();
+      }
+    } else {
+      _currentProject = null;
+      if (sidebar) sidebar.classList.add('no-project');
+    }
+
+    renderBreadcrumbs(computeBreadcrumbs(_routeCtx));
+    setTopbarStats([]);
+    content.scrollTop = 0;
+
+    for (var i = 0; i < scriptInfos.length; i++) {
+      await executeScript(scriptInfos[i]);
+    }
+
+    window.__QYM_USER__ = _user;
+    document.dispatchEvent(new CustomEvent('qym:shell-ready'));
+  }
+
+  function executeScript(info) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      if (info.type) s.type = info.type;
+      s.setAttribute('data-shell-exec', '1');
+
+      if (info.src) {
+        s.src = info.src;
+        s.onload = function () { resolve(); };
+        s.onerror = function () { reject(new Error('Failed to load script: ' + info.src)); };
+        document.body.appendChild(s);
+        return;
+      }
+
+      if (info.text) {
+        s.textContent = info.text;
+      }
+      document.body.appendChild(s);
+      resolve();
+    });
+  }
+
+  function rebuildNavHrefs() {
+    var slug = _routeCtx.projectSlug;
+    if (!slug) return;
+    var mapping = {
+      'overview': projectUrl(slug, 'overview'),
+      'charts': projectUrl(slug, 'charts'),
+      'runs': projectUrl(slug),
+      'models': projectUrl(slug, 'models'),
+      'reviews': projectUrl(slug, 'reviews'),
+      'traces': '#',
+      'settings': projectUrl(slug, 'settings'),
+    };
+    document.querySelectorAll('.sidebar .nav-item[data-page]').forEach(function (item) {
+      var page = item.getAttribute('data-page');
+      if (mapping[page]) item.setAttribute('href', mapping[page]);
+    });
+  }
+
+  function interceptNavClicks() {
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest('#qym-app a[href]');
+      if (!canInterceptLink(link, e)) return;
+      e.preventDefault();
+      navigateTo(link.getAttribute('href'));
+    });
+
+    window.addEventListener('popstate', function () {
+      navigateTo(window.location.pathname + window.location.search, { historyMode: 'none' });
+    });
   }
 
   // ══════════════════════════════════════════════════
@@ -617,8 +860,13 @@
     // Render initial breadcrumbs
     renderBreadcrumbs(computeBreadcrumbs(_routeCtx));
 
+    history.replaceState({ qym: true }, '', window.location.href);
+
     // Bind events
     bindEvents();
+
+    // Intercept nav clicks for SPA-like navigation
+    interceptNavClicks();
 
     // Fetch user and projects
     fetchUserAndProjects();
@@ -675,6 +923,7 @@
     toggleSidebar: toggleSidebar,
     toast: toast,
     apiUrl: apiUrl,
+    navigateTo: navigateTo,
   };
 
   // Auto-init on DOMContentLoaded

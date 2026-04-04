@@ -4014,8 +4014,8 @@
         }
 
         // Update header stats
-        el('run-count').textContent = state.runs.length;
-        el('metric-count').textContent = state.allMetrics.length;
+        if (el('run-count')) el('run-count').textContent = state.runs.length;
+        if (el('metric-count')) el('metric-count').textContent = state.allMetrics.length;
 
         // Set up pass rate filter controls based on K
         const K = state.runs.length;
@@ -4028,7 +4028,7 @@
         if (prKSpan) prKSpan.textContent = K;
 
         const maxItems = Math.max(...state.runs.map(r => (r.snapshot?.rows || []).length));
-        el('total-items').textContent = state.compareItemIds.length || maxItems;
+        if (el('total-items')) el('total-items').textContent = state.compareItemIds.length || maxItems;
         // Detect metric types (boolean vs continuous)
         detectMetricTypes();
         inferGroupedOutcomeGroups();

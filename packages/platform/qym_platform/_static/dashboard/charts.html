@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Charts</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+</head>
+<body>
+  <!-- Command Bar -->
+  <div class="command-bar">
+    <div class="display-tools" id="display-tools" style="display:none;">
+      <span class="display-tools-label">Display</span>
+      <div class="multi-select-wrapper" id="metric-visibility-wrapper" style="display:none;">
+        <button class="multi-select-btn" id="metric-visibility-btn">Columns</button>
+        <div class="multi-select-dropdown" id="metric-visibility-dropdown"></div>
+      </div>
+    </div>
+    <div class="quick-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="today">Today</button>
+      <button class="filter-btn" data-filter="week">7d</button>
+    </div>
+    <div class="command-bar-filter-row">
+      <div class="filter-dropdowns">
+        <div class="multi-select-wrapper" id="task-filter-wrapper">
+          <button class="multi-select-btn" id="filter-task-btn">All Tasks</button>
+          <div class="multi-select-dropdown" id="filter-task-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="dataset-filter-wrapper">
+          <button class="multi-select-btn" id="filter-dataset-btn">All Datasets</button>
+          <div class="multi-select-dropdown" id="filter-dataset-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="model-filter-wrapper">
+          <button class="multi-select-btn" id="filter-model-btn">All Models</button>
+          <div class="multi-select-dropdown" id="filter-model-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="version-filter-wrapper">
+          <button class="multi-select-btn" id="filter-version-btn">All Versions</button>
+          <div class="multi-select-dropdown" id="filter-version-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="status-filter-wrapper">
+          <button class="multi-select-btn" id="filter-status-btn">All Status</button>
+          <div class="multi-select-dropdown" id="filter-status-dropdown"></div>
+        </div>
+        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><span class="clear-filters-x">&times;</span> Clear <span class="filter-count-badge" id="active-filter-count">0</span></button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div id="loading" class="loading">
+      <div class="loading-spinner"></div>
+      <span>Loading charts...</span>
+    </div>
+    <div id="empty" class="empty" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon">∅</div>
+        <h2>No evaluation runs found</h2>
+        <p>Run an evaluation to populate the charts.</p>
+      </div>
+    </div>
+    <div id="charts-view" class="charts-container" style="display:none;">
+      <div class="charts-header">
+        <div class="charts-title-row">
+          <h2>Metrics by Task & Dataset</h2>
+          <span class="charts-subtitle">Showing average metric scores across all items in matching runs</span>
+        </div>
+        <div class="charts-legend" id="charts-legend"></div>
+      </div>
+      <div class="charts-grid" id="charts-grid"></div>
+    </div>
+  </main>
+
+  <footer class="status-bar">
+    <div class="status-left">
+      <span id="status-filter">0 runs</span>
+    </div>
+    <div class="status-right">
+      <span>Last Updated: <span id="last-updated" style="font-family:var(--font-mono)">—</span></span>
+    </div>
+  </footer>
+
+  <script>window.__QYM_INITIAL_VIEW__ = 'charts';</script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

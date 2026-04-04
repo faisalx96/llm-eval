@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Models</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+</head>
+<body>
+  <!-- Command Bar -->
+  <div class="command-bar">
+    <div class="quick-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="today">Today</button>
+      <button class="filter-btn" data-filter="week">7d</button>
+    </div>
+    <div class="command-bar-filter-row">
+      <div class="filter-dropdowns">
+        <div class="multi-select-wrapper" id="task-filter-wrapper">
+          <button class="multi-select-btn" id="filter-task-btn">All Tasks</button>
+          <div class="multi-select-dropdown" id="filter-task-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="dataset-filter-wrapper">
+          <button class="multi-select-btn" id="filter-dataset-btn">All Datasets</button>
+          <div class="multi-select-dropdown" id="filter-dataset-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="model-filter-wrapper">
+          <button class="multi-select-btn" id="filter-model-btn">All Models</button>
+          <div class="multi-select-dropdown" id="filter-model-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="version-filter-wrapper">
+          <button class="multi-select-btn" id="filter-version-btn">All Versions</button>
+          <div class="multi-select-dropdown" id="filter-version-dropdown"></div>
+        </div>
+        <div class="multi-select-wrapper" id="status-filter-wrapper">
+          <button class="multi-select-btn" id="filter-status-btn">All Status</button>
+          <div class="multi-select-dropdown" id="filter-status-dropdown"></div>
+        </div>
+        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><span class="clear-filters-x">&times;</span> Clear <span class="filter-count-badge" id="active-filter-count">0</span></button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div id="loading" class="loading">
+      <div class="loading-spinner"></div>
+      <span>Loading models...</span>
+    </div>
+    <div id="empty" class="empty" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon">∅</div>
+        <h2>No evaluation runs found</h2>
+        <p>Run an evaluation to compare models.</p>
+      </div>
+    </div>
+    <div id="models-view" class="models-container" style="display:none;">
+      <div class="models-header">
+        <div class="models-title-row">
+          <h2>Model Comparison</h2>
+          <span class="models-subtitle">Compare model performance across K runs for the same task and dataset</span>
+        </div>
+        <div class="models-controls">
+          <div class="models-filter-row">
+            <label class="filter-label">Metric:</label>
+            <select id="models-metric-select" class="filter-select">
+              <option value="">Select a metric...</option>
+            </select>
+            <label class="filter-label">Runs per model:</label>
+            <input type="number" id="models-k-input" class="filter-input-k" min="1" max="100" value="5" placeholder="5">
+            <span class="models-threshold-inline" id="models-threshold-row" style="display:none;">
+              <label class="filter-label">Pass ≥</label>
+              <input type="range" id="models-threshold-slider" class="threshold-slider-inline" min="0" max="100" step="5" value="80">
+              <span class="threshold-value" id="models-threshold-value">80%</span>
+              <span class="stat-info-icon threshold-info">i<span class="stat-info-tooltip">Score threshold for Pass@K and Pass^K metrics. Items scoring at or above this threshold are considered "correct".</span></span>
+            </span>
+            <div class="multi-select-wrapper" id="models-stat-visibility-wrapper" style="display:none;">
+              <button class="multi-select-btn" id="models-stat-visibility-btn" title="Choose which model summary metrics to show">Shown Metrics</button>
+              <div class="multi-select-dropdown" id="models-stat-visibility-dropdown"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="models-empty" id="models-empty" style="display:none;">
+        <div class="empty-icon">⊞</div>
+        <h3>Select a Task and Dataset</h3>
+        <p>Use the filters above to select a task and dataset to compare models</p>
+      </div>
+      <div class="models-grid" id="models-grid"></div>
+      <div class="models-ranking" id="models-ranking" style="display:none;"></div>
+    </div>
+  </main>
+
+  <footer class="status-bar">
+    <div class="status-left">
+      <span id="status-filter">0 runs</span>
+    </div>
+    <div class="status-right">
+      <span>Last Updated: <span id="last-updated" style="font-family:var(--font-mono)">—</span></span>
+    </div>
+  </footer>
+
+  <!-- Run Selection Modal (Models view) -->
+  <div class="modal" id="run-selection-modal" style="display:none;">
+    <div class="modal-content modal-medium">
+      <div class="modal-header">
+        <h2>Select Runs for <span id="run-selection-model-name"></span></h2>
+        <button class="modal-close" onclick="document.getElementById('run-selection-modal').style.display='none'">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-description">Choose which runs to include in the comparison. Runs are ordered by most recent first.</p>
+        <div class="run-selection-list" id="run-selection-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('run-selection-modal').style.display='none'">Cancel</button>
+        <button class="btn btn-primary" id="confirm-run-selection-btn">Apply Selection</button>
+      </div>
+    </div>
+  </div>
+
+  <script>window.__QYM_INITIAL_VIEW__ = 'models';</script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

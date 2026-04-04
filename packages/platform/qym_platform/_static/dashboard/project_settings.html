@@ -10,216 +10,209 @@
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
   <style>
-    .page {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: var(--space-lg);
+    .settings-page { }
+    .settings-header { margin-bottom: var(--space-xl); }
+    .settings-header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.3px; }
+    .settings-header p { font-size: var(--font-sm); color: var(--text-muted); margin-top: 6px; }
+
+    .settings-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-lg); }
+    .settings-tab {
+      padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); color: var(--text-muted);
+      cursor: pointer; border: none; border-bottom: 2px solid transparent;
+      transition: all 0.12s ease; font-family: var(--font-sans); background: none; margin-bottom: -1px;
     }
-    .hero {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
-      margin-bottom: var(--space-lg);
-    }
-    .hero h1 {
-      margin: 0;
-      font-size: 28px;
-    }
-    .hero p {
-      margin: 6px 0 0;
-      color: var(--text-muted);
-    }
-    .actions {
-      display: flex;
-      gap: var(--space-sm);
-      flex-wrap: wrap;
-    }
-    .panel {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 10px;
-      padding: var(--space-lg);
-      margin-bottom: var(--space-lg);
-    }
-    .panel h2 {
-      margin: 0 0 var(--space-md);
-      font-size: var(--font-md);
-    }
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: var(--space-md);
-    }
-    .summary-item {
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      padding: 12px 14px;
-    }
-    .summary-item .label {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }
-    .summary-item .value {
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      word-break: break-word;
-    }
-    .toolbar {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
-    }
-    .form-input, .form-select {
-      width: 100%;
-      box-sizing: border-box;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      color: var(--text-primary);
-      padding: 10px 12px;
-      font-size: var(--font-sm);
-      font-family: var(--font-sans);
-    }
-    .table-wrap {
-      overflow: auto;
-    }
-    table {
-      width: 100%;
-      min-width: 940px;
-      border-collapse: collapse;
-    }
-    th, td {
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border-default);
-      vertical-align: top;
-    }
-    th {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: var(--bg-elevated);
-    }
-    .row-meta {
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      margin-top: 4px;
-    }
-    .row-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .token-box {
-      background: rgba(0, 212, 170, 0.08);
-      border: 1px solid rgba(0, 212, 170, 0.24);
-      border-radius: 8px;
-      padding: 12px;
-      font-family: var(--font-mono);
-      color: var(--accent-primary);
-      word-break: break-all;
-      margin-bottom: var(--space-md);
-      display: none;
-    }
-    .note {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
+    .settings-tab:hover { color: var(--text-secondary); }
+    .settings-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); font-weight: 500; }
+
+    .settings-panel { display: none; }
+    .settings-panel.active { display: block; }
+
+    .card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; margin-bottom: var(--space-lg); }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .card-title { font-size: var(--font-md); font-weight: 600; }
+    .card-subtitle { font-size: var(--font-xs); color: var(--text-muted); margin-top: 2px; }
+    .card-body { padding: var(--space-lg); }
+    .card-body.flush { padding: 0; }
+    .card-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border-subtle); }
+
+    .add-bar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .add-bar .form-select, .add-bar .form-input { font-family: var(--font-sans); font-size: var(--font-base); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); color: var(--text-primary); }
+    .add-bar .form-select { width: 160px; flex: none; }
+    .add-bar .form-input { flex: 1; min-width: 0; }
+
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; padding: var(--space-sm) var(--space-lg); font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); }
+    .data-table td { padding: var(--space-md) var(--space-lg); font-size: var(--font-sm); color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .data-table tbody tr { transition: background 0.1s ease; }
+    .data-table tbody tr:hover { background: var(--bg-hover); }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table .row-meta { color: var(--text-muted); font-size: var(--font-xs); margin-top: 2px; }
+    .data-table .row-actions { display: flex; gap: var(--space-xs); }
+    .data-table .form-select { font-size: var(--font-xs); padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); }
+
+    .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
+    .role-badge.manager { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
+    .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
+
+    .token-box { background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.24); border-radius: 8px; padding: var(--space-md) var(--space-lg); font-family: var(--font-mono); font-size: var(--font-sm); color: var(--accent-primary); word-break: break-all; display: none; margin-bottom: var(--space-md); }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .form-group .form-input { width: 100%; box-sizing: border-box; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; color: var(--text-primary); padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); font-family: var(--font-sans); }
+
+    .danger-card { border-color: rgba(239,68,68,0.3); }
+    .danger-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-lg); }
+    .danger-row + .danger-row { margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--border-subtle); }
+    .danger-label { font-size: var(--font-sm); font-weight: 500; color: var(--text-primary); }
+    .danger-desc { font-size: var(--font-xs); color: var(--text-muted); margin-top: 2px; }
+
+    .note { color: var(--text-muted); font-size: var(--font-sm); margin-top: var(--space-sm); }
+    .llm-message { margin-top: var(--space-sm); color: var(--accent-primary); font-size: var(--font-sm); }
   </style>
 </head>
 <body>
-  <main class="page">
-    <section class="hero">
-      <div>
-        <h1 id="project-title">Project Settings</h1>
-        <p id="project-subtitle">Manage members and project-scoped API keys.</p>
-      </div>
-      <div class="actions">
-        <a class="btn btn-secondary" id="back-dashboard-link" href="/">Dashboard</a>
-        <a class="btn btn-secondary" id="reviews-link" href="/">Reviews</a>
-      </div>
-    </section>
+  <main class="settings-page">
+    <div class="settings-header">
+      <h1 id="project-title">Project Settings</h1>
+      <p id="project-subtitle">Manage members, API keys, and integrations for this project.</p>
+    </div>
 
-    <section class="panel">
-      <h2>Overview</h2>
-      <div class="summary-grid" id="project-summary"></div>
-    </section>
+    <div class="settings-tabs">
+      <button class="settings-tab active" data-tab="general">General</button>
+      <button class="settings-tab" data-tab="members">Members</button>
+      <button class="settings-tab" data-tab="apikeys">API Keys</button>
+      <button class="settings-tab" data-tab="llm">LLM Connections</button>
+      <button class="settings-tab" data-tab="danger">Danger Zone</button>
+    </div>
 
-    <section class="panel">
-      <h2>Members</h2>
-      <div class="toolbar" id="member-form">
-        <select class="form-select" id="member-user"></select>
-        <select class="form-select" id="member-role">
-          <option value="MEMBER">MEMBER</option>
-          <option value="MANAGER">MANAGER</option>
-        </select>
-        <button class="btn btn-primary" id="add-member-btn" type="button">Add Member</button>
+    <!-- General -->
+    <div class="settings-panel active" id="panel-general">
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">Project Details</div><div class="card-subtitle">Name, slug, and description</div></div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Project Name</label><input class="form-input" id="gen-name" type="text" /></div>
+            <div class="form-group"><label class="form-label">Slug</label><input class="form-input" id="gen-slug" type="text" style="font-family:var(--font-mono);font-size:12px;" readonly /></div>
+            <div class="form-group full-width"><label class="form-label">Description</label><input class="form-input" id="gen-description" type="text" /></div>
+          </div>
+        </div>
+        <div class="card-footer"><button class="btn btn-primary" id="save-general-btn" type="button">Save Changes</button></div>
       </div>
-      <div class="note" id="member-note"></div>
-      <div class="table-wrap" style="margin-top:14px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Role</th>
-              <th>Added</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="members-tbody"></tbody>
-        </table>
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">Overview</div></div></div>
+        <div class="card-body">
+          <div class="form-grid" id="project-summary"></div>
+        </div>
       </div>
-    </section>
+    </div>
 
-    <section class="panel">
-      <h2>API Keys</h2>
+    <!-- Members -->
+    <div class="settings-panel" id="panel-members">
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">Members</div><div class="card-subtitle" id="member-count-label"></div></div></div>
+        <div class="add-bar" id="member-form">
+          <select class="form-select" id="member-user"></select>
+          <select class="form-select" id="member-role" style="width:140px;">
+            <option value="MEMBER">Member</option>
+            <option value="MANAGER">Manager</option>
+          </select>
+          <button class="btn btn-primary" id="add-member-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm);">Add</button>
+        </div>
+        <div class="note" id="member-note" style="padding:0 var(--space-lg);"></div>
+        <div class="card-body flush">
+          <table class="data-table">
+            <thead><tr><th>Member</th><th>Email</th><th>Role</th><th>Added</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="members-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Keys -->
+    <div class="settings-panel" id="panel-apikeys">
       <div class="token-box" id="new-token-box"></div>
-      <div class="toolbar">
-        <input class="form-input" id="key-name" placeholder="Key name">
-        <input class="form-input" id="key-scopes" value="runs:write,runs:read" placeholder="runs:write,runs:read">
-        <button class="btn btn-primary" id="create-key-btn" type="button">Create Key</button>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">API Keys</div><div class="card-subtitle">Project-scoped keys for programmatic access</div></div>
+        </div>
+        <div class="add-bar">
+          <input class="form-input" id="key-name" placeholder="Key name" />
+          <input class="form-input" id="key-scopes" value="runs:write,runs:read" placeholder="Scopes" style="font-family:var(--font-mono);font-size:12px;" />
+          <button class="btn btn-primary" id="create-key-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm);">Create Key</button>
+        </div>
+        <div class="card-body flush">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Prefix</th><th>Creator</th><th>Scopes</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="keys-tbody"></tbody>
+          </table>
+        </div>
       </div>
-      <div class="note">Keys are bound to this project. New runs inherit the project from the key automatically.</div>
-      <div class="table-wrap" style="margin-top:14px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Prefix</th>
-              <th>Creator</th>
-              <th>Scopes</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="keys-tbody"></tbody>
-        </table>
+    </div>
+
+    <!-- LLM Connections -->
+    <div class="settings-panel" id="panel-llm">
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">LLM Connections</div><div class="card-subtitle">Configure LLM providers for AI-assisted reviews and root cause analysis</div></div></div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group full-width"><label class="form-label">Base URL</label><input class="form-input" id="llm-base-url" type="text" placeholder="https://api.openai.com/v1" /></div>
+            <div class="form-group"><label class="form-label">Model</label><input class="form-input" id="llm-model" type="text" placeholder="gpt-4o" /></div>
+            <div class="form-group"><label class="form-label">API Key</label><input class="form-input" id="llm-api-key" type="password" placeholder="sk-..." /></div>
+          </div>
+          <div class="note" id="llm-note"></div>
+          <div class="llm-message" id="llm-message"></div>
+        </div>
+        <div class="card-footer">
+          <button class="btn btn-secondary" id="test-llm-btn" type="button">Test Connection</button>
+          <button class="btn btn-primary" id="save-llm-btn" type="button">Save</button>
+        </div>
       </div>
-    </section>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="settings-panel" id="panel-danger">
+      <div class="card danger-card">
+        <div class="card-header"><div><div class="card-title" style="color:var(--error);">Danger Zone</div><div class="card-subtitle">Irreversible actions — proceed with caution</div></div></div>
+        <div class="card-body">
+          <div class="danger-row">
+            <div><div class="danger-label">Archive this project</div><div class="danger-desc">Disable the project and hide it from navigation. Runs and data are preserved.</div></div>
+            <button class="btn btn-secondary" id="archive-project-btn" type="button" style="flex-shrink:0">Archive</button>
+          </div>
+          <div class="danger-row">
+            <div><div class="danger-label">Delete this project</div><div class="danger-desc">Permanently delete this project, all runs, and associated data. This cannot be undone.</div></div>
+            <button class="btn" id="delete-project-btn" type="button" style="background:var(--error);color:white;border:none;flex-shrink:0">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
     (() => {
       'use strict';
 
+      // ── Tab switching ──
+      document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          const panel = document.getElementById('panel-' + tab.dataset.tab);
+          if (panel) panel.classList.add('active');
+        });
+      });
+
+      // ── Utilities ──
       function apiUrl(path) {
         return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
       function escapeHtml(value) {
         return String(value == null ? '' : value)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
       function projectSlug() {
@@ -227,23 +220,12 @@
         return match ? decodeURIComponent(match[1]) : '';
       }
 
-      function projectUrl(slug, suffix = '') {
-        const clean = String(suffix || '').replace(/^\/+/, '');
-        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
-      }
-
       function ts(value) {
         if (!value) return '—';
-        return new Date(value).toLocaleString();
+        return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      let state = {
-        me: null,
-        project: null,
-        members: [],
-        users: [],
-        apiKeys: [],
-      };
+      let state = { me: null, project: null, members: [], users: [], apiKeys: [] };
 
       async function fetchJson(path, options) {
         const res = await fetch(apiUrl(path), options);
@@ -261,147 +243,118 @@
         return state.me?.role === 'ADMIN' || canManageMembers() || key.creator?.id === state.me?.id;
       }
 
+      // ── Load data ──
       async function load() {
         const slug = projectSlug();
-        const [me, project, users, membersPayload] = await Promise.all([
+        const [me, project, users] = await Promise.all([
           fetchJson('v1/me'),
           fetchJson(`v1/projects/by-slug/${encodeURIComponent(slug)}`),
           fetchJson('v1/users'),
-          fetchJson(`v1/projects/by-slug/${encodeURIComponent(slug)}`).then((p) => fetchJson(`v1/projects/${p.id}/members`)),
         ]);
         state.me = me;
         state.project = project;
         state.users = users || [];
-        state.members = (membersPayload && membersPayload.members) || [];
-        state.apiKeys = (await fetchJson(`v1/projects/${project.id}/api-keys`)).api_keys || [];
+        state.members = ((await fetchJson(`v1/projects/${project.id}/members`)) || {}).members || [];
+        state.apiKeys = ((await fetchJson(`v1/projects/${project.id}/api-keys`)) || {}).api_keys || [];
+
+        // Load LLM config
+        try {
+          const cfg = await fetchJson('v1/me/llm-config');
+          if (cfg) {
+            document.getElementById('llm-base-url').value = cfg.llm_base_url || 'https://api.openai.com/v1';
+            document.getElementById('llm-model').value = cfg.llm_model || '';
+            document.getElementById('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
+            document.getElementById('llm-note').textContent = cfg.llm_api_key_set ? `Stored key: ${cfg.llm_api_key_hint || 'configured'}` : '';
+          }
+        } catch (_) {}
+
         render();
       }
 
+      // ── Render ──
       function render() {
-        const slug = state.project.slug;
-        document.getElementById('project-title').textContent = state.project.name;
-        document.getElementById('project-subtitle').textContent = state.project.description || state.project.slug;
-        document.getElementById('back-dashboard-link').href = projectUrl(slug);
-        document.getElementById('reviews-link').href = projectUrl(slug, 'reviews');
+        const p = state.project;
+        document.getElementById('project-title').textContent = p.name;
+        document.getElementById('project-subtitle').textContent = `Manage members, API keys, and integrations for ${p.name}.`;
+
+        // General tab
+        document.getElementById('gen-name').value = p.name;
+        document.getElementById('gen-slug').value = p.slug;
+        document.getElementById('gen-description').value = p.description || '';
+
         document.getElementById('project-summary').innerHTML = [
-          ['Slug', state.project.slug],
-          ['Role', state.project.role || 'MEMBER'],
-          ['Members', String(state.members.length)],
-          ['Status', state.project.is_active ? 'ACTIVE' : 'ARCHIVED'],
-        ].map(([label, value]) => `
-          <div class="summary-item">
-            <div class="label">${escapeHtml(label)}</div>
-            <div class="value">${escapeHtml(value)}</div>
-          </div>
-        `).join('');
+          ['Slug', p.slug], ['Role', p.role || 'MEMBER'], ['Members', String(state.members.length)], ['Status', p.is_active ? 'ACTIVE' : 'ARCHIVED'],
+        ].map(([label, value]) => `<div class="form-group"><div class="form-label">${escapeHtml(label)}</div><div style="font-size:var(--font-sm);color:var(--text-primary);font-family:var(--font-mono)">${escapeHtml(value)}</div></div>`).join('');
 
-        const currentIds = new Set(state.members.map((member) => member.user_id));
+        // Members tab
+        document.getElementById('member-count-label').textContent = `${state.members.length} members in this project`;
+        const currentIds = new Set(state.members.map(m => m.user_id));
         document.getElementById('member-user').innerHTML = state.users
-          .filter((user) => !currentIds.has(user.id))
-          .map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.email)} (${escapeHtml(user.email)})</option>`)
+          .filter(u => !currentIds.has(u.id))
+          .map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.display_name || u.email)}</option>`)
           .join('');
-
-        document.getElementById('member-form').style.display = canManageMembers() ? 'grid' : 'none';
+        document.getElementById('member-form').style.display = canManageMembers() ? 'flex' : 'none';
         document.getElementById('member-note').textContent = canManageMembers()
-          ? 'Managers and admins can add, remove, and promote members inside this project.'
-          : 'You can view memberships here. Member management is limited to project managers and admins.';
+          ? 'Managers and admins can add, remove, and promote members.'
+          : 'Member management is limited to project managers and admins.';
 
-        document.getElementById('members-tbody').innerHTML = state.members.map((member) => `
+        document.getElementById('members-tbody').innerHTML = state.members.map(m => `
           <tr>
-            <td>
-              <div>${escapeHtml(member.display_name || member.email)}</div>
-              <div class="row-meta">${escapeHtml(member.email)}</div>
-            </td>
-            <td>
-              ${canManageMembers()
-                ? `<select class="form-select" data-member-role="${escapeHtml(member.user_id)}">
-                    <option value="MEMBER" ${member.role === 'MEMBER' ? 'selected' : ''}>MEMBER</option>
-                    <option value="MANAGER" ${member.role === 'MANAGER' ? 'selected' : ''}>MANAGER</option>
-                  </select>`
-                : escapeHtml(member.role)}
-            </td>
-            <td>${escapeHtml(ts(member.created_at))}</td>
-            <td>
-              ${canManageMembers()
-                ? `<div class="row-actions">
-                    <button class="btn btn-secondary" type="button" data-member-save="${escapeHtml(member.user_id)}">Save</button>
-                    <button class="btn btn-danger" type="button" data-member-remove="${escapeHtml(member.user_id)}">Remove</button>
-                  </div>`
-                : '—'}
-            </td>
-          </tr>
-        `).join('');
+            <td><div style="font-weight:500;color:var(--text-primary)">${escapeHtml(m.display_name || m.email)}</div></td>
+            <td><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-muted)">${escapeHtml(m.email)}</span></td>
+            <td>${canManageMembers()
+              ? `<select class="form-select" data-member-role="${escapeHtml(m.user_id)}"><option value="MEMBER" ${m.role==='MEMBER'?'selected':''}>Member</option><option value="MANAGER" ${m.role==='MANAGER'?'selected':''}>Manager</option></select>`
+              : `<span class="role-badge ${m.role==='MANAGER'?'manager':'member'}">${escapeHtml(m.role)}</span>`}</td>
+            <td style="font-size:var(--font-xs);color:var(--text-muted)">${ts(m.created_at)}</td>
+            <td style="text-align:right">${canManageMembers() ? `<div class="row-actions" style="justify-content:flex-end"><button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-xs)" data-member-save="${escapeHtml(m.user_id)}">Save</button><button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-member-remove="${escapeHtml(m.user_id)}">Remove</button></div>` : ''}</td>
+          </tr>`).join('');
 
-        document.querySelectorAll('[data-member-save]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            const userId = button.dataset.memberSave;
-            const role = document.querySelector(`[data-member-role="${CSS.escape(userId)}"]`).value;
-            await fetchJson(`v1/projects/${state.project.id}/members/${userId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role }),
-            });
+        document.querySelectorAll('[data-member-save]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const uid = btn.dataset.memberSave;
+            const role = document.querySelector(`[data-member-role="${CSS.escape(uid)}"]`).value;
+            await fetchJson(`v1/projects/${state.project.id}/members/${uid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role }) });
+            await load();
+          });
+        });
+        document.querySelectorAll('[data-member-remove]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Remove this member?')) return;
+            await fetchJson(`v1/projects/${state.project.id}/members/${btn.dataset.memberRemove}`, { method: 'DELETE' });
             await load();
           });
         });
 
-        document.querySelectorAll('[data-member-remove]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            if (!window.confirm('Remove this member from the project?')) return;
-            await fetchJson(`v1/projects/${state.project.id}/members/${button.dataset.memberRemove}`, {
-              method: 'DELETE',
-            });
-            await load();
-          });
-        });
-
-        document.getElementById('keys-tbody').innerHTML = state.apiKeys.map((key) => `
+        // API Keys tab
+        document.getElementById('keys-tbody').innerHTML = state.apiKeys.map(k => `
           <tr>
-            <td>${escapeHtml(key.name || 'default')}</td>
-            <td><span class="row-meta">${escapeHtml(key.prefix || '')}</span></td>
-            <td>${escapeHtml(key.creator?.display_name || key.creator?.email || '—')}</td>
-            <td>${escapeHtml((key.scopes || []).join(', '))}</td>
-            <td>${key.revoked_at ? `Revoked ${escapeHtml(ts(key.revoked_at))}` : 'Active'}</td>
-            <td>
-              ${!key.revoked_at && canRevokeKey(key)
-                ? `<button class="btn btn-danger" type="button" data-key-revoke="${escapeHtml(key.id)}">Revoke</button>`
-                : '—'}
-            </td>
-          </tr>
-        `).join('');
+            <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(k.name || 'default')}</td>
+            <td><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-muted)">${escapeHtml(k.prefix || '')}</span></td>
+            <td>${escapeHtml(k.creator?.display_name || k.creator?.email || '—')}</td>
+            <td><span style="font-family:var(--font-mono);font-size:var(--font-xs)">${escapeHtml((k.scopes||[]).join(', '))}</span></td>
+            <td>${k.revoked_at ? `<span style="color:var(--error)">Revoked</span>` : '<span style="color:var(--success)">Active</span>'}</td>
+            <td style="text-align:right">${!k.revoked_at && canRevokeKey(k) ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-key-revoke="${escapeHtml(k.id)}">Revoke</button>` : ''}</td>
+          </tr>`).join('');
 
-        document.querySelectorAll('[data-key-revoke]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            if (!window.confirm('Revoke this API key?')) return;
-            await fetchJson(`v1/projects/${state.project.id}/api-keys/${button.dataset.keyRevoke}`, { method: 'DELETE' });
+        document.querySelectorAll('[data-key-revoke]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Revoke this API key?')) return;
+            await fetchJson(`v1/projects/${state.project.id}/api-keys/${btn.dataset.keyRevoke}`, { method: 'DELETE' });
             await load();
           });
         });
       }
 
+      // ── Event handlers ──
       document.getElementById('add-member-btn').addEventListener('click', async () => {
         const userId = document.getElementById('member-user').value;
         if (!userId) return;
-        await fetchJson(`v1/projects/${state.project.id}/members`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: userId,
-            role: document.getElementById('member-role').value,
-          }),
-        });
+        await fetchJson(`v1/projects/${state.project.id}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId, role: document.getElementById('member-role').value }) });
         await load();
       });
 
       document.getElementById('create-key-btn').addEventListener('click', async () => {
-        const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: document.getElementById('key-name').value.trim() || 'default',
-            scopes: document.getElementById('key-scopes').value.split(',').map((value) => value.trim()).filter(Boolean),
-          }),
-        });
+        const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('key-name').value.trim() || 'default', scopes: document.getElementById('key-scopes').value.split(',').map(v => v.trim()).filter(Boolean) }) });
         const box = document.getElementById('new-token-box');
         box.style.display = 'block';
         box.textContent = `Save this token now. It will not be shown again:\n${data.token}`;
@@ -409,8 +362,23 @@
         await load();
       });
 
-      load().catch((error) => {
-        document.querySelector('main').innerHTML = `<div class="page"><div class="panel">${escapeHtml(error.message)}</div></div>`;
+      // LLM config
+      async function saveLlmConfig(testOnly) {
+        const msg = document.getElementById('llm-message');
+        const apiKey = document.getElementById('llm-api-key').value.trim();
+        const payload = { llm_base_url: document.getElementById('llm-base-url').value.trim() || 'https://api.openai.com/v1', llm_model: document.getElementById('llm-model').value.trim() || 'gpt-4o', llm_api_key: apiKey || '__KEEP__' };
+        msg.textContent = testOnly ? 'Testing…' : 'Saving…';
+        const res = await fetch(apiUrl(testOnly ? 'v1/me/llm-config/test' : 'v1/me/llm-config'), { method: testOnly ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { msg.textContent = data.detail || 'Failed'; return; }
+        msg.textContent = testOnly ? `Connected: ${data.model || payload.llm_model}` : 'Saved';
+        if (!testOnly) { document.getElementById('llm-api-key').value = ''; }
+      }
+      document.getElementById('save-llm-btn').addEventListener('click', () => saveLlmConfig(false));
+      document.getElementById('test-llm-btn').addEventListener('click', () => saveLlmConfig(true));
+
+      load().catch(err => {
+        document.querySelector('main').innerHTML = `<div class="settings-page"><div class="card"><div class="card-body">${escapeHtml(err.message)}</div></div></div>`;
       });
     })();
   </script>

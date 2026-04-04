@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Projects</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <style>
+    .projects-page { }
+    .projects-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-lg); }
+    .projects-header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.3px; }
+    .projects-header p { font-size: var(--font-sm); color: var(--text-muted); margin-top: 6px; }
+
+    .projects-search { margin-bottom: var(--space-lg); }
+    .projects-search input {
+      width: 100%; max-width: 400px;
+      font-family: var(--font-sans); font-size: var(--font-base);
+      background: var(--bg-surface); border: 1px solid var(--border-default);
+      border-radius: 6px; padding: var(--space-sm) var(--space-md);
+      color: var(--text-primary); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .projects-search input::placeholder { color: var(--text-dim); }
+    .projects-search input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(0,212,170,0.15); }
+
+    .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-md); }
+
+    .project-card {
+      background: var(--bg-surface); border: 1px solid var(--border-default);
+      border-radius: 8px; padding: var(--space-lg);
+      cursor: pointer; transition: all 0.15s ease;
+      text-decoration: none; display: block;
+    }
+    .project-card:hover { border-color: var(--border-strong); background: var(--bg-elevated); }
+
+    .project-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-sm); margin-bottom: var(--space-md); }
+    .project-card-icon {
+      width: 32px; height: 32px; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .project-card-icon svg { width: 16px; height: 16px; }
+
+    .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
+    .role-badge.manager { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
+    .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
+    .role-badge.admin { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
+
+    .project-card-name { font-size: var(--font-md); font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .project-card-slug { font-size: var(--font-xs); font-family: var(--font-mono); color: var(--text-dim); }
+    .project-card-desc { font-size: var(--font-xs); color: var(--text-muted); margin-top: var(--space-sm); line-height: 1.4; }
+
+    .project-card-updated { font-size: var(--font-xs); color: var(--text-dim); font-style: italic; margin-top: var(--space-sm); }
+
+    .project-card-stats {
+      display: flex; gap: var(--space-lg); margin-top: var(--space-md);
+      padding-top: var(--space-md); border-top: 1px solid var(--border-subtle);
+    }
+    .project-card-stat { display: flex; flex-direction: column; gap: 2px; }
+    .project-card-stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.3px; }
+    .project-card-stat-value { font-size: var(--font-md); font-weight: 600; font-family: var(--font-mono); color: var(--text-primary); }
+
+    .empty-state { text-align: center; padding: var(--space-xl); color: var(--text-muted); }
+    .empty-state h2 { font-size: var(--font-lg); margin-bottom: var(--space-sm); color: var(--text-primary); }
+
+    /* Color rotation for project icons */
+    .project-card:nth-child(4n+1) .project-card-icon { background: rgba(0,212,170,0.12); }
+    .project-card:nth-child(4n+1) .project-card-icon svg { stroke: var(--accent-primary); }
+    .project-card:nth-child(4n+2) .project-card-icon { background: rgba(168,85,247,0.12); }
+    .project-card:nth-child(4n+2) .project-card-icon svg { stroke: var(--accent-tertiary); }
+    .project-card:nth-child(4n+3) .project-card-icon { background: rgba(0,168,255,0.12); }
+    .project-card:nth-child(4n+3) .project-card-icon svg { stroke: var(--accent-secondary); }
+    .project-card:nth-child(4n+4) .project-card-icon { background: rgba(245,158,11,0.12); }
+    .project-card:nth-child(4n+4) .project-card-icon svg { stroke: var(--warning); }
+  </style>
+</head>
+<body>
+  <main class="projects-page">
+    <div class="projects-header">
+      <div>
+        <h1>Projects</h1>
+        <p>Select a project to view its evaluations, or create a new one.</p>
+      </div>
+      <button class="btn btn-primary" id="new-project-btn" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Project
+      </button>
+    </div>
+
+    <div class="projects-search">
+      <input type="text" placeholder="Search projects by name…" id="project-search" />
+    </div>
+
+    <div class="project-grid" id="project-grid">
+      <div class="empty-state" id="loading-state">Loading projects...</div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      function apiUrl(path) {
+        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+      }
+
+      function esc(v) {
+        const d = document.createElement('div');
+        d.textContent = v == null ? '' : v;
+        return d.innerHTML;
+      }
+
+      function relativeTime(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      let allProjects = [];
+
+      async function load() {
+        // Wait for shell
+        if (window.QymShell && !window.__QYM_USER__) {
+          await new Promise(r => document.addEventListener('qym:shell-ready', r, { once: true }));
+        }
+
+        const user = window.__QYM_USER__;
+        if (!user) return;
+
+        allProjects = user.projects || [];
+
+        // Show new project button for admins/managers
+        const canCreate = user.role === 'ADMIN' || allProjects.some(p => p.role === 'MANAGER');
+        document.getElementById('new-project-btn').style.display = canCreate ? 'inline-flex' : 'none';
+
+        renderProjects(allProjects);
+      }
+
+      function renderProjects(projects) {
+        const grid = document.getElementById('project-grid');
+
+        if (!projects.length) {
+          grid.innerHTML = '<div class="empty-state"><h2>No projects yet</h2><p>Create a project to get started with evaluations.</p></div>';
+          return;
+        }
+
+        grid.innerHTML = projects.map(p => {
+          const role = (p.role || 'MEMBER').toLowerCase();
+          const roleClass = role === 'manager' || role === 'admin' ? 'manager' : 'member';
+          return `<a class="project-card" href="/projects/${encodeURIComponent(p.slug)}">
+            <div class="project-card-top">
+              <div class="project-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>
+              </div>
+              <span class="role-badge ${roleClass}">${esc(p.role || 'MEMBER')}</span>
+            </div>
+            <div class="project-card-name">${esc(p.name)}</div>
+            <div class="project-card-slug">${esc(p.slug)}</div>
+            ${p.description ? `<div class="project-card-desc">${esc(p.description)}</div>` : ''}
+            ${p.updated_at ? `<div class="project-card-updated">Last updated ${relativeTime(p.updated_at)}</div>` : ''}
+            <div class="project-card-stats">
+              <div class="project-card-stat"><div class="project-card-stat-label">Members</div><div class="project-card-stat-value">${p.member_count || '—'}</div></div>
+              <div class="project-card-stat"><div class="project-card-stat-label">Runs</div><div class="project-card-stat-value">${p.run_count != null ? p.run_count : '—'}</div></div>
+            </div>
+          </a>`;
+        }).join('');
+      }
+
+      // Search
+      document.getElementById('project-search').addEventListener('input', function () {
+        const q = this.value.toLowerCase();
+        if (!q) { renderProjects(allProjects); return; }
+        renderProjects(allProjects.filter(p =>
+          p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+        ));
+      });
+
+      // New project button — navigate to admin
+      document.getElementById('new-project-btn').addEventListener('click', function () {
+        if (window.QymShell) window.QymShell.navigateTo('/admin');
+        else window.location.href = '/admin';
+      });
+
+      load().catch(err => {
+        document.getElementById('project-grid').innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
+      });
+    })();
+  </script>
+</body>
+</html>

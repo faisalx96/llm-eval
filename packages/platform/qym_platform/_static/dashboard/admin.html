@@ -10,156 +10,95 @@
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
   <style>
-    .page {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: var(--space-lg);
+    .admin-page { }
+    .admin-header { margin-bottom: var(--space-xl); }
+    .admin-header h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.3px; }
+    .admin-header p { font-size: var(--font-sm); color: var(--text-muted); margin-top: 6px; }
+
+    .admin-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); margin-bottom: var(--space-lg); }
+    .stat-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; padding: var(--space-lg); }
+    .stat-card-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-sm); }
+    .stat-card-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--text-primary); }
+
+    .card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; margin-bottom: var(--space-lg); }
+    .card-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .card-title { font-size: var(--font-md); font-weight: 600; }
+    .card-subtitle { font-size: var(--font-xs); color: var(--text-muted); margin-top: 2px; }
+    .card-body { padding: 0; }
+
+    .add-bar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
+    .add-bar .form-input, .add-bar .form-select {
+      font-family: var(--font-sans); font-size: var(--font-base);
+      background: var(--bg-elevated); border: 1px solid var(--border-default);
+      border-radius: 6px; padding: var(--space-sm) var(--space-md); color: var(--text-primary);
     }
-    .page-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
-      margin-bottom: var(--space-lg);
-    }
-    .page-header h1 {
-      margin: 0;
-      font-size: 28px;
-    }
-    .page-header p {
-      margin: 6px 0 0;
-      color: var(--text-muted);
-    }
-    .section {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 10px;
-      padding: var(--space-lg);
-      margin-bottom: var(--space-lg);
-    }
-    .section h2 {
-      margin: 0 0 var(--space-md);
-      font-size: var(--font-md);
-    }
-    .toolbar {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: var(--space-sm);
-      margin-bottom: var(--space-md);
-    }
-    .form-input, .form-select, .form-textarea {
-      width: 100%;
-      box-sizing: border-box;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      color: var(--text-primary);
-      padding: 10px 12px;
-      font-size: var(--font-sm);
-      font-family: var(--font-sans);
-    }
-    .form-textarea {
-      min-height: 72px;
-      resize: vertical;
-    }
-    .table-wrap {
-      overflow: auto;
-    }
-    table {
-      width: 100%;
-      min-width: 920px;
-      border-collapse: collapse;
-    }
-    th, td {
-      text-align: left;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border-default);
-      vertical-align: top;
-    }
-    th {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: var(--bg-elevated);
-    }
-    .row-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .row-meta {
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      margin-top: 4px;
-    }
-    .message {
-      color: var(--accent-primary);
-      font-size: var(--font-sm);
-      margin-top: var(--space-sm);
-    }
+    .add-bar .form-input { flex: 1; min-width: 0; }
+    .add-bar .form-select { width: 120px; flex: none; }
+
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; padding: var(--space-sm) var(--space-lg); font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); }
+    .data-table td { padding: var(--space-md) var(--space-lg); font-size: var(--font-sm); color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+    .data-table tbody tr { transition: background 0.1s ease; }
+    .data-table tbody tr:hover { background: var(--bg-hover); }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table .form-input, .data-table .form-select { font-size: var(--font-xs); padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); }
+    .data-table .form-input { width: 100%; }
+    .row-meta { color: var(--text-muted); font-size: var(--font-xs); margin-top: 2px; font-family: var(--font-mono); }
+    .row-actions { display: flex; gap: var(--space-xs); justify-content: flex-end; }
+
+    .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
+    .role-badge.admin { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
+    .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
+
+    .message { color: var(--accent-primary); font-size: var(--font-sm); padding: 0 var(--space-lg); min-height: 20px; }
   </style>
 </head>
 <body>
-  <main class="page">
-    <section class="page-header">
-      <div>
-        <h1>Admin</h1>
-        <p>Manage members and project lifecycle. Project memberships and API keys live on each project.</p>
-      </div>
-    </section>
+  <main class="admin-page">
+    <div class="admin-header">
+      <h1>Admin</h1>
+      <p>Platform-wide user and project management.</p>
+    </div>
 
-    <section class="section">
-      <h2>Create Project</h2>
-      <div class="toolbar">
-        <input class="form-input" id="new-project-name" placeholder="Project name">
-        <input class="form-input" id="new-project-slug" placeholder="project-slug">
-        <input class="form-input" id="new-project-description" placeholder="Description">
-        <button class="btn btn-primary" id="create-project-btn" type="button">Create Project</button>
+    <div class="admin-stats">
+      <div class="stat-card"><div class="stat-card-label">Total Users</div><div class="stat-card-value" id="stat-users">—</div></div>
+      <div class="stat-card"><div class="stat-card-label">Projects</div><div class="stat-card-value" id="stat-projects">—</div></div>
+      <div class="stat-card"><div class="stat-card-label">Total Runs</div><div class="stat-card-value" id="stat-runs">—</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div></div>
+      <div class="add-bar">
+        <input class="form-input" id="new-project-name" placeholder="Project name" />
+        <input class="form-input" id="new-project-slug" placeholder="project-slug" style="font-family:var(--font-mono);font-size:12px" />
+        <input class="form-input" id="new-project-description" placeholder="Description" style="flex:2" />
+        <button class="btn btn-primary" id="create-project-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create</button>
       </div>
       <div class="message" id="project-message"></div>
-      <div class="table-wrap" style="margin-top:14px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th>Description</th>
-              <th>Status</th>
-              <th>Members</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+      <div class="card-body">
+        <table class="data-table">
+          <thead><tr><th>Project</th><th>Slug</th><th>Status</th><th>Members</th><th style="text-align:right">Actions</th></tr></thead>
           <tbody id="projects-tbody"></tbody>
         </table>
       </div>
-    </section>
+    </div>
 
-    <section class="section">
-      <h2>Create User</h2>
-      <div class="toolbar">
-        <input class="form-input" id="new-user-email" placeholder="name@example.com">
-        <input class="form-input" id="new-user-name" placeholder="Display name">
-        <select class="form-select" id="new-user-role">
-          <option value="MEMBER">MEMBER</option>
-          <option value="ADMIN">ADMIN</option>
-        </select>
-        <button class="btn btn-primary" id="create-user-btn" type="button">Create User</button>
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Users</div><div class="card-subtitle" id="user-count-label">All platform users</div></div></div>
+      <div class="add-bar">
+        <input class="form-input" id="new-user-email" placeholder="name@example.com" />
+        <input class="form-input" id="new-user-name" placeholder="Display name" />
+        <select class="form-select" id="new-user-role"><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></select>
+        <button class="btn btn-primary" id="create-user-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create User</button>
       </div>
       <div class="message" id="user-message"></div>
-      <div class="table-wrap" style="margin-top:14px;">
-        <table>
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Active</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+      <div class="card-body">
+        <table class="data-table">
+          <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
           <tbody id="users-tbody"></tbody>
         </table>
       </div>
-    </section>
+    </div>
   </main>
 
   <script>
@@ -172,11 +111,8 @@
 
       function escapeHtml(value) {
         return String(value == null ? '' : value)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
       let state = { users: [], projects: [] };
@@ -198,110 +134,63 @@
         if (!me || me.role !== 'ADMIN') throw new Error('Admin access required');
         state.users = users || [];
         state.projects = (projectsPayload && projectsPayload.projects) || [];
-        renderUsers();
+
+        // Stats
+        document.getElementById('stat-users').textContent = state.users.length;
+        document.getElementById('stat-projects').textContent = state.projects.length;
+        const totalRuns = state.projects.reduce((a, p) => a + (p.run_count || 0), 0);
+        document.getElementById('stat-runs').textContent = totalRuns || '—';
+
         renderProjects();
+        renderUsers();
       }
 
       function renderProjects() {
-        document.getElementById('projects-tbody').innerHTML = state.projects.map((project) => `
+        document.getElementById('project-count-label').textContent = `${state.projects.length} projects`;
+        document.getElementById('projects-tbody').innerHTML = state.projects.map(p => `
           <tr>
-            <td>
-              <input class="form-input" data-project-name="${escapeHtml(project.id)}" value="${escapeHtml(project.name)}">
-              <div class="row-meta">${escapeHtml(project.slug)}</div>
-            </td>
-            <td><input class="form-input" data-project-description="${escapeHtml(project.id)}" value="${escapeHtml(project.description || '')}"></td>
-            <td>
-              <label style="display:flex; gap:8px; align-items:center;">
-                <input type="checkbox" data-project-active="${escapeHtml(project.id)}" ${project.is_active ? 'checked' : ''}>
-                <span>${project.is_active ? 'ACTIVE' : 'ARCHIVED'}</span>
-              </label>
-            </td>
-            <td>${escapeHtml(String(project.member_count || 0))}</td>
-            <td>
-              <div class="row-actions">
-                <button class="btn btn-secondary" type="button" data-project-save="${escapeHtml(project.id)}">Save</button>
-                <a class="btn btn-secondary" href="/projects/${encodeURIComponent(project.slug)}/settings">Settings</a>
-                <button class="btn btn-danger" type="button" data-project-delete="${escapeHtml(project.id)}">Delete / Archive</button>
-              </div>
-            </td>
-          </tr>
-        `).join('');
+            <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(p.name)}</td>
+            <td><span class="row-meta">${escapeHtml(p.slug)}</span></td>
+            <td>${p.is_active ? '<span style="color:var(--success)">Active</span>' : '<span style="color:var(--text-muted)">Archived</span>'}</td>
+            <td>${escapeHtml(String(p.member_count || 0))}</td>
+            <td><div class="row-actions">
+              <a class="btn btn-secondary" href="/projects/${encodeURIComponent(p.slug)}/settings" style="padding:4px 10px;font-size:var(--font-xs)">Settings</a>
+              <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-project-delete="${escapeHtml(p.id)}">Archive</button>
+            </div></td>
+          </tr>`).join('');
 
-        document.querySelectorAll('[data-project-save]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            const id = button.dataset.projectSave;
-            const name = document.querySelector(`[data-project-name="${CSS.escape(id)}"]`).value.trim();
-            const description = document.querySelector(`[data-project-description="${CSS.escape(id)}"]`).value.trim();
-            const isActive = document.querySelector(`[data-project-active="${CSS.escape(id)}"]`).checked;
-            await fetchJson(`v1/admin/projects/${id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, description, is_active: isActive }),
-            });
-            document.getElementById('project-message').textContent = 'Project updated';
-            await load();
-          });
-        });
-
-        document.querySelectorAll('[data-project-delete]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            if (!window.confirm('Delete or archive this project?')) return;
-            await fetchJson(`v1/admin/projects/${button.dataset.projectDelete}`, { method: 'DELETE' });
-            document.getElementById('project-message').textContent = 'Project removed';
+        document.querySelectorAll('[data-project-delete]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Archive this project?')) return;
+            await fetchJson(`v1/admin/projects/${btn.dataset.projectDelete}`, { method: 'DELETE' });
+            document.getElementById('project-message').textContent = 'Project archived';
             await load();
           });
         });
       }
 
       function renderUsers() {
-        document.getElementById('users-tbody').innerHTML = state.users.map((user) => `
+        document.getElementById('user-count-label').textContent = `${state.users.length} users`;
+        document.getElementById('users-tbody').innerHTML = state.users.map(u => `
           <tr>
-            <td>
-              <input class="form-input" data-user-name="${escapeHtml(user.id)}" value="${escapeHtml(user.display_name || '')}">
-              <div class="row-meta">${escapeHtml(user.email)}</div>
-            </td>
-            <td>
-              <select class="form-select" data-user-role="${escapeHtml(user.id)}">
-                <option value="MEMBER" ${user.role === 'MEMBER' ? 'selected' : ''}>MEMBER</option>
-                <option value="ADMIN" ${user.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
-              </select>
-            </td>
-            <td>
-              <label style="display:flex; gap:8px; align-items:center;">
-                <input type="checkbox" data-user-active="${escapeHtml(user.id)}" ${user.is_active ? 'checked' : ''}>
-                <span>${user.is_active ? 'ACTIVE' : 'DISABLED'}</span>
-              </label>
-            </td>
-            <td>
-              <div class="row-actions">
-                <button class="btn btn-secondary" type="button" data-user-save="${escapeHtml(user.id)}">Save</button>
-                <button class="btn btn-danger" type="button" data-user-delete="${escapeHtml(user.id)}">Delete</button>
-              </div>
-            </td>
-          </tr>
-        `).join('');
+            <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(u.display_name || u.email)}</td>
+            <td><span class="row-meta">${escapeHtml(u.email)}</span></td>
+            <td><span class="role-badge ${u.role === 'ADMIN' ? 'admin' : 'member'}">${escapeHtml(u.role)}</span></td>
+            <td>${u.is_active ? '<span style="color:var(--success)">Active</span>' : '<span style="color:var(--error)">Disabled</span>'}</td>
+            <td><div class="row-actions">
+              <button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-xs)" data-user-edit="${escapeHtml(u.id)}">Edit</button>
+              ${u.is_active ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-user-toggle="${escapeHtml(u.id)}" data-active="false">Disable</button>` : `<button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-xs)" data-user-toggle="${escapeHtml(u.id)}" data-active="true">Enable</button>`}
+            </div></td>
+          </tr>`).join('');
 
-        document.querySelectorAll('[data-user-save]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            const id = button.dataset.userSave;
-            const displayName = document.querySelector(`[data-user-name="${CSS.escape(id)}"]`).value.trim();
-            const role = document.querySelector(`[data-user-role="${CSS.escape(id)}"]`).value;
-            const isActive = document.querySelector(`[data-user-active="${CSS.escape(id)}"]`).checked;
-            await fetchJson(`v1/admin/users/${id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ display_name: displayName, role, is_active: isActive }),
+        document.querySelectorAll('[data-user-toggle]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const isActive = btn.dataset.active === 'true';
+            await fetchJson(`v1/admin/users/${btn.dataset.userToggle}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ is_active: isActive }),
             });
-            document.getElementById('user-message').textContent = 'User updated';
-            await load();
-          });
-        });
-
-        document.querySelectorAll('[data-user-delete]').forEach((button) => {
-          button.addEventListener('click', async () => {
-            if (!window.confirm('Delete this user?')) return;
-            await fetchJson(`v1/admin/users/${button.dataset.userDelete}`, { method: 'DELETE' });
-            document.getElementById('user-message').textContent = 'User deleted';
+            document.getElementById('user-message').textContent = isActive ? 'User enabled' : 'User disabled';
             await load();
           });
         });
@@ -309,8 +198,7 @@
 
       document.getElementById('create-project-btn').addEventListener('click', async () => {
         await fetchJson('v1/admin/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: document.getElementById('new-project-name').value.trim(),
             slug: document.getElementById('new-project-slug').value.trim(),
@@ -326,8 +214,7 @@
 
       document.getElementById('create-user-btn').addEventListener('click', async () => {
         await fetchJson('v1/admin/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: document.getElementById('new-user-email').value.trim(),
             display_name: document.getElementById('new-user-name').value.trim(),
@@ -341,8 +228,8 @@
         await load();
       });
 
-      load().catch((error) => {
-        document.querySelector('main').innerHTML = `<div class="page"><div class="section">${escapeHtml(error.message)}</div></div>`;
+      load().catch(err => {
+        document.querySelector('main').innerHTML = `<div class="admin-page"><div class="card"><div style="padding:var(--space-lg);color:var(--error)">${escapeHtml(err.message)}</div></div></div>`;
       });
     })();
   </script>

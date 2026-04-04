@@ -123,6 +123,18 @@ def _platform_static_overview() -> Path:
     return _platform_static_dir() / "dashboard" / "overview.html"
 
 
+def _platform_static_projects() -> Path:
+    return _platform_static_dir() / "dashboard" / "projects.html"
+
+
+def _platform_static_charts() -> Path:
+    return _platform_static_dir() / "dashboard" / "charts.html"
+
+
+def _platform_static_models() -> Path:
+    return _platform_static_dir() / "dashboard" / "models.html"
+
+
 def _project_path_prefix(request: Request, project_slug: str) -> str:
     path = request.url.path
     marker = f"/projects/{project_slug}"
@@ -351,9 +363,9 @@ def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
-    idx = _platform_static_dashboard_index()
+    idx = _platform_static_projects()
     if not idx.exists():
-        raise HTTPException(status_code=404, detail="Dashboard UI not found")
+        raise HTTPException(status_code=404, detail="Projects UI not found")
     return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
@@ -426,6 +438,28 @@ def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
 @router.get("/projects/{project_slug}/reviews", response_model=None)
 def project_reviews_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
     return reviews_index(request=request, db=db)
+
+
+@router.get("/projects/{project_slug}/charts", response_model=None)
+def project_charts(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_charts()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Charts UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+
+
+@router.get("/projects/{project_slug}/models", response_model=None)
+def project_models(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_models()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Models UI not found")
+    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
 
 
 @router.get("/projects/{project_slug}/overview", response_model=None)

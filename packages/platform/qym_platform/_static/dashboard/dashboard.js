@@ -17,6 +17,10 @@
     const patterns = [
       /\/projects\/[^/]+\/runs\/[^/]+$/,
       /\/projects\/[^/]+\/reviews$/,
+      /\/projects\/[^/]+\/charts$/,
+      /\/projects\/[^/]+\/models$/,
+      /\/projects\/[^/]+\/overview$/,
+      /\/projects\/[^/]+\/settings$/,
       /\/projects\/[^/]+$/,
       /\/run\/[^/]+$/,
       /\/reviews$/,
@@ -76,6 +80,14 @@
     return apiUrl(`projects/${encoded}${cleanSuffix ? `/${cleanSuffix}` : ''}`);
   }
 
+  function navigateTo(url) {
+    if (window.QymShell && typeof window.QymShell.navigateTo === 'function') {
+      window.QymShell.navigateTo(url);
+      return;
+    }
+    window.location.href = url;
+  }
+
   // ═══════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════
@@ -93,7 +105,7 @@
     filterDatasets: new Set(),
     filterStatuses: new Set(),
     filterVersions: new Set(),
-    currentView: window.__QYM_INITIAL_VIEW__ || new URLSearchParams(window.location.search).get('view') || 'charts',
+    currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -1429,24 +1441,15 @@
     const agg = state.aggregations;
     if (!agg) return;
 
-    el('total-runs').textContent = formatNumber(agg.totalRuns);
-    el('total-tasks').textContent = formatNumber(agg.totalTasks);
-    el('total-models').textContent = formatNumber(agg.totalModels);
-    el('avg-success').textContent = formatPercent(agg.avgSuccess);
-    el('total-items').textContent = formatNumber(agg.totalItems);
-
-    // Weekly trend sparkline
-    const trendEl = el('weekly-trend');
-    const days = Object.values(agg.byDay);
-    const maxRuns = Math.max(...days.map(d => d.runs), 1);
-
-    trendEl.innerHTML = days.map((d, i) => {
-      const height = Math.max(2, (d.runs / maxRuns) * 16);
-      const avgSuccess = d.runs ? d.successSum / d.runs : 0;
-      const color = getSuccessClass(avgSuccess);
-      const colorVar = color === 'high' ? 'var(--success)' : color === 'mid' ? 'var(--warning)' : 'var(--error)';
-      return `<div class="trend-bar" style="height:${height}px;background:${d.runs ? colorVar : 'var(--border-default)'}" title="Day ${i + 1}: ${d.runs} runs"></div>`;
-    }).join('');
+    // Push stats to the shell topbar
+    if (window.QymShell) {
+      window.QymShell.setTopbarStats([
+        { label: 'runs', value: formatNumber(agg.totalRuns), color: 'var(--accent-primary)' },
+        { label: 'success', value: formatPercent(agg.avgSuccess), color: 'var(--success)' },
+        { label: 'models', value: formatNumber(agg.totalModels), color: 'var(--accent-secondary)' },
+        { label: 'items', value: formatNumber(agg.totalItems), color: 'var(--accent-tertiary)' },
+      ]);
+    }
   }
 
   function isLatencyLikeMetric(metricName) {
@@ -2785,7 +2788,7 @@
           if (Array.isArray(files) && files.length >= 2) {
             sessionStorage.setItem('compareRuns', JSON.stringify(files));
             const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-            window.location.href = apiUrl('compare?' + params);
+            navigateTo(apiUrl('compare?' + params));
           }
         } catch {}
       });
@@ -2963,14 +2966,15 @@
       filterText = countText + (parts.length > 0 ? ` — ${parts.join(', ')}` : '');
     }
 
-    el('status-filter').textContent = filterText;
-    el('status-selected').textContent = `${selected} selected`;
+    if (el('status-filter')) el('status-filter').textContent = filterText;
+    if (el('status-selected')) el('status-selected').textContent = `${selected} selected`;
   }
 
   function renderComparePanel() {
     const panel = el('compare-panel');
     const selected = state.selectedRuns;
 
+    if (!panel) return;
     if (selected.size === 0) {
       panel.style.display = 'none';
       return;
@@ -3087,10 +3091,10 @@
     }
 
     // Show current view (Charts, Table/Runs, or Models)
-    chartsView.style.display = state.currentView === 'charts' ? 'block' : 'none';
-    tableView.style.display = state.currentView === 'table' ? 'block' : 'none';
-    gridView.style.display = 'none';  // Hidden - using simplified toggle
-    timelineView.style.display = 'none';  // Hidden - using simplified toggle
+    if (chartsView) chartsView.style.display = state.currentView === 'charts' ? 'block' : 'none';
+    if (tableView) tableView.style.display = state.currentView === 'table' ? 'block' : 'none';
+    if (gridView) gridView.style.display = 'none';
+    if (timelineView) timelineView.style.display = 'none';
     if (modelsView) modelsView.style.display = state.currentView === 'models' ? 'block' : 'none';
 
     // Recompute chart data based on filtered runs
@@ -3637,7 +3641,7 @@
         if (stats && stats.selectedPaths && stats.selectedPaths.length >= 2) {
           sessionStorage.setItem('compareRuns', JSON.stringify(stats.selectedPaths));
           const params = stats.selectedPaths.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-          window.location.href = apiUrl('compare?' + params);
+          navigateTo(apiUrl('compare?' + params));
         } else {
           alert('Need at least 2 runs to compare');
         }
@@ -3883,10 +3887,10 @@
   function openRun(filePath) {
     sessionStorage.setItem('dashboardRunFile', filePath);
     if (state.currentProject && state.currentProject.slug) {
-      window.location.href = projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`);
+      navigateTo(projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`));
       return;
     }
-    window.location.href = apiUrl(`run/${encodeURIComponent(filePath)}`);
+    navigateTo(apiUrl(`run/${encodeURIComponent(filePath)}`));
   }
 
   function openComparison() {
@@ -3897,7 +3901,7 @@
     const files = Array.from(state.selectedRuns);
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-    window.location.href = apiUrl('compare?' + params);
+    navigateTo(apiUrl('compare?' + params));
   }
 
   function confirmDeleteRun(filePath, runId) {
@@ -4220,7 +4224,7 @@
         const slug = btn.getAttribute('data-project-choice') || '';
         if (!slug) return;
         storeProjectSlug(slug);
-        window.location.href = projectUrl(slug);
+        navigateTo(projectUrl(slug));
       });
     });
     modal.style.display = '';
@@ -4287,7 +4291,7 @@
       }
       if (errorEl) errorEl.textContent = '';
       storeProjectSlug(data.slug || '');
-      window.location.href = projectUrl(data.slug || '');
+      navigateTo(projectUrl(data.slug || ''));
     } catch (err) {
       if (errorEl) errorEl.textContent = err.message || 'Failed to create project';
     }
@@ -4368,7 +4372,7 @@
         const slug = btn.getAttribute('data-project-selector') || '';
         if (!slug) return;
         storeProjectSlug(slug);
-        window.location.href = projectUrl(slug);
+        navigateTo(projectUrl(slug));
       });
     });
     const createBtn = el('project-create-submit');
@@ -4598,7 +4602,7 @@
         const slug = btn.getAttribute('data-project-switch') || '';
         if (!slug) return;
         storeProjectSlug(slug);
-        window.location.href = projectUrl(slug);
+        navigateTo(projectUrl(slug));
       });
     });
   }
@@ -4725,9 +4729,7 @@
   }
 
   function startHeartbeat() {
-    setInterval(() => {
-      fetch(apiUrl('api/heartbeat'), { method: 'POST' }).catch(() => {});
-    }, 30000);
+    // Heartbeat disabled — no backend endpoint exists
   }
 
   // ═══════════════════════════════════════════════════
@@ -4832,7 +4834,7 @@
   });
 
   // Select all checkbox
-  el('select-all').addEventListener('change', selectAll);
+  el('select-all')?.addEventListener('change', selectAll);
   el('table-page-prev')?.addEventListener('click', () => {
     setTablePage(state.tablePage - 1, { syncFocus: true });
     render();
@@ -4938,7 +4940,7 @@
   });
 
   // Close modal on click outside
-  el('help-modal').addEventListener('click', (e) => {
+  el('help-modal')?.addEventListener('click', (e) => {
     if (e.target === el('help-modal')) {
       el('help-modal').style.display = 'none';
     }
@@ -5073,10 +5075,13 @@
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.currentView) {
+        // __QYM_INITIAL_VIEW__ takes precedence (set by each page's HTML)
+        if (window.__QYM_INITIAL_VIEW__) {
+          state.currentView = window.__QYM_INITIAL_VIEW__;
+        } else if (parsed.currentView) {
           state.currentView = parsed.currentView;
-          $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.currentView));
         }
+        $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.currentView));
         if (parsed.modelsViewState) {
           const restoredModelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
           if (restoredModelsViewState.visibleStatKeys !== null && !Array.isArray(restoredModelsViewState.visibleStatKeys)) {

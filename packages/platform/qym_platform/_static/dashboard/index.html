@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>قيِّم • Analytics</title>
+  <title>قيِّم • Runs</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
   <link rel="stylesheet" href="/static/dashboard.css">
   <link rel="stylesheet" href="/static/shell.css">
@@ -13,20 +13,6 @@
 <body>
   <!-- Command Bar -->
   <div class="command-bar">
-    <div class="view-toggle">
-      <button class="view-toggle-btn active" data-view="charts">
-        <span class="view-icon">◩</span>
-        <span class="view-label">Charts</span>
-      </button>
-      <button class="view-toggle-btn" data-view="table">
-        <span class="view-icon">▤</span>
-        <span class="view-label">Runs</span>
-      </button>
-      <button class="view-toggle-btn" data-view="models">
-        <span class="view-icon">⊞</span>
-        <span class="view-label">Models</span>
-      </button>
-    </div>
     <div class="display-tools" id="display-tools" style="display:none;">
       <span class="display-tools-label">Display</span>
       <div class="multi-select-wrapper" id="metric-visibility-wrapper" style="display:none;">
@@ -81,13 +67,11 @@
     <div class="compare-chips" id="compare-chips"></div>
   </div>
 
-  <!-- Main Content -->
   <main>
     <div id="loading" class="loading">
       <div class="loading-spinner"></div>
-      <span>Scanning qym_results/...</span>
+      <span>Loading runs...</span>
     </div>
-    
     <div id="empty" class="empty" style="display:none;">
       <div class="empty-state">
         <div class="empty-icon">∅</div>
@@ -96,55 +80,6 @@
         <code>qym --task-file my_task.py --task-function my_func \
   --dataset my-dataset --metrics exact_match</code>
       </div>
-    </div>
-
-    <!-- Charts View (Default) -->
-    <div id="charts-view" class="charts-container" style="display:none;">
-      <div class="charts-header">
-        <div class="charts-title-row">
-          <h2>Metrics by Task & Dataset</h2>
-          <span class="charts-subtitle">Showing average metric scores across all items in matching runs</span>
-        </div>
-        <div class="charts-legend" id="charts-legend"></div>
-      </div>
-      <div class="charts-grid" id="charts-grid"></div>
-    </div>
-
-    <!-- Models Comparison View -->
-    <div id="models-view" class="models-container" style="display:none;">
-      <div class="models-header">
-        <div class="models-title-row">
-          <h2>Model Comparison</h2>
-          <span class="models-subtitle">Compare model performance across K runs for the same task and dataset</span>
-        </div>
-        <div class="models-controls">
-          <div class="models-filter-row">
-            <label class="filter-label">Metric:</label>
-            <select id="models-metric-select" class="filter-select">
-              <option value="">Select a metric...</option>
-            </select>
-            <label class="filter-label">Runs per model:</label>
-            <input type="number" id="models-k-input" class="filter-input-k" min="1" max="100" value="5" placeholder="5">
-            <span class="models-threshold-inline" id="models-threshold-row" style="display:none;">
-              <label class="filter-label">Pass ≥</label>
-              <input type="range" id="models-threshold-slider" class="threshold-slider-inline" min="0" max="100" step="5" value="80">
-              <span class="threshold-value" id="models-threshold-value">80%</span>
-              <span class="stat-info-icon threshold-info">i<span class="stat-info-tooltip">Score threshold for Pass@K and Pass^K metrics. Items scoring at or above this threshold are considered "correct".</span></span>
-            </span>
-            <div class="multi-select-wrapper" id="models-stat-visibility-wrapper" style="display:none;">
-              <button class="multi-select-btn" id="models-stat-visibility-btn" title="Choose which model summary metrics to show">Shown Metrics</button>
-              <div class="multi-select-dropdown" id="models-stat-visibility-dropdown"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="models-empty" id="models-empty" style="display:none;">
-        <div class="empty-icon">⊞</div>
-        <h3>Select a Task and Dataset</h3>
-        <p>Use the filters above to select a task and dataset to compare models</p>
-      </div>
-      <div class="models-grid" id="models-grid"></div>
-      <div class="models-ranking" id="models-ranking" style="display:none;"></div>
     </div>
 
     <!-- Table View -->
@@ -185,13 +120,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Grid View -->
-    <div id="grid-view" class="grid-container" style="display:none;"></div>
-
-    <!-- Timeline View -->
-    <div id="timeline-view" class="timeline-container" style="display:none;"></div>
-
   </main>
 
   <!-- Status Bar -->
@@ -227,7 +155,6 @@
     </div>
   </div>
 
-
   <!-- Approval/Rejection Modal -->
   <div class="modal" id="workflow-modal" style="display:none;">
     <div class="modal-content modal-small">
@@ -246,25 +173,6 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('workflow-modal').style.display='none'">Cancel</button>
         <button class="btn btn-primary" id="confirm-workflow-btn">Confirm</button>
-      </div>
-    </div>
-  </div>
-
-
-  <!-- Run Selection Modal (for Models view) -->
-  <div class="modal" id="run-selection-modal" style="display:none;">
-    <div class="modal-content modal-medium">
-      <div class="modal-header">
-        <h2>Select Runs for <span id="run-selection-model-name"></span></h2>
-        <button class="modal-close" onclick="document.getElementById('run-selection-modal').style.display='none'">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-description">Choose which runs to include in the comparison. Runs are ordered by most recent first.</p>
-        <div class="run-selection-list" id="run-selection-list"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('run-selection-modal').style.display='none'">Cancel</button>
-        <button class="btn btn-primary" id="confirm-run-selection-btn">Apply Selection</button>
       </div>
     </div>
   </div>
@@ -291,17 +199,11 @@
           <div class="shortcut"><span class="kbd">c</span> Compare selected</div>
           <div class="shortcut"><span class="kbd">Esc</span> Clear selection</div>
         </div>
-        <div class="shortcut-group">
-          <h4>Filters & Views</h4>
-          <div class="shortcut"><span class="kbd">1-3</span> Quick filters</div>
-          <div class="shortcut"><span class="kbd">h</span> Charts (dashboard)</div>
-          <div class="shortcut"><span class="kbd">t</span> Runs (list)</div>
-          <div class="shortcut"><span class="kbd">m</span> Models comparison</div>
-        </div>
       </div>
     </div>
   </div>
 
+  <script>window.__QYM_INITIAL_VIEW__ = 'table';</script>
   <script src="/static/metrics.js"></script>
   <script src="/static/dashboard.js"></script>
 </body>
