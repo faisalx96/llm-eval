@@ -9,4 +9,4 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
-exec uvicorn qym_platform.main:app --host 0.0.0.0 --port 8000
+exec uvicorn qym_platform.main:app --host 0.0.0.0 --port 8000 --root-path "${QYM_ROOT_PATH:-}"

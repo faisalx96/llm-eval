@@ -99,3 +99,8 @@ qym_results/
 
 # Backups
 docker/backups/
+
+# Builds
+builds/
+
+build-image.sh
