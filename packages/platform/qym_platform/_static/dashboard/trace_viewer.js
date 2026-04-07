@@ -1167,9 +1167,9 @@
     if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens">${fmtTokens(stats.totalTokens)} tokens</span>`;
     const costStr = fmtCost(stats.totalCost);
     if (costStr) chips += `<span class="tv-chip">${costStr}</span>`;
-    // Count only spans with their own error info (not just inherited ERROR status from children)
+    // Count only spans with an actual exception event (not just inherited ERROR status)
     const realErrorCount = tree ? tree.nodes.filter(n =>
-      statusCls(n.status) === "error" && extractErrorInfo(n)
+      statusCls(n.status) === "error" && (Array.isArray(n.events) ? n.events : []).some(ev => ev.name === "exception")
     ).length : (sum.error_count || 0);
     const displayErrorCount = realErrorCount || (sum.error_count ? 1 : 0);
     if (displayErrorCount) chips += `<span class="tv-chip tv-chip-error">${displayErrorCount} error${displayErrorCount>1?"s":""}</span>`;
@@ -1278,9 +1278,12 @@
       if (node._depth > 0) {
         const guideType = isLast ? 'elbow' : 'branch';
         const isErr = statusCls(node.status) === "error";
-        let guideInline = `--tv-guide-opacity:${isErr ? 1 : laneOpacity(prefix.length)}`;
-        if (isErr) guideInline += `;--tv-guide-color:#ef4444`;
-        guidesHtml += `<span class="tv-guide ${guideType}" style="${guideInline}"></span>`;
+        const hasException = isErr && (Array.isArray(node.events) ? node.events : []).some(ev => ev.name === "exception");
+        if (hasException) {
+          guidesHtml += `<span class="tv-guide ${guideType}" style="--tv-guide-opacity:1;--tv-guide-color:#ef4444"></span>`;
+        } else {
+          guidesHtml += `<span class="tv-guide ${guideType}" style="--tv-guide-opacity:${laneOpacity(prefix.length)}"></span>`;
+        }
       }
 
       // Toggle (expand/collapse) — right side

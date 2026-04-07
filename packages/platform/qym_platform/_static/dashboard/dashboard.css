@@ -1119,6 +1119,14 @@ main {
   background: var(--bg-base);
 }
 
+.dashboard-page-main {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
 .runs-page-main {
   display: flex;
   flex-direction: column;
@@ -3322,6 +3330,7 @@ body.chart-col-resize-active {
   font-size: var(--font-xs);
   color: var(--text-muted);
   min-height: 28px;
+  flex-shrink: 0;
 }
 
 .status-left, .status-right {
@@ -6353,13 +6362,12 @@ body.tv-open { overflow: hidden; }
 .tv-row.row-err:hover .tv-row-main {
   background: rgba(239, 68, 68, 0.06);
 }
-/* Error span: red connector extends upward to parent branch.
-   The ::before L-connector starts above the row to visually reach the parent. */
+/* Error span with exception: red connector extends upward. */
 .tv-guide[style*="tv-guide-color"]::before {
   top: calc(-100% - 3px) !important;
   height: calc(150% + (var(--tv-guide-stroke) / 2) + 3px) !important;
 }
-/* Branch downward pipe stays default — not red */
+/* Branch downward pipe stays default — not coloured */
 .tv-guide.branch[style*="tv-guide-color"]::after {
   background: #fff !important;
   opacity: 0.2;
