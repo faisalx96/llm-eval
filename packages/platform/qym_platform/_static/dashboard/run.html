@@ -3608,14 +3608,16 @@
         if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
         return String(v);
       }
-      function _renderTraceChips(ts) {
-        if (!ts) return '';
+      function _renderTraceChips(ts, retryCount) {
+        if (!ts && !(retryCount > 0)) return '';
+        ts = ts || {};
         var chips = [];
         if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
         if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
         if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
         if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
         if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if ((retryCount || 0) > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u21BB</span><span class="trace-chip-value">' + retryCount + '</span><span class="trace-chip-label">Retries</span></span>');
         if (chips.length === 0) return '';
         return '<div class="trace-chips-row">' + chips.join('') + '</div>';
       }
@@ -5621,7 +5623,7 @@
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 

@@ -1,7 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 import asyncio
-from qym.core.evaluator import Evaluator, _graceful_interrupt_signals
+from qym.core.dashboard import RunDashboard
+from qym.core.evaluator import Evaluator, ItemSpans, TaskAttemptResult, _graceful_interrupt_signals
 from qym.core.dataset import CsvDataset
 import signal
 
@@ -96,6 +97,108 @@ class TestEvaluator:
         res = await evaluator._evaluate_item(0, item, tracker)
         assert res["success"] is True
         assert res["output"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_item_uses_last_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "retry-last-attempt"},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator._notify_observer = MagicMock()
+        evaluator._compute_metrics = AsyncMock(return_value={})
+        evaluator._platform_stream = MagicMock()
+
+        attempt_one = TaskAttemptResult(
+            attempt_number=1,
+            spans=ItemSpans(trace_id="trace-1", trace_url="url-1"),
+            task_started_at_ms=1111,
+            latency_s=0.75,
+            error="boom",
+        )
+        attempt_two = TaskAttemptResult(
+            attempt_number=2,
+            spans=ItemSpans(trace_id="trace-2", trace_url="url-2"),
+            task_started_at_ms=2222,
+            latency_s=0.25,
+            output="final-output",
+        )
+        evaluator._execute_task = AsyncMock(return_value=(attempt_two, [attempt_one, attempt_two], 1))
+
+        item = MagicMock()
+        item.input = "test_input"
+        item.expected_output = "expected"
+        item.id = "item-1"
+
+        tracker = MagicMock()
+        result = await evaluator._evaluate_item(0, item, tracker)
+
+        assert result["success"] is True
+        assert result["trace_id"] == "trace-2"
+        assert result["time"] == pytest.approx(0.25)
+        assert result["retry_count"] == 1
+
+        emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
+        completed = [payload for event_type, payload in emitted if event_type == "item_completed"]
+        attempt_events = [payload for event_type, payload in emitted if event_type == "item_attempt_finished"]
+        assert completed[0]["trace_id"] == "trace-2"
+        assert completed[0]["latency_ms"] == pytest.approx(250.0)
+        assert attempt_events[0]["attempt_number"] == 2
+        assert attempt_events[0]["is_last_attempt"] is True
+
+    @pytest.mark.asyncio
+    async def test_evaluate_item_failure_uses_last_failed_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "retry-last-failure"},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator._notify_observer = MagicMock()
+        evaluator._platform_stream = MagicMock()
+
+        attempt_one = TaskAttemptResult(
+            attempt_number=1,
+            spans=ItemSpans(trace_id="trace-1", trace_url="url-1"),
+            task_started_at_ms=1111,
+            latency_s=0.75,
+            error="boom-1",
+        )
+        attempt_two = TaskAttemptResult(
+            attempt_number=2,
+            spans=ItemSpans(trace_id="trace-2", trace_url="url-2"),
+            task_started_at_ms=2222,
+            latency_s=0.25,
+            error="boom-2",
+        )
+        evaluator._execute_task = AsyncMock(return_value=(None, [attempt_one, attempt_two], 1))
+
+        item = MagicMock()
+        item.input = "test_input"
+        item.expected_output = "expected"
+        item.id = "item-1"
+
+        tracker = MagicMock()
+        result = await evaluator._evaluate_item(0, item, tracker)
+
+        assert result["_trace_id"] == "trace-2"
+        assert result["task_started_at_ms"] == 2222
+
+        emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
+        failed = [payload for event_type, payload in emitted if event_type == "item_failed"]
+        attempt_events = [payload for event_type, payload in emitted if event_type == "item_attempt_finished"]
+        assert failed[0]["trace_id"] == "trace-2"
+        assert failed[0]["latency_ms"] == pytest.approx(250.0)
+        assert failed[0]["retry_count"] == 1
+        assert attempt_events[0]["trace_id"] == "trace-2"
+        assert attempt_events[0]["is_last_attempt"] is True
 
 
     def test_sync_threadpool_advisory_emitted_for_high_effective_concurrency(self, tmp_path, mock_task, monkeypatch):
@@ -263,6 +366,64 @@ class TestEvaluator:
         evaluator_one._notify_observer.assert_called_once()
         evaluator_two._notify_observer.assert_called_once()
         assert advisory_registry == {"task_one", "task_two"}
+
+    def test_sync_threadpool_advisory_stays_in_tui_when_dashboard_observer_attached(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory-tui", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        dashboard = RunDashboard([{"run_id": evaluator.run_name}], enabled=True)
+        evaluator.observer = dashboard.create_observer(evaluator.run_name)
+
+        with patch("qym.core.evaluator.logger.warning") as mock_warning:
+            evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        mock_warning.assert_not_called()
+        assert len(dashboard._warnings) == 1
+        assert "sync-threadpool" in dashboard._warnings[0]
+
+    def test_sync_threadpool_advisory_logs_when_no_tui_dashboard_is_attached(self, tmp_path, mock_task, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,world\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        fake_adapter = MagicMock()
+        fake_adapter.execution_mode.return_value = "sync-threadpool"
+        fake_adapter._warning_callback = None
+
+        with patch("qym.core.evaluator.auto_detect_task", return_value=fake_adapter):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=ds,
+                metrics=[],
+                config={"run_name": "sync-advisory-log", "max_concurrency": 5, "otel_enabled": False},
+            )
+
+        evaluator._notify_observer = MagicMock()
+
+        with patch("qym.core.evaluator.logger.warning") as mock_warning:
+            evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=4)
+
+        mock_warning.assert_called_once()
+        evaluator._notify_observer.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_async_cancellation_emits_stopped_to_platform(self, tmp_path, monkeypatch):

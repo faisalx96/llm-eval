@@ -26,6 +26,7 @@ from qym_platform.db.models import (
     Run,
     RunEvent,
     RunItem,
+    RunItemAttempt,
     RunItemScore,
     RunWorkflowStatus,
     Span,
@@ -232,16 +233,41 @@ def _build_trace_summary(spans: List[Span]) -> Dict[str, Any]:
     }
 
 
-def _build_item_trace_payload(item: RunItem, spans: List[Span]) -> Dict[str, Any]:
+def _serialize_attempt_trace_payload(attempt: Dict[str, Any], spans: List[Span]) -> Dict[str, Any]:
+    return {
+        "attempt_number": attempt.get("attempt_number"),
+        "status": attempt.get("status") or "failed",
+        "latency_ms": attempt.get("latency_ms"),
+        "task_started_at_ms": attempt.get("task_started_at_ms"),
+        "trace_id": attempt.get("trace_id") or "",
+        "trace_url": attempt.get("trace_url") or "",
+        "error": attempt.get("error"),
+        "is_last_attempt": bool(attempt.get("is_last_attempt", False)),
+        "summary": _build_trace_summary(spans),
+        "spans": [_serialize_span(span) for span in spans],
+    }
+
+
+def _build_item_trace_payload(item: RunItem, attempts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    retry_count = int(
+        getattr(item, "retry_count", 0)
+        or ((item.item_metadata or {}).get("retry_count") if isinstance(item.item_metadata, dict) else 0)
+        or 0
+    )
+    last_attempt = attempts[-1] if attempts else None
+    last_summary = (last_attempt or {}).get("summary") if isinstance(last_attempt, dict) else None
+    last_spans = (last_attempt or {}).get("spans") if isinstance(last_attempt, dict) else None
     return {
         "item": {
             "run_id": item.run_id,
             "item_id": item.item_id,
-            "trace_id": item.trace_id or "",
-            "trace_url": item.trace_url or "",
+            "trace_id": (last_attempt or {}).get("trace_id") or item.trace_id or "",
+            "trace_url": (last_attempt or {}).get("trace_url") or item.trace_url or "",
+            "retry_count": retry_count,
         },
-        "summary": _build_trace_summary(spans),
-        "spans": [_serialize_span(span) for span in spans],
+        "summary": last_summary or _build_trace_summary([]),
+        "spans": last_spans or [],
+        "attempts": attempts,
     }
 
 
@@ -861,6 +887,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             ts_ms = _item_start_ts.get(it.item_id)
         corr = correction_by_item.get(it.item_id)
         item_metadata = it.item_metadata if isinstance(it.item_metadata, dict) else {}
+        retry_count = int(it.retry_count or item_metadata.get("retry_count") or 0)
         identity = build_compare_identity(
             item_id=it.item_id,
             input_value=it.input,
@@ -884,6 +911,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "expected_full": _stringify(it.expected),
                 "time": "" if it.latency_ms is None else f"{(it.latency_ms or 0)/1000.0:.3f}",
                 "latency_ms": it.latency_ms or 0,
+                "retry_count": retry_count,
                 "trace_id": it.trace_id or "",
                 "trace_url": it.trace_url or "",
                 "task_started_at_ms": ts_ms,
@@ -1218,6 +1246,7 @@ def update_metric(
         "expected_full": item.expected,
         "time": "" if item.latency_ms is None else f"{(item.latency_ms or 0)/1000.0:.3f}",
         "latency_ms": item.latency_ms or 0,
+        "retry_count": int(item.retry_count or (item.item_metadata.get("retry_count") if isinstance(item.item_metadata, dict) else 0) or 0),
         "trace_id": item.trace_id or "",
         "trace_url": item.trace_url or "",
         "task_started_at_ms": item.item_metadata.get("task_started_at_ms") if isinstance(item.item_metadata, dict) else None,
@@ -1509,13 +1538,64 @@ def get_item_trace(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
-    if not item.trace_id:
-        return _build_item_trace_payload(item, [])
 
-    spans = (
-        db.query(Span)
-        .filter(Span.run_id == run_id, Span.trace_id == item.trace_id)
-        .order_by(Span.start_time_ns.asc().nullslast(), Span.id.asc())
+    attempts_rows = (
+        db.query(RunItemAttempt)
+        .filter(RunItemAttempt.run_id == run_id, RunItemAttempt.item_id == item_id)
+        .order_by(RunItemAttempt.attempt_number.asc(), RunItemAttempt.id.asc())
         .all()
     )
-    return _build_item_trace_payload(item, spans)
+
+    attempt_dicts: List[Dict[str, Any]] = []
+    if attempts_rows:
+        trace_ids = [row.trace_id for row in attempts_rows if row.trace_id]
+        spans_by_trace: Dict[str, List[Span]] = {}
+        if trace_ids:
+            span_rows = (
+                db.query(Span)
+                .filter(Span.run_id == run_id, Span.trace_id.in_(trace_ids))
+                .order_by(Span.start_time_ns.asc().nullslast(), Span.id.asc())
+                .all()
+            )
+            for span in span_rows:
+                spans_by_trace.setdefault(span.trace_id, []).append(span)
+        for row in attempts_rows:
+            attempt_dicts.append(
+                _serialize_attempt_trace_payload(
+                    {
+                        "attempt_number": row.attempt_number,
+                        "status": str(row.status or "").lower() or "failed",
+                        "latency_ms": row.latency_ms,
+                        "task_started_at_ms": row.task_started_at_ms,
+                        "trace_id": row.trace_id,
+                        "trace_url": row.trace_url,
+                        "error": row.error,
+                        "is_last_attempt": row.is_last_attempt,
+                    },
+                    spans_by_trace.get(row.trace_id or "", []),
+                )
+            )
+    elif item.trace_id:
+        spans = (
+            db.query(Span)
+            .filter(Span.run_id == run_id, Span.trace_id == item.trace_id)
+            .order_by(Span.start_time_ns.asc().nullslast(), Span.id.asc())
+            .all()
+        )
+        attempt_dicts.append(
+            _serialize_attempt_trace_payload(
+                {
+                    "attempt_number": 1,
+                    "status": "failed" if item.error else "completed",
+                    "latency_ms": item.latency_ms,
+                    "task_started_at_ms": item.item_metadata.get("task_started_at_ms") if isinstance(item.item_metadata, dict) else None,
+                    "trace_id": item.trace_id,
+                    "trace_url": item.trace_url,
+                    "error": item.error,
+                    "is_last_attempt": True,
+                },
+                spans,
+            )
+        )
+
+    return _build_item_trace_payload(item, attempt_dicts)

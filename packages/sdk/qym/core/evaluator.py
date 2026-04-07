@@ -242,6 +242,28 @@ class ItemSpans:
         self.end_eval(error=error)
 
 
+@dataclass
+class TaskAttemptResult:
+    attempt_number: int
+    spans: ItemSpans
+    task_started_at_ms: Optional[int]
+    latency_s: float
+    output: Any = None
+    error: Optional[str] = None
+
+    @property
+    def success(self) -> bool:
+        return self.error is None
+
+    @property
+    def status(self) -> str:
+        return "completed" if self.success else "failed"
+
+    @property
+    def latency_ms(self) -> float:
+        return float(self.latency_s * 1000.0)
+
+
 class NullTrace:
     """No-op trace/span used when OTEL is disabled.
 
@@ -698,6 +720,25 @@ class Evaluator:
                 logger.error(f"Observer callback {method} failed: {e}")
                 pass
 
+    def _warning_should_render_only_in_tui(self) -> bool:
+        """Return True when warnings should stay inside the live dashboard."""
+
+        def _observer_has_enabled_dashboard(observer: Any) -> bool:
+            if observer is None:
+                return False
+            dashboard = getattr(observer, "dashboard", None)
+            if dashboard is not None and bool(getattr(dashboard, "enabled", False)):
+                return True
+            for child in getattr(observer, "_observers", []) or []:
+                if _observer_has_enabled_dashboard(child):
+                    return True
+            return False
+
+        try:
+            return _observer_has_enabled_dashboard(self.observer)
+        except Exception:
+            return False
+
     def _maybe_emit_sync_threadpool_advisory(self, *, parallel_runs: int = 1) -> None:
         """Emit a low-priority advisory for sync-threadpool tasks at high concurrency."""
         if getattr(self, "_sync_threadpool_advisory_emitted", False):
@@ -741,7 +782,8 @@ class Evaluator:
             "If this task mainly makes network calls, consider switching from blocking clients such as "
             "OpenAI() to async equivalents such as AsyncOpenAI()."
         )
-        logger.warning(warning_msg)
+        if not self._warning_should_render_only_in_tui():
+            logger.warning(warning_msg)
         self._notify_observer("on_warning", message=warning_msg)
     
     def run(
@@ -1565,7 +1607,7 @@ class Evaluator:
     # _evaluate_item: decomposed into focused sub-methods
     # ------------------------------------------------------------------
 
-    def _create_item_spans(self, index: int, item: Any) -> ItemSpans:
+    def _create_item_spans(self, index: int, item: Any, attempt_number: int) -> ItemSpans:
         """Create OTEL spans with OpenInference attributes for an eval item."""
         spans = ItemSpans()
         item_metadata = getattr(item, 'metadata', {})
@@ -1579,12 +1621,13 @@ class Evaluator:
         # Root eval span
         spans.eval_span, spans.eval_token = ItemSpans._start_span(
             spans.tracer,
-            name=f"eval-{self.run_name}-item-{index}",
+            name=f"eval-{self.run_name}-item-{index}-attempt-{attempt_number}",
             kind="CHAIN",
             input_value=item.input,
             metadata={
                 **self.run_metadata,
                 "item_index": index,
+                "attempt_number": attempt_number,
                 "dataset_item_id": getattr(item, 'id', None),
                 "run_name": self.run_name,
                 "item_metadata": item_metadata,
@@ -1634,41 +1677,69 @@ class Evaluator:
             "expected": getattr(item, 'expected_output', None),
         })
 
-    async def _execute_task(self, index: int, item: Any, spans: ItemSpans) -> Tuple[Any, float, int]:
-        """Execute the task with retry logic. Returns (output, elapsed_time, retry_count)."""
+    async def _run_single_task_attempt(self, index: int, item: Any, attempt_number: int) -> TaskAttemptResult:
+        """Execute a single task attempt with its own trace."""
+        spans = self._create_item_spans(index, item, attempt_number)
         # Create a NullTrace for adapter compatibility
-        adapter_trace = NullTrace(name=f"eval-{self.run_name}-item-{index}", input=item.input)
+        adapter_trace = NullTrace(
+            name=f"eval-{self.run_name}-item-{index}-attempt-{attempt_number}",
+            input=item.input,
+        )
         adapter_trace.trace_id = spans.trace_id
 
-        task_start_time = time.time()
-        last_error = None
-        output = None
+        task_started_at_ms = int(time.time() * 1000)
+        attempt_start_time = time.time()
+        try:
+            coro = self.task_adapter.arun(item.input, adapter_trace, model_name=self.model_name_full)
+            if self.timeout is not None:
+                output = await asyncio.wait_for(coro, timeout=self.timeout)
+            else:
+                output = await coro
+            return TaskAttemptResult(
+                attempt_number=attempt_number,
+                spans=spans,
+                task_started_at_ms=task_started_at_ms,
+                latency_s=time.time() - attempt_start_time,
+                output=output,
+            )
+        except asyncio.TimeoutError:
+            error = f"Task timed out after {self.timeout}s (attempt {attempt_number}/{1 + self.max_retries})"
+            logger.warning(f"Item {index}: {error}")
+        except Exception as e:
+            error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
+            logger.warning(f"Item {index}: {error}")
 
-        for _attempt in range(1 + self.max_retries):
-            try:
-                coro = self.task_adapter.arun(item.input, adapter_trace, model_name=self.model_name_full)
-                if self.timeout is not None:
-                    output = await asyncio.wait_for(coro, timeout=self.timeout)
-                else:
-                    output = await coro
-                last_error = None
-                break
-            except asyncio.TimeoutError:
-                last_error = f"Task timed out after {self.timeout}s (attempt {_attempt + 1}/{1 + self.max_retries})"
-                logger.warning(f"Item {index}: {last_error}")
-            except Exception as e:
-                last_error = f"{type(e).__name__}: {e} (attempt {_attempt + 1}/{1 + self.max_retries})"
-                logger.warning(f"Item {index}: {last_error}")
-            if _attempt < self.max_retries and last_error is not None:
-                base_delay = min(2 ** _attempt, 30)
+        try:
+            spans.end_all(error=error)
+        except Exception:
+            pass
+
+        return TaskAttemptResult(
+            attempt_number=attempt_number,
+            spans=spans,
+            task_started_at_ms=task_started_at_ms,
+            latency_s=time.time() - attempt_start_time,
+            error=error,
+        )
+
+    async def _execute_task(self, index: int, item: Any) -> Tuple[Optional[TaskAttemptResult], List[TaskAttemptResult], int]:
+        """Execute task retries and return the successful or last attempt."""
+        attempts: List[TaskAttemptResult] = []
+
+        for attempt_number in range(1, 2 + self.max_retries):
+            attempt = await self._run_single_task_attempt(index, item, attempt_number)
+            attempts.append(attempt)
+            if attempt.success:
+                return attempt, attempts, attempt_number - 1
+
+            is_terminal_attempt = attempt_number == 1 + self.max_retries
+            if not is_terminal_attempt:
+                self._emit_item_attempt_finished(index, item, attempt, is_last_attempt=False)
+                base_delay = min(2 ** (attempt_number - 1), 30)
                 jitter = random.uniform(0, base_delay * 0.5)
                 await asyncio.sleep(base_delay + jitter)
 
-        retry_count = _attempt
-        if last_error is not None:
-            raise RuntimeError(last_error)
-
-        return output, time.time() - task_start_time, retry_count
+        return None, attempts, len(attempts) - 1
 
     async def _compute_metrics(self, index: int, item: Any, output: Any, spans: ItemSpans) -> Dict[str, Any]:
         """Compute all metrics concurrently. Returns {metric_name: score_dict}."""
@@ -1870,7 +1941,36 @@ class Evaluator:
                 tracker.set_metric_error(index, m_name)
 
         scores = {k: v for k, v in scores.items() if v is not None}
-        tracker.complete_item(index)
+        tracker.complete_item(index, elapsed_time=task_time)
+
+    def _emit_item_attempt_finished(
+        self,
+        index: int,
+        item: Any,
+        attempt: TaskAttemptResult,
+        *,
+        is_last_attempt: bool,
+    ) -> None:
+        """Emit an individual task attempt outcome to the platform."""
+        try:
+            ps = getattr(self, "_platform_stream", None)
+            if ps is None:
+                return
+            item_id = getattr(item, "id", None) or f"item_{index}"
+            ps.emit("item_attempt_finished", {
+                "item_id": str(item_id),
+                "index": int(index),
+                "attempt_number": attempt.attempt_number,
+                "status": attempt.status,
+                "trace_id": attempt.spans.trace_id,
+                "trace_url": attempt.spans.trace_url,
+                "latency_ms": attempt.latency_ms,
+                "task_started_at_ms": attempt.task_started_at_ms,
+                "error": attempt.error,
+                "is_last_attempt": is_last_attempt,
+            })
+        except Exception:
+            pass
 
     def _emit_item_completed(
         self, index: int, item: Any, output: Any, task_time: float,
@@ -1900,14 +2000,21 @@ class Evaluator:
     async def _handle_item_error(
         self, index: int, item: Any, error: Exception,
         spans: ItemSpans, tracker: "ProgressObserver",
+        *,
+        attempt: Optional[TaskAttemptResult] = None,
+        retry_count: int = 0,
     ):
         """Handle item evaluation error: emit failure, then clean up.
 
         Platform event is emitted FIRST — before span cleanup, dataset
         linking, or anything else that could crash.
         """
-        error_str = str(error)
+        error_str = attempt.error if attempt and attempt.error else str(error)
         item_id = getattr(item, "id", None) or f"item_{index}"
+        trace_id = attempt.spans.trace_id if attempt else spans.trace_id
+        trace_url = attempt.spans.trace_url if attempt else spans.trace_url
+        latency_ms = attempt.latency_ms if attempt else None
+        task_started_at_ms = attempt.task_started_at_ms if attempt else None
         # 1. Emit to platform FIRST (most important — prevents ghost items)
         try:
             ps = getattr(self, "_platform_stream", None)
@@ -1916,15 +2023,22 @@ class Evaluator:
                     "item_id": str(item_id),
                     "index": int(index),
                     "error": error_str,
-                    "trace_id": spans.trace_id,
-                    "trace_url": spans.trace_url,
+                    "latency_ms": latency_ms,
+                    "trace_id": trace_id,
+                    "trace_url": trace_url,
+                    "task_started_at_ms": task_started_at_ms,
+                    "retry_count": retry_count,
                 })
         except Exception:
             pass
+        if attempt is not None:
+            self._emit_item_attempt_finished(index, item, attempt, is_last_attempt=True)
         # 2. Update local tracker
         try:
-            tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
-            tracker.fail_item(index, error_str)
+            tracker.update_trace_info(index, trace_id, trace_url)
+            tracker.fail_item(index, error_str, elapsed_time=attempt.latency_s if attempt else None)
+            if retry_count > 0:
+                tracker.item_statuses[index]['retry_count'] = retry_count
         except Exception:
             pass
         try:
@@ -1944,60 +2058,109 @@ class Evaluator:
 
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
         """Evaluate a single item: create spans, run task, compute metrics, emit results."""
-        spans = self._create_item_spans(index, item)
-        task_started_at_ms: Optional[int] = None
         _item_finished = False
+        active_spans = ItemSpans()
+        active_attempt: Optional[TaskAttemptResult] = None
+        active_retry_count = 0
 
         try:
             tracker.start_item(index)
             self._emit_item_started(index, item)
 
-            task_started_at_ms = int(time.time() * 1000)
-            output, task_time, retry_count = await self._execute_task(index, item, spans)
+            success_attempt, attempts, retry_count = await self._execute_task(index, item)
+            active_retry_count = retry_count
+            last_attempt = attempts[-1] if attempts else None
+            if success_attempt is None or last_attempt is None:
+                error = RuntimeError(last_attempt.error if last_attempt and last_attempt.error else "Task failed")
+                await self._handle_item_error(
+                    index,
+                    item,
+                    error,
+                    last_attempt.spans if last_attempt else active_spans,
+                    tracker,
+                    attempt=last_attempt,
+                    retry_count=retry_count,
+                )
+                _item_finished = True
+                return {
+                    "_error": str(error),
+                    "_trace_id": last_attempt.spans.trace_id if last_attempt else None,
+                    "task_started_at_ms": last_attempt.task_started_at_ms if last_attempt else None,
+                }
+
+            active_spans = success_attempt.spans
+            active_attempt = success_attempt
             try:
-                spans.end_task(output=output)
+                active_spans.end_task(output=success_attempt.output)
             except Exception:
                 pass
-            scores = await self._compute_metrics(index, item, output, spans)
+            scores = await self._compute_metrics(index, item, success_attempt.output, active_spans)
 
             # Emit to platform FIRST — before any span cleanup that could crash
-            self._update_tracker(index, item, output, scores, task_time, retry_count, spans, tracker)
-            self._emit_item_completed(index, item, output, task_time, spans, retry_count, task_started_at_ms)
+            self._update_tracker(
+                index,
+                item,
+                success_attempt.output,
+                scores,
+                success_attempt.latency_s,
+                retry_count,
+                active_spans,
+                tracker,
+            )
+            self._emit_item_completed(
+                index,
+                item,
+                success_attempt.output,
+                success_attempt.latency_s,
+                active_spans,
+                retry_count,
+                success_attempt.task_started_at_ms,
+            )
             _item_finished = True
 
             # Span cleanup + dataset linking (nice-to-have, after emit)
             try:
-                spans.end_metrics(scores=scores)
+                active_spans.end_metrics(scores=scores)
             except Exception:
                 pass
             try:
-                spans.end_eval(output=output)
+                active_spans.end_eval(output=success_attempt.output)
             except Exception:
                 pass
             try:
-                await self._link_dataset_item(index, item, spans)
+                await self._link_dataset_item(index, item, active_spans)
             except Exception:
                 pass
+            self._emit_item_attempt_finished(index, item, success_attempt, is_last_attempt=True)
 
             return {
                 "input": item.input,
-                "output": output,
+                "output": success_attempt.output,
                 "expected": getattr(item, 'expected_output', None),
                 "scores": {k: v for k, v in scores.items() if v is not None},
-                "trace_id": spans.trace_id,
-                "trace_url": spans.trace_url,
-                "time": task_time,
-                "task_started_at_ms": task_started_at_ms,
+                "trace_id": active_spans.trace_id,
+                "trace_url": active_spans.trace_url,
+                "time": success_attempt.latency_s,
+                "task_started_at_ms": success_attempt.task_started_at_ms,
+                "retry_count": retry_count,
                 "success": True,
             }
 
         except Exception as e:
-            await self._handle_item_error(index, item, e, spans, tracker)
+            await self._handle_item_error(
+                index,
+                item,
+                e,
+                active_spans,
+                tracker,
+                attempt=active_attempt,
+                retry_count=active_retry_count,
+            )
             _item_finished = True
             return {
                 "_error": str(e),
-                "_trace_id": spans.trace_id,
-                "task_started_at_ms": task_started_at_ms,
+                "_trace_id": active_spans.trace_id,
+                "task_started_at_ms": None,
             }
         finally:
             # Guard against CancelledError / KeyboardInterrupt leaving items
@@ -2012,17 +2175,20 @@ class Evaluator:
                             "item_id": str(item_id),
                             "index": int(index),
                             "error": "Cancelled",
-                            "trace_id": spans.trace_id,
-                            "trace_url": spans.trace_url,
+                            "latency_ms": None,
+                            "trace_id": active_spans.trace_id,
+                            "trace_url": active_spans.trace_url,
+                            "task_started_at_ms": None,
+                            "retry_count": 0,
                         })
                 except Exception:
                     pass
                 try:
-                    tracker.fail_item(index, "Cancelled")
+                    tracker.fail_item(index, "Cancelled", elapsed_time=None)
                 except Exception:
                     pass
                 try:
-                    spans.end_all(error="Cancelled")
+                    active_spans.end_all(error="Cancelled")
                 except Exception:
                     pass
 

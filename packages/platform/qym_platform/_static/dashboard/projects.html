@@ -184,10 +184,11 @@
         ));
       });
 
-      // New project button — navigate to admin
+      // New project button — open the shell's create project modal
       document.getElementById('new-project-btn').addEventListener('click', function () {
-        if (window.QymShell) window.QymShell.navigateTo('/admin');
-        else window.location.href = '/admin';
+        if (window.QymShell && window.QymShell.openCreateProjectDialog) {
+          window.QymShell.openCreateProjectDialog();
+        }
       });
 
       load().catch(err => {

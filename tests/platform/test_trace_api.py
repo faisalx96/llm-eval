@@ -22,7 +22,18 @@ if "openai" not in sys.modules:
 
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
-from qym_platform.db.models import Run, RunItem, RunWorkflowStatus, Span, User, UserRole
+from qym_platform.db.models import (
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    Run,
+    RunItem,
+    RunItemAttempt,
+    RunWorkflowStatus,
+    Span,
+    User,
+    UserRole,
+)
 from qym_platform.deps import get_db
 
 
@@ -61,10 +72,13 @@ def client(session_factory):
 
 
 def _seed_trace_data(session: Session) -> None:
-    owner = User(id="user-owner", email="owner@example.com", role=UserRole.EMPLOYEE)
-    other = User(id="user-other", email="other@example.com", role=UserRole.EMPLOYEE)
+    project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id="user-owner")
+    owner = User(id="user-owner", email="owner@example.com", role=UserRole.MEMBER)
+    other = User(id="user-other", email="other@example.com", role=UserRole.MEMBER)
+    membership = ProjectMembership(project_id=project.id, user_id=owner.id, role=ProjectRole.MEMBER)
     run = Run(
         id="run-1",
+        project_id=project.id,
         created_by_user_id=owner.id,
         owner_user_id=owner.id,
         task="trace_task",
@@ -82,8 +96,9 @@ def _seed_trace_data(session: Session) -> None:
         expected={"answer": "world"},
         output={"answer": "world"},
         item_metadata={},
-        trace_id="trace-1",
-        trace_url="https://langfuse.example/trace-1",
+        retry_count=1,
+        trace_id="trace-2",
+        trace_url="https://langfuse.example/trace-2",
     )
     plain_item = RunItem(
         run_id=run.id,
@@ -96,6 +111,32 @@ def _seed_trace_data(session: Session) -> None:
         trace_id=None,
         trace_url=None,
     )
+    attempts = [
+        RunItemAttempt(
+            run_id=run.id,
+            item_id="item-1",
+            attempt_number=1,
+            status="failed",
+            latency_ms=2000.0,
+            task_started_at_ms=1000,
+            trace_id="trace-1",
+            trace_url="https://langfuse.example/trace-1",
+            error="boom",
+            is_last_attempt=False,
+        ),
+        RunItemAttempt(
+            run_id=run.id,
+            item_id="item-1",
+            attempt_number=2,
+            status="completed",
+            latency_ms=1500.0,
+            task_started_at_ms=3000,
+            trace_id="trace-2",
+            trace_url="https://langfuse.example/trace-2",
+            error=None,
+            is_last_attempt=True,
+        ),
+    ]
     spans = [
         Span(
             run_id=run.id,
@@ -127,20 +168,20 @@ def _seed_trace_data(session: Session) -> None:
         ),
         Span(
             run_id=run.id,
-            trace_id="trace-1",
-            span_id="span-orphan",
-            parent_span_id="missing-parent",
-            name="tool-call",
+            trace_id="trace-2",
+            span_id="span-last-root",
+            parent_span_id=None,
+            name="eval-run-item-0-attempt-2",
             kind="INTERNAL",
-            start_time_ns=3_500_000_000,
-            end_time_ns=5_000_000_000,
+            start_time_ns=6_000_000_000,
+            end_time_ns=7_500_000_000,
             duration_ms=1500.0,
-            status="ERROR",
-            attributes={"openinference.span.kind": "TOOL"},
+            status="OK",
+            attributes={"openinference.span.kind": "CHAIN"},
             events=[],
         ),
     ]
-    session.add_all([owner, other, run, traced_item, plain_item, *spans])
+    session.add_all([owner, other, project, membership, run, traced_item, plain_item, *attempts, *spans])
     session.commit()
 
 
@@ -159,18 +200,24 @@ def test_item_trace_endpoint_returns_summary_and_spans(client, session_factory) 
     assert body["item"] == {
         "run_id": "run-1",
         "item_id": "item-1",
-        "trace_id": "trace-1",
-        "trace_url": "https://langfuse.example/trace-1",
+        "trace_id": "trace-2",
+        "trace_url": "https://langfuse.example/trace-2",
+        "retry_count": 1,
     }
-    assert body["summary"]["span_count"] == 3
-    assert body["summary"]["root_count"] == 2
-    assert body["summary"]["error_count"] == 1
-    assert body["summary"]["orphan_count"] == 1
-    assert body["summary"]["has_orphans"] is True
-    assert body["summary"]["started_at_ns"] == 1_000_000_000
-    assert body["summary"]["ended_at_ns"] == 5_000_000_000
-    assert body["summary"]["duration_ms"] == pytest.approx(4000.0)
-    assert [span["span_id"] for span in body["spans"]] == ["span-root", "span-child", "span-orphan"]
+    assert body["summary"]["span_count"] == 1
+    assert body["summary"]["root_count"] == 1
+    assert body["summary"]["error_count"] == 0
+    assert body["summary"]["orphan_count"] == 0
+    assert body["summary"]["has_orphans"] is False
+    assert body["summary"]["started_at_ns"] == 6_000_000_000
+    assert body["summary"]["ended_at_ns"] == 7_500_000_000
+    assert body["summary"]["duration_ms"] == pytest.approx(1500.0)
+    assert [span["span_id"] for span in body["spans"]] == ["span-last-root"]
+    assert [attempt["attempt_number"] for attempt in body["attempts"]] == [1, 2]
+    assert body["attempts"][0]["trace_id"] == "trace-1"
+    assert body["attempts"][0]["summary"]["span_count"] == 2
+    assert body["attempts"][1]["trace_id"] == "trace-2"
+    assert body["attempts"][1]["summary"]["span_count"] == 1
 
 
 def test_item_trace_endpoint_returns_empty_payload_when_item_has_no_trace(client, session_factory) -> None:
@@ -184,6 +231,7 @@ def test_item_trace_endpoint_returns_empty_payload_when_item_has_no_trace(client
     assert body["item"]["item_id"] == "item-2"
     assert body["item"]["trace_id"] == ""
     assert body["item"]["trace_url"] == ""
+    assert body["item"]["retry_count"] == 0
     assert body["summary"] == {
         "span_count": 0,
         "root_count": 0,
@@ -195,6 +243,7 @@ def test_item_trace_endpoint_returns_empty_payload_when_item_has_no_trace(client
         "orphan_count": 0,
     }
     assert body["spans"] == []
+    assert body["attempts"] == []
 
 
 def test_item_trace_endpoint_rejects_other_user(client, session_factory) -> None:

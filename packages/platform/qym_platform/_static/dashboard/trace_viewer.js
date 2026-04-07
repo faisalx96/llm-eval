@@ -27,6 +27,7 @@
     meta: null,
     expanded: new Set(),
     selected: null,
+    selectedAttempt: null,
     search: "",
     activeTab: null,
   };
@@ -139,10 +140,74 @@
     return u === "ERROR" ? "error" : u === "OK" ? "ok" : "unset";
   }
 
+  function normalizeAttempts(data) {
+    if (!data) return data;
+    const attempts = Array.isArray(data.attempts) && data.attempts.length ? data.attempts : [{
+      attempt_number: 1,
+      status: data?.item?.trace_id ? "completed" : "failed",
+      latency_ms: data?.item?.latency_ms ?? null,
+      task_started_at_ms: null,
+      trace_id: data?.item?.trace_id || "",
+      trace_url: data?.item?.trace_url || "",
+      error: null,
+      is_last_attempt: true,
+      summary: data?.summary || {},
+      spans: Array.isArray(data?.spans) ? data.spans : [],
+    }];
+    data.attempts = attempts.map((attempt, idx) => {
+      const spans = Array.isArray(attempt.spans) ? attempt.spans : [];
+      return {
+        ...attempt,
+        attempt_number: Number(attempt.attempt_number || (idx + 1)),
+        summary: attempt.summary || {},
+        spans,
+        _tree: buildTree(spans),
+      };
+    });
+    const lastAttempt = data.attempts.find(a => a.is_last_attempt) || data.attempts[data.attempts.length - 1] || null;
+    if (data.item) {
+      data.item.retry_count = Number(data.item.retry_count || Math.max(0, data.attempts.length - 1));
+      if (lastAttempt) {
+        data.item.trace_id = lastAttempt.trace_id || data.item.trace_id || "";
+        data.item.trace_url = lastAttempt.trace_url || data.item.trace_url || "";
+      }
+    }
+    if (lastAttempt) {
+      data.summary = lastAttempt.summary || {};
+      data.spans = lastAttempt.spans || [];
+    }
+    return data;
+  }
+
+  function currentAttemptData() {
+    if (!S.data) return null;
+    const attempts = Array.isArray(S.data.attempts) ? S.data.attempts : [];
+    if (!attempts.length) return S.data;
+    const selectedAttempt = Number(S.selectedAttempt || 0);
+    return attempts.find(a => Number(a.attempt_number) === selectedAttempt)
+      || attempts.find(a => a.is_last_attempt)
+      || attempts[attempts.length - 1]
+      || attempts[0];
+  }
+
+  function currentTree() {
+    return currentAttemptData()?._tree || null;
+  }
+
   function laneOpacity(depthIndex) {
     if (depthIndex <= 0) return "0.24";
     if (depthIndex === 1) return "0.18";
     return "0.14";
+  }
+
+  function _nodeIsError(node) {
+    return statusCls(node?.status) === "error";
+  }
+
+  function _subtreeHasError(node) {
+    if (!node) return false;
+    if (_nodeIsError(node)) return true;
+    return Array.isArray(node._children) && node._children.some(child => _subtreeHasError(child));
   }
 
   /* ── tree building ── */
@@ -286,6 +351,7 @@
 
   function _llmLooksDuplicate(a, b) {
     if (spanKind(a) !== "LLM" || spanKind(b) !== "LLM") return false;
+    if (_subtreeHasError(a) || _subtreeHasError(b)) return false;
     if (!_sameModel(a, b)) return false;
     if (_overlapRatio(a, b) < 0.9) return false;
     if (_durationSimilarity(a, b) < 0.85) return false;
@@ -339,9 +405,11 @@
     for (const node of childList) {
       const attrs = node.attributes || {};
       if (String(attrs["db.system"] || "").toLowerCase() !== "chroma") continue;
+      if (_subtreeHasError(node)) continue;
       const hasRetrieverSibling = childList.some(other =>
         other !== node &&
         spanKind(other) === "RETRIEVER" &&
+        !_subtreeHasError(other) &&
         _overlapRatio(node, other) > 0.5
       );
       if (hasRetrieverSibling) toRemove.add(node);
@@ -351,6 +419,7 @@
     const llmGroups = new Map();
     for (const node of childList) {
       if (spanKind(node) !== "LLM") continue;
+      if (_subtreeHasError(node)) continue;
       const sig = _llmSignature(node);
       if (!sig || sig === "::") continue;
       if (!llmGroups.has(sig)) llmGroups.set(sig, []);
@@ -382,6 +451,7 @@
       const node = childList[i];
       // Recurse first (bottom-up)
       _collapseNoise(node._children, byId);
+      if (_subtreeHasError(node)) continue;
       // Remove pure noise spans (promote their children up)
       if (_isNoiseSpan(node) && node._children.length === 0) {
         childList.splice(i, 1);
@@ -731,9 +801,10 @@
   }
 
   function assistantReasoningIndex() {
-    if (S.data?._assistantReasoningIndex) return S.data._assistantReasoningIndex;
+    const attemptData = currentAttemptData();
+    if (attemptData?._assistantReasoningIndex) return attemptData._assistantReasoningIndex;
     const index = new Map();
-    const nodes = S.data?._tree?.nodes || [];
+    const nodes = currentTree()?.nodes || [];
 
     nodes.forEach(span => {
       const attrs = span.attributes || {};
@@ -758,7 +829,7 @@
       });
     });
 
-    if (S.data) S.data._assistantReasoningIndex = index;
+    if (attemptData) attemptData._assistantReasoningIndex = index;
     return index;
   }
 
@@ -806,7 +877,7 @@
     const toolName = attrs["tool.name"] || span.name || "";
     const inputValue = attrs["input.value"] == null ? "" : String(attrs["input.value"]);
     const outputValue = attrs["output.value"] == null ? "" : String(attrs["output.value"]);
-    const nodes = S.data?._tree?.nodes || [];
+    const nodes = currentTree()?.nodes || [];
 
     for (const node of nodes) {
       const nodeAttrs = node.attributes || {};
@@ -889,13 +960,15 @@
     return `<details class="tv-reasoning-expander"${open ? " open" : ""}><summary class="tv-reasoning-summary"><span class="tv-reasoning-title">Reasoning</span>${actionsHtml || ""}</summary><div class="tv-reasoning">${esc(reasoning)}</div></details>`;
   }
 
-  function renderErrorBox(errInfo, actionsHtml) {
+  function renderErrorBox(errInfo, actionsHtml, attemptError) {
     let html = `<div class="tv-det-error">`;
     html += `<div class="tv-det-error-head"><div class="tv-det-error-title">Error</div>${actionsHtml || ""}</div>`;
     if (errInfo) {
       if (errInfo.type) html += `<div class="tv-det-error-type">${esc(errInfo.type)}</div>`;
       if (errInfo.message) html += `<div class="tv-det-error-msg">${esc(errInfo.message)}</div>`;
       if (errInfo.stacktrace) html += `<details class="tv-det-error-stack"><summary>Stack trace</summary><pre class="tv-code">${esc(errInfo.stacktrace)}</pre></details>`;
+    } else if (attemptError) {
+      html += `<div class="tv-det-error-msg">${esc(attemptError)}</div>`;
     } else {
       html += `<div class="tv-det-error-msg">This span completed with ERROR status</div>`;
     }
@@ -950,6 +1023,19 @@
     return null;
   }
 
+  /** Walk descendants to find the first concrete error info when the span itself has none. */
+  function extractErrorInfoDeep(span) {
+    const direct = extractErrorInfo(span);
+    if (direct) return direct;
+    const children = span._children || [];
+    for (const child of children) {
+      if (statusCls(child.status) !== "error") continue;
+      const found = extractErrorInfoDeep(child);
+      if (found) return found;
+    }
+    return null;
+  }
+
   function detectRetries(tree) {
     tree.nodes.forEach(n => { n._retry = 0; n._failed = false; });
     function processChildren(children) {
@@ -973,6 +1059,17 @@
     }
     processChildren(tree.roots);
     tree.nodes.forEach(n => { if (n._children.length) processChildren(n._children); });
+
+    // Propagate the failed-attempt marker to descendants so the whole
+    // attempt stays visually grouped in the tree.
+    function propagate(node) {
+      if (!node._children) return;
+      node._children.forEach(c => {
+        if (node._failed) c._failed = true;
+        propagate(c);
+      });
+    }
+    tree.roots.forEach(propagate);
   }
 
   function extractReasoning(span) {
@@ -1010,19 +1107,6 @@
     return { totalTokens, totalCost };
   }
 
-  /* ── error path expand ── */
-  function autoExpandErrors(tree) {
-    const firstError = tree.nodes.find(n => statusCls(n.status) === "error");
-    if (!firstError) return null;
-    // expand all ancestors
-    let cur = firstError;
-    while (cur) {
-      S.expanded.add(cur.span_id);
-      cur = cur.parent_span_id ? tree.byId.get(cur.parent_span_id) : null;
-    }
-    return firstError.span_id;
-  }
-
   /* ── search filter ── */
   function applySearch(tree) {
     const q = S.search.toLowerCase().trim();
@@ -1040,12 +1124,39 @@
 
   /* ── rendering: header ── */
   function renderHeader(meta, data) {
-    const sum = data?.summary || {};
+    const attempt = currentAttemptData();
+    const sum = attempt?.summary || data?.summary || {};
     const item = data?.item || {};
-    const tree = data?._tree;
+    const tree = attempt?._tree;
     const stats = tree ? aggregateStats(tree) : { totalTokens: 0, totalCost: 0 };
 
     S.el.title.textContent = meta.itemLabel || item.item_id || "Trace";
+    if (S.el.attempts) {
+      const attempts = Array.isArray(data?.attempts) ? data.attempts : [];
+      if (attempts.length <= 1) {
+        S.el.attempts.innerHTML = "";
+        S.el.attempts.style.display = "none";
+      } else {
+        const selectedAttempt = Number(attempt?.attempt_number || 0);
+        S.el.attempts.innerHTML = attempts.map(att => {
+          const isActive = Number(att.attempt_number) === selectedAttempt;
+          const isFailed = !att.is_last_attempt;
+          const errReason = !att.is_last_attempt && att.error ? att.error : "";
+          const badge = att.is_last_attempt
+            ? `<span class="tv-attempt-badge">latest</span>`
+            : `<span class="tv-attempt-badge failed">failed</span>`;
+          const tooltip = errReason ? ` title="${esc(errReason)}"` : "";
+          return (
+            `<button type="button" class="tv-attempt-btn ${isActive ? "active" : ""} ${isFailed ? "failed" : ""}" data-attempt="${esc(att.attempt_number)}"${tooltip}>` +
+              `Attempt ${esc(att.attempt_number)}` +
+              `<span class="tv-attempt-dur">${esc(fmtDur(att.latency_ms))}</span>` +
+              badge +
+            `</button>`
+          );
+        }).join("");
+        S.el.attempts.style.display = "";
+      }
+    }
 
     // Score pills from root span events
     const rootSpan = tree?.roots?.[0];
@@ -1056,13 +1167,19 @@
     if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens">${fmtTokens(stats.totalTokens)} tokens</span>`;
     const costStr = fmtCost(stats.totalCost);
     if (costStr) chips += `<span class="tv-chip">${costStr}</span>`;
-    if (sum.error_count) chips += `<span class="tv-chip tv-chip-error">${sum.error_count} error${sum.error_count>1?"s":""}</span>`;
+    // Count only spans with their own error info (not just inherited ERROR status from children)
+    const realErrorCount = tree ? tree.nodes.filter(n =>
+      statusCls(n.status) === "error" && extractErrorInfo(n)
+    ).length : (sum.error_count || 0);
+    const displayErrorCount = realErrorCount || (sum.error_count ? 1 : 0);
+    if (displayErrorCount) chips += `<span class="tv-chip tv-chip-error">${displayErrorCount} error${displayErrorCount>1?"s":""}</span>`;
     scores.forEach(sc => {
       const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
       const tone = metricToneClass(sc.value);
       chips += `<span class="tv-chip tv-chip-score ${tone}">${esc(sc.name)}: ${esc(v)}</span>`;
     });
-    if (item.trace_id) chips += `<button type="button" class="tv-chip tv-chip-copy" data-trace-copy="${esc(item.trace_id)}" title="Copy Trace ID">ID</button>`;
+    const traceId = attempt ? (attempt.trace_id || "") : (item.trace_id || "");
+    if (traceId) chips += `<button type="button" class="tv-chip tv-chip-copy" data-trace-copy="${esc(traceId)}" title="Copy Trace ID">ID</button>`;
 
     S.el.meta.innerHTML = chips;
 
@@ -1072,7 +1189,7 @@
   }
 
   function allExpandableSpanIds() {
-    const tree = S.data?._tree;
+    const tree = currentTree();
     if (!tree) return [];
     return tree.nodes.filter(hasChildren).map(node => node.span_id);
   }
@@ -1084,7 +1201,7 @@
 
   function updateTreeToggleButton() {
     const btn = S.el.treeToggle;
-    const tree = S.data?._tree;
+    const tree = currentTree();
     if (!btn) return;
     if (!tree || !tree.nodes.length) {
       btn.disabled = true;
@@ -1103,7 +1220,7 @@
   }
 
   function setTreeExpansion(expandAll) {
-    const tree = S.data?._tree;
+    const tree = currentTree();
     if (!tree) return;
     if (expandAll) {
       S.expanded = new Set(allExpandableSpanIds());
@@ -1119,7 +1236,7 @@
 
   /* ── rendering: span tree ── */
   function renderTree() {
-    const tree = S.data?._tree;
+    const tree = currentTree();
     if (!tree || !tree.nodes.length) {
       S.el.list.innerHTML = `<div class="tv-empty"><div class="tv-empty-t">No trace data</div><div class="tv-empty-d">This item may not have tracing enabled.</div></div>`;
       S.el.detail.innerHTML = "";
@@ -1128,7 +1245,7 @@
     }
     applySearch(tree);
     detectRetries(tree);
-    const bounds = computeBounds(S.data);
+    const bounds = computeBounds(currentAttemptData());
     const rows = [];
 
     function visit(node, isLast, prefix) {
@@ -1151,8 +1268,12 @@
       // Tree connector guides
       let guidesHtml = '';
       for (let i = 0; i < prefix.length; i++) {
-        const guideStyle = ` style="--tv-guide-opacity:${laneOpacity(i)}"`;
-        guidesHtml += `<span class="tv-guide ${prefix[i] ? 'pipe' : 'space'}"${guideStyle}></span>`;
+        const seg = prefix[i];
+        const isPipe = typeof seg === "object" ? !!seg.pipe : !!seg;
+        const opacity = typeof seg === "object" && seg.opacity != null ? seg.opacity : laneOpacity(i);
+        let guideStyle = `--tv-guide-opacity:${opacity}`;
+        if (typeof seg === "object" && seg.color) guideStyle += `;--tv-guide-color:${seg.color}`;
+        guidesHtml += `<span class="tv-guide ${isPipe ? 'pipe' : 'space'}" style="${guideStyle}"></span>`;
       }
       if (node._depth > 0) {
         const guideType = isLast ? 'elbow' : 'branch';
@@ -1178,7 +1299,7 @@
       // Error indicator
       let errHtml = "";
       if (stCls === "error") {
-        const errInfo = extractErrorInfo(node);
+        const errInfo = extractErrorInfoDeep(node);
         errHtml = `<span class="tv-err-badge" title="${esc(errInfo?.message || 'Error')}"><svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="7" fill="currentColor" opacity=".15"/><path d="M8 4v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.5" r="1" fill="currentColor"/></svg></span>`;
       }
 
@@ -1219,7 +1340,7 @@
 
   /* ── rendering: detail panel ── */
   function renderDetail() {
-    const tree = S.data?._tree;
+    const tree = currentTree();
     const span = tree?.byId?.get(S.selected);
     if (!span) {
       S.el.detail.innerHTML = `<div class="tv-empty"><div class="tv-empty-t">Select a span</div></div>`;
@@ -1290,15 +1411,17 @@
 
     // Error detail block
     if (stCls === "error") {
-      const errInfo = extractErrorInfo(span);
-      const copyPayload = errInfo ? () => JSON.stringify(errInfo, null, 2) : "This span completed with ERROR status";
+      const errInfo = extractErrorInfoDeep(span);
+      const attemptErr = currentAttemptData()?.error || "";
+      const fallbackMsg = attemptErr || "This span completed with ERROR status";
+      const copyPayload = errInfo ? () => JSON.stringify(errInfo, null, 2) : fallbackMsg;
       header += renderErrorBox(errInfo, actionGroup([
         copyBtn(copyPayload, "Copy error"),
         expandBtn({
           title: `${span.name} Error`,
-          render: () => renderErrorBox(errInfo, ""),
+          render: () => renderErrorBox(errInfo, "", attemptErr),
         }, "Expand error"),
-      ]));
+      ]), attemptErr);
     }
 
     // Tabs + view mode toggle
@@ -1894,6 +2017,7 @@
           <div class="tv-header-left">
             <div class="tv-eyebrow">TRACE</div>
             <h3 class="tv-title">Trace</h3>
+            <div class="tv-attempts" style="display:none"></div>
             <div class="tv-meta"></div>
             <div class="tv-warning" style="display:none"></div>
           </div>
@@ -1937,6 +2061,7 @@
     document.body.appendChild(el);
     S.shell = el;
     S.el.title = el.querySelector(".tv-title");
+    S.el.attempts = el.querySelector(".tv-attempts");
     S.el.meta = el.querySelector(".tv-meta");
     S.el.warning = el.querySelector(".tv-warning");
     S.el.listPane = el.querySelector(".tv-list-pane");
@@ -2037,6 +2162,7 @@
     S.meta = meta;
     S.data = null;
     S.selected = null;
+    S.selectedAttempt = null;
     S.expanded = new Set();
     S.search = "";
     S.activeTab = null;
@@ -2053,19 +2179,27 @@
 
     try {
       const data = await fetchTrace(meta);
-      data._tree = buildTree(data.spans);
-      S.data = data;
+      S.data = normalizeAttempts(data);
+
+      const currentAttempt = currentAttemptData();
+      S.selectedAttempt = currentAttempt?.attempt_number
+        || S.data?.attempts?.find(a => a.is_last_attempt)?.attempt_number
+        || S.data?.attempts?.[S.data.attempts.length - 1]?.attempt_number
+        || 1;
 
       // Default to a fully expanded tree.
       S.expanded = new Set(allExpandableSpanIds());
 
-      // Auto-expand error path or select first
-      const errorId = autoExpandErrors(data._tree);
-      S.selected = errorId || data._tree.roots[0]?.span_id || null;
+      // Default selection is the root span.
+      S.selected = currentTree()?.roots?.[0]?.span_id || null;
 
-      renderHeader(meta, data);
+      renderHeader(meta, S.data);
       renderTree();
     } catch (err) {
+      if (S.el.attempts) {
+        S.el.attempts.innerHTML = "";
+        S.el.attempts.style.display = "none";
+      }
       renderHeader(meta, { item: { trace_id: meta.traceId, trace_url: meta.traceUrl }, summary: {}, spans: [] });
       S.el.list.innerHTML = `<div class="tv-empty"><div class="tv-empty-t">Failed to load</div><div class="tv-empty-d">${esc(err.message)}</div></div>`;
     }
@@ -2142,6 +2276,18 @@
         btn.textContent = "Copied!";
         setTimeout(() => { btn.textContent = orig; }, 1200);
       }
+      return;
+    }
+    if (e.target.closest("[data-attempt]")) {
+      e.preventDefault();
+      const attemptNumber = Number(e.target.closest("[data-attempt]").getAttribute("data-attempt"));
+      if (!Number.isFinite(attemptNumber) || attemptNumber === Number(S.selectedAttempt || 0)) return;
+      S.selectedAttempt = attemptNumber;
+      S.expanded = new Set(allExpandableSpanIds());
+      S.selected = currentTree()?.roots?.[0]?.span_id || null;
+      S.activeTab = null;
+      renderHeader(S.meta || {}, S.data || {});
+      renderTree();
       return;
     }
     // Metric card expand/collapse

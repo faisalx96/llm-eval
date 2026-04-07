@@ -20,9 +20,9 @@ class ProgressObserver(Protocol):
     
     def set_metric_error(self, index: int, metric: str) -> None: ...
     
-    def complete_item(self, index: int) -> None: ...
-    
-    def fail_item(self, index: int, error: str) -> None: ...
+    def complete_item(self, index: int, elapsed_time: Optional[float] = None) -> None: ...
+
+    def fail_item(self, index: int, error: str, elapsed_time: Optional[float] = None) -> None: ...
     
     def fail_item_timeout(self, index: int, timeout: float) -> None: ...
     
@@ -54,6 +54,7 @@ class ProgressTracker(ProgressObserver):
                 'time': '[dim]pending[/dim]',
                 'start_time': None,
                 'end_time': None,
+                'elapsed_time_override': None,
                 'trace_id': None,
                 'trace_url': None
             }
@@ -107,25 +108,28 @@ class ProgressTracker(ProgressObserver):
         """Mark a metric as errored."""
         self.item_statuses[index]['metrics'][metric] = '[red]error[/red]'
 
-    def complete_item(self, index: int):
+    def complete_item(self, index: int, elapsed_time: Optional[float] = None):
         """Mark an item as completed."""
         end_time = time.time()
         start_time = self.item_statuses[index].get('start_time') or end_time
-        elapsed = end_time - start_time
-        
+        elapsed = elapsed_time if elapsed_time is not None else (end_time - start_time)
+
         self.item_statuses[index]['end_time'] = end_time
         self.item_statuses[index]['status'] = 'completed'
+        self.item_statuses[index]['elapsed_time_override'] = elapsed
         self.item_statuses[index]['time'] = f"{int(elapsed)}s"
 
-    def fail_item(self, index: int, error: str):
+    def fail_item(self, index: int, error: str, elapsed_time: Optional[float] = None):
         """Mark an item as failed."""
         end_time = time.time()
         start_time = self.item_statuses[index].get('start_time') or end_time
-        
+        elapsed = elapsed_time if elapsed_time is not None else (end_time - start_time)
+
         self.item_statuses[index]['end_time'] = end_time
         self.item_statuses[index]['status'] = 'error'
         self.item_statuses[index]['output'] = f'[red]error: {error}[/red]'
-        self.item_statuses[index]['time'] = f"[red]{int(end_time - start_time)}s[/red]"
+        self.item_statuses[index]['elapsed_time_override'] = elapsed
+        self.item_statuses[index]['time'] = f"[red]{int(elapsed)}s[/red]"
         
         for metric in self.metrics:
             self.item_statuses[index]['metrics'][metric] = '[red]N/A[/red]'
@@ -209,9 +213,10 @@ class ProgressTracker(ProgressObserver):
             'metric_values': mvals,
             'metric_meta': meta_block,
             'time': tval,
-            'latency_ms': int(
-                ((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000
-            ) if s.get('end_time') and s.get('start_time') else None,
+            'latency_ms': int(float(s.get('elapsed_time_override')) * 1000) if s.get('elapsed_time_override') is not None else (
+                int(((s.get('end_time') or 0) - (s.get('start_time') or 0)) * 1000)
+                if s.get('end_time') and s.get('start_time') else None
+            ),
             'trace_id': s.get('trace_id'),
             'trace_url': s.get('trace_url'),
         }

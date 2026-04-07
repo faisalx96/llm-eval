@@ -103,6 +103,7 @@ function calculateItemLevelMetrics(options) {
     reliability: null,
     avgScore: 0,
     avgLatency: 0,
+    medianLatency: 0,
     totalItems: 0,
     failedCount: 0,
     K: K,
@@ -135,6 +136,7 @@ function calculateItemLevelMetrics(options) {
   let totalScoreCount = 0;
   let totalLatencySum = 0;
   let totalLatencyCount = 0;
+  let latencySamples = [];
   let allScores = [];  // collect all individual scores for min/stddev
   let itemsWithData = 0;
   let itemsWithMultipleRuns = 0;  // Only count items with K > 1 for consistency
@@ -184,6 +186,7 @@ function calculateItemLevelMetrics(options) {
       if (latency && latency > 0) {
         totalLatencySum += latency;
         totalLatencyCount++;
+        latencySamples.push(latency);
       }
     }
 
@@ -242,6 +245,7 @@ function calculateItemLevelMetrics(options) {
   result.reliability = itemsWithAtLeastOnePass > 0 ? totalReliabilitySum / itemsWithAtLeastOnePass : null;
   result.avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
   result.avgLatency = totalLatencyCount > 0 ? totalLatencySum / totalLatencyCount : 0;
+  result.medianLatency = latencySamples.length > 0 ? calculateMedian(latencySamples) : 0;
   result.totalScoreSum = totalScoreSum;
   result.totalScoreCount = totalScoreCount;
   result.totalLatencySum = totalLatencySum;
@@ -256,6 +260,21 @@ function calculateItemLevelMetrics(options) {
   }
 
   return result;
+}
+
+function calculateMedian(values) {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+  const sorted = [...values]
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return 0;
+
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
 }
 
 /**
@@ -441,7 +460,8 @@ function getMetricTooltips(K, isBoolean, threshold) {
     reliability: `When an item CAN be solved, how often is it? Only includes items with at least one passing run.`,
     failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
     avgScore: `The mean score across all items and all runs.`,
-    avgLatency: `The mean response time across all items and all runs.`
+    avgLatency: `The mean response time across all items and all runs.`,
+    medianLatency: `The median response time across all items and all runs. Less sensitive to outliers than the mean.`
   };
 }
 
@@ -578,6 +598,7 @@ if (typeof window !== 'undefined') {
     // Metrics calculation
     calculateItemLevelMetrics,
     calculateGroupedOutcomeBuckets,
+    calculateMedian,
     // Type detection
     detectMetricType,
     detectMetricTypeFromAvg,

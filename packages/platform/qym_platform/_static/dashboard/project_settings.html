@@ -377,6 +377,33 @@
       document.getElementById('save-llm-btn').addEventListener('click', () => saveLlmConfig(false));
       document.getElementById('test-llm-btn').addEventListener('click', () => saveLlmConfig(true));
 
+      // Danger zone
+      document.getElementById('archive-project-btn').addEventListener('click', async () => {
+        if (!state.project) return;
+        if (!confirm('Archive this project? It will be hidden from navigation but data is preserved.')) return;
+        try {
+          await fetchJson(`v1/admin/projects/${state.project.id}`, { method: 'DELETE' });
+          if (window.QymShell) window.QymShell.navigateTo('/');
+          else window.location.href = '/';
+        } catch (err) {
+          alert('Failed: ' + (err.message || 'Unknown error'));
+        }
+      });
+
+      document.getElementById('delete-project-btn').addEventListener('click', async () => {
+        if (!state.project) return;
+        const name = state.project.name;
+        const input = prompt(`This will permanently delete "${name}" and all its data.\n\nType the project name to confirm:`);
+        if (input !== name) { if (input !== null) alert('Name did not match. Delete cancelled.'); return; }
+        try {
+          await fetchJson(`v1/admin/projects/${state.project.id}`, { method: 'DELETE' });
+          if (window.QymShell) window.QymShell.navigateTo('/');
+          else window.location.href = '/';
+        } catch (err) {
+          alert('Failed: ' + (err.message || 'Unknown error'));
+        }
+      });
+
       load().catch(err => {
         document.querySelector('main').innerHTML = `<div class="settings-page"><div class="card"><div class="card-body">${escapeHtml(err.message)}</div></div></div>`;
       });

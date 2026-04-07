@@ -402,11 +402,18 @@
   // ACTIVE NAV STATE
   // ══════════════════════════════════════════════════
 
+  // Map sub-pages to their parent nav section
+  var NAV_PARENT = {
+    'run-detail': 'runs',
+    'compare': 'runs',
+  };
+
   function setActiveNav(page) {
+    var activePage = NAV_PARENT[page] || page;
     var items = document.querySelectorAll('.sidebar .nav-item');
     items.forEach(function (item) {
       var itemPage = item.getAttribute('data-page');
-      if (itemPage === page || (page === 'overview' && itemPage === 'overview')) {
+      if (itemPage === activePage) {
         item.classList.add('active');
       } else {
         item.classList.remove('active');
@@ -500,6 +507,123 @@
         renderProjectList(projSearch.value);
       });
     }
+
+    var createBtn = document.getElementById('shell-create-project-btn');
+    if (createBtn) {
+      createBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        projPopover.classList.remove('open');
+        projTrigger.classList.remove('open');
+        openCreateProjectDialog();
+      });
+    }
+  }
+
+  function openCreateProjectDialog() {
+    // Remove any existing dialog
+    var existing = document.getElementById('shell-create-project-dialog');
+    if (existing) existing.remove();
+
+    var dialog = document.createElement('div');
+    dialog.id = 'shell-create-project-dialog';
+    dialog.className = 'shell-modal-backdrop';
+    dialog.innerHTML = ''
+      + '<div class="shell-modal">'
+      +   '<div class="shell-modal-header">'
+      +     '<div class="shell-modal-title">Create Project</div>'
+      +     '<button class="shell-modal-close" type="button">&times;</button>'
+      +   '</div>'
+      +   '<div class="shell-modal-body">'
+      +     '<div class="shell-form-group">'
+      +       '<label class="shell-form-label">Project Name</label>'
+      +       '<input class="shell-form-input" id="shell-new-project-name" type="text" placeholder="My Project" autofocus />'
+      +     '</div>'
+      +     '<div class="shell-form-group">'
+      +       '<label class="shell-form-label">Slug</label>'
+      +       '<input class="shell-form-input" id="shell-new-project-slug" type="text" placeholder="my-project" style="font-family:var(--font-mono);font-size:12px" />'
+      +     '</div>'
+      +     '<div class="shell-form-group">'
+      +       '<label class="shell-form-label">Description (optional)</label>'
+      +       '<input class="shell-form-input" id="shell-new-project-desc" type="text" placeholder="What is this project for?" />'
+      +     '</div>'
+      +     '<div class="shell-form-error" id="shell-new-project-error"></div>'
+      +   '</div>'
+      +   '<div class="shell-modal-footer">'
+      +     '<button class="shell-btn shell-btn-secondary" id="shell-create-cancel" type="button">Cancel</button>'
+      +     '<button class="shell-btn shell-btn-primary" id="shell-create-submit" type="button">Create</button>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(dialog);
+
+    var nameInput = document.getElementById('shell-new-project-name');
+    var slugInput = document.getElementById('shell-new-project-slug');
+    var descInput = document.getElementById('shell-new-project-desc');
+    var errorEl = document.getElementById('shell-new-project-error');
+    var cancelBtn = document.getElementById('shell-create-cancel');
+    var submitBtn = document.getElementById('shell-create-submit');
+
+    // Auto-generate slug from name
+    var slugEdited = false;
+    slugInput.addEventListener('input', function () { slugEdited = true; });
+    nameInput.addEventListener('input', function () {
+      if (!slugEdited) {
+        slugInput.value = nameInput.value.toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-');
+      }
+    });
+
+    setTimeout(function () { nameInput.focus(); }, 50);
+
+    function closeDialog() { dialog.remove(); }
+
+    cancelBtn.addEventListener('click', closeDialog);
+    var closeBtn = dialog.querySelector('.shell-modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+    dialog.addEventListener('click', function (e) {
+      if (e.target === dialog) closeDialog();
+    });
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') {
+        closeDialog();
+        document.removeEventListener('keydown', escHandler);
+      }
+    });
+
+    async function submit() {
+      errorEl.textContent = '';
+      var name = nameInput.value.trim();
+      var slug = slugInput.value.trim();
+      if (!name) { errorEl.textContent = 'Name is required'; return; }
+      if (!slug) { errorEl.textContent = 'Slug is required'; return; }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
+      try {
+        var res = await fetch(apiUrl('v1/projects'), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, slug: slug, description: descInput.value.trim() }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(data.detail || 'Failed to create project');
+        closeDialog();
+        // Refresh projects list and navigate to the new project
+        if (_user) _user.projects = (_user.projects || []).concat([data]);
+        _projects = _user.projects || [];
+        navigateTo(projectUrl(data.slug));
+      } catch (err) {
+        errorEl.textContent = err.message || 'Failed to create project';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create';
+      }
+    }
+
+    submitBtn.addEventListener('click', submit);
+    nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    slugInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+    descInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
   }
 
   function bindEvents() {
@@ -639,13 +763,24 @@
     // Collect all body content (this is what shell would wrap)
     var newBody = doc.body;
 
-    // Remove any shell-related scripts from the new content (shell.js, auth.js)
-    // They're already loaded — we don't want to re-execute them
+    // Remove shell/auth scripts from the new content — they're singletons
+    // that must not re-execute (they'd re-init the shell itself).
     newBody.querySelectorAll('script[src*="shell.js"], script[src*="auth.js"]').forEach(function (s) { s.remove(); });
 
-    // Extract scripts before inserting content (they need to be re-created to execute)
+    // Remove previously-injected page scripts so re-execution works cleanly.
+    // Stateless libs (metrics.js) stay cached by the browser but will be
+    // re-executed; that's a no-op because they only define globals.
+    document.querySelectorAll('script[data-shell-exec]').forEach(function (s) { s.remove(); });
+
+    // Extract scripts from BOTH head and body. The new page may declare
+    // scripts in <head> (e.g. run.html loads metrics.js, trace_viewer.js,
+    // playground.js there).
     var scriptInfos = [];
-    newBody.querySelectorAll('script').forEach(function (script) {
+    var allScripts = [].concat(
+      Array.prototype.slice.call(doc.head.querySelectorAll('script')),
+      Array.prototype.slice.call(newBody.querySelectorAll('script'))
+    );
+    allScripts.forEach(function (script) {
       if (script.src && (script.src.indexOf('shell.js') !== -1 || script.src.indexOf('auth.js') !== -1)) return;
       scriptInfos.push({
         src: script.src || null,
@@ -699,11 +834,14 @@
     setTopbarStats([]);
     content.scrollTop = 0;
 
+    // Expose the shell user before page scripts run so route scripts can
+    // render immediately without waiting for a second shell-ready cycle.
+    window.__QYM_USER__ = _user;
+
     for (var i = 0; i < scriptInfos.length; i++) {
       await executeScript(scriptInfos[i]);
     }
 
-    window.__QYM_USER__ = _user;
     document.dispatchEvent(new CustomEvent('qym:shell-ready'));
   }
 
@@ -924,6 +1062,7 @@
     toast: toast,
     apiUrl: apiUrl,
     navigateTo: navigateTo,
+    openCreateProjectDialog: openCreateProjectDialog,
   };
 
   // Auto-init on DOMContentLoaded

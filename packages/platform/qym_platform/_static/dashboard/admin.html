@@ -67,12 +67,9 @@
     </div>
 
     <div class="card">
-      <div class="card-header"><div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div></div>
-      <div class="add-bar">
-        <input class="form-input" id="new-project-name" placeholder="Project name" />
-        <input class="form-input" id="new-project-slug" placeholder="project-slug" style="font-family:var(--font-mono);font-size:12px" />
-        <input class="form-input" id="new-project-description" placeholder="Description" style="flex:2" />
-        <button class="btn btn-primary" id="create-project-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create</button>
+      <div class="card-header">
+        <div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div>
+        <button class="btn btn-primary" id="admin-new-project-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">+ New Project</button>
       </div>
       <div class="message" id="project-message"></div>
       <div class="card-body">
@@ -162,9 +159,15 @@
         document.querySelectorAll('[data-project-delete]').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (!confirm('Archive this project?')) return;
-            await fetchJson(`v1/admin/projects/${btn.dataset.projectDelete}`, { method: 'DELETE' });
-            document.getElementById('project-message').textContent = 'Project archived';
-            await load();
+            const msgEl = document.getElementById('project-message');
+            if (msgEl) { msgEl.style.color = ''; msgEl.textContent = 'Archiving...'; }
+            try {
+              const result = await fetchJson(`v1/admin/projects/${btn.dataset.projectDelete}`, { method: 'DELETE' });
+              if (msgEl) msgEl.textContent = result && result.deleted ? 'Project deleted' : 'Project archived';
+              await load();
+            } catch (err) {
+              if (msgEl) { msgEl.style.color = 'var(--error)'; msgEl.textContent = 'Failed: ' + (err.message || 'Unknown error'); }
+            }
           });
         });
       }
@@ -186,30 +189,25 @@
         document.querySelectorAll('[data-user-toggle]').forEach(btn => {
           btn.addEventListener('click', async () => {
             const isActive = btn.dataset.active === 'true';
-            await fetchJson(`v1/admin/users/${btn.dataset.userToggle}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ is_active: isActive }),
-            });
-            document.getElementById('user-message').textContent = isActive ? 'User enabled' : 'User disabled';
-            await load();
+            try {
+              await fetchJson(`v1/admin/users/${btn.dataset.userToggle}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: isActive }),
+              });
+              document.getElementById('user-message').textContent = isActive ? 'User enabled' : 'User disabled';
+              await load();
+            } catch (err) {
+              const msgEl = document.getElementById('user-message');
+              if (msgEl) { msgEl.style.color = 'var(--error)'; msgEl.textContent = 'Failed: ' + (err.message || 'Unknown error'); }
+            }
           });
         });
       }
 
-      document.getElementById('create-project-btn').addEventListener('click', async () => {
-        await fetchJson('v1/admin/projects', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: document.getElementById('new-project-name').value.trim(),
-            slug: document.getElementById('new-project-slug').value.trim(),
-            description: document.getElementById('new-project-description').value.trim(),
-          }),
-        });
-        document.getElementById('project-message').textContent = 'Project created';
-        document.getElementById('new-project-name').value = '';
-        document.getElementById('new-project-slug').value = '';
-        document.getElementById('new-project-description').value = '';
-        await load();
+      document.getElementById('admin-new-project-btn').addEventListener('click', () => {
+        if (window.QymShell && window.QymShell.openCreateProjectDialog) {
+          window.QymShell.openCreateProjectDialog();
+        }
       });
 
       document.getElementById('create-user-btn').addEventListener('click', async () => {

@@ -202,12 +202,34 @@ class RunItem(Base):
     item_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
     trace_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     trace_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("run_id", "item_id", name="uq_run_item"),
         Index("ix_run_item_run_index", "run_id", "index"),
+    )
+
+
+class RunItemAttempt(Base):
+    __tablename__ = "run_item_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    item_id: Mapped[str] = mapped_column(String(200), index=True)
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="FAILED")
+    latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    task_started_at_ms: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    trace_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    trace_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_last_attempt: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "item_id", "attempt_number", name="uq_run_item_attempt"),
+        Index("ix_run_item_attempt_run_item", "run_id", "item_id"),
     )
 
 

@@ -164,8 +164,8 @@
     { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',    modelsLabel: '⚡ Avg Tool Calls', fmt: v => v != null ? v.toFixed(1) : '—' },
     { key: 'tool_success_rate', label: '⚡ Tool Success Rate', modelsLabel: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
   ];
-  const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'avgLatency', 'correctDistribution'];
-  const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'avgLatency'];
+  const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'avgLatency', 'medianLatency', 'correctDistribution'];
+  const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'avgLatency', 'medianLatency'];
   function _traceMetricsForRuns(runs = null) {
     const sourceRuns = Array.isArray(runs)
       ? runs
@@ -683,11 +683,19 @@
       ...traceMetrics.map(tm => tm.key),
     ];
 
+    wrapper.style.display = '';
+
     if (metricOptions.length === 0) {
-      wrapper.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Columns';
+      btn.classList.remove('has-selection');
+      btn.title = 'Columns will appear when metrics are available';
+      dropdown.classList.remove('open');
+      dropdown.innerHTML = '';
       return;
     }
-    wrapper.style.display = '';
+    btn.disabled = false;
+    btn.title = 'Choose which columns to show';
 
     const visibleMetrics = new Set(getVisibleMetrics(metricOptions));
     const allVisible = visibleMetrics.size === metricOptions.length;
@@ -783,8 +791,8 @@
     if (!btn) return;
     const visibleMetrics = getVisibleMetrics(availableMetrics);
     if (availableMetrics.length === 0) {
-      btn.textContent = 'No Columns';
-      btn.classList.add('has-selection');
+      btn.textContent = 'Columns';
+      btn.classList.remove('has-selection');
     } else if (visibleMetrics.length === availableMetrics.length) {
       btn.textContent = 'Columns';
       btn.classList.remove('has-selection');
@@ -843,6 +851,8 @@
           return { key, label: 'Errors' };
         case 'avgLatency':
           return { key, label: 'Avg Latency' };
+        case 'medianLatency':
+          return { key, label: 'Median Latency' };
         case 'correctDistribution':
           return { key, label: 'Correct Distribution' };
         case 'minScore':
@@ -3061,6 +3071,14 @@
     }
 
     if (state.flatRuns.length === 0) {
+      const tbody = el('runs-tbody');
+      if (tbody) tbody.innerHTML = '';
+      renderTablePagination({ totalRuns: 0, pageCount: 1, start: 0, end: 0 });
+      const selectAllCheckbox = el('select-all');
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      }
       empty.style.display = 'flex';
       chartsView.style.display = 'none';
       tableView.style.display = 'none';
@@ -3374,7 +3392,7 @@
 
     if (!runsData || runsData.length === 0) {
       return {
-        passAtK: 0, passHatK: 0, maxAtK: 0, consistency: 0, reliability: 0, avgScore: 0, avgLatency: 0,
+        passAtK: 0, passHatK: 0, maxAtK: 0, consistency: 0, reliability: 0, avgScore: 0, avgLatency: 0, medianLatency: 0,
         totalItems: 0, failedCount: 0, K: 0, correctDistribution: [0], runNames: [],
         minScore: 0, stddevScore: 0
       };
@@ -3403,6 +3421,7 @@
       reliability: metrics.reliability,
       avgScore: metrics.avgScore,
       avgLatency: metrics.avgLatency,
+      medianLatency: metrics.medianLatency,
       totalItems: metrics.totalItems,
       failedCount: metrics.failedCount,
       totalScoreSum: metrics.totalScoreSum,
@@ -3532,6 +3551,7 @@
           ? `Mean value across all items and all ${K} runs`
           : `Mean score across all items and all ${K} runs`,
         avgLatency: `Average response time across all runs`,
+        medianLatency: `Median response time across all items and all ${K} runs. Less sensitive to outliers than the mean.`,
         correctDist: isBoolean
           ? `How many runs got each item correct (100%). "0" = no run solved it, "${K}" = all runs solved it.`
           : `How many runs scored ≥${threshold}% for each item.`
@@ -3565,7 +3585,8 @@
         addStatTile('maxAtK', `Max@${K}`, fmtN(stats.maxAtK), '', tooltips.maxAtK);
         addStatTile('stddevScore', 'StdDev', fmtN(stats.stddevScore), '', 'Standard deviation across all items and runs. Lower = more consistent.');
         addStatTile('totalScoreSum', 'Total', fmtN(stats.totalScoreSum), 'accent-value', 'Sum of all values across all items and runs.');
-        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency));
+        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency), '', tooltips.avgLatency);
+        addStatTile('medianLatency', '⚡ Median Latency', formatLatency(stats.medianLatency), '', tooltips.medianLatency);
       } else {
         addStatTile('passAtK', `Pass@${K}`, formatPercent(stats.passAtK), getSuccessClass(stats.passAtK), tooltips.passAtK);
         addStatTile('passHatK', `Pass^${K}`, formatPercent(stats.passHatK), getSuccessClass(stats.passHatK), tooltips.passHatK);
@@ -3574,7 +3595,8 @@
         addStatTile('reliability', 'Reliability', stats.reliability !== null ? formatPercent(stats.reliability) : 'NA', stats.reliability !== null ? getSuccessClass(stats.reliability) : '', tooltips.reliability);
         addStatTile('avgScore', 'Avg Score', formatPercent(stats.avgScore), getSuccessClass(stats.avgScore), tooltips.avgScore);
         addStatTile('failedCount', 'Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount);
-        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency));
+        addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency), '', tooltips.avgLatency);
+        addStatTile('medianLatency', '⚡ Median Latency', formatLatency(stats.medianLatency), '', tooltips.medianLatency);
       }
 
       visibleTraceMetrics.forEach((traceMetric) => {
@@ -4130,9 +4152,40 @@
     }
   }
 
+  function getRunsCacheKey() {
+    const projectSlug = getProjectSlugFromPath() || '__global__';
+    return `qym:runs-cache:${projectSlug}`;
+  }
+
+  function saveRunsDataCache(data) {
+    try {
+      const payload = {
+        saved_at: Date.now(),
+        data: _cloneRunsData(data),
+      };
+      sessionStorage.setItem(getRunsCacheKey(), JSON.stringify(payload));
+    } catch {}
+  }
+
+  function restoreRunsDataCache(maxAgeMs = 15 * 60 * 1000) {
+    try {
+      const raw = sessionStorage.getItem(getRunsCacheKey());
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      const savedAt = Number(parsed?.saved_at || 0);
+      if (!parsed?.data || !Number.isFinite(savedAt)) return false;
+      if ((Date.now() - savedAt) > maxAgeMs) return false;
+      _applyRunsData(parsed.data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function _mergePagedRefreshData(previous, incoming) {
     if (!incoming) return previous;
     if (!previous || !previous.tasks) return incoming;
+    if ((incoming.total_count ?? 0) === 0) return incoming;
 
     const merged = _cloneRunsData(previous);
     const incomingRunIds = new Set();
@@ -4145,6 +4198,8 @@
       }
     }
 
+    if (incomingRunIds.size === 0) return incoming;
+
     for (const models of Object.values(merged.tasks || {})) {
       for (const modelName of Object.keys(models || {})) {
         models[modelName] = (models[modelName] || []).filter(run => !incomingRunIds.has(run.run_id));
@@ -4153,7 +4208,7 @@
 
     _mergeTasksData(merged, incoming);
     merged.last_updated = incoming.last_updated || merged.last_updated;
-    merged.total_count = incoming.total_count || merged.total_count;
+    merged.total_count = incoming.total_count ?? merged.total_count;
     return merged;
   }
 
@@ -4174,6 +4229,7 @@
     updateProfileLink();
     state.aggregations = computeAggregations(state.flatRuns);
     state.chartData = computeChartData(state.flatRuns);
+    saveRunsDataCache(data);
     populateFilterDropdowns();
     populateMetricVisibility();
     el('last-updated').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -5087,6 +5143,11 @@
           if (restoredModelsViewState.visibleStatKeys !== null && !Array.isArray(restoredModelsViewState.visibleStatKeys)) {
             restoredModelsViewState.visibleStatKeys = null;
           }
+          if (Array.isArray(restoredModelsViewState.visibleStatKeys)
+              && restoredModelsViewState.visibleStatKeys.includes('avgLatency')
+              && !restoredModelsViewState.visibleStatKeys.includes('medianLatency')) {
+            restoredModelsViewState.visibleStatKeys = [...restoredModelsViewState.visibleStatKeys, 'medianLatency'];
+          }
           if (!Array.isArray(restoredModelsViewState.visibleTraceMetrics)) {
             restoredModelsViewState.visibleTraceMetrics = [];
           }
@@ -5127,13 +5188,15 @@
   // Check auth first before loading dashboard
   async function checkAuthAndInit() {
     try {
+      restoreDashboardState();
+      restoreRunsDataCache();
+
       // If shell is present, wait for it to fetch the user
       if (window.QymShell && !window.__QYM_USER__) {
         await new Promise(r => document.addEventListener('qym:shell-ready', r, { once: true }));
       }
       if (window.__QYM_USER__) {
         state.currentUser = window.__QYM_USER__;
-        restoreDashboardState();
         startHeartbeat();
         fetchRuns({ refreshAllPages: true });
         return;
@@ -5148,7 +5211,6 @@
         throw new Error('Auth check failed');
       }
       // Authenticated - proceed with dashboard
-      restoreDashboardState();
       startHeartbeat();
       fetchRuns({ refreshAllPages: true });
     } catch (err) {
@@ -5162,15 +5224,20 @@
   // Refresh cadence:
   // - If any runs are RUNNING, refresh frequently to show progress.
   // - Otherwise, keep the dashboard light.
-  let runsRefreshId = null;
+  // Use a global ref so previous IIFE executions (after SPA navigation)
+  // have their intervals cleared when dashboard.js re-runs.
+  if (window.__QYM_DASHBOARD_INTERVAL__) {
+    clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
+    window.__QYM_DASHBOARD_INTERVAL__ = null;
+  }
   function updateRunsRefreshCadence() {
     try {
       const intervalMs = hasActiveRuns() ? LIVE_REFRESH_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
-      if (runsRefreshId) clearInterval(runsRefreshId);
-      runsRefreshId = setInterval(fetchRuns, intervalMs);
+      if (window.__QYM_DASHBOARD_INTERVAL__) clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
+      window.__QYM_DASHBOARD_INTERVAL__ = setInterval(fetchRuns, intervalMs);
     } catch {
-      if (runsRefreshId) clearInterval(runsRefreshId);
-      runsRefreshId = setInterval(fetchRuns, IDLE_REFRESH_INTERVAL_MS);
+      if (window.__QYM_DASHBOARD_INTERVAL__) clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
+      window.__QYM_DASHBOARD_INTERVAL__ = setInterval(fetchRuns, IDLE_REFRESH_INTERVAL_MS);
     }
   }
   updateRunsRefreshCadence();

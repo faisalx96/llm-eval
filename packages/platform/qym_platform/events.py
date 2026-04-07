@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 RunEventType = Literal[
     "run_started",
     "item_started",
+    "item_attempt_finished",
     "metric_scored",
     "item_completed",
     "item_failed",
@@ -50,6 +51,19 @@ class MetricScoredPayload(BaseModel):
     explanation: Optional[str] = None
 
 
+class ItemAttemptFinishedPayload(BaseModel):
+    item_id: str
+    index: Optional[int] = None
+    attempt_number: int = Field(ge=1)
+    status: Literal["completed", "failed"]
+    trace_id: Optional[str] = None
+    trace_url: Optional[str] = None
+    latency_ms: Optional[float] = Field(default=None, ge=0)
+    task_started_at_ms: Optional[int] = None
+    error: Optional[str] = None
+    is_last_attempt: bool = False
+
+
 class ItemCompletedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None  # Item index for fallback when item_started was missed
@@ -65,8 +79,11 @@ class ItemFailedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None  # Item index for fallback when item_started was missed
     error: str
+    latency_ms: Optional[float] = Field(default=None, ge=0)
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None
+    task_started_at_ms: Optional[int] = None
+    retry_count: int = 0
 
 
 class RunCompletedPayload(BaseModel):
@@ -103,6 +120,7 @@ class SpanCompletedPayload(BaseModel):
 RunEventPayload = Union[
     RunStartedPayload,
     ItemStartedPayload,
+    ItemAttemptFinishedPayload,
     MetricScoredPayload,
     ItemCompletedPayload,
     ItemFailedPayload,
@@ -120,5 +138,4 @@ class RunEventV1(BaseModel):
     type: RunEventType
     run_id: UUID
     payload: RunEventPayload
-
 

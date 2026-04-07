@@ -19,7 +19,7 @@ if "openai" not in sys.modules:
 
 from qym_platform.api.ingest import _store_trace_stats
 from qym_platform.db.base import Base
-from qym_platform.db.models import Run, RunItem, RunWorkflowStatus, Span, User, UserRole
+from qym_platform.db.models import Project, Run, RunItem, RunWorkflowStatus, Span, User, UserRole
 
 
 def test_store_trace_stats_omits_avg_cost():
@@ -33,9 +33,11 @@ def test_store_trace_stats_omits_avg_cost():
 
     try:
         with SessionLocal() as session:
-            user = User(id="user-1", email="owner@example.com", role=UserRole.EMPLOYEE)
+            user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
             run = Run(
                 id="run-1",
+                project_id=project.id,
                 created_by_user_id=user.id,
                 owner_user_id=user.id,
                 task="trace-task",
@@ -52,8 +54,9 @@ def test_store_trace_stats_omits_avg_cost():
                 input={"prompt": "hi"},
                 output={"answer": "ok"},
                 item_metadata={},
-                trace_id="trace-1",
-                trace_url="https://langfuse.example/trace-1",
+                retry_count=1,
+                trace_id="trace-2",
+                trace_url="https://langfuse.example/trace-2",
             )
             spans = [
                 Span(
@@ -69,6 +72,24 @@ def test_store_trace_stats_omits_avg_cost():
                     status="OK",
                     attributes={
                         "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 999,
+                        "llm.cost.total": 9.99,
+                    },
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-2",
+                    span_id="span-last-llm",
+                    parent_span_id=None,
+                    name="openai.chat.last",
+                    kind="CLIENT",
+                    start_time_ns=2,
+                    end_time_ns=3,
+                    duration_ms=1.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
                         "llm.token_count.total": 123,
                         "llm.cost.total": 0.42,
                     },
@@ -76,20 +97,20 @@ def test_store_trace_stats_omits_avg_cost():
                 ),
                 Span(
                     run_id=run.id,
-                    trace_id="trace-1",
+                    trace_id="trace-2",
                     span_id="span-tool",
-                    parent_span_id="span-llm",
+                    parent_span_id="span-last-llm",
                     name="tool-call",
                     kind="INTERNAL",
-                    start_time_ns=2,
-                    end_time_ns=3,
+                    start_time_ns=3,
+                    end_time_ns=4,
                     duration_ms=1.0,
                     status="OK",
                     attributes={"openinference.span.kind": "TOOL"},
                     events=[],
                 ),
             ]
-            session.add_all([user, run, item, *spans])
+            session.add_all([user, project, run, item, *spans])
             session.commit()
 
             _store_trace_stats(session, run)

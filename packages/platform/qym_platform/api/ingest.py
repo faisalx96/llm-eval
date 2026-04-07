@@ -32,8 +32,10 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
 from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
 from qym_platform.db.models import Project, Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
+from qym_platform.db.models import RunItemAttempt
 from qym_platform.deps import get_db
 from qym_platform.events import (
+    ItemAttemptFinishedPayload,
     ItemCompletedPayload,
     ItemFailedPayload,
     ItemStartedPayload,
@@ -66,7 +68,7 @@ def _store_trace_stats(db: Session, run: Run) -> None:
         return
     logger.info("_store_trace_stats: found %d spans for run %s", len(spans), run.id)
 
-    # Map trace_id -> item_id
+    # Map last-attempt trace_id -> item
     items = db.query(RunItem).filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None)).all()
     trace_to_item: dict[str, RunItem] = {}
     for it in items:
@@ -104,23 +106,35 @@ def _store_trace_stats(db: Session, run: Run) -> None:
             if (span.status or "").upper() == "ERROR":
                 bucket["tool_errors"] += 1
 
-    # Store per-item stats (copy dict to force SQLAlchemy change detection on JSON column)
-    for trace_id, bucket in trace_buckets.items():
-        item = trace_to_item.get(trace_id)
-        if item:
-            md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-            md["trace_stats"] = _sanitize_for_json(bucket)
-            item.item_metadata = md
+    # Store per-item stats from the last-attempt trace only.
+    item_buckets: list[dict[str, Any]] = []
+    for item in items:
+        trace_id = item.trace_id or ""
+        bucket = trace_buckets.get(trace_id)
+        md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        if bucket is not None:
+            sanitized = _sanitize_for_json(bucket)
+            md["trace_stats"] = sanitized
+            item_buckets.append(bucket)
+        else:
+            md.pop("trace_stats", None)
+        item.item_metadata = md
 
-    # Compute and store run-level stats
-    n = len(trace_buckets)
-    total_tool_errors = sum(b["tool_errors"] for b in trace_buckets.values())
-    total_tool_calls = sum(b["tool_calls"] for b in trace_buckets.values())
+    if not item_buckets:
+        current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
+        current["trace_stats"] = {"has_spans": False}
+        run.run_metadata = _sanitize_for_json(current)
+        return
+
+    # Compute and store run-level stats using only item last-attempt traces.
+    n = len(item_buckets)
+    total_tool_errors = sum(b["tool_errors"] for b in item_buckets)
+    total_tool_calls = sum(b["tool_calls"] for b in item_buckets)
     tool_success_rate = (1 - total_tool_errors / total_tool_calls) if total_tool_calls > 0 else None
     run_stats = {
-        "avg_tokens": sum(b["tokens"] for b in trace_buckets.values()) / n,
-        "avg_llm_calls": sum(b["llm_calls"] for b in trace_buckets.values()) / n,
-        "avg_tool_calls": sum(b["tool_calls"] for b in trace_buckets.values()) / n,
+        "avg_tokens": sum(b["tokens"] for b in item_buckets) / n,
+        "avg_llm_calls": sum(b["llm_calls"] for b in item_buckets) / n,
+        "avg_tool_calls": sum(b["tool_calls"] for b in item_buckets) / n,
         "tool_success_rate": tool_success_rate,
         "has_spans": True,
     }
@@ -142,6 +156,7 @@ class CreateRunRequest(BaseModel):
 _PAYLOAD_TYPE = {
     "run_started": RunStartedPayload,
     "item_started": ItemStartedPayload,
+    "item_attempt_finished": ItemAttemptFinishedPayload,
     "metric_scored": MetricScoredPayload,
     "item_completed": ItemCompletedPayload,
     "item_failed": ItemFailedPayload,
@@ -216,6 +231,7 @@ async def ingest_events(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     item_cache: Dict[str, Optional[RunItem]] = {}
+    attempt_cache: Dict[tuple[str, int], Optional[RunItemAttempt]] = {}
     score_cache: Dict[tuple[str, str], Optional[RunItemScore]] = {}
 
     def _get_item(item_id: str) -> Optional[RunItem]:
@@ -248,6 +264,26 @@ async def ingest_events(
     def _remember_score(score: RunItemScore) -> RunItemScore:
         score_cache[(score.item_id, score.metric_name)] = score
         return score
+
+    def _get_attempt(item_id: str, attempt_number: int) -> Optional[RunItemAttempt]:
+        key = (item_id, attempt_number)
+        if key in attempt_cache:
+            return attempt_cache[key]
+        attempt = (
+            db.query(RunItemAttempt)
+            .filter(
+                RunItemAttempt.run_id == run_id,
+                RunItemAttempt.item_id == item_id,
+                RunItemAttempt.attempt_number == attempt_number,
+            )
+            .first()
+        )
+        attempt_cache[key] = attempt
+        return attempt
+
+    def _remember_attempt(attempt: RunItemAttempt) -> RunItemAttempt:
+        attempt_cache[(attempt.item_id, attempt.attempt_number)] = attempt
+        return attempt
 
     # Read NDJSON stream
     body = await request.body()
@@ -332,6 +368,42 @@ async def ingest_events(
                 item.expected = _sanitize_for_json(payload.expected)
                 item.item_metadata = _sanitize_for_json(payload.item_metadata)
 
+        elif isinstance(payload, ItemAttemptFinishedPayload):
+            attempt = _get_attempt(payload.item_id, payload.attempt_number)
+            if not attempt:
+                attempt = _remember_attempt(RunItemAttempt(
+                    run_id=run_id,
+                    item_id=payload.item_id,
+                    attempt_number=payload.attempt_number,
+                    status=payload.status,
+                    latency_ms=payload.latency_ms,
+                    task_started_at_ms=payload.task_started_at_ms,
+                    trace_id=payload.trace_id,
+                    trace_url=payload.trace_url,
+                    error=payload.error,
+                    is_last_attempt=payload.is_last_attempt,
+                ))
+                db.add(attempt)
+            else:
+                attempt.status = payload.status
+                attempt.latency_ms = payload.latency_ms
+                attempt.task_started_at_ms = payload.task_started_at_ms
+                attempt.trace_id = payload.trace_id
+                attempt.trace_url = payload.trace_url
+                attempt.error = payload.error
+                attempt.is_last_attempt = payload.is_last_attempt
+            if payload.is_last_attempt:
+                (
+                    db.query(RunItemAttempt)
+                    .filter(
+                        RunItemAttempt.run_id == run_id,
+                        RunItemAttempt.item_id == payload.item_id,
+                        RunItemAttempt.attempt_number != payload.attempt_number,
+                        RunItemAttempt.is_last_attempt.is_(True),
+                    )
+                    .update({"is_last_attempt": False}, synchronize_session=False)
+                )
+
         elif isinstance(payload, MetricScoredPayload):
             score = _get_score(payload.item_id, payload.metric_name)
             if not score:
@@ -374,6 +446,7 @@ async def ingest_events(
                     output=_sanitize_for_json(payload.output),
                     error=None,
                     latency_ms=payload.latency_ms,
+                    retry_count=payload.retry_count,
                     trace_id=payload.trace_id,
                     trace_url=payload.trace_url,
                     item_metadata=_build_item_meta(ts_ms, payload.retry_count),
@@ -386,6 +459,7 @@ async def ingest_events(
                 item.output = _sanitize_for_json(payload.output)
                 item.error = None
                 item.latency_ms = payload.latency_ms
+                item.retry_count = payload.retry_count
                 item.trace_id = payload.trace_id
                 item.trace_url = payload.trace_url
                 # Merge metadata into item_metadata
@@ -394,6 +468,8 @@ async def ingest_events(
                     md["task_started_at_ms"] = ts_ms
                 if payload.retry_count > 0:
                     md["retry_count"] = payload.retry_count
+                else:
+                    md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
 
@@ -408,10 +484,11 @@ async def ingest_events(
                     expected=None,
                     output=None,
                     error=payload.error,
-                    latency_ms=None,
+                    latency_ms=payload.latency_ms,
+                    retry_count=payload.retry_count,
                     trace_id=payload.trace_id,
                     trace_url=payload.trace_url,
-                    item_metadata={},
+                    item_metadata=_build_item_meta(payload.task_started_at_ms, payload.retry_count),
                 ))
                 db.add(item)
             else:
@@ -419,8 +496,19 @@ async def ingest_events(
                 if item.index == 0 and payload.index is not None and payload.index != 0:
                     item.index = payload.index
                 item.error = payload.error
+                item.latency_ms = payload.latency_ms
+                item.retry_count = payload.retry_count
                 item.trace_id = payload.trace_id
                 item.trace_url = payload.trace_url
+                md = dict(item.item_metadata or {})
+                if payload.task_started_at_ms:
+                    md["task_started_at_ms"] = payload.task_started_at_ms
+                if payload.retry_count > 0:
+                    md["retry_count"] = payload.retry_count
+                else:
+                    md.pop("retry_count", None)
+                if md != (item.item_metadata or {}):
+                    item.item_metadata = _sanitize_for_json(md)
 
         elif isinstance(payload, RunCompletedPayload):
             run.ended_at = to_storage_utc(payload.ended_at)
@@ -507,6 +595,8 @@ async def upload_run(
 ) -> Dict[str, Any]:
     """Upload a saved results file (CSV/JSON/XLSX) and ingest into DB."""
     require_api_key_scope(principal, "runs:write")
+    if not principal.project_id:
+        raise HTTPException(status_code=403, detail="API key is not bound to a project")
     filename = (file.filename or "").lower()
     raw = await file.read()
     if not raw:
@@ -514,6 +604,7 @@ async def upload_run(
 
     # Create run as completed by default (file upload is post-hoc)
     run = Run(
+        project_id=principal.project_id,
         external_run_id=external_run_id,
         created_by_user_id=principal.user.id,
         owner_user_id=principal.user.id,

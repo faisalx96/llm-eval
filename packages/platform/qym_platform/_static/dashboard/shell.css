@@ -31,6 +31,12 @@
   z-index: 200;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  /* Keep shell chrome at original font sizes */
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-base: 14px;
+  --font-md: 15px;
+  --font-lg: 17px;
 }
 
 .sidebar.collapsed { width: var(--sidebar-collapsed-w); }
@@ -361,6 +367,12 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 var(--space-lg) 0 var(--space-md); flex-shrink: 0;
   font-size: var(--font-md);
+  /* Keep shell chrome at original font sizes */
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-base: 14px;
+  --font-md: 15px;
+  --font-lg: 17px;
 }
 
 .topbar-left { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; }
@@ -403,6 +415,10 @@
   min-width: 0;
 }
 
+/* Scale down legacy pages (embedded in shell) so text/spacing feels balanced
+   against the new pages. The new pages (.settings-page, .admin-page, etc.)
+   are not affected because they override these vars inside their own scope. */
+
 /* ════════════════════════════════════════════════
    NO-PROJECT STATE
    ════════════════════════════════════════════════ */
@@ -413,6 +429,89 @@
 /* When no project: hide project switcher and project nav */
 .sidebar.no-project .project-nav-items { display: none; }
 .sidebar.no-project ~ .main-area .breadcrumb-project { display: none; }
+
+/* ════════════════════════════════════════════════
+   SHELL MODAL (create project, etc.)
+   ════════════════════════════════════════════════ */
+.shell-modal-backdrop {
+  position: fixed; inset: 0; z-index: 9998;
+  background: rgba(16, 16, 24, 0.7);
+  display: flex; align-items: center; justify-content: center;
+  animation: shellModalFadeIn 0.15s ease;
+}
+@keyframes shellModalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.shell-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  width: 440px; max-width: calc(100vw - 32px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: shellModalSlideIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes shellModalSlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+.shell-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.shell-modal-title { font-size: var(--font-md); font-weight: 600; color: var(--text-primary); }
+.shell-modal-close {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 24px; line-height: 1; cursor: pointer;
+  padding: 0; width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+}
+.shell-modal-close:hover { color: var(--text-primary); }
+
+.shell-modal-body { padding: var(--space-lg); }
+
+.shell-form-group { margin-bottom: var(--space-md); }
+.shell-form-group:last-child { margin-bottom: 0; }
+.shell-form-label {
+  display: block; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px;
+  margin-bottom: 6px;
+}
+.shell-form-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-elevated); border: 1px solid var(--border-default);
+  border-radius: 6px; padding: var(--space-sm) var(--space-md);
+  color: var(--text-primary); font-size: var(--font-sm);
+  font-family: var(--font-sans); outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.shell-form-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(0,212,170,0.15);
+}
+
+.shell-form-error {
+  color: var(--error); font-size: var(--font-xs);
+  margin-top: var(--space-sm); min-height: 16px;
+}
+
+.shell-modal-footer {
+  display: flex; justify-content: flex-end; gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.shell-btn {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: 6px; font-size: var(--font-sm); font-weight: 500;
+  cursor: pointer; border: 1px solid transparent;
+  transition: all 0.15s ease; font-family: var(--font-sans);
+}
+.shell-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.shell-btn-primary { background: var(--accent-primary); color: var(--bg-void); }
+.shell-btn-primary:hover:not(:disabled) { background: #00e6b8; }
+.shell-btn-secondary {
+  background: var(--bg-elevated); border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+.shell-btn-secondary:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text-primary); }
 
 /* ════════════════════════════════════════════════
    TOAST CONTAINER (centralized)

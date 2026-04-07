@@ -6385,7 +6385,7 @@
                 </div>
                 <div class="output-text ${status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
-                ${_renderTraceChips(row.trace_stats)}
+                ${_renderTraceChips(row.trace_stats, row.retry_count)}
                 ${metricEditHtml}
                 ${rootCauseHtml}
               </div>
@@ -6555,14 +6555,16 @@
         if (v >= 1000) return (v / 1000).toFixed(1) + 'K';
         return String(v);
       }
-      function _renderTraceChips(ts) {
-        if (!ts) return '';
+      function _renderTraceChips(ts, retryCount) {
+        if (!ts && !(retryCount > 0)) return '';
+        ts = ts || {};
         var chips = [];
         if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
         if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
         if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
         if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
         if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if ((retryCount || 0) > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u21BB</span><span class="trace-chip-value">' + retryCount + '</span><span class="trace-chip-label">Retries</span></span>');
         if (chips.length === 0) return '';
         return '<div class="trace-chips-row">' + chips.join('') + '</div>';
       }
