@@ -17,6 +17,7 @@ class PlatformSettings(BaseSettings):
     # Core
     environment: str = Field(default="dev")
     base_url: str = Field(default="http://localhost:8000")
+    root_path: str = Field(default="", description="URL prefix when served behind a reverse proxy (e.g. /qym)")
 
     # Auth
     auth_mode: str = Field(default="none")  # none|proxy_headers|oidc|saml (SSO later)
