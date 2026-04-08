@@ -65,9 +65,10 @@ def me(
 
     admin_exists = db.query(User.id).filter(User.role == UserRole.ADMIN, User.is_active == True).first() is not None
     can_bootstrap_admin = (
-        principal.auth_type == "oidc"
+        principal.auth_type in {"oidc", "local_password"}
         and u.role != UserRole.ADMIN
         and bool(PlatformSettings().admin_bootstrap_token)
+        and not admin_exists
     )
 
     return {

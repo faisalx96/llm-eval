@@ -31,6 +31,14 @@ def auth_mode_is_oidc(settings: PlatformSettings) -> bool:
     return str(settings.auth_mode).lower() == "oidc"
 
 
+def local_auth_enabled(settings: PlatformSettings) -> bool:
+    return bool(settings.auth_local_enabled) and str(settings.auth_mode).lower() != "none"
+
+
+def session_auth_enabled(settings: PlatformSettings) -> bool:
+    return auth_mode_is_oidc(settings) or local_auth_enabled(settings)
+
+
 def enabled_provider_names(settings: PlatformSettings) -> list[str]:
     enabled: list[str] = []
     if settings.auth_google_client_id and settings.auth_google_client_secret:
@@ -77,34 +85,43 @@ def sanitize_next(next_value: Optional[str]) -> str:
     return value
 
 
+def _session_store(request: Request) -> dict[str, Any]:
+    session = request.scope.get("session")
+    if isinstance(session, dict):
+        return session
+    return {}
+
+
 def store_login_next(request: Request, next_value: Optional[str]) -> str:
     sanitized = sanitize_next(next_value)
-    request.session[SESSION_NEXT_KEY] = sanitized
+    request.scope.setdefault("session", {})[SESSION_NEXT_KEY] = sanitized
     return sanitized
 
 
 def pop_login_next(request: Request) -> str:
-    return sanitize_next(request.session.pop(SESSION_NEXT_KEY, "/"))
+    return sanitize_next(_session_store(request).pop(SESSION_NEXT_KEY, "/"))
 
 
 def set_authenticated_session(request: Request, user: User, provider: str) -> None:
-    request.session[SESSION_USER_ID_KEY] = str(user.id)
-    request.session[SESSION_PROVIDER_KEY] = provider
+    session = request.scope.setdefault("session", {})
+    session[SESSION_USER_ID_KEY] = str(user.id)
+    session[SESSION_PROVIDER_KEY] = provider
 
 
 def clear_authenticated_session(request: Request) -> None:
-    request.session.clear()
+    _session_store(request).clear()
 
 
 def get_session_user_and_provider(db: Session, request: Request) -> Optional[tuple[User, Optional[str]]]:
-    user_id = request.session.get(SESSION_USER_ID_KEY)
+    session = _session_store(request)
+    user_id = session.get(SESSION_USER_ID_KEY)
     if not user_id:
         return None
     user = db.query(User).filter(User.id == str(user_id)).first()
     if not user or not user.is_active:
-        request.session.clear()
+        session.clear()
         return None
-    return user, request.session.get(SESSION_PROVIDER_KEY)
+    return user, session.get(SESSION_PROVIDER_KEY)
 
 
 def _default_display_name(email: str, display_name: str = "") -> str:

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in</title>
+  <!--__QYM_LOCAL_AUTH_MARKER__-->
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
   <link rel="stylesheet" href="/static/dashboard.css">
   <style>
@@ -23,7 +24,6 @@
       overflow-x: hidden;
     }
 
-    /* ── Ambient background ── */
     body::before {
       content: "";
       position: fixed;
@@ -53,13 +53,12 @@
       to { transform: translate(60px, 60px); }
     }
 
-    /* ── Centered card ── */
     .login-card {
       position: relative;
       width: min(440px, 100%);
       background: rgba(20, 20, 30, 0.92);
       border: 1px solid var(--border-default);
-      border-radius: 20px;
+      border-radius: 16px;
       backdrop-filter: blur(20px);
       box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
       overflow: hidden;
@@ -75,9 +74,8 @@
       background: linear-gradient(90deg, transparent, rgba(0, 212, 170, 0.5), rgba(0, 168, 255, 0.3), transparent);
     }
 
-    /* ── Brand header ── */
     .login-brand {
-      padding: 36px 32px 28px;
+      padding: 32px 32px 24px;
       text-align: center;
       border-bottom: 1px solid var(--border-subtle);
       background: radial-gradient(circle at 50% 0%, rgba(0, 212, 170, 0.06), transparent 70%);
@@ -101,13 +99,12 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* ── Body ── */
     .login-body {
-      padding: 28px 32px 32px;
+      padding: 24px 32px 32px;
     }
 
     .login-heading {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
       color: var(--text-primary);
       letter-spacing: -0.01em;
@@ -115,62 +112,217 @@
     }
 
     .login-sub {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
 
-    /* ── Provider buttons ── */
+    .auth-panel {
+      display: grid;
+      gap: 16px;
+      animation: fade-in 0.3s ease-out both;
+    }
+
+    .auth-switch {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+
+    .auth-switch-copy {
+      min-width: 0;
+    }
+
+    .auth-switch-label {
+      display: none;
+    }
+
+    .auth-switch-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    .auth-switch-btn {
+      border: 1px solid var(--border-default);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .auth-switch-btn:hover,
+    .auth-switch-btn:focus-visible {
+      outline: none;
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      background: var(--bg-elevated);
+    }
+
+    .auth-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .field-input {
+      width: 100%;
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-family: 'DM Sans', var(--font-sans);
+      font-size: 13px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .field-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .field-input:hover {
+      background: var(--bg-elevated);
+    }
+
+    .field-input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.12);
+      background: var(--bg-elevated);
+    }
+
+    .field-help {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .auth-submit {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: var(--accent-primary);
+      color: var(--bg-base);
+      font-family: 'DM Sans', var(--font-sans);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      box-shadow: 0 8px 20px rgba(0, 212, 170, 0.15);
+    }
+
+    .auth-submit:hover,
+    .auth-submit:focus-visible {
+      outline: none;
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(0, 212, 170, 0.22);
+    }
+
+    .auth-submit[disabled] {
+      opacity: 0.65;
+      cursor: progress;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .auth-status {
+      min-height: 20px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--text-muted);
+    }
+
+    .auth-status.error {
+      color: #ff8f8f;
+    }
+
+    .auth-status.success {
+      color: var(--accent-primary);
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 8px 0;
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+    }
+
     .providers {
       display: grid;
-      gap: 10px;
-      margin-bottom: 24px;
+      gap: 12px;
     }
 
     .provider-btn {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 12px 14px;
-      border-radius: 12px;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 10px;
       border: 1px solid var(--border-default);
       background: var(--bg-surface);
       color: var(--text-primary);
       font-family: 'DM Sans', var(--font-sans);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       text-decoration: none;
       cursor: pointer;
-      transition: all 0.18s ease;
+      transition: all 0.15s ease;
       animation: slide-up 0.35s ease-out both;
     }
 
-    .provider-btn:nth-child(1) { animation-delay: 0.15s; }
-    .provider-btn:nth-child(2) { animation-delay: 0.22s; }
-    .provider-btn:nth-child(3) { animation-delay: 0.29s; }
+    .provider-btn:nth-child(1) { animation-delay: 0.12s; }
+    .provider-btn:nth-child(2) { animation-delay: 0.18s; }
+    .provider-btn:nth-child(3) { animation-delay: 0.24s; }
 
     @keyframes slide-up {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .provider-btn:hover {
-      border-color: var(--accent-primary);
-      background: var(--bg-elevated);
-      box-shadow: 0 4px 20px rgba(0, 212, 170, 0.12), 0 0 0 1px rgba(0, 212, 170, 0.15);
-    }
-
+    .provider-btn:hover,
     .provider-btn:focus-visible {
       outline: none;
       border-color: var(--accent-primary);
-      box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.15);
-    }
-
-    .provider-btn.disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      pointer-events: none;
+      background: var(--bg-elevated);
+      box-shadow: 0 4px 20px rgba(0, 212, 170, 0.12), 0 0 0 1px rgba(0, 212, 170, 0.15);
     }
 
     .provider-icon {
@@ -186,7 +338,6 @@
     }
 
     .provider-icon svg { width: 18px; height: 18px; display: block; }
-
     .provider-google .provider-icon { background: #fff; border-color: rgba(255, 255, 255, 0.2); }
     .provider-github .provider-icon { background: rgba(255, 255, 255, 0.06); }
     .provider-sso .provider-icon { background: linear-gradient(135deg, rgba(0, 168, 255, 0.12), rgba(168, 85, 247, 0.12)); }
@@ -196,35 +347,21 @@
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 1px;
+      gap: 2px;
     }
 
     .provider-label {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--text-primary);
       line-height: 1.2;
     }
 
     .provider-desc {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-muted);
-      line-height: 1.3;
+      line-height: 1.35;
     }
-
-    .provider-badge {
-      padding: 2px 7px;
-      border-radius: 999px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-
-    .provider-badge.active { background: rgba(0, 212, 170, 0.12); color: var(--accent-primary); }
-    .provider-badge.reserved { background: rgba(122, 122, 144, 0.12); color: var(--text-dim); }
 
     .provider-arrow {
       color: var(--text-dim);
@@ -239,41 +376,25 @@
 
     .provider-arrow svg { width: 14px; height: 14px; }
 
-    /* ── Status & footer ── */
-    .provider-status {
-      text-align: center;
-      font-size: 11px;
-      color: var(--text-dim);
-      font-family: var(--font-mono);
-      margin-bottom: 20px;
-    }
-
-    .login-footer {
-      padding-top: 16px;
-      border-top: 1px solid var(--border-subtle);
-      color: var(--text-dim);
-      font-size: 11px;
-      line-height: 1.6;
-      text-align: center;
-    }
-
-    /* ── Empty / loading ── */
     .provider-empty {
       padding: 20px;
-      border-radius: 12px;
+      border-radius: 8px;
       border: 1px dashed var(--border-default);
       background: rgba(16, 16, 24, 0.5);
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: 12px;
       text-align: center;
       line-height: 1.6;
     }
 
-    .providers-loading { display: grid; gap: 10px; }
+    .providers-loading {
+      display: grid;
+      gap: 10px;
+    }
 
     .shimmer {
-      height: 60px;
-      border-radius: 12px;
+      height: 52px;
+      border-radius: 8px;
       background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-elevated) 50%, var(--bg-surface) 75%);
       background-size: 200% 100%;
       animation: shimmer 1.5s ease-in-out infinite;
@@ -284,14 +405,22 @@
       to { background-position: -200% 0; }
     }
 
-    /* ── Responsive ── */
     @media (max-width: 480px) {
       body { padding: 16px; }
-      .login-brand { padding: 28px 24px 22px; }
-      .login-logo { height: 52px; }
-      .login-wordmark { height: 28px; }
-      .login-body { padding: 22px 24px 28px; }
-      .login-heading { font-size: 18px; }
+      .login-brand { padding: 24px 20px 20px; }
+      .login-logo { height: 48px; }
+      .login-wordmark { height: 26px; }
+      .login-body { padding: 20px 20px 24px; }
+      .login-heading { font-size: 16px; }
+      .auth-switch {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .auth-switch-btn {
+        width: 100%;
+        text-align: center;
+      }
     }
   </style>
 </head>
@@ -307,73 +436,210 @@
 
     <div class="login-body">
       <div class="login-heading">Sign in</div>
-      <div class="login-sub">Choose a provider to continue</div>
-
-      <div class="providers" id="providers">
+      <div class="login-sub">Sign in to your workspace to continue.</div>
+      <div id="auth-root">
         <div class="providers-loading">
           <div class="shimmer"></div>
           <div class="shimmer"></div>
         </div>
       </div>
-
     </div>
   </div>
 
   <script>
-    (async function () {
+    window.__QYM_LOGIN_BOOTSTRAP__ = __QYM_LOGIN_BOOTSTRAP_JSON__;
+  </script>
+  <script>
+    (function () {
       var params = new URLSearchParams(window.location.search);
       var next = params.get('next') || '/';
-      var host = document.getElementById('providers');
+      var root = document.getElementById('auth-root');
+      var state = {
+        mode: 'signin',
+        loading: false,
+        localEnabled: false,
+        signupEnabled: false,
+        providers: [],
+        message: '',
+        messageType: ''
+      };
 
       var icons = {
         arrow: '<svg viewBox="0 0 20 20" fill="none"><path d="M7 5l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         google: '<svg viewBox="0 0 24 24"><path fill="#EA4335" d="M12 10.2v3.96h5.5c-.24 1.28-.98 2.37-2.08 3.1l3.36 2.61c1.96-1.81 3.09-4.47 3.09-7.63 0-.73-.06-1.43-.19-2.11H12z"/><path fill="#4285F4" d="M12 22c2.79 0 5.13-.92 6.84-2.5l-3.36-2.61c-.93.63-2.11 1-3.48 1-2.68 0-4.95-1.81-5.76-4.24H2.77v2.66A9.99 9.99 0 0012 22z"/><path fill="#FBBC05" d="M6.24 13.65A5.99 5.99 0 015.92 12c0-.57.08-1.12.22-1.65V7.69H2.77A9.99 9.99 0 002 12c0 1.61.39 3.13 1.08 4.46l3.16-2.81z"/><path fill="#34A853" d="M12 6.11c1.52 0 2.89.52 3.97 1.54l2.98-2.98C17.12 2.98 14.79 2 12 2A9.99 9.99 0 002.77 7.69l3.37 2.66C7.05 7.92 9.32 6.11 12 6.11z"/></svg>',
         github: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.72.5 12.15c0 5.15 3.3 9.52 7.89 11.06.58.11.79-.26.79-.58v-2.24c-3.21.71-3.89-1.39-3.89-1.39-.52-1.36-1.28-1.72-1.28-1.72-1.04-.73.08-.72.08-.72 1.15.08 1.75 1.2 1.75 1.2 1.02 1.79 2.69 1.28 3.35.98.1-.76.4-1.28.72-1.58-2.56-.3-5.26-1.31-5.26-5.85 0-1.29.46-2.34 1.2-3.17-.12-.3-.52-1.52.12-3.17 0 0 .98-.32 3.22 1.21a10.93 10.93 0 015.86 0c2.24-1.53 3.22-1.21 3.22-1.21.64 1.65.24 2.87.12 3.17.75.83 1.2 1.88 1.2 3.17 0 4.55-2.7 5.55-5.28 5.84.41.36.78 1.07.78 2.16v3.21c0 .32.21.69.8.58 4.58-1.54 7.88-5.91 7.88-11.06C23.5 5.72 18.35.5 12 .5z"/></svg>',
         sso: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 19h16M6 19V9l6-4 6 4v10M9 13h1m4 0h1m-6 3h1m4 0h1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-        generic: '<svg viewBox="0 0 24 24" fill="none"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+        email: '<svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16v10H4z" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 8l7.5 6 7.5-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       };
 
       function esc(v) {
-        return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       }
 
-      function theme(id, enabled) {
-        var p = String(id || '').toLowerCase();
-        if (p === 'google') return { key: 'google', icon: icons.google, desc: 'Sign in with your Google account', badge: enabled ? 'Available' : 'Unavailable', cls: enabled ? 'active' : 'reserved' };
-        if (p === 'github') return { key: 'github', icon: icons.github, desc: 'Sign in with GitHub', badge: enabled ? 'Available' : 'Unavailable', cls: enabled ? 'active' : 'reserved' };
-        if (p === 'sso') return { key: 'sso', icon: icons.sso, desc: enabled ? 'Enterprise identity provider' : 'Available when SSO is configured', badge: enabled ? 'Enterprise' : 'Reserved', cls: enabled ? 'active' : 'reserved' };
-        return { key: 'generic', icon: icons.generic, desc: enabled ? 'Sign in with this provider' : 'Currently unavailable', badge: '', cls: enabled ? 'active' : 'reserved' };
+      function activeProviders() {
+        return state.providers.filter(function (provider) { return provider && provider.enabled; });
       }
 
-      function label(p) {
-        if (p && p.label) return p.label;
-        var id = String((p && p.id) || 'provider');
+      function providerTheme(id) {
+        var key = String(id || '').toLowerCase();
+        if (key === 'google') return { key: 'google', icon: icons.google, desc: 'Use your Google identity to continue' };
+        if (key === 'github') return { key: 'github', icon: icons.github, desc: 'Use your GitHub account to continue' };
+        if (key === 'sso') return { key: 'sso', icon: icons.sso, desc: 'Enterprise identity provider' };
+        return { key: 'generic', icon: icons.email, desc: 'Continue with this provider' };
+      }
+
+      function providerLabel(provider) {
+        if (provider && provider.label) return provider.label;
+        var id = String((provider && provider.id) || 'provider');
         return 'Continue with ' + id.charAt(0).toUpperCase() + id.slice(1);
       }
 
-      function btn(p) {
-        var t = theme(p.id, true);
-        var href = '/v1/auth/login/' + encodeURIComponent(p.id) + '?next=' + encodeURIComponent(next);
-        return '<a href="' + esc(href) + '" class="provider-btn provider-' + t.key + '">'
-          + '<span class="provider-icon">' + t.icon + '</span>'
-          + '<span class="provider-label">' + esc(label(p)) + '</span>'
-          + '<span class="provider-arrow">' + icons.arrow + '</span>'
-          + '</a>';
+      function localSection() {
+        if (!state.localEnabled) return '';
+
+        var isSignup = state.mode === 'signup';
+        var submitLabel = state.loading
+          ? (isSignup ? 'Creating account...' : 'Signing in...')
+          : (isSignup ? 'Create account' : 'Sign in');
+        var statusClass = state.messageType ? 'auth-status ' + state.messageType : 'auth-status';
+        var switchLabel = isSignup ? 'Already have an account?' : 'New to qym?';
+        var switchTitle = isSignup ? 'Use your email and password to sign in.' : 'Create an account with email and password.';
+        var switchAction = isSignup ? 'Sign in instead' : 'Create account';
+
+        return ''
+          + '<div class="auth-panel">'
+          + '  <div class="auth-switch">'
+          + '    <div class="auth-switch-copy">'
+          + '      <div class="auth-switch-label">' + (isSignup ? 'Account creation' : 'Email and password') + '</div>'
+          + '      <div class="auth-switch-title">' + esc(switchLabel) + ' ' + esc(switchTitle) + '</div>'
+          + '    </div>'
+          + (state.signupEnabled
+            ? '    <button class="auth-switch-btn" type="button" data-toggle-mode="1">' + esc(switchAction) + '</button>'
+            : '')
+          + '  </div>'
+          + '  <form class="auth-form" id="local-auth-form">'
+          + (isSignup
+            ? '    <div class="field"><label class="field-label" for="display-name">Display name</label><input class="field-input" id="display-name" name="display_name" type="text" autocomplete="name" placeholder="Team member"></div>'
+            : '')
+          + '    <div class="field"><label class="field-label" for="email">Email</label><input class="field-input" id="email" name="email" type="email" autocomplete="email" placeholder="name@company.com" required></div>'
+          + '    <div class="field"><label class="field-label" for="password">Password</label><input class="field-input" id="password" name="password" type="password" autocomplete="' + (isSignup ? 'new-password' : 'current-password') + '" placeholder="' + (isSignup ? 'At least 8 characters' : 'Enter your password') + '" required></div>'
+          + (isSignup ? '    <div class="field-help">Passwords must be at least 8 characters.</div>' : '')
+          + '    <button class="auth-submit" type="submit"' + (state.loading ? ' disabled' : '') + '>' + esc(submitLabel) + '</button>'
+          + '    <div class="' + statusClass + '" role="status" aria-live="polite">' + esc(state.message) + '</div>'
+          + '  </form>'
+          + '</div>';
       }
 
-      try {
-        var res = await fetch('/v1/auth/providers');
-        var data = await res.json();
-        var providers = Array.isArray(data.providers) ? data.providers : [];
-        var active = providers.filter(function(p) { return p.enabled; });
-
-        host.innerHTML = active.length
-          ? active.map(btn).join('')
-          : '<div class="provider-empty">No login providers are configured for this deployment.</div>';
-
-      } catch (err) {
-        host.innerHTML = '<div class="provider-empty">Could not load login providers. Please try again.</div>';
+      function providersSection() {
+        var providers = activeProviders();
+        if (!providers.length) return '';
+        return ''
+          + (state.localEnabled ? '<div class="auth-divider">Or continue with</div>' : '')
+          + '<div class="providers">'
+          + providers.map(function (provider) {
+              var theme = providerTheme(provider.id);
+              var href = '/v1/auth/login/' + encodeURIComponent(provider.id) + '?next=' + encodeURIComponent(next);
+              return ''
+                + '<a href="' + esc(href) + '" class="provider-btn provider-' + theme.key + '">'
+                + '  <span class="provider-icon">' + theme.icon + '</span>'
+                + '  <span class="provider-info">'
+                + '    <span class="provider-label">' + esc(providerLabel(provider)) + '</span>'
+                + '    <span class="provider-desc">' + esc(theme.desc) + '</span>'
+                + '  </span>'
+                + '  <span class="provider-arrow">' + icons.arrow + '</span>'
+                + '</a>';
+            }).join('')
+          + '</div>';
       }
+
+      function emptyState() {
+        return '<div class="provider-empty">No login methods are configured for this deployment.</div>';
+      }
+
+      function render() {
+        var hasLocal = state.localEnabled;
+        var hasProviders = activeProviders().length > 0;
+        root.innerHTML = (hasLocal || hasProviders)
+          ? localSection() + providersSection()
+          : emptyState();
+
+        var toggle = document.querySelector('[data-toggle-mode]');
+        if (toggle) {
+          toggle.addEventListener('click', function () {
+            state.mode = state.mode === 'signup' ? 'signin' : 'signup';
+            state.message = '';
+            state.messageType = '';
+            render();
+          });
+        }
+
+        var form = document.getElementById('local-auth-form');
+        if (form) {
+          form.addEventListener('submit', submitLocalAuth);
+        }
+      }
+
+      async function submitLocalAuth(event) {
+        event.preventDefault();
+        if (state.loading) return;
+
+        var form = event.currentTarget;
+        var formData = new FormData(form);
+        var payload = {
+          email: String(formData.get('email') || ''),
+          password: String(formData.get('password') || '')
+        };
+        if (state.mode === 'signup') {
+          payload.display_name = String(formData.get('display_name') || '');
+        }
+
+        state.loading = true;
+        state.message = '';
+        state.messageType = '';
+        render();
+
+        try {
+          var endpoint = state.mode === 'signup' ? '/v1/auth/signup/password' : '/v1/auth/login/password';
+          var response = await fetch(endpoint + '?next=' + encodeURIComponent(next), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          var data = await response.json().catch(function () { return {}; });
+          if (!response.ok) {
+            state.message = String(data.detail || 'Authentication failed. Please try again.');
+            state.messageType = 'error';
+            state.loading = false;
+            render();
+            return;
+          }
+          state.message = state.mode === 'signup' ? 'Account created. Redirecting...' : 'Signed in. Redirecting...';
+          state.messageType = 'success';
+          render();
+          window.location.href = data.next || '/';
+        } catch (err) {
+          state.message = 'Could not complete the request. Please try again.';
+          state.messageType = 'error';
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function bootstrap() {
+        try {
+          var data = window.__QYM_LOGIN_BOOTSTRAP__ || {};
+          var local = data && data.local_auth ? data.local_auth : {};
+          state.localEnabled = !!local.enabled;
+          state.signupEnabled = !!local.signup_enabled;
+          state.providers = Array.isArray(data.providers) ? data.providers : [];
+          render();
+        } catch (err) {
+          root.innerHTML = '<div class="provider-empty">Could not load login methods. Please try again.</div>';
+        }
+      }
+
+      bootstrap();
     })();
   </script>
 </body>

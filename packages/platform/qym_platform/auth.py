@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qym_platform.db.models import ApiKey, User, UserIdentity, UserRole
-from qym_platform.auth_oidc import get_session_user_and_provider
+from qym_platform.auth_oidc import get_session_user_and_provider, session_auth_enabled
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, verify_api_key
 from qym_platform.settings import PlatformSettings
@@ -17,7 +17,7 @@ from qym_platform.settings import PlatformSettings
 @dataclass(frozen=True)
 class Principal:
     user: User
-    auth_type: str  # api_key|proxy_headers|oidc|none
+    auth_type: str  # api_key|proxy_headers|oidc|local_password|none
     scopes: tuple[str, ...] = ()
     provider: Optional[str] = None
     project_id: Optional[str] = None
@@ -60,6 +60,12 @@ def _provision_proxy_header_user(db: Session, email: str) -> User:
         raise
     db.refresh(user)
     return user
+
+
+def _session_auth_type(provider: Optional[str]) -> str:
+    if provider == "local_password":
+        return "local_password"
+    return "oidc"
 
 
 def _bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -139,12 +145,13 @@ def require_ui_principal(
             db.refresh(user)
         return Principal(user=user, auth_type="none")
 
-    if auth_mode == "oidc":
+    if session_auth_enabled(settings):
         resolved = get_session_user_and_provider(db, request)
         if resolved:
             user, provider = resolved
-            return Principal(user=user, auth_type="oidc", provider=provider)
-        raise HTTPException(status_code=401, detail="Not authenticated")
+            return Principal(user=user, auth_type=_session_auth_type(provider), provider=provider)
+        if auth_mode == "oidc":
+            raise HTTPException(status_code=401, detail="Not authenticated")
 
     email = (x_user_email or x_email or "").strip().lower()
 

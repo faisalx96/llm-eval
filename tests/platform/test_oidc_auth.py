@@ -125,7 +125,7 @@ def test_google_callback_provisions_user(client, session_factory, monkeypatch):
     with session_factory() as session:
         user = session.query(User).filter(User.email == "user@example.com").first()
         assert user is not None
-        assert user.role == UserRole.EMPLOYEE
+        assert user.role == UserRole.MEMBER
         assert session.query(UserIdentity).filter(UserIdentity.user_id == user.id, UserIdentity.provider == "google").count() == 1
 
 

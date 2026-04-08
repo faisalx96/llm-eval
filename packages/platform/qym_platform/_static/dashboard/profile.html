@@ -145,7 +145,6 @@
         <p>Your access is now project-scoped. API keys live inside each project’s settings page.</p>
       </div>
       <div class="actions">
-        <a class="btn btn-secondary" href="/" id="open-default-project">Open Project</a>
       </div>
     </section>
 
@@ -222,7 +221,8 @@
 
       function renderProfile(me, cfg) {
         const defaultProject = me.default_project;
-        document.getElementById('open-default-project').href = defaultProject ? projectUrl(defaultProject.slug) : '/';
+        var openBtn = document.getElementById('open-default-project');
+        if (openBtn) openBtn.href = defaultProject ? projectUrl(defaultProject.slug) : '/';
 
         document.getElementById('account-grid').innerHTML = [
           ['Display Name', me.display_name || '—'],

@@ -13,7 +13,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
-from qym_platform.auth_oidc import auth_mode_is_oidc, get_session_user_and_provider, sanitize_next
+from qym_platform.auth_oidc import get_session_user_and_provider, sanitize_next, session_auth_enabled
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     Approval,
@@ -156,7 +156,7 @@ def _resolve_project_by_slug_for_ui(db: Session, principal: Principal, project_s
 
 def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[RedirectResponse]:
     settings = PlatformSettings()
-    if not auth_mode_is_oidc(settings):
+    if not session_auth_enabled(settings):
         return None
     if get_session_user_and_provider(db, request):
         return None

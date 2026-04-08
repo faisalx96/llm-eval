@@ -81,6 +81,16 @@ class UserIdentity(Base):
     __table_args__ = (UniqueConstraint("provider", "subject", name="uq_identity_provider_subject"),)
 
 
+class LocalAuthCredential(Base):
+    __tablename__ = "local_auth_credentials"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    password_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
 class Project(Base):
     __tablename__ = "projects"
 

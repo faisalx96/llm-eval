@@ -43,12 +43,14 @@
 
 /* ── Logo ── */
 .sidebar-logo {
-  padding: var(--space-md) var(--space-md) var(--space-xs);
+  padding: var(--space-md) var(--space-md) var(--space-md);
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 52px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-xs);
 }
 
 .sidebar-logo a {
@@ -214,6 +216,8 @@
   padding: var(--space-md) 10px var(--space-xs);
   white-space: nowrap; overflow: hidden;
 }
+.nav-section-role-admin { display: none; }
+.sidebar[data-user-role="ADMIN"] .nav-section-role-admin { display: block; }
 .sidebar.collapsed .nav-section-label {
   font-size: 0; padding: var(--space-sm) 0;
   border-top: 1px solid var(--border-subtle); margin: 0 6px;
@@ -227,6 +231,8 @@
   border: none; background: none; width: 100%; font-family: var(--font-sans);
   white-space: nowrap; overflow: hidden;
 }
+.nav-item-role-admin { display: none; }
+.sidebar[data-user-role="ADMIN"] .nav-item-role-admin { display: flex; }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .nav-item.active { background: var(--bg-hover); color: var(--text-primary); font-weight: 500; }
 .nav-item.active::before {
@@ -429,6 +435,7 @@
 /* When no project: hide project switcher and project nav */
 .sidebar.no-project .project-nav-items { display: none; }
 .sidebar.no-project ~ .main-area .breadcrumb-project { display: none; }
+
 
 /* ════════════════════════════════════════════════
    SHELL MODAL (create project, etc.)

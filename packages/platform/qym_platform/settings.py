@@ -25,6 +25,7 @@ class PlatformSettings(BaseSettings):
     auto_provision_users: bool = Field(default=True)
     allow_legacy_empty_api_key_scopes: bool = Field(default=True)
     auth_session_secret: str = Field(default="")
+    auth_local_enabled: bool = Field(default=False)
     auth_google_client_id: str = Field(default="")
     auth_google_client_secret: str = Field(default="")
     auth_github_client_id: str = Field(default="")

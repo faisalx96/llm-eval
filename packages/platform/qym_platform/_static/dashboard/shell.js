@@ -230,7 +230,8 @@
     opts = opts || {};
     const href = opts.href || '#';
     const badge = opts.badge ? '<span class="nav-item-badge ' + (opts.badgeClass || 'count') + '">' + esc(opts.badge) + '</span>' : '';
-    return '<a class="nav-item" href="' + href + '" data-tooltip="' + esc(label) + '" data-page="' + page + '">'
+    const extraClass = opts.className ? ' ' + opts.className : '';
+    return '<a class="nav-item' + extraClass + '" href="' + href + '" data-tooltip="' + esc(label) + '" data-page="' + page + '">'
       + icon(iconName)
       + '<span class="nav-item-label">' + esc(label) + '</span>'
       + badge
@@ -270,9 +271,9 @@
       +     buildNavItem('Projects', 'projects', 'project', { href: root })
       +   '</div>'
       +   '<div class="project-nav-items">' + projectNav + '</div>'
-      +   '<div class="nav-section-label">Platform</div>'
-      +   buildNavItem('Admin', 'admin', 'admin', { href: root + 'admin', badge: 'Admin', badgeClass: 'admin-tag' })
-      +   buildNavItem('Deleted Runs', 'trash', 'trash', { href: root + 'trash' })
+      +   '<div class="nav-section-label nav-section-role-admin">Platform</div>'
+      +   buildNavItem('Admin', 'admin', 'admin', { href: root + 'admin', badge: 'Admin', badgeClass: 'admin-tag', className: 'nav-item-role-admin' })
+      +   buildNavItem('Deleted Runs', 'trash', 'trash', { href: root + 'trash', className: 'nav-item-role-admin' })
       + '</nav>'
 
       // User Footer
@@ -461,6 +462,8 @@
     if (!user) return;
     var displayName = user.display_name || (user.email ? user.email.split('@')[0] : 'User');
     var initials = getInitials(displayName);
+    var sidebar = document.getElementById('qym-sidebar');
+    if (sidebar) sidebar.dataset.userRole = user.role || '';
 
     var setText = function (id, val) {
       var el = document.getElementById(id);
@@ -954,6 +957,7 @@
     var sidebar = document.createElement('aside');
     sidebar.className = 'sidebar';
     sidebar.id = 'qym-sidebar';
+    sidebar.dataset.userRole = '';
     if (!_routeCtx.projectSlug) sidebar.classList.add('no-project');
     sidebar.innerHTML = buildSidebarHTML();
 

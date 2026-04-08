@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from qym_platform.auth_oidc import auth_mode_is_oidc, origin_matches_base
+from qym_platform.auth_oidc import origin_matches_base, session_auth_enabled
 from qym_platform.api.auth import router as auth_router
 from qym_platform.settings import PlatformSettings
 from qym_platform.api.web import router as web_router
@@ -22,9 +22,9 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
 
     app = FastAPI(title="qym-platform", version="0.1.0")
 
-    if auth_mode_is_oidc(settings):
+    if session_auth_enabled(settings):
         if not settings.auth_session_secret:
-            raise RuntimeError("QYM_AUTH_SESSION_SECRET is required when QYM_AUTH_MODE=oidc")
+            raise RuntimeError("QYM_AUTH_SESSION_SECRET is required when session-based auth is enabled")
         app.add_middleware(
             SessionMiddleware,
             secret_key=settings.auth_session_secret,
