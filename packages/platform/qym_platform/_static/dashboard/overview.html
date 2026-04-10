@@ -98,6 +98,22 @@
       }
 
       function esc(v) { const d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
+      const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
+      const MODEL_REASONING_BADGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" /></svg>';
+
+      function hasReasoningTraceStats(traceStats) {
+        if (!traceStats || typeof traceStats !== 'object') return false;
+        return !!(
+          traceStats.has_reasoning
+          || traceStats.has_reasoning_tokens
+          || Number(traceStats.reasoning_tokens || 0) > 0
+          || Number(traceStats.avg_reasoning_tokens || 0) > 0
+        );
+      }
+
+      function renderModelLabel(modelName, hasReasoning) {
+        return '<span class="model-label"><span class="model-label-text">' + esc(modelName || '—') + '</span>' + (hasReasoning ? '<span class="model-reasoning-badge" title="' + esc(MODEL_REASONING_BADGE_TITLE) + '" aria-label="' + esc(MODEL_REASONING_BADGE_TITLE) + '">' + MODEL_REASONING_BADGE_ICON + '</span>' : '') + '</span>';
+      }
 
       function projectUrl(slug, sub) {
         return '/projects/' + encodeURIComponent(slug) + (sub ? '/' + sub : '');
@@ -114,6 +130,27 @@
         return Math.floor(diff / 86400) + 'd ago';
       }
 
+      function flattenRunsPayload(data) {
+        const runs = [];
+        const tasks = data && data.tasks && typeof data.tasks === 'object' ? data.tasks : {};
+        Object.values(tasks).forEach(models => {
+          Object.values(models || {}).forEach(runList => {
+            (runList || []).forEach(run => {
+              if (run) runs.push(run);
+            });
+          });
+        });
+        runs.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+        return runs;
+      }
+
+      function getPrimaryMetricScore(run) {
+        if (!run || !run.metric_averages || typeof run.metric_averages !== 'object') return null;
+        const metricNames = Array.isArray(run.metrics) ? run.metrics : Object.keys(run.metric_averages || {});
+        const firstMetric = metricNames.find(name => run.metric_averages[name] != null);
+        return firstMetric ? run.metric_averages[firstMetric] : null;
+      }
+
       async function load() {
         // Wait for shell
         if (window.QymShell && !window.__QYM_USER__) {
@@ -123,6 +160,13 @@
         const ctx = window.QymShell ? window.QymShell.getPageContext() : {};
         const project = window.QymShell ? window.QymShell.getProject() : null;
         const slug = ctx.projectSlug || (project && project.slug) || '';
+
+        if (project && project.name) {
+          document.getElementById('overview-title').textContent = project.name;
+        }
+        if (project && project.description) {
+          document.getElementById('overview-subtitle').textContent = project.description;
+        }
 
         if (slug) {
           document.getElementById('view-all-runs').href = projectUrl(slug);
@@ -135,20 +179,16 @@
           const res = await fetch(apiUrl(runsUrl));
           if (!res.ok) throw new Error('Failed');
           const data = await res.json();
-          const runs = data.runs || [];
-          const totalRuns = data.total || runs.length;
+          const runs = flattenRunsPayload(data);
+          const totalRuns = data.total_count != null ? data.total_count : runs.length;
 
           // Stats
           document.getElementById('ov-runs').textContent = totalRuns;
-          const models = new Set(runs.map(r => r.model).filter(Boolean));
+          const models = new Set(runs.map(r => r.model_name).filter(Boolean));
           document.getElementById('ov-models').textContent = models.size || '—';
 
           // Avg success
-          const scores = runs.map(r => {
-            const m = r.metrics || {};
-            const firstMetric = Object.keys(m)[0];
-            return firstMetric && m[firstMetric] && m[firstMetric].avg != null ? m[firstMetric].avg : null;
-          }).filter(v => v !== null);
+          const scores = runs.map(getPrimaryMetricScore).filter(v => v !== null);
           if (scores.length) {
             const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
             document.getElementById('ov-success').textContent = (avg * 100).toFixed(1) + '%';
@@ -164,18 +204,17 @@
             tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No runs yet</td></tr>';
           } else {
             tbody.innerHTML = runs.slice(0, 5).map(r => {
-              const name = (r.run_config && r.run_config.run_name) || r.id.slice(0, 8);
-              const model = r.model || '—';
-              const m = r.metrics || {};
-              const firstMetric = Object.keys(m)[0];
-              const score = firstMetric && m[firstMetric] && m[firstMetric].avg != null ? (m[firstMetric].avg * 100).toFixed(0) + '%' : '—';
-              const scoreColor = firstMetric && m[firstMetric] && m[firstMetric].avg >= 0.75 ? 'var(--success)' : 'var(--warning)';
-              const runUrl = slug ? projectUrl(slug, 'runs/' + r.id) : '/run/' + r.id;
+              const name = r.run_name || r.external_run_id || (r.run_id || '').slice(0, 8) || '—';
+              const model = r.model_name || '—';
+              const scoreValue = getPrimaryMetricScore(r);
+              const score = scoreValue != null ? (scoreValue * 100).toFixed(0) + '%' : '—';
+              const scoreColor = scoreValue != null && scoreValue >= 0.75 ? 'var(--success)' : 'var(--warning)';
+              const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : '/run/' + r.run_id;
               return '<tr>'
                 + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
-                + '<td style="font-family:var(--font-mono);font-size:11px">' + esc(model) + '</td>'
+                + '<td style="font-family:var(--font-mono);font-size:11px">' + renderModelLabel(model, hasReasoningTraceStats(r.trace_stats)) + '</td>'
                 + '<td><span class="score-bar" style="width:' + (score !== '—' ? score : '0%') + ';background:' + scoreColor + '"></span>' + esc(score) + '</td>'
-                + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.created_at) + '</td>'
+                + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.timestamp) + '</td>'
                 + '</tr>';
             }).join('');
           }
@@ -218,7 +257,9 @@
         }
       }
 
-      load();
+      load().catch(err => {
+        document.querySelector('main').innerHTML = `<div class="empty-state">${esc(err.message || 'Failed to load')}</div>`;
+      });
     })();
   </script>
 </body>

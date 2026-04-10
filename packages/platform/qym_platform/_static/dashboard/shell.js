@@ -184,6 +184,91 @@
     if (userPopover) userPopover.classList.remove('open');
   }
 
+  function projectExists(projectSlug) {
+    if (!projectSlug) return false;
+    var projects = _user && Array.isArray(_user.projects) ? _user.projects : _projects;
+    return projects.some(function (project) {
+      return project && project.slug === projectSlug;
+    });
+  }
+
+  function updateCurrentProjectForRoute() {
+    var sidebar = document.getElementById('qym-sidebar');
+    if (_routeCtx && _routeCtx.projectSlug && _user && Array.isArray(_user.projects)) {
+      _currentProject = _user.projects.find(function (project) {
+        return project && project.slug === _routeCtx.projectSlug;
+      }) || null;
+    } else {
+      _currentProject = null;
+    }
+
+    if (sidebar) {
+      if (_currentProject) {
+        sidebar.classList.remove('no-project');
+        rebuildNavHrefs();
+      } else {
+        sidebar.classList.add('no-project');
+      }
+    }
+
+    var triggerText = document.querySelector('.project-trigger-text');
+    if (triggerText && _currentProject) triggerText.textContent = _currentProject.name;
+  }
+
+  function renderProjectNotFound(projectSlug) {
+    var content = document.getElementById('shell-content') || document.querySelector('main');
+    if (!content) return;
+    closeShellPopovers();
+    updateCurrentProjectForRoute();
+    setTopbarStats([]);
+    renderBreadcrumbs([{ label: 'Project Not Found', current: true }]);
+    content.innerHTML = ''
+      + '<div style="max-width:640px;margin:56px auto;padding:0 20px;">'
+      +   '<div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px;padding:28px 24px;">'
+      +     '<div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>'
+      +     '<h1 style="margin:0 0 10px 0;font-size:28px;line-height:1.2;color:var(--text-primary);">Project not found</h1>'
+      +     '<p style="margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>'
+      +     (projectSlug
+              ? '<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">Slug: ' + esc(projectSlug) + '</div>'
+              : '')
+      +     '<div style="margin-top:20px;"><a href="' + getAppRootPath() + '" class="shell-btn shell-btn-primary" style="display:inline-flex;text-decoration:none;">Back to Projects</a></div>'
+      +   '</div>'
+      + '</div>';
+  }
+
+  function syncProjects(projects) {
+    var nextProjects = Array.isArray(projects) ? projects.slice() : [];
+    if (_user) _user.projects = nextProjects;
+    _projects = nextProjects;
+    window.__QYM_USER__ = _user;
+    updateCurrentProjectForRoute();
+    renderProjectList();
+  }
+
+  function upsertProject(project) {
+    if (!project) return;
+    var nextProjects = (_user && Array.isArray(_user.projects) ? _user.projects : _projects).slice();
+    var idx = nextProjects.findIndex(function (item) {
+      if (!item) return false;
+      if (project.id && item.id === project.id) return true;
+      return !!(project.slug && item.slug === project.slug);
+    });
+    if (idx >= 0) nextProjects[idx] = project;
+    else nextProjects.push(project);
+    syncProjects(nextProjects);
+  }
+
+  function removeProject(projectRef) {
+    if (!projectRef) return;
+    var nextProjects = (_user && Array.isArray(_user.projects) ? _user.projects : _projects).filter(function (item) {
+      if (!item) return false;
+      if (projectRef.id && item.id === projectRef.id) return false;
+      if (projectRef.slug && item.slug === projectRef.slug) return false;
+      return true;
+    });
+    syncProjects(nextProjects);
+  }
+
   function setNavigationPending(isPending) {
     var content = document.getElementById('shell-content');
     if (content) content.classList.toggle('is-navigating', !!isPending);
@@ -613,8 +698,7 @@
         if (!res.ok) throw new Error(data.detail || 'Failed to create project');
         closeDialog();
         // Refresh projects list and navigate to the new project
-        if (_user) _user.projects = (_user.projects || []).concat([data]);
-        _projects = _user.projects || [];
+        upsertProject(data);
         navigateTo(projectUrl(data.slug));
       } catch (err) {
         errorEl.textContent = err.message || 'Failed to create project';
@@ -627,6 +711,115 @@
     nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
     slugInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
     descInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  }
+
+  function openConfirmDialog(options) {
+    options = options || {};
+
+    var existing = document.getElementById('shell-confirm-dialog');
+    if (existing) existing.remove();
+
+    return new Promise(function (resolve) {
+      var descriptions = Array.isArray(options.description) ? options.description : [options.description];
+      descriptions = descriptions.filter(function (line) { return !!line; });
+      var requiredText = options.requireText || '';
+      var needsInput = !!requiredText;
+
+      var dialog = document.createElement('div');
+      dialog.id = 'shell-confirm-dialog';
+      dialog.className = 'shell-modal-backdrop';
+      dialog.innerHTML = ''
+        + '<div class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="shell-confirm-title">'
+        +   '<div class="shell-modal-header">'
+        +     '<div class="shell-modal-title" id="shell-confirm-title">' + esc(options.title || 'Confirm Action') + '</div>'
+        +     '<button class="shell-modal-close" type="button" aria-label="Close">&times;</button>'
+        +   '</div>'
+        +   '<div class="shell-modal-body">'
+        +     descriptions.map(function (line) {
+                return '<p class="shell-modal-description">' + esc(line) + '</p>';
+              }).join('')
+        +     (options.note ? '<div class="shell-modal-note">' + esc(options.note) + '</div>' : '')
+        +     (needsInput
+                ? '<div class="shell-form-group" style="margin-top:var(--space-md)">'
+                  + '<label class="shell-form-label">' + esc(options.inputLabel || 'Type to Confirm') + '</label>'
+                  + '<input class="shell-form-input" id="shell-confirm-input" type="text" placeholder="' + esc(options.inputPlaceholder || '') + '" autocomplete="off" />'
+                  + '</div>'
+                : '')
+        +     '<div class="shell-form-error" id="shell-confirm-error"></div>'
+        +   '</div>'
+        +   '<div class="shell-modal-footer">'
+        +     '<button class="shell-btn shell-btn-secondary" id="shell-confirm-cancel" type="button">' + esc(options.cancelLabel || 'Cancel') + '</button>'
+        +     '<button class="shell-btn ' + (options.confirmClass || 'shell-btn-primary') + '" id="shell-confirm-submit" type="button">' + esc(options.confirmLabel || 'Confirm') + '</button>'
+        +   '</div>'
+        + '</div>';
+      document.body.appendChild(dialog);
+
+      var closeBtn = dialog.querySelector('.shell-modal-close');
+      var cancelBtn = document.getElementById('shell-confirm-cancel');
+      var confirmBtn = document.getElementById('shell-confirm-submit');
+      var input = document.getElementById('shell-confirm-input');
+      var errorEl = document.getElementById('shell-confirm-error');
+
+      function currentValue() {
+        return input ? input.value.trim() : '';
+      }
+
+      function isValid() {
+        return !needsInput || currentValue() === requiredText;
+      }
+
+      function refreshState() {
+        if (confirmBtn) confirmBtn.disabled = needsInput && !isValid();
+        if (errorEl && isValid()) errorEl.textContent = '';
+      }
+
+      function cleanup() {
+        document.removeEventListener('keydown', onKeyDown);
+      }
+
+      function close(result) {
+        cleanup();
+        dialog.remove();
+        resolve(result);
+      }
+
+      function onKeyDown(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          close({ confirmed: false, value: null });
+          return;
+        }
+        if (e.key === 'Enter' && (!input || document.activeElement === input)) {
+          e.preventDefault();
+          submit();
+        }
+      }
+
+      function submit() {
+        if (!isValid()) {
+          if (errorEl) errorEl.textContent = options.mismatchMessage || 'Confirmation text does not match.';
+          if (input) input.focus();
+          refreshState();
+          return;
+        }
+        close({ confirmed: true, value: currentValue() });
+      }
+
+      if (closeBtn) closeBtn.addEventListener('click', function () { close({ confirmed: false, value: null }); });
+      if (cancelBtn) cancelBtn.addEventListener('click', function () { close({ confirmed: false, value: null }); });
+      if (confirmBtn) confirmBtn.addEventListener('click', submit);
+      if (input) {
+        input.addEventListener('input', refreshState);
+        setTimeout(function () { input.focus(); }, 50);
+      } else {
+        setTimeout(function () { confirmBtn && confirmBtn.focus(); }, 50);
+      }
+      dialog.addEventListener('click', function (e) {
+        if (e.target === dialog) close({ confirmed: false, value: null });
+      });
+      document.addEventListener('keydown', onKeyDown);
+      refreshState();
+    });
   }
 
   function bindEvents() {
@@ -820,17 +1013,11 @@
 
     _routeCtx = parseRoute();
     setActiveNav(_routeCtx.page);
+    updateCurrentProjectForRoute();
 
-    var sidebar = document.getElementById('qym-sidebar');
-    if (_routeCtx.projectSlug && _user && _user.projects) {
-      _currentProject = _user.projects.find(function (p) { return p.slug === _routeCtx.projectSlug; }) || null;
-      if (sidebar) {
-        sidebar.classList.remove('no-project');
-        rebuildNavHrefs();
-      }
-    } else {
-      _currentProject = null;
-      if (sidebar) sidebar.classList.add('no-project');
+    if (_routeCtx.projectSlug && _user && !projectExists(_routeCtx.projectSlug)) {
+      renderProjectNotFound(_routeCtx.projectSlug);
+      return;
     }
 
     renderBreadcrumbs(computeBreadcrumbs(_routeCtx));
@@ -1026,20 +1213,14 @@
       window.__QYM_USER__ = _user;
       populateUser(_user);
 
-      // Resolve current project from user's projects list
-      if (_routeCtx.projectSlug && _user.projects) {
-        _currentProject = _user.projects.find(function (p) { return p.slug === _routeCtx.projectSlug; }) || null;
-        if (_currentProject) {
-          // Update project trigger text
-          var triggerText = document.querySelector('.project-trigger-text');
-          if (triggerText) triggerText.textContent = _currentProject.name;
-          // Update breadcrumbs with project name
-          renderBreadcrumbs(computeBreadcrumbs(_routeCtx));
-        }
-      }
-
       // Fetch all projects for the switcher
       _projects = _user.projects || [];
+      updateCurrentProjectForRoute();
+      if (_routeCtx.projectSlug && !projectExists(_routeCtx.projectSlug)) {
+        renderProjectNotFound(_routeCtx.projectSlug);
+        return;
+      }
+      renderBreadcrumbs(computeBreadcrumbs(_routeCtx));
       renderProjectList();
 
     } catch (e) {
@@ -1067,6 +1248,11 @@
     apiUrl: apiUrl,
     navigateTo: navigateTo,
     openCreateProjectDialog: openCreateProjectDialog,
+    openConfirmDialog: openConfirmDialog,
+    upsertProject: upsertProject,
+    removeProject: removeProject,
+    projectExists: projectExists,
+    renderProjectNotFound: renderProjectNotFound,
   };
 
   // Auto-init on DOMContentLoaded

@@ -129,6 +129,10 @@
       modelRunSelections: {},  // model_name -> [run_file_paths] (custom selection)
       modelStats: {},          // model_name -> computed stats
       visibleTraceMetrics: [],
+      requestKey: '',
+      inFlightRequestKey: '',
+      inFlightRequestPromise: null,
+      renderToken: 0,
     },
     runsFetchMeta: {
       totalCount: 0,
@@ -224,7 +228,7 @@
         candidate
         && candidate.file_path !== run.file_path
         && candidate.task_name === run.task_name
-        && candidate.model_name === run.model_name
+        && getRunModelKey(candidate) === getRunModelKey(run)
         && candidate.dataset_name === run.dataset_name
       )
       .map(candidate => valueGetter(candidate))
@@ -256,6 +260,98 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
+  const MODEL_REASONING_BADGE_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 18h6" />
+      <path d="M10 21h4" />
+      <path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" />
+    </svg>
+  `;
+
+  function hasReasoningTraceStats(traceStats) {
+    if (!traceStats || typeof traceStats !== 'object') return false;
+    return !!(
+      traceStats.has_reasoning
+      || traceStats.has_reasoning_tokens
+      || Number(traceStats.reasoning_tokens || 0) > 0
+      || Number(traceStats.avg_reasoning_tokens || 0) > 0
+    );
+  }
+
+  function runHasReasoning(run) {
+    return hasReasoningTraceStats(run?.trace_stats);
+  }
+
+  function getModelVariantKey(modelName, hasReasoning) {
+    return `${String(modelName || '')}|||${hasReasoning ? 'reasoning' : 'plain'}`;
+  }
+
+  function parseModelVariantKey(modelValue) {
+    const raw = String(modelValue || '');
+    const marker = '|||';
+    const idx = raw.lastIndexOf(marker);
+    if (idx < 0) {
+      return { rawModelName: raw, hasReasoning: null, isVariantKey: false };
+    }
+    const suffix = raw.slice(idx + marker.length);
+    if (suffix !== 'reasoning' && suffix !== 'plain') {
+      return { rawModelName: raw, hasReasoning: null, isVariantKey: false };
+    }
+    return {
+      rawModelName: raw.slice(0, idx),
+      hasReasoning: suffix === 'reasoning',
+      isVariantKey: true,
+    };
+  }
+
+  function getRunModelKey(run) {
+    if (!run) return getModelVariantKey('', false);
+    return run.model_key || getModelVariantKey(run.raw_model_name || run.model_name || '', !!run.model_has_reasoning || runHasReasoning(run));
+  }
+
+  function getModelFilterOptionLabel(value) {
+    return stripModelProvider(parseModelVariantKey(value).rawModelName || value || '');
+  }
+
+  function compareModelVariantKeys(a, b) {
+    const parsedA = parseModelVariantKey(a);
+    const parsedB = parseModelVariantKey(b);
+    const labelCmp = stripModelProvider(parsedA.rawModelName || '').localeCompare(stripModelProvider(parsedB.rawModelName || ''));
+    if (labelCmp !== 0) return labelCmp;
+    if (!!parsedA.hasReasoning === !!parsedB.hasReasoning) return 0;
+    return parsedA.hasReasoning ? 1 : -1;
+  }
+
+  function modelHasReasoning(modelName, runs = null) {
+    const sourceRuns = Array.isArray(runs) ? runs : state.flatRuns;
+    return Array.isArray(sourceRuns) && sourceRuns.some(run =>
+      run && getRunModelKey(run) === modelName && runHasReasoning(run)
+    );
+  }
+
+  function renderModelReasoningBadge() {
+    return `<span class="model-reasoning-badge" title="${escapeHtml(MODEL_REASONING_BADGE_TITLE)}" aria-label="${escapeHtml(MODEL_REASONING_BADGE_TITLE)}">${MODEL_REASONING_BADGE_ICON}</span>`;
+  }
+
+  function renderModelLabel(displayLabel, hasReasoning) {
+    const label = displayLabel || '—';
+    return `<span class="model-label"><span class="model-label-text">${escapeHtml(label)}</span>${hasReasoning ? renderModelReasoningBadge() : ''}</span>`;
+  }
+
+  function renderModelLabelForRun(run, rawModelName = null) {
+    const modelName = rawModelName == null ? (run?.raw_model_name || run?.model_name) : rawModelName;
+    const hasReasoning = run?.model_has_reasoning != null ? !!run.model_has_reasoning : runHasReasoning(run);
+    return renderModelLabel(stripModelProvider(modelName || ''), hasReasoning);
+  }
+
+  function renderModelLabelForModelName(modelName, runs = null) {
+    const parsed = parseModelVariantKey(modelName);
+    const rawModelName = parsed.rawModelName || modelName || '';
+    const hasReasoning = parsed.isVariantKey ? !!parsed.hasReasoning : modelHasReasoning(modelName, runs);
+    return renderModelLabel(stripModelProvider(rawModelName), hasReasoning);
   }
 
   function clampChartFirstColWidth(width) {
@@ -481,7 +577,7 @@
   // GENERIC MULTI-SELECT BUILDER
   // ═══════════════════════════════════════════════════
 
-  function buildMultiSelect({ btnId, dropdownId, stateSet, values, labelFn, defaultLabel, showSearch, searchPlaceholder, colorFn, onchange }) {
+  function buildMultiSelect({ btnId, dropdownId, stateSet, values, labelFn, htmlLabelFn, defaultLabel, showSearch, searchPlaceholder, colorFn, onchange }) {
     const btn = el(btnId);
     const dropdown = el(dropdownId);
     if (!btn || !dropdown) return;
@@ -499,7 +595,8 @@
       const colorDot = color ? `<span class="model-color" style="background:${color}"></span>` : '';
       const emptyClass = v === EMPTY_FILTER_VALUE ? ' is-empty-option' : '';
       const hidden = showSearch && searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-      return `<div class="multi-select-option${emptyClass}" data-value="${escapeHtml(v)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" ${checked} /><span>${escapeHtml(label)}</span></div>`;
+      const labelHtml = htmlLabelFn ? htmlLabelFn(v, label) : escapeHtml(label);
+      return `<div class="multi-select-option${emptyClass}" data-value="${escapeHtml(v)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" ${checked} /><span>${labelHtml}</span></div>`;
     }).join('');
     dropdown.innerHTML = html;
 
@@ -557,16 +654,16 @@
         }
         // Normalize: if all selected, clear to "show all"
         if (!stateSet.has('__none__') && stateSet.size >= values.length) stateSet.clear();
-        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
+        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
         if (onchange) onchange();
         render();
       });
     });
 
-    syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
+    syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
   }
 
-  function syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn }) {
+  function syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn }) {
     const btn = el(btnId);
     const dropdown = el(dropdownId);
 
@@ -579,7 +676,13 @@
         btn.textContent = 'None';
         btn.classList.add('has-selection');
       } else if (stateSet.size === 1) {
-        btn.textContent = getFilterOptionLabel([...stateSet][0], labelFn);
+        if (htmlLabelFn) {
+          const value = [...stateSet][0];
+          const label = getFilterOptionLabel(value, labelFn);
+          btn.innerHTML = htmlLabelFn(value, label);
+        } else {
+          btn.textContent = getFilterOptionLabel([...stateSet][0], labelFn);
+        }
         btn.classList.add('has-selection');
       } else {
         btn.textContent = `${stateSet.size} selected`;
@@ -1067,6 +1170,9 @@
             ...run,
             task_name: taskName,
             model_name: run.model_name || modelName,
+            raw_model_name: run.model_name || modelName,
+            model_has_reasoning: hasReasoningTraceStats(run.trace_stats),
+            model_key: getModelVariantKey(run.model_name || modelName, hasReasoningTraceStats(run.trace_stats)),
             // Some views/filters rely on this precomputed display value.
             display_model: stripModelProvider(run.model_name || modelName || ''),
             completion_rate: completionRate,
@@ -1097,7 +1203,7 @@
     const agg = {
       totalRuns: runs.length,
       totalTasks: new Set(runs.map(r => r.task_name)).size,
-      totalModels: new Set(runs.map(r => r.model_name)).size,
+      totalModels: new Set(runs.map(r => getRunModelKey(r))).size,
       totalItems: runs.reduce((sum, r) => sum + (r.total_items || 0), 0),
       avgSuccess: runs.length ? runs.reduce((sum, r) => sum + (r.success_rate || 0), 0) / runs.length : 0,
       byModel: {},
@@ -1107,7 +1213,7 @@
 
     // Aggregate by model
     for (const run of runs) {
-      const model = run.model_name;
+      const model = getRunModelKey(run);
       if (!agg.byModel[model]) {
         agg.byModel[model] = { runs: 0, items: 0, successSum: 0 };
       }
@@ -1170,7 +1276,7 @@
         };
       }
 
-      const model = run.model_name;
+      const model = getRunModelKey(run);
       allModels.add(model);
 
       // Track metrics for this combo
@@ -1207,6 +1313,8 @@
         total_items: run.total_items,
         git_branch: run.git_branch || '',
         git_commit: run.git_commit || '',
+        raw_model_name: run.raw_model_name || run.model_name || modelName,
+        model_has_reasoning: run.model_has_reasoning != null ? !!run.model_has_reasoning : runHasReasoning(run),
       });
 
       combos[key].models[model].runs++;
@@ -1262,7 +1370,10 @@
         modelFreq[model] = (modelFreq[model] || 0) + combo.models[model].runs;
       }
     }
-    const sortedModels = Object.keys(modelFreq).sort((a, b) => modelFreq[b] - modelFreq[a]);
+    const sortedModels = Object.keys(modelFreq).sort((a, b) => {
+      const freqCmp = modelFreq[b] - modelFreq[a];
+      return freqCmp !== 0 ? freqCmp : compareModelVariantKeys(a, b);
+    });
 
     // Group combos by task for dataset-tab cards
     const taskGroupsMap = {};
@@ -1308,7 +1419,7 @@
       if (state.filterModels.has('__none__')) {
         runs = [];
       } else {
-        runs = runs.filter(r => matchesFilterSelection(state.filterModels, r.model_name));
+        runs = runs.filter(r => matchesFilterSelection(state.filterModels, getRunModelKey(r)));
       }
     }
     if (state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
@@ -1371,10 +1482,10 @@
         runs.sort((a, b) => b.task_name.localeCompare(a.task_name));
         break;
       case 'model-asc':
-        runs.sort((a, b) => a.model_name.localeCompare(b.model_name));
+        runs.sort((a, b) => compareModelVariantKeys(getRunModelKey(a), getRunModelKey(b)));
         break;
       case 'model-desc':
-        runs.sort((a, b) => b.model_name.localeCompare(a.model_name));
+        runs.sort((a, b) => compareModelVariantKeys(getRunModelKey(b), getRunModelKey(a)));
         break;
       case 'dataset-asc':
         runs.sort((a, b) => a.dataset_name.localeCompare(b.dataset_name));
@@ -1559,9 +1670,9 @@
     legendEl.innerHTML = state.allModels.map((model, idx) => {
       const isActive = state.filterModels.size === 0 || state.filterModels.has(model);
       return `
-        <div class="legend-item ${isActive ? '' : 'inactive'}" data-model="${model}" title="${model}">
+        <div class="legend-item ${isActive ? '' : 'inactive'}" data-model="${model}" title="${getModelFilterOptionLabel(model)}">
           <span class="legend-color" style="background:${CHART_COLORS[idx % CHART_COLORS.length]}"></span>
-          <span>${stripModelProvider(model)}</span>
+          ${renderModelLabelForModelName(model)}
         </div>
       `;
     }).join('');
@@ -1840,9 +1951,9 @@
         const { model, run_id, file_path, timestamp, metric_averages, latency, isMultiRun } = runData;
         const modelIdx = state.allModels.indexOf(model) % CHART_COLORS.length;
         const dt = formatDate(timestamp);
-        const displayModel = stripModelProvider(model);
+        const displayModel = renderModelLabelForModelName(model);
         const hoverRunName = runData.run_name || 'none';
-        let displayHtml = `<span class="model-name-text">${displayModel}</span>`;
+        let displayHtml = `${displayModel}`;
         const tsMatch = run_id.match(/-(\d{2})(\d{2})(\d{2})-(\d{2})(\d{2})(?:-(\d+))?$/);
         if (tsMatch) {
           const [, yy, mm, dd, hh, min, counter] = tsMatch;
@@ -1851,9 +1962,9 @@
           const day = parseInt(dd, 10);
           const timeStr = `${hh}:${min}`;
           const counterStr = counter ? ` #${counter}` : '';
-          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${monthName} ${day} \u00b7 ${timeStr}${counterStr}</span>`;
+          displayHtml = `${displayModel}<span class="run-timestamp">${monthName} ${day} \u00b7 ${timeStr}${counterStr}</span>`;
         } else {
-          displayHtml = `<span class="model-name-text">${displayModel}</span><span class="run-timestamp">${dt.date} \u00b7 ${dt.time}</span>`;
+          displayHtml = `${displayModel}<span class="run-timestamp">${dt.date} \u00b7 ${dt.time}</span>`;
         }
         const versionStr = runData.git_commit ? (runData.git_branch ? `${runData.git_branch}/${runData.git_commit}` : runData.git_commit) : '';
         const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
@@ -2005,7 +2116,13 @@
         const sortedGroups = Object.entries(groups).map(([model, runs]) => {
           const agg = computeGroupAgg(runs);
           runs.sort(sortByState);
-          return { model, label: stripModelProvider(model), sortModel: stripModelProvider(model), runs, agg };
+          return {
+            model,
+            label: renderModelLabelForModelName(model),
+            sortModel: stripModelProvider(parseModelVariantKey(model).rawModelName || model),
+            runs,
+            agg,
+          };
         });
         sortedGroups.sort((a, b) => {
           return compareChartSortValues(
@@ -2583,8 +2700,8 @@
           </td>
           <td class="col-model">
             <span class="tag model" title="${run.model_name}">
-              <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(run.model_name) % CHART_COLORS.length]}"></span>
-              ${stripModelProvider(run.model_name)}
+              <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(getRunModelKey(run)) % CHART_COLORS.length]}"></span>
+              ${renderModelLabelForRun(run)}
             </span>
           </td>
           <td class="col-dataset">
@@ -2856,7 +2973,7 @@
           </div>
           <div class="grid-card-meta">
             <span class="tag task">${run.task_name}</span>
-            <span class="tag model" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
+            <span class="tag model" title="${run.model_name}">${renderModelLabelForRun(run)}</span>
         </div>
           <div class="grid-card-bar">
             <div class="segment success" style="width:${successPct}%"></div>
@@ -2916,7 +3033,7 @@
                   <span class="timeline-time">${dt.time}</span>
                   <div class="timeline-info">
                     <span class="tag task">${run.task_name}</span>
-                    <span class="tag model" title="${run.model_name}">${stripModelProvider(run.model_name)}</span>
+                    <span class="tag model" title="${run.model_name}">${renderModelLabelForRun(run)}</span>
                     <span style="color:var(--text-muted);font-size:11px;">${run.total_items} items</span>
                   </div>
                   <span class="timeline-success ${successClass}">${formatPercent(run.success_rate)}</span>
@@ -3229,7 +3346,7 @@
       if (!matchesFilterSelection(new Set([selectedDataset]), r.dataset_name)) return false;
       // #14: Apply global model filter to Models View
       if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
-        if (!matchesFilterSelection(state.filterModels, r.model_name)) return false;
+        if (!matchesFilterSelection(state.filterModels, getRunModelKey(r))) return false;
       }
       if (state.filterModels.has('__none__')) return false;
       return true;
@@ -3245,10 +3362,11 @@
     // Group runs by model
     const runsByModel = {};
     for (const run of matchingRuns) {
-      if (!runsByModel[run.model_name]) {
-        runsByModel[run.model_name] = [];
+      const modelKey = getRunModelKey(run);
+      if (!runsByModel[modelKey]) {
+        runsByModel[modelKey] = [];
       }
-      runsByModel[run.model_name].push(run);
+      runsByModel[modelKey].push(run);
     }
 
     // Sort runs within each model by date (newest first)
@@ -3277,28 +3395,74 @@
     detectModelsViewMetricType(matchingRuns, mvs.selectedMetric);
     populateModelsStatVisibility(matchingRuns);
 
-    // Show loading state
-    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading"><img src="./static/qym_icon.png" alt="" class="loading-icon" /><span>Loading run data...</span></div>';
-
-    // Fetch item-level data for each model and calculate stats
-    mvs.modelStats = {};
-    const traceSourceRuns = [];
-    for (const model of Object.keys(runsByModel)) {
+    const models = Object.keys(runsByModel);
+    const modelSelections = models.map((model) => {
       const selectedPaths = selectedRunsByModel[model];
       const selectedRuns = runsByModel[model].filter(r => selectedPaths.includes(r.file_path));
-      traceSourceRuns.push(...selectedRuns);
+      return { model, selectedPaths, selectedRuns };
+    });
+    const traceSourceRuns = modelSelections.flatMap(({ selectedRuns }) => selectedRuns);
+    const requestKey = [
+      selectedTask,
+      selectedDataset,
+      mvs.selectedMetric,
+      String(mvs.threshold),
+      String(mvs.metricIsBoolean),
+      String(globalK),
+      ...modelSelections
+        .map(({ model, selectedPaths }) => `${model}:${selectedPaths.slice().sort().join(',')}`)
+        .sort(),
+    ].join('||');
 
-      // Fetch detailed data for this model's runs
-      const detailedData = await fetchModelRunsData(selectedPaths);
+    mvs.visibleTraceMetrics = _traceMetricsForRuns(traceSourceRuns);
+    populateModelsStatVisibility(traceSourceRuns);
 
+    if (mvs.requestKey === requestKey && Object.keys(mvs.modelStats || {}).length > 0) {
+      renderModelCards(runsByModel, globalK);
+      renderModelsRanking();
+      return;
+    }
+
+    // Show loading state only when the Models payload actually needs to change.
+    if (modelsGrid) modelsGrid.innerHTML = '<div class="models-loading"><img src="/static/qym_icon.png" alt="" class="loading-icon" /><span>Loading run data...</span></div>';
+
+    const renderToken = (mvs.renderToken || 0) + 1;
+    mvs.renderToken = renderToken;
+
+    let combinedRunsPromise = null;
+    if (mvs.inFlightRequestKey === requestKey && mvs.inFlightRequestPromise) {
+      combinedRunsPromise = mvs.inFlightRequestPromise;
+    } else {
+      const allSelectedPaths = Array.from(new Set(modelSelections.flatMap(({ selectedPaths }) => selectedPaths)));
+      combinedRunsPromise = fetchModelRunsData(allSelectedPaths);
+      mvs.inFlightRequestKey = requestKey;
+      mvs.inFlightRequestPromise = combinedRunsPromise;
+    }
+
+    const comparePayload = await combinedRunsPromise;
+    if (mvs.renderToken !== renderToken) return;
+    if (mvs.inFlightRequestKey === requestKey) {
+      mvs.inFlightRequestKey = '';
+      mvs.inFlightRequestPromise = null;
+    }
+
+    const combinedRunsData = comparePayload && Array.isArray(comparePayload.runs) ? comparePayload.runs : [];
+    const runsDataById = new Map((combinedRunsData || []).map((runData) => {
+      const runInfo = runData && runData.run ? runData.run : {};
+      const runId = runInfo.file_path || runInfo.run_id || '';
+      return [runId, runData];
+    }));
+
+    mvs.modelStats = {};
+    modelSelections.forEach(({ model, selectedPaths, selectedRuns }) => {
+      const detailedData = selectedPaths.map((path) => runsDataById.get(path)).filter(Boolean);
       mvs.modelStats[model] = calculateModelStatsFromItems(detailedData, mvs.selectedMetric, mvs.threshold, mvs.metricIsBoolean);
       mvs.modelStats[model].traceAverages = calculateModelTraceStats(selectedRuns);
       mvs.modelStats[model].totalAvailable = runsByModel[model].length;
       mvs.modelStats[model].selectedCount = selectedRuns.length;
       mvs.modelStats[model].selectedPaths = selectedPaths;
-    }
-    mvs.visibleTraceMetrics = _traceMetricsForRuns(traceSourceRuns);
-    populateModelsStatVisibility(traceSourceRuns);
+    });
+    mvs.requestKey = requestKey;
 
     // Render model cards
     renderModelCards(runsByModel, globalK);
@@ -3360,28 +3524,28 @@
     }
   }
 
-  // Cache for fetched run data to avoid re-fetching
+  // Cache for fetched Models run data to avoid re-fetching
   const modelsRunDataCache = {};
 
   async function fetchModelRunsData(filePaths) {
-    if (filePaths.length === 0) return [];
+    if (filePaths.length === 0) return { runs: [], cacheHit: true };
 
     // Check cache first
     const cacheKey = filePaths.sort().join('|');
     if (modelsRunDataCache[cacheKey]) {
-      return modelsRunDataCache[cacheKey];
+      return { runs: modelsRunDataCache[cacheKey], cacheHit: true };
     }
 
     try {
       const params = filePaths.map(f => `files=${encodeURIComponent(f)}`).join('&');
-      const response = await fetch(apiUrl(`api/compare?${params}`));
+      const response = await fetch(apiUrl(`api/models/runs?${params}`));
       if (!response.ok) throw new Error('Failed to fetch run data');
       const data = await response.json();
       modelsRunDataCache[cacheKey] = data.runs || [];
-      return data.runs || [];
+      return { runs: data.runs || [], cacheHit: false };
     } catch (error) {
       console.error('Error fetching model runs data:', error);
-      return [];
+      return { runs: [], cacheHit: false };
     }
   }
 
@@ -3616,9 +3780,9 @@
       return `
         <div class="model-card" data-model="${model}">
           <div class="model-card-header">
-            <div class="model-card-title" title="${model}">
+            <div class="model-card-title" title="${getModelFilterOptionLabel(model)}">
               <span class="model-color-dot" style="background: ${color}"></span>
-              <span class="model-name">${stripModelProvider(model)}</span>
+              ${renderModelLabelForModelName(model)}
             </div>
             <div class="model-card-runs">
               <span class="runs-count">${stats.selectedCount}/${globalK} runs</span>
@@ -3704,7 +3868,7 @@
           return `
             <div class="ranking-item">
               <span class="rank">${rank}</span>
-              <span class="model-name">${item.model}</span>
+              ${renderModelLabelForModelName(item.model)}
               <span class="score ${scoreClass}">(${display})</span>
             </div>
           `;
@@ -3725,8 +3889,8 @@
     const currentSelection = mvs.modelRunSelections[modelName] || [];
     const globalK = parseInt(mvs.globalK) || 5;
 
-    modelNameEl.textContent = stripModelProvider(modelName);
-    modelNameEl.title = modelName;
+    modelNameEl.innerHTML = renderModelLabelForModelName(modelName);
+    modelNameEl.title = getModelFilterOptionLabel(modelName);
 
     // Track selection count
     let selectionCount = 0;
@@ -4503,6 +4667,10 @@
         return;
       }
 
+      if (runsResponse.status === 404 && getProjectSlugFromPath()) {
+        throw new Error('Project not found');
+      }
+
       if (!runsResponse.ok) {
         throw new Error(`HTTP ${runsResponse.status}`);
       }
@@ -4540,6 +4708,10 @@
       }
     } catch (err) {
       console.error('Failed to fetch runs:', err);
+      if (err && err.message === 'Project not found') {
+        showProjectNotFound();
+        return;
+      }
       el('loading').innerHTML = `
         <span style="color:var(--error);">Failed to load runs</span>
         <span>Is the server running?</span>
@@ -4567,6 +4739,30 @@
         message: 'Sign in to access the evaluation dashboard',
       });
     }
+  }
+
+  function showProjectNotFound() {
+    const slug = getProjectSlugFromPath();
+    if (window.QymShell && window.QymShell.renderProjectNotFound) {
+      window.QymShell.renderProjectNotFound(slug);
+      return;
+    }
+
+    el('loading').style.display = 'none';
+    hideDashboardChrome();
+    const main = document.querySelector('main');
+    if (!main) return;
+    main.innerHTML = `
+      <div style="max-width:640px;margin:56px auto;padding:0 20px;">
+        <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px;padding:28px 24px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>
+          <h1 style="margin:0 0 10px 0;font-size:28px;line-height:1.2;color:var(--text-primary);">Project not found</h1>
+          <p style="margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>
+          ${slug ? `<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">Slug: ${escapeHtml(slug)}</div>` : ''}
+          <div style="margin-top:20px;"><a href="/" class="btn btn-primary" style="display:inline-flex;text-decoration:none;">Back to Projects</a></div>
+        </div>
+      </div>
+    `;
   }
 
   function updateProfileLink() {
@@ -4712,7 +4908,7 @@
         runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, r.dataset_name));
       }
       if (skipFilter !== 'models' && state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
-        runs = runs.filter(r => matchesFilterSelection(state.filterModels, r.model_name));
+        runs = runs.filter(r => matchesFilterSelection(state.filterModels, getRunModelKey(r)));
       }
       if (skipFilter !== 'statuses' && state.filterStatuses.size > 0 && !state.filterStatuses.has('__none__')) {
         runs = runs.filter(r => matchesFilterSelection(state.filterStatuses, r.status));
@@ -4725,11 +4921,11 @@
 
     const tasks = collectFilterValues(runsExcluding('tasks'), r => r.task_name);
     const datasets = collectFilterValues(runsExcluding('datasets'), r => r.dataset_name);
-    const models = collectFilterValues(runsExcluding('models'), r => r.model_name);
+    const models = collectFilterValues(runsExcluding('models'), r => getRunModelKey(r)).sort(compareModelVariantKeys);
     const statusValues = collectFilterValues(runsExcluding('statuses'), r => r.status);
     const versions = collectFilterValues(runsExcluding('versions'), r => r.git_commit);
 
-    state.allModels = [...new Set(state.flatRuns.map(r => r.model_name).filter(m => !isEmptyFilterValue(m)))].sort();
+    state.allModels = [...new Set(state.flatRuns.map(r => getRunModelKey(r)).filter(m => !isEmptyFilterValue(m)))].sort(compareModelVariantKeys);
 
     const branchMap = {};
     state.flatRuns.forEach(r => {
@@ -4758,7 +4954,8 @@
     buildMultiSelect({
       btnId: 'filter-model-btn', dropdownId: 'filter-model-dropdown',
       stateSet: state.filterModels, values: models,
-      labelFn: (m) => stripModelProvider(m), defaultLabel: 'All Models',
+      labelFn: (m) => getModelFilterOptionLabel(m), defaultLabel: 'All Models',
+      htmlLabelFn: (m) => renderModelLabelForModelName(m),
       showSearch: true, searchPlaceholder: 'Search models...',
       colorFn: (m, idx) => CHART_COLORS[state.allModels.indexOf(m) % CHART_COLORS.length],
     });
@@ -5112,9 +5309,15 @@
   // ═══════════════════════════════════════════════════
 
   function saveDashboardState() {
+    const {
+      inFlightRequestPromise,
+      inFlightRequestKey,
+      renderToken,
+      ...serializableModelsViewState
+    } = state.modelsViewState || {};
     const stateToSave = {
       currentView: state.currentView,
-      modelsViewState: state.modelsViewState,
+      modelsViewState: serializableModelsViewState,
       filterTasks: [...state.filterTasks],
       filterModels: [...state.filterModels],
       filterStatuses: [...state.filterStatuses],
@@ -5140,6 +5343,9 @@
         $$('.view-toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.view === state.currentView));
         if (parsed.modelsViewState) {
           const restoredModelsViewState = { ...state.modelsViewState, ...parsed.modelsViewState };
+          restoredModelsViewState.inFlightRequestKey = '';
+          restoredModelsViewState.inFlightRequestPromise = null;
+          restoredModelsViewState.renderToken = 0;
           if (restoredModelsViewState.visibleStatKeys !== null && !Array.isArray(restoredModelsViewState.visibleStatKeys)) {
             restoredModelsViewState.visibleStatKeys = null;
           }

@@ -270,6 +270,23 @@
           .replace(/'/g, '&#39;');
       }
 
+      const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
+      const MODEL_REASONING_BADGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" /></svg>';
+
+      function hasReasoningTraceStats(traceStats) {
+        if (!traceStats || typeof traceStats !== 'object') return false;
+        return !!(
+          traceStats.has_reasoning
+          || traceStats.has_reasoning_tokens
+          || Number(traceStats.reasoning_tokens || 0) > 0
+          || Number(traceStats.avg_reasoning_tokens || 0) > 0
+        );
+      }
+
+      function renderModelLabel(modelName, hasReasoning) {
+        return '<span class="model-label"><span class="model-label-text">' + escapeHtml(modelName || '—') + '</span>' + (hasReasoning ? '<span class="model-reasoning-badge" title="' + escapeHtml(MODEL_REASONING_BADGE_TITLE) + '" aria-label="' + escapeHtml(MODEL_REASONING_BADGE_TITLE) + '">' + MODEL_REASONING_BADGE_ICON + '</span>' : '') + '</span>';
+      }
+
       function getInitials(name) {
         if (!name) return '?';
         const parts = name.trim().split(/\s+/);
@@ -393,7 +410,7 @@
                         <div class="trash-run-id">${escapeHtml(run.id)}</div>
                       </td>
                       <td><span class="trash-chip" title="${escapeHtml(run.task || '')}">${escapeHtml(run.task || '—')}</span></td>
-                      <td><span class="trash-chip" title="${escapeHtml(run.model || '')}">${escapeHtml(run.model || '—')}</span></td>
+                      <td><span class="trash-chip" title="${escapeHtml(run.model || '')}">${renderModelLabel(run.model || '—', hasReasoningTraceStats(run.trace_stats))}</span></td>
                       <td><span class="trash-chip" title="${escapeHtml(run.dataset || '')}">${escapeHtml(run.dataset || '—')}</span></td>
                       <td><span class="status-badge status-${escapeHtml(run.status || 'PENDING')}">${escapeHtml(run.status || '—')}</span></td>
                       <td>

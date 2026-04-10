@@ -1385,6 +1385,13 @@
       return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
+    const MODEL_REASONING_BADGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" /></svg>';
+
+    function renderModelLabel(modelName, hasReasoning) {
+      return '<span class="model-label"><span class="model-label-text">' + escapeHtml(modelName || '—') + '</span>' + (hasReasoning ? '<span class="model-reasoning-badge" title="' + escapeHtml(MODEL_REASONING_BADGE_TITLE) + '" aria-label="' + escapeHtml(MODEL_REASONING_BADGE_TITLE) + '">' + MODEL_REASONING_BADGE_ICON + '</span>' : '') + '</span>';
+    }
+
     function parseStructuredString(val) {
       if (typeof val !== 'string') return val;
       const trimmed = val.trim();
@@ -1859,7 +1866,7 @@
             ${c.task ? `<span class="context-chip" title="${escapeHtml(c.task)}"><strong>Task</strong><span>${escapeHtml(c.task)}</span></span>` : ''}
             ${c.run_name ? `<span class="context-chip" title="${escapeHtml(c.run_name)}"><strong>Run</strong><span>${escapeHtml(c.run_name)}</span></span>` : ''}
             ${c.dataset ? `<span class="context-chip" title="${escapeHtml(c.dataset)}"><strong>Dataset</strong><span>${escapeHtml(c.dataset)}</span></span>` : ''}
-            ${c.model ? `<span class="context-chip" title="${escapeHtml(c.model)}"><strong>Model</strong><span>${escapeHtml(c.model)}</span></span>` : ''}
+            ${c.model ? `<span class="context-chip" title="${escapeHtml(c.model)}"><strong>Model</strong><span>${renderModelLabel(c.model, !!c.has_reasoning)}</span></span>` : ''}
           </div>
 
           <div class="card-body">
@@ -2382,8 +2389,15 @@
 
     /* ── Init ────────────────────────────────────── */
 
-    loadHeaderUser();
-    fetchCorrections();
+    async function init() {
+      if (window.QymShell && !window.__QYM_USER__) {
+        await new Promise((resolve) => document.addEventListener('qym:shell-ready', resolve, { once: true }));
+      }
+      await loadHeaderUser();
+      fetchCorrections();
+    }
+
+    init();
 
   })();
   </script>

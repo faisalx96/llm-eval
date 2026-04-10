@@ -760,6 +760,15 @@ def _serialize_review_fields(
     ai_root_cause = (c.ai_root_cause or "").strip()
     ai_is_unanalyzed = ai_root_cause.lower() == "unanalyzed"
     run = runs_by_id.get(c.run_id)
+    run_trace_stats = run.run_metadata.get("trace_stats") if run and isinstance(run.run_metadata, dict) else None
+    has_reasoning = bool(
+        isinstance(run_trace_stats, dict)
+        and (
+            run_trace_stats.get("has_reasoning")
+            or run_trace_stats.get("has_reasoning_tokens")
+            or (run_trace_stats.get("avg_reasoning_tokens") or 0) > 0
+        )
+    )
     return {
         "id": c.id,
         "revision_id": c.revision_id,
@@ -768,6 +777,7 @@ def _serialize_review_fields(
         "task": c.task,
         "dataset": run.dataset if run else "",
         "model": _strip_model_provider(run.model or "") if run else "",
+        "has_reasoning": has_reasoning,
         "run_name": _run_display_name(run),
         "input_snapshot": _normalize_snapshot_value(c.input_snapshot),
         "expected_snapshot": _normalize_snapshot_value(c.expected_snapshot),

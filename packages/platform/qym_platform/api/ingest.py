@@ -53,6 +53,67 @@ from qym_platform.settings import PlatformSettings
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
 
+def _extract_reasoning_signal(attrs: Dict[str, Any]) -> Dict[str, Any]:
+    """Return reasoning presence/tokens for a serialized LLM span."""
+    has_reasoning_text = False
+    reasoning_tokens = 0
+
+    for key, value in (attrs or {}).items():
+        if not value:
+            continue
+        if key.endswith(".reasoning"):
+            has_reasoning_text = True
+            break
+
+    token_candidates = [
+        attrs.get("llm.token_count.completion_details.reasoning"),
+        attrs.get("gen_ai.usage.completion_tokens_details.reasoning_tokens"),
+        attrs.get("gen_ai.usage.output_tokens_details.reasoning"),
+        attrs.get("gen_ai.usage.reasoning_tokens"),
+    ]
+    for raw_value in token_candidates:
+        if raw_value in (None, "", 0, "0"):
+            continue
+        try:
+            reasoning_tokens = max(reasoning_tokens, int(float(raw_value)))
+        except (ValueError, TypeError):
+            continue
+
+    output_value = attrs.get("output.value")
+    if isinstance(output_value, str) and output_value:
+        try:
+            parsed = json.loads(output_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            usage = parsed.get("usage")
+            if isinstance(usage, dict):
+                completion_details = usage.get("completion_tokens_details")
+                if isinstance(completion_details, dict):
+                    raw_reasoning_tokens = completion_details.get("reasoning_tokens")
+                    if raw_reasoning_tokens not in (None, "", 0, "0"):
+                        try:
+                            reasoning_tokens = max(reasoning_tokens, int(float(raw_reasoning_tokens)))
+                        except (ValueError, TypeError):
+                            pass
+            choices = parsed.get("choices")
+            if isinstance(choices, list):
+                for choice in choices:
+                    if not isinstance(choice, dict):
+                        continue
+                    message = choice.get("message")
+                    if isinstance(message, dict) and message.get("reasoning"):
+                        has_reasoning_text = True
+                        break
+
+    has_reasoning_tokens = reasoning_tokens > 0
+    return {
+        "has_reasoning": has_reasoning_text or has_reasoning_tokens,
+        "has_reasoning_tokens": has_reasoning_tokens,
+        "reasoning_tokens": reasoning_tokens,
+    }
+
+
 def _store_trace_stats(db: Session, run: Run) -> None:
     """Compute trace metrics from stored OTEL spans and persist them.
 
@@ -77,7 +138,16 @@ def _store_trace_stats(db: Session, run: Run) -> None:
 
     # Group spans by trace_id and compute per-item stats
     trace_buckets: dict[str, dict] = defaultdict(
-        lambda: {"tokens": 0, "cost": 0.0, "llm_calls": 0, "tool_calls": 0, "tool_errors": 0}
+        lambda: {
+            "tokens": 0,
+            "cost": 0.0,
+            "llm_calls": 0,
+            "tool_calls": 0,
+            "tool_errors": 0,
+            "has_reasoning": False,
+            "has_reasoning_tokens": False,
+            "reasoning_tokens": 0,
+        }
     )
     for span in spans:
         bucket = trace_buckets[span.trace_id]
@@ -101,6 +171,12 @@ def _store_trace_stats(db: Session, run: Run) -> None:
                     bucket["cost"] += float(cost)
                 except (ValueError, TypeError):
                     pass
+            reasoning_signal = _extract_reasoning_signal(attrs)
+            bucket["has_reasoning"] = bucket["has_reasoning"] or bool(reasoning_signal["has_reasoning"])
+            bucket["has_reasoning_tokens"] = (
+                bucket["has_reasoning_tokens"] or bool(reasoning_signal["has_reasoning_tokens"])
+            )
+            bucket["reasoning_tokens"] += int(reasoning_signal["reasoning_tokens"] or 0)
         elif oi_kind == "TOOL":
             bucket["tool_calls"] += 1
             if (span.status or "").upper() == "ERROR":
@@ -136,6 +212,9 @@ def _store_trace_stats(db: Session, run: Run) -> None:
         "avg_llm_calls": sum(b["llm_calls"] for b in item_buckets) / n,
         "avg_tool_calls": sum(b["tool_calls"] for b in item_buckets) / n,
         "tool_success_rate": tool_success_rate,
+        "has_reasoning": any(bool(b.get("has_reasoning")) for b in item_buckets),
+        "has_reasoning_tokens": any(bool(b.get("has_reasoning_tokens")) for b in item_buckets),
+        "avg_reasoning_tokens": sum(int(b.get("reasoning_tokens") or 0) for b in item_buckets) / n,
         "has_spans": True,
     }
     current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}

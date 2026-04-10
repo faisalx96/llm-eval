@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.api.projects import serialize_project_payloads
 from qym_platform.db.models import Project, ProjectMembership, User, UserRole
 from qym_platform.deps import get_db
 from qym_platform.openai_compat import create_chat_completion_compat
@@ -35,15 +36,7 @@ def me(
 ) -> Dict[str, Any]:
     u = principal.user
     if u.role == UserRole.ADMIN:
-        projects = [
-            {
-                "id": project.id,
-                "slug": project.slug,
-                "name": project.name,
-                "role": "MANAGER",
-            }
-            for project in db.query(Project).filter(Project.is_active == True).order_by(Project.name).all()
-        ]
+        project_models = db.query(Project).filter(Project.is_active == True).order_by(Project.name).all()
     else:
         memberships = (
             db.query(ProjectMembership, Project)
@@ -52,15 +45,8 @@ def me(
             .order_by(Project.name)
             .all()
         )
-        projects = [
-            {
-                "id": project.id,
-                "slug": project.slug,
-                "name": project.name,
-                "role": membership.role.value,
-            }
-            for membership, project in memberships
-        ]
+        project_models = [project for membership, project in memberships]
+    projects = serialize_project_payloads(db, project_models, principal)
     default_project = projects[0] if projects else None
 
     admin_exists = db.query(User.id).filter(User.role == UserRole.ADMIN, User.is_active == True).first() is not None

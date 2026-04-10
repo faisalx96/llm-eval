@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from html import escape
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -162,6 +163,57 @@ def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[Redirect
         return None
     next_value = sanitize_next(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
     return RedirectResponse(url=f"/login?next={next_value}", status_code=303)
+
+
+def _project_not_found_page(request: Request, project_slug: str) -> HTMLResponse:
+    prefix = _project_path_prefix(request, project_slug).rstrip("/")
+    static_root = f"{prefix}/static" if prefix else "/static"
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Project Not Found</title>
+  <link rel="icon" type="image/png" href="{static_root}/qym_icon.png">
+  <link rel="stylesheet" href="{static_root}/dashboard.css">
+  <link rel="stylesheet" href="{static_root}/shell.css">
+  <script src="{static_root}/auth.js"></script>
+  <script src="{static_root}/shell.js"></script>
+</head>
+<body>
+  <main style="min-height:50vh;display:flex;align-items:center;justify-content:center;padding:32px;color:var(--text-muted);">
+    <div>Loading project…</div>
+    <noscript>
+      <section style="width:min(640px,100%);background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px;padding:32px 28px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>
+        <h1 style="margin:0 0 10px 0;font-size:30px;line-height:1.15;color:var(--text-primary);">Project not found</h1>
+        <p style="margin:0;color:var(--text-secondary);font-size:14px;line-height:1.65;">The requested project "{escape(project_slug)}" does not exist, is archived, or you no longer have access to it.</p>
+      </section>
+    </noscript>
+  </main>
+</body>
+</html>"""
+    return HTMLResponse(content=html, status_code=404)
+
+
+def _guard_project_page(request: Request, db: Session, project_slug: str) -> Optional[Any]:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    try:
+        principal = require_ui_principal(
+            request=request,
+            db=db,
+            x_user_email=request.headers.get("X-User-Email"),
+            x_email=request.headers.get("X-Email"),
+            x_admin_bootstrap=request.headers.get("X-Admin-Bootstrap"),
+        )
+        _resolve_project_by_slug_for_ui(db, principal, project_slug)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return _project_not_found_page(request, project_slug)
+        raise
+    return None
 
 
 def _iso(dt: Optional[datetime]) -> str:
@@ -397,9 +449,9 @@ def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/projects/{project_slug}", response_model=None)
 def dashboard_project_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    redirect = _maybe_redirect_to_login(request, db)
-    if redirect:
-        return redirect
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     idx = _platform_static_dashboard_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Dashboard UI not found")
@@ -463,14 +515,17 @@ def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/projects/{project_slug}/reviews", response_model=None)
 def project_reviews_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     return reviews_index(request=request, db=db)
 
 
 @router.get("/projects/{project_slug}/charts", response_model=None)
 def project_charts(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    redirect = _maybe_redirect_to_login(request, db)
-    if redirect:
-        return redirect
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     idx = _platform_static_charts()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Charts UI not found")
@@ -479,9 +534,9 @@ def project_charts(project_slug: str, request: Request, db: Session = Depends(ge
 
 @router.get("/projects/{project_slug}/models", response_model=None)
 def project_models(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    redirect = _maybe_redirect_to_login(request, db)
-    if redirect:
-        return redirect
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     idx = _platform_static_models()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Models UI not found")
@@ -490,9 +545,9 @@ def project_models(project_slug: str, request: Request, db: Session = Depends(ge
 
 @router.get("/projects/{project_slug}/overview", response_model=None)
 def project_overview(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    redirect = _maybe_redirect_to_login(request, db)
-    if redirect:
-        return redirect
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     idx = _platform_static_overview()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Overview UI not found")
@@ -501,9 +556,9 @@ def project_overview(project_slug: str, request: Request, db: Session = Depends(
 
 @router.get("/projects/{project_slug}/settings", response_model=None)
 def project_settings_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    redirect = _maybe_redirect_to_login(request, db)
-    if redirect:
-        return redirect
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     idx = _platform_static_project_settings()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Project settings UI not found")
@@ -523,6 +578,9 @@ def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/projects/{project_slug}/runs/{run_id:path}", response_model=None)
 def project_run_ui(project_slug: str, run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
     return run_ui(run_id=run_id, request=request, db=db)
 
 
@@ -746,6 +804,148 @@ def legacy_list_runs(
     }
 
 
+def _parse_requested_run_ids(files: List[str]) -> list[str]:
+    run_ids: list[str] = []
+    for f in files:
+        for part in str(f).split(","):
+            p = part.strip()
+            if p:
+                run_ids.append(p)
+    return run_ids
+
+
+def _run_display_name(run: Run) -> str:
+    run_config = run.run_config if isinstance(run.run_config, dict) else {}
+    run_name = ""
+    if isinstance(run_config, dict):
+        run_name = run_config.get("run_name", "")
+    return run_name or run.external_run_id or run.id
+
+
+def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]]:
+    if not runs:
+        return []
+
+    run_ids = [run.id for run in runs]
+    metrics_by_run = {run.id: list(run.metrics or []) for run in runs}
+    runs_data: dict[str, dict[str, Any]] = {}
+    stats_by_run: dict[str, dict[str, Any]] = {}
+
+    for run in runs:
+        metrics = metrics_by_run[run.id]
+        stats = {"total": 0, "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
+        stats_by_run[run.id] = stats
+        runs_data[run.id] = {
+            "run": {
+                "run_id": run.id,
+                "file_path": run.id,
+                "run_name": _run_display_name(run),
+                "metric_names": metrics,
+                "task_name": run.task,
+                "dataset_name": run.dataset,
+                "model_name": _strip_model_provider(run.model or ""),
+            },
+            "snapshot": {
+                "rows": [],
+                "stats": stats,
+                "metric_names": metrics,
+            },
+        }
+
+    score_rows = (
+        db.query(
+            RunItemScore.run_id,
+            RunItemScore.item_id,
+            RunItemScore.metric_name,
+            RunItemScore.score_numeric,
+            RunItemScore.score_raw,
+        )
+        .filter(RunItemScore.run_id.in_(run_ids))
+        .all()
+    )
+    score_by_run_item: dict[tuple[str, str], dict[str, Any]] = {}
+    for score in score_rows:
+        value = score.score_numeric if score.score_numeric is not None else score.score_raw
+        score_by_run_item.setdefault((score.run_id, score.item_id), {})[score.metric_name] = value
+
+    item_rows = (
+        db.query(
+            RunItem.run_id,
+            RunItem.item_id,
+            RunItem.index,
+            RunItem.error,
+            RunItem.latency_ms,
+        )
+        .filter(RunItem.run_id.in_(run_ids))
+        .order_by(RunItem.run_id.asc(), RunItem.index.asc())
+        .all()
+    )
+
+    for item in item_rows:
+        run_data = runs_data.get(item.run_id)
+        if not run_data:
+            continue
+        metrics = metrics_by_run.get(item.run_id, [])
+        item_scores = score_by_run_item.get((item.run_id, item.item_id), {})
+        status = "error" if item.error else "completed"
+        stats = stats_by_run[item.run_id]
+        stats["total"] += 1
+        if status == "error":
+            stats["failed"] += 1
+        else:
+            stats["completed"] += 1
+
+        run_data["snapshot"]["rows"].append(
+            {
+                "index": item.index,
+                "item_id": item.item_id,
+                "status": status,
+                "latency_ms": item.latency_ms or 0,
+                "metric_values": [item_scores.get(metric_name, "") for metric_name in metrics],
+            }
+        )
+
+    for run_id, stats in stats_by_run.items():
+        stats["success_rate"] = (stats["completed"] / stats["total"] * 100.0) if stats["total"] else 0.0
+        runs_data[run_id]["snapshot"]["stats"] = stats
+
+    return [runs_data[run.id] for run in runs if run.id in runs_data]
+
+
+@router.get("/api/models/runs")
+def models_runs_data(
+    files: List[str] = Query(default=[]),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return lightweight per-run snapshots for the Models view."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files specified")
+
+    requested_run_ids = _parse_requested_run_ids(files)
+
+    unique_run_ids: list[str] = []
+    seen_run_ids: set[str] = set()
+    for run_id in requested_run_ids:
+        if run_id in seen_run_ids:
+            continue
+        seen_run_ids.add(run_id)
+        unique_run_ids.append(run_id)
+
+    runs = Run.active(db).filter(Run.id.in_(unique_run_ids)).all()
+    runs_by_id = {run.id: run for run in runs}
+    accessible_runs: list[Run] = []
+    for run_id in unique_run_ids:
+        run = runs_by_id.get(run_id)
+        if not run:
+            continue
+        if can_view_run(db, principal, run):
+            accessible_runs.append(run)
+
+    runs_data = _build_models_runs_data(db, accessible_runs)
+    return {"runs": runs_data}
+
+
 @router.get("/api/compare")
 def legacy_compare(
     files: List[str] = Query(default=[]),
@@ -759,12 +959,7 @@ def legacy_compare(
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files specified")
-    run_ids: list[str] = []
-    for f in files:
-        for part in str(f).split(","):
-            p = part.strip()
-            if p:
-                run_ids.append(p)
+    run_ids = _parse_requested_run_ids(files)
 
     runs_data: list[dict[str, Any]] = []
     for run_id in run_ids:
@@ -1100,6 +1295,7 @@ def list_deleted_runs(
             "task": r.task,
             "dataset": r.dataset,
             "model": r.model,
+            "trace_stats": r.run_metadata.get("trace_stats") if isinstance(r.run_metadata, dict) else None,
             "status": r.status.value if r.status else None,
             "owner_user_id": r.owner_user_id,
             "deleted_at": to_api_timestamp(r.deleted_at),

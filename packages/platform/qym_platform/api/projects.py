@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import secrets
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -57,8 +58,51 @@ def _membership_role(db: Session, principal: Principal, project_id: str) -> str:
     return membership.role.value if membership else ""
 
 
-def _project_payload(db: Session, project: Project, principal: Principal) -> Dict[str, Any]:
-    member_count = db.query(ProjectMembership).filter(ProjectMembership.project_id == project.id).count()
+def _project_member_counts(db: Session, project_ids: Iterable[str]) -> Dict[str, int]:
+    ids = [project_id for project_id in project_ids if project_id]
+    if not ids:
+        return {}
+    rows = (
+        db.query(ProjectMembership.project_id, func.count(ProjectMembership.id))
+        .filter(ProjectMembership.project_id.in_(ids))
+        .group_by(ProjectMembership.project_id)
+        .all()
+    )
+    return {project_id: int(count) for project_id, count in rows}
+
+
+def _project_run_counts(db: Session, project_ids: Iterable[str]) -> Dict[str, int]:
+    ids = [project_id for project_id in project_ids if project_id]
+    if not ids:
+        return {}
+    rows = (
+        db.query(Run.project_id, func.count(Run.id))
+        .filter(Run.project_id.in_(ids), Run.deleted_at.is_(None))
+        .group_by(Run.project_id)
+        .all()
+    )
+    return {project_id: int(count) for project_id, count in rows}
+
+
+def _project_payload(
+    db: Session,
+    project: Project,
+    principal: Principal,
+    *,
+    member_counts: Optional[Dict[str, int]] = None,
+    run_counts: Optional[Dict[str, int]] = None,
+    role: Optional[str] = None,
+) -> Dict[str, Any]:
+    member_count = (
+        int(member_counts[project.id])
+        if member_counts is not None and project.id in member_counts
+        else db.query(ProjectMembership).filter(ProjectMembership.project_id == project.id).count()
+    )
+    run_count = (
+        int(run_counts[project.id])
+        if run_counts is not None and project.id in run_counts
+        else db.query(Run.id).filter(Run.project_id == project.id, Run.deleted_at.is_(None)).count()
+    )
     return {
         "id": project.id,
         "name": project.name,
@@ -66,10 +110,43 @@ def _project_payload(db: Session, project: Project, principal: Principal) -> Dic
         "description": project.description,
         "is_active": project.is_active,
         "member_count": member_count,
-        "role": _membership_role(db, principal, project.id),
+        "run_count": run_count,
+        "role": role if role is not None else _membership_role(db, principal, project.id),
         "created_at": to_api_timestamp(project.created_at),
         "updated_at": to_api_timestamp(project.updated_at),
     }
+
+
+def serialize_project_payloads(db: Session, projects: Iterable[Project], principal: Principal) -> list[Dict[str, Any]]:
+    project_list = list(projects)
+    if not project_list:
+        return []
+
+    project_ids = [project.id for project in project_list]
+    member_counts = _project_member_counts(db, project_ids)
+    run_counts = _project_run_counts(db, project_ids)
+
+    if principal.user.role == UserRole.ADMIN:
+        role_map = {project.id: ProjectRole.MANAGER.value for project in project_list}
+    else:
+        role_rows = (
+            db.query(ProjectMembership.project_id, ProjectMembership.role)
+            .filter(ProjectMembership.user_id == principal.user.id, ProjectMembership.project_id.in_(project_ids))
+            .all()
+        )
+        role_map = {project_id: role.value if hasattr(role, "value") else str(role) for project_id, role in role_rows}
+
+    return [
+        _project_payload(
+            db,
+            project,
+            principal,
+            member_counts=member_counts,
+            run_counts=run_counts,
+            role=role_map.get(project.id, ""),
+        )
+        for project in project_list
+    ]
 
 
 def _can_create_project(db: Session, principal: Principal) -> bool:
@@ -155,7 +232,7 @@ def list_projects(
             .order_by(Project.name)
             .all()
         )
-    return {"projects": [_project_payload(db, project, principal) for project in projects]}
+    return {"projects": serialize_project_payloads(db, projects, principal)}
 
 
 @router.post("/v1/projects")

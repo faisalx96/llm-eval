@@ -135,6 +135,13 @@
     return Number(a["llm.cost.total"] || 0) || null;
   }
 
+  const MODEL_REASONING_BADGE_TITLE = "Reasoning model";
+  const MODEL_REASONING_BADGE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z"/></svg>`;
+
+  function renderModelReasoningBadge() {
+    return `<span class="model-reasoning-badge" title="${esc(MODEL_REASONING_BADGE_TITLE)}" aria-label="${esc(MODEL_REASONING_BADGE_TITLE)}">${MODEL_REASONING_BADGE_ICON}</span>`;
+  }
+
   function statusCls(s) {
     const u = String(s||"").toUpperCase();
     return u === "ERROR" ? "error" : u === "OK" ? "ok" : "unset";
@@ -318,6 +325,8 @@
     if (_messageSig(attrs, "llm.input_messages")) score += 3;
     if (_messageSig(attrs, "llm.output_messages")) score += 3;
     if (spanModel(node)) score += 1;
+    if (spanHasReasoning(node)) score += 6;
+    if (spanReasoningTokens(node) > 0) score += 2;
     score += Math.min(2, (Number(node.duration_ms) || 0) / 1000);
     return score;
   }
@@ -327,6 +336,7 @@
   function _llmKeepPriority(node) {
     let score = _spanRichness(node);
     if (_PROVIDER_LLM_NAME_RE.test(String(node?.name || ""))) score -= 4;
+    if (spanHasReasoning(node)) score += 8;
     return score;
   }
 
@@ -1095,6 +1105,28 @@
     return null;
   }
 
+  function spanReasoningTokens(span) {
+    const a = span.attributes || {};
+    const direct = a["llm.token_count.completion_details.reasoning"]
+      || a["gen_ai.usage.completion_tokens_details.reasoning_tokens"]
+      || a["gen_ai.usage.output_tokens_details.reasoning"]
+      || a["gen_ai.usage.reasoning_tokens"];
+    const parsedDirect = Number(direct || 0);
+    if (Number.isFinite(parsedDirect) && parsedDirect > 0) return parsedDirect;
+    try {
+      const parsed = JSON.parse(String(a["output.value"] || ""));
+      const tokens = parsed?.usage?.completion_tokens_details?.reasoning_tokens;
+      const parsedTokens = Number(tokens || 0);
+      return Number.isFinite(parsedTokens) && parsedTokens > 0 ? parsedTokens : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function spanHasReasoning(span) {
+    return !!(extractReasoning(span) || spanReasoningTokens(span) > 0);
+  }
+
   /* ── aggregate stats ── */
   function aggregateStats(tree) {
     let totalTokens = 0, totalCost = 0;
@@ -1294,7 +1326,7 @@
       // Inline meta for LLM spans
       let inlineMeta = "";
       const model = kind === "LLM" ? spanModel(node) : "";
-      if (kind === "LLM" && model) inlineMeta += `<span class="tv-inline-model">${esc(model)}</span>`;
+      if (kind === "LLM" && model) inlineMeta += `<span class="tv-inline-model model-label"><span class="model-label-text">${esc(model)}</span>${spanHasReasoning(node) ? renderModelReasoningBadge() : ""}</span>`;
       if (kind === "LLM" && tokens) inlineMeta += `<span class="tv-inline-tokens"><svg class="tv-tokens-icon" viewBox="0 0 16 16" width="13" height="13"><ellipse cx="9" cy="10.5" rx="5.5" ry="2.8" fill="currentColor" opacity=".45"/><ellipse cx="7.5" cy="7.5" rx="5.5" ry="2.8" transform="rotate(-15 7.5 7.5)" fill="currentColor" opacity=".7"/><ellipse cx="6.5" cy="4.5" rx="5" ry="2.5" transform="rotate(-25 6.5 4.5)" fill="currentColor"/></svg>${fmtTokens(tokens)}</span>`;
 
       const stCls = statusCls(node.status);
@@ -1403,7 +1435,7 @@
     header += `<div class="tv-det-icon" style="color:${color}">${ICONS[kind]||ICONS.DEFAULT}</div>`;
     header += `<div class="tv-det-info"><div class="tv-det-name">${esc(span.name)}</div>`;
     header += `<div class="tv-det-sub">`;
-    if (model) header += `<span>${esc(model)}</span><span class="tv-dot"></span>`;
+    if (model) header += `<span class="model-label"><span class="model-label-text">${esc(model)}</span>${spanHasReasoning(span) ? renderModelReasoningBadge() : ""}</span><span class="tv-dot"></span>`;
     header += `<span>${esc(fmtDur(span.duration_ms))}</span>`;
     if (tokens) header += `<span class="tv-dot"></span><span>${fmtTokens(tokens)} tokens</span>`;
     const costStr = fmtCost(cost);

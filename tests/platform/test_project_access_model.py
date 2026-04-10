@@ -315,3 +315,27 @@ def test_project_scoped_api_key_creates_project_bound_run(client, session_factor
         assert created is not None
         assert created.project_id == seed["project_one_id"]
         assert created.owner_user_id == "member-1"
+
+
+def test_projects_and_me_include_project_summary_fields(client, session_factory):
+    with session_factory() as session:
+        seed = _seed_project_world(session)
+
+    projects_response = client.get("/v1/projects", headers=_headers("manager@example.com"))
+    assert projects_response.status_code == 200
+    projects = projects_response.json()["projects"]
+    assert len(projects) == 1
+    project = projects[0]
+    assert project["id"] == seed["project_one_id"]
+    assert project["description"] == "Primary project"
+    assert project["member_count"] == 2
+    assert project["run_count"] == 4
+    assert project["role"] == "MANAGER"
+
+    me_response = client.get("/v1/me", headers=_headers("manager@example.com"))
+    assert me_response.status_code == 200
+    me = me_response.json()
+    assert me["projects"][0]["description"] == "Primary project"
+    assert me["projects"][0]["member_count"] == 2
+    assert me["projects"][0]["run_count"] == 4
+    assert me["default_project"]["slug"] == "project-one"

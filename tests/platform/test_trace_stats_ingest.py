@@ -92,6 +92,8 @@ def test_store_trace_stats_omits_avg_cost():
                         "openinference.span.kind": "LLM",
                         "llm.token_count.total": 123,
                         "llm.cost.total": 0.42,
+                        "llm.token_count.completion_details.reasoning": 17,
+                        "gen_ai.completion.0.reasoning": "Reasoning summary",
                     },
                     events=[],
                 ),
@@ -124,8 +126,13 @@ def test_store_trace_stats_omits_avg_cost():
             assert trace_stats["avg_tool_calls"] == 1
             assert trace_stats["tool_success_rate"] == 1
             assert trace_stats["has_spans"] is True
+            assert trace_stats["has_reasoning"] is True
+            assert trace_stats["has_reasoning_tokens"] is True
+            assert trace_stats["avg_reasoning_tokens"] == 17
             assert "avg_cost" not in trace_stats
 
             assert item.item_metadata["trace_stats"]["cost"] == 0.42
+            assert item.item_metadata["trace_stats"]["has_reasoning"] is True
+            assert item.item_metadata["trace_stats"]["reasoning_tokens"] == 17
     finally:
         engine.dispose()
