@@ -1677,6 +1677,31 @@ class Evaluator:
             "expected": getattr(item, 'expected_output', None),
         })
 
+    def _emit_item_attempt_started(
+        self,
+        index: int,
+        item: Any,
+        attempt_number: int,
+        spans: ItemSpans,
+        task_started_at_ms: Optional[int],
+    ) -> None:
+        """Emit the active attempt trace before task execution begins."""
+        try:
+            ps = getattr(self, "_platform_stream", None)
+            if ps is None:
+                return
+            item_id = getattr(item, "id", None) or f"item_{index}"
+            ps.emit("item_attempt_started", {
+                "item_id": str(item_id),
+                "index": int(index),
+                "attempt_number": int(attempt_number),
+                "trace_id": spans.trace_id,
+                "trace_url": spans.trace_url,
+                "task_started_at_ms": task_started_at_ms,
+            })
+        except Exception:
+            pass
+
     async def _run_single_task_attempt(self, index: int, item: Any, attempt_number: int) -> TaskAttemptResult:
         """Execute a single task attempt with its own trace."""
         spans = self._create_item_spans(index, item, attempt_number)
@@ -1688,8 +1713,12 @@ class Evaluator:
         adapter_trace.trace_id = spans.trace_id
 
         task_started_at_ms = int(time.time() * 1000)
+        self._emit_item_attempt_started(index, item, attempt_number, spans, task_started_at_ms)
         attempt_start_time = time.time()
+        forced_model_token = None
         try:
+            if self.config.force_model_override and self.model_name_full:
+                forced_model_token = self._otel.bind_forced_model(self.model_name_full)
             coro = self.task_adapter.arun(item.input, adapter_trace, model_name=self.model_name_full)
             if self.timeout is not None:
                 output = await asyncio.wait_for(coro, timeout=self.timeout)
@@ -1708,6 +1737,8 @@ class Evaluator:
         except Exception as e:
             error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
             logger.warning(f"Item {index}: {error}")
+        finally:
+            self._otel.reset_forced_model(forced_model_token)
 
         try:
             spans.end_all(error=error)

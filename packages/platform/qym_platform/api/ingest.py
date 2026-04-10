@@ -31,10 +31,11 @@ from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
 from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
-from qym_platform.db.models import Project, Run, RunEvent, RunItem, RunItemScore, RunWorkflowStatus, Span
+from qym_platform.db.models import Project, Run, RunEvent, RunItem, RunItemScore, RunTraceAggregate, RunWorkflowStatus, Span
 from qym_platform.db.models import RunItemAttempt
 from qym_platform.deps import get_db
 from qym_platform.events import (
+    ItemAttemptStartedPayload,
     ItemAttemptFinishedPayload,
     ItemCompletedPayload,
     ItemFailedPayload,
@@ -42,11 +43,13 @@ from qym_platform.events import (
     MetadataUpdatePayload,
     MetricScoredPayload,
     RunCompletedPayload,
+    RunHeartbeatPayload,
     RunEventV1,
     RunStartedPayload,
     SpanCompletedPayload,
 )
 from qym_platform.item_identity import build_identity_fingerprint, looks_like_positional_item_id
+from qym_platform.services.run_lifecycle import mark_run_running, mark_run_terminal, touch_run_event
 from qym_platform.settings import PlatformSettings
 
 
@@ -114,6 +117,153 @@ def _extract_reasoning_signal(attrs: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _empty_trace_bucket() -> Dict[str, Any]:
+    return {
+        "span_count": 0,
+        "tokens": 0,
+        "cost": 0.0,
+        "llm_calls": 0,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "has_reasoning": False,
+        "has_reasoning_tokens": False,
+        "reasoning_tokens": 0,
+    }
+
+
+def _public_trace_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "tokens": int(bucket.get("tokens") or 0),
+        "cost": float(bucket.get("cost") or 0.0),
+        "llm_calls": int(bucket.get("llm_calls") or 0),
+        "tool_calls": int(bucket.get("tool_calls") or 0),
+        "tool_errors": int(bucket.get("tool_errors") or 0),
+        "has_reasoning": bool(bucket.get("has_reasoning")),
+        "has_reasoning_tokens": bool(bucket.get("has_reasoning_tokens")),
+        "reasoning_tokens": int(bucket.get("reasoning_tokens") or 0),
+    }
+
+
+def _trace_bucket_from_aggregate(agg: RunTraceAggregate) -> Dict[str, Any]:
+    return {
+        "span_count": int(agg.span_count or 0),
+        "tokens": int(agg.tokens or 0),
+        "cost": float(agg.cost or 0.0),
+        "llm_calls": int(agg.llm_calls or 0),
+        "tool_calls": int(agg.tool_calls or 0),
+        "tool_errors": int(agg.tool_errors or 0),
+        "has_reasoning": bool(agg.has_reasoning),
+        "has_reasoning_tokens": bool(agg.has_reasoning_tokens),
+        "reasoning_tokens": int(agg.reasoning_tokens or 0),
+    }
+
+
+def _apply_span_to_bucket(bucket: Dict[str, Any], *, attributes: Dict[str, Any], status: Optional[str]) -> None:
+    bucket["span_count"] += 1
+    attrs = attributes or {}
+    oi_kind = str(
+        attrs.get("openinference.span.kind", "")
+        or attrs.get("ai.openinference.span.kind", "")
+    ).upper()
+    if oi_kind == "LLM":
+        bucket["llm_calls"] += 1
+        tokens = attrs.get("llm.token_count.total") or attrs.get("gen_ai.usage.total_tokens")
+        if tokens is not None:
+            try:
+                bucket["tokens"] += int(float(tokens))
+            except (ValueError, TypeError):
+                pass
+        cost = attrs.get("llm.cost.total")
+        if cost is not None:
+            try:
+                bucket["cost"] += float(cost)
+            except (ValueError, TypeError):
+                pass
+        reasoning_signal = _extract_reasoning_signal(attrs)
+        bucket["has_reasoning"] = bucket["has_reasoning"] or bool(reasoning_signal["has_reasoning"])
+        bucket["has_reasoning_tokens"] = (
+            bucket["has_reasoning_tokens"] or bool(reasoning_signal["has_reasoning_tokens"])
+        )
+        bucket["reasoning_tokens"] += int(reasoning_signal["reasoning_tokens"] or 0)
+    elif oi_kind == "TOOL":
+        bucket["tool_calls"] += 1
+        if (status or "").upper() == "ERROR":
+            bucket["tool_errors"] += 1
+
+
+def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]:
+    if not item_buckets:
+        return {"has_spans": False}
+
+    n = len(item_buckets)
+    total_tool_errors = sum(int(b.get("tool_errors") or 0) for b in item_buckets)
+    total_tool_calls = sum(int(b.get("tool_calls") or 0) for b in item_buckets)
+    tool_success_rate = (1 - total_tool_errors / total_tool_calls) if total_tool_calls > 0 else None
+    return {
+        "avg_tokens": sum(int(b.get("tokens") or 0) for b in item_buckets) / n,
+        "avg_llm_calls": sum(int(b.get("llm_calls") or 0) for b in item_buckets) / n,
+        "avg_tool_calls": sum(int(b.get("tool_calls") or 0) for b in item_buckets) / n,
+        "tool_success_rate": tool_success_rate,
+        "has_reasoning": any(bool(b.get("has_reasoning")) for b in item_buckets),
+        "has_reasoning_tokens": any(bool(b.get("has_reasoning_tokens")) for b in item_buckets),
+        "avg_reasoning_tokens": sum(int(b.get("reasoning_tokens") or 0) for b in item_buckets) / n,
+        "has_spans": True,
+    }
+
+
+def _refresh_live_trace_stats(db: Session, run: Run) -> None:
+    db.flush()
+    items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
+    trace_ids = sorted({item.trace_id for item in items if item.trace_id})
+    aggregates_by_trace: Dict[str, Dict[str, Any]] = {}
+    if trace_ids:
+        aggregates = (
+            db.query(RunTraceAggregate)
+            .filter(RunTraceAggregate.run_id == run.id, RunTraceAggregate.trace_id.in_(trace_ids))
+            .all()
+        )
+        aggregates_by_trace = {agg.trace_id: _trace_bucket_from_aggregate(agg) for agg in aggregates}
+
+    item_buckets: list[dict[str, Any]] = []
+    for item in items:
+        bucket = aggregates_by_trace.get(item.trace_id or "")
+        md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        if bucket and int(bucket.get("span_count") or 0) > 0:
+            md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
+            item_buckets.append(bucket)
+        else:
+            md.pop("trace_stats", None)
+        item.item_metadata = _sanitize_for_json(md)
+
+    current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
+    current["trace_stats"] = _build_run_trace_stats(item_buckets)
+    run.run_metadata = _sanitize_for_json(current)
+
+
+def _upsert_trace_aggregate(db: Session, run_id: str, payload: SpanCompletedPayload) -> None:
+    agg = (
+        db.query(RunTraceAggregate)
+        .filter(RunTraceAggregate.run_id == run_id, RunTraceAggregate.trace_id == payload.trace_id)
+        .first()
+    )
+    if not agg:
+        agg = RunTraceAggregate(run_id=run_id, trace_id=payload.trace_id)
+        db.add(agg)
+        db.flush()
+
+    bucket = _trace_bucket_from_aggregate(agg)
+    _apply_span_to_bucket(bucket, attributes=payload.attributes, status=payload.status)
+    agg.span_count = int(bucket["span_count"])
+    agg.tokens = int(bucket["tokens"])
+    agg.cost = float(bucket["cost"])
+    agg.llm_calls = int(bucket["llm_calls"])
+    agg.tool_calls = int(bucket["tool_calls"])
+    agg.tool_errors = int(bucket["tool_errors"])
+    agg.has_reasoning = bool(bucket["has_reasoning"])
+    agg.has_reasoning_tokens = bool(bucket["has_reasoning_tokens"])
+    agg.reasoning_tokens = int(bucket["reasoning_tokens"])
+
+
 def _store_trace_stats(db: Session, run: Run) -> None:
     """Compute trace metrics from stored OTEL spans and persist them.
 
@@ -131,56 +281,28 @@ def _store_trace_stats(db: Session, run: Run) -> None:
 
     # Map last-attempt trace_id -> item
     items = db.query(RunItem).filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None)).all()
-    trace_to_item: dict[str, RunItem] = {}
-    for it in items:
-        if it.trace_id:
-            trace_to_item[it.trace_id] = it
-
     # Group spans by trace_id and compute per-item stats
-    trace_buckets: dict[str, dict] = defaultdict(
-        lambda: {
-            "tokens": 0,
-            "cost": 0.0,
-            "llm_calls": 0,
-            "tool_calls": 0,
-            "tool_errors": 0,
-            "has_reasoning": False,
-            "has_reasoning_tokens": False,
-            "reasoning_tokens": 0,
-        }
-    )
+    trace_buckets: dict[str, dict] = defaultdict(_empty_trace_bucket)
     for span in spans:
         bucket = trace_buckets[span.trace_id]
-        attrs = span.attributes or {}
-        # OpenInference span kind is in attributes, not the OTEL span.kind column
-        oi_kind = str(
-            attrs.get("openinference.span.kind", "")
-            or attrs.get("ai.openinference.span.kind", "")
-        ).upper()
-        if oi_kind == "LLM":
-            bucket["llm_calls"] += 1
-            tokens = attrs.get("llm.token_count.total") or attrs.get("gen_ai.usage.total_tokens")
-            if tokens is not None:
-                try:
-                    bucket["tokens"] += int(float(tokens))
-                except (ValueError, TypeError):
-                    pass
-            cost = attrs.get("llm.cost.total")
-            if cost is not None:
-                try:
-                    bucket["cost"] += float(cost)
-                except (ValueError, TypeError):
-                    pass
-            reasoning_signal = _extract_reasoning_signal(attrs)
-            bucket["has_reasoning"] = bucket["has_reasoning"] or bool(reasoning_signal["has_reasoning"])
-            bucket["has_reasoning_tokens"] = (
-                bucket["has_reasoning_tokens"] or bool(reasoning_signal["has_reasoning_tokens"])
-            )
-            bucket["reasoning_tokens"] += int(reasoning_signal["reasoning_tokens"] or 0)
-        elif oi_kind == "TOOL":
-            bucket["tool_calls"] += 1
-            if (span.status or "").upper() == "ERROR":
-                bucket["tool_errors"] += 1
+        _apply_span_to_bucket(bucket, attributes=span.attributes or {}, status=span.status)
+
+    # Reconcile persistent per-trace aggregates with final span-derived truth.
+    db.query(RunTraceAggregate).filter(RunTraceAggregate.run_id == run.id).delete(synchronize_session=False)
+    for trace_id, bucket in trace_buckets.items():
+        db.add(RunTraceAggregate(
+            run_id=run.id,
+            trace_id=trace_id,
+            span_count=int(bucket["span_count"]),
+            tokens=int(bucket["tokens"]),
+            cost=float(bucket["cost"]),
+            llm_calls=int(bucket["llm_calls"]),
+            tool_calls=int(bucket["tool_calls"]),
+            tool_errors=int(bucket["tool_errors"]),
+            has_reasoning=bool(bucket["has_reasoning"]),
+            has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
+            reasoning_tokens=int(bucket["reasoning_tokens"]),
+        ))
 
     # Store per-item stats from the last-attempt trace only.
     item_buckets: list[dict[str, Any]] = []
@@ -188,37 +310,16 @@ def _store_trace_stats(db: Session, run: Run) -> None:
         trace_id = item.trace_id or ""
         bucket = trace_buckets.get(trace_id)
         md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-        if bucket is not None:
-            sanitized = _sanitize_for_json(bucket)
+        if bucket is not None and int(bucket.get("span_count") or 0) > 0:
+            sanitized = _sanitize_for_json(_public_trace_bucket(bucket))
             md["trace_stats"] = sanitized
             item_buckets.append(bucket)
         else:
             md.pop("trace_stats", None)
         item.item_metadata = md
 
-    if not item_buckets:
-        current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
-        current["trace_stats"] = {"has_spans": False}
-        run.run_metadata = _sanitize_for_json(current)
-        return
-
-    # Compute and store run-level stats using only item last-attempt traces.
-    n = len(item_buckets)
-    total_tool_errors = sum(b["tool_errors"] for b in item_buckets)
-    total_tool_calls = sum(b["tool_calls"] for b in item_buckets)
-    tool_success_rate = (1 - total_tool_errors / total_tool_calls) if total_tool_calls > 0 else None
-    run_stats = {
-        "avg_tokens": sum(b["tokens"] for b in item_buckets) / n,
-        "avg_llm_calls": sum(b["llm_calls"] for b in item_buckets) / n,
-        "avg_tool_calls": sum(b["tool_calls"] for b in item_buckets) / n,
-        "tool_success_rate": tool_success_rate,
-        "has_reasoning": any(bool(b.get("has_reasoning")) for b in item_buckets),
-        "has_reasoning_tokens": any(bool(b.get("has_reasoning_tokens")) for b in item_buckets),
-        "avg_reasoning_tokens": sum(int(b.get("reasoning_tokens") or 0) for b in item_buckets) / n,
-        "has_spans": True,
-    }
     current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
-    current["trace_stats"] = run_stats
+    current["trace_stats"] = _build_run_trace_stats(item_buckets)
     run.run_metadata = _sanitize_for_json(current)
 
 
@@ -235,11 +336,13 @@ class CreateRunRequest(BaseModel):
 _PAYLOAD_TYPE = {
     "run_started": RunStartedPayload,
     "item_started": ItemStartedPayload,
+    "item_attempt_started": ItemAttemptStartedPayload,
     "item_attempt_finished": ItemAttemptFinishedPayload,
     "metric_scored": MetricScoredPayload,
     "item_completed": ItemCompletedPayload,
     "item_failed": ItemFailedPayload,
     "run_completed": RunCompletedPayload,
+    "run_heartbeat": RunHeartbeatPayload,
     "metadata_update": MetadataUpdatePayload,
     "span_completed": SpanCompletedPayload,
 }
@@ -276,6 +379,7 @@ def create_run(
         run_config=req.run_config,
         status=RunWorkflowStatus.RUNNING,
         started_at=utc_now_naive(),
+        last_event_at=utc_now_naive(),
     )
     db.add(run)
     db.commit()
@@ -413,6 +517,7 @@ async def ingest_events(
         payload_cls = _PAYLOAD_TYPE.get(evt.type)
         payload = payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
         logger.debug("Ingest run=%s type=%s payload_type=%s", run_id, evt.type, type(payload).__name__)
+        touch_run_event(run, evt.sent_at)
 
         if isinstance(payload, RunStartedPayload):
             run.external_run_id = payload.external_run_id
@@ -426,10 +531,15 @@ async def ingest_events(
             run.run_metadata = md
             run.run_config = _sanitize_for_json(payload.run_config)
             run.started_at = to_storage_utc(payload.started_at)
-            run.status = RunWorkflowStatus.RUNNING
+            mark_run_running(run)
             logger.debug("Run %s status -> RUNNING", run_id)
 
+        elif isinstance(payload, RunHeartbeatPayload):
+            mark_run_running(run)
+            logger.debug("Run %s heartbeat observed", run_id)
+
         elif isinstance(payload, ItemStartedPayload):
+            mark_run_running(run)
             item = _get_item(payload.item_id)
             if not item:
                 item = _remember_item(RunItem(
@@ -447,7 +557,38 @@ async def ingest_events(
                 item.expected = _sanitize_for_json(payload.expected)
                 item.item_metadata = _sanitize_for_json(payload.item_metadata)
 
+        elif isinstance(payload, ItemAttemptStartedPayload):
+            mark_run_running(run)
+            item = _get_item(payload.item_id)
+            if not item:
+                item = _remember_item(RunItem(
+                    run_id=run_id,
+                    item_id=payload.item_id,
+                    index=payload.index if payload.index is not None else 0,
+                    input={},
+                    expected=None,
+                    item_metadata=_build_item_meta(payload.task_started_at_ms),
+                    trace_id=payload.trace_id,
+                    trace_url=payload.trace_url,
+                ))
+                db.add(item)
+            else:
+                if item.index == 0 and payload.index is not None and payload.index != 0:
+                    item.index = payload.index
+                item.trace_id = payload.trace_id
+                item.trace_url = payload.trace_url
+                md = dict(item.item_metadata or {})
+                if payload.task_started_at_ms:
+                    md["task_started_at_ms"] = payload.task_started_at_ms
+                if md != (item.item_metadata or {}):
+                    item.item_metadata = _sanitize_for_json(md)
+            try:
+                _refresh_live_trace_stats(db, run)
+            except Exception:
+                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
+
         elif isinstance(payload, ItemAttemptFinishedPayload):
+            mark_run_running(run)
             attempt = _get_attempt(payload.item_id, payload.attempt_number)
             if not attempt:
                 attempt = _remember_attempt(RunItemAttempt(
@@ -484,6 +625,7 @@ async def ingest_events(
                 )
 
         elif isinstance(payload, MetricScoredPayload):
+            mark_run_running(run)
             score = _get_score(payload.item_id, payload.metric_name)
             if not score:
                 score = _remember_score(RunItemScore(
@@ -505,6 +647,7 @@ async def ingest_events(
                 score.explanation = payload.explanation
 
         elif isinstance(payload, ItemCompletedPayload):
+            mark_run_running(run)
             # Determine task_started_at_ms: prefer explicit value from SDK,
             # fall back to event sent_at minus latency_ms for older SDKs.
             ts_ms = payload.task_started_at_ms
@@ -551,8 +694,13 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
+            try:
+                _refresh_live_trace_stats(db, run)
+            except Exception:
+                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
 
         elif isinstance(payload, ItemFailedPayload):
+            mark_run_running(run)
             item = _get_item(payload.item_id)
             if not item:
                 item = _remember_item(RunItem(
@@ -588,11 +736,18 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
+            try:
+                _refresh_live_trace_stats(db, run)
+            except Exception:
+                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
 
         elif isinstance(payload, RunCompletedPayload):
-            run.ended_at = to_storage_utc(payload.ended_at)
             _FINAL_STATUS = {"COMPLETED": RunWorkflowStatus.COMPLETED, "FAILED": RunWorkflowStatus.FAILED, "STOPPED": RunWorkflowStatus.STOPPED}
-            run.status = _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED)
+            mark_run_terminal(
+                run,
+                _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED),
+                ended_at=payload.ended_at,
+            )
             logger.debug("Run %s status -> %s", run_id, payload.final_status)
             # Allow the client to attach final metadata (e.g., langfuse_url) at completion time.
             try:
@@ -611,6 +766,7 @@ async def ingest_events(
                 logger.warning("Failed to compute trace stats for run %s", run_id, exc_info=True)
 
         elif isinstance(payload, MetadataUpdatePayload):
+            mark_run_running(run)
             # Update run metadata mid-flight (e.g., langfuse_url once available)
             current = run.run_metadata if isinstance(run.run_metadata, dict) else {}
             updates = {}
@@ -626,9 +782,11 @@ async def ingest_events(
                 run.run_metadata = _sanitize_for_json({**current, **updates})
 
         elif isinstance(payload, SpanCompletedPayload):
+            mark_run_running(run)
             # Store OTEL span data for native trace viewing.
             # Wrapped in a savepoint so a span-storage failure (e.g. pending
             # migration) never rolls back the rest of the batch (items, metrics).
+            span_inserted = False
             try:
                 nested = db.begin_nested()
                 existing = db.query(Span).filter(
@@ -652,9 +810,18 @@ async def ingest_events(
                         links=_sanitize_for_json(payload.links),
                     )
                     db.add(Span(**span_kwargs))
+                    span_inserted = True
                 nested.commit()
             except Exception as e:
                 logger.warning("Span storage failed for run %s: %s", run_id, e)
+            if span_inserted:
+                try:
+                    nested = db.begin_nested()
+                    _upsert_trace_aggregate(db, run_id, payload)
+                    _refresh_live_trace_stats(db, run)
+                    nested.commit()
+                except Exception as e:
+                    logger.warning("Live trace aggregation failed for run %s: %s", run_id, e)
 
         applied += 1
 

@@ -18,6 +18,7 @@ class EvaluatorConfig(BaseModel):
     model: Optional[str] = None
     model_full: Optional[str] = None  # Full provider-prefixed ID (e.g. qwen/qwen3.5-397b-a17b) for API calls
     models: Optional[List[str]] = None
+    force_model_override: bool = False  # Replace hardcoded OpenAI chat completion model at the SDK boundary
     
     # Langfuse credentials (optional overrides)
     langfuse_public_key: Optional[str] = None

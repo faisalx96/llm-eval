@@ -44,7 +44,7 @@ Instructions:
 async def rag_qa_task(
     question: str,
     context: str,
-    model_name: Optional[str] = None,
+    # model_name: Optional[str] = None,
     trace_id: Optional[str] = None
 ) -> str:
     """
@@ -63,7 +63,7 @@ async def rag_qa_task(
         The generated answer
     """
     # Default model if not specified (OpenRouter model format)
-    model = model_name or "openai/gpt-4o-mini"
+    # model = model_name or "openai/gpt-4o-mini"
 
     # Create the user message with context and question
     user_message = f"""Context:
@@ -75,7 +75,7 @@ Answer:"""
 
     # Call the LLM
     response = await client.chat.completions.create(
-        model=model,
+        model="openai/gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_message}
@@ -138,6 +138,7 @@ def main():
             # "resume_from": "/Users/faisalbh/qym/qym_results/rag_qa_task/gpt-oss-120b/2026-01-28/ragbench-rag_qa_task-ragbench-100-gpt-oss-120b-260128-1140.csv",
             "max_concurrency": 10,
             "run_name": "ragbench",
+            "force_model_override": True,
         }
     )
 

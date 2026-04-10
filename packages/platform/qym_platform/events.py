@@ -10,11 +10,13 @@ from pydantic import BaseModel, Field
 RunEventType = Literal[
     "run_started",
     "item_started",
+    "item_attempt_started",
     "item_attempt_finished",
     "metric_scored",
     "item_completed",
     "item_failed",
     "run_completed",
+    "run_heartbeat",
     "metadata_update",
     "span_completed",
 ]
@@ -49,6 +51,15 @@ class MetricScoredPayload(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
     label: Optional[str] = None
     explanation: Optional[str] = None
+
+
+class ItemAttemptStartedPayload(BaseModel):
+    item_id: str
+    index: Optional[int] = None
+    attempt_number: int = Field(ge=1)
+    trace_id: Optional[str] = None
+    trace_url: Optional[str] = None
+    task_started_at_ms: Optional[int] = None
 
 
 class ItemAttemptFinishedPayload(BaseModel):
@@ -92,6 +103,10 @@ class RunCompletedPayload(BaseModel):
     final_status: Literal["COMPLETED", "FAILED", "STOPPED"] = "COMPLETED"
 
 
+class RunHeartbeatPayload(BaseModel):
+    heartbeat_at: datetime
+
+
 class MetadataUpdatePayload(BaseModel):
     """Update run metadata mid-flight (e.g., langfuse_url once available)."""
     langfuse_url: Optional[str] = None
@@ -120,11 +135,13 @@ class SpanCompletedPayload(BaseModel):
 RunEventPayload = Union[
     RunStartedPayload,
     ItemStartedPayload,
+    ItemAttemptStartedPayload,
     ItemAttemptFinishedPayload,
     MetricScoredPayload,
     ItemCompletedPayload,
     ItemFailedPayload,
     RunCompletedPayload,
+    RunHeartbeatPayload,
     MetadataUpdatePayload,
     SpanCompletedPayload,
 ]
@@ -138,4 +155,3 @@ class RunEventV1(BaseModel):
     type: RunEventType
     run_id: UUID
     payload: RunEventPayload
-

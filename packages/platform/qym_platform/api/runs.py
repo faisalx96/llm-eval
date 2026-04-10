@@ -43,6 +43,7 @@ from qym_platform.permissions import (
     can_view_run,
     has_project_access,
 )
+from qym_platform.services.run_lifecycle import reconcile_stale_running_run
 from qym_platform.services.root_cause_changes import apply_root_cause_change
 from qym_platform.settings import PlatformSettings
 
@@ -218,6 +219,20 @@ def _guard_project_page(request: Request, db: Session, project_slug: str) -> Opt
 
 def _iso(dt: Optional[datetime]) -> str:
     return to_api_timestamp(dt or utc_now_naive()) or ""
+
+
+def _reconcile_run_liveness(db: Session, runs: List[Run]) -> None:
+    if not runs:
+        return
+    timeout_seconds = PlatformSettings().run_stale_timeout_seconds
+    changed = False
+    for run in runs:
+        if reconcile_stale_running_run(run, timeout_seconds=timeout_seconds):
+            changed = True
+    if changed:
+        db.commit()
+        for run in runs:
+            db.refresh(run)
 
 
 def _serialize_span(span: Span) -> Dict[str, Any]:
@@ -635,6 +650,7 @@ def legacy_list_runs(
 
     # Apply pagination
     runs: List[Run] = q.offset(offset).limit(limit).all()
+    _reconcile_run_liveness(db, runs)
 
     if not runs:
         return {
@@ -1317,6 +1333,7 @@ def legacy_run_data(
         return {"error": "Run not found"}
     if not can_view_run(db, principal, run):
         return {"error": "Access denied"}
+    _reconcile_run_liveness(db, [run])
 
     return _build_run_data(db, run)
 

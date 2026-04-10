@@ -2777,7 +2777,7 @@
             ` : ''}
             ${langfuseUrl ? `
               <a href="${langfuseUrl}" target="_blank" class="action-icon langfuse-icon" title="View in Langfuse" onclick="event.stopPropagation()">
-                <img src="./static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
+                <img src="/static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
               </a>
             ` : ''}
             ${canDelete ? `

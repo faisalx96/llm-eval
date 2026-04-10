@@ -157,3 +157,30 @@ def test_platform_event_stream_close_is_bounded_when_flush_is_stuck(monkeypatch)
         assert elapsed < 0.5
     finally:
         release_post.set()
+
+
+def test_platform_event_stream_emits_heartbeat_while_idle(monkeypatch):
+    sent_events = []
+
+    def fake_post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) -> None:
+        for line in ndjson.splitlines():
+            line = line.strip()
+            if line:
+                sent_events.append(json.loads(line))
+
+    monkeypatch.setattr(client_module, "_post_ndjson", fake_post_ndjson)
+    monkeypatch.setattr(client_module.PlatformEventStream, "HEARTBEAT_INTERVAL", 0.05)
+
+    stream = client_module.PlatformEventStream(
+        platform_url="https://platform.example",
+        api_key="secret-token",
+        run_id="run-123",
+    )
+    try:
+        deadline = time.time() + 1.0
+        while time.time() < deadline and not any(evt["type"] == "run_heartbeat" for evt in sent_events):
+            time.sleep(0.01)
+    finally:
+        stream.close()
+
+    assert any(evt["type"] == "run_heartbeat" for evt in sent_events)

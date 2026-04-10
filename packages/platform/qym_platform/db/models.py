@@ -166,6 +166,8 @@ class Run(Base):
     status: Mapped[RunWorkflowStatus] = mapped_column(Enum(RunWorkflowStatus), default=RunWorkflowStatus.DRAFT, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_event_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    status_reason: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -323,6 +325,28 @@ class Span(Base):
     __table_args__ = (
         Index("ix_span_run_trace", "run_id", "trace_id"),
         UniqueConstraint("run_id", "span_id", name="uq_span"),
+    )
+
+
+class RunTraceAggregate(Base):
+    __tablename__ = "run_trace_aggregates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    trace_id: Mapped[str] = mapped_column(String(64))
+    span_count: Mapped[int] = mapped_column(Integer, default=0)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cost: Mapped[float] = mapped_column(Float, default=0.0)
+    llm_calls: Mapped[int] = mapped_column(Integer, default=0)
+    tool_calls: Mapped[int] = mapped_column(Integer, default=0)
+    tool_errors: Mapped[int] = mapped_column(Integer, default=0)
+    has_reasoning: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_reasoning_tokens: Mapped[bool] = mapped_column(Boolean, default=False)
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (
+        Index("ix_run_trace_aggregate_run_trace", "run_id", "trace_id"),
+        UniqueConstraint("run_id", "trace_id", name="uq_run_trace_aggregate"),
     )
 
 

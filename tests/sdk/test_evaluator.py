@@ -99,6 +99,40 @@ class TestEvaluator:
         assert res["output"] == "ok"
 
     @pytest.mark.asyncio
+    async def test_run_single_task_attempt_emits_item_attempt_started(self, mock_task, mock_langfuse, mock_dataset):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "attempt-start"},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator.task_adapter = MagicMock()
+        evaluator.task_adapter.arun = AsyncMock(return_value="ok")
+        evaluator.model_name_full = "test-model"
+        evaluator._platform_stream = MagicMock()
+        evaluator._create_item_spans = MagicMock(return_value=ItemSpans(trace_id="trace-1", trace_url="url-1"))
+
+        item = MagicMock()
+        item.input = "test_input"
+        item.id = "item-1"
+
+        result = await evaluator._run_single_task_attempt(0, item, 1)
+
+        assert result.success is True
+        assert result.spans.trace_id == "trace-1"
+        emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
+        started = [payload for event_type, payload in emitted if event_type == "item_attempt_started"]
+        assert len(started) == 1
+        assert started[0]["item_id"] == "item-1"
+        assert started[0]["attempt_number"] == 1
+        assert started[0]["trace_id"] == "trace-1"
+        assert started[0]["trace_url"] == "url-1"
+        assert started[0]["task_started_at_ms"] is not None
+
+    @pytest.mark.asyncio
     async def test_evaluate_item_uses_last_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(

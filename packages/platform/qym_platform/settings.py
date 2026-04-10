@@ -42,3 +42,6 @@ class PlatformSettings(BaseSettings):
 
     # Storage (raw artifacts)
     artifact_store_path: str = Field(default="./artifacts")
+
+    # Run lifecycle
+    run_stale_timeout_seconds: int = Field(default=60, ge=5)

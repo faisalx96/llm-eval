@@ -52,6 +52,10 @@ _active_qym_stream: contextvars.ContextVar[Optional[Any]] = contextvars.ContextV
     "_active_qym_stream", default=None,
 )
 
+_forced_llm_model: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_forced_llm_model", default=None,
+)
+
 
 class NullOtelManager:
     """No-op fallback when OTEL is disabled or no instrumentors are available."""
@@ -69,6 +73,12 @@ class NullOtelManager:
         return None
 
     def reset_stream(self, token) -> None:
+        pass
+
+    def bind_forced_model(self, model: Optional[str]):
+        return None
+
+    def reset_forced_model(self, token) -> None:
         pass
 
 
@@ -219,6 +229,14 @@ class OtelManager:
         if not self.qym_processor or token is None:
             return
         self.qym_processor.reset_stream(token)
+
+    def bind_forced_model(self, model: Optional[str]):
+        return _forced_llm_model.set(model or None)
+
+    def reset_forced_model(self, token) -> None:
+        if token is None:
+            return
+        _forced_llm_model.reset(token)
 
     def shutdown(self):
         try:
@@ -515,6 +533,22 @@ def _enrich_with_reasoning(result):
         pass
 
 
+def _apply_forced_model(span: Any, kwargs: Dict[str, Any]) -> Optional[str]:
+    """Override the outgoing model when the evaluator requested it."""
+    forced_model = _forced_llm_model.get(None)
+    if not forced_model:
+        return None
+
+    kwargs["model"] = forced_model
+    try:
+        if span and span.is_recording():
+            span.set_attribute("llm.model_name", forced_model)
+            span.set_attribute("gen_ai.request.model", forced_model)
+    except Exception:
+        pass
+    return forced_model
+
+
 def _patch_openai_enrichments():
     """Wrap OpenAI SDK methods BEFORE instrumentors patch them.
 
@@ -541,6 +575,7 @@ def _patch_openai_enrichments():
         messages = kwargs.get("messages") or (args[0] if args else None)
         if messages:
             _emit_tool_spans(tracer, messages)
+        _apply_forced_model(otel_trace.get_current_span(), kwargs)
         result = _real_create(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)
@@ -556,6 +591,7 @@ def _patch_openai_enrichments():
         messages = kwargs.get("messages") or (args[0] if args else None)
         if messages:
             _emit_tool_spans(tracer, messages)
+        _apply_forced_model(otel_trace.get_current_span(), kwargs)
         result = await _real_acreate(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)

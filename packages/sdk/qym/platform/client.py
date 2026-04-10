@@ -119,6 +119,7 @@ class PlatformEventStream:
     CLOSE_JOIN_TIMEOUT = 2.0
     SYNC_SEND_TIMEOUT = 2.0
     SYNC_SEND_RETRIES = 1
+    HEARTBEAT_INTERVAL = 15.0
 
     def __init__(self, platform_url: str, api_key: str, run_id: str) -> None:
         self.platform_url = platform_url.rstrip("/")
@@ -139,6 +140,17 @@ class PlatformEventStream:
         with self._seq_lock:
             self._seq += 1
             return self._seq
+
+    def _build_event(self, type_: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "event_id": str(uuid.uuid4()),
+            "sequence": self.next_sequence(),
+            "sent_at": _utc_now(),
+            "type": type_,
+            "run_id": self.run_id,
+            "payload": _sanitize_for_json(payload),
+        }
 
     def _send_event_sync(self, evt: Dict[str, Any], *, reason: str) -> None:
         ndjson = json.dumps(evt, ensure_ascii=False) + "\n"
@@ -164,15 +176,7 @@ class PlatformEventStream:
         )
 
     def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
-        evt = {
-            "schema_version": 1,
-            "event_id": str(uuid.uuid4()),
-            "sequence": self.next_sequence(),
-            "sent_at": _utc_now(),
-            "type": type_,
-            "run_id": self.run_id,
-            "payload": _sanitize_for_json(payload),
-        }
+        evt = self._build_event(type_, payload)
         with self._state_lock:
             closing = self._closing or self._closed or not self._thread.is_alive()
         if sync or closing:
@@ -210,6 +214,7 @@ class PlatformEventStream:
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
         last_flush = time.time()
+        last_heartbeat = time.time()
         retry_count = 0
         max_retries = 10  # Maximum retries for a failed batch
         total_sent = 0
@@ -222,6 +227,9 @@ class PlatformEventStream:
             except Empty:
                 pass
             now = time.time()
+            if not self._stop.is_set() and (now - last_heartbeat) >= self.HEARTBEAT_INTERVAL:
+                batch.append(self._build_event("run_heartbeat", {"heartbeat_at": _utc_now()}))
+                last_heartbeat = now
             # Flush aggressively: every 5 events or 250ms for near real-time updates
             should_flush = (len(batch) >= 5) or (batch and (now - last_flush) >= 0.25)
             # If we're stopping, flush whatever we have (and drain the queue).
@@ -244,6 +252,7 @@ class PlatformEventStream:
                 _debug(f"flushed {len(batch)} events (total sent: {total_sent})")
                 batch.clear()
                 last_flush = now
+                last_heartbeat = now
                 retry_count = 0
             except Exception as e:
                 retry_count += 1
