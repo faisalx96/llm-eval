@@ -1838,8 +1838,122 @@
     return renderCodeMirrorPlaceholder(text, `${className || ""} tv-cm-text`.trim(), { mode: "text" });
   }
 
+  const PREVIEW_SCROLL_ROOT_SELECTOR = [
+    ".tv-cm.tv-json-preview",
+    ".tv-cm.tv-json-preview-output",
+    ".tv-code.tv-json-preview",
+    ".tv-code.tv-json-preview-output",
+  ].join(", ");
+
+  const PREVIEW_SCROLL_TARGET_SELECTOR = [
+    ".tv-cm.tv-json-preview .cm-scroller",
+    ".tv-cm.tv-json-preview-output .cm-scroller",
+    ".tv-code.tv-json-preview",
+    ".tv-code.tv-json-preview-output",
+  ].join(", ");
+
+  function previewScrollRoot(el) {
+    return el?.closest ? el.closest(PREVIEW_SCROLL_ROOT_SELECTOR) : null;
+  }
+
+  function clearPreviewScrollActivation(scope) {
+    if (!scope) return;
+    scope.querySelectorAll(".tv-preview-scroll-active").forEach(el => {
+      el.classList.remove("tv-preview-scroll-active");
+    });
+  }
+
+  function activatePreviewScroll(previewEl) {
+    if (!previewEl) return;
+    const scope = previewEl.closest(".tv-detail, .tv-modal-body, .tv-modal-content") || previewEl.parentElement;
+    clearPreviewScrollActivation(scope);
+    previewEl.classList.add("tv-preview-scroll-active");
+  }
+
+  function canScrollInDirection(el, deltaY) {
+    if (!el || !deltaY) return false;
+    if (el.scrollHeight <= el.clientHeight + 1) return false;
+    if (deltaY < 0) return el.scrollTop > 0;
+    return el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+  }
+
+  function findVerticalScrollParent(startEl) {
+    let el = startEl;
+    while (el && el !== document.body) {
+      const style = window.getComputedStyle(el);
+      const overflowY = style.overflowY;
+      if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight + 1) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function handleNestedPreviewWheel(event) {
+    if (event.defaultPrevented || event.ctrlKey || !event.deltaY) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const previewEl = previewScrollRoot(event.currentTarget);
+    if (previewEl?.classList.contains("tv-preview-scroll-active")) return;
+    const outerScroller = findVerticalScrollParent(previewEl?.parentElement || event.currentTarget.parentElement);
+    event.preventDefault();
+    if (!canScrollInDirection(outerScroller, event.deltaY)) return;
+    outerScroller.scrollTop += event.deltaY;
+  }
+
+  function bindPreviewActivation(root) {
+    if (!root || root.dataset.tvPreviewActivationBound === "1") return;
+    root.dataset.tvPreviewActivationBound = "1";
+    root.addEventListener("pointerdown", event => {
+      const previewEl = previewScrollRoot(event.target);
+      if (previewEl) {
+        activatePreviewScroll(previewEl);
+        return;
+      }
+      clearPreviewScrollActivation(root);
+    });
+    root.addEventListener("focusin", event => {
+      const previewEl = previewScrollRoot(event.target);
+      if (previewEl) {
+        activatePreviewScroll(previewEl);
+        return;
+      }
+      clearPreviewScrollActivation(root);
+    });
+    root.addEventListener("focusout", event => {
+      if (previewScrollRoot(event.target) && !previewScrollRoot(event.relatedTarget)) {
+        clearPreviewScrollActivation(root);
+      }
+    });
+  }
+
+  function preparePreviewRoot(el) {
+    if (!el || el.dataset.tvPreviewPrepared === "1") return;
+    el.dataset.tvPreviewPrepared = "1";
+    if (el.matches(".tv-code") && !el.hasAttribute("tabindex")) {
+      el.tabIndex = 0;
+    }
+  }
+
+  function bindPreviewWheelTargets(root) {
+    if (!root) return;
+    root.querySelectorAll(PREVIEW_SCROLL_TARGET_SELECTOR).forEach(el => {
+      if (el.dataset.tvWheelBound === "1") return;
+      el.dataset.tvWheelBound = "1";
+      el.addEventListener("wheel", handleNestedPreviewWheel, { passive: false });
+    });
+  }
+
+  function bindPreviewScrollDelegation(root) {
+    if (!root) return;
+    bindPreviewActivation(root);
+    root.querySelectorAll(PREVIEW_SCROLL_ROOT_SELECTOR).forEach(preparePreviewRoot);
+    bindPreviewWheelTargets(root);
+  }
+
   function mountJsonFormatters(root) {
     const els = root.querySelectorAll("[data-cm-id]");
+    bindPreviewScrollDelegation(root);
     if (!els.length) return;
     loadCodeMirror().then(cm => {
       els.forEach(el => {
@@ -1896,6 +2010,7 @@
         });
         new cm.view.EditorView({ state: edState, parent: el });
       });
+      bindPreviewScrollDelegation(root);
     });
   }
 
@@ -2074,7 +2189,9 @@
             <div class="tv-list"></div>
           </div>
           <div class="tv-divider"></div>
-          <div class="tv-detail"></div>
+          <div class="tv-detail-pane">
+            <div class="tv-detail"></div>
+          </div>
         </div>
       </aside>
       <div class="tv-modal-layer" aria-hidden="true">

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>قيِّم · Dashboard Mocks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #0b0b12;
+    --bg-base: #14141e;
+    --bg-surface: #1a1a28;
+    --bg-elevated: #222232;
+    --bg-hover: #2a2a3c;
+    --text-primary: #ededf0;
+    --text-secondary: #a8a8ba;
+    --text-muted: #7a7a90;
+    --text-dim: #50505e;
+    --accent-primary: #00d4aa;
+    --accent-secondary: #00a8ff;
+    --border-subtle: #252536;
+    --border-default: #333348;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-void);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+
+  /* ── Switcher bar ── */
+  .switcher {
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #111118 0%, #0b0b12 100%);
+    border-bottom: 1px solid var(--border-default);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+  }
+  .switcher::after {
+    content: '';
+    position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(0,212,170,0.3) 50%, transparent 100%);
+  }
+
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding-right: 18px;
+    border-right: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    display: grid; place-items: center;
+    font-family: var(--font-mono); font-weight: 700;
+    color: #0b0b12; font-size: 14px;
+  }
+  .brand-text { line-height: 1.2; }
+  .brand-text .t1 { font-size: 13px; font-weight: 600; letter-spacing: -0.2px; }
+  .brand-text .t2 { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .variants {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .variant-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: all 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
+    white-space: nowrap;
+    position: relative;
+  }
+  .variant-btn:hover {
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    border-color: var(--border-subtle);
+  }
+  .variant-btn.active {
+    background: rgba(0,212,170,0.06);
+    border-color: rgba(0,212,170,0.35);
+    color: var(--text-primary);
+  }
+  .variant-btn .tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+  }
+  .variant-btn.active .tag {
+    background: rgba(0,212,170,0.15);
+    color: var(--accent-primary);
+  }
+  .variant-btn .label {
+    font-weight: 600;
+    letter-spacing: -0.1px;
+  }
+  .variant-btn .hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+
+  .switcher-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 18px;
+    border-left: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+  .info-btn {
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .info-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .info-btn svg { width: 13px; height: 13px; }
+
+  /* ── Frame ── */
+  .frame-wrap {
+    flex: 1;
+    position: relative;
+    background: var(--bg-base);
+    overflow: hidden;
+  }
+  iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+
+  /* ── Info panel ── */
+  .info-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    max-height: calc(100% - 40px);
+    background: rgba(20, 20, 32, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    z-index: 100;
+    display: none;
+    overflow-y: auto;
+    animation: slideIn 0.2s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .info-panel.open { display: block; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .info-panel h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .info-panel h3 button {
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+  }
+  .info-panel h3 button:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .info-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row .name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .info-row .name .tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    margin-right: 6px;
+  }
+  .info-row .desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+
+  /* ── Loading flash ── */
+  .loading {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-base);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .loading.on { opacity: 1; }
+  .loading-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-primary);
+    animation: pulse 1.2s ease infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <div class="brand">
+    <div class="brand-mark">ق</div>
+    <div class="brand-text">
+      <div class="t1">قيِّم</div>
+      <div class="t2">Dashboard Mocks</div>
+    </div>
+  </div>
+
+  <div class="variants" id="variants">
+    <button class="variant-btn active" data-src="v0_original.html">
+      <span class="tag">V0</span>
+      <span>
+        <span class="label" style="display:block">Original</span>
+        <span class="hint">5 tabs · baseline</span>
+      </span>
+    </button>
+    <button class="variant-btn" data-src="v1_polished.html">
+      <span class="tag">V1</span>
+      <span>
+        <span class="label" style="display:block">Polished</span>
+        <span class="hint">5 tabs · cleaned</span>
+      </span>
+    </button>
+    <button class="variant-btn" data-src="v2_consolidated.html">
+      <span class="tag">V2</span>
+      <span>
+        <span class="label" style="display:block">Consolidated</span>
+        <span class="hint">3 tabs · merged</span>
+      </span>
+    </button>
+    <button class="variant-btn" data-src="v3_scroll.html">
+      <span class="tag">V3</span>
+      <span>
+        <span class="label" style="display:block">Scroll</span>
+        <span class="hint">no tabs · anchor nav</span>
+      </span>
+    </button>
+  </div>
+
+  <div class="switcher-info">
+    <button class="info-btn" id="info-toggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      About variants
+    </button>
+  </div>
+</div>
+
+<div class="frame-wrap">
+  <iframe id="frame" src="v0_original.html" title="Dashboard mock"></iframe>
+  <div class="loading" id="loading"><div class="loading-dot"></div></div>
+
+  <div class="info-panel" id="info-panel">
+    <h3>
+      Variant notes
+      <button id="info-close" aria-label="Close">×</button>
+    </h3>
+    <div class="info-row">
+      <div class="name"><span class="tag">V0</span>Original</div>
+      <div class="desc">The first pass — 5 tabs (Executive Brief, Pulse, Quality Radar, Cost, Team). Shows the full breadth of widgets before the critique. Baseline for comparison.</div>
+    </div>
+    <div class="info-row">
+      <div class="name"><span class="tag">V1</span>Polished</div>
+      <div class="desc">Same 5-tab structure, surgical polish only. Tab numbers removed, decorative card dots only when they signal state, sparklines inside the leaderboard, horizontal heatmap labels, a status banner up top, explicit period deltas, primary "New Run" CTA.</div>
+    </div>
+    <div class="info-row">
+      <div class="name"><span class="tag">V2</span>Consolidated</div>
+      <div class="desc">Dropped from 5 to 3 tabs: <b>Overview</b> / <b>Models</b> / <b>Activity</b>. Alerts, top movers, and regressions collapsed into one <b>"Needs your attention"</b> signals inbox. Efficiency Frontier promoted to hero on the Models tab. Cost folded into Models because it's the same decision.</div>
+    </div>
+    <div class="info-row">
+      <div class="name"><span class="tag">V3</span>Scroll</div>
+      <div class="desc">No tabs at all. Sticky anchor nav (Health / Attention / Models / Tasks / Cost / Team) with scroll-spy — reads top-to-bottom like a daily briefing. Efficiency Frontier is the centerpiece on the Models anchor. Best for executives who scroll, not click.</div>
+    </div>
+    <div class="info-row">
+      <div class="name" style="color: var(--text-muted)">Shortcuts</div>
+      <div class="desc" style="font-family: var(--font-mono); font-size: 10px">
+        1 2 3 4 — switch variants<br>
+        i — toggle this panel
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const frame = document.getElementById('frame');
+  const buttons = document.querySelectorAll('.variant-btn');
+  const loading = document.getElementById('loading');
+  const infoToggle = document.getElementById('info-toggle');
+  const infoClose = document.getElementById('info-close');
+  const infoPanel = document.getElementById('info-panel');
+
+  function switchTo(src) {
+    loading.classList.add('on');
+    frame.src = src;
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.src === src));
+    // Persist so refresh keeps the last-viewed variant
+    try { localStorage.setItem('qym-mock-variant', src); } catch {}
+  }
+
+  buttons.forEach(b => b.addEventListener('click', () => switchTo(b.dataset.src)));
+  frame.addEventListener('load', () => loading.classList.remove('on'));
+
+  // Restore last variant
+  try {
+    const saved = localStorage.getItem('qym-mock-variant');
+    if (saved) {
+      const btn = Array.from(buttons).find(b => b.dataset.src === saved);
+      if (btn) switchTo(saved);
+    }
+  } catch {}
+
+  // Info panel
+  infoToggle.addEventListener('click', () => infoPanel.classList.toggle('open'));
+  infoClose.addEventListener('click', () => infoPanel.classList.remove('open'));
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const map = { '1': 0, '2': 1, '3': 2, '4': 3 };
+    if (e.key in map) {
+      const btn = buttons[map[e.key]];
+      if (btn) switchTo(btn.dataset.src);
+    } else if (e.key === 'i' || e.key === 'I') {
+      infoPanel.classList.toggle('open');
+    }
+  });
+</script>
+</body>
+</html>
