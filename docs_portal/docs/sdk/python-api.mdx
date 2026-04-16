@@ -1,0 +1,28 @@
+# Python API
+
+The SDK centers on `Evaluator`. You provide a task function, a dataset source, and one or more metrics.
+
+```python
+from qym import Evaluator
+
+def my_task(question):
+    return call_your_llm(question)
+
+results = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", "contains"],
+).run()
+```
+
+## What the task function should do
+
+- Accept the input shape your dataset produces.
+- Return a value your metrics know how to score.
+- Optionally accept `model_name`, `model`, or `trace_id` if you need them.
+
+## What not to do
+
+- Hide external dependencies or credentials inside the task body.
+- Make the first version of the task depend on multiple providers unless the workflow requires it.
+- Return a structure your metrics cannot interpret.

@@ -168,8 +168,13 @@
     { key: 'avg_tool_calls',label: '⚡ Avg Tool Calls',    modelsLabel: '⚡ Avg Tool Calls', fmt: v => v != null ? v.toFixed(1) : '—' },
     { key: 'tool_success_rate', label: '⚡ Tool Success Rate', modelsLabel: '⚡ Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '—' },
   ];
-  const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'avgLatency', 'medianLatency', 'correctDistribution'];
-  const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'avgLatency', 'medianLatency'];
+  const SYSTEM_DISPLAY_COLUMNS = [
+    { key: 'latency', label: '⚡ Avg Latency' },
+    { key: 'median-latency', label: '⚡ Median Latency' },
+  ];
+  const RUNS_TABLE_BASE_COLUMN_COUNT = 11;
+  const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency', 'correctDistribution'];
+  const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency'];
   function _traceMetricsForRuns(runs = null) {
     const sourceRuns = Array.isArray(runs)
       ? runs
@@ -185,8 +190,15 @@
   function _allMetricsWithTrace(runs = null, baseMetrics = state.allMetrics) {
     return [
       ...(baseMetrics || []),
+      ...SYSTEM_DISPLAY_COLUMNS.map(col => col.key),
       ..._traceMetricsForRuns(runs).map(tm => tm.key),
     ];
+  }
+
+  function _visibleSystemColumns() {
+    const vis = state.visibleMetrics;
+    if (vis === null) return SYSTEM_DISPLAY_COLUMNS;
+    return SYSTEM_DISPLAY_COLUMNS.filter(col => vis.has(col.key));
   }
 
   function _visibleTraceMetrics(runs = null) {
@@ -197,7 +209,17 @@
     return traceMetrics.filter(tm => vis.has(tm.key));
   }
 
+  function getRunsTableColumnCount(metricsCount, visibleSystemColumnCount, visibleTraceMetricCount) {
+    const metricCols = Number(metricsCount) || 0;
+    const systemCols = Number(visibleSystemColumnCount) || 0;
+    const traceMetricCols = Number(visibleTraceMetricCount) || 0;
+    const traceCols = traceMetricCols > 0 ? traceMetricCols + 1 : 0; // +1 separator
+    return RUNS_TABLE_BASE_COLUMN_COUNT + metricCols + systemCols + traceCols;
+  }
+
   function getMetricDisplayName(metricKey) {
+    const systemColumn = SYSTEM_DISPLAY_COLUMNS.find(col => col.key === metricKey);
+    if (systemColumn) return systemColumn.label;
     const traceMetric = TRACE_METRICS.find(tm => tm.key === metricKey);
     return traceMetric ? traceMetric.label : metricKey;
   }
@@ -781,8 +803,10 @@
     if (!wrapper || !dropdown || !btn) return;
 
     const traceMetrics = _traceMetricsForRuns(runs);
+    const systemColumns = SYSTEM_DISPLAY_COLUMNS;
     const metricOptions = [
       ...(availableMetrics || []),
+      ...systemColumns.map(col => col.key),
       ...traceMetrics.map(tm => tm.key),
     ];
 
@@ -808,12 +832,19 @@
         '<button class="ms-action-btn" id="mv-select-all">All</button>' +
         '<button class="ms-action-btn" id="mv-select-none">None</button>' +
       '</div>' +
-      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search columns..." value="' + escapeHtml(searchValue) + '" /></div>' +
       availableMetrics.map(m => {
         const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
-        const hidden = searchValue && !m.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+        const hidden = searchValue && !getMetricDisplayName(m).toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
         return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
       }).join('') +
+      (systemColumns.length > 0 ?
+        '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ System Columns</div>' +
+        systemColumns.map(col => {
+          const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
+          const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+        }).join('') : '') +
       (traceMetrics.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ Trace Stats</div>' +
         traceMetrics.map(tm => {
@@ -834,7 +865,7 @@
           const metricCb = opt.querySelector('input[data-mv-metric]');
           if (!metricCb) return;
           const m = metricCb.dataset.mvMetric || '';
-          opt.style.display = m.toLowerCase().includes(q) ? '' : 'none';
+          opt.style.display = getMetricDisplayName(m).toLowerCase().includes(q) ? '' : 'none';
         });
       });
       mvSearchInput.addEventListener('click', (e) => e.stopPropagation());
@@ -952,6 +983,8 @@
           return { key, label: mvs.metricIsNumeric ? 'Avg' : 'Avg Score' };
         case 'failedCount':
           return { key, label: 'Errors' };
+        case 'totalRetries':
+          return { key, label: 'Retries' };
         case 'avgLatency':
           return { key, label: 'Avg Latency' };
         case 'medianLatency':
@@ -1177,6 +1210,7 @@
             display_model: stripModelProvider(run.model_name || modelName || ''),
             completion_rate: completionRate,
             success_on_completed_rate: successOnCompletedRate,
+            total_retries: Number(run.total_retries || 0),
             _date: new Date(run.timestamp),
           });
         }
@@ -1297,6 +1331,7 @@
           metricCounts: {},
           latencySum: 0,
           latencyCount: 0,
+          medianLatencyValues: [],
         };
       }
 
@@ -1310,6 +1345,7 @@
         metric_averages: run.metric_averages || {},
         trace_stats: run.trace_stats || null,
         avg_latency_ms: run.avg_latency_ms,
+        median_latency_ms: run.median_latency_ms,
         total_items: run.total_items,
         git_branch: run.git_branch || '',
         git_commit: run.git_commit || '',
@@ -1338,6 +1374,9 @@
         combos[key].models[model].latencySum += run.avg_latency_ms;
         combos[key].models[model].latencyCount++;
       }
+      if (run.median_latency_ms) {
+        combos[key].models[model].medianLatencyValues.push(run.median_latency_ms);
+      }
 
       // Track latest run
       const ts = new Date(run.timestamp);
@@ -1357,6 +1396,9 @@
           m.metricAverages[metric] = sum / count;
         }
         m.avgLatencyMs = m.latencyCount > 0 ? m.latencySum / m.latencyCount : 0;
+        m.medianLatencyMs = m.medianLatencyValues.length > 0
+          ? window.QymMetrics.calculateMedian(m.medianLatencyValues)
+          : 0;
       }
     }
 
@@ -1523,6 +1565,12 @@
       case 'latency-asc':
         runs.sort((a, b) => (a.avg_latency_ms || 0) - (b.avg_latency_ms || 0));
         break;
+      case 'median-latency-desc':
+        runs.sort((a, b) => (b.median_latency_ms || 0) - (a.median_latency_ms || 0));
+        break;
+      case 'median-latency-asc':
+        runs.sort((a, b) => (a.median_latency_ms || 0) - (b.median_latency_ms || 0));
+        break;
       case 'duration-desc':
         runs.sort((a, b) => (b.duration_ms || 0) - (a.duration_ms || 0));
         break;
@@ -1641,6 +1689,7 @@
 
   function renderChartsView() {
     const chartData = state.chartData;
+    const visibleSystemColumns = _visibleSystemColumns();
     
     // Update subtitle with filter info
     const subtitleEl = $('.charts-subtitle');
@@ -1738,6 +1787,7 @@
             metric_averages: run.metric_averages || {},
             trace_stats: run.trace_stats || null,
             latency: run.avg_latency_ms || 0,
+            median_latency: run.median_latency_ms || 0,
             isMultiRun: data.runs > 1,
             git_branch: run.git_branch || '',
             git_commit: run.git_commit || '',
@@ -1747,7 +1797,7 @@
 
       const visibleTraceMetrics = _visibleTraceMetrics(allRuns);
 
-      if (metrics.length === 0 && visibleTraceMetrics.length === 0) {
+      if (metrics.length === 0 && visibleTraceMetrics.length === 0 && visibleSystemColumns.length === 0) {
         return `
           <div class="chart-task-section">
             <div class="chart-task-header">
@@ -1802,6 +1852,7 @@
       function getRunSortValue(run, key) {
         if (key === 'model') return stripModelProvider(run.model || '');
         if (key === 'latency') return run.latency || 0;
+        if (key === 'median-latency') return run.median_latency || 0;
         if (isTraceMetricKey(key)) return run.trace_stats?.[key] ?? -1;
         return run.metric_averages[key] ?? -1;
       }
@@ -1810,6 +1861,7 @@
         if (key === 'model') return group.sortModel || group.label || '';
         const agg = group.agg || group;
         if (key === 'latency') return agg.avgLatency;
+        if (key === 'median-latency') return agg.medianLatency;
         if (isTraceMetricKey(key)) return agg.traceAverages?.[key] ?? -1;
         return agg.metricAverages[key] ?? -1;
       }
@@ -1833,9 +1885,16 @@
         return prefersBarChartMetric(metric, metricType);
       });
       const numericMetrics = metrics.filter(metric => !visualMetrics.includes(metric));
-      const LATENCY_COLUMN_KEY = '__latency__';
+      const AVG_LATENCY_COLUMN_KEY = '__latency_avg__';
+      const MEDIAN_LATENCY_COLUMN_KEY = '__latency_median__';
       const traceMetricKeys = visibleTraceMetrics.map(tm => tm.key);
-      const displayColumns = [...visualMetrics, ...numericMetrics, LATENCY_COLUMN_KEY, ...traceMetricKeys];
+      const displayColumns = [
+        ...visualMetrics,
+        ...numericMetrics,
+        ...(visibleSystemColumns.some(col => col.key === 'latency') ? [AVG_LATENCY_COLUMN_KEY] : []),
+        ...(visibleSystemColumns.some(col => col.key === 'median-latency') ? [MEDIAN_LATENCY_COLUMN_KEY] : []),
+        ...traceMetricKeys,
+      ];
       const metricScaleMax = {};
       for (const metric of visualMetrics) {
         const metricType = state._metricTypes?.[metric] || 'score';
@@ -1850,26 +1909,42 @@
           0
         );
       }
-      const latencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
+      const avgLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
+      const medianLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.median_latency || 0)), 0);
 
       const firstColSortKey = groupMode === 'version' ? null : 'model';
       const availableSortKeys = [
         ...(firstColSortKey ? [firstColSortKey] : []),
-        ...displayColumns.map(column => (column === LATENCY_COLUMN_KEY ? 'latency' : column)),
+        ...displayColumns.map(column => (
+          column === AVG_LATENCY_COLUMN_KEY
+            ? 'latency'
+            : column === MEDIAN_LATENCY_COLUMN_KEY
+              ? 'median-latency'
+              : column
+        )),
       ];
 
       if (!availableSortKeys.includes(sortState.key)) {
-        sortState.key = displayColumns[0] === LATENCY_COLUMN_KEY ? 'latency' : displayColumns[0];
+        sortState.key = displayColumns[0] === AVG_LATENCY_COLUMN_KEY
+          ? 'latency'
+          : displayColumns[0] === MEDIAN_LATENCY_COLUMN_KEY
+            ? 'median-latency'
+            : displayColumns[0];
         sortState.dir = getChartSortDirection(sortState.key);
         state.chartSortState[cardId] = sortState;
       }
 
       // Build header row with sortable columns
       const headerCells = displayColumns.map(column => {
-        if (column === LATENCY_COLUMN_KEY) {
+        if (column === AVG_LATENCY_COLUMN_KEY) {
           const isActive = sortState.key === 'latency';
           const arrow = isActive ? (sortState.dir === 'desc' ? '\u2193' : '\u2191') : '';
           return `<span class="chart-col-header chart-col-header-latency sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="latency" title="Avg Latency"><span class="chart-col-header-label">\u26A1 Avg Latency</span>${arrow ? `<span class="chart-col-sort">${arrow}</span>` : ''}</span>`;
+        }
+        if (column === MEDIAN_LATENCY_COLUMN_KEY) {
+          const isActive = sortState.key === 'median-latency';
+          const arrow = isActive ? (sortState.dir === 'desc' ? '\u2193' : '\u2191') : '';
+          return `<span class="chart-col-header chart-col-header-latency sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="median-latency" title="Median Latency"><span class="chart-col-header-label">\u26A1 Median Latency</span>${arrow ? `<span class="chart-col-sort">${arrow}</span>` : ''}</span>`;
         }
         const label = getMetricDisplayName(column);
         const isActive = sortState.key === column;
@@ -1907,14 +1982,14 @@
         });
       }
 
-      function renderLatencyValueCell(latencyValue, modelIdx, isAggregate = false) {
+      function renderLatencyValueCell(latencyValue, scaleMax, modelIdx, isAggregate = false) {
         if (!latencyValue) {
           return `<div class="chart-latency-cell"><span class="metric-na">\u2014</span></div>`;
         }
         return renderMiniBarCell({
           value: latencyValue,
           label: formatLatency(latencyValue),
-          ratio: latencyScaleMax > 0 ? latencyValue / latencyScaleMax : 0,
+          ratio: scaleMax > 0 ? latencyValue / scaleMax : 0,
           modelIdx,
           isAggregate,
           cellClass: 'chart-latency-cell',
@@ -1970,8 +2045,11 @@
         const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
         const tooltipText = `Run name: ${hoverRunName}${versionStr ? `\nVersion: ${versionStr}` : ''}`;
         const dataCells = displayColumns.map(column => {
-          if (column === LATENCY_COLUMN_KEY) {
-            return renderLatencyValueCell(latency, modelIdx);
+          if (column === AVG_LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(latency, avgLatencyScaleMax, modelIdx);
+          }
+          if (column === MEDIAN_LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(runData.median_latency, medianLatencyScaleMax, modelIdx);
           }
           if (isTraceMetricKey(column)) {
             return renderTraceMetricValueCell(column, runData.trace_stats?.[column], modelIdx);
@@ -1993,6 +2071,7 @@
         const agg = {};
         const traceAgg = {};
         let latSum = 0, latCount = 0;
+        const medianLatencies = [];
         for (const r of runs) {
           for (const m of metrics) {
             const v = r.metric_averages[m];
@@ -2011,6 +2090,7 @@
             }
           }
           if (r.latency) { latSum += r.latency; latCount++; }
+          if (r.median_latency) medianLatencies.push(r.median_latency);
         }
         const metricAverages = {};
         for (const m of metrics) {
@@ -2020,15 +2100,23 @@
         for (const tm of visibleTraceMetrics) {
           traceAverages[tm.key] = traceAgg[tm.key] ? traceAgg[tm.key].sum / traceAgg[tm.key].count : undefined;
         }
-        return { metricAverages, traceAverages, avgLatency: latCount > 0 ? latSum / latCount : 0 };
+        return {
+          metricAverages,
+          traceAverages,
+          avgLatency: latCount > 0 ? latSum / latCount : 0,
+          medianLatency: medianLatencies.length > 0 ? window.QymMetrics.calculateMedian(medianLatencies) : 0,
+        };
       }
 
       // --- Helper: render a group header row ---
       function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null) {
         const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
         const dataCells = displayColumns.map(column => {
-          if (column === LATENCY_COLUMN_KEY) {
-            return renderLatencyValueCell(agg.avgLatency, groupModelIdx, true);
+          if (column === AVG_LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(agg.avgLatency, avgLatencyScaleMax, groupModelIdx, true);
+          }
+          if (column === MEDIAN_LATENCY_COLUMN_KEY) {
+            return renderLatencyValueCell(agg.medianLatency, medianLatencyScaleMax, groupModelIdx, true);
           }
           if (isTraceMetricKey(column)) {
             return renderTraceMetricValueCell(column, agg.traceAverages?.[column], groupModelIdx, true);
@@ -2365,8 +2453,9 @@
     const headerRow = el('table-header-row');
     if (!headerRow) return;
 
-    // Find the LATENCY column (insert metric columns before it)
+    // Find the latency columns (insert metric columns before them)
     const latencyHeader = headerRow.querySelector('.col-latency');
+    const medianLatencyHeader = headerRow.querySelector('.col-latency-median');
     if (!latencyHeader) return;
 
     // Remove any existing dynamic metric columns and trace columns
@@ -2382,13 +2471,13 @@
       headerRow.insertBefore(th, latencyHeader);
     });
 
-    // Insert the ops separator before LATENCY and trace metric columns after LATENCY
+    // Insert the ops separator before latency columns and trace metric columns after them
     const vtm = _visibleTraceMetrics(state.filteredRuns);
     if (vtm.length > 0) {
       const sep = document.createElement('th');
       sep.className = 'col-trace-separator';
       headerRow.insertBefore(sep, latencyHeader);
-      let insertAfter = latencyHeader;
+      let insertAfter = medianLatencyHeader || latencyHeader;
       vtm.forEach(tm => {
         const th = document.createElement('th');
         th.className = 'col-trace-metric sortable';
@@ -2417,7 +2506,7 @@
       newKey = sortField.startsWith('metric-') ? `${sortField}-${direction}` : `${sortField}-${direction}`;
     } else {
       // Default to descending for numeric/time, ascending for text
-      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency', 'duration'];
+      const numericFields = ['success', 'items', 'status', 'time', 'date', 'latency', 'median-latency', 'duration'];
       const isNumeric = numericFields.includes(sortField) || sortField.startsWith('metric-') || sortField.startsWith('trace-');
       newKey = `${sortField}-${isNumeric ? 'desc' : 'asc'}`;
     }
@@ -2476,6 +2565,7 @@
     const availableMetrics = getAvailableMetricsForRuns(allRuns);
     const metricsToShow = getVisibleMetrics(availableMetrics);
     const visibleTraceMetrics = _visibleTraceMetrics(allRuns);
+    const visibleSystemColumns = new Set(_visibleSystemColumns().map(col => col.key));
 
     if (state.sortKey.startsWith('metric-')) {
       const parts = state.sortKey.split('-');
@@ -2493,14 +2583,33 @@
         sortRuns(allRuns);
       }
     }
+    if ((state.sortKey === 'latency-desc' || state.sortKey === 'latency-asc') && !visibleSystemColumns.has('latency')) {
+      state.sortKey = 'time-desc';
+      sortRuns(allRuns);
+    }
+    if ((state.sortKey === 'median-latency-desc' || state.sortKey === 'median-latency-asc') && !visibleSystemColumns.has('median-latency')) {
+      state.sortKey = 'time-desc';
+      sortRuns(allRuns);
+    }
 
     // Update header with dynamic metric columns
     updateTableHeader(metricsToShow);
+    const headerRow = el('table-header-row');
+    if (headerRow) {
+      const latencyHeader = headerRow.querySelector('.col-latency');
+      const medianLatencyHeader = headerRow.querySelector('.col-latency-median');
+      if (latencyHeader) latencyHeader.style.display = visibleSystemColumns.has('latency') ? '' : 'none';
+      if (medianLatencyHeader) medianLatencyHeader.style.display = visibleSystemColumns.has('median-latency') ? '' : 'none';
+    }
 
-    const _vtmCount = visibleTraceMetrics.length;
-    const _traceColCount = _vtmCount > 0 ? _vtmCount + 1 : 0; // +1 for separator
+    const visibleSystemColumnCount = visibleSystemColumns.size;
+    const visibleTraceMetricCount = visibleTraceMetrics.length;
+    const colCount = getRunsTableColumnCount(
+      metricsToShow.length,
+      visibleSystemColumnCount,
+      visibleTraceMetricCount,
+    );
     if (allRuns.length === 0) {
-      const colCount = 12 + metricsToShow.length + _traceColCount;
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -2543,8 +2652,6 @@
 
     let lastGroupKey = null;
     let groupCounter = 0;
-    // 12 base columns + dynamic metric columns + trace metric columns
-    const colCount = 12 + metricsToShow.length + _traceColCount;
     tbody.innerHTML = runs.map((run, pageIdx) => {
       const idx = pagination.start + pageIdx;
       const groupKey = runGroupKeys[pageIdx];
@@ -2690,13 +2797,13 @@
             </label>
           </td>
           <td class="col-status">
-            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}
+            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-run">
             <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
           </td>
           <td class="col-task">
-            <span class="tag task" title="${run.task_name}">${truncateText(run.task_name, 30)}</span>
+            <span class="tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
           </td>
           <td class="col-model">
             <span class="tag model" title="${run.model_name}">
@@ -2711,9 +2818,12 @@
             ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
-          <td class="col-latency">
+          ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
             <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
-          </td>${(() => {
+          </td>` : ''}
+          ${visibleSystemColumns.has('median-latency') ? `<td class="col-latency-median">
+            <span class="latency-value">${run.median_latency_ms ? formatLatency(run.median_latency_ms) : '—'}</span>
+          </td>` : ''}${(() => {
             if (visibleTraceMetrics.length === 0) return '';
             const ts = run.trace_stats;
             return visibleTraceMetrics.map(tm => {
@@ -3458,6 +3568,7 @@
       const detailedData = selectedPaths.map((path) => runsDataById.get(path)).filter(Boolean);
       mvs.modelStats[model] = calculateModelStatsFromItems(detailedData, mvs.selectedMetric, mvs.threshold, mvs.metricIsBoolean);
       mvs.modelStats[model].traceAverages = calculateModelTraceStats(selectedRuns);
+      mvs.modelStats[model].totalRetries = selectedRuns.reduce((sum, run) => sum + Number(run.total_retries || 0), 0);
       mvs.modelStats[model].totalAvailable = runsByModel[model].length;
       mvs.modelStats[model].selectedCount = selectedRuns.length;
       mvs.modelStats[model].selectedPaths = selectedPaths;
@@ -3711,6 +3822,7 @@
         consistency: `How often runs agree on pass/fail across ${K} runs. 100% = all agree, 0% = 50/50 split.`,
         reliability: `When an item CAN be solved, how often is it? Only includes items with ≥1 passing run.`,
         failedCount: `Number of runs that threw an error (across all items). Errors are scored as 0%.`,
+        totalRetries: `Total retries across all items in the selected runs. This sums per-item retry counts, not distinct items that retried.`,
         avgScore: isNumeric
           ? `Mean value across all items and all ${K} runs`
           : `Mean score across all items and all ${K} runs`,
@@ -3749,6 +3861,8 @@
         addStatTile('maxAtK', `Max@${K}`, fmtN(stats.maxAtK), '', tooltips.maxAtK);
         addStatTile('stddevScore', 'StdDev', fmtN(stats.stddevScore), '', 'Standard deviation across all items and runs. Lower = more consistent.');
         addStatTile('totalScoreSum', 'Total', fmtN(stats.totalScoreSum), 'accent-value', 'Sum of all values across all items and runs.');
+        addStatTile('failedCount', 'Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount);
+        addStatTile('totalRetries', 'Retries', String(stats.totalRetries || 0), stats.totalRetries > 0 ? 'retry-count' : '', tooltips.totalRetries);
         addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency), '', tooltips.avgLatency);
         addStatTile('medianLatency', '⚡ Median Latency', formatLatency(stats.medianLatency), '', tooltips.medianLatency);
       } else {
@@ -3759,6 +3873,7 @@
         addStatTile('reliability', 'Reliability', stats.reliability !== null ? formatPercent(stats.reliability) : 'NA', stats.reliability !== null ? getSuccessClass(stats.reliability) : '', tooltips.reliability);
         addStatTile('avgScore', 'Avg Score', formatPercent(stats.avgScore), getSuccessClass(stats.avgScore), tooltips.avgScore);
         addStatTile('failedCount', 'Errors', String(stats.failedCount), stats.failedCount > 0 ? 'failed-count' : '', tooltips.failedCount);
+        addStatTile('totalRetries', 'Retries', String(stats.totalRetries || 0), stats.totalRetries > 0 ? 'retry-count' : '', tooltips.totalRetries);
         addStatTile('avgLatency', '⚡ Avg Latency', formatLatency(stats.avgLatency), '', tooltips.avgLatency);
         addStatTile('medianLatency', '⚡ Median Latency', formatLatency(stats.medianLatency), '', tooltips.medianLatency);
       }

@@ -1,0 +1,44 @@
+[
+  {
+    "title": "Core Runtime",
+    "summary": "Deployment identity, public URL routing, runtime paths, and stale-run timing.",
+    "fields": [
+      "environment",
+      "base_url",
+      "root_path",
+      "artifact_store_path",
+      "run_stale_timeout_seconds"
+    ]
+  },
+  {
+    "title": "Authentication",
+    "summary": "Browser auth mode, bootstrap controls, session secrets, and SSO provider credentials.",
+    "fields": [
+      "auth_mode",
+      "admin_bootstrap_token",
+      "auto_provision_users",
+      "allow_legacy_empty_api_key_scopes",
+      "auth_session_secret",
+      "auth_local_enabled",
+      "auth_google_client_id",
+      "auth_google_client_secret",
+      "auth_github_client_id",
+      "auth_github_client_secret"
+    ]
+  },
+  {
+    "title": "Database And Secrets",
+    "summary": "Database connectivity and encryption settings for the deployed platform.",
+    "fields": [
+      "database_url",
+      "llm_config_encryption_key"
+    ]
+  },
+  {
+    "title": "Visibility",
+    "summary": "Task-level visibility controls for the platform UI.",
+    "fields": [
+      "hidden_tasks"
+    ]
+  }
+]

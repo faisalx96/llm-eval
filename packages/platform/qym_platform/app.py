@@ -15,12 +15,19 @@ from qym_platform.api.projects import router as projects_router
 from qym_platform.api.runs import router as runs_router
 from qym_platform.api.ingest import router as ingest_router
 from qym_platform.api.analysis import router as analysis_router
+from qym_platform.docs_site import docs_available, docs_file_response
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     settings = settings or PlatformSettings()
 
-    app = FastAPI(title="qym-platform", version="0.1.0")
+    app = FastAPI(
+        title="qym-platform",
+        version="0.1.0",
+        docs_url="/api-docs",
+        redoc_url=None,
+        openapi_url="/openapi.json",
+    )
 
     if session_auth_enabled(settings):
         if not settings.auth_session_secret:
@@ -67,6 +74,16 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     # Per-run UI (live/historical run detail)
     if ui_dir.exists():
         app.mount("/ui", StaticFiles(directory=str(ui_dir)), name="run_ui_static")
+
+    if docs_available():
+        @app.get("/docs", response_model=None)
+        @app.get("/docs/", response_model=None)
+        async def docs_index(request: Request):
+            return docs_file_response(request, "")
+
+        @app.get("/docs/{path:path}", response_model=None)
+        async def docs_catchall(path: str, request: Request):
+            return docs_file_response(request, path)
 
     app.include_router(auth_router)
     app.include_router(web_router)

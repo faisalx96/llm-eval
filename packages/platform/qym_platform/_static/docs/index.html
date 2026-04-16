@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>qym Developer Portal</title>
+  <link rel="stylesheet" href="./portal.css" />
+</head>
+<body>
+  <div class="portal-shell">
+    <aside class="portal-sidebar">
+      <a class="portal-brand" href="./">
+        <span class="portal-brand-mark">قيِّم</span>
+        <span class="portal-brand-text">Developer Portal</span>
+      </a>
+      <div class="portal-search">
+        <label for="portal-search-input">Search docs</label>
+        <input id="portal-search-input" type="search" placeholder="Search commands, config, examples..." />
+      </div>
+      <nav id="portal-nav" class="portal-nav"></nav>
+      <div class="portal-sidebar-footer">
+        <a id="portal-app-link" href="../">Back to App</a>
+        <a href="./openapi.json">OpenAPI JSON</a>
+      </div>
+    </aside>
+    <main class="portal-main">
+      <header class="portal-header">
+        <div class="portal-header-copy">
+          <div class="portal-kicker">Self-hosted docs</div>
+          <h1 id="portal-title">qym Developer Portal</h1>
+          <p id="portal-summary"></p>
+        </div>
+        <div class="portal-meta">
+          <div class="portal-meta-label">Generated</div>
+          <div id="portal-generated-at"></div>
+        </div>
+      </header>
+      <div id="portal-results" class="portal-results" hidden></div>
+      <article id="portal-content" class="portal-content"></article>
+    </main>
+  </div>
+  <script src="./portal.js" defer></script>
+</body>
+</html>
+

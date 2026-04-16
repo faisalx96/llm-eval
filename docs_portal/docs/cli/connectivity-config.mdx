@@ -1,0 +1,14 @@
+# Connectivity And Config Checks
+
+The most useful preflight command is `qym config check --json`. Run it before depending on the platform in CI or on a newly provisioned machine.
+
+## Use `config show` when
+
+- You need to confirm which values won after `.env`, shell, and default resolution.
+- You suspect the wrong platform URL or auth token is in play.
+
+## Use `config check` when
+
+- The platform is expected to be reachable.
+- You need to validate credentials before executing a large run.
+- You are onboarding an air-gapped or proxied environment and want the failure up front.

@@ -116,10 +116,14 @@ class PlatformEventStream:
     Minimal, dependency-free implementation using stdlib urllib.
     """
 
-    CLOSE_JOIN_TIMEOUT = 2.0
+    # Raised from 2.0 to 15.0: on a clean shutdown with a slow platform API,
+    # we'd rather wait a few extra seconds than silently drop metric scores.
+    CLOSE_JOIN_TIMEOUT = 15.0
     SYNC_SEND_TIMEOUT = 2.0
     SYNC_SEND_RETRIES = 1
     HEARTBEAT_INTERVAL = 15.0
+    # Default wall-clock budget for flush() barriers between items.
+    FLUSH_TIMEOUT = 10.0
 
     def __init__(self, platform_url: str, api_key: str, run_id: str) -> None:
         self.platform_url = platform_url.rstrip("/")
@@ -187,6 +191,37 @@ class PlatformEventStream:
         else:
             self._q.put(evt)
 
+    def flush(self, timeout: Optional[float] = None) -> bool:
+        """Block until the background queue is empty (all events sent or dropped).
+
+        Returns True if the queue was successfully drained within the timeout,
+        False if the timeout elapsed first. Callers can use this between items
+        to guarantee that metric emits are durable before the next item runs —
+        this is what prevents the "phantom 100% score" class of bugs where a
+        fast metric's emit is lost when an item is cancelled mid-flight.
+
+        Uses ``Queue.join()`` semantics; the flush loop calls ``task_done()``
+        for every event it dequeues and subsequently sends OR drops.
+        """
+        if timeout is None:
+            timeout = self.FLUSH_TIMEOUT
+        with self._state_lock:
+            if self._closed or not self._thread.is_alive():
+                return True  # nothing in flight
+        # Queue.join() doesn't support a timeout natively, so wait in a helper
+        # thread and gate on an Event we can poll with a wall-clock budget.
+        done = threading.Event()
+
+        def _waiter():
+            try:
+                self._q.join()
+            finally:
+                done.set()
+
+        waiter = threading.Thread(target=_waiter, name="qym-platform-flush-waiter", daemon=True)
+        waiter.start()
+        return done.wait(timeout=timeout)
+
     def close(self) -> None:
         # Request stop and wait for a final flush.
         with self._state_lock:
@@ -195,6 +230,12 @@ class PlatformEventStream:
             self._closing = True
         qsize = self._q.qsize()
         _debug(f"close() called, queue size={qsize}, seq={self._seq}")
+        # Drain the queue first (best-effort) so we don't silently drop buffered
+        # metric_scored events at shutdown.
+        try:
+            self.flush(timeout=self.CLOSE_JOIN_TIMEOUT)
+        except Exception as e:
+            _debug(f"close() flush exception: {e}")
         self._stop.set()
         try:
             # Bound shutdown so the CLI does not appear stuck after the run is done.
@@ -213,6 +254,10 @@ class PlatformEventStream:
 
     def _loop(self) -> None:
         batch: list[dict[str, Any]] = []
+        # Tracks how many events in `batch` came from the Queue (vs in-loop
+        # heartbeats). We only call task_done() for queue-sourced events so
+        # Queue.join() semantics work correctly in flush().
+        queue_items_in_batch = 0
         last_flush = time.time()
         last_heartbeat = time.time()
         retry_count = 0
@@ -220,10 +265,24 @@ class PlatformEventStream:
         total_sent = 0
         total_dropped = 0
         _debug(f"flush loop started for run {self.run_id}")
+
+        def _mark_batch_done():
+            """Call task_done() once per queue-sourced event and reset the counter."""
+            nonlocal queue_items_in_batch
+            for _ in range(queue_items_in_batch):
+                try:
+                    self._q.task_done()
+                except ValueError:
+                    # task_done() called more times than items — shouldn't happen
+                    # but don't crash the flush loop on a bookkeeping mistake.
+                    break
+            queue_items_in_batch = 0
+
         while True:
             try:
                 evt = self._q.get(timeout=0.1)  # Check more frequently
                 batch.append(evt)
+                queue_items_in_batch += 1
             except Empty:
                 pass
             now = time.time()
@@ -238,6 +297,7 @@ class PlatformEventStream:
                     while True:
                         evt2 = self._q.get_nowait()
                         batch.append(evt2)
+                        queue_items_in_batch += 1
                 except Empty:
                     pass
                 should_flush = bool(batch)
@@ -250,6 +310,7 @@ class PlatformEventStream:
                 _post_ndjson(f"{self.platform_url}/v1/runs/{self.run_id}/events", ndjson, self.api_key)
                 total_sent += len(batch)
                 _debug(f"flushed {len(batch)} events (total sent: {total_sent})")
+                _mark_batch_done()
                 batch.clear()
                 last_flush = now
                 last_heartbeat = now
@@ -269,11 +330,13 @@ class PlatformEventStream:
                         except Exception as e2:
                             total_dropped += 1
                             _debug(f"dropped event {evt.get('type','?')} seq={evt.get('sequence','?')}: {e2}")
+                    _mark_batch_done()
                     batch.clear()
                     retry_count = 0
                 elif retry_count >= max_retries:
                     total_dropped += len(batch)
                     _debug(f"DROPPED {len(batch)} events after {max_retries} retries (total dropped: {total_dropped})")
+                    _mark_batch_done()
                     batch.clear()
                     retry_count = 0
                 else:
@@ -286,6 +349,7 @@ class PlatformEventStream:
                     break
                 else:
                     batch.append(evt3)
+                    queue_items_in_batch += 1
 
 
 class PlatformClient:

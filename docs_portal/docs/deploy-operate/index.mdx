@@ -1,0 +1,21 @@
+import CardGrid from '@site/src/components/CardGrid';
+import DocCard from '@site/src/components/DocCard';
+
+# Deploy & Operate
+
+This section is for operators and platform owners. It covers local development, Docker deployment, production configuration, auth modes, environment matrices, air-gapped runtime behavior, and upgrade procedures.
+
+<CardGrid>
+  <DocCard title="Local Development" href="/deploy-operate/local-development" eyebrow="Dev">
+    Repo-local development and validation loop.
+  </DocCard>
+  <DocCard title="Docker Deployment" href="/deploy-operate/docker-deployment" eyebrow="Default">
+    The standard way to build and run the platform.
+  </DocCard>
+  <DocCard title="Production" href="/deploy-operate/production" eyebrow="Operate">
+    Production expectations for Postgres, secrets, auth, and URL routing.
+  </DocCard>
+  <DocCard title="Air-Gapped" href="/deploy-operate/air-gapped" eyebrow="Offline">
+    Runtime offline behavior, image transfer, and docs availability.
+  </DocCard>
+</CardGrid>

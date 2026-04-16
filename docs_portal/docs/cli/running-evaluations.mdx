@@ -1,0 +1,31 @@
+import CommandBlock from '@site/src/components/CommandBlock';
+
+# Running Evaluations
+
+Use `qym run create` as the main entry point for execution. Everything else should branch from a stable run-create contract.
+
+<CommandBlock
+  title="Remote dataset run"
+  command={`qym run create --task-file examples/example.py --task-function my_task --dataset my-set --metrics exact_match,fuzzy_match`}
+  result="Best for shared datasets and normal developer workflows."
+/>
+
+<CommandBlock
+  title="Local CSV run"
+  command={`qym run create --task-file examples/csv_dataset_eval.py --task-function my_task --dataset-csv ./qa.csv --metrics exact_match`}
+  result="Best for offline and air-gapped workflows."
+/>
+
+## Common flags that matter
+
+- `--dataset` versus `--dataset-csv`: choose the data source deliberately.
+- `--metrics`: keep the first run small and intelligible.
+- `--json`: use it whenever another system will read the output.
+
+## Common failure modes
+
+- Wrong task import path or function name.
+- Judge metrics enabled before judge-provider configuration exists.
+- Platform connectivity errors obscuring a local task or dataset issue.
+
+The generated [CLI reference](/cli/reference) covers the exact flags and defaults.

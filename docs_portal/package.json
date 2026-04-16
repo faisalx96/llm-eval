@@ -1,0 +1,20 @@
+{
+  "name": "qym-docs-portal",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "generate": "python -m tools.docs",
+    "start": "docusaurus start --host 0.0.0.0 --port 3001",
+    "build": "docusaurus build",
+    "postbuild": "node scripts/relativize-build.mjs",
+    "serve": "docusaurus serve --host 0.0.0.0 --port 3001"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.9.2",
+    "@docusaurus/faster": "3.9.2",
+    "@docusaurus/preset-classic": "3.9.2",
+    "@easyops-cn/docusaurus-search-local": "0.55.1",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  }
+}

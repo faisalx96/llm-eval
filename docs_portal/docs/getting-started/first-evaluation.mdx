@@ -1,0 +1,32 @@
+import CommandBlock from '@site/src/components/CommandBlock';
+
+# Run Your First Evaluation
+
+Your first run should prove four things: the task imports correctly, the dataset resolves, the metric executes, and the CLI can persist a result.
+
+<CommandBlock
+  title="Minimal first run"
+  command={`qym run create \\\n  --task-file examples/example.py \\\n  --task-function my_task \\\n  --dataset my-set \\\n  --metrics exact_match`}
+  result="A successful run leaves a local artifact under `qym_results/` and, when platform connectivity is configured, also appears in the platform."
+/>
+
+## Use a CSV instead when needed
+
+```bash
+qym run create \
+  --task-file examples/csv_dataset_eval.py \
+  --task-function my_task \
+  --dataset-csv ./qa.csv \
+  --metrics exact_match,fuzzy_match
+```
+
+## What to look for
+
+1. The task function imports without error.
+2. The run completes without judge-provider or platform-connectivity noise.
+3. The local artifact lands under `qym_results/`.
+4. The metric output is understandable enough to debug one bad item manually.
+
+:::warning Raise Your Bar Early
+If the first run only succeeds with undocumented shell state or hidden local credentials, the setup is not stable enough yet. Fix that before scaling up.
+:::

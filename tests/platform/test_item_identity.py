@@ -55,6 +55,47 @@ def test_platform_compare_identity_ignores_trace_stats_in_fingerprint():
     assert second_identity["compare_alignment_source"] == "fingerprint"
 
 
+def test_platform_compare_identity_ignores_retry_count_in_fingerprint():
+    # Regression: retry_count leaking into the fingerprint split BIRD items
+    # across runs and inflated the "0 runs" bucket on the compare page.
+    without_retry = build_compare_identity(
+        item_id="1002",
+        input_value={"question": "q", "db_id": "x"},
+        expected_value="SELECT 1",
+        metadata={"difficulty": "moderate"},
+        duplicate_counts={},
+    )
+    with_retry = build_compare_identity(
+        item_id="1002",
+        input_value={"question": "q", "db_id": "x"},
+        expected_value="SELECT 1",
+        metadata={"difficulty": "moderate", "retry_count": 1},
+        duplicate_counts={},
+    )
+
+    assert without_retry["compare_item_id"] == with_retry["compare_item_id"]
+    assert without_retry["compare_alignment_source"] == "fingerprint"
+
+
+def test_platform_compare_identity_ignores_analysis_error_in_fingerprint():
+    clean = build_compare_identity(
+        item_id="row_000001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math"},
+        duplicate_counts={},
+    )
+    errored = build_compare_identity(
+        item_id="row_000001",
+        input_value="What is 2+2?",
+        expected_value="4",
+        metadata={"domain": "math", "analysis_error": "llm timeout"},
+        duplicate_counts={},
+    )
+
+    assert clean["compare_item_id"] == errored["compare_item_id"]
+
+
 def test_platform_compare_identity_recomputes_generated_csv_item_ids():
     first_identity = build_compare_identity(
         item_id="csv_9d87abc4a109c976c595__0001",

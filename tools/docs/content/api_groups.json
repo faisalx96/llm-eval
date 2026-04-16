@@ -1,0 +1,80 @@
+[
+  {
+    "id": "auth",
+    "title": "Auth",
+    "summary": "Authentication, session, identity-provider, and user-profile endpoints.",
+    "prefixes": ["/v1/auth", "/v1/me"],
+    "auth": "Mixed surface. Provider discovery and login bootstrap paths may be public, while profile and user-scoped config endpoints require an authenticated session or API key.",
+    "purpose": "These endpoints establish identity, inspect the current user, and manage the per-user LLM analysis configuration.",
+    "overview_points": [
+      "Use provider discovery and login routes to start browser authentication flows.",
+      "Use `/v1/me` endpoints to read the current user and manage user-scoped LLM analysis settings."
+    ]
+  },
+  {
+    "id": "runs",
+    "title": "Runs",
+    "summary": "Run ingestion, run state changes, run browsing, comparison, and review endpoints.",
+    "prefixes": ["/api/runs", "/api/compare", "/api/corrections"],
+    "auth": "Protected. Expect a valid API key or authenticated session with access to the target run or project.",
+    "purpose": "This is the core operational surface for creating runs, streaming events, approving or rejecting outcomes, and inspecting detailed run data.",
+    "overview_points": [
+      "Use `/v1/runs` for ingestion-oriented workflows.",
+      "Use `/api/runs` and `/api/compare` for richer platform UI and review data access."
+    ]
+  },
+  {
+    "id": "projects",
+    "title": "Projects",
+    "summary": "Project creation, listing, membership, and API key management endpoints.",
+    "prefixes": ["/v1/projects"],
+    "auth": "Protected. Project membership or admin access is required for most operations.",
+    "purpose": "Projects scope access, ownership, and API keys for shared evaluation work.",
+    "overview_points": [
+      "Use project endpoints to provision new shared workspaces.",
+      "Use the API key sub-resources to create project-scoped credentials."
+    ]
+  },
+  {
+    "id": "analysis",
+    "title": "Analysis",
+    "summary": "AI-powered analysis, previews, summaries, and related configuration endpoints.",
+    "prefixes": [
+      "/api/runs/{run_id}/analysis-config",
+      "/api/runs/{run_id}/analyze-preview",
+      "/api/runs/{run_id}/analyze-test",
+      "/api/runs/{run_id}/analyze",
+      "/api/rca"
+    ],
+    "auth": "Protected. Analysis endpoints generally require access to the run and a valid user or project analysis configuration.",
+    "purpose": "Use this surface when you want clustered failure analysis, preview runs, or analysis configuration tied to a stored run.",
+    "overview_points": [
+      "Analysis endpoints usually operate on an existing run ID.",
+      "The platform UI surfaces these features, but the API is useful for automation and batch workflows."
+    ]
+  },
+  {
+    "id": "admin",
+    "title": "Admin",
+    "summary": "User administration, project administration, and health/operability endpoints.",
+    "prefixes": ["/v1/admin/org", "/v1/admin/settings", "/v1/admin", "/v1/users", "/healthz"],
+    "auth": "Mostly protected and admin-only, except for health probes which are usually public inside the deployment boundary.",
+    "purpose": "Use these endpoints to bootstrap the platform, manage users, or integrate health checks into deployment automation.",
+    "overview_points": [
+      "Use `GET /healthz` for liveness and smoke checks.",
+      "Use admin endpoints only from trusted operational contexts."
+    ]
+  },
+  {
+    "id": "ingestion",
+    "title": "Ingestion",
+    "summary": "SDK and pipeline ingestion endpoints for uploads, event streaming, and submission flows.",
+    "prefixes": ["/v1/runs:upload", "/v1/runs/{run_id}/events", "/v1/runs/{run_id}/submit", "/v1/runs"],
+    "auth": "Protected. These endpoints are intended for SDK and automation clients authenticated with API keys or trusted sessions.",
+    "purpose": "These endpoints accept new run artifacts and event streams from SDK or pipeline producers.",
+    "overview_points": [
+      "Use upload and event endpoints when you are pushing results into the platform from SDK or CI flows.",
+      "The same run lifecycle can later be reviewed through the richer runs surface."
+    ]
+  }
+]

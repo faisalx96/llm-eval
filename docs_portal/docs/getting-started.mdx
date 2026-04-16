@@ -1,0 +1,24 @@
+import CardGrid from '@site/src/components/CardGrid';
+import DocCard from '@site/src/components/DocCard';
+
+# Getting Started
+
+Use this section to get to a first successful run quickly, without dragging in deployment or large-workflow complexity too early.
+
+<CardGrid>
+  <DocCard title="Install" href="/getting-started/install" eyebrow="Step 1">
+    Install the SDK and platform packages and verify the CLI is available.
+  </DocCard>
+  <DocCard title="Run First Evaluation" href="/getting-started/first-evaluation" eyebrow="Step 2">
+    Use a small example and a small metric set to validate the full loop.
+  </DocCard>
+  <DocCard title="Review In Platform" href="/getting-started/platform-review" eyebrow="Step 3">
+    Confirm the run is visible in the platform and understand what to inspect first.
+  </DocCard>
+</CardGrid>
+
+## Before you start
+
+- Decide whether your first run will use a remote dataset or a local CSV.
+- If you need platform review immediately, set `QYM_PLATFORM_URL` and `QYM_API_KEY` before the first run.
+- If you need judge metrics, configure those after the baseline task works.

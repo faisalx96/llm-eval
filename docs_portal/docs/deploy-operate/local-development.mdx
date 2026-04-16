@@ -1,0 +1,18 @@
+# Local Development
+
+Use the repo-root development workflow when you need to iterate on SDK, platform, and docs together.
+
+```bash
+pip install -e packages/sdk[dev] -e packages/platform
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+```
+
+## Use local development for
+
+- UI and API changes
+- schema and migration validation
+- docs generation and local preview
+
+## Do not confuse this with production
+
+Development convenience settings are not a production hardening model.

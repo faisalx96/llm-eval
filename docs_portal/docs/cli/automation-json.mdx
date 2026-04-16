@@ -1,0 +1,26 @@
+# Automation And JSON Output
+
+The CLI is designed for structured automation. Prefer `--json` anywhere another system, pipeline, or agent will consume the result.
+
+## Why JSON matters
+
+- It prevents parsers from depending on human-oriented stderr text.
+- It makes exit-code handling and payload inspection predictable.
+- It keeps the CLI useful in CI and agent loops, not just interactive shells.
+
+## Baseline pattern
+
+```bash
+qym run list --limit 20 --json
+qym config check --json
+qym analyze summary <run_id> --json
+```
+
+## Exit codes
+
+- `0`: success
+- `1`: command failed after parsing
+- `2`: usage error
+- `3`: not found
+- `4`: auth denied
+- `5`: conflict

@@ -1,0 +1,22 @@
+# Air-Gapped Deployment
+
+Air-gapped runtime support is mandatory. That changes packaging responsibilities, not the user-facing portal requirement.
+
+## Build time versus runtime
+
+- Build time may use internet access to install docs dependencies and produce the final static docs bundle.
+- Runtime must not depend on internet access to serve `/docs`, `/api-docs`, static assets, or the platform UI.
+
+## What must move into the offline environment
+
+- The final image artifact
+- Any required database or deployment manifests
+- No extra docs build step
+
+## What should work offline
+
+- `/docs`
+- `/docs/*` deep links
+- `/openapi.json`
+- `/api-docs`
+- Platform UI and API routes inside the deployment boundary

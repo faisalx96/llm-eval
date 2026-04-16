@@ -1,0 +1,19 @@
+# Inspect Results In The Platform
+
+Once a run is visible in the platform, the first review pass should answer three questions:
+
+- Did the expected number of items arrive?
+- Which items failed and why?
+- Is the failure pattern obvious enough to act on, or do you need AI analysis?
+
+## Recommended first checks
+
+1. Open the runs view and confirm the run status, dataset, task, and model fields look correct.
+2. Open the single-run page and inspect failed rows before looking at aggregate charts.
+3. If the pattern is not obvious, trigger AI analysis or use `qym run failed` and `qym analyze run`.
+
+## When not to trust the platform yet
+
+- The run name or metadata looks inconsistent with what you executed.
+- The item counts do not match the local artifact.
+- The platform has auth or project-scoping rules that prevent you from seeing the expected data.

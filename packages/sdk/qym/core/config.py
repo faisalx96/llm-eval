@@ -11,6 +11,14 @@ class EvaluatorConfig(BaseModel):
     max_concurrency: int = Field(default=10, ge=1)
     max_metric_concurrency: int = Field(default=1, ge=1)
     timeout: Optional[float] = Field(default=300, gt=0)
+    # Hard wall-clock cap per metric call. A metric that hangs beyond this budget
+    # is cancelled with asyncio.wait_for and recorded as score=0 with a "timeout"
+    # label — so one misbehaving metric (e.g. an LLM judge that never returns)
+    # cannot hold an entire item hostage. 60s comfortably covers a healthy LLM
+    # judge (~5-30s typical, ~60s long-reasoning tail) while still catching a
+    # hung upstream within ~1 minute per item. Override for slow custom metrics;
+    # set to None to disable.
+    metric_timeout: Optional[float] = Field(default=60.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     git_branch: Optional[str] = None   # Override auto-detected git branch

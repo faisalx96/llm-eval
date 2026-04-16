@@ -37,19 +37,56 @@ def snap_to_rail(text: str, rails: List[str]) -> Optional[str]:
     return None
 
 
-async def _call_with_retry(client, *, model, messages, temperature, max_tokens, max_attempts=3):
-    """Call LLM with exponential backoff retry."""
+async def _call_with_retry(
+    client,
+    *,
+    model,
+    messages,
+    temperature,
+    max_tokens,
+    max_attempts=3,
+    timeout: Optional[float] = None,
+):
+    """Call LLM with exponential backoff retry and a true wall-clock timeout.
+
+    The ``timeout`` parameter is a hard wall-clock cap on each attempt, enforced via
+    ``asyncio.wait_for``. This is essential because httpx's own ``timeout`` kwarg is
+    a per-read timeout — slow-streaming providers (e.g. some OpenRouter upstreams)
+    can keep a connection alive indefinitely by sending trickled chunks just inside
+    the per-read window, which has caused 30+ minute hangs in practice.
+
+    ``asyncio.wait_for`` cancels the inner task on timeout, which propagates through
+    httpx's async transport and actually closes the underlying socket — the only
+    reliable cancellation primitive Python gives us for this use case.
+    """
     last_exc = None
     for attempt in range(max_attempts):
         try:
-            response = await client.chat.completions.create(
+            create_coro = client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
             )
+            if timeout is not None:
+                response = await asyncio.wait_for(create_coro, timeout=timeout)
+            else:
+                response = await create_coro
             return response
+        except asyncio.TimeoutError as exc:
+            # wall-clock cap hit; retriable
+            last_exc = exc
+            if attempt < max_attempts - 1:
+                base_delay = min(2 ** attempt, 30)
+                jitter = random.uniform(0, base_delay * 0.5)
+                logger.warning(
+                    "LLM judge call timed out after %.1fs (attempt %d/%d)",
+                    timeout if timeout is not None else -1,
+                    attempt + 1,
+                    max_attempts,
+                )
+                await asyncio.sleep(base_delay + jitter)
         except Exception as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
@@ -126,6 +163,7 @@ async def llm_judge(
             ],
             temperature=cfg.temperature,
             max_tokens=cfg.max_tokens,
+            timeout=cfg.timeout,
         )
         raw_text = response.choices[0].message.content or ""
     except Exception as exc:
@@ -155,6 +193,7 @@ async def llm_judge(
                 temperature=cfg.temperature,
                 max_tokens=cfg.max_tokens,
                 max_attempts=1,
+                timeout=cfg.timeout,
             )
             retry_text = retry_response.choices[0].message.content or ""
             verdict, explanation = _parse_verdict(retry_text, choices)

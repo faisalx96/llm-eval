@@ -1,0 +1,21 @@
+# Common API Workflows
+
+## Ingest a run
+
+1. Create or upload the run through the ingestion surface.
+2. Post events or final submission data if the workflow streams incrementally.
+3. Inspect the resulting run through the runs surface or the platform UI.
+
+## Review a run
+
+1. Resolve the target run ID.
+2. Fetch the run details and failed items.
+3. Trigger analysis if you need clustered failure explanations.
+4. Approve, reject, or correct outcomes as needed.
+
+## Provision a project
+
+1. Create the project.
+2. Add members.
+3. Create project-scoped API keys.
+4. Hand the credentials to SDK or pipeline clients.

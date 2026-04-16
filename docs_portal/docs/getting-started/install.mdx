@@ -1,0 +1,23 @@
+# Install qym
+
+The recommended development install is from the repo root so both SDK and platform code are editable.
+
+```bash
+pip install -e packages/sdk[dev] -e packages/platform
+qym --help
+```
+
+## Environment baseline
+
+Set only what you need for the first loop:
+
+```bash
+QYM_PLATFORM_URL=http://localhost:8000
+QYM_API_KEY=<optional-if-platform-auth-is-enabled>
+```
+
+Use a local CSV workflow if you want to postpone remote dataset integration.
+
+:::info Keep The First Install Narrow
+Do not start with judge metrics, custom auth, and large datasets all at once. Validate the evaluator and CLI first.
+:::

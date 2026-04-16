@@ -1,0 +1,18 @@
+# Metrics And Datasets
+
+The quality of a qym run depends more on dataset and metric discipline than on how much code you wrote around the evaluator.
+
+## Dataset choices
+
+- Remote dataset: use this when teams share a single evaluation set and want consistent replay.
+- Local CSV: use this for offline work, fast local iteration, and air-gapped execution.
+
+## Metric choices
+
+- Deterministic metrics: start here for exactness, containment, and simple regressions.
+- Custom metrics: use when task output is structured or domain-specific.
+- Judge metrics: use when the baseline loop already works and you need semantic scoring.
+
+:::tip Good First Metric Set
+Use one deterministic metric and one qualitative metric only after you understand what a good and bad item looks like manually.
+:::

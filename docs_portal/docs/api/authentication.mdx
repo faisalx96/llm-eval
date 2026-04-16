@@ -1,0 +1,15 @@
+# API Authentication
+
+The platform exposes a mixed surface: some auth bootstrap and health endpoints are public inside the deployment boundary, while most run, project, and user endpoints require a valid authenticated session or API key.
+
+## Practical model
+
+- Browser users: authenticate through the configured auth mode and interact through session-backed UI flows.
+- SDK and CLI clients: usually authenticate with API keys.
+- Project automation: prefer project-scoped credentials where that model exists.
+
+## What to decide first
+
+1. Whether the caller is a human, a service, or a CI pipeline.
+2. Whether the deployment uses open internal access, proxy-driven identity, or native login.
+3. Whether the action should be scoped to a project, a user, or the whole platform.

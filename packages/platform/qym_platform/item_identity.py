@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Mapping
 
 
 MUTABLE_METADATA_KEYS = {
+    "analysis_error",
+    "retry_count",
     "review_correction_id",
     "review_correction_status",
     "root_cause",

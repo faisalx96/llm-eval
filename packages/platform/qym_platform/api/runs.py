@@ -53,6 +53,16 @@ router = APIRouter()
 _LANGFUSE_URL_RE = re.compile(r"(https?://[^/]+)/project/([^/]+)")
 
 
+def _median(values: List[Optional[float]]) -> float:
+    numeric = sorted(float(v) for v in values if v is not None)
+    if not numeric:
+        return 0.0
+    mid = len(numeric) // 2
+    if len(numeric) % 2 == 0:
+        return (numeric[mid - 1] + numeric[mid]) / 2.0
+    return numeric[mid]
+
+
 def _stringify(val: Any) -> str:
     """Convert a value to a display string; dicts/lists become pretty JSON."""
     if val is None:
@@ -343,6 +353,7 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     total_items = len(items)
     error_items = {it.item_id for it in items if it.error}
     error_count = len(error_items)
+    total_retries = sum(int(it.retry_count or 0) for it in items)
     success_count = total_items - error_count
     completed_count = len([it for it in items if (it.output is not None) or (it.error is not None)])
 
@@ -357,6 +368,7 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     # Avg latency across all items that have latency
     latencies = [it.latency_ms for it in items if it.latency_ms is not None]
     avg_latency_ms = float(sum(latencies) / len(latencies)) if latencies else 0.0
+    median_latency_ms = _median(latencies)
 
     metrics = list(run.metrics or [])
     metric_averages: Dict[str, float] = {m: 0.0 for m in metrics}
@@ -438,8 +450,10 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
         "progress_pct": (completed_count / expected_total) if expected_total else None,
         "success_count": success_count,
         "error_count": error_count,
+        "total_retries": total_retries,
         "success_rate": (success_count / total_items) if total_items else 0.0,
         "avg_latency_ms": avg_latency_ms,
+        "median_latency_ms": median_latency_ms,
         "langfuse_url": run.run_metadata.get("langfuse_url") if isinstance(run.run_metadata, dict) else None,
         "langfuse_dataset_id": run.run_metadata.get("langfuse_dataset_id") if isinstance(run.run_metadata, dict) else None,
         "langfuse_run_id": run.run_metadata.get("langfuse_run_id") if isinstance(run.run_metadata, dict) else None,
@@ -669,6 +683,7 @@ def legacy_list_runs(
             func.count().label("total"),
             func.count(case((RunItem.error.isnot(None), 1))).label("error_count"),
             func.count(case(((RunItem.output.isnot(None)) | (RunItem.error.isnot(None)), 1))).label("completed"),
+            func.coalesce(func.sum(RunItem.retry_count), 0).label("total_retries"),
             func.avg(RunItem.latency_ms).label("avg_latency"),
         )
         .filter(RunItem.run_id.in_(run_ids))
@@ -680,10 +695,24 @@ def legacy_list_runs(
             "total": row.total,
             "error_count": row.error_count,
             "completed": row.completed,
+            "total_retries": int(row.total_retries or 0),
             "avg_latency": float(row.avg_latency) if row.avg_latency is not None else 0.0,
         }
         for row in item_agg_rows
     }
+
+    latency_rows = (
+        db.query(RunItem.run_id, RunItem.latency_ms)
+        .filter(RunItem.run_id.in_(run_ids), RunItem.latency_ms.isnot(None))
+        .all()
+    )
+    latency_values_by_run: Dict[str, List[float]] = {}
+    for row in latency_rows:
+        latency_values_by_run.setdefault(row.run_id, []).append(float(row.latency_ms))
+    for run_id, values in latency_values_by_run.items():
+        item_agg.setdefault(run_id, {"total": 0, "error_count": 0, "completed": 0, "total_retries": 0, "avg_latency": 0.0})[
+            "median_latency"
+        ] = _median(values)
 
     # --- Batch query: score averages per run+metric ---
     # Note: this uses SQL AVG which excludes NULLs. The old code counted error items
@@ -716,9 +745,13 @@ def legacy_list_runs(
     # --- Build summaries from pre-fetched data ---
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     for r in runs:
-        agg = item_agg.get(r.id, {"total": 0, "error_count": 0, "completed": 0, "avg_latency": 0.0})
+        agg = item_agg.get(
+            r.id,
+            {"total": 0, "error_count": 0, "completed": 0, "total_retries": 0, "avg_latency": 0.0, "median_latency": 0.0},
+        )
         total_items = agg["total"]
         error_count = agg["error_count"]
+        total_retries = int(agg.get("total_retries") or 0)
         success_count = total_items - error_count
         completed_count = agg["completed"]
         started_at = r.started_at or r.created_at
@@ -793,8 +826,10 @@ def legacy_list_runs(
             "progress_pct": (completed_count / expected_total) if expected_total else None,
             "success_count": success_count,
             "error_count": error_count,
+            "total_retries": total_retries,
             "success_rate": (success_count / total_items) if total_items else 0.0,
             "avg_latency_ms": agg["avg_latency"],
+            "median_latency_ms": agg.get("median_latency", 0.0),
             "duration_ms": duration_ms,
             "langfuse_url": r.run_metadata.get("langfuse_url") if isinstance(r.run_metadata, dict) else None,
             "langfuse_dataset_id": r.run_metadata.get("langfuse_dataset_id") if isinstance(r.run_metadata, dict) else None,

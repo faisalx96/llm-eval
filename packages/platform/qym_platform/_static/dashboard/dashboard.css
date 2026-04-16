@@ -2344,9 +2344,9 @@ body.chart-col-resize-active {
 
 .runs-table {
   --runs-col-select-width: 40px;
-  --runs-col-status-width: 200px;
+  --runs-col-status-width: 164px;
   --runs-col-run-width: 220px;
-  --runs-col-task-width: 180px;
+  --runs-col-task-width: 150px;
   --runs-col-model-width: 220px;
   width: max-content;
   min-width: 100%;
@@ -2629,6 +2629,14 @@ body.chart-col-resize-active {
   color: var(--error);
 }
 
+.status-retries {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--warning);
+}
+
 .col-run {
   width: var(--runs-col-run-width);
   min-width: var(--runs-col-run-width);
@@ -2668,6 +2676,7 @@ body.chart-col-resize-active {
   width: var(--runs-col-task-width);
   min-width: var(--runs-col-task-width);
   max-width: var(--runs-col-task-width);
+  white-space: normal;
 }
 
 .col-model {
@@ -2845,6 +2854,10 @@ body.chart-col-resize-active {
 }
 
 .tag.task {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
   background: var(--accent-tertiary)18;
   color: var(--accent-tertiary);
 }
@@ -2951,7 +2964,8 @@ body.chart-col-resize-active {
   font-size: var(--font-sm);
 }
 
-.col-latency {
+.col-latency,
+.col-latency-median {
   white-space: nowrap;
 }
 
@@ -4197,6 +4211,7 @@ body.chart-col-resize-active {
 .model-stat-item .stat-value.score-2 { color: var(--score-2); }
 .model-stat-item .stat-value.score-1 { color: var(--score-1); }
 .model-stat-item .stat-value.failed-count { color: var(--error); }
+.model-stat-item .stat-value.retry-count { color: var(--warning); }
 .model-stat-item .stat-value.accent-value { color: var(--accent-primary); }
 
 /* Model Card Footer */
@@ -4483,6 +4498,7 @@ body.chart-col-resize-active {
 .model-stat-box .stat-main.score-2 { color: var(--score-2); }
 .model-stat-box .stat-main.score-1 { color: var(--score-1); }
 .model-stat-box .stat-main.failed-count { color: var(--error); }
+.model-stat-box .stat-main.retry-count { color: var(--warning); }
 
 
 /* Info icon (i) for tooltips */

@@ -411,6 +411,7 @@ class Evaluator:
         self.max_concurrency = self.config.max_concurrency
         self.max_metric_concurrency = self.config.max_metric_concurrency
         self.timeout = self.config.timeout
+        self.metric_timeout = self.config.metric_timeout
         self.max_retries = self.config.max_retries
 
         # Model handling - strip provider prefix once, keep full name for user's task
@@ -1801,56 +1802,84 @@ class Evaluator:
         self, m_name: str, m_func: Callable, output: Any, expected: Any,
         index: int, item: Any, spans: ItemSpans,
     ) -> Tuple[str, Any]:
-        """Run a single metric, emit score event, and notify platform."""
-        try:
-            # Compute metric (async or sync)
+        """Run a single metric, emit score event, and notify platform.
+
+        The metric call is wrapped in ``asyncio.wait_for`` with a wall-clock budget
+        of ``self.metric_timeout`` (default 120s). A metric that hangs beyond the
+        budget is cancelled and recorded as ``score=0`` with ``label="timeout"`` so
+        one misbehaving metric (e.g. an LLM judge that never returns) cannot hold
+        the whole item hostage in ``asyncio.gather``.
+        """
+        # Inline helper that runs the actual metric compute (preserves the
+        # existing probe logic for async metrics that accidentally block the loop).
+        async def _run_metric_inner():
             if asyncio.iscoroutinefunction(m_func):
                 func_id = id(m_func)
                 should_probe = func_id not in Evaluator._metric_blocking_probed
 
                 if not should_probe:
-                    score = await self._compute_metric(m_func, output, expected, item.input)
-                else:
-                    Evaluator._metric_blocking_probed.add(func_id)
-                    _hb_ticks = 0
-                    _hb_stop = False
+                    return await self._compute_metric(m_func, output, expected, item.input)
 
-                    async def _hb():
-                        nonlocal _hb_ticks
-                        while not _hb_stop:
-                            await asyncio.sleep(0.1)
-                            _hb_ticks += 1
+                Evaluator._metric_blocking_probed.add(func_id)
+                _hb_ticks = 0
+                _hb_stop = False
 
-                    hb_task = asyncio.create_task(_hb())
-                    _t0 = time.monotonic()
+                async def _hb():
+                    nonlocal _hb_ticks
+                    while not _hb_stop:
+                        await asyncio.sleep(0.1)
+                        _hb_ticks += 1
+
+                hb_task = asyncio.create_task(_hb())
+                _t0 = time.monotonic()
+                try:
+                    return await self._compute_metric(m_func, output, expected, item.input)
+                finally:
+                    _hb_stop = True
+                    _elapsed = time.monotonic() - _t0
+                    hb_task.cancel()
                     try:
-                        score = await self._compute_metric(m_func, output, expected, item.input)
-                    finally:
-                        _hb_stop = True
-                        _elapsed = time.monotonic() - _t0
-                        hb_task.cancel()
-                        try:
-                            await hb_task
-                        except asyncio.CancelledError:
-                            pass
+                        await hb_task
+                    except asyncio.CancelledError:
+                        pass
 
-                        if _elapsed > 1.0 and _hb_ticks < 2:
-                            if func_id not in Evaluator._metric_blocking_warned:
-                                Evaluator._metric_blocking_warned.add(func_id)
-                                _fname = getattr(m_func, '__name__', m_name)
-                                warning_msg = (
-                                    f"Async metric '{_fname}' appears to block "
-                                    f"the event loop ({_elapsed:.1f}s elapsed, "
-                                    f"{_hb_ticks} event-loop ticks). Fix: remove "
-                                    f"'async' from your metric function so qym "
-                                    f"runs it in a thread pool automatically."
-                                )
-                                logger.warning(warning_msg)
-                                self._notify_observer("on_warning", message=warning_msg)
+                    if _elapsed > 1.0 and _hb_ticks < 2:
+                        if func_id not in Evaluator._metric_blocking_warned:
+                            Evaluator._metric_blocking_warned.add(func_id)
+                            _fname = getattr(m_func, '__name__', m_name)
+                            warning_msg = (
+                                f"Async metric '{_fname}' appears to block "
+                                f"the event loop ({_elapsed:.1f}s elapsed, "
+                                f"{_hb_ticks} event-loop ticks). Fix: remove "
+                                f"'async' from your metric function so qym "
+                                f"runs it in a thread pool automatically."
+                            )
+                            logger.warning(warning_msg)
+                            self._notify_observer("on_warning", message=warning_msg)
             else:
-                score = await asyncio.to_thread(
+                return await asyncio.to_thread(
                     self._compute_metric_sync, m_func, output, expected, item.input,
                 )
+
+        try:
+            # Apply wall-clock cap on the metric call itself.
+            if self.metric_timeout is not None:
+                try:
+                    score = await asyncio.wait_for(_run_metric_inner(), timeout=self.metric_timeout)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Metric %s timed out after %.1fs — recording sentinel score",
+                        m_name, self.metric_timeout,
+                    )
+                    score = {
+                        "score": 0.0,
+                        "label": "timeout",
+                        "metadata": {
+                            "error": f"metric timeout after {self.metric_timeout}s",
+                        },
+                    }
+            else:
+                score = await _run_metric_inner()
 
             # Wrap in MetricResult
             from qym.metrics.result import MetricResult
@@ -2087,6 +2116,61 @@ class Evaluator:
         except Exception:
             pass
 
+    async def _finalize_item(
+        self,
+        index: int,
+        item: Any,
+        success_attempt: "TaskAttemptResult",
+        scores: Dict[str, Any],
+        retry_count: int,
+        active_spans: ItemSpans,
+        tracker: "ProgressObserver",
+    ) -> None:
+        """Run the durable emit phase of a successful item atomically.
+
+        Called under ``asyncio.shield(...)`` from ``_evaluate_item``. Once
+        ``_compute_metrics`` returns, the item is functionally done and must
+        never be marked as ``item_failed`` even if an external ``CancelledError``
+        arrives mid-emit. The shield lets the background Task complete its
+        emits even after the caller has been cancelled.
+
+        IMPORTANT: do NOT perform OpenTelemetry span lifecycle operations here.
+        ``asyncio.shield`` schedules the inner coroutine as a new Task, which
+        inherits a COPY of the parent's ``contextvars.Context``. Any OTel token
+        attached in the parent task cannot be ``detach()``-ed here — you'll get
+        ``ValueError: Token was created in a different Context``. The caller in
+        ``_evaluate_item`` runs ``end_metrics`` / ``end_eval`` in the outer Task
+        before calling us.
+        """
+        # Update local tracker (in-memory progress)
+        self._update_tracker(
+            index,
+            item,
+            success_attempt.output,
+            scores,
+            success_attempt.latency_s,
+            retry_count,
+            active_spans,
+            tracker,
+        )
+        # Emit item_completed to the platform stream (fire-and-forget queue put)
+        self._emit_item_completed(
+            index,
+            item,
+            success_attempt.output,
+            success_attempt.latency_s,
+            active_spans,
+            retry_count,
+            success_attempt.task_started_at_ms,
+        )
+        # Dataset linking (async Langfuse HTTP call, best-effort)
+        try:
+            await self._link_dataset_item(index, item, active_spans)
+        except Exception:
+            pass
+        # Per-attempt finished event
+        self._emit_item_attempt_finished(index, item, success_attempt, is_last_attempt=True)
+
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
         """Evaluate a single item: create spans, run task, compute metrics, emit results."""
         _item_finished = False
@@ -2127,29 +2211,17 @@ class Evaluator:
                 pass
             scores = await self._compute_metrics(index, item, success_attempt.output, active_spans)
 
-            # Emit to platform FIRST — before any span cleanup that could crash
-            self._update_tracker(
-                index,
-                item,
-                success_attempt.output,
-                scores,
-                success_attempt.latency_s,
-                retry_count,
-                active_spans,
-                tracker,
-            )
-            self._emit_item_completed(
-                index,
-                item,
-                success_attempt.output,
-                success_attempt.latency_s,
-                active_spans,
-                retry_count,
-                success_attempt.task_started_at_ms,
-            )
+            # Mark the item as finished IMMEDIATELY after metrics compute. Once we
+            # have scores, the work is functionally done — any subsequent emit
+            # cancellation must not downgrade the item's status in the finally
+            # block below.
             _item_finished = True
 
-            # Span cleanup + dataset linking (nice-to-have, after emit)
+            # End OTel spans HERE, in the outer Task. These calls detach tokens
+            # that were attached by _compute_metrics (line 1781) in this same
+            # Task — they MUST NOT be moved inside asyncio.shield, because the
+            # shielded task runs with a copied contextvars.Context and OTel
+            # token detach across Task boundaries raises ValueError.
             try:
                 active_spans.end_metrics(scores=scores)
             except Exception:
@@ -2158,11 +2230,13 @@ class Evaluator:
                 active_spans.end_eval(output=success_attempt.output)
             except Exception:
                 pass
-            try:
-                await self._link_dataset_item(index, item, active_spans)
-            except Exception:
-                pass
-            self._emit_item_attempt_finished(index, item, success_attempt, is_last_attempt=True)
+
+            # Now the durable emit phase (platform stream + tracker + Langfuse
+            # dataset linking) runs under asyncio.shield so it completes
+            # atomically even if the caller is cancelled mid-flight.
+            await asyncio.shield(self._finalize_item(
+                index, item, success_attempt, scores, retry_count, active_spans, tracker,
+            ))
 
             return {
                 "input": item.input,

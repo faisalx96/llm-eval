@@ -1,0 +1,15 @@
+# API Conventions
+
+The generated API reference gives you exact endpoint contracts. This page gives you the operating rules that make those contracts usable.
+
+## Conventions worth knowing
+
+- Treat `/openapi.json` as the stable machine-readable source of truth.
+- Treat `/api-docs` as the exploratory Swagger surface, not the primary learning surface.
+- Expect project and run identifiers to be the key scoping handles for most operational workflows.
+- Expect richer platform review endpoints under `/api/...` and ingestion-oriented endpoints under `/v1/...`.
+
+## Recommended practice
+
+- Use the CLI unless your integration really needs direct HTTP control.
+- Prefer the grouped API reference over ad hoc endpoint discovery from Swagger.

@@ -36,4 +36,4 @@ qym-platform = "qym_platform.cli:main"
 where = ["."]
 
 [tool.setuptools.package-data]
-qym_platform = ["_static/dashboard/*", "_static/ui/*", "migrations/*", "migrations/versions/*"]
+qym_platform = ["_static/dashboard/*", "_static/ui/*", "_static/docs/*", "migrations/*", "migrations/versions/*"]

@@ -25,7 +25,7 @@ if "openai" not in sys.modules:
 from qym_platform.app import create_app
 from qym_platform.datetime_utils import utc_now_naive
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunItem, RunWorkflowStatus, User, UserRole
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
 
@@ -203,6 +203,45 @@ def test_stale_running_run_is_reconciled_to_stopped_in_list_api(client, session_
         assert run is not None
         assert run.status == RunWorkflowStatus.STOPPED
         assert run.status_reason == "lease_timeout"
+
+
+def test_runs_list_includes_median_latency(client, session_factory) -> None:
+    run_id = "00000000-0000-0000-0000-000000000104"
+    with session_factory() as session:
+        _seed_run(session, run_id=run_id)
+        session.add_all([
+            RunItem(run_id=run_id, item_id="item-1", index=0, latency_ms=100.0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-2", index=1, latency_ms=400.0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-3", index=2, latency_ms=900.0, output="ok"),
+        ])
+        session.commit()
+
+    response = client.get("/api/runs", headers=_ui_headers("admin@example.com"))
+    assert response.status_code == 200
+    payload = response.json()
+    summaries = payload["tasks"]["task-1"]["nomodel"]
+    summary = next(item for item in summaries if item["run_id"] == run_id)
+    assert summary["avg_latency_ms"] == pytest.approx((100.0 + 400.0 + 900.0) / 3)
+    assert summary["median_latency_ms"] == pytest.approx(400.0)
+
+
+def test_runs_list_includes_total_retries(client, session_factory) -> None:
+    run_id = "00000000-0000-0000-0000-000000000105"
+    with session_factory() as session:
+        _seed_run(session, run_id=run_id)
+        session.add_all([
+            RunItem(run_id=run_id, item_id="item-1", index=0, retry_count=0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-2", index=1, retry_count=2, output="ok"),
+            RunItem(run_id=run_id, item_id="item-3", index=2, retry_count=3, error="boom"),
+        ])
+        session.commit()
+
+    response = client.get("/api/runs", headers=_ui_headers("admin@example.com"))
+    assert response.status_code == 200
+    payload = response.json()
+    summaries = payload["tasks"]["task-1"]["nomodel"]
+    summary = next(item for item in summaries if item["run_id"] == run_id)
+    assert summary["total_retries"] == 5
 
 
 def test_heartbeat_reopens_run_stopped_by_lease_timeout(client, session_factory) -> None:

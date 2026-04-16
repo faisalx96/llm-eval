@@ -1,0 +1,21 @@
+# Platform Streaming
+
+Streaming is optional. qym still writes local artifacts even when the platform is unavailable or intentionally out of path.
+
+## Use streaming when
+
+- You want shared run history and comparisons.
+- Review and approval workflows happen in the platform.
+- You need AI analysis or corrections review after execution.
+
+## Skip direct streaming when
+
+- The environment is air-gapped or intermittently connected.
+- You want to batch-upload artifacts later with `qym submit`.
+
+## Required environment
+
+- `QYM_PLATFORM_URL`
+- `QYM_API_KEY` when the deployment protects ingestion
+
+See [Deploy & Operate](/deploy-operate) for the runtime side of this contract.

@@ -1,0 +1,68 @@
+[
+  {
+    "slug": "platform-connectivity",
+    "title": "Platform Connectivity Failures",
+    "summary": "The CLI or SDK cannot reach the qym platform or fails auth checks.",
+    "symptoms": [
+      "`qym config check` fails.",
+      "Run streaming or `qym run list` returns authentication or network errors."
+    ],
+    "checks": [
+      "Verify `QYM_PLATFORM_URL` points to the deployed platform URL, including any root-path prefix.",
+      "Verify `QYM_API_KEY` is present and still valid for the target user or project.",
+      "If the deployment sits behind a proxy, verify the platform `QYM_BASE_URL` and `QYM_ROOT_PATH` match the exposed route."
+    ],
+    "fixes": [
+      "Correct the platform URL or API key and rerun `qym config check`.",
+      "If the platform is intentionally unreachable, switch to an offline workflow and upload artifacts later."
+    ],
+    "related_docs": [
+      "[Deploy & Operate: Environment](/deploy-operate/environment)",
+      "[Deploy & Operate: Air-Gapped](/deploy-operate/air-gapped)"
+    ]
+  },
+  {
+    "slug": "judge-metrics",
+    "title": "Judge Metrics Not Working",
+    "summary": "Judge-based metrics fail because the model or provider credentials are not configured correctly.",
+    "symptoms": [
+      "Runs fail only when judge metrics are enabled.",
+      "Judge metrics return provider or auth errors."
+    ],
+    "checks": [
+      "Verify `QYM_JUDGE_MODEL` is set.",
+      "Verify `QYM_JUDGE_API_KEY` or a compatible alias is present.",
+      "If using a self-hosted provider, verify `QYM_JUDGE_BASE_URL` points at an OpenAI-compatible endpoint."
+    ],
+    "fixes": [
+      "Validate the provider independently before rerunning the full evaluation.",
+      "Start with deterministic metrics to verify the task and dataset loop first."
+    ],
+    "related_docs": [
+      "[CLI: Running Evaluations](/cli/running-evaluations)",
+      "[Examples](/examples)"
+    ]
+  },
+  {
+    "slug": "air-gapped-docs",
+    "title": "Docs Or Assets Missing In Air-Gapped Deployments",
+    "summary": "The docs portal is missing or incomplete because the image was built without the final static docs bundle.",
+    "symptoms": [
+      "`/docs` serves an incomplete site or missing assets.",
+      "The runtime environment has no internet and cannot build docs on the fly."
+    ],
+    "checks": [
+      "Verify the image build ran the docs generation and Docusaurus build steps.",
+      "Verify the final runtime image contains the built `docs_portal/build` output.",
+      "Verify the deployed reverse proxy preserves the docs route and asset paths."
+    ],
+    "fixes": [
+      "Rebuild the image in a build-time environment with internet access if npm dependencies must be restored.",
+      "Redeploy the final image artifact rather than relying on repo-local docs build output."
+    ],
+    "related_docs": [
+      "[Deploy & Operate: Air-Gapped](/deploy-operate/air-gapped)",
+      "[Deploy & Operate: Upgrades](/deploy-operate/upgrades)"
+    ]
+  }
+]
