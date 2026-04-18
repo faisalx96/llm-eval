@@ -714,23 +714,25 @@ def legacy_list_runs(
             "median_latency"
         ] = _median(values)
 
-    # --- Batch query: score averages per run+metric ---
-    # Note: this uses SQL AVG which excludes NULLs. The old code counted error items
-    # as 0.0, so we do a LEFT JOIN to include error items with score 0.
+    # --- Batch query: score sums per run+metric ---
+    # We divide by the run's total_items (not COUNT(score_numeric)) so that items
+    # which errored out and therefore produced no score row count as 0. Using
+    # SQL AVG would exclude them and inflate the average (e.g. a run with 3/100
+    # items succeeding at score 1.0 would report 100% instead of 3%).
     score_agg_rows = (
         db.query(
             RunItemScore.run_id,
             RunItemScore.metric_name,
-            func.avg(RunItemScore.score_numeric).label("avg_score"),
+            func.sum(RunItemScore.score_numeric).label("score_sum"),
         )
         .filter(RunItemScore.run_id.in_(run_ids))
         .group_by(RunItemScore.run_id, RunItemScore.metric_name)
         .all()
     )
-    # Build nested map: run_id -> {metric_name: avg_score}
-    score_agg: Dict[str, Dict[str, float]] = {}
+    # Build nested map: run_id -> {metric_name: sum}
+    score_sum_agg: Dict[str, Dict[str, float]] = {}
     for row in score_agg_rows:
-        score_agg.setdefault(row.run_id, {})[row.metric_name] = float(row.avg_score) if row.avg_score is not None else 0.0
+        score_sum_agg.setdefault(row.run_id, {})[row.metric_name] = float(row.score_sum) if row.score_sum is not None else 0.0
 
     # --- Batch query: approvals ---
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
@@ -769,8 +771,11 @@ def legacy_list_runs(
                 expected_total = None
 
         metrics = list(r.metrics or [])
-        run_scores = score_agg.get(r.id, {})
-        metric_averages = {m: run_scores.get(m, 0.0) for m in metrics}
+        run_score_sums = score_sum_agg.get(r.id, {})
+        metric_averages = {
+            m: (run_score_sums.get(m, 0.0) / total_items) if total_items else 0.0
+            for m in metrics
+        }
 
         # Owner info
         owner = user_map.get(r.owner_user_id)

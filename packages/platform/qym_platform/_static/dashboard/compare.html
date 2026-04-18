@@ -5429,6 +5429,11 @@
             { key: 'avg_llm_calls',  label: '\u26A1 LLM Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
             { key: 'avg_tool_calls', label: '\u26A1 Tool Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
             { key: 'tool_success_rate', label: '\u26A1 Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '\u2014', best: 'high' },
+            { key: 'avg_llm_ms', label: '\u26A1 Avg LLM ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_tool_ms', label: '\u26A1 Avg Tool ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_retriever_ms', label: '\u26A1 Avg Retriever ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_evaluator_ms', label: '\u26A1 Avg Evaluator ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_top_level_chain_ms', label: '\u26A1 Avg Top-Level Chain ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
           ];
           for (const td of traceDefs) {
             const vals = state.runs.map(r => {
@@ -6560,11 +6565,14 @@
         if (!ts && !(retryCount > 0)) return '';
         ts = ts || {};
         var chips = [];
+        var toolErrorCount = ts.tool_errors || ts.malformed_tool_calls || 0;
         if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
         if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
         if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
         if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
-        if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (toolErrorCount > 0 || ts.tool_calls) chips.push('<span class="trace-chip' + (toolErrorCount > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + toolErrorCount + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (ts.noisy_reasoning > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u2728</span><span class="trace-chip-value">' + ts.noisy_reasoning + '</span><span class="trace-chip-label">Noisy Reasoning</span></span>');
+        if (ts.provider_errors > 0) chips.push('<span class="trace-chip trace-chip-err"><span class="trace-chip-icon">\u26A0</span><span class="trace-chip-value">' + ts.provider_errors + '</span><span class="trace-chip-label">Provider Errors</span></span>');
         if ((retryCount || 0) > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u21BB</span><span class="trace-chip-value">' + retryCount + '</span><span class="trace-chip-label">Retries</span></span>');
         if (chips.length === 0) return '';
         return '<div class="trace-chips-row">' + chips.join('') + '</div>';

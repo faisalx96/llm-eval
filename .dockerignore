@@ -20,9 +20,11 @@ qym_platform.db
 build/
 dist/
 *.egg-info/
+docs_portal/node_modules/
+docs_portal/build/
+docs_portal/.docusaurus/
 
 # dev / secrets
 .env
 .env.*
 .DS_Store
-

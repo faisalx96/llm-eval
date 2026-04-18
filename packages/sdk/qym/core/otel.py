@@ -25,6 +25,7 @@ import json as _json
 import logging
 import os
 import pkgutil
+import re
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -410,12 +411,21 @@ def _extract_tool_results_from_message(msg: Any) -> List[Tuple[str, str]]:
 
 def _extract_reasoning_text(message: Any) -> str:
     if isinstance(message, dict):
-        reasoning = message.get("reasoning")
+        # `reasoning` is OpenRouter's field; `reasoning_content` is what
+        # sglang/vLLM return when launched with --reasoning-parser.
+        reasoning = message.get("reasoning") or message.get("reasoning_content")
         content = message.get("content")
     else:
-        reasoning = getattr(message, "reasoning", None)
+        reasoning = getattr(message, "reasoning", None) or getattr(message, "reasoning_content", None)
         content = getattr(message, "content", None)
     if reasoning:
+        for key in ("content", "summary", "thinking", "text", "value"):
+            nested = _normalize_message_content(_obj_get(reasoning, key))
+            if nested:
+                return nested
+        normalized = _normalize_message_content(reasoning)
+        if normalized:
+            return normalized
         return str(reasoning)
     if isinstance(content, list):
         parts = []
@@ -430,6 +440,208 @@ def _extract_reasoning_text(message: Any) -> str:
         if parts:
             return "\n\n".join(parts)
     return ""
+
+
+# Leaked tool-call syntax the assistant sometimes emits as plain text instead
+# of returning structured tool_calls. Covers the Qwen3-Coder dialect, Hermes
+# `<tool_call>`, Anthropic-style `<function_calls><invoke>`, Llama
+# `<|python_tag|>`, Mistral `[TOOL_CALLS]`, and DeepSeek V3.
+_MALFORMED_TOKENS = (
+    "<tool_call>", "</tool_call>",
+    "<function=", "</function>",
+    "<parameter=", "</parameter>",
+    "<function_calls>", "</function_calls>",
+    "<invoke name=", "</invoke>",
+    "<|python_tag|>", "[TOOL_CALLS]",
+    "<\uff5ctool\u2581calls\u2581begin\uff5c>",  # DeepSeek V3
+)
+_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
+
+
+def _classify_text(text: Any) -> Optional[List[str]]:
+    """Return leaked tokens found in `text`, or None. Strips fenced code first."""
+    if not text or not isinstance(text, str):
+        return None
+    stripped = _FENCE_RE.sub("", text)
+    if not stripped:
+        return None
+    hits = [t for t in _MALFORMED_TOKENS if t in stripped]
+    return hits or None
+
+
+def _iter_tool_call_arguments(msg: Any):
+    """Yield the `arguments` string for each tool_call on a choice.message."""
+    tool_calls = _obj_get(msg, "tool_calls", None) or []
+    for tc in tool_calls:
+        fn = _obj_get(tc, "function", None)
+        if fn is None:
+            continue
+        args = _obj_get(fn, "arguments", None)
+        if isinstance(args, str):
+            yield args
+
+
+def _has_structured_tool_calls(msg: Any) -> bool:
+    tc = _obj_get(msg, "tool_calls", None) or []
+    return bool(tc)
+
+
+def _classify_response(result: Any) -> None:
+    """Scan choice.message {content, reasoning, tool_calls[i].arguments} for
+    leaked tool-call syntax and set qym.response.* on the current span. Also
+    detects provider-error payloads (empty choices + `.error`) that instrumentors
+    would otherwise leave as status=OK."""
+    try:
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.trace import StatusCode
+    except Exception:
+        return
+    try:
+        span = otel_trace.get_current_span()
+        if span is None or not span.is_recording():
+            return
+    except Exception:
+        return
+
+    try:
+        choices = list(_obj_get(result, "choices", None) or [])
+    except Exception:
+        choices = []
+
+    if not choices:
+        err_obj = _obj_get(result, "error", None)
+        if err_obj is None and hasattr(result, "model_dump"):
+            try:
+                dumped = result.model_dump()
+                if isinstance(dumped, dict):
+                    err_obj = dumped.get("error")
+            except Exception:
+                err_obj = None
+        if isinstance(err_obj, dict) and err_obj:
+            err_type = str(err_obj.get("type") or err_obj.get("code") or "ProviderError")
+            err_msg = str(err_obj.get("message") or "")
+            try:
+                span.add_event(
+                    "exception",
+                    attributes={
+                        "exception.type": err_type,
+                        "exception.message": err_msg,
+                    },
+                )
+                span.set_status(StatusCode.ERROR, err_msg or err_type)
+                span.set_attribute("qym.response.classification", "provider_error")
+            except Exception:
+                pass
+        return
+
+    # Pick the first choice with something actionable. Multi-choice responses
+    # are rare in practice; if present we conservatively report the first leak.
+    summary: Optional[Tuple[str, str, List[str], bool]] = None
+    for choice in choices:
+        msg = _obj_get(choice, "message", None)
+        if msg is None:
+            continue
+        has_tc = _has_structured_tool_calls(msg)
+
+        content_raw = _obj_get(msg, "content", None)
+        content_str = content_raw if isinstance(content_raw, str) else _normalize_message_content(content_raw)
+        content_hits = _classify_text(content_str)
+
+        reasoning_str = _extract_reasoning_text(msg)
+        reasoning_hits = _classify_text(reasoning_str)
+
+        args_hits: List[str] = []
+        for args in _iter_tool_call_arguments(msg):
+            h = _classify_text(args)
+            if h:
+                args_hits.extend(h)
+
+        # Decision table (see plan: Phase 2 step 3).
+        if content_hits and not has_tc:
+            summary = ("malformed_tool_call", "content", content_hits, True)
+            break
+        if reasoning_hits and not has_tc:
+            summary = ("malformed_tool_call", "reasoning", reasoning_hits, True)
+            break
+        # Reasoning-only: model produced thought but committed no actionable
+        # output (no content, no tool_calls). Universally broken regardless
+        # of the eval use case.
+        content_empty = not (content_str or "").strip()
+        reasoning_nonempty = bool((reasoning_str or "").strip())
+        if content_empty and not has_tc and reasoning_nonempty:
+            summary = ("malformed_tool_call", "reasoning_only", [], True)
+            break
+        if has_tc and (reasoning_hits or content_hits):
+            where = "reasoning" if reasoning_hits else "content"
+            hits = reasoning_hits or content_hits
+            summary = ("noisy_reasoning", where, hits or [], False)
+            continue
+        if args_hits:
+            summary = ("malformed_tool_args", "args", sorted(set(args_hits)), False)
+
+    if summary is None:
+        return
+    kind, where, evidence, fatal = summary
+    try:
+        span.set_attribute("qym.response.classification", kind)
+        span.set_attribute("qym.response.where", where)
+        if evidence:
+            span.set_attribute("qym.response.evidence", ",".join(sorted(set(evidence))[:20]))
+        if fatal:
+            status_msg = "no actionable output (reasoning only)" if where == "reasoning_only" else "malformed tool call"
+            span.set_status(StatusCode.ERROR, status_msg)
+    except Exception:
+        pass
+
+
+_TEXT_ERROR_RE = re.compile(r"^\s*(error|exception|traceback)[:\s]", re.IGNORECASE)
+
+
+def _classify_tool_result(content: Any) -> Tuple[Optional[str], str, str]:
+    """Inspect tool-result content for error shapes we see in practice.
+
+    Returns (error_source, err_type, err_msg), or (None, '', '') for a
+    successful result. error_source is one of:
+        "json_error"     — {"error": ...} (Anthropic-style or nested)
+        "status_field"   — {"status": "error", ...}
+        "ok_false"       — {"ok": false, ...}
+        "text_heuristic" — first line starts with Error:/Exception:/Traceback
+    """
+    if not content:
+        return (None, "", "")
+    content_str = str(content).strip()
+    if not content_str:
+        return (None, "", "")
+
+    if content_str.startswith("{") or content_str.startswith("["):
+        try:
+            parsed = _json.loads(content_str)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict):
+            if parsed.get("error"):
+                err = parsed["error"]
+                if isinstance(err, dict):
+                    err_type = str(err.get("type") or err.get("code") or "ToolError")
+                    err_msg = str(err.get("message") or err.get("msg") or "")
+                else:
+                    err_type = str(err)
+                    err_msg = str(parsed.get("message", ""))
+                return ("json_error", err_type, err_msg)
+            status = parsed.get("status")
+            if isinstance(status, str) and status.lower() == "error":
+                err_msg = str(parsed.get("message") or parsed.get("error") or "")
+                return ("status_field", "ToolError", err_msg)
+            if "ok" in parsed and parsed["ok"] is False:
+                err_msg = str(parsed.get("message") or parsed.get("error") or "")
+                return ("ok_false", "ToolError", err_msg)
+
+    if _TEXT_ERROR_RE.match(content_str):
+        first_line = content_str.splitlines()[0].strip()
+        return ("text_heuristic", "ToolError", first_line[:300])
+
+    return (None, "", "")
+
 
 def _emit_tool_spans(tracer, messages):
     """Create spans for tool results found in the messages array.
@@ -486,28 +698,21 @@ def _emit_tool_spans(tracer, messages):
         if content:
             span.set_attribute("output.value", _serialize_span_value(content))
 
-        # Detect error results in tool output and flag the span.
-        # Common patterns: {"error": ...} JSON or plain error strings.
-        _tool_has_error = False
-        if content:
-            content_str = str(content).strip()
-            if content_str.startswith("{"):
-                try:
-                    parsed = _json.loads(content_str)
-                    if isinstance(parsed, dict) and parsed.get("error"):
-                        _tool_has_error = True
-                        err_type = str(parsed.get("error", "ToolError"))
-                        err_msg = str(parsed.get("message", ""))
-                        span.add_event("exception", attributes={
-                            "exception.type": err_type,
-                            "exception.message": err_msg,
-                        })
-                except (ValueError, TypeError):
-                    pass
-        if _tool_has_error:
+        # Detect error results in tool output and flag the span. Cover the
+        # dialects we see in practice: {"error":...} JSON, {"status":"error"},
+        # {"ok": false}, Python tracebacks, and plain "Error:"/"Exception:"
+        # strings. The detected origin is recorded in qym.tool.error_source
+        # so the signal is traceable.
+        err_source, err_type, err_msg = _classify_tool_result(content)
+        if err_source:
             try:
                 from opentelemetry.trace import StatusCode
+                span.add_event("exception", attributes={
+                    "exception.type": err_type,
+                    "exception.message": err_msg,
+                })
                 span.set_status(StatusCode.ERROR, err_msg or err_type)
+                span.set_attribute("qym.tool.error_source", err_source)
             except Exception:
                 pass
 
@@ -579,6 +784,7 @@ def _patch_openai_enrichments():
         result = _real_create(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)
+        _classify_response(result)
         return result
 
     mod.Completions.create = _enriched_create
@@ -595,6 +801,7 @@ def _patch_openai_enrichments():
         result = await _real_acreate(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         _enrich_with_reasoning(result)
+        _classify_response(result)
         return result
 
     mod.AsyncCompletions.create = _enriched_acreate
@@ -621,9 +828,11 @@ def _patch_anthropic_enrichments():
         result = _real_create(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         if hasattr(result, "content"):
-            _enrich_with_reasoning(type("AnthropicResult", (), {
+            wrapped = type("AnthropicResult", (), {
                 "choices": [type("Choice", (), {"index": 0, "message": result})()]
-            })())
+            })()
+            _enrich_with_reasoning(wrapped)
+            _classify_response(wrapped)
         return result
 
     mod.Messages.create = _enriched_create
@@ -638,9 +847,11 @@ def _patch_anthropic_enrichments():
         result = await _real_acreate(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         if hasattr(result, "content"):
-            _enrich_with_reasoning(type("AnthropicResult", (), {
+            wrapped = type("AnthropicResult", (), {
                 "choices": [type("Choice", (), {"index": 0, "message": result})()]
-            })())
+            })()
+            _enrich_with_reasoning(wrapped)
+            _classify_response(wrapped)
         return result
 
     mod.AsyncMessages.create = _enriched_acreate

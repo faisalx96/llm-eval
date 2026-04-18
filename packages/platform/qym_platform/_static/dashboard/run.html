@@ -951,6 +951,9 @@
     .trace-pill-icon.llm    { background: rgba(0, 168, 255, 0.1); }
     .trace-pill-icon.tool   { background: rgba(245, 158, 11, 0.1); }
     .trace-pill-icon.success { background: rgba(16, 185, 129, 0.1); }
+    .trace-pill-icon.retriever { background: rgba(56, 189, 248, 0.12); }
+    .trace-pill-icon.evaluator { background: rgba(167, 139, 250, 0.14); }
+    .trace-pill-icon.chain { background: rgba(148, 163, 184, 0.12); }
     .trace-pill-text {
       display: flex;
       flex-direction: column;
@@ -3637,11 +3640,14 @@
         if (!ts && !(retryCount > 0)) return '';
         ts = ts || {};
         var chips = [];
+        var toolErrorCount = ts.tool_errors || ts.malformed_tool_calls || 0;
         if (ts.tokens != null) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + _fmtTraceNum(ts.tokens) + '</span><span class="trace-chip-label">Tokens</span></span>');
         if (ts.cost > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">$' + ts.cost.toFixed(3) + '</span><span class="trace-chip-label">Cost</span></span>');
         if (ts.llm_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.llm_calls + '</span><span class="trace-chip-label">LLM Calls</span></span>');
         if (ts.tool_calls) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_calls + '</span><span class="trace-chip-label">Tool Calls</span></span>');
-        if (ts.tool_errors != null && ts.tool_calls) chips.push('<span class="trace-chip' + (ts.tool_errors > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + ts.tool_errors + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (toolErrorCount > 0 || ts.tool_calls) chips.push('<span class="trace-chip' + (toolErrorCount > 0 ? ' trace-chip-err' : '') + '"><span class="trace-chip-icon">\u26A1</span><span class="trace-chip-value">' + toolErrorCount + '</span><span class="trace-chip-label">Tool Errors</span></span>');
+        if (ts.noisy_reasoning > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u2728</span><span class="trace-chip-value">' + ts.noisy_reasoning + '</span><span class="trace-chip-label">Noisy Reasoning</span></span>');
+        if (ts.provider_errors > 0) chips.push('<span class="trace-chip trace-chip-err"><span class="trace-chip-icon">\u26A0</span><span class="trace-chip-value">' + ts.provider_errors + '</span><span class="trace-chip-label">Provider Errors</span></span>');
         if ((retryCount || 0) > 0) chips.push('<span class="trace-chip"><span class="trace-chip-icon">\u21BB</span><span class="trace-chip-value">' + retryCount + '</span><span class="trace-chip-label">Retries</span></span>');
         if (chips.length === 0) return '';
         return '<div class="trace-chips-row">' + chips.join('') + '</div>';
@@ -4529,6 +4535,7 @@
         if (ts && ts.has_spans) {
           const fmtV = (v) => v != null ? _fmtTraceNum(v) : '\u2014';
           const fmtD = (v) => v != null ? v.toFixed(1) : '\u2014';
+          const fmtLatency = (v) => v != null ? formatLatency(v) : '\u2014';
           traceCard = '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
             '<div class="metric-card-header">' +
               '<div class="metric-card-gauge">' +
@@ -4543,6 +4550,11 @@
               '<div class="trace-pill"><div class="trace-pill-icon llm">\uD83E\uDDE0</div><div class="trace-pill-text"><span class="trace-pill-label">Avg LLM Calls</span><span class="trace-pill-val" style="color:var(--accent-secondary);">' + fmtD(ts.avg_llm_calls) + '</span></div></div>' +
               '<div class="trace-pill"><div class="trace-pill-icon tool">\uD83D\uDD27</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Tool Calls</span><span class="trace-pill-val" style="color:var(--warning);">' + fmtD(ts.avg_tool_calls) + '</span></div></div>' +
               '<div class="trace-pill"><div class="trace-pill-icon success">\u2713</div><div class="trace-pill-text"><span class="trace-pill-label">Tool Success</span><span class="trace-pill-val" style="color:var(--success);">' + (ts.tool_success_rate != null ? (ts.tool_success_rate * 100).toFixed(1) + '%' : '\u2014') + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon llm">\u23F1</div><div class="trace-pill-text"><span class="trace-pill-label">Avg LLM ms</span><span class="trace-pill-val" style="color:var(--accent-secondary);">' + fmtLatency(ts.avg_llm_ms) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon tool">\u23F1</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Tool ms</span><span class="trace-pill-val" style="color:var(--warning);">' + fmtLatency(ts.avg_tool_ms) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon retriever">\uD83D\uDD0E</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Retriever ms</span><span class="trace-pill-val" style="color:#38bdf8;">' + fmtLatency(ts.avg_retriever_ms) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon evaluator">\u2605</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Evaluator ms</span><span class="trace-pill-val" style="color:#a78bfa;">' + fmtLatency(ts.avg_evaluator_ms) + '</span></div></div>' +
+              '<div class="trace-pill"><div class="trace-pill-icon chain">\u26D3</div><div class="trace-pill-text"><span class="trace-pill-label">Avg Top-Level Chain ms</span><span class="trace-pill-val" style="color:var(--text-primary);">' + fmtLatency(ts.avg_top_level_chain_ms) + '</span></div></div>' +
             '</div>' +
           '</div>';
           cardIdx++;

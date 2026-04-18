@@ -2,6 +2,8 @@ version: "3.9"
 
 services:
   api:
+    build:
+      target: dev
     environment:
       QYM_ENVIRONMENT: ${QYM_ENVIRONMENT}
       QYM_BASE_URL: ${QYM_BASE_URL}
@@ -15,8 +17,9 @@ services:
       QYM_AUTH_GITHUB_CLIENT_SECRET: ${QYM_AUTH_GITHUB_CLIENT_SECRET}
       QYM_LLM_CONFIG_ENCRYPTION_KEY: ${QYM_LLM_CONFIG_ENCRYPTION_KEY}
     volumes:
-      - ../packages/platform/qym_platform/_static:/app/packages/platform/qym_platform/_static
-      - ../packages/platform/qym_platform/api:/app/packages/platform/qym_platform/api
+      - ../packages/platform:/app/packages/platform
+      - ../packages/sdk:/app/packages/sdk
+      - ../tools:/app/tools
     command:
       - uvicorn
       - qym_platform.main:app
@@ -27,3 +30,7 @@ services:
       - --reload
       - --reload-dir
       - /app/packages/platform
+      - --reload-dir
+      - /app/packages/sdk
+      - --reload-dir
+      - /app/tools

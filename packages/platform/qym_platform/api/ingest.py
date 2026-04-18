@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import sys
+from collections import defaultdict
 
 csv.field_size_limit(sys.maxsize)
 from typing import Any, Dict, Optional
@@ -54,6 +55,18 @@ from qym_platform.settings import PlatformSettings
 
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
+
+_TRACE_LATENCY_FIELDS = {
+    "llm": ("llm_duration_ms_total", "llm_duration_ms_count", "avg_llm_ms"),
+    "tool": ("tool_duration_ms_total", "tool_duration_ms_count", "avg_tool_ms"),
+    "retriever": ("retriever_duration_ms_total", "retriever_duration_ms_count", "avg_retriever_ms"),
+    "evaluator": ("evaluator_duration_ms_total", "evaluator_duration_ms_count", "avg_evaluator_ms"),
+    "top_level_chain": (
+        "top_level_chain_duration_ms_total",
+        "top_level_chain_duration_ms_count",
+        "avg_top_level_chain_ms",
+    ),
+}
 
 
 def _extract_reasoning_signal(attrs: Dict[str, Any]) -> Dict[str, Any]:
@@ -118,55 +131,136 @@ def _extract_reasoning_signal(attrs: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _empty_trace_bucket() -> Dict[str, Any]:
-    return {
+    bucket = {
         "span_count": 0,
         "tokens": 0,
         "cost": 0.0,
         "llm_calls": 0,
         "tool_calls": 0,
         "tool_errors": 0,
+        "malformed_tool_calls": 0,
+        "noisy_reasoning": 0,
+        "provider_errors": 0,
         "has_reasoning": False,
         "has_reasoning_tokens": False,
         "reasoning_tokens": 0,
     }
+    for total_key, count_key, _avg_key in _TRACE_LATENCY_FIELDS.values():
+        bucket[total_key] = 0.0
+        bucket[count_key] = 0
+    return bucket
+
+
+def _span_oi_kind(attrs: Dict[str, Any]) -> str:
+    raw = str(
+        (attrs or {}).get("openinference.span.kind", "")
+        or (attrs or {}).get("ai.openinference.span.kind", "")
+    ).upper()
+    if raw == "RETRIEVE":
+        return "RETRIEVER"
+    return raw
+
+
+def _trace_latency_average(bucket: Dict[str, Any], bucket_name: str) -> Optional[float]:
+    total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
+    total = float(bucket.get(total_key) or 0.0)
+    count = int(bucket.get(count_key) or 0)
+    if count <= 0:
+        return None
+    return total / count
+
+
+def _trace_latency_average_from_buckets(item_buckets: list[dict[str, Any]], bucket_name: str) -> Optional[float]:
+    total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
+    total = sum(float(bucket.get(total_key) or 0.0) for bucket in item_buckets)
+    count = sum(int(bucket.get(count_key) or 0) for bucket in item_buckets)
+    if count <= 0:
+        return None
+    return total / count
+
+
+def _accumulate_trace_latency(bucket: Dict[str, Any], bucket_name: str, duration_ms: Any) -> None:
+    try:
+        duration = float(duration_ms)
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(duration) or duration < 0:
+        return
+    total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
+    bucket[total_key] += duration
+    bucket[count_key] += 1
 
 
 def _public_trace_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    public = {
         "tokens": int(bucket.get("tokens") or 0),
         "cost": float(bucket.get("cost") or 0.0),
         "llm_calls": int(bucket.get("llm_calls") or 0),
         "tool_calls": int(bucket.get("tool_calls") or 0),
         "tool_errors": int(bucket.get("tool_errors") or 0),
+        "malformed_tool_calls": int(bucket.get("malformed_tool_calls") or 0),
+        "noisy_reasoning": int(bucket.get("noisy_reasoning") or 0),
+        "provider_errors": int(bucket.get("provider_errors") or 0),
         "has_reasoning": bool(bucket.get("has_reasoning")),
         "has_reasoning_tokens": bool(bucket.get("has_reasoning_tokens")),
         "reasoning_tokens": int(bucket.get("reasoning_tokens") or 0),
     }
+    for bucket_name, (_total_key, _count_key, avg_key) in _TRACE_LATENCY_FIELDS.items():
+        public[avg_key] = _trace_latency_average(bucket, bucket_name)
+    return public
+
+
+def _tool_call_attempts(bucket: Dict[str, Any]) -> int:
+    """Return attempted tool calls, including malformed assistant responses."""
+    return int(bucket.get("tool_calls") or 0) + int(bucket.get("malformed_tool_calls") or 0)
+
+
+def _apply_response_classification(bucket: Dict[str, Any], attrs: Dict[str, Any]) -> None:
+    classification = attrs.get("qym.response.classification")
+    if classification == "malformed_tool_call":
+        bucket["malformed_tool_calls"] += 1
+        bucket["tool_errors"] += 1
+    elif classification == "noisy_reasoning":
+        bucket["noisy_reasoning"] += 1
+    elif classification == "provider_error":
+        bucket["provider_errors"] += 1
 
 
 def _trace_bucket_from_aggregate(agg: RunTraceAggregate) -> Dict[str, Any]:
-    return {
+    bucket = {
         "span_count": int(agg.span_count or 0),
         "tokens": int(agg.tokens or 0),
         "cost": float(agg.cost or 0.0),
         "llm_calls": int(agg.llm_calls or 0),
         "tool_calls": int(agg.tool_calls or 0),
         "tool_errors": int(agg.tool_errors or 0),
+        "malformed_tool_calls": int(getattr(agg, "malformed_tool_calls", 0) or 0),
+        "noisy_reasoning": int(getattr(agg, "noisy_reasoning", 0) or 0),
+        "provider_errors": int(getattr(agg, "provider_errors", 0) or 0),
         "has_reasoning": bool(agg.has_reasoning),
         "has_reasoning_tokens": bool(agg.has_reasoning_tokens),
         "reasoning_tokens": int(agg.reasoning_tokens or 0),
     }
+    for total_key, count_key, _avg_key in _TRACE_LATENCY_FIELDS.values():
+        bucket[total_key] = 0.0
+        bucket[count_key] = 0
+    return bucket
 
 
-def _apply_span_to_bucket(bucket: Dict[str, Any], *, attributes: Dict[str, Any], status: Optional[str]) -> None:
+def _apply_span_to_bucket(
+    bucket: Dict[str, Any],
+    *,
+    attributes: Dict[str, Any],
+    status: Optional[str],
+    duration_ms: Any = None,
+    parent_oi_kind: Optional[str] = None,
+) -> None:
     bucket["span_count"] += 1
     attrs = attributes or {}
-    oi_kind = str(
-        attrs.get("openinference.span.kind", "")
-        or attrs.get("ai.openinference.span.kind", "")
-    ).upper()
+    oi_kind = _span_oi_kind(attrs)
     if oi_kind == "LLM":
         bucket["llm_calls"] += 1
+        _accumulate_trace_latency(bucket, "llm", duration_ms)
         tokens = attrs.get("llm.token_count.total") or attrs.get("gen_ai.usage.total_tokens")
         if tokens is not None:
             try:
@@ -187,8 +281,41 @@ def _apply_span_to_bucket(bucket: Dict[str, Any], *, attributes: Dict[str, Any],
         bucket["reasoning_tokens"] += int(reasoning_signal["reasoning_tokens"] or 0)
     elif oi_kind == "TOOL":
         bucket["tool_calls"] += 1
+        _accumulate_trace_latency(bucket, "tool", duration_ms)
         if (status or "").upper() == "ERROR":
             bucket["tool_errors"] += 1
+    elif oi_kind == "RETRIEVER":
+        _accumulate_trace_latency(bucket, "retriever", duration_ms)
+    elif oi_kind == "EVALUATOR":
+        _accumulate_trace_latency(bucket, "evaluator", duration_ms)
+    elif oi_kind == "CHAIN" and parent_oi_kind != "CHAIN":
+        _accumulate_trace_latency(bucket, "top_level_chain", duration_ms)
+
+    if oi_kind != "TOOL":
+        _apply_response_classification(bucket, attrs)
+
+
+def _build_trace_buckets_from_spans(spans: list[Span]) -> Dict[str, Dict[str, Any]]:
+    spans_by_trace: Dict[str, list[Span]] = defaultdict(list)
+    for span in spans:
+        spans_by_trace[span.trace_id].append(span)
+
+    trace_buckets: Dict[str, Dict[str, Any]] = {}
+    for trace_id, trace_spans in spans_by_trace.items():
+        bucket = _empty_trace_bucket()
+        spans_by_id = {span.span_id: span for span in trace_spans}
+        for span in trace_spans:
+            parent = spans_by_id.get(span.parent_span_id or "")
+            parent_oi_kind = _span_oi_kind(parent.attributes or {}) if parent else None
+            _apply_span_to_bucket(
+                bucket,
+                attributes=span.attributes or {},
+                status=span.status,
+                duration_ms=span.duration_ms,
+                parent_oi_kind=parent_oi_kind,
+            )
+        trace_buckets[trace_id] = bucket
+    return trace_buckets
 
 
 def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]:
@@ -197,36 +324,42 @@ def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]
 
     n = len(item_buckets)
     total_tool_errors = sum(int(b.get("tool_errors") or 0) for b in item_buckets)
-    total_tool_calls = sum(int(b.get("tool_calls") or 0) for b in item_buckets)
-    tool_success_rate = (1 - total_tool_errors / total_tool_calls) if total_tool_calls > 0 else None
-    return {
+    total_tool_attempts = sum(_tool_call_attempts(b) for b in item_buckets)
+    tool_success_rate = (1 - total_tool_errors / total_tool_attempts) if total_tool_attempts > 0 else None
+    trace_stats = {
         "avg_tokens": sum(int(b.get("tokens") or 0) for b in item_buckets) / n,
         "avg_llm_calls": sum(int(b.get("llm_calls") or 0) for b in item_buckets) / n,
         "avg_tool_calls": sum(int(b.get("tool_calls") or 0) for b in item_buckets) / n,
         "tool_success_rate": tool_success_rate,
+        "total_malformed_tool_calls": sum(int(b.get("malformed_tool_calls") or 0) for b in item_buckets),
+        "total_noisy_reasoning": sum(int(b.get("noisy_reasoning") or 0) for b in item_buckets),
+        "total_provider_errors": sum(int(b.get("provider_errors") or 0) for b in item_buckets),
         "has_reasoning": any(bool(b.get("has_reasoning")) for b in item_buckets),
         "has_reasoning_tokens": any(bool(b.get("has_reasoning_tokens")) for b in item_buckets),
         "avg_reasoning_tokens": sum(int(b.get("reasoning_tokens") or 0) for b in item_buckets) / n,
         "has_spans": True,
     }
+    for bucket_name, (_total_key, _count_key, avg_key) in _TRACE_LATENCY_FIELDS.items():
+        trace_stats[avg_key] = _trace_latency_average_from_buckets(item_buckets, bucket_name)
+    return trace_stats
 
 
 def _refresh_live_trace_stats(db: Session, run: Run) -> None:
     db.flush()
     items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
     trace_ids = sorted({item.trace_id for item in items if item.trace_id})
-    aggregates_by_trace: Dict[str, Dict[str, Any]] = {}
+    trace_buckets: Dict[str, Dict[str, Any]] = {}
     if trace_ids:
-        aggregates = (
-            db.query(RunTraceAggregate)
-            .filter(RunTraceAggregate.run_id == run.id, RunTraceAggregate.trace_id.in_(trace_ids))
+        spans = (
+            db.query(Span)
+            .filter(Span.run_id == run.id, Span.trace_id.in_(trace_ids))
             .all()
         )
-        aggregates_by_trace = {agg.trace_id: _trace_bucket_from_aggregate(agg) for agg in aggregates}
+        trace_buckets = _build_trace_buckets_from_spans(spans)
 
     item_buckets: list[dict[str, Any]] = []
     for item in items:
-        bucket = aggregates_by_trace.get(item.trace_id or "")
+        bucket = trace_buckets.get(item.trace_id or "")
         md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         if bucket and int(bucket.get("span_count") or 0) > 0:
             md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
@@ -259,6 +392,9 @@ def _upsert_trace_aggregate(db: Session, run_id: str, payload: SpanCompletedPayl
     agg.llm_calls = int(bucket["llm_calls"])
     agg.tool_calls = int(bucket["tool_calls"])
     agg.tool_errors = int(bucket["tool_errors"])
+    agg.malformed_tool_calls = int(bucket["malformed_tool_calls"])
+    agg.noisy_reasoning = int(bucket["noisy_reasoning"])
+    agg.provider_errors = int(bucket["provider_errors"])
     agg.has_reasoning = bool(bucket["has_reasoning"])
     agg.has_reasoning_tokens = bool(bucket["has_reasoning_tokens"])
     agg.reasoning_tokens = int(bucket["reasoning_tokens"])
@@ -271,8 +407,6 @@ def _store_trace_stats(db: Session, run: Run) -> None:
     per-item stats in each RunItem.item_metadata["trace_stats"].
     Called once when a run completes.
     """
-    from collections import defaultdict
-
     spans = db.query(Span).filter(Span.run_id == run.id).all()
     if not spans:
         logger.warning("_store_trace_stats: no spans found for run %s", run.id)
@@ -282,10 +416,7 @@ def _store_trace_stats(db: Session, run: Run) -> None:
     # Map last-attempt trace_id -> item
     items = db.query(RunItem).filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None)).all()
     # Group spans by trace_id and compute per-item stats
-    trace_buckets: dict[str, dict] = defaultdict(_empty_trace_bucket)
-    for span in spans:
-        bucket = trace_buckets[span.trace_id]
-        _apply_span_to_bucket(bucket, attributes=span.attributes or {}, status=span.status)
+    trace_buckets = _build_trace_buckets_from_spans(spans)
 
     # Reconcile persistent per-trace aggregates with final span-derived truth.
     db.query(RunTraceAggregate).filter(RunTraceAggregate.run_id == run.id).delete(synchronize_session=False)
@@ -299,6 +430,9 @@ def _store_trace_stats(db: Session, run: Run) -> None:
             llm_calls=int(bucket["llm_calls"]),
             tool_calls=int(bucket["tool_calls"]),
             tool_errors=int(bucket["tool_errors"]),
+            malformed_tool_calls=int(bucket["malformed_tool_calls"]),
+            noisy_reasoning=int(bucket["noisy_reasoning"]),
+            provider_errors=int(bucket["provider_errors"]),
             has_reasoning=bool(bucket["has_reasoning"]),
             has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
             reasoning_tokens=int(bucket["reasoning_tokens"]),

@@ -1,6 +1,9 @@
 import json
+import sys
+from types import ModuleType
 
 from qym.core.otel import (
+    _classify_response,
     _extract_reasoning_text,
     _extract_tool_calls_from_message,
     _extract_tool_results_from_message,
@@ -97,6 +100,83 @@ def test_extract_reasoning_text_from_anthropic_thinking_blocks():
     message = type("Msg", (), {"reasoning": None, "content": [Thinking()]})()
 
     assert _extract_reasoning_text(message) == "Hidden chain summary"
+
+
+def test_extract_reasoning_text_from_object_payload_content():
+    ReasoningPayload = type(
+        "ReasoningPayload",
+        (),
+        {
+            "__str__": lambda self: "<ReasoningPayload>",
+            "content": [{"type": "text", "text": "<tool_call>call_tool()</tool_call>"}],
+        },
+    )
+    message = type("Msg", (), {"reasoning": ReasoningPayload(), "content": None})()
+
+    assert _extract_reasoning_text(message) == "<tool_call>call_tool()</tool_call>"
+
+
+def test_classify_response_flags_reasoning_tool_call_leak_without_content(monkeypatch):
+    class FakeSpan:
+        def __init__(self):
+            self.attributes = {}
+            self.status = None
+
+        def is_recording(self):
+            return True
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+        def set_status(self, status_code, description=None):
+            self.status = (status_code, description)
+
+        def add_event(self, *_args, **_kwargs):
+            pass
+
+    fake_span = FakeSpan()
+
+    trace_mod = ModuleType("opentelemetry.trace")
+
+    class FakeStatusCode:
+        ERROR = "ERROR"
+
+    trace_mod.StatusCode = FakeStatusCode
+    trace_mod.get_current_span = lambda: fake_span
+
+    otel_mod = ModuleType("opentelemetry")
+    otel_mod.trace = trace_mod
+
+    monkeypatch.setitem(sys.modules, "opentelemetry", otel_mod)
+    monkeypatch.setitem(sys.modules, "opentelemetry.trace", trace_mod)
+
+    ReasoningPayload = type(
+        "ReasoningPayload",
+        (),
+        {
+            "__str__": lambda self: "<ReasoningPayload>",
+            "content": [{"type": "text", "text": "<tool_call>call_tool()</tool_call>"}],
+        },
+    )
+
+    result = {
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "reasoning": ReasoningPayload(),
+                    "tool_calls": [],
+                }
+            }
+        ]
+    }
+
+    _classify_response(result)
+
+    assert fake_span.attributes["qym.response.classification"] == "malformed_tool_call"
+    assert fake_span.attributes["qym.response.where"] == "reasoning"
+    assert fake_span.attributes["qym.response.evidence"] == "</tool_call>,<tool_call>"
+    assert fake_span.status == (FakeStatusCode.ERROR, "malformed tool call")
 
 
 def test_serialize_span_value_keeps_large_sql_results_intact():
