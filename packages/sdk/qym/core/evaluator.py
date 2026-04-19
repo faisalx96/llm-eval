@@ -264,6 +264,10 @@ class TaskAttemptResult:
         return float(self.latency_s * 1000.0)
 
 
+class TaskExecutionTimeoutError(Exception):
+    """Raised when the task itself surfaces a timeout before qym's wrapper does."""
+
+
 class NullTrace:
     """No-op trace/span used when OTEL is disabled.
 
@@ -1089,6 +1093,7 @@ class Evaluator:
                             error_msg,
                             row_result.get("trace_id"),
                             task_started_at_ms=row_result.get("task_started_at_ms"),
+                            time_seconds=row_result.get("time"),
                         )
                     else:
                         result.add_result(item_id, row_result)
@@ -1208,7 +1213,7 @@ class Evaluator:
 
                     if isinstance(eval_result, Exception):
                         error_msg = str(eval_result)
-                        result.add_error(item_id, error_msg)
+                        result.add_error(item_id, error_msg, time_seconds=0.0)
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
@@ -1232,6 +1237,7 @@ class Evaluator:
                             error_msg,
                             eval_result.get("_trace_id"),
                             task_started_at_ms=eval_result.get("task_started_at_ms"),
+                            time_seconds=eval_result.get("time"),
                         )
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
@@ -1244,7 +1250,7 @@ class Evaluator:
                             item_metadata=getattr(item, "metadata", {}),
                             output=f"ERROR: {error_msg}",
                             expected_output=getattr(item, "expected_output", None),
-                            time_seconds=0.0,
+                            time_seconds=float(eval_result.get("time", 0.0) or 0.0),
                             task_started_at_ms=eval_result.get("task_started_at_ms"),
                             scores={m: "N/A" for m in metric_names},
                             metric_meta={},
@@ -1715,12 +1721,22 @@ class Evaluator:
 
         task_started_at_ms = int(time.time() * 1000)
         self._emit_item_attempt_started(index, item, attempt_number, spans, task_started_at_ms)
-        attempt_start_time = time.time()
+        attempt_start_time = time.monotonic()
         forced_model_token = None
         try:
             if self.config.force_model_override and self.model_name_full:
                 forced_model_token = self._otel.bind_forced_model(self.model_name_full)
-            coro = self.task_adapter.arun(item.input, adapter_trace, model_name=self.model_name_full)
+            async def _task_call():
+                try:
+                    return await self.task_adapter.arun(
+                        item.input,
+                        adapter_trace,
+                        model_name=self.model_name_full,
+                    )
+                except asyncio.TimeoutError as exc:
+                    raise TaskExecutionTimeoutError(str(exc) or "task raised TimeoutError") from exc
+
+            coro = _task_call()
             if self.timeout is not None:
                 output = await asyncio.wait_for(coro, timeout=self.timeout)
             else:
@@ -1729,11 +1745,14 @@ class Evaluator:
                 attempt_number=attempt_number,
                 spans=spans,
                 task_started_at_ms=task_started_at_ms,
-                latency_s=time.time() - attempt_start_time,
+                latency_s=time.monotonic() - attempt_start_time,
                 output=output,
             )
         except asyncio.TimeoutError:
             error = f"Task timed out after {self.timeout}s (attempt {attempt_number}/{1 + self.max_retries})"
+            logger.warning(f"Item {index}: {error}")
+        except TaskExecutionTimeoutError as e:
+            error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
             logger.warning(f"Item {index}: {error}")
         except Exception as e:
             error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
@@ -1750,7 +1769,7 @@ class Evaluator:
             attempt_number=attempt_number,
             spans=spans,
             task_started_at_ms=task_started_at_ms,
-            latency_s=time.time() - attempt_start_time,
+            latency_s=time.monotonic() - attempt_start_time,
             error=error,
         )
 
@@ -2200,6 +2219,7 @@ class Evaluator:
                 return {
                     "_error": str(error),
                     "_trace_id": last_attempt.spans.trace_id if last_attempt else None,
+                    "time": last_attempt.latency_s if last_attempt else None,
                     "task_started_at_ms": last_attempt.task_started_at_ms if last_attempt else None,
                 }
 
@@ -2265,7 +2285,8 @@ class Evaluator:
             return {
                 "_error": str(e),
                 "_trace_id": active_spans.trace_id,
-                "task_started_at_ms": None,
+                "time": active_attempt.latency_s if active_attempt else None,
+                "task_started_at_ms": active_attempt.task_started_at_ms if active_attempt else None,
             }
         finally:
             # Guard against CancelledError / KeyboardInterrupt leaving items

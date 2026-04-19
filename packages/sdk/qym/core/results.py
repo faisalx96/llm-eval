@@ -69,12 +69,14 @@ class EvaluationResult:
         error: str,
         trace_id: Optional[str] = None,
         task_started_at_ms: Optional[int] = None,
+        time_seconds: Optional[float] = None,
     ):
         """Add an evaluation error."""
         self.errors[item_id] = {
             "error": error,
             "trace_id": trace_id,
             "task_started_at_ms": task_started_at_ms,
+            "time": time_seconds,
         }
     
     def finish(self):
@@ -377,10 +379,12 @@ class EvaluationResult:
                 error_msg = error_info.get("error", str(error_info))
                 error_trace_id = error_info.get("trace_id", "")
                 error_task_started_at_ms = error_info.get("task_started_at_ms", "")
+                error_time = error_info.get("time", 0.0)
             else:
                 error_msg = str(error_info)
                 error_trace_id = ""
                 error_task_started_at_ms = ""
+                error_time = 0.0
 
             # Get input and metadata for failed items
             task_input = self.inputs.get(item_id, '')
@@ -402,7 +406,7 @@ class EvaluationResult:
                 'item_metadata': str(item_metadata),
                 'output': f'ERROR: {error_msg}',
                 'expected_output': '',
-                'time': 0.0,
+                'time': error_time,
                 'task_started_at_ms': error_task_started_at_ms,
             }
             for m in self.metrics:
@@ -533,10 +537,12 @@ class EvaluationResult:
                 error_msg = error_info.get("error", str(error_info))
                 error_trace_id = error_info.get("trace_id", "")
                 error_task_started_at_ms = error_info.get("task_started_at_ms", "")
+                error_time = error_info.get("time", 0.0)
             else:
                 error_msg = str(error_info)
                 error_trace_id = ""
                 error_task_started_at_ms = ""
+                error_time = 0.0
 
             task_input = self.inputs.get(item_id, '')
             if isinstance(task_input, dict):
@@ -557,7 +563,7 @@ class EvaluationResult:
                 'item_metadata': str(item_metadata),
                 'output': f'ERROR: {error_msg}',
                 'expected_output': '',
-                'time': 0.0,
+                'time': error_time,
                 'task_started_at_ms': error_task_started_at_ms,
             }
             for m in self.metrics:

@@ -133,6 +133,33 @@ class TestEvaluator:
         assert started[0]["task_started_at_ms"] is not None
 
     @pytest.mark.asyncio
+    async def test_run_single_task_attempt_does_not_mislabel_inner_timeout_as_qym_timeout(self, mock_task, mock_langfuse, mock_dataset):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "attempt-inner-timeout", "timeout": 1800},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator.task_adapter = MagicMock()
+        evaluator.task_adapter.arun = AsyncMock(side_effect=asyncio.TimeoutError("client timeout after 240s"))
+        evaluator.model_name_full = "test-model"
+        evaluator._create_item_spans = MagicMock(return_value=ItemSpans(trace_id="trace-1", trace_url="url-1"))
+
+        item = MagicMock()
+        item.input = "test_input"
+        item.id = "item-1"
+
+        result = await evaluator._run_single_task_attempt(0, item, 1)
+
+        assert result.success is False
+        assert "TaskExecutionTimeoutError" in result.error
+        assert "client timeout after 240s" in result.error
+        assert "Task timed out after 1800s" not in result.error
+
+    @pytest.mark.asyncio
     async def test_evaluate_item_uses_last_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
@@ -223,6 +250,7 @@ class TestEvaluator:
         result = await evaluator._evaluate_item(0, item, tracker)
 
         assert result["_trace_id"] == "trace-2"
+        assert result["time"] == pytest.approx(0.25)
         assert result["task_started_at_ms"] == 2222
 
         emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
