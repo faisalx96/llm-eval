@@ -127,3 +127,6 @@ tmp/
 
 # IDE workspace files
 *.code-workspace
+
+# Border test
+/border test
