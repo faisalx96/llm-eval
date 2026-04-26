@@ -27,6 +27,122 @@
       margin-bottom: var(--space-md);
     }
 
+    .compare-mode-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .compare-mode-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .compare-mode-tab:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+
+    .compare-mode-tab.active {
+      color: var(--accent-primary);
+      border-color: rgba(0, 212, 170, 0.35);
+      background: rgba(0, 212, 170, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(0, 212, 170, 0.08);
+    }
+
+    .compare-shared-controls {
+      margin-bottom: var(--space-lg);
+    }
+
+    .compare-cohort-banner {
+      display: none;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+    }
+
+    .compare-cohort-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-right: 2px;
+    }
+
+    .compare-cohort-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 8px;
+    }
+
+    .compare-cohort-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: text;
+    }
+
+    .compare-cohort-pill .cohort-key {
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .compare-cohort-pill .cohort-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1 1 auto;
+    }
+
+    .compare-cohort-pill .cohort-meta {
+      flex: 0 0 auto;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .compare-page-panel {
+      display: none;
+    }
+
+    .compare-page-panel.active {
+      display: block;
+    }
+
     .compare-title {
       font-size: var(--font-lg);
       font-weight: 600;
@@ -37,6 +153,554 @@
       font-size: var(--font-sm);
       color: var(--text-muted);
       margin-top: 4px;
+    }
+
+    .sweep-overview {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .sweep-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .sweep-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sweep-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .sweep-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .sweep-filter-bar {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+    }
+
+    .sweep-filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 128px;
+    }
+
+    .sweep-filter-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .sweep-filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 35px;
+      padding: 0 2px;
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      user-select: none;
+    }
+
+    .sweep-filter-toggle input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--accent-primary);
+    }
+
+    .sweep-filter-toggle.is-disabled {
+      color: var(--text-dim);
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .sweep-filter-search {
+      min-width: 180px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .sweep-filter-search:focus {
+      border-color: rgba(0, 212, 170, 0.35);
+      box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.08);
+    }
+
+    .sweep-filter-search::placeholder {
+      color: var(--text-dim);
+    }
+
+    .sweep-reverse-btn {
+      min-height: 33px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .sweep-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .sweep-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+
+    .sweep-stat-card,
+    .sweep-outcome-card,
+    .sweep-table-shell {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+    }
+
+    .sweep-stat-card {
+      padding: 13px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sweep-stat-card::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      background: var(--accent-secondary);
+      opacity: 0.95;
+    }
+
+    .sweep-stat-card.negative::after {
+      background: #fb923c;
+    }
+
+    .sweep-stat-card.neutral::after {
+      background: rgba(148, 163, 184, 0.55);
+    }
+
+    .sweep-stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .sweep-stat-values {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .sweep-stat-from {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .sweep-stat-arrow {
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .sweep-stat-to {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      letter-spacing: 0.01em;
+    }
+
+    .sweep-delta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      width: fit-content;
+    }
+
+    .sweep-delta-pill.positive {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+    }
+
+    .sweep-delta-pill.negative {
+      background: rgba(239, 68, 68, 0.16);
+      color: #f87171;
+    }
+
+    .sweep-delta-pill.neutral {
+      background: rgba(148, 163, 184, 0.14);
+      color: #94a3b8;
+    }
+
+    .sweep-outcome-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+
+    .sweep-outcome-card {
+      padding: 12px 13px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sweep-outcome-value {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .sweep-outcome-value.positive { color: #34d399; }
+    .sweep-outcome-value.negative { color: #f87171; }
+    .sweep-outcome-value.neutral { color: #cbd5e1; }
+    .sweep-outcome-value.accent { color: var(--accent-secondary); }
+
+    .sweep-outcome-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .sweep-table-shell {
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .sweep-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .sweep-table th,
+    .sweep-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: middle;
+      text-align: left;
+    }
+
+    .sweep-table th {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: rgba(29, 43, 77, 0.72);
+    }
+
+    .sweep-table th .sortable-col,
+    .sweep-metadata-table th .sortable-col {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      width: 100%;
+      padding: 0;
+      margin: 0;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      text-align: left;
+      appearance: none;
+      -webkit-appearance: none;
+      box-shadow: none;
+      outline: none;
+      border-radius: 0;
+    }
+
+    .sweep-table th .sortable-col:hover,
+    .sweep-metadata-table th .sortable-col:hover {
+      color: var(--text-secondary);
+      background: transparent;
+    }
+
+    .sweep-table th .sortable-col.active,
+    .sweep-metadata-table th .sortable-col.active {
+      color: var(--accent-primary);
+    }
+
+    .sweep-table th .sortable-col:focus-visible,
+    .sweep-metadata-table th .sortable-col:focus-visible {
+      color: var(--text-primary);
+    }
+
+    .sweep-table th .chart-col-sort,
+    .sweep-metadata-table th .chart-col-sort {
+      font-size: 10px;
+      color: var(--text-dim);
+      padding-top: 0;
+    }
+
+    .sweep-table th .sortable-col.active .chart-col-sort,
+    .sweep-metadata-table th .sortable-col.active .chart-col-sort {
+      color: var(--accent-primary);
+    }
+
+    .sweep-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .sweep-issue-id {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+    }
+
+    .sweep-issue-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .sweep-pass-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 120px;
+    }
+
+    .sweep-pass-track {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: nowrap;
+    }
+
+    .sweep-pass-dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 5px;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      background: rgba(127, 29, 29, 0.22);
+      box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.06);
+    }
+
+    .sweep-pass-dot.pass {
+      background: rgba(52, 211, 153, 0.95);
+      border-color: rgba(110, 231, 183, 0.8);
+      box-shadow: 0 0 12px rgba(52, 211, 153, 0.35);
+    }
+
+    .sweep-pass-count {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .sweep-move-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+
+    .sweep-move-pill.positive {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+    }
+
+    .sweep-move-pill.negative {
+      background: rgba(239, 68, 68, 0.18);
+      color: #f87171;
+    }
+
+    .sweep-move-pill.neutral {
+      background: rgba(148, 163, 184, 0.14);
+      color: #cbd5e1;
+    }
+
+    .sweep-empty {
+      padding: 36px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+    }
+
+    .sweep-metadata-shell {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .sweep-metadata-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    .sweep-metadata-table th,
+    .sweep-metadata-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .sweep-metadata-table th {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: rgba(29, 43, 77, 0.56);
+      white-space: nowrap;
+    }
+
+    .sweep-metadata-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .sweep-metadata-row {
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .sweep-metadata-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .sweep-metadata-row.is-filtered {
+      background: rgba(0, 212, 170, 0.08);
+    }
+
+    .sweep-metadata-row.is-exclusive {
+      background: rgba(0, 212, 170, 0.12);
+      box-shadow: inset 3px 0 0 rgba(0, 212, 170, 0.75);
+    }
+
+    .sweep-metadata-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .sweep-metadata-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .sweep-metadata-metric {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .sweep-metadata-metric .from {
+      color: var(--text-dim);
+    }
+
+    .sweep-metadata-metric .arrow {
+      color: var(--text-muted);
+    }
+
+    .sweep-metadata-metric .to {
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    .sweep-metadata-delta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .sweep-metadata-delta.positive {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+    }
+
+    .sweep-metadata-delta.negative {
+      background: rgba(239, 68, 68, 0.16);
+      color: #f87171;
+    }
+
+    .sweep-metadata-delta.neutral {
+      background: rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+    }
+
+    .sweep-section-subtitle {
+      margin-top: -2px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
     }
 
     .back-link {
@@ -736,6 +1400,121 @@
 
     .breakdown-domain .breakdown-card {
       border-left: 3px solid rgba(96, 165, 250, 0.3);
+    }
+    .breakdown-errors .breakdown-icon,
+    .breakdown-errors .breakdown-header { color: var(--error); }
+    .breakdown-errors .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
+    .breakdown-errors .breakdown-card:hover {
+      border-color: var(--border-default);
+      border-left-color: rgba(239, 68, 68, 0.35);
+    }
+    .breakdown-errors .error-card {
+      flex: 0 0 300px;
+      width: 300px;
+      max-width: 100%;
+    }
+    .breakdown-errors .breakdown-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: var(--space-md);
+    }
+    .error-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 112px;
+      flex: 0 1 520px;
+      max-width: 520px;
+      min-width: 0;
+      width: 100%;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .error-card.active {
+      border-color: rgba(239, 68, 68, 0.65);
+      border-left-color: rgba(239, 68, 68, 0.65);
+      box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+    }
+    .error-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .error-card-text {
+      min-width: 0;
+      flex: 1;
+    }
+    .error-card-title {
+      font-size: var(--font-sm);
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .error-card-detail {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      line-height: 1.45;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      max-width: 100%;
+    }
+    .error-detail-expander {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .error-detail-expander summary {
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-weight: 600;
+      width: fit-content;
+    }
+    .error-detail-full {
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .error-card-count {
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 700;
+      color: var(--error);
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .error-card-count-label {
+      display: block;
+      margin-top: 3px;
+      font-family: var(--font-sans);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: right;
+    }
+    .error-card-item-count {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      line-height: 1.35;
     }
     .breakdown-custom .breakdown-icon,
     .breakdown-custom .breakdown-header { color: #a78bfa; }
@@ -1897,6 +2676,12 @@
     .formatted-null {
       color: var(--text-muted);
       font-style: italic;
+    }
+
+    .formatted-array-inline {
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .formatted-array-item {
@@ -3200,21 +3985,11 @@
         </div>
       </div>
 
-      <!-- Run summaries -->
-      <div class="compare-summary" id="run-summaries"></div>
+      <div class="compare-mode-tabs" id="compare-mode-tabs"></div>
 
-      <!-- Metrics comparison -->
-      <div class="metrics-comparison">
-        <h3 class="section-title">Per-Run Averages</h3>
-        <table class="metrics-table" id="metrics-table">
-          <thead id="metrics-thead"></thead>
-          <tbody id="metrics-tbody"></tbody>
-        </table>
-      </div>
+      <div class="compare-cohort-banner" id="compare-cohort-banner"></div>
 
-      <!-- Comparison Statistics -->
-      <h3 class="section-title">Comparison Overview</h3>
-      <div class="comparison-stats" id="comparison-stats">
+      <div class="compare-shared-controls" id="compare-shared-controls">
         <div class="metric-tabs-row">
           <div class="metric-tabs" id="overview-metric-tabs"></div>
           <div class="threshold-control" id="threshold-control" style="display: none;">
@@ -3223,126 +3998,151 @@
             <span class="threshold-value" id="threshold-value">80%</span>
           </div>
         </div>
-        <div class="stats-grid" id="stats-grid"></div>
       </div>
 
-      <div id="root-cause-section"></div>
+      <div class="compare-page-panel active" id="compare-main-panel">
+        <!-- Run summaries -->
+        <div class="compare-summary" id="run-summaries"></div>
 
-      <!-- Side-by-side items -->
-      <div class="items-comparison">
-        <h3 class="section-title">Item-by-Item Comparison</h3>
-        <div class="compare-empty" id="alignment-warning" style="display:none;margin-bottom:var(--space-lg);"></div>
-
-        <div class="filter-panel">
-          <div class="fp-filter-row">
-            <div class="fp-group">
-              <span class="fp-label">Metric</span>
-              <select id="items-metric-select" class="filter-select"></select>
-            </div>
-            <div class="fp-group">
-              <span class="fp-label">Show</span>
-              <select id="item-filter" class="filter-select">
-                <option value="all">All Items</option>
-                <option value="different">Different Outputs</option>
-                <option value="errors">With Errors</option>
-                <option value="all_correct">All Runs Correct</option>
-                <option value="all_wrong">No Run Correct</option>
-                <option value="partially_correct">Partially Correct</option>
-                <option value="rarely_solved">Rarely Solved (&le;25%)</option>
-                <option value="unique_solve">Uniquely Solved (1 run)</option>
-              </select>
-            </div>
-            <div class="fp-group fp-winner-group">
-              <span class="fp-label">Winner</span>
-              <select id="run-winner-filter" class="filter-select">
-                <option value="any">Any Winner</option>
-              </select>
-            </div>
-            <div class="fp-group fp-pass-rate-group">
-              <span class="fp-label">Pass Rate</span>
-              <div class="fp-pass-rate-row">
-                <select id="pass-rate-op" class="filter-select">
-                  <option value="">Any</option>
-                  <option value="gte">&ge;</option>
-                  <option value="lte">&le;</option>
-                  <option value="eq">=</option>
-                </select>
-                <input type="number" id="pass-rate-value" class="fp-pass-rate-input" min="0" value="0" style="display:none;" />
-                <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
-              </div>
-            </div>
-            <div class="fp-group">
-              <span class="fp-label">Sort</span>
-              <select id="sort-select" class="filter-select">
-                <option value="index">Index</option>
-                <option value="score_asc">Score &uarr;</option>
-                <option value="score_desc">Score &darr;</option>
-                <option value="latency_asc">Latency &uarr;</option>
-                <option value="latency_desc">Latency &darr;</option>
-              </select>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
-              <span class="fp-label">Complexity</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
-                <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
-              <span class="fp-label">Domain</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
-                <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
-              <span class="fp-label">Root Cause</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
-                <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group" id="fp-cat-approval">
-              <span class="fp-label">Approval</span>
-              <select id="filter-approval" class="filter-select">
-                <option value="">All</option>
-                <option value="approved">Approved</option>
-                <option value="not_approved">Not Approved</option>
-              </select>
-            </div>
-            <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
-              <div class="metadata-fields-selector" style="position:relative;">
-                <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
-                <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
-              <div class="metadata-fields-selector" style="position:relative;">
-                <button class="fp-gear-btn metadata-fields-btn" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
-                <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-actions-spacer"></div>
-            <div class="fp-actions">
-              <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
-                <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
-              </button>
-              <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
-            </div>
-          </div>
-          <div class="fp-search-row">
-            <div class="fp-search">
-              <span class="fp-search-icon">&#x2315;</span>
-              <input type="text" id="items-search" placeholder="Search inputs / outputs / expected..." />
-            </div>
-          </div>
-          <div class="fp-status">
-            <span class="filter-count" id="filter-count"></span>
-          </div>
+        <!-- Metrics comparison -->
+        <div class="metrics-comparison">
+          <h3 class="section-title">Per-Run Averages</h3>
+          <table class="metrics-table" id="metrics-table">
+            <thead id="metrics-thead"></thead>
+            <tbody id="metrics-tbody"></tbody>
+          </table>
         </div>
 
-        <div class="items-grid" id="items-grid"></div>
-        <div class="pagination" id="pagination"></div>
+        <!-- Comparison Statistics -->
+        <h3 class="section-title">Comparison Overview</h3>
+        <div class="comparison-stats" id="comparison-stats">
+          <div class="stats-grid" id="stats-grid"></div>
+        </div>
+
+        <div id="error-distribution-section"></div>
+
+        <div id="root-cause-section"></div>
+
+        <!-- Side-by-side items -->
+        <div class="items-comparison">
+          <h3 class="section-title">Item-by-Item Comparison</h3>
+          <div class="compare-empty" id="alignment-warning" style="display:none;margin-bottom:var(--space-lg);"></div>
+
+          <div class="filter-panel">
+            <div class="fp-filter-row">
+              <div class="fp-group">
+                <span class="fp-label">Metric</span>
+                <select id="items-metric-select" class="filter-select"></select>
+              </div>
+              <div class="fp-group">
+                <span class="fp-label">Show</span>
+                <select id="item-filter" class="filter-select">
+                  <option value="all">All Items</option>
+                  <option value="different">Different Outputs</option>
+                  <option value="errors">With Errors</option>
+                  <option value="all_correct">All Runs Correct</option>
+                  <option value="all_wrong">No Run Correct</option>
+                  <option value="partially_correct">Partially Correct</option>
+                  <option value="rarely_solved">Rarely Solved (&le;25%)</option>
+                  <option value="unique_solve">Uniquely Solved (1 run)</option>
+                </select>
+              </div>
+              <div class="fp-group fp-winner-group">
+                <span class="fp-label">Winner</span>
+                <select id="run-winner-filter" class="filter-select">
+                  <option value="any">Any Winner</option>
+                </select>
+              </div>
+              <div class="fp-group fp-pass-rate-group">
+                <span class="fp-label">Pass Rate</span>
+                <div class="fp-pass-rate-row">
+                  <select id="pass-rate-op" class="filter-select">
+                    <option value="">Any</option>
+                    <option value="gte">&ge;</option>
+                    <option value="lte">&le;</option>
+                    <option value="eq">=</option>
+                  </select>
+                  <input type="number" id="pass-rate-value" class="fp-pass-rate-input" min="0" value="0" style="display:none;" />
+                  <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
+                </div>
+              </div>
+              <div class="fp-group">
+                <span class="fp-label">Sort</span>
+                <select id="sort-select" class="filter-select">
+                  <option value="index">Index</option>
+                  <option value="score_asc">Score &uarr;</option>
+                  <option value="score_desc">Score &darr;</option>
+                  <option value="latency_asc">Latency &uarr;</option>
+                  <option value="latency_desc">Latency &darr;</option>
+                </select>
+              </div>
+              <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
+                <span class="fp-label">Complexity</span>
+                <div class="multi-select-wrapper">
+                  <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
+                  <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
+                </div>
+              </div>
+              <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
+                <span class="fp-label">Domain</span>
+                <div class="multi-select-wrapper">
+                  <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
+                  <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
+                </div>
+              </div>
+              <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
+                <span class="fp-label">Root Cause</span>
+                <div class="multi-select-wrapper">
+                  <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
+                  <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
+                </div>
+              </div>
+              <div class="fp-group" id="fp-cat-approval">
+                <span class="fp-label">Approval</span>
+                <select id="filter-approval" class="filter-select">
+                  <option value="">All</option>
+                  <option value="approved">Approved</option>
+                  <option value="not_approved">Not Approved</option>
+                </select>
+              </div>
+              <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
+                <div class="metadata-fields-selector" style="position:relative;">
+                  <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                  <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+                </div>
+              </div>
+              <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
+                <div class="metadata-fields-selector" style="position:relative;">
+                  <button class="fp-gear-btn metadata-fields-btn" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                  <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
+                </div>
+              </div>
+              <div class="fp-actions-spacer"></div>
+              <div class="fp-actions">
+                <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
+                  <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
+                </button>
+                <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+              </div>
+            </div>
+            <div class="fp-search-row">
+              <div class="fp-search">
+                <span class="fp-search-icon">&#x2315;</span>
+                <input type="text" id="items-search" placeholder="Search inputs / outputs / expected..." />
+              </div>
+            </div>
+            <div class="fp-status">
+              <span class="filter-count" id="filter-count"></span>
+            </div>
+          </div>
+
+          <div class="items-grid" id="items-grid"></div>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+
+      <div class="compare-page-panel" id="compare-sweep-panel">
+        <div class="sweep-overview" id="grouped-sweep-view"></div>
       </div>
     </div>
   </main>
@@ -3454,14 +4254,33 @@
         allMetricMetaKeys: [],
         visibleMetricMetaFields: {},
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
+        taskErrorFilter: null,
+        traceErrorFilter: null,
+        analysisErrorFilter: null,
         rootCauseValues: [],          // unique root cause values found in data
         rcCountMode: 'total',         // 'total' or 'unique' for root cause breakdown cards
         sortBy: 'index',              // index, score_asc, score_desc, latency_asc, latency_desc
+        activeCompareTab: 'compare',
         compareAlignmentStatus: 'aligned',
         compareAlignmentIssues: [],
         compareItemIds: [],
         hasRenderedItems: false,
         groupedOutcomeGroups: null,
+        explicitGroupedOutcomeGroups: null,
+        groupedComparisonCache: {},
+        sweepReverse: false,
+        sweepMoveFilter: 'all',
+        sweepOutcomeFilter: 'all',
+        sweepSearchQuery: '',
+        sweepMetadataKey: 'all',
+        sweepMetadataMode: 'include',
+        sweepMetadataValues: null,
+        sweepMetadataExclusiveValues: new Set(),
+        sweepTableSortKey: 'default',
+        sweepTableSortDir: 'desc',
+        sweepBreakdownSortKey: 'count',
+        sweepBreakdownSortDir: 'desc',
+        groupedOutcomeLabelOverrides: { left: '', right: '' },
       };
 
       const el = (id) => document.getElementById(id);
@@ -3476,6 +4295,184 @@
 
       function getCompareRunDataId(runData) {
         return runData?.run?.file_path || runData?.run?.run_id || '';
+      }
+
+      function stripProviderFromCompareRunId(runId) {
+        if (!runId) return '';
+        const slashIdx = runId.indexOf('/');
+        if (slashIdx < 0) return runId;
+        const beforeSlash = runId.slice(0, slashIdx);
+        const lastDash = beforeSlash.lastIndexOf('-');
+        if (lastDash < 0) return runId.slice(slashIdx + 1);
+        return beforeSlash.slice(0, lastDash + 1) + runId.slice(slashIdx + 1);
+      }
+
+      function truncateMiddle(value, maxLength = 64) {
+        const text = String(value || '').trim();
+        if (!text || text.length <= maxLength) return text;
+        const keep = Math.max(10, Math.floor((maxLength - 1) / 2));
+        return `${text.slice(0, keep)}…${text.slice(-keep)}`;
+      }
+
+      function getCompareRunDisplayNameById(runId, fallbackIndex = null) {
+        const match = (state.runs || []).find((runData) => getCompareRunDataId(runData) === runId);
+        if (match?.run?.run_name) return String(match.run.run_name).trim();
+        if (match?.run?.run_id) return stripProviderFromCompareRunId(String(match.run.run_id).trim());
+        if (typeof runId === 'string' && runId.trim()) {
+          const cleaned = stripProviderFromCompareRunId(runId).split('/').filter(Boolean).pop();
+          if (cleaned) return cleaned;
+        }
+        if (fallbackIndex !== null) return `Run ${fallbackIndex + 1}`;
+        return '';
+      }
+
+      function looksLikeOpaqueRunId(value) {
+        const text = String(value || '').trim();
+        if (!text) return true;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+      }
+
+      function trimSharedBoundary(text) {
+        return String(text || '').replace(/[-_\s.,/:]+$/g, '').trim();
+      }
+
+      function longestCommonPrefix(values) {
+        const list = (values || []).filter(Boolean);
+        if (!list.length) return '';
+        let prefix = list[0];
+        for (let i = 1; i < list.length && prefix; i += 1) {
+          const value = list[i];
+          let j = 0;
+          const limit = Math.min(prefix.length, value.length);
+          while (j < limit && prefix[j] === value[j]) j += 1;
+          prefix = prefix.slice(0, j);
+        }
+        return trimSharedBoundary(prefix);
+      }
+
+      function toTitleLikeLabel(text) {
+        return String(text || '')
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((part) => {
+            if (/^\d+$/.test(part)) return part;
+            if (part.length <= 3 && /^[a-z0-9]+$/i.test(part)) return part.toUpperCase();
+            return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+          })
+          .join(' ');
+      }
+
+      function cleanCohortSourceLabel(rawLabel) {
+        let text = String(rawLabel || '').trim();
+        if (!text) return '';
+        text = stripProviderFromCompareRunId(text);
+        text = text.replace(/^[a-z0-9]+_[a-f0-9]{6,}_/i, '');
+        text = text.replace(/[-_](?:gpt|qwen|claude|gemini|llama|mistral|deepseek|grok|o[1-9]|sonnet|haiku|opus)\b.*$/i, '');
+        text = text.replace(/[-_]\d{6,}(?:[-_]\d+)*$/i, '');
+        text = text.replace(/[-_](?:run|attempt|trial|seed)\d*$/i, '');
+        text = text.replace(/^[-_\s]+|[-_\s]+$/g, '');
+        text = text.replace(/[_-]+/g, ' ');
+        text = text.replace(/\s+/g, ' ').trim();
+        return toTitleLikeLabel(text);
+      }
+
+      function isGenericCohortLabel(label) {
+        const normalized = String(label || '').trim().toLowerCase();
+        return normalized === 'cohort a'
+          || normalized === 'cohort b'
+          || normalized === 'model a'
+          || normalized === 'model b'
+          || normalized === 'left cohort'
+          || normalized === 'right cohort';
+      }
+
+      function deriveExplicitCohortLabel(runIds, providedLabel = '') {
+        const label = String(providedLabel || '').trim();
+        if (label && !isGenericCohortLabel(label) && !label.includes(',') && !/\+\d+$/.test(label)) {
+          return label;
+        }
+        const names = (Array.isArray(runIds) ? runIds : [])
+          .map((runId, idx) => getCompareRunDisplayNameById(runId, idx))
+          .filter(Boolean);
+        if (!names.length) return '';
+        if (names.length === 1) return names[0];
+
+        const nonOpaqueNames = names.filter(name => !looksLikeOpaqueRunId(name));
+        const sourceNames = nonOpaqueNames.length ? nonOpaqueNames : names;
+        const sharedStem = longestCommonPrefix(sourceNames);
+        if (sharedStem && sharedStem.length >= 8 && !looksLikeOpaqueRunId(sharedStem)) {
+          return sharedStem;
+        }
+
+        const uniqueNames = [...new Set(sourceNames)];
+        if (uniqueNames.length === 1) {
+          return uniqueNames[0];
+        }
+
+        if (uniqueNames.length >= 2) {
+          return uniqueNames[0];
+        }
+
+        return 'Cohort';
+      }
+
+      function getCurrentGroupedOutcomeLabels() {
+        const groups = state.groupedOutcomeGroups || {};
+        return {
+          left: groups.modelALabel || deriveExplicitCohortLabel(groups.leftRunIds || [], ''),
+          right: groups.modelBLabel || deriveExplicitCohortLabel(groups.rightRunIds || [], ''),
+        };
+      }
+
+      function persistExplicitCohortLabels() {
+        if (!state.explicitGroupedOutcomeGroups) return;
+        const explicit = state.explicitGroupedOutcomeGroups;
+        const payload = {
+          left: explicit.leftRunIds || [],
+          right: explicit.rightRunIds || [],
+          leftLabel: explicit.modelALabel || '',
+          rightLabel: explicit.modelBLabel || '',
+        };
+        sessionStorage.setItem('compareCohorts', JSON.stringify(payload));
+        _updateCompareUrl(
+          [...(explicit.leftRunIds || []), ...(explicit.rightRunIds || [])],
+          payload
+        );
+      }
+
+      function renameGroupedOutcomeLabel(side, nextLabel) {
+        const normalizedSide = side === 'right' ? 'right' : 'left';
+        const trimmed = String(nextLabel || '').trim();
+
+        if (state.explicitGroupedOutcomeGroups) {
+          if (normalizedSide === 'left') {
+            state.explicitGroupedOutcomeGroups.modelALabel = trimmed || deriveExplicitCohortLabel(state.explicitGroupedOutcomeGroups.leftRunIds || [], '');
+          } else {
+            state.explicitGroupedOutcomeGroups.modelBLabel = trimmed || deriveExplicitCohortLabel(state.explicitGroupedOutcomeGroups.rightRunIds || [], '');
+          }
+          persistExplicitCohortLabels();
+        } else {
+          state.groupedOutcomeLabelOverrides[normalizedSide] = trimmed;
+        }
+
+        inferGroupedOutcomeGroups();
+        renderCompareCohortBanner();
+        populateItemFilterOptions();
+        renderCompareModeTabs();
+        renderSweepView();
+        renderItems();
+      }
+
+      function normalizeExplicitCohortPayload(payload) {
+        const left = Array.isArray(payload?.left) ? payload.left.filter(Boolean) : [];
+        const right = Array.isArray(payload?.right) ? payload.right.filter(Boolean) : [];
+        if (left.length < 1 || right.length < 1 || left.length !== right.length) return null;
+        return {
+          left,
+          right,
+          leftLabel: String(payload?.leftLabel || '').trim(),
+          rightLabel: String(payload?.rightLabel || '').trim(),
+        };
       }
 
       function ensureGroupedOutcomeBucketsHelper() {
@@ -3590,6 +4587,17 @@
 
       function inferGroupedOutcomeGroups() {
         state.groupedOutcomeGroups = null;
+        if (state.explicitGroupedOutcomeGroups) {
+          const explicit = state.explicitGroupedOutcomeGroups;
+          state.groupedOutcomeGroups = {
+            leftRunIds: explicit.leftRunIds || [],
+            rightRunIds: explicit.rightRunIds || [],
+            modelALabel: deriveExplicitCohortLabel(explicit.leftRunIds || [], explicit.modelALabel),
+            modelBLabel: deriveExplicitCohortLabel(explicit.rightRunIds || [], explicit.modelBLabel),
+            k: explicit.k || Math.min((explicit.leftRunIds || []).length, (explicit.rightRunIds || []).length),
+          };
+          return;
+        }
         const runsByModel = new Map();
         const modelOrder = [];
 
@@ -3613,8 +4621,8 @@
         state.groupedOutcomeGroups = {
           leftRunIds,
           rightRunIds,
-          modelALabel: leftModel,
-          modelBLabel: rightModel,
+          modelALabel: state.groupedOutcomeLabelOverrides.left || leftModel,
+          modelBLabel: state.groupedOutcomeLabelOverrides.right || rightModel,
           k: leftRunIds.length,
         };
       }
@@ -3642,6 +4650,1129 @@
           },
           getItemId: (row) => row?.item_id || row?.compare_item_id || String(row?.index ?? ''),
           getRunId: getCompareRunDataId,
+        });
+      }
+
+      function canShowSweepTab() {
+        if (!state.groupedOutcomeGroups) return false;
+        if (!canRenderItemComparison()) return false;
+        const metricName = state.selectedOverviewMetric;
+        if (!metricName) return false;
+        return state.metricTypes?.[metricName] !== 'numeric';
+      }
+
+      function invalidateGroupedComparisonCache(metricName) {
+        if (!metricName) {
+          state.groupedComparisonCache = {};
+          return;
+        }
+        delete state.groupedComparisonCache[metricName];
+      }
+
+      function getActiveGroupedComparison() {
+        if (!canShowSweepTab()) return null;
+        const metricName = state.selectedOverviewMetric;
+        if (!metricName) return null;
+        if (state.groupedComparisonCache[metricName]) {
+          return state.groupedComparisonCache[metricName];
+        }
+
+        const groups = state.groupedOutcomeGroups;
+        const threshold = state.metricIsBoolean[metricName]
+          ? 0.9999
+          : (state.metricThresholds[metricName] || 0.8);
+
+        const result = window.QymMetrics.calculateGroupedCohortComparison({
+          runsData: state.runs,
+          leftRunIds: groups.leftRunIds || [],
+          rightRunIds: groups.rightRunIds || [],
+          threshold,
+          getMetricIndex: (runData) => {
+            const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
+            return metricNames.indexOf(metricName);
+          },
+          getItemId: getRowCompareId,
+          getRunId: getCompareRunDataId,
+        });
+        state.groupedComparisonCache[metricName] = result;
+        return result;
+      }
+
+      function renderCompareModeTabs() {
+        const container = el('compare-mode-tabs');
+        if (!container) return;
+        const showSweep = canShowSweepTab();
+        if (!showSweep && state.activeCompareTab === 'sweep') {
+          state.activeCompareTab = 'compare';
+        }
+
+        const tabs = [
+          { key: 'compare', label: 'Compare' },
+          ...(showSweep ? [{ key: 'sweep', label: 'Sweep' }] : []),
+        ];
+
+        container.innerHTML = tabs.map(tab => `
+          <button class="compare-mode-tab ${state.activeCompareTab === tab.key ? 'active' : ''}" data-compare-tab="${tab.key}">
+            ${escapeHtml(tab.label)}
+          </button>
+        `).join('');
+
+        container.querySelectorAll('[data-compare-tab]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.activeCompareTab = btn.dataset.compareTab || 'compare';
+            applyCompareMode();
+          });
+        });
+      }
+
+      function renderCompareCohortBanner() {
+        const container = el('compare-cohort-banner');
+        if (!container) return;
+
+        const groups = state.groupedOutcomeGroups;
+        if (!groups || !Array.isArray(groups.leftRunIds) || !Array.isArray(groups.rightRunIds) || !groups.leftRunIds.length || !groups.rightRunIds.length) {
+          container.style.display = 'none';
+          container.innerHTML = '';
+          return;
+        }
+
+        const leftLabel = groups.modelALabel || deriveExplicitCohortLabel(groups.leftRunIds || [], '');
+        const rightLabel = groups.modelBLabel || deriveExplicitCohortLabel(groups.rightRunIds || [], '');
+        const leftCount = Array.isArray(groups.leftRunIds) ? groups.leftRunIds.length : 0;
+        const rightCount = Array.isArray(groups.rightRunIds) ? groups.rightRunIds.length : 0;
+        container.style.display = 'flex';
+        container.innerHTML = `
+          <span class="compare-cohort-label">Compare Sides</span>
+          <div class="compare-cohort-grid">
+            <span class="compare-cohort-pill" data-cohort-side="left" title="${escapeAttr(`${leftLabel}\nDouble-click to rename`) }">
+              <span class="cohort-key">A / Left</span>
+              <span class="cohort-name">${escapeHtml(leftLabel)}</span>
+              <span class="cohort-meta">${leftCount} ${leftCount === 1 ? 'run' : 'runs'}</span>
+            </span>
+            <span class="compare-cohort-pill" data-cohort-side="right" title="${escapeAttr(`${rightLabel}\nDouble-click to rename`) }">
+              <span class="cohort-key">B / Right</span>
+              <span class="cohort-name">${escapeHtml(rightLabel)}</span>
+              <span class="cohort-meta">${rightCount} ${rightCount === 1 ? 'run' : 'runs'}</span>
+            </span>
+          </div>
+        `;
+
+        container.querySelectorAll('[data-cohort-side]').forEach((pill) => {
+          pill.addEventListener('dblclick', () => {
+            const side = pill.dataset.cohortSide === 'right' ? 'right' : 'left';
+            const current = side === 'right' ? rightLabel : leftLabel;
+            const next = window.prompt(`Rename ${side === 'right' ? 'B / Right' : 'A / Left'}`, current);
+            if (next === null) return;
+            renameGroupedOutcomeLabel(side, next);
+          });
+        });
+      }
+
+      function applyCompareMode() {
+        const mainPanel = el('compare-main-panel');
+        const sweepPanel = el('compare-sweep-panel');
+        const showSweep = canShowSweepTab() && state.activeCompareTab === 'sweep';
+        if (mainPanel) mainPanel.classList.toggle('active', !showSweep);
+        if (sweepPanel) sweepPanel.classList.toggle('active', showSweep);
+      }
+
+      function formatSweepMetricValue(value) {
+        if (value === undefined || value === null || isNaN(value)) return '—';
+        return `${(Number(value) * 100).toFixed(1)}%`;
+      }
+
+      function formatSweepAttemptsDelta(value) {
+        if (value === undefined || value === null || isNaN(value)) return '—';
+        const rounded = Math.abs(value) < 0.005 ? 0 : value;
+        const prefix = rounded > 0 ? '+' : '';
+        return `${prefix}${rounded.toFixed(2)}`;
+      }
+
+      function getDeltaClass(value) {
+        if (value > 0.0005) return 'positive';
+        if (value < -0.0005) return 'negative';
+        return 'neutral';
+      }
+
+      function renderSweepDelta(value) {
+        const deltaClass = getDeltaClass(value);
+        const rounded = Math.abs(value) < 0.0005 ? 0 : value;
+        const prefix = rounded > 0 ? '+' : '';
+        return `<span class="sweep-delta-pill ${deltaClass}">${prefix}${(rounded * 100).toFixed(1)}%</span>`;
+      }
+
+      function renderSweepMetaBadges(item) {
+        const metadata = item?.metadata || {};
+        let html = '';
+        const domains = getMetadataCategoryValues(metadata, 'domain');
+        domains.slice(0, 3).forEach(domain => {
+          html += `<span class="meta-badge badge-domain"><span class="badge-icon">◆</span>${escapeHtml(domain)}</span>`;
+        });
+        const complexity = metadata?.complexity ? String(metadata.complexity) : '';
+        if (complexity) {
+          let complexityClass = '';
+          const norm = complexity.toLowerCase();
+          if (norm === 'easy') complexityClass = ' complexity-easy';
+          else if (norm === 'medium') complexityClass = ' complexity-medium';
+          else if (norm === 'hard') complexityClass = ' complexity-hard';
+          else if (norm === 'very hard' || norm === 'expert') complexityClass = ' complexity-expert';
+          html += `<span class="meta-badge badge-complexity${complexityClass}"><span class="badge-icon">◈</span>${escapeHtml(complexity)}</span>`;
+        }
+        return html;
+      }
+
+      function formatSweepMetadataLabel(key) {
+        const raw = String(key || '').trim();
+        if (!raw) return 'Metadata';
+        return raw
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, match => match.toUpperCase());
+      }
+
+      function getSweepMetadataKeys(items) {
+        const keySet = new Set();
+        (items || []).forEach((item) => {
+          const metadata = item?.metadata || {};
+          Object.keys(metadata).forEach((key) => {
+            const values = getMetadataCategoryValues(metadata, key);
+            if (values.length) keySet.add(key);
+          });
+        });
+        return Array.from(keySet).sort((a, b) => formatSweepMetadataLabel(a).localeCompare(formatSweepMetadataLabel(b)));
+      }
+
+      function getSweepMetadataValues(items, key) {
+        if (!key || key === 'all') return [];
+        const valueSet = new Set();
+        (items || []).forEach((item) => {
+          const metadata = item?.metadata || {};
+          getMetadataCategoryValues(metadata, key).forEach((value) => {
+            if (value !== undefined && value !== null && value !== '') valueSet.add(String(value));
+          });
+        });
+        return Array.from(valueSet).sort((a, b) => a.localeCompare(b));
+      }
+
+      function sweepMetadataKeySupportsExclusive(items, key) {
+        if (!key || key === 'all') return false;
+        if (isListCategoryKey(key)) return true;
+        return (items || []).some((item) => Array.isArray(item?.metadata?.[key]));
+      }
+
+      function normalizeSweepMetadataValues(values, availableValues) {
+        const available = Array.isArray(availableValues) ? availableValues : [];
+        if (!Array.isArray(values)) return null;
+        if (!available.length) return values.length ? [] : null;
+        if (!values.length) return [];
+        const normalized = values.filter(value => available.includes(value));
+        if (!normalized.length) return [];
+        if (normalized.length >= available.length) return null;
+        return normalized;
+      }
+
+      function normalizeSweepMetadataExclusiveValues(values, availableValues) {
+        const available = Array.isArray(availableValues) ? availableValues : [];
+        if (!(values instanceof Set) || !available.length) return new Set();
+        return new Set([...values].filter(value => available.includes(value)));
+      }
+
+      function getSweepMetadataTargetValues(availableValues, metadataMode = state.sweepMetadataMode, selectedValues = state.sweepMetadataValues) {
+        const available = Array.isArray(availableValues) ? availableValues : [];
+        if (!available.length || metadataMode === 'exclude') return [];
+        if (!Array.isArray(selectedValues)) return [...available];
+        return selectedValues.filter(value => available.includes(value));
+      }
+
+      function isSweepMetadataExclusiveOnlyActive(availableValues, metadataMode = state.sweepMetadataMode, selectedValues = state.sweepMetadataValues, exclusiveValues = state.sweepMetadataExclusiveValues) {
+        const targets = getSweepMetadataTargetValues(availableValues, metadataMode, selectedValues);
+        if (!targets.length || !(exclusiveValues instanceof Set)) return false;
+        return exclusiveValues.size === targets.length && targets.every(value => exclusiveValues.has(value));
+      }
+
+      function getSweepMetadataValueButtonLabel(availableValues, metadataMode, selectedValues, exclusiveValues) {
+        if (!availableValues.length) return 'No Values';
+        if (metadataMode === 'exclude') {
+          if (!Array.isArray(selectedValues) || !selectedValues.length) return 'All Values';
+          if (selectedValues.length === 1) return `All except ${selectedValues[0]}`;
+          return `Exclude ${selectedValues.length}`;
+        }
+        if (!Array.isArray(selectedValues)) return 'All Values';
+        if (!selectedValues.length) return 'No Values';
+        if (selectedValues.length === 1 && exclusiveValues instanceof Set && exclusiveValues.has(selectedValues[0])) {
+          return `Only ${selectedValues[0]}`;
+        }
+        if (selectedValues.length === 1) return selectedValues[0];
+        if (selectedValues.length === 2) return `${selectedValues[0]}, ${selectedValues[1]}`;
+        return `${selectedValues.length} selected`;
+      }
+
+      function renderSweepPassTrack(passes) {
+        const values = Array.isArray(passes) ? passes : [];
+        const passCount = values.filter(Boolean).length;
+        const failCount = Math.max(0, values.length - passCount);
+        const dots = [
+          ...new Array(passCount).fill('<span class="sweep-pass-dot pass"></span>'),
+          ...new Array(failCount).fill('<span class="sweep-pass-dot"></span>'),
+        ].join('');
+        return `
+          <div class="sweep-pass-cell">
+            <div class="sweep-pass-track">${dots}</div>
+            <span class="sweep-pass-count">${passCount}/${values.length}</span>
+          </div>
+        `;
+      }
+
+      function renderSweepStatCard(label, fromValue, toValue, deltaValue) {
+        const deltaClass = getDeltaClass(deltaValue);
+        return `
+          <div class="sweep-stat-card ${deltaClass}">
+            <div class="sweep-stat-label">${escapeHtml(label)}</div>
+            <div class="sweep-stat-values">
+              <span class="sweep-stat-from">${formatSweepMetricValue(fromValue)}</span>
+              <span class="sweep-stat-arrow">→</span>
+              <span class="sweep-stat-to">${formatSweepMetricValue(toValue)}</span>
+            </div>
+            ${renderSweepDelta(deltaValue)}
+          </div>
+        `;
+      }
+
+      function renderSortableHeader(label, key, activeKey, activeDir, dataAttr) {
+        const isActive = activeKey === key;
+        const arrow = isActive ? (activeDir === 'asc' ? '↑' : '↓') : '↕';
+        return `<button type="button" class="sortable-col ${isActive ? 'active' : ''}" ${dataAttr}="${escapeAttr(key)}">${escapeHtml(label)} <span class="chart-col-sort">${arrow}</span></button>`;
+      }
+
+      function toggleSweepSort(sortKeyStateKey, sortDirStateKey, nextKey, defaultDir = 'desc') {
+        if (state[sortKeyStateKey] === nextKey) {
+          state[sortDirStateKey] = state[sortDirStateKey] === 'asc' ? 'desc' : 'asc';
+        } else {
+          state[sortKeyStateKey] = nextKey;
+          state[sortDirStateKey] = defaultDir;
+        }
+      }
+
+      function formatSweepCompactMetricValue(value) {
+        if (value === undefined || value === null || isNaN(value)) return '—';
+        return `${(Number(value) * 100).toFixed(0)}%`;
+      }
+
+      function formatSweepCompactDelta(value) {
+        if (value === undefined || value === null || isNaN(value)) return '—';
+        const rounded = Math.abs(value) < 0.0005 ? 0 : value;
+        const prefix = rounded > 0 ? '+' : '';
+        return `${prefix}${(rounded * 100).toFixed(0)}%`;
+      }
+
+      function getSweepDisplayedItem(baseItem, reversed) {
+        if (!baseItem) return null;
+        if (!reversed) return baseItem;
+        return {
+          ...baseItem,
+          leftScores: [...(baseItem.rightScores || [])],
+          rightScores: [...(baseItem.leftScores || [])],
+          leftPasses: [...(baseItem.rightPasses || [])],
+          rightPasses: [...(baseItem.leftPasses || [])],
+          leftAttempts: [...(baseItem.rightAttempts || [])],
+          rightAttempts: [...(baseItem.leftAttempts || [])],
+          leftPassCount: baseItem.rightPassCount ?? 0,
+          rightPassCount: baseItem.leftPassCount ?? 0,
+          leftAvgAttempts: baseItem.rightAvgAttempts ?? 0,
+          rightAvgAttempts: baseItem.leftAvgAttempts ?? 0,
+          move: -(baseItem.move ?? 0),
+        };
+      }
+
+      function getSweepDisplayOutcome(item) {
+        const leftPasses = Array.isArray(item?.leftPasses) ? item.leftPasses : [];
+        const rightPasses = Array.isArray(item?.rightPasses) ? item.rightPasses : [];
+        if (!leftPasses.length || !rightPasses.length) return 'mixed';
+
+        const leftAllPass = leftPasses.every(Boolean);
+        const leftAllFail = leftPasses.every(value => !value);
+        const rightAllPass = rightPasses.every(Boolean);
+        const rightAllFail = rightPasses.every(value => !value);
+
+        if (leftAllPass && rightAllFail) return 'left_sweeps_right';
+        if (leftAllFail && rightAllPass) return 'right_sweeps_left';
+        if (leftAllPass && rightAllPass) return 'both_pass';
+        if (leftAllFail && rightAllFail) return 'both_fail';
+        return 'mixed';
+      }
+
+      function matchesSweepSearch(item, query) {
+        const rawQuery = String(query || '').trim().toLowerCase();
+        if (!rawQuery) return true;
+
+        const metadata = item?.metadata || {};
+        const haystacks = [
+          item?.itemId,
+          item?.rawItemId,
+          metadata?.complexity,
+          ...getMetadataCategoryValues(metadata, 'domain'),
+        ]
+          .filter(value => value !== undefined && value !== null && value !== '')
+          .map(value => String(value).toLowerCase());
+
+        return haystacks.some(value => value.includes(rawQuery));
+      }
+
+      function filterSweepItems(items, overrides = {}) {
+        const moveFilter = overrides.sweepMoveFilter ?? state.sweepMoveFilter;
+        const outcomeFilter = overrides.sweepOutcomeFilter ?? state.sweepOutcomeFilter;
+        const metadataKey = overrides.sweepMetadataKey ?? state.sweepMetadataKey;
+        const metadataMode = overrides.sweepMetadataMode ?? state.sweepMetadataMode;
+        const metadataValuesFilter = overrides.sweepMetadataValues ?? state.sweepMetadataValues;
+        const metadataExclusiveValues = overrides.sweepMetadataExclusiveValues ?? state.sweepMetadataExclusiveValues;
+        const searchQuery = overrides.sweepSearchQuery ?? state.sweepSearchQuery;
+
+        return (items || []).filter(item => {
+          if (moveFilter === 'improved' && item.move <= 0) return false;
+          if (moveFilter === 'regressed' && item.move >= 0) return false;
+          if (moveFilter === 'unchanged' && item.move !== 0) return false;
+
+          const outcome = getSweepDisplayOutcome(item);
+          if (outcomeFilter !== 'all' && outcome !== outcomeFilter) return false;
+          if (metadataKey !== 'all') {
+            const metadataValues = getMetadataCategoryValues(item?.metadata || {}, metadataKey);
+            if (!metadataValues.length) return false;
+            if (metadataMode === 'exclude') {
+              if (Array.isArray(metadataValuesFilter) && metadataValuesFilter.length) {
+                if (metadataValuesFilter.some(value => metadataValues.includes(value))) return false;
+              }
+            } else {
+              if (Array.isArray(metadataValuesFilter) && metadataValuesFilter.length === 0) return false;
+              if (Array.isArray(metadataValuesFilter) && metadataValuesFilter.length) {
+                if (!metadataValuesFilter.some(value => metadataValues.includes(value))) return false;
+              }
+            }
+            if (metadataExclusiveValues instanceof Set && metadataExclusiveValues.size > 0) {
+              for (const exclusiveValue of metadataExclusiveValues) {
+                if (metadataValues.includes(exclusiveValue) && metadataValues.length > 1) return false;
+              }
+            }
+          }
+          if (!matchesSweepSearch(item, searchQuery)) return false;
+          return true;
+        });
+      }
+
+      function sortSweepItems(items) {
+        const direction = state.sweepTableSortDir === 'asc' ? 1 : -1;
+        const sortKey = state.sweepTableSortKey || 'default';
+        return [...(items || [])].sort((a, b) => {
+          if (sortKey === 'issue') {
+            return direction * String(a.itemId || a.rawItemId || '').localeCompare(String(b.itemId || b.rawItemId || ''));
+          }
+          if (sortKey === 'left') {
+            if ((a.leftPassCount ?? 0) !== (b.leftPassCount ?? 0)) return direction * ((a.leftPassCount ?? 0) - (b.leftPassCount ?? 0));
+          } else if (sortKey === 'right') {
+            if ((a.rightPassCount ?? 0) !== (b.rightPassCount ?? 0)) return direction * ((a.rightPassCount ?? 0) - (b.rightPassCount ?? 0));
+          } else if (sortKey === 'move') {
+            if ((a.move ?? 0) !== (b.move ?? 0)) return direction * ((a.move ?? 0) - (b.move ?? 0));
+          } else {
+            if ((b.move ?? 0) !== (a.move ?? 0)) return (b.move ?? 0) - (a.move ?? 0);
+            if ((a.leftPassCount ?? 0) !== (b.leftPassCount ?? 0)) return (a.leftPassCount ?? 0) - (b.leftPassCount ?? 0);
+            if ((b.rightPassCount ?? 0) !== (a.rightPassCount ?? 0)) return (b.rightPassCount ?? 0) - (a.rightPassCount ?? 0);
+          }
+          if ((b.move ?? 0) !== (a.move ?? 0)) return (b.move ?? 0) - (a.move ?? 0);
+          if ((a.leftPassCount ?? 0) !== (b.leftPassCount ?? 0)) return (a.leftPassCount ?? 0) - (b.leftPassCount ?? 0);
+          if ((b.rightPassCount ?? 0) !== (a.rightPassCount ?? 0)) return (b.rightPassCount ?? 0) - (a.rightPassCount ?? 0);
+          return String(a.itemId || a.rawItemId || '').localeCompare(String(b.itemId || b.rawItemId || ''));
+        });
+      }
+
+      function summarizeSweepItems(items, leftRunCount, rightRunCount) {
+        const summary = {
+          eligibleItems: items.length,
+          left: {
+            passAtK: 0,
+            passHatK: 0,
+            avgAtK: 0,
+            consistency: null,
+            reliability: null,
+            avgAttempts: 0,
+          },
+          right: {
+            passAtK: 0,
+            passHatK: 0,
+            avgAtK: 0,
+            consistency: null,
+            reliability: null,
+            avgAttempts: 0,
+          },
+          deltas: {
+            passAtK: 0,
+            passHatK: 0,
+            avgAtK: 0,
+            consistency: 0,
+            reliability: 0,
+          },
+          summary: {
+            improvedCount: 0,
+            regressedCount: 0,
+            unchangedCount: 0,
+            avgAttemptsDelta: 0,
+          },
+        };
+
+        if (!items.length) return summary;
+
+        function aggregateSide(sideKey, runCount) {
+          const agg = {
+            passAtKCount: 0,
+            passHatKCount: 0,
+            totalScoreSum: 0,
+            totalScoreCount: 0,
+            totalConsistencySum: 0,
+            itemsWithMultipleRuns: 0,
+            totalReliabilitySum: 0,
+            itemsWithAtLeastOnePass: 0,
+            totalAttemptsSum: 0,
+            totalAttemptsCount: 0,
+          };
+
+          items.forEach((item) => {
+            const passes = Array.isArray(item?.[`${sideKey}Passes`]) ? item[`${sideKey}Passes`] : [];
+            const scores = Array.isArray(item?.[`${sideKey}Scores`]) ? item[`${sideKey}Scores`] : [];
+            const attempts = Array.isArray(item?.[`${sideKey}Attempts`]) ? item[`${sideKey}Attempts`] : [];
+            const passCount = passes.filter(Boolean).length;
+
+            agg.totalScoreSum += scores.reduce((sum, value) => sum + Number(value || 0), 0);
+            agg.totalScoreCount += scores.length;
+            agg.totalAttemptsSum += attempts.reduce((sum, value) => sum + Number(value || 0), 0);
+            agg.totalAttemptsCount += attempts.length;
+
+            if (passCount > 0) agg.passAtKCount += 1;
+            if (passes.length && passCount === passes.length) agg.passHatKCount += 1;
+            if (passes.length > 1) {
+              const failCount = passes.length - passCount;
+              agg.totalConsistencySum += (2 * Math.max(passCount, failCount) / passes.length) - 1;
+              agg.itemsWithMultipleRuns += 1;
+            }
+            if (passCount > 0 && runCount > 0) {
+              agg.totalReliabilitySum += passCount / runCount;
+              agg.itemsWithAtLeastOnePass += 1;
+            }
+          });
+
+          return {
+            passAtK: items.length ? agg.passAtKCount / items.length : 0,
+            passHatK: items.length ? agg.passHatKCount / items.length : 0,
+            avgAtK: agg.totalScoreCount ? agg.totalScoreSum / agg.totalScoreCount : 0,
+            consistency: agg.itemsWithMultipleRuns ? agg.totalConsistencySum / agg.itemsWithMultipleRuns : null,
+            reliability: agg.itemsWithAtLeastOnePass ? agg.totalReliabilitySum / agg.itemsWithAtLeastOnePass : null,
+            avgAttempts: agg.totalAttemptsCount ? agg.totalAttemptsSum / agg.totalAttemptsCount : 0,
+          };
+        }
+
+        summary.left = aggregateSide('left', leftRunCount);
+        summary.right = aggregateSide('right', rightRunCount);
+        summary.deltas = {
+          passAtK: summary.right.passAtK - summary.left.passAtK,
+          passHatK: summary.right.passHatK - summary.left.passHatK,
+          avgAtK: summary.right.avgAtK - summary.left.avgAtK,
+          consistency: (summary.right.consistency ?? 0) - (summary.left.consistency ?? 0),
+          reliability: (summary.right.reliability ?? 0) - (summary.left.reliability ?? 0),
+        };
+
+        let attemptsDeltaSum = 0;
+        items.forEach((item) => {
+          if (item.move > 0) summary.summary.improvedCount += 1;
+          else if (item.move < 0) summary.summary.regressedCount += 1;
+          else summary.summary.unchangedCount += 1;
+          attemptsDeltaSum += (item.rightAvgAttempts ?? 0) - (item.leftAvgAttempts ?? 0);
+        });
+        summary.summary.avgAttemptsDelta = items.length ? attemptsDeltaSum / items.length : 0;
+        return summary;
+      }
+
+      function getSweepPresentation(grouped, groups) {
+        if (!grouped || !groups) return null;
+        const reversed = !!state.sweepReverse;
+        const leftLabel = reversed ? (groups.modelBLabel || 'Model B') : (groups.modelALabel || 'Model A');
+        const rightLabel = reversed ? (groups.modelALabel || 'Model A') : (groups.modelBLabel || 'Model B');
+        const displayedItems = (grouped.items || []).map(item => getSweepDisplayedItem(item, reversed)).filter(Boolean);
+        const filteredItems = sortSweepItems(filterSweepItems(displayedItems));
+        const summary = summarizeSweepItems(filteredItems, grouped.leftRunCount || groups.k || 0, grouped.rightRunCount || groups.k || 0);
+        return {
+          reversed,
+          leftLabel,
+          rightLabel,
+          k: groups.k || grouped.k || grouped.leftRunCount || 0,
+          displayedItems,
+          totalItems: displayedItems.length,
+          items: filteredItems,
+          ...summary,
+        };
+      }
+
+      function getPreferredSweepBreakdownKey(metadataKeys) {
+        if (state.sweepMetadataKey && state.sweepMetadataKey !== 'all' && metadataKeys.includes(state.sweepMetadataKey)) {
+          return state.sweepMetadataKey;
+        }
+        const preferred = ['domain', 'complexity', 'root_cause'];
+        for (const key of preferred) {
+          if (metadataKeys.includes(key)) return key;
+        }
+        return metadataKeys[0] || null;
+      }
+
+      function renderSweepMetadataMetricCell(fromValue, toValue, deltaValue) {
+        const deltaClass = getDeltaClass(deltaValue);
+        return `
+          <div class="sweep-metadata-metric">
+            <span class="from">${formatSweepCompactMetricValue(fromValue)}</span>
+            <span class="arrow">→</span>
+            <span class="to">${formatSweepCompactMetricValue(toValue)}</span>
+          </div>
+          <span class="sweep-metadata-delta ${deltaClass}">${formatSweepCompactDelta(deltaValue)}</span>
+        `;
+      }
+
+      function renderSweepMetadataBreakdown(items, metadataKey, leftRunCount, rightRunCount, sourceItems = null) {
+        if (!metadataKey) return '';
+        const values = getSweepMetadataValues(items, metadataKey);
+        if (!values.length) return '';
+        const supportsExclusive = sweepMetadataKeySupportsExclusive(items, metadataKey);
+        const baseItems = Array.isArray(sourceItems) && sourceItems.length ? sourceItems : items;
+
+        const rows = values.map((value) => {
+          const isFiltered = state.sweepMetadataKey === metadataKey && Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value);
+          const isExclusive = isFiltered && state.sweepMetadataExclusiveValues instanceof Set && state.sweepMetadataExclusiveValues.has(value);
+          let subset = items.filter(item => getMetadataCategoryValues(item?.metadata || {}, metadataKey).includes(value));
+
+          if (supportsExclusive && isFiltered) {
+            const exclusiveSubset = filterSweepItems(baseItems, {
+              sweepMetadataKey: metadataKey,
+              sweepMetadataMode: 'include',
+              sweepMetadataValues: [value],
+              sweepMetadataExclusiveValues: new Set([value]),
+            });
+            subset = exclusiveSubset;
+          }
+
+          const summary = summarizeSweepItems(subset, leftRunCount, rightRunCount);
+          return {
+            value,
+            count: subset.length,
+            summary,
+            isFiltered,
+            isExclusive,
+          };
+        }).sort((a, b) => {
+          const direction = state.sweepBreakdownSortDir === 'asc' ? 1 : -1;
+          const key = state.sweepBreakdownSortKey || 'count';
+          const metricMap = {
+            passAtK: ['passAtK', 'deltas'],
+            avgAtK: ['avgAtK', 'deltas'],
+            consistency: ['consistency', 'deltas'],
+            reliability: ['reliability', 'deltas'],
+            passHatK: ['passHatK', 'deltas'],
+          };
+
+          if (key === 'value') {
+            return direction * String(a.value).localeCompare(String(b.value));
+          }
+          if (key === 'count') {
+            if (a.count !== b.count) return direction * (a.count - b.count);
+          } else if (metricMap[key]) {
+            const metricKey = metricMap[key][0];
+            const aVal = a.summary.deltas[metricKey] ?? 0;
+            const bVal = b.summary.deltas[metricKey] ?? 0;
+            if (aVal !== bVal) return direction * (aVal - bVal);
+          }
+
+          if (b.count !== a.count) return b.count - a.count;
+          if (Math.abs(b.summary.deltas.passAtK) !== Math.abs(a.summary.deltas.passAtK)) {
+            return Math.abs(b.summary.deltas.passAtK) - Math.abs(a.summary.deltas.passAtK);
+          }
+          return String(a.value).localeCompare(String(b.value));
+        });
+
+        const rowsHtml = rows.map((row) => `
+          <tr class="sweep-metadata-row${row.isFiltered ? ' is-filtered' : ''}${row.isExclusive ? ' is-exclusive' : ''}" data-sweep-breakdown-key="${escapeAttr(metadataKey)}" data-sweep-breakdown-value="${escapeAttr(row.value)}" title="${escapeAttr(supportsExclusive ? 'Click to filter. Click again to require this value to be the only list value.' : 'Click to filter by this value.')}">
+            <td><div class="sweep-metadata-value">${escapeHtml(row.value)}</div></td>
+            <td><span class="sweep-metadata-count">${row.count}</span></td>
+            <td>${renderSweepMetadataMetricCell(row.summary.left.passAtK, row.summary.right.passAtK, row.summary.deltas.passAtK)}</td>
+            <td>${renderSweepMetadataMetricCell(row.summary.left.avgAtK, row.summary.right.avgAtK, row.summary.deltas.avgAtK)}</td>
+            <td>${renderSweepMetadataMetricCell(row.summary.left.consistency ?? 0, row.summary.right.consistency ?? 0, row.summary.deltas.consistency)}</td>
+            <td>${renderSweepMetadataMetricCell(row.summary.left.reliability ?? 0, row.summary.right.reliability ?? 0, row.summary.deltas.reliability)}</td>
+            <td>${renderSweepMetadataMetricCell(row.summary.left.passHatK, row.summary.right.passHatK, row.summary.deltas.passHatK)}</td>
+          </tr>
+        `).join('');
+
+        return `
+          <div>
+            <div class="sweep-section-title">Cohort Metrics by ${escapeHtml(formatSweepMetadataLabel(metadataKey))}</div>
+            <div class="sweep-section-subtitle">Current sweep filters applied</div>
+            <div class="sweep-metadata-shell">
+              <table class="sweep-metadata-table">
+                <thead>
+                  <tr>
+                    <th>${renderSortableHeader(formatSweepMetadataLabel(metadataKey), 'value', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader('N', 'count', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader(`Pass@${leftRunCount}`, 'passAtK', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader(`Avg@${leftRunCount}`, 'avgAtK', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader('Consistency', 'consistency', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader('Reliability', 'reliability', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                    <th>${renderSortableHeader(`Pass^${leftRunCount}`, 'passHatK', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderSweepView() {
+        const container = el('grouped-sweep-view');
+        if (!container) return;
+        if (!canShowSweepTab()) {
+          container.innerHTML = '';
+          return;
+        }
+
+        const grouped = getActiveGroupedComparison();
+        const groups = state.groupedOutcomeGroups;
+        if (!grouped || !groups) {
+          container.innerHTML = '<div class="sweep-empty">Sweep comparison is unavailable for the current selection.</div>';
+          return;
+        }
+
+        if (!grouped.eligibleItems) {
+          container.innerHTML = '<div class="sweep-empty">No aligned items have scored data across all selected runs for this metric.</div>';
+          return;
+        }
+
+        const presentation = getSweepPresentation(grouped, groups);
+        if (!presentation) {
+          container.innerHTML = '<div class="sweep-empty">Sweep comparison is unavailable for the current selection.</div>';
+          return;
+        }
+
+        const leftLabel = presentation.leftLabel;
+        const rightLabel = presentation.rightLabel;
+        const k = presentation.k;
+        const metricName = state.selectedOverviewMetric || '';
+        const metadataKeys = getSweepMetadataKeys(grouped.items || []);
+        if (!metadataKeys.includes(state.sweepMetadataKey)) {
+          state.sweepMetadataKey = 'all';
+          state.sweepMetadataMode = 'include';
+          state.sweepMetadataValues = null;
+          state.sweepMetadataExclusiveValues = new Set();
+        }
+        const metadataValues = getSweepMetadataValues(grouped.items || [], state.sweepMetadataKey);
+        state.sweepMetadataValues = normalizeSweepMetadataValues(state.sweepMetadataValues, metadataValues);
+        state.sweepMetadataExclusiveValues = normalizeSweepMetadataExclusiveValues(state.sweepMetadataExclusiveValues, metadataValues);
+        if (state.sweepMetadataMode === 'exclude' && (!Array.isArray(state.sweepMetadataValues) || state.sweepMetadataValues.length === 0)) {
+          state.sweepMetadataMode = 'include';
+          state.sweepMetadataValues = null;
+        }
+        const metadataValueButtonLabel = getSweepMetadataValueButtonLabel(metadataValues, state.sweepMetadataMode, state.sweepMetadataValues, state.sweepMetadataExclusiveValues);
+        const metadataSupportsExclusive = sweepMetadataKeySupportsExclusive(grouped.items || [], state.sweepMetadataKey);
+        const metadataExclusiveTargets = getSweepMetadataTargetValues(metadataValues);
+        const metadataExclusiveOnlyChecked = isSweepMetadataExclusiveOnlyActive(metadataValues);
+        const metadataExclusiveOnlyDisabled = state.sweepMetadataKey === 'all'
+          || !metadataSupportsExclusive
+          || state.sweepMetadataMode === 'exclude'
+          || metadataExclusiveTargets.length === 0;
+        const breakdownKey = getPreferredSweepBreakdownKey(metadataKeys);
+        const breakdownItems = presentation.items;
+        const metadataBreakdownHtml = renderSweepMetadataBreakdown(
+          breakdownItems,
+          breakdownKey,
+          grouped.leftRunCount || groups.k || 0,
+          grouped.rightRunCount || groups.k || 0,
+          presentation.displayedItems
+        );
+
+        const statCards = [
+          renderSweepStatCard(`Pass@${k}`, presentation.left.passAtK, presentation.right.passAtK, presentation.deltas.passAtK),
+          renderSweepStatCard(`Avg@${k}`, presentation.left.avgAtK, presentation.right.avgAtK, presentation.deltas.avgAtK),
+          renderSweepStatCard('Consistency', presentation.left.consistency ?? 0, presentation.right.consistency ?? 0, presentation.deltas.consistency),
+          renderSweepStatCard('Reliability', presentation.left.reliability ?? 0, presentation.right.reliability ?? 0, presentation.deltas.reliability),
+          renderSweepStatCard(`Pass^${k}`, presentation.left.passHatK, presentation.right.passHatK, presentation.deltas.passHatK),
+        ].join('');
+
+        const rowsHtml = presentation.items.map(item => {
+          const itemLabel = item.itemId || item.rawItemId || '—';
+          const moveClass = getDeltaClass(item.move);
+          const movePrefix = item.move > 0 ? '+' : '';
+          return `
+            <tr>
+              <td>
+                <div class="sweep-issue-id">${escapeHtml(itemLabel)}</div>
+              </td>
+              <td>
+                <div class="sweep-issue-meta">${renderSweepMetaBadges(item)}</div>
+              </td>
+              <td>${renderSweepPassTrack(item.leftPasses)}</td>
+              <td>${renderSweepPassTrack(item.rightPasses)}</td>
+              <td><span class="sweep-move-pill ${moveClass}">${movePrefix}${item.move}</span></td>
+            </tr>
+          `;
+        }).join('');
+
+        container.innerHTML = `
+          <div class="sweep-header">
+            <div>
+              <div class="sweep-title">Sweep</div>
+              <div class="sweep-subtitle">${escapeHtml(leftLabel)} vs ${escapeHtml(rightLabel)} across ${k} runs per cohort • Metric: ${escapeHtml(metricName)} • ${presentation.items.length}/${presentation.totalItems} items shown</div>
+            </div>
+            <div class="sweep-toolbar-actions">
+              <button type="button" class="compare-mode-tab sweep-reverse-btn ${presentation.reversed ? 'active' : ''}" id="sweep-reverse-btn">Reverse</button>
+            </div>
+          </div>
+
+          <div class="sweep-filter-bar">
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label" for="sweep-move-filter">Move</label>
+              <select id="sweep-move-filter" class="filter-select">
+                <option value="all"${state.sweepMoveFilter === 'all' ? ' selected' : ''}>All Items</option>
+                <option value="improved"${state.sweepMoveFilter === 'improved' ? ' selected' : ''}>Improved</option>
+                <option value="regressed"${state.sweepMoveFilter === 'regressed' ? ' selected' : ''}>Regressed</option>
+                <option value="unchanged"${state.sweepMoveFilter === 'unchanged' ? ' selected' : ''}>Unchanged</option>
+              </select>
+            </div>
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label" for="sweep-outcome-filter">Outcome</label>
+              <select id="sweep-outcome-filter" class="filter-select">
+                <option value="all"${state.sweepOutcomeFilter === 'all' ? ' selected' : ''}>All Outcomes</option>
+                <option value="left_sweeps_right"${state.sweepOutcomeFilter === 'left_sweeps_right' ? ' selected' : ''}>${escapeHtml(leftLabel)} sweeps ${escapeHtml(rightLabel)}</option>
+                <option value="right_sweeps_left"${state.sweepOutcomeFilter === 'right_sweeps_left' ? ' selected' : ''}>${escapeHtml(rightLabel)} sweeps ${escapeHtml(leftLabel)}</option>
+                <option value="both_pass"${state.sweepOutcomeFilter === 'both_pass' ? ' selected' : ''}>Both Pass</option>
+                <option value="both_fail"${state.sweepOutcomeFilter === 'both_fail' ? ' selected' : ''}>Both Fail</option>
+                <option value="mixed"${state.sweepOutcomeFilter === 'mixed' ? ' selected' : ''}>Mixed</option>
+              </select>
+            </div>
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label" for="sweep-search-input">Search</label>
+              <input id="sweep-search-input" class="sweep-filter-search" type="search" value="${escapeAttr(state.sweepSearchQuery || '')}" placeholder="Issue, domain, complexity">
+            </div>
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label" for="sweep-metadata-key-filter">Metadata</label>
+              <select id="sweep-metadata-key-filter" class="filter-select">
+                <option value="all">All Categories</option>
+                ${metadataKeys.map((key) => `<option value="${escapeAttr(key)}"${state.sweepMetadataKey === key ? ' selected' : ''}>${escapeHtml(formatSweepMetadataLabel(key))}</option>`).join('')}
+              </select>
+            </div>
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label">Values</label>
+              <div class="multi-select-wrapper">
+                <button
+                  type="button"
+                  class="multi-select-btn${Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.length ? ' has-selection' : ''}"
+                  id="sweep-metadata-values-btn"
+                  ${state.sweepMetadataKey === 'all' ? 'disabled' : ''}
+                >${escapeHtml(metadataValueButtonLabel)}</button>
+                <div class="multi-select-dropdown" id="sweep-metadata-values-dropdown">
+                  <div class="ms-actions">
+                    <button type="button" class="ms-action-btn" id="sweep-metadata-values-all">All</button>
+                    <button type="button" class="ms-action-btn" id="sweep-metadata-values-clear">Clear</button>
+                  </div>
+                  ${metadataValues.map((value) => `
+                    <label class="multi-select-option" data-value="${escapeAttr(value)}">
+                      <input type="checkbox" value="${escapeAttr(value)}"${
+                        state.sweepMetadataMode === 'exclude'
+                          ? (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value) ? '' : ' checked')
+                          : (state.sweepMetadataValues === null || (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value)) ? ' checked' : '')
+                      }>
+                      <span>${escapeHtml(value)}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+            <div class="sweep-filter-group">
+              <label class="sweep-filter-label" for="sweep-metadata-exclusive-only">Matching</label>
+              <label class="sweep-filter-toggle${metadataExclusiveOnlyDisabled ? ' is-disabled' : ''}" title="${escapeAttr(metadataExclusiveOnlyDisabled ? 'Available for list-valued metadata in include mode.' : 'Keep only items where the selected metadata value is the sole value in that list.')}">
+                <input
+                  type="checkbox"
+                  id="sweep-metadata-exclusive-only"
+                  ${metadataExclusiveOnlyChecked ? 'checked' : ''}
+                  ${metadataExclusiveOnlyDisabled ? 'disabled' : ''}
+                >
+                <span>Exclusive only</span>
+              </label>
+            </div>
+          </div>
+
+          ${presentation.items.length ? `
+          <div>
+            <div class="sweep-section-title">Cohort Metrics</div>
+            <div class="sweep-stat-grid">${statCards}</div>
+          </div>
+
+          ${metadataBreakdownHtml}
+
+          <div>
+            <div class="sweep-section-title">Outcome Summary</div>
+            <div class="sweep-outcome-grid">
+              <div class="sweep-outcome-card">
+                <div class="sweep-outcome-value neutral">${presentation.items.length}</div>
+                <div class="sweep-outcome-label">Total Items</div>
+              </div>
+              <div class="sweep-outcome-card">
+                <div class="sweep-outcome-value positive">${presentation.summary.improvedCount}</div>
+                <div class="sweep-outcome-label">Improved</div>
+              </div>
+              <div class="sweep-outcome-card">
+                <div class="sweep-outcome-value negative">${presentation.summary.regressedCount}</div>
+                <div class="sweep-outcome-label">Regressed</div>
+              </div>
+              <div class="sweep-outcome-card">
+                <div class="sweep-outcome-value neutral">${presentation.summary.unchangedCount}</div>
+                <div class="sweep-outcome-label">Unchanged</div>
+              </div>
+              <div class="sweep-outcome-card">
+                <div class="sweep-outcome-value accent">${formatSweepAttemptsDelta(presentation.summary.avgAttemptsDelta)}</div>
+                <div class="sweep-outcome-label">Avg Δ Attempts / Item</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sweep-table-shell">
+            <table class="sweep-table">
+              <thead>
+                <tr>
+                  <th>${renderSortableHeader('Item', 'issue', state.sweepTableSortKey, state.sweepTableSortDir, 'data-sweep-table-sort')}</th>
+                  <th>Metadata</th>
+                  <th>${renderSortableHeader(leftLabel, 'left', state.sweepTableSortKey, state.sweepTableSortDir, 'data-sweep-table-sort')}</th>
+                  <th>${renderSortableHeader(rightLabel, 'right', state.sweepTableSortKey, state.sweepTableSortDir, 'data-sweep-table-sort')}</th>
+                  <th>${renderSortableHeader('Move', 'move', state.sweepTableSortKey, state.sweepTableSortDir, 'data-sweep-table-sort')}</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+          ` : '<div class="sweep-empty">No sweep items match the current filters.</div>'}
+        `;
+
+        const reverseBtn = el('sweep-reverse-btn');
+        if (reverseBtn) {
+          reverseBtn.addEventListener('click', () => {
+            state.sweepReverse = !state.sweepReverse;
+            renderSweepView();
+          });
+        }
+
+        const moveFilter = el('sweep-move-filter');
+        if (moveFilter) {
+          moveFilter.addEventListener('change', (e) => {
+            state.sweepMoveFilter = e.target.value || 'all';
+            renderSweepView();
+          });
+        }
+
+        const outcomeFilter = el('sweep-outcome-filter');
+        if (outcomeFilter) {
+          outcomeFilter.addEventListener('change', (e) => {
+            state.sweepOutcomeFilter = e.target.value || 'all';
+            renderSweepView();
+          });
+        }
+
+        const searchInput = el('sweep-search-input');
+        if (searchInput) {
+          searchInput.addEventListener('input', (e) => {
+            state.sweepSearchQuery = e.target.value || '';
+            renderSweepView();
+          });
+        }
+
+        const metadataKeyFilter = el('sweep-metadata-key-filter');
+        if (metadataKeyFilter) {
+          metadataKeyFilter.addEventListener('change', (e) => {
+            state.sweepMetadataKey = e.target.value || 'all';
+            state.sweepMetadataMode = 'include';
+            state.sweepMetadataValues = null;
+            state.sweepMetadataExclusiveValues = new Set();
+            renderSweepView();
+          });
+        }
+
+        const metadataValuesBtn = el('sweep-metadata-values-btn');
+        const metadataValuesDropdown = el('sweep-metadata-values-dropdown');
+        if (metadataValuesBtn && metadataValuesDropdown) {
+          metadataValuesBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            metadataValuesDropdown.classList.toggle('open');
+          });
+
+          metadataValuesDropdown.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+              const checked = Array.from(metadataValuesDropdown.querySelectorAll('input[type="checkbox"]:checked'))
+                .map(input => input.value)
+                .filter(Boolean);
+              state.sweepMetadataExclusiveValues = new Set();
+              if (checked.length === metadataValues.length) {
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataValues = null;
+              } else if (checked.length === 0) {
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataValues = [];
+              } else if (state.sweepMetadataMode === 'exclude' || state.sweepMetadataValues === null) {
+                state.sweepMetadataMode = 'exclude';
+                const excluded = metadataValues.filter(value => !checked.includes(value));
+                state.sweepMetadataValues = normalizeSweepMetadataValues(excluded, metadataValues);
+              } else {
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataValues = normalizeSweepMetadataValues(checked, metadataValues);
+              }
+              renderSweepView();
+            });
+          });
+
+          const selectAllBtn = el('sweep-metadata-values-all');
+          if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = null;
+              state.sweepMetadataExclusiveValues = new Set();
+              renderSweepView();
+            });
+          }
+
+          const clearBtn = el('sweep-metadata-values-clear');
+          if (clearBtn) {
+            clearBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = [];
+              state.sweepMetadataExclusiveValues = new Set();
+              renderSweepView();
+            });
+          }
+
+          const closeDropdown = (event) => {
+            if (!metadataValuesDropdown.contains(event.target) && !metadataValuesBtn.contains(event.target)) {
+              metadataValuesDropdown.classList.remove('open');
+              document.removeEventListener('click', closeDropdown);
+            }
+          };
+
+          metadataValuesBtn.addEventListener('click', () => {
+            setTimeout(() => document.addEventListener('click', closeDropdown), 0);
+          });
+        }
+
+        const metadataExclusiveOnly = el('sweep-metadata-exclusive-only');
+        if (metadataExclusiveOnly) {
+          metadataExclusiveOnly.addEventListener('change', (e) => {
+            const enabled = !!e.target.checked;
+            if (!enabled) {
+              state.sweepMetadataExclusiveValues = new Set();
+              renderSweepView();
+              return;
+            }
+
+            const targetValues = getSweepMetadataTargetValues(metadataValues);
+            const nextExclusive = new Set(targetValues);
+            const exclusiveMatches = filterSweepItems(presentation.displayedItems || [], {
+              sweepMetadataKey: state.sweepMetadataKey,
+              sweepMetadataMode: 'include',
+              sweepMetadataValues: state.sweepMetadataValues,
+              sweepMetadataExclusiveValues: nextExclusive,
+            });
+
+            if (exclusiveMatches.length === 0) {
+              state.sweepMetadataExclusiveValues = new Set();
+              showToast('error', 'No Exclusive Matches', `No current items have ${formatSweepMetadataLabel(state.sweepMetadataKey).toLowerCase()} values that are exclusive to the selected filter.`);
+              renderSweepView();
+              return;
+            }
+
+            state.sweepMetadataMode = 'include';
+            state.sweepMetadataExclusiveValues = nextExclusive;
+            renderSweepView();
+          });
+        }
+
+        container.querySelectorAll('[data-sweep-table-sort]').forEach((header) => {
+          header.addEventListener('click', () => {
+            toggleSweepSort('sweepTableSortKey', 'sweepTableSortDir', header.dataset.sweepTableSort, header.dataset.sweepTableSort === 'issue' ? 'asc' : 'desc');
+            renderSweepView();
+          });
+        });
+
+        container.querySelectorAll('[data-sweep-breakdown-sort]').forEach((header) => {
+          header.addEventListener('click', () => {
+            toggleSweepSort('sweepBreakdownSortKey', 'sweepBreakdownSortDir', header.dataset.sweepBreakdownSort, header.dataset.sweepBreakdownSort === 'value' ? 'asc' : 'desc');
+            renderSweepView();
+          });
+        });
+
+        container.querySelectorAll('[data-sweep-breakdown-key][data-sweep-breakdown-value]').forEach((row) => {
+          row.addEventListener('click', () => {
+            const key = row.dataset.sweepBreakdownKey || 'all';
+            const value = row.dataset.sweepBreakdownValue || '';
+            const displayedItems = presentation.displayedItems || [];
+            const availableValues = getSweepMetadataValues(grouped.items || [], key);
+            const supportsExclusive = sweepMetadataKeySupportsExclusive(grouped.items || [], key);
+            const currentValues = state.sweepMetadataKey === key && Array.isArray(state.sweepMetadataValues) ? [...state.sweepMetadataValues] : null;
+            const currentExclusive = state.sweepMetadataKey === key && state.sweepMetadataExclusiveValues instanceof Set
+              ? new Set(state.sweepMetadataExclusiveValues)
+              : new Set();
+
+            if (key === 'all' || !value) return;
+
+            if (state.sweepMetadataKey !== key) {
+              state.sweepMetadataKey = key;
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = [value];
+              state.sweepMetadataExclusiveValues = new Set();
+            } else if (supportsExclusive) {
+              if (currentValues === null) {
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataValues = [value];
+                state.sweepMetadataExclusiveValues = new Set();
+              } else if (currentValues.includes(value) && !currentExclusive.has(value)) {
+                const nextExclusive = new Set(currentExclusive);
+                nextExclusive.add(value);
+                const exclusiveMatches = filterSweepItems(displayedItems, {
+                  sweepMetadataKey: key,
+                  sweepMetadataValues: currentValues,
+                  sweepMetadataExclusiveValues: nextExclusive,
+                });
+                if (exclusiveMatches.length === 0) {
+                  showToast('error', 'No Exclusive Matches', `${value} is present, but no current items have it as the only ${formatSweepMetadataLabel(key).toLowerCase()} value.`);
+                  return;
+                }
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataExclusiveValues = nextExclusive;
+              } else if (currentValues.includes(value) && currentExclusive.has(value)) {
+                if (currentValues.length === 1) {
+                  state.sweepMetadataMode = 'include';
+                  state.sweepMetadataValues = null;
+                  state.sweepMetadataExclusiveValues = new Set();
+                } else {
+                  const nextValues = currentValues.filter(candidate => candidate !== value);
+                  currentExclusive.delete(value);
+                  state.sweepMetadataMode = 'include';
+                  state.sweepMetadataValues = normalizeSweepMetadataValues(nextValues, availableValues);
+                  state.sweepMetadataExclusiveValues = currentExclusive;
+                }
+              } else if (!currentValues.includes(value)) {
+                currentExclusive.delete(value);
+                state.sweepMetadataMode = 'include';
+                state.sweepMetadataValues = normalizeSweepMetadataValues(currentValues.concat(value), availableValues);
+                state.sweepMetadataExclusiveValues = currentExclusive;
+              }
+            } else if (currentValues !== null && currentValues.length === 1 && currentValues[0] === value) {
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = null;
+              state.sweepMetadataExclusiveValues = new Set();
+            } else {
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = [value];
+              state.sweepMetadataExclusiveValues = new Set();
+            }
+
+            renderSweepView();
+          });
         });
       }
 
@@ -3894,10 +6025,18 @@
       const IS_COMPARE_EXPORT = !!window.__QYM_COMPARE_EXPORT__;
       if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: IS_COMPARE_EXPORT });
 
-      function _updateCompareUrl(files) {
+      function _updateCompareUrl(files, explicitCohorts = null) {
         if (IS_COMPARE_EXPORT) return;
         const params = new URLSearchParams();
-        files.forEach(f => params.append('runs', f));
+        const normalizedExplicit = normalizeExplicitCohortPayload(explicitCohorts);
+        if (normalizedExplicit) {
+          normalizedExplicit.left.forEach(f => params.append('cohortA', f));
+          normalizedExplicit.right.forEach(f => params.append('cohortB', f));
+          params.set('cohortALabel', normalizedExplicit.leftLabel);
+          params.set('cohortBLabel', normalizedExplicit.rightLabel);
+        } else {
+          files.forEach(f => params.append('runs', f));
+        }
         const newUrl = window.location.pathname + '?' + params.toString();
         window.history.replaceState(null, '', newUrl);
       }
@@ -3919,25 +6058,60 @@
           }
         }
 
+        state.explicitGroupedOutcomeGroups = null;
+
         // Get run IDs from URL query params first, fall back to sessionStorage
         let files;
         const urlParams = new URLSearchParams(window.location.search);
+        const explicitCohortsFromUrl = normalizeExplicitCohortPayload({
+          left: urlParams.getAll('cohortA'),
+          right: urlParams.getAll('cohortB'),
+          leftLabel: urlParams.get('cohortALabel'),
+          rightLabel: urlParams.get('cohortBLabel'),
+        });
         const runsFromUrl = urlParams.getAll('runs');
-        if (runsFromUrl.length >= 2) {
+        if (explicitCohortsFromUrl) {
+          files = [...explicitCohortsFromUrl.left, ...explicitCohortsFromUrl.right];
+          sessionStorage.setItem('compareCohorts', JSON.stringify(explicitCohortsFromUrl));
+          sessionStorage.setItem('compareRuns', JSON.stringify(files));
+          state.explicitGroupedOutcomeGroups = {
+            leftRunIds: [...explicitCohortsFromUrl.left],
+            rightRunIds: [...explicitCohortsFromUrl.right],
+            modelALabel: explicitCohortsFromUrl.leftLabel,
+            modelBLabel: explicitCohortsFromUrl.rightLabel,
+            k: explicitCohortsFromUrl.left.length,
+          };
+        } else if (runsFromUrl.length >= 2) {
           files = runsFromUrl;
           // Sync to sessionStorage so removal still works
+          sessionStorage.removeItem('compareCohorts');
           sessionStorage.setItem('compareRuns', JSON.stringify(files));
         } else {
-          const filesJson = sessionStorage.getItem('compareRuns');
-          if (!filesJson) {
-            showEmpty();
-            return;
-          }
+          let storedCohorts = null;
           try {
-            files = JSON.parse(filesJson);
-          } catch {
-            showEmpty();
-            return;
+            storedCohorts = normalizeExplicitCohortPayload(JSON.parse(sessionStorage.getItem('compareCohorts') || 'null'));
+          } catch {}
+          if (storedCohorts) {
+            files = [...storedCohorts.left, ...storedCohorts.right];
+            state.explicitGroupedOutcomeGroups = {
+              leftRunIds: [...storedCohorts.left],
+              rightRunIds: [...storedCohorts.right],
+              modelALabel: storedCohorts.leftLabel,
+              modelBLabel: storedCohorts.rightLabel,
+              k: storedCohorts.left.length,
+            };
+          } else {
+            const filesJson = sessionStorage.getItem('compareRuns');
+            if (!filesJson) {
+              showEmpty();
+              return;
+            }
+            try {
+              files = JSON.parse(filesJson);
+            } catch {
+              showEmpty();
+              return;
+            }
           }
         }
 
@@ -3947,7 +6121,12 @@
         }
 
         // Update URL to include run IDs for shareability
-        _updateCompareUrl(files);
+        _updateCompareUrl(files, state.explicitGroupedOutcomeGroups ? {
+          left: state.explicitGroupedOutcomeGroups.leftRunIds,
+          right: state.explicitGroupedOutcomeGroups.rightRunIds,
+          leftLabel: state.explicitGroupedOutcomeGroups.modelALabel,
+          rightLabel: state.explicitGroupedOutcomeGroups.modelBLabel,
+        } : null);
 
         // Fetch comparison data from API
         const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
@@ -4032,6 +6211,7 @@
         // Detect metric types (boolean vs continuous)
         detectMetricTypes();
         inferGroupedOutcomeGroups();
+        invalidateGroupedComparisonCache();
 
         // Calculate comparison statistics for each metric
         state.comparisonStats = {};
@@ -4153,6 +6333,9 @@
                 updateThresholdControl();
                 renderComparisonStats();
                 renderMetadataBreakdown();
+                renderCompareModeTabs();
+                renderSweepView();
+                applyCompareMode();
               });
             });
           }
@@ -4170,6 +6353,7 @@
             const value = parseFloat(e.target.value);
             if (!isNaN(value) && value >= 0 && value <= 100) {
               state.metricThresholds[state.selectedOverviewMetric] = value / 100;
+              invalidateGroupedComparisonCache(state.selectedOverviewMetric);
               // Recalculate stats for this metric
               state.comparisonStats[state.selectedOverviewMetric] = calculateComparisonStatsForMetric(state.selectedOverviewMetric);
               // Also recalculate for items metric if different
@@ -4177,6 +6361,9 @@
                 state.comparisonStats[state.selectedItemsMetric] = calculateComparisonStatsForMetric(state.selectedItemsMetric);
               }
               renderComparisonStats();
+              renderCompareModeTabs();
+              renderSweepView();
+              applyCompareMode();
               renderItems();
             }
           });
@@ -4544,20 +6731,50 @@
 
       function removeRun(idx) {
         if (state.runs.length <= 2) return;
+        const removedRunId = getCompareRunDataId(state.runs[idx]);
 
         // Remove from state
         state.runs.splice(idx, 1);
 
         // Update sessionStorage and URL so they persist
+        let files = null;
         const filesJson = sessionStorage.getItem('compareRuns');
         if (filesJson) {
           try {
-            const files = JSON.parse(filesJson);
+            files = JSON.parse(filesJson);
             files.splice(idx, 1);
             sessionStorage.setItem('compareRuns', JSON.stringify(files));
-            _updateCompareUrl(files);
           } catch {}
         }
+
+        if (state.explicitGroupedOutcomeGroups && removedRunId) {
+          const explicit = state.explicitGroupedOutcomeGroups;
+          const nextLeft = (explicit.leftRunIds || []).filter(runId => runId !== removedRunId);
+          const nextRight = (explicit.rightRunIds || []).filter(runId => runId !== removedRunId);
+          if (nextLeft.length >= 1 && nextLeft.length === nextRight.length) {
+            state.explicitGroupedOutcomeGroups = {
+              ...explicit,
+              leftRunIds: nextLeft,
+              rightRunIds: nextRight,
+              k: nextLeft.length,
+            };
+            sessionStorage.setItem('compareCohorts', JSON.stringify({
+              left: nextLeft,
+              right: nextRight,
+              leftLabel: explicit.modelALabel,
+              rightLabel: explicit.modelBLabel,
+            }));
+          } else {
+            state.explicitGroupedOutcomeGroups = null;
+            sessionStorage.removeItem('compareCohorts');
+          }
+        }
+        _updateCompareUrl(files || state.runs.map(getCompareRunDataId), state.explicitGroupedOutcomeGroups ? {
+          left: state.explicitGroupedOutcomeGroups.leftRunIds,
+          right: state.explicitGroupedOutcomeGroups.rightRunIds,
+          leftLabel: state.explicitGroupedOutcomeGroups.modelALabel,
+          rightLabel: state.explicitGroupedOutcomeGroups.modelBLabel,
+        } : null);
 
         // Reset filters that might reference removed run
         state.winnerFilter = 'any';
@@ -4579,11 +6796,15 @@
         el('empty').style.display = 'none';
         el('compare-content').style.display = 'block';
 
+        renderCompareModeTabs();
+        renderCompareCohortBanner();
         renderSummaries();
         renderComparisonStats();
         renderMetricsTable();
         renderRootCauseSection();
         renderItems();
+        renderSweepView();
+        applyCompareMode();
         // Auto-open trace if ?trace=itemId is in the URL
         if (window.QymTraceViewer) window.QymTraceViewer.restoreFromUrl();
       }
@@ -5667,6 +7888,169 @@
         }
       }
 
+      function normalizeErrorLabel(value, fallback) {
+        let text = stringify(value || '').trim();
+        if (!text) text = fallback || 'Unknown error';
+        text = text.replace(/^ERROR:\s*/i, '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).join(' ') || text;
+        text = text.replace(/\s+/g, ' ').trim();
+        return text.length > 320 ? text.slice(0, 317) + '...' : text;
+      }
+
+      function splitErrorLabel(label) {
+        const text = String(label || '').trim();
+        const idx = text.indexOf(':');
+        if (idx <= 0) return { title: text || 'Unknown error', detail: '' };
+        const title = text.slice(0, idx).trim();
+        const detail = text.slice(idx + 1).trim();
+        if (!title || !detail) return { title: text || 'Unknown error', detail: '' };
+        return { title: title, detail: detail };
+      }
+
+      function renderErrorDetailHtml(detail) {
+        const text = String(detail || '').trim();
+        if (!text) return '';
+        const needsExpand = text.length > 120;
+        const preview = needsExpand ? text.slice(0, 117).trimEnd() + '...' : text;
+        return '<div class="error-card-detail">' + escapeHtml(preview) + '</div>' +
+          (needsExpand
+            ? '<details class="error-detail-expander"><summary>Show full details</summary><pre class="error-detail-full">' + escapeHtml(text) + '</pre></details>'
+            : '');
+      }
+
+      function addErrorBucket(buckets, kind, label, count, itemKey, runName) {
+        const safeCount = Math.max(1, Number(count) || 1);
+        const key = kind + '||' + label;
+        if (!buckets[key]) {
+          buckets[key] = { kind: kind, label: label, count: 0, itemKeys: new Set(), runCounts: {} };
+        }
+        buckets[key].count += safeCount;
+        if (itemKey != null && itemKey !== '') buckets[key].itemKeys.add(String(itemKey));
+        if (runName) buckets[key].runCounts[runName] = (buckets[key].runCounts[runName] || 0) + safeCount;
+      }
+
+      function rowMatchesErrorFilter(row, filter, runName, itemId) {
+        if (!filter) return true;
+        const buckets = {};
+        collectRowErrors(row, buckets, runName, itemId);
+        return !!buckets[filter.kind + '||' + filter.label];
+      }
+
+      function rowMatchesActiveErrorFilters(row, runName, itemId) {
+        return rowMatchesErrorFilter(row, state.taskErrorFilter, runName, itemId) &&
+          rowMatchesErrorFilter(row, state.traceErrorFilter, runName, itemId) &&
+          rowMatchesErrorFilter(row, state.analysisErrorFilter, runName, itemId);
+      }
+
+      function getErrorFilterSlot(kind) {
+        if (kind === 'Task error') return 'taskErrorFilter';
+        if (kind === 'Trace error') return 'traceErrorFilter';
+        if (kind === 'Analysis error') return 'analysisErrorFilter';
+        return 'traceErrorFilter';
+      }
+
+      function collectRowErrors(row, buckets, runName, itemId) {
+        if (!row) return;
+        const itemKey = (runName || 'Run') + '::' + (itemId || getRowCompareId(row) || row.item_id || String(row.index || ''));
+        if ((row.status || '') === 'error') {
+          const executionError = row.error || row.output_full || row.output || '';
+          addErrorBucket(buckets, 'Task error', normalizeErrorLabel(executionError, 'Task failed'), 1, itemKey, runName);
+        }
+
+        const md = row.item_metadata || {};
+        if (md.analysis_error) {
+          addErrorBucket(buckets, 'Analysis error', normalizeErrorLabel(md.analysis_error, 'Analysis failed'), 1, itemKey, runName);
+        }
+
+        const ts = (row.trace_stats && typeof row.trace_stats === 'object') ? row.trace_stats : {};
+        const toolErrors = Number(ts.tool_errors || ts.malformed_tool_calls || 0);
+        const providerErrors = Number(ts.provider_errors || 0);
+        if (toolErrors > 0) addErrorBucket(buckets, 'Trace error', 'Tool errors', toolErrors, itemKey, runName);
+        if (providerErrors > 0) addErrorBucket(buckets, 'Trace error', 'Provider errors', providerErrors, itemKey, runName);
+      }
+
+      function renderErrorDistributionSection() {
+        const section = el('error-distribution-section');
+        if (!section) return;
+        if (!canRenderItemComparison()) {
+          section.innerHTML = `<div class="compare-empty" style="display:flex;margin-bottom:var(--space-xl);">${getAlignmentWarningHtml('Error Distribution Unavailable')}</div>`;
+          return;
+        }
+
+        const buckets = {};
+        const filteredItems = getFilteredItems();
+        for (const item of filteredItems) {
+          (item.rowData || []).forEach((row, runIdx) => {
+            const runName = state.runs[runIdx]?.run?.run_name || `Run ${runIdx + 1}`;
+            collectRowErrors(row, buckets, runName, item.itemId);
+          });
+        }
+
+        const stats = Object.values(buckets).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        const totalErrors = stats.reduce((sum, entry) => sum + entry.count, 0);
+
+        if (totalErrors === 0) {
+          section.innerHTML = '<h3 class="section-title">Error Distribution</h3>' +
+            '<div class="comparison-stats"><div class="category-empty-state">No errors in the current filtered items.</div></div>';
+          return;
+        }
+
+        function renderErrorCards(entries) {
+          if (!entries.length) return '<div class="category-empty-state">No errors in this category.</div>';
+          let cards = '<div class="breakdown-grid">';
+          for (const entry of entries) {
+            const labelParts = splitErrorLabel(entry.label);
+            const itemCount = entry.itemKeys.size;
+            const itemText = itemCount === 1 ? '1 item/run pair' : itemCount + ' item/run pairs';
+            const itemCountHtml = entry.kind === 'Task error' ? '' : '<div class="error-card-item-count">' + itemText + '</div>';
+            const countLabel = entry.count === 1 ? 'error' : 'errors';
+            const activeFilter = state[getErrorFilterSlot(entry.kind)];
+            const isActive = activeFilter && activeFilter.kind === entry.kind && activeFilter.label === entry.label;
+            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
+              '<div class="error-card-top">' +
+                '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div>' +
+                renderErrorDetailHtml(labelParts.detail) +
+                itemCountHtml + '</div>' +
+                '<div class="error-card-count">' + entry.count + '<span class="error-card-count-label">' + countLabel + '</span></div>' +
+              '</div>' +
+            '</div>';
+          }
+          return cards + '</div>';
+        }
+
+        function renderErrorGroup(title, icon, entries, alwaysShow) {
+          if (!alwaysShow && entries.length === 0) return '';
+          const groupTotal = entries.reduce((sum, entry) => sum + entry.count, 0);
+          return '<div class="breakdown-section breakdown-errors">' +
+            '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(title) + ' <span class="breakdown-metric">' + groupTotal + '</span></div>' +
+            renderErrorCards(entries) +
+          '</div>';
+        }
+
+        const taskStats = stats.filter(entry => entry.kind === 'Task error');
+        const traceStats = stats.filter(entry => entry.kind === 'Trace error');
+        const analysisStats = stats.filter(entry => entry.kind === 'Analysis error');
+
+        let html = '<h3 class="section-title">Error Distribution</h3>';
+        html += '<div class="comparison-stats">';
+        html += renderErrorGroup('Task Errors', '!', taskStats, true);
+        html += renderErrorGroup('Trace Errors', '!', traceStats, true);
+        html += renderErrorGroup('Analysis Errors', '!', analysisStats, false);
+        html += '</div>';
+        section.innerHTML = html;
+
+        section.querySelectorAll('.error-card[data-error-kind]').forEach(card => {
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('details')) return;
+            const nextFilter = { kind: card.dataset.errorKind, label: card.dataset.errorLabel };
+            const slot = getErrorFilterSlot(nextFilter.kind);
+            const current = state[slot];
+            state[slot] = current && current.kind === nextFilter.kind && current.label === nextFilter.label ? null : nextFilter;
+            state.page = 1;
+            renderItems();
+          });
+        });
+      }
+
       function renderRootCauseSection() {
         const section = el('root-cause-section');
         if (!section) return;
@@ -5885,6 +8269,7 @@
             const searchableText = rowData
               .filter(r => r)
               .map(r => [
+                stringify(r.compare_item_id || r.item_id || r.index || ''),
                 stringify(r.input_full || r.input || ''),
                 stringify(r.expected_full || r.expected || ''),
                 stringify(r.output_full || r.output || ''),
@@ -5958,6 +8343,14 @@
           if (state.approvalFilter !== null) {
             const matchingApproval = rowData.some(r => r && matchesApprovalFilter(r, state.approvalFilter));
             if (!matchingApproval) continue;
+          }
+          if (state.taskErrorFilter || state.traceErrorFilter || state.analysisErrorFilter) {
+            const matchingError = rowData.some((r, runIdx) => {
+              if (!r) return false;
+              const runName = state.runs[runIdx]?.run?.run_name || `Run ${runIdx + 1}`;
+              return rowMatchesActiveErrorFilters(r, runName, itemId);
+            });
+            if (!matchingError) continue;
           }
 
           // Apply item filter
@@ -6089,6 +8482,7 @@
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category and Root Cause Analysis in sync with filters
         renderMetadataBreakdown();
+        renderErrorDistributionSection();
         renderRootCauseSection();
 
         const container = el('items-grid');
@@ -6761,12 +9155,16 @@
 
       function refreshComparisonStatsAfterEdit() {
         // Recalculate stats for ALL metrics (the edit may affect any of them)
+        invalidateGroupedComparisonCache();
         for (const metricName of state.allMetrics) {
           state.comparisonStats[metricName] = calculateComparisonStatsForMetric(metricName);
         }
         renderComparisonStats();
         renderMetricsTable();
         renderSummaries();
+        renderCompareModeTabs();
+        renderSweepView();
+        applyCompareMode();
       }
 
       function wireMetricEditHandlers() {
@@ -7499,8 +9897,28 @@
         return isRTL(s) ? '<span class="formatted-string" dir="rtl" style="text-align:right;display:block;">' + escaped + '</span>' : '<span class="formatted-string">' + escaped + '</span>';
       }
 
+      function isPrimitiveArrayValue(value) {
+        if (Array.isArray(value)) return value.every(isPrimitiveArrayValue);
+        return value === null || value === undefined || ['string', 'number', 'boolean'].includes(typeof value);
+      }
+
+      function inlineArrayText(value) {
+        if (Array.isArray(value)) return '[' + value.map(inlineArrayText).join(', ') + ']';
+        if (value === null || value === undefined) return 'null';
+        if (typeof value === 'string') return JSON.stringify(value);
+        return String(value);
+      }
+
+      function compactArrayHtml(value) {
+        if (!isPrimitiveArrayValue(value)) return '';
+        const text = inlineArrayText(value);
+        return text.length <= 200 ? '<span class="formatted-array-inline">' + escapeHtml(text) + '</span>' : '';
+      }
+
       function formatObjectAsHtml(obj) {
         if (Array.isArray(obj)) {
+          const compact = compactArrayHtml(obj);
+          if (compact) return compact;
           // Format arrays
           if (obj.length === 0) return '<span class="formatted-array">[]</span>';
           const items = obj.map((item, idx) => {
@@ -7594,6 +10012,9 @@
         if (state.complexityFilter !== null) n++;
         if (state.domainFilter !== null) n++;
         if (state.rootCauseFilter !== null) n++;
+        if (state.taskErrorFilter !== null) n++;
+        if (state.traceErrorFilter !== null) n++;
+        if (state.analysisErrorFilter !== null) n++;
         if (state.passRateOp) n++;
         if (state.sortBy !== 'index') n++;
         n += Object.values(state.categoryFilters).filter(v => v !== null).length;
@@ -7618,6 +10039,9 @@
         state.domainFilterMode = 'include';
         state.domainExclusive.clear();
         state.rootCauseFilter = null;
+        state.taskErrorFilter = null;
+        state.traceErrorFilter = null;
+        state.analysisErrorFilter = null;
         state.passRateOp = '';
         state.passRateValue = 0;
         state.sortBy = 'index';

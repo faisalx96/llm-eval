@@ -10,6 +10,11 @@ __version__ = "0.9.0"
 
 from .core.evaluator import Evaluator
 from .core.multi_runner import MultiModelRunner
+from .core.observers import (
+    EvaluationObserver,
+    ProgressCallbackObserver,
+    ProgressSnapshot,
+)
 from .core.results import EvaluationResult
 from .core.config import RunSpec
 from .core.dataset import CsvDataset
@@ -17,8 +22,11 @@ from .metrics import builtin_metrics, list_available_metrics
 
 __all__ = [
     "Evaluator",
+    "EvaluationObserver",
     "EvaluationResult",
     "MultiModelRunner",
+    "ProgressCallbackObserver",
+    "ProgressSnapshot",
     "RunSpec",
     "CsvDataset",
     "builtin_metrics",

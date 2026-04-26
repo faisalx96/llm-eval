@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+from uuid import uuid4
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rich.console import Console
@@ -12,18 +13,32 @@ from rich.table import Table
 
 from .dashboard import RunDashboard, console_supports_live
 from .evaluator import Evaluator
+from .observers import CompositeEvaluationObserver, EvaluationObserver
 from .results import EvaluationResult, render_results_summary, summary_display_enabled
 from .config import RunSpec, EvaluatorConfig
+
 
 class MultiModelRunner:
     """Coordinate multiple Evaluator instances in parallel."""
 
-    def __init__(self, specs: Sequence[RunSpec], console: Optional[Console] = None) -> None:
+    def __init__(
+        self,
+        specs: Sequence[RunSpec],
+        console: Optional[Console] = None,
+        observer: Optional[EvaluationObserver] = None,
+    ) -> None:
         self.specs = list(specs)
         self.console = console or Console()
+        self.observer = observer
+        self.matrix_id = f"run-matrix-{uuid4().hex[:8]}"
 
     @classmethod
-    def from_runs(cls, runs: Sequence[Any], console: Optional[Console] = None) -> "MultiModelRunner":
+    def from_runs(
+        cls,
+        runs: Sequence[Any],
+        console: Optional[Console] = None,
+        observer: Optional[EvaluationObserver] = None,
+    ) -> "MultiModelRunner":
         """Create a runner from a list of run definitions (dicts or RunSpecs)."""
         if not runs:
             raise ValueError("runs must contain at least one configuration")
@@ -34,12 +49,12 @@ class MultiModelRunner:
             models_value = def_dict.get("models")
             if models_value is None:
                 return [def_dict]
-            
+
             # Use Pydantic validator logic via Config
             normalized = EvaluatorConfig.normalize_models(models_value)
             if not normalized:
                 return [def_dict]
-                
+
             expanded = []
             for model_name in normalized:
                 clone = dict(def_dict)
@@ -59,7 +74,7 @@ class MultiModelRunner:
 
             for model_variant in expanded_defs:
                 current_idx = len(specs) + 1
-                
+
                 # Prepare config for Pydantic
                 raw_config = dict(model_variant.get("config") or {})
                 raw_config.pop("models", None)
@@ -67,32 +82,45 @@ class MultiModelRunner:
                     model_variant.get("task_function")
                     or getattr(model_variant.get("task"), "__name__", "task")
                 )
-                
+
                 # Merge metadata
                 metadata = dict(model_variant.get("metadata") or {})
                 model_name = model_variant.get("model")
                 if model_name:
                     metadata.setdefault("model", model_name)
                     raw_config["model"] = model_name
-                
+
                 if metadata:
-                    merged_meta = {**metadata, **dict(raw_config.get("run_metadata") or {})}
+                    merged_meta = {
+                        **metadata,
+                        **dict(raw_config.get("run_metadata") or {}),
+                    }
                     raw_config["run_metadata"] = merged_meta
-                
+
                 # Determine run name
-                user_provided_name = bool(model_variant.get("name") or raw_config.get("run_name"))
-                base_name = model_variant.get("name") or raw_config.get("run_name") or task_display
-                
+                user_provided_name = bool(
+                    model_variant.get("name") or raw_config.get("run_name")
+                )
+                base_name = (
+                    model_variant.get("name")
+                    or raw_config.get("run_name")
+                    or task_display
+                )
+
                 if model_variant.get("display_name"):
                     # If display_name is already provided (e.g. by Evaluator), use it
                     # But we still need to ensure unique run_name if not provided
-                    name, _ = Evaluator.build_run_identifiers(base_name, model_name, add_suffix=not user_provided_name)
+                    name, _ = Evaluator.build_run_identifiers(
+                        base_name, model_name, add_suffix=not user_provided_name
+                    )
                     display = model_variant.get("display_name")
                     # If the provided name was just the base name, we might want to use the generated unique name
                     if not model_variant.get("name"):
-                         pass # name is already set above
+                        pass  # name is already set above
                 else:
-                    name, display = Evaluator.build_run_identifiers(base_name, model_name, add_suffix=not user_provided_name)
+                    name, display = Evaluator.build_run_identifiers(
+                        base_name, model_name, add_suffix=not user_provided_name
+                    )
                 raw_config["run_name"] = name
 
                 # Create RunSpec using Pydantic
@@ -106,8 +134,20 @@ class MultiModelRunner:
                         config=EvaluatorConfig(**raw_config),
                         metadata=metadata,
                         output_path=model_variant.get("output"),
-                        task_file=str(model_variant.get("task_file") or getattr(model_variant.get("task"), "__module__", "<python-callable>")),
-                        task_function=str(model_variant.get("task_function") or getattr(model_variant.get("task"), "__name__", "<callable>"))
+                        task_file=str(
+                            model_variant.get("task_file")
+                            or getattr(
+                                model_variant.get("task"),
+                                "__module__",
+                                "<python-callable>",
+                            )
+                        ),
+                        task_function=str(
+                            model_variant.get("task_function")
+                            or getattr(
+                                model_variant.get("task"), "__name__", "<callable>"
+                            )
+                        ),
                     )
                     specs.append(spec)
                 except Exception as e:
@@ -115,8 +155,55 @@ class MultiModelRunner:
 
         if not specs:
             raise ValueError("No valid run configurations provided")
-            
-        return cls(specs, console=console)
+
+        return cls(specs, console=console, observer=observer)
+
+    def _build_run_matrix(self) -> List[Dict[str, Any]]:
+        matrix: List[Dict[str, Any]] = []
+        for index, spec in enumerate(self.specs):
+            model_name = spec.config.model or spec.config.run_metadata.get("model")
+            ds_name = spec.dataset
+            if hasattr(spec.dataset, "name"):
+                ds_name = spec.dataset.name
+            total_items = None
+            try:
+                if hasattr(spec.dataset, "get_items"):
+                    total_items = len(spec.dataset.get_items())
+            except Exception:
+                total_items = None
+            matrix.append(
+                {
+                    "index": index,
+                    "run_id": spec.name,
+                    "display_name": spec.display_name or spec.name,
+                    "task": spec.config.task_name or spec.task_function,
+                    "task_file": spec.task_file,
+                    "task_function": spec.task_function,
+                    "dataset": str(ds_name),
+                    "model": model_name,
+                    "metrics": [
+                        metric
+                        if isinstance(metric, str)
+                        else getattr(metric, "__name__", str(metric))
+                        for metric in spec.metrics
+                    ],
+                    "total_items": total_items,
+                    "status": "pending",
+                    "qym_url": None,
+                    "platform_run_id": None,
+                }
+            )
+        return matrix
+
+    def _notify_observer(self, method: str, **payload: Any) -> None:
+        if self.observer is None:
+            return
+        callback = getattr(self.observer, method, None)
+        if callable(callback):
+            try:
+                callback(**payload)
+            except Exception:
+                pass
 
     async def arun(
         self,
@@ -135,39 +222,64 @@ class MultiModelRunner:
         for spec in self.specs:
             if isinstance(spec.dataset, str):
                 unique_dataset_names.add(spec.dataset)
-        
+
         dataset_cache: Dict[str, LangfuseDataset] = {}
-        
+
         if unique_dataset_names:
             # Initialize a temporary client for downloading
             # We use the config from the first spec that has credentials, or env vars
             # This is a best-effort to find credentials
             first_config = self.specs[0].config
-            public_key = first_config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
-            secret_key = first_config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
+            public_key = first_config.langfuse_public_key or os.getenv(
+                "LANGFUSE_PUBLIC_KEY"
+            )
+            secret_key = first_config.langfuse_secret_key or os.getenv(
+                "LANGFUSE_SECRET_KEY"
+            )
             from ..utils.env import get_langfuse_host_env
-            host = first_config.langfuse_host or get_langfuse_host_env('https://cloud.langfuse.com')
-            
+
+            host = first_config.langfuse_host or get_langfuse_host_env(
+                "https://cloud.langfuse.com"
+            )
+
             # Use the timeout from the first config as a reasonable default
             timeout = first_config.timeout
-            
+
             if public_key and secret_key:
                 try:
                     client = Langfuse(
                         public_key=public_key,
                         secret_key=secret_key,
                         host=host,
-                        timeout=timeout
+                        timeout=timeout,
                     )
-                    
-                    self.console.print(f"[dim]Pre-loading {len(unique_dataset_names)} unique datasets...[/dim]")
+
+                    self.console.print(
+                        f"[dim]Pre-loading {len(unique_dataset_names)} unique datasets...[/dim]"
+                    )
                     for name in unique_dataset_names:
                         try:
                             dataset_cache[name] = LangfuseDataset(client, name)
                         except Exception as e:
-                            self.console.print(f"[yellow]Warning: Failed to pre-load dataset '{name}': {e}[/yellow]")
+                            self.console.print(
+                                f"[yellow]Warning: Failed to pre-load dataset '{name}': {e}[/yellow]"
+                            )
                 except Exception as e:
-                    self.console.print(f"[yellow]Warning: Failed to initialize Langfuse client for pre-loading: {e}[/yellow]")
+                    self.console.print(
+                        f"[yellow]Warning: Failed to initialize Langfuse client for pre-loading: {e}[/yellow]"
+                    )
+
+        for spec in self.specs:
+            if isinstance(spec.dataset, str) and spec.dataset in dataset_cache:
+                spec.dataset = dataset_cache[spec.dataset]
+
+        run_matrix = self._build_run_matrix()
+        self._notify_observer(
+            "on_run_matrix",
+            matrix_id=self.matrix_id,
+            runs=run_matrix,
+            total_runs=len(run_matrix),
+        )
 
         dashboard_configs: List[Dict[str, Any]] = []
         for spec in self.specs:
@@ -177,12 +289,12 @@ class MultiModelRunner:
 
             model_name = spec.config.model or spec.config.run_metadata.get("model")
             display_text = spec.display_name or spec.name
-            
+
             # Handle dataset name for display
             ds_name = spec.dataset
-            if hasattr(spec.dataset, 'name'):
+            if hasattr(spec.dataset, "name"):
                 ds_name = spec.dataset.name
-                
+
             dashboard_configs.append(
                 {
                     "run_id": spec.name,
@@ -194,7 +306,9 @@ class MultiModelRunner:
             )
 
         live_enabled = show_tui and console_supports_live(self.console)
-        dashboard = RunDashboard(dashboard_configs, enabled=live_enabled, console=self.console)
+        dashboard = RunDashboard(
+            dashboard_configs, enabled=live_enabled, console=self.console
+        )
 
         # Create semaphore if max_parallel_runs is set
         semaphore = asyncio.Semaphore(max_parallel_runs) if max_parallel_runs else None
@@ -202,7 +316,9 @@ class MultiModelRunner:
         # Size the thread pool to match actual parallelism so sync tasks don't queue.
         # Effective parallel models = min(num_specs, max_parallel_runs or num_specs)
         num_specs = len(self.specs)
-        effective_parallel = min(num_specs, max_parallel_runs) if max_parallel_runs else num_specs
+        effective_parallel = (
+            min(num_specs, max_parallel_runs) if max_parallel_runs else num_specs
+        )
         max_conc = max((s.config.max_concurrency or 10) for s in self.specs)
         pool_size = max_conc * effective_parallel
         loop = asyncio.get_running_loop()
@@ -224,7 +340,12 @@ class MultiModelRunner:
         advisory_tasks_emitted: set[str] = set()
 
         async def _run_spec_inner(spec: RunSpec):
-            observer = dashboard.create_observer(spec.name)
+            dashboard_observer = dashboard.create_observer(spec.name)
+            observer = (
+                CompositeEvaluationObserver([dashboard_observer, self.observer])
+                if self.observer is not None
+                else dashboard_observer
+            )
             # Pass config object directly
             evaluator = Evaluator(
                 task=spec.task,
@@ -235,7 +356,9 @@ class MultiModelRunner:
             )
             evaluator._sync_threadpool_advisory_registry = advisory_tasks_emitted
             _active_evaluators.append(evaluator)
-            evaluator._maybe_emit_sync_threadpool_advisory(parallel_runs=effective_parallel)
+            evaluator._maybe_emit_sync_threadpool_advisory(
+                parallel_runs=effective_parallel
+            )
             try:
                 result = await evaluator.arun(
                     show_tui=False,
@@ -309,7 +432,7 @@ class MultiModelRunner:
             stream = getattr(ev, "_platform_stream", None)
             if stream is not None:
                 try:
-                    if hasattr(stream, '_stop'):
+                    if hasattr(stream, "_stop"):
                         stream._stop.set()  # Signal the background thread to exit
                 except Exception:
                     pass
@@ -324,11 +447,15 @@ class MultiModelRunner:
 
         return final_results
 
-    def print_summary(self, results: Sequence[EvaluationResult], *, force: bool = False) -> None:
+    def print_summary(
+        self, results: Sequence[EvaluationResult], *, force: bool = False
+    ) -> None:
         """Render a shared summary panel that works for single or multi runs."""
         if not force and not summary_display_enabled():
             return
-        panel = render_results_summary(results, title="[bold cyan]Multi-Run Summary[/bold cyan]")
+        panel = render_results_summary(
+            results, title="[bold cyan]Multi-Run Summary[/bold cyan]"
+        )
         self.console.print(panel)
 
     def print_saved_paths(self, results: Sequence[EvaluationResult]) -> None:

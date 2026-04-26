@@ -112,6 +112,42 @@ results = evaluator.run()
 
 > CSV datasets work without Langfuse credentials. If credentials are set, traces are still recorded.
 
+## Run Progress Hooks
+
+Wrappers can subscribe to evaluation progress with `progress_callback`. The callback receives a structured `ProgressSnapshot` whenever the run starts, an item starts or finishes, a metric result is produced, a warning is emitted, or the run completes.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot):
+    print(
+        f"{snapshot.run_id}: {snapshot.finished}/{snapshot.total_items} "
+        f"({snapshot.percent_complete:.1f}%)"
+    )
+
+
+evaluator = Evaluator(
+    task=my_llm_task,
+    dataset="my-langfuse-dataset",
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+)
+
+results = evaluator.run(show_tui=False)
+```
+
+For integrations that prefer explicit composition, pass `observer=ProgressCallbackObserver(on_progress)`. For lower-level integrations, subclass `EvaluationObserver` and implement the lifecycle methods you need:
+
+```python
+from qym import EvaluationObserver
+
+
+class MyObserver(EvaluationObserver):
+    def on_item_complete(self, run_id, item_index, result):
+        send_to_my_system(run_id=run_id, item_index=item_index, result=result)
+```
+
 ## Multi-Model Comparison
 
 Compare multiple models in parallel:

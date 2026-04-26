@@ -2,6 +2,18 @@
 
 The SDK centers on `Evaluator`. You provide a task function, a dataset source, and one or more metrics.
 
+## High-Level Model
+
+`Evaluator` owns the evaluation loop:
+
+1. Load dataset items.
+2. Execute your task for each item.
+3. Compute metrics for each output.
+4. Record traces and metadata when enabled.
+5. Save results locally.
+6. Optionally stream live progress to the platform.
+7. Optionally emit local progress callbacks for wrappers.
+
 ```python
 from qym import Evaluator
 
@@ -15,14 +27,192 @@ results = Evaluator(
 ).run()
 ```
 
-## What the task function should do
+## Detailed Behavior
+
+### Task Function Contract
+
+The task function is the code being evaluated. It receives the dataset item's input and returns the output to score.
 
 - Accept the input shape your dataset produces.
 - Return a value your metrics know how to score.
 - Optionally accept `model_name`, `model`, or `trace_id` if you need them.
 
-## What not to do
+Common signatures:
+
+```python
+def task(question):
+    return call_llm(question)
+
+async def task(question, model_name="gpt-4o-mini"):
+    return await call_llm(model_name, question)
+
+def task(question, trace_id=None):
+    return call_llm(question, metadata={"trace_id": trace_id})
+```
+
+If the dataset input is a dictionary, qym can match keys to function parameters:
+
+```python
+def task(question, context):
+    return call_llm(f"Context: {context}\nQuestion: {question}")
+```
+
+### Evaluator Inputs
+
+| Argument | Purpose |
+|----------|---------|
+| `task` | Callable or supported framework object to evaluate. |
+| `dataset` | Langfuse dataset name or local dataset object such as `CsvDataset`. |
+| `metrics` | Built-in metric names or metric callables. |
+| `config` | Run configuration such as concurrency, timeout, retries, names, and platform settings. |
+| `model` | Optional model name or list of model names for model comparison. |
+| `observer` | Advanced lifecycle observer. |
+| `progress_callback` | Simple callback for structured progress snapshots. |
+
+### Sync And Async
+
+Use `run()` from normal scripts:
+
+```python
+results = evaluator.run()
+```
+
+Use `arun()` when you are already inside an async service and want to await the evaluation:
+
+```python
+results = await evaluator.arun()
+```
+
+Async task functions are preferred for high-throughput LLM calls because they avoid blocking worker threads.
+
+### Result Object
+
+`run()` returns an `EvaluationResult` for a single-model run, or a list of results for multi-model runs.
+
+The result includes aggregate counts, per-item results, metric summaries, errors, local file paths, run metadata, and platform URLs when available.
+
+```python
+print(results.success_rate)
+print(results.total_items)
+print(results.metrics)
+```
+
+## Run progress
+
+Pass `progress_callback` when a wrapper or UI needs progress updates from the SDK. The callback receives a structured `ProgressSnapshot` for run matrix, run, item, metric, warning, and completion events.
+
+For multi-run evaluations, the first aggregate event is `run_matrix`. It describes the expected run shape before individual runs start. Each matrix row includes the run ID, display name, task, dataset, model, metrics, `total_items` when known, initial status, `platform_run_id=None`, and `qym_url=None`. When each run starts, its `run_start` snapshot includes `run_info["qym_url"]` and `run_info["platform_run_id"]` when platform streaming is enabled.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+def on_progress(snapshot: ProgressSnapshot):
+    if snapshot.event == "run_matrix":
+        for run in snapshot.run_matrix or []:
+            render_pending_run(
+                run_id=run["run_id"],
+                model=run.get("model"),
+                total_items=run.get("total_items"),
+                qym_url=run.get("qym_url"),
+            )
+        return
+
+    if snapshot.event == "run_start":
+        attach_qym_link(
+            run_id=snapshot.run_id,
+            qym_url=(snapshot.run_info or {}).get("qym_url"),
+        )
+
+    print(
+        f"{snapshot.run_id}: {snapshot.finished}/{snapshot.total_items} "
+        f"({snapshot.percent_complete:.1f}%)"
+    )
+
+results = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
+Use `observer=ProgressCallbackObserver(on_progress)` when you want explicit observer composition. Use `EvaluationObserver` directly when you need lower-level lifecycle hooks:
+
+For `Evaluator.run_parallel(...)`, pass `observer=ProgressCallbackObserver(on_progress)`. The `progress_callback` shortcut belongs to the `Evaluator(...)` constructor.
+
+```python
+from qym import EvaluationObserver
+
+class MyObserver(EvaluationObserver):
+    def on_run_matrix(self, matrix_id, runs, total_runs):
+        create_pending_runs(matrix_id, runs, total_runs)
+
+    def on_run_start(self, run_id, run_info, total_items, metrics):
+        update_run_url(run_id, run_info.get("qym_url"))
+
+    def on_item_complete(self, run_id, item_index, result):
+        send_item_update(run_id, item_index, result)
+```
+
+`metric_result` snapshots include live score values as metrics finish. Their `metadata` includes metric timing fields such as `duration_ms`, `duration_seconds`, `started_at_ms`, `completed_at_ms`, and `status` when qym measured the metric call.
+
+`item_complete` snapshots include task latency and item latency fields in `result`, including `task_time`, `task_time_ms`, `total_time`, `total_time_ms`, `latency_ms`, item/task timestamps, trace IDs, retry count, and final `scores`.
+
+## For Developers
+
+### Service Wrapper Pattern
+
+Use `progress_callback` for your own job state and platform streaming for shared qym visibility:
+
+```python
+from qym import Evaluator
+
+def launch_eval(job_id: str):
+    def on_progress(snapshot):
+        jobs.update(
+            job_id,
+            qym_run_id=snapshot.run_id,
+            progress=snapshot.percent_complete,
+            finished=snapshot.finished,
+            total=snapshot.total_items,
+            failed=snapshot.failed,
+        )
+
+    return Evaluator(
+        task=my_task,
+        dataset=my_dataset,
+        metrics=["exact_match"],
+        config={"run_metadata": {"job_id": job_id}},
+        progress_callback=on_progress,
+    ).run(show_tui=False)
+```
+
+### Multi-Model Pattern
+
+Use `model=[...]` when the task is the same and only the model changes:
+
+```python
+def task(question, model_name="gpt-4o-mini"):
+    return call_llm(model=model_name, prompt=question)
+
+results = Evaluator(
+    task=task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    model=["gpt-4o-mini", "gpt-4.1-mini"],
+).run()
+```
+
+### What Not To Do
 
 - Hide external dependencies or credentials inside the task body.
 - Make the first version of the task depend on multiple providers unless the workflow requires it.
 - Return a structure your metrics cannot interpret.
+- Do long blocking work inside progress callbacks.
+- Treat platform streaming and `progress_callback` as interchangeable; one is for qym platform ingestion, the other is for local wrapper state.
+
+## Related Docs
+
+- [Metrics And Datasets](/sdk/metrics-datasets)
+- [Platform Streaming](/sdk/platform-streaming)
+- [Running Evaluations](/cli/running-evaluations)

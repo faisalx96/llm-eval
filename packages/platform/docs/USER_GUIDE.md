@@ -396,6 +396,29 @@ qym run create --task-file my_task.py --task-function my_func \
 
 Results stream to the platform in real time. The SDK auto-detects git branch and commit for version tracking.
 
+If your own application also needs live progress, use the SDK's `progress_callback` in the Python wrapper that launches the run. This is separate from platform ingestion: the platform still receives streamed events through `QYM_PLATFORM_URL` and `QYM_API_KEY`, while your callback can update an internal job record, queue, websocket, or notebook cell.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+def on_progress(snapshot: ProgressSnapshot):
+    update_internal_job(
+        run_id=snapshot.run_id,
+        event=snapshot.event,
+        finished=snapshot.finished,
+        total=snapshot.total_items,
+        percent=snapshot.percent_complete,
+        failed=snapshot.failed,
+    )
+
+Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
 ### Upload a Saved Results File
 
 ```bash

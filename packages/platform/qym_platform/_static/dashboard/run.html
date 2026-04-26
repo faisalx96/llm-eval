@@ -1488,6 +1488,121 @@
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header { color: var(--text-primary); }
     .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
+    .breakdown-errors .breakdown-icon,
+    .breakdown-errors .breakdown-header { color: var(--error); }
+    .breakdown-errors .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
+    .breakdown-errors .breakdown-card:hover {
+      border-color: var(--border-default);
+      border-left-color: rgba(239, 68, 68, 0.35);
+    }
+    .breakdown-errors .error-card {
+      flex: 0 0 300px;
+      width: 300px;
+      max-width: 100%;
+    }
+    .breakdown-errors .breakdown-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: var(--space-md);
+    }
+    .error-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 112px;
+      flex: 0 1 520px;
+      max-width: 520px;
+      min-width: 0;
+      width: 100%;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .error-card.active {
+      border-color: rgba(239, 68, 68, 0.65);
+      border-left-color: rgba(239, 68, 68, 0.65);
+      box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+    }
+    .error-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .error-card-text {
+      min-width: 0;
+      flex: 1;
+    }
+    .error-card-title {
+      font-size: var(--font-sm);
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .error-card-detail {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      line-height: 1.45;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      max-width: 100%;
+    }
+    .error-detail-expander {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+    }
+    .error-detail-expander summary {
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-weight: 600;
+      width: fit-content;
+    }
+    .error-detail-full {
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .error-card-count {
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 700;
+      color: var(--error);
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .error-card-count-label {
+      display: block;
+      margin-top: 3px;
+      font-family: var(--font-sans);
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: right;
+    }
+    .error-card-item-count {
+      margin-top: 6px;
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
     .rc-category-card {
       border-left: none !important;
       padding: var(--space-sm);
@@ -2674,6 +2789,11 @@
     .formatted-number { color: #fbbf24; font-weight: 600; }
     .formatted-boolean { color: #a855f7; font-weight: 600; }
     .formatted-null { color: var(--text-muted); font-style: italic; }
+    .formatted-array-inline {
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .formatted-array-item {
       padding: 6px 0;
       padding-left: var(--space-md);
@@ -3182,6 +3302,8 @@
 
       <div id="metadata-breakdown"></div>
 
+      <div id="error-distribution-section"></div>
+
       <div id="root-cause-section"></div>
 
       <div class="items-comparison">
@@ -3199,6 +3321,8 @@
                 <option value="passed">Passed</option>
                 <option value="failed">Failed</option>
                 <option value="errors">With Errors</option>
+                <option value="retries">With Retries</option>
+                <option value="trace_errors">With Trace Errors</option>
               </select>
             </div>
             <div class="fp-group" id="fp-threshold-group" style="display:none;">
@@ -3377,6 +3501,9 @@
         domainFilterMode: 'include',  // include = explicit matches, exclude = all except selected values
         domainExclusive: new Set(),  // domains that must be sole value
         rootCauseFilter: null,
+        taskErrorFilter: null,
+        traceErrorFilter: null,
+        analysisErrorFilter: null,
         complexityValues: [],
         domainValues: [],
         rootCauseValues: [],
@@ -3653,6 +3780,11 @@
         return '<div class="trace-chips-row">' + chips.join('') + '</div>';
       }
 
+      function getRowTraceErrorCount(row) {
+        const ts = (row && row.trace_stats && typeof row.trace_stats === 'object') ? row.trace_stats : {};
+        return Number(ts.tool_errors || ts.malformed_tool_calls || 0) + Number(ts.provider_errors || 0);
+      }
+
       function renderMarkdownSafe(value) {
         if (value === null || value === undefined) return '&mdash;';
         if (typeof value === 'object') return formatObjectAsHtml(value);
@@ -3721,8 +3853,28 @@
         return isRTL(s) ? '<span class="formatted-string" dir="rtl" style="text-align:right;display:block;">' + escaped + '</span>' : '<span class="formatted-string">' + escaped + '</span>';
       }
 
+      function isPrimitiveArrayValue(value) {
+        if (Array.isArray(value)) return value.every(isPrimitiveArrayValue);
+        return value === null || value === undefined || ['string', 'number', 'boolean'].includes(typeof value);
+      }
+
+      function inlineArrayText(value) {
+        if (Array.isArray(value)) return '[' + value.map(inlineArrayText).join(', ') + ']';
+        if (value === null || value === undefined) return 'null';
+        if (typeof value === 'string') return JSON.stringify(value);
+        return String(value);
+      }
+
+      function compactArrayHtml(value) {
+        if (!isPrimitiveArrayValue(value)) return '';
+        const text = inlineArrayText(value);
+        return text.length <= 200 ? '<span class="formatted-array-inline">' + escapeHtml(text) + '</span>' : '';
+      }
+
       function formatObjectAsHtml(obj) {
         if (Array.isArray(obj)) {
+          const compact = compactArrayHtml(obj);
+          if (compact) return compact;
           if (!obj.length) return '<span class="formatted-array">[]</span>';
           return '<div class="formatted-array">' + obj.map((item, idx) => {
             let f; if (item===null||item===undefined) f='<span class="formatted-null">null</span>'; else if (typeof item==='object') f=formatObjectAsHtml(item); else if (typeof item==='string') f=fmtStr(item); else f=escapeHtml(String(item));
@@ -5091,6 +5243,161 @@
         });
       }
 
+      function normalizeErrorLabel(value, fallback) {
+        let text = stringify(value || '').trim();
+        if (!text) text = fallback || 'Unknown error';
+        text = text.replace(/^ERROR:\s*/i, '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).join(' ') || text;
+        text = text.replace(/\s+/g, ' ').trim();
+        return text.length > 320 ? text.slice(0, 317) + '...' : text;
+      }
+
+      function splitErrorLabel(label) {
+        const text = String(label || '').trim();
+        const idx = text.indexOf(':');
+        if (idx <= 0) return { title: text || 'Unknown error', detail: '' };
+        const title = text.slice(0, idx).trim();
+        const detail = text.slice(idx + 1).trim();
+        if (!title || !detail) return { title: text || 'Unknown error', detail: '' };
+        return { title: title, detail: detail };
+      }
+
+      function renderErrorDetailHtml(detail) {
+        const text = String(detail || '').trim();
+        if (!text) return '';
+        const needsExpand = text.length > 120;
+        const preview = needsExpand ? text.slice(0, 117).trimEnd() + '...' : text;
+        return '<div class="error-card-detail">' + escapeHtml(preview) + '</div>' +
+          (needsExpand
+            ? '<details class="error-detail-expander"><summary>Show full details</summary><pre class="error-detail-full">' + escapeHtml(text) + '</pre></details>'
+            : '');
+      }
+
+      function addErrorBucket(buckets, kind, label, count, itemId) {
+        const safeCount = Math.max(1, Number(count) || 1);
+        const key = kind + '||' + label;
+        if (!buckets[key]) {
+          buckets[key] = { kind: kind, label: label, count: 0, itemIds: new Set() };
+        }
+        buckets[key].count += safeCount;
+        if (itemId != null && itemId !== '') buckets[key].itemIds.add(String(itemId));
+      }
+
+      function rowMatchesErrorFilter(row, filter) {
+        if (!filter) return true;
+        const buckets = {};
+        collectRowErrors(row, buckets);
+        return !!buckets[filter.kind + '||' + filter.label];
+      }
+
+      function rowMatchesActiveErrorFilters(row) {
+        return rowMatchesErrorFilter(row, state.taskErrorFilter) &&
+          rowMatchesErrorFilter(row, state.traceErrorFilter) &&
+          rowMatchesErrorFilter(row, state.analysisErrorFilter);
+      }
+
+      function getErrorFilterSlot(kind) {
+        if (kind === 'Task error') return 'taskErrorFilter';
+        if (kind === 'Trace error') return 'traceErrorFilter';
+        if (kind === 'Analysis error') return 'analysisErrorFilter';
+        return 'traceErrorFilter';
+      }
+
+      function collectRowErrors(row, buckets) {
+        if (!row) return;
+        const itemId = row.item_id || String(row.index || '');
+        if ((row.status || '') === 'error') {
+          const executionError = row.error || row.output_full || row.output || '';
+          addErrorBucket(buckets, 'Task error', normalizeErrorLabel(executionError, 'Task failed'), 1, itemId);
+        }
+
+        const md = row.item_metadata || {};
+        if (md.analysis_error) {
+          addErrorBucket(buckets, 'Analysis error', normalizeErrorLabel(md.analysis_error, 'Analysis failed'), 1, itemId);
+        }
+
+        const ts = (row.trace_stats && typeof row.trace_stats === 'object') ? row.trace_stats : {};
+        const toolErrors = Number(ts.tool_errors || ts.malformed_tool_calls || 0);
+        const providerErrors = Number(ts.provider_errors || 0);
+        if (toolErrors > 0) addErrorBucket(buckets, 'Trace error', 'Tool errors', toolErrors, itemId);
+        if (providerErrors > 0) addErrorBucket(buckets, 'Trace error', 'Provider errors', providerErrors, itemId);
+      }
+
+      function renderErrorDistributionSection() {
+        const section = el('error-distribution-section');
+        if (!section) return;
+
+        const buckets = {};
+        const filteredItems = getFilteredItems();
+        for (const item of filteredItems) collectRowErrors(item.row, buckets);
+
+        const stats = Object.values(buckets).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+        const totalErrors = stats.reduce((sum, entry) => sum + entry.count, 0);
+
+        if (totalErrors === 0) {
+          section.innerHTML = '<h3 class="section-title">Error Distribution</h3>' +
+            '<div class="comparison-stats"><div class="section-empty-state">' +
+              '<div class="section-empty-copy"><span>No errors in the current filtered items.</span></div>' +
+            '</div></div>';
+          return;
+        }
+
+        function renderErrorCards(entries) {
+          if (!entries.length) return '<div class="category-empty-state">No errors in this category.</div>';
+          let cards = '<div class="breakdown-grid">';
+          for (const entry of entries) {
+            const labelParts = splitErrorLabel(entry.label);
+            const itemCount = entry.itemIds.size;
+            const itemText = itemCount === 1 ? '1 item' : itemCount + ' items';
+            const itemCountHtml = entry.kind === 'Task error' ? '' : '<div class="error-card-item-count">' + itemText + '</div>';
+            const countLabel = entry.count === 1 ? 'error' : 'errors';
+            const activeFilter = state[getErrorFilterSlot(entry.kind)];
+            const isActive = activeFilter && activeFilter.kind === entry.kind && activeFilter.label === entry.label;
+            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
+              '<div class="error-card-top">' +
+                '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div>' +
+                renderErrorDetailHtml(labelParts.detail) +
+                itemCountHtml + '</div>' +
+                '<div class="error-card-count">' + entry.count + '<span class="error-card-count-label">' + countLabel + '</span></div>' +
+              '</div>' +
+            '</div>';
+          }
+          return cards + '</div>';
+        }
+
+        function renderErrorGroup(title, icon, entries, alwaysShow) {
+          if (!alwaysShow && entries.length === 0) return '';
+          const groupTotal = entries.reduce((sum, entry) => sum + entry.count, 0);
+          return '<div class="breakdown-section breakdown-errors">' +
+            '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(title) + ' <span class="breakdown-metric">' + groupTotal + '</span></div>' +
+            renderErrorCards(entries) +
+          '</div>';
+        }
+
+        const taskStats = stats.filter(entry => entry.kind === 'Task error');
+        const traceStats = stats.filter(entry => entry.kind === 'Trace error');
+        const analysisStats = stats.filter(entry => entry.kind === 'Analysis error');
+
+        let html = '<h3 class="section-title">Error Distribution</h3>';
+        html += '<div class="comparison-stats">';
+        html += renderErrorGroup('Task Errors', '!', taskStats, true);
+        html += renderErrorGroup('Trace Errors', '!', traceStats, true);
+        html += renderErrorGroup('Analysis Errors', '!', analysisStats, false);
+        html += '</div>';
+        section.innerHTML = html;
+
+        section.querySelectorAll('.error-card[data-error-kind]').forEach(card => {
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('details')) return;
+            const nextFilter = { kind: card.dataset.errorKind, label: card.dataset.errorLabel };
+            const slot = getErrorFilterSlot(nextFilter.kind);
+            const current = state[slot];
+            state[slot] = current && current.kind === nextFilter.kind && current.label === nextFilter.label ? null : nextFilter;
+            state.page = 1;
+            renderItems();
+          });
+        });
+      }
+
       function renderRootCauseSection() {
         const section = el('root-cause-section');
         if (!section) return;
@@ -5269,10 +5576,11 @@
           // Search filter
           if (state.searchQuery) {
             const q = state.searchQuery.toLowerCase();
+            const itemId = String(row.item_id || row.index || '').toLowerCase();
             const inp = stringify(row.input_full || row.input || '').toLowerCase();
             const exp = stringify(row.expected_full || row.expected || '').toLowerCase();
             const out = stringify(row.output_full || row.output || '').toLowerCase();
-            if (!inp.includes(q) && !exp.includes(q) && !out.includes(q)) continue;
+            if (!itemId.includes(q) && !inp.includes(q) && !exp.includes(q) && !out.includes(q)) continue;
           }
 
           // Category filters
@@ -5321,6 +5629,7 @@
             if (!cfVal.some(f => effectiveVals.includes(String(f).toLowerCase()))) { customFilterFail = true; break; }
           }
           if (customFilterFail) continue;
+          if (!rowMatchesActiveErrorFilters(row)) continue;
 
           // Score for this metric
           let score = null;
@@ -5337,6 +5646,10 @@
             if (!isError && (score === null || score >= threshold)) continue;
           } else if (state.itemFilter === 'errors') {
             if (!window.QymMetrics.isErrorRow(row)) continue;
+          } else if (state.itemFilter === 'retries') {
+            if ((row.retry_count || 0) <= 0) continue;
+          } else if (state.itemFilter === 'trace_errors') {
+            if (getRowTraceErrorCount(row) <= 0) continue;
           }
 
           // Score distribution filter
@@ -5392,6 +5705,7 @@
         clearTimeout(_breakdownTimer);
         _breakdownTimer = setTimeout(function () {
           renderMetadataBreakdown();
+          renderErrorDistributionSection();
           renderRootCauseSection();
           if (anchorTop != null) {
             requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
@@ -6627,6 +6941,9 @@
         if (state.complexityFilter !== null) n++;
         if (state.domainFilter !== null) n++;
         if (state.rootCauseFilter !== null) n++;
+        if (state.taskErrorFilter !== null) n++;
+        if (state.traceErrorFilter !== null) n++;
+        if (state.analysisErrorFilter !== null) n++;
         if (state.scoreDistFilter) n++;
         if (state.latencyDistFilter) n++;
         n += Object.values(state.categoryFilters).filter(v => v !== null).length;
@@ -6651,6 +6968,9 @@
         state.domainFilterMode = 'include';
         state.domainExclusive.clear();
         state.rootCauseFilter = null;
+        state.taskErrorFilter = null;
+        state.traceErrorFilter = null;
+        state.analysisErrorFilter = null;
         state.scoreDistFilter = null;
         state.latencyDistFilter = null;
         state.categoryFilters = {};

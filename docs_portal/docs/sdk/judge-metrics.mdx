@@ -1,0 +1,156 @@
+# Judge Metrics
+
+Judge metrics use an LLM to score an output. Use them when deterministic rules cannot capture quality, relevance, faithfulness, safety, or correctness.
+
+## High-Level Model
+
+```text
+input + output + expected/context -> judge prompt -> LLM verdict -> MetricResult
+```
+
+Judge metrics are powerful but more expensive and less deterministic than code metrics. Start with deterministic metrics, then add judges for cases where semantic scoring is needed.
+
+## Detailed Behavior
+
+### Environment Setup
+
+Judge metrics use an OpenAI-compatible provider configuration.
+
+```bash
+export QYM_JUDGE_MODEL=gpt-4o-mini
+export QYM_JUDGE_API_KEY=<provider-key>
+export QYM_JUDGE_BASE_URL=https://api.openai.com/v1
+```
+
+Fallbacks:
+
+- `QYM_JUDGE_API_KEY` falls back to `OPENAI_API_KEY`.
+- `QYM_JUDGE_BASE_URL` falls back to `OPENAI_BASE_URL`.
+
+### Built-In Judges
+
+Use judge metric names directly:
+
+```python
+metrics=[
+    "relevance",
+    "faithfulness_llm",
+    "correctness_llm",
+    "hallucination",
+    "toxicity",
+    "conciseness",
+    "tool_calling",
+]
+```
+
+Use only the judges that match your task. For example, `faithfulness_llm` needs context or grounding information; `tool_calling` needs tool-call expectations.
+
+### Programmatic Config
+
+```python
+from qym.metrics import JudgeConfig, set_default_judge_config
+
+set_default_judge_config(
+    JudgeConfig(
+        model="gpt-4o-mini",
+        api_key="...",
+        base_url="https://api.openai.com/v1",
+    )
+)
+```
+
+### Custom Judge
+
+```python
+from qym.metrics.judges import create_judge
+
+helpfulness = create_judge(
+    name="helpfulness",
+    prompt="""\
+Is this response helpful?
+
+[Question]: {question}
+[Response]: {output}
+""",
+    choices={
+        "helpful": 1.0,
+        "unhelpful": 0.0,
+    },
+)
+
+results = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=[helpfulness],
+).run()
+```
+
+The judge returns a structured metric result with:
+
+| Field | Meaning |
+|-------|---------|
+| `score` | Numeric score mapped from the chosen verdict. |
+| `label` | Judge verdict label. |
+| `explanation` | Judge explanation. |
+| `metadata` | Additional judge/provider details. |
+
+### Pairwise Judge
+
+Use pairwise judges when comparing two outputs is more reliable than absolute scoring.
+
+```python
+from qym.metrics.judges import create_pairwise_judge
+
+compare_quality = create_pairwise_judge(
+    name="compare_quality",
+    prompt="""\
+Compare the two responses.
+
+[Question]: {question}
+[Response A]: {output_a}
+[Response B]: {output_b}
+
+Return A, B, or tie.
+""",
+)
+```
+
+`output_a` is the task output. `output_b` can come from expected output or an explicit dataset field depending on your dataset shape.
+
+## For Developers
+
+### Prompt Variable Checklist
+
+Before running a judge on a large dataset, verify every variable in the prompt exists:
+
+- `{output}`: task output
+- `{expected}`: expected output, when available
+- `{question}` or other input fields
+- `{context}` for RAG faithfulness
+- `{output_a}` and `{output_b}` for pairwise judges
+
+Missing variables should fail loudly during smoke testing, not after a production run starts.
+
+### Cost And Latency Controls
+
+- Run judges on a small sample first.
+- Keep `max_metric_concurrency` low when provider rate limits are strict.
+- Set `metric_timeout`.
+- Use cheaper judges for smoke tests and stronger judges for release gates.
+- Store judge model and prompt version in `run_metadata`.
+
+### Debugging Judge Failures
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Missing config error | Model or API key not set. | Set `QYM_JUDGE_MODEL` and key env vars. |
+| All scores are zero | Prompt variables missing or verdict not mapped. | Check prompt and `choices`. |
+| Slow run | Judge calls dominate runtime. | Lower dataset size, tune concurrency, or increase timeout. |
+| Inconsistent labels | Choices are ambiguous. | Use clearer labels and rubric. |
+
+## Related Docs
+
+- [Custom Metrics](/sdk/custom-metrics)
+- [Metrics And Datasets](/sdk/metrics-datasets)
+- [Judge Metrics Example](/examples/judge-metrics)
+- [Troubleshooting Judge Metrics](/troubleshooting/generated/judge-metrics)

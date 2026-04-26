@@ -1032,6 +1032,21 @@ html {
   font-weight: 500;
 }
 
+.compare-subtitle {
+  margin-top: 6px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.compare-subtitle.is-warning {
+  color: #f59e0b;
+}
+
+.compare-subtitle.is-ready {
+  color: var(--accent-primary);
+}
+
 .compare-actions {
   display: flex;
   gap: var(--space-sm);
@@ -1051,6 +1066,15 @@ html {
 
 .action-btn:hover {
   background: rgba(168, 85, 247, 0.25);
+}
+
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-btn:disabled:hover {
+  background: rgba(168, 85, 247, 0.15);
 }
 
 .action-btn.secondary {
@@ -1097,6 +1121,16 @@ html {
   border-radius: 3px;
   font-size: var(--font-xs);
   color: var(--text-secondary);
+}
+
+.compare-chip.is-cohort-a {
+  border-color: rgba(0, 212, 170, 0.25);
+  background: rgba(0, 212, 170, 0.08);
+}
+
+.compare-chip.is-cohort-b {
+  border-color: rgba(168, 85, 247, 0.28);
+  background: rgba(168, 85, 247, 0.08);
 }
 
 .compare-chip .remove {

@@ -1,0 +1,292 @@
+# SDK Configuration
+
+Use this page when you need to tune qym execution instead of accepting default `Evaluator(...)` behavior. The SDK is the source of truth; the CLI forwards most run configuration into the same `EvaluatorConfig`.
+
+## High-Level Model
+
+Configuration controls seven areas:
+
+| Area | What it controls |
+|------|------------------|
+| Run identity | `run_name`, `task_name`, git branch, git commit, metadata |
+| Execution | item concurrency, metric concurrency, task timeout, metric timeout, retries, interrupt cleanup |
+| Output and recovery | output directory, checkpointing, resume behavior, artifact formats |
+| Dataset access | local CSV object, Langfuse dataset name, Langfuse credentials |
+| Platform streaming | platform URL, API key, live mode |
+| Tracing | OpenTelemetry auto-instrumentation, Phoenix export, Langfuse trace links |
+| Model routing | single model, multiple models, provider-prefixed full model ID, forced model override |
+
+Prefer explicit Python config in services and notebooks. Use environment variables for secrets and deployment-specific endpoints. Use CLI flags for shell automation.
+
+```python
+from qym import Evaluator
+from qym.core.config import EvaluatorConfig
+
+config = EvaluatorConfig(
+    run_name="support-rag-smoke",
+    task_name="support-rag",
+    max_concurrency=5,
+    timeout=120,
+    max_retries=1,
+    run_metadata={"prompt_version": "2026-04-24-a"},
+)
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config=config,
+).run(show_tui=False)
+```
+
+The equivalent dictionary form is accepted:
+
+```python
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config={
+        "run_name": "support-rag-smoke",
+        "task_name": "support-rag",
+        "max_concurrency": 5,
+        "timeout": 120,
+        "max_retries": 1,
+        "run_metadata": {"prompt_version": "2026-04-24-a"},
+    },
+).run(show_tui=False)
+```
+
+## Complete `EvaluatorConfig` Reference
+
+| Field | Type | Default | How to set | Why use it |
+|-------|------|---------|------------|------------|
+| `run_name` | optional `str` | `None` | Python config, CLI `--config` | Human-readable run name in artifacts and platform. |
+| `task_name` | optional `str` | auto-derived | Python config, CLI `--task-name` | Stable task identity when files or function names change. |
+| `max_concurrency` | `int` | `10` | Python config, CLI `--config` | Controls concurrent dataset item execution. Lower for rate limits; raise after stability. |
+| `max_metric_concurrency` | `int` | `1` | Python config, CLI `--config` | Controls concurrent metric execution. Useful when metrics call external services. |
+| `timeout` | optional `float` | `300` | Python config, CLI `--config` | Wall-clock task timeout per item. Use `None` only when you trust the task not to hang. |
+| `metric_timeout` | optional `float` | `60.0` | Python config, CLI `--config` | Wall-clock timeout per metric call. Prevents judge/custom metrics from blocking a run. |
+| `max_retries` | `int` | `2` | Python config, CLI `--config` | Retries task failures. Use `0` for smoke tests and deterministic debugging. |
+| `run_metadata` | `dict` | `{}` | Python config, CLI `--config` | Non-secret tags such as job ID, prompt version, dataset version, owner, release. |
+| `git_branch` | optional `str` | auto-detected | Python config, CLI `--git-branch` | Override branch metadata when auto-detection is wrong. |
+| `git_commit` | optional `str` | auto-detected | Python config, CLI `--git-commit` | Override commit metadata in CI or detached HEAD states. |
+| `model` | optional `str` | `None` | `Evaluator(model=...)`, Python config, CLI `--model` | Single model label passed to task signatures and stored in metadata. |
+| `models` | optional `list[str]` | `None` | `Evaluator(model=[...])`, Python config, CLI `--model a,b` | Run the same task/dataset/metrics over multiple models. |
+| `model_full` | optional `str` | `None` | Python config, CLI `--config` | Provider-prefixed model ID for integrations that need more than display name. |
+| `force_model_override` | `bool` | `False` | Python config, CLI `--config` | Replace hardcoded OpenAI chat-completion model at the SDK boundary. Use only when you understand the adapter behavior. |
+| `langfuse_public_key` | optional `str` | env | Python config, env | Langfuse public key override. |
+| `langfuse_secret_key` | optional `str` | env | Python config, env | Langfuse secret key override. |
+| `langfuse_host` | optional `str` | env | Python config, env | Langfuse host override. |
+| `langfuse_project_id` | optional `str` | env where used | Python config, env | Project ID for Langfuse URL construction and trace linking. |
+| `ui_port` | `int` | `0` | Python config, CLI `--ui-port` | Local run UI port; `0` means choose automatically. |
+| `cli_invocation` | optional `str` | set by CLI | Python config, CLI auto-set | Records the command used to launch the run. |
+| `output_dir` | `str` | `qym_results` | Python config, CLI `--config` | Base directory for saved artifacts and checkpoints. |
+| `checkpoint_enabled` | `bool` | `True` | Python config, CLI `--config` | Enables incremental checkpoint writes for recovery. |
+| `checkpoint_format` | `str` | `csv` | Python config, CLI `--config` | Checkpoint serialization format. |
+| `checkpoint_flush_each_item` | `bool` | `True` | Python config, CLI `--config` | Flush after each item for better durability. |
+| `checkpoint_fsync` | `bool` | `False` | Python config, CLI `--config` | Force filesystem sync. Use for high-value long runs at a small performance cost. |
+| `resume_from` | optional `str` | `None` | Python config, CLI `--resume-from` | Resume from checkpoint or saved result file. |
+| `resume_rerun_errors` | `bool` | `False` | Python config, CLI `--config` | Rerun errored rows during resume instead of preserving failures. |
+| `interrupt_grace_seconds` | `float` | `2.0` | Python config, CLI `--config` | Grace window for interruption cleanup and final status emission. |
+| `otel_enabled` | `bool` | `True` | Python config, CLI `--config` | Enables OpenTelemetry auto-instrumentation when instrumentors are installed. No-op if unavailable. |
+| `phoenix_enabled` | `bool` | `False` | Python config, CLI `--config` | Dual-export traces to Phoenix. |
+| `phoenix_endpoint` | optional `str` | env | Python config, env | Phoenix collector endpoint, usually `http://localhost:6006/v1/traces`. |
+| `platform_url` | optional `str` | env | Python config, CLI `--platform-url`, env | qym platform base URL for streaming. |
+| `platform_api_key` | optional `str` | env | Python config, CLI `--platform-api-key`, env | Platform API key for ingestion. Prefer env for secrets. |
+| `live_mode` | `str` | `platform` | Python config, CLI hidden/deprecated `--live-mode` | Streaming policy. `platform` is default; `local` is legacy/deprecated; `auto` is set by CLI when credentials exist. |
+
+## Environment Variables
+
+### SDK and platform streaming
+
+| Env var | Used by | Required when | Notes |
+|---------|---------|---------------|-------|
+| `QYM_PLATFORM_URL` | SDK, CLI | Streaming or platform commands | Preferred SDK platform base URL. |
+| `QYM_BASE_URL` | SDK compatibility alias, platform server | Platform server or legacy SDK config | SDK prefers `QYM_PLATFORM_URL`; platform uses `QYM_BASE_URL`. |
+| `QYM_API_KEY` | SDK, CLI | Authenticated platform ingestion or platform commands | Use CI/secret storage. |
+| `QYM_PLATFORM_DEBUG` | SDK platform client | Debugging streaming | Set to `1` or a file path. |
+
+### Langfuse
+
+| Env var | Required when | Notes |
+|---------|---------------|-------|
+| `LANGFUSE_PUBLIC_KEY` | `dataset` is a Langfuse dataset name | Not required for `CsvDataset`. |
+| `LANGFUSE_SECRET_KEY` | `dataset` is a Langfuse dataset name | Keep out of artifacts and metadata. |
+| `LANGFUSE_HOST` | Custom or cloud Langfuse instance | Preferred host var. |
+| `LANGFUSE_BASE_URL` | Compatibility alias | SDK resolves `LANGFUSE_HOST` first. |
+| `LANGFUSE_PROJECT_ID` | Trace URL construction | Optional but useful for platform trace links. |
+
+### Judge metrics
+
+| Env var | Required when | Notes |
+|---------|---------------|-------|
+| `QYM_JUDGE_MODEL` | LLM judge metrics | No default; choose your provider model. |
+| `QYM_JUDGE_API_KEY` | LLM judge metrics | Falls back to `OPENAI_API_KEY`. |
+| `QYM_JUDGE_BASE_URL` | OpenAI-compatible or custom judge provider | Falls back to `OPENAI_BASE_URL`. |
+| `OPENAI_API_KEY` | Fallback for judge key | Used only if `QYM_JUDGE_API_KEY` is unset. |
+| `OPENAI_BASE_URL` | Fallback base URL | Useful for OpenAI-compatible providers. |
+
+### Tracing
+
+| Env var | Used by | Notes |
+|---------|---------|-------|
+| `PHOENIX_ENDPOINT` | Phoenix export | Preferred endpoint. |
+| `PHOENIX_COLLECTOR_ENDPOINT` | Phoenix export | Compatibility alias. |
+| `PHOENIX_ENABLED` | Phoenix export | Legacy compatibility; prefer explicit SDK config. |
+
+### Platform server environment
+
+Platform server variables are operator configuration, not SDK configuration. Use [Deploy & Operate](/deploy-operate/environment) and the [Environment Reference](/deploy-operate/reference) when you run the qym platform service.
+
+## Python Patterns
+
+### Local deterministic smoke test
+
+```python
+config = {
+    "run_name": "local-smoke",
+    "task_name": "support-rag",
+    "max_concurrency": 2,
+    "timeout": 60,
+    "max_retries": 0,
+    "checkpoint_enabled": True,
+    "run_metadata": {"suite": "smoke"},
+}
+```
+
+Use this when building the first task and metric contract.
+
+### Provider-backed production job
+
+```python
+config = {
+    "run_name": "nightly-support-rag",
+    "task_name": "support-rag",
+    "max_concurrency": 8,
+    "max_metric_concurrency": 2,
+    "timeout": 300,
+    "metric_timeout": 90,
+    "max_retries": 2,
+    "checkpoint_enabled": True,
+    "checkpoint_flush_each_item": True,
+    "output_dir": "qym_results/nightly",
+    "platform_url": os.environ["QYM_PLATFORM_URL"],
+    "platform_api_key": os.environ["QYM_API_KEY"],
+    "run_metadata": {
+        "source": "nightly",
+        "prompt_version": prompt_version,
+        "dataset_version": dataset_version,
+    },
+}
+```
+
+Use this when runs should survive interruptions, appear in the platform, and be reproducible.
+
+### Multi-model run
+
+```python
+results = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match", "fuzzy_match"],
+    model=["gpt-4o-mini", "gpt-4.1-mini"],
+    config={"run_name": "model-comparison"},
+).run(show_tui=False)
+```
+
+Use this when the task is the same and only model routing changes.
+
+### Multiple run specs
+
+```python
+from qym import Evaluator
+
+results = Evaluator.run_parallel(
+    [
+        {
+            "name": "baseline",
+            "task": baseline_task,
+            "dataset": dataset,
+            "metrics": ["exact_match"],
+            "config": {"run_name": "baseline"},
+        },
+        {
+            "name": "candidate",
+            "task": candidate_task,
+            "dataset": dataset,
+            "metrics": ["exact_match"],
+            "config": {"run_name": "candidate"},
+        },
+    ],
+    show_tui=False,
+    max_parallel_runs=2,
+)
+```
+
+Use this when task, dataset, metrics, or config vary between runs.
+
+## CLI Mapping
+
+The CLI is secondary but complete enough for automation. Flags map into SDK configuration:
+
+| CLI flag | SDK target |
+|----------|------------|
+| `--task-file`, `--task-function` | Loads `task` callable. |
+| `--dataset` | Langfuse dataset name. |
+| `--dataset-csv` | `CsvDataset(path)`. |
+| `--csv-input-col` | `CsvDataset(input_col=...)`. |
+| `--csv-expected-col` | `CsvDataset(expected_col=...)`; empty string disables expected output. |
+| `--csv-id-col` | `CsvDataset(id_col=...)`. |
+| `--csv-metadata-cols` | `CsvDataset(metadata_cols=[...])`. |
+| `--metrics` | Metric name list. |
+| `--model` | `Evaluator(model=...)`; comma-separated values become multi-model. |
+| `--task-name` | `config.task_name`. |
+| `--config` | JSON merged into `EvaluatorConfig`. |
+| `--platform-url` | `config.platform_url`. |
+| `--platform-api-key` | `config.platform_api_key`. |
+| `--resume-from` | `config.resume_from`. |
+| `--git-branch` | `config.git_branch`. |
+| `--git-commit` | `config.git_commit`. |
+| `--ui-port` | `config.ui_port`. |
+| `--no-ui`, `--no-progress`, `--quiet` | UI/progress output behavior, not evaluator semantics. |
+| `--runs-config` | Multi-run YAML/JSON loaded into run specs. |
+| `--output` | Writes CLI JSON output for single-model runs. |
+| global `--json` | Machine-readable CLI stdout. |
+
+Example:
+
+```bash
+qym run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset-csv datasets/smoke.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --metrics exact_match \
+  --task-name support-rag \
+  --model gpt-4o-mini,gpt-4.1-mini \
+  --config '{"run_name":"ci-smoke","max_concurrency":4,"timeout":120,"max_retries":1}' \
+  --json
+```
+
+## Common Mistakes
+
+| Mistake | Impact | Fix |
+|---------|--------|-----|
+| Using CLI first and never learning the Python task contract | Harder debugging when metrics fail. | Start with `Evaluator(...)`, then wrap with CLI. |
+| Setting high concurrency before provider limits are known | Rate limits, timeouts, noisy retries. | Start at 2-5 and scale by evidence. |
+| Hiding secrets in `run_metadata` | Secrets can appear in artifacts or platform UI. | Store only non-sensitive labels. |
+| Using Langfuse dataset names without Langfuse credentials | Run fails before item execution. | Set Langfuse env vars or use `CsvDataset`. |
+| Disabling checkpoints on long runs | Recovery requires rerunning everything. | Keep checkpointing enabled. |
+| Treating `progress_callback` as platform streaming | Wrapper UI and qym platform drift. | Use both when both local UI and platform visibility are needed. |
+| Passing empty boolean env vars in Docker | Pydantic validation errors. | Use `true` or `false`, not `""`. |
+
+## Related Docs
+
+- [Python API](/sdk/python-api)
+- [Dataset Authoring](/sdk/dataset-authoring)
+- [Metrics And Datasets](/sdk/metrics-datasets)
+- [Platform Streaming](/sdk/platform-streaming)
+- [Trace Integration](/sdk/trace-integration)
+- [CLI](/cli)

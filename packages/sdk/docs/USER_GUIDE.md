@@ -860,6 +860,84 @@ When you run, you'll see:
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Progress Hooks For Wrappers
+
+If you are building a wrapper, notebook integration, web UI, job runner, or orchestration layer on top of qym, pass `progress_callback` to `Evaluator`. The callback receives a structured `ProgressSnapshot`.
+
+For multi-run work, qym first emits a `run_matrix` snapshot so your UI can render the full expected shape before individual runs start. Matrix entries include each run's `run_id`, display name, task, dataset, model, metrics, `total_items` when known, initial `status`, `platform_run_id=None`, and `qym_url=None`. When a run is created on the qym platform, that run's later `run_start` snapshot includes `run_info["qym_url"]` and `run_info["platform_run_id"]`.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot):
+    if snapshot.event == "run_matrix":
+        for run in snapshot.run_matrix or []:
+            create_pending_row(
+                run_id=run["run_id"],
+                model=run.get("model"),
+                total_items=run.get("total_items"),
+                qym_url=run.get("qym_url"),  # None until that run starts
+            )
+        return
+
+    if snapshot.event == "run_start":
+        update_run_link(
+            run_id=snapshot.run_id,
+            qym_url=(snapshot.run_info or {}).get("qym_url"),
+        )
+
+    print(
+        f"{snapshot.run_id}: {snapshot.finished}/{snapshot.total_items} "
+        f"done, {snapshot.in_progress} running, {snapshot.failed} failed"
+    )
+
+
+evaluator = Evaluator(
+    task=simple_task,
+    dataset="my-qa-dataset",
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+)
+
+results = evaluator.run(show_tui=False)
+```
+
+`ProgressSnapshot` includes:
+
+| Field | Description |
+|-------|-------------|
+| `event` | Event name such as `run_start`, `item_start`, `metric_result`, `item_complete`, `item_error`, `warning`, or `run_complete` |
+| `run_matrix`, `total_runs` | Present on `run_matrix` events for multi-run evaluations; each matrix row describes a pending run and includes `total_items` when the dataset is already resolved |
+| `run_info` | Run metadata on `run_start`; includes `qym_url`, `html_url`, and `platform_run_id` when platform streaming is enabled |
+| `total_items` | Number of dataset items in the run |
+| `completed`, `failed`, `in_progress`, `pending` | Current item counts |
+| `finished` | Convenience property: `completed + failed` |
+| `percent_complete` | Convenience property from 0.0 to 100.0 |
+| `item_index`, `metric_name`, `score`, `error`, `message`, `payload`, `metadata` | Event-specific details when available |
+
+Metric result snapshots include live score values as metrics finish. Their `metadata` includes `duration_ms`, `duration_seconds`, `started_at_ms`, `completed_at_ms`, and `status` when qym measured the metric call. Item completion snapshots include `result["task_time"]`, `result["task_time_ms"]`, `result["total_time"]`, `result["total_time_ms"]`, `result["latency_ms"]`, item/task start and completion timestamps, and the final `scores` map.
+
+You can also pass `observer=ProgressCallbackObserver(on_progress)` if you want to compose it with other observers yourself.
+For `Evaluator.run_parallel(...)`, use `observer=ProgressCallbackObserver(on_progress)` because `progress_callback` is an `Evaluator(...)` constructor shortcut.
+
+For advanced integrations, subclass `EvaluationObserver` and implement only the hooks you need:
+
+```python
+from qym import EvaluationObserver
+
+
+class MyObserver(EvaluationObserver):
+    def on_run_matrix(self, matrix_id, runs, total_runs):
+        create_pending_runs(matrix_id=matrix_id, runs=runs, total_runs=total_runs)
+
+    def on_run_start(self, run_id, run_info, total_items, metrics):
+        update_qym_link(run_id, run_info.get("qym_url"))
+
+    def on_metric_result(self, run_id, item_index, metric_name, score, metadata=None):
+        send_metric(run_id, item_index, metric_name, score)
+```
+
 ---
 
 ## 7. Multi-Model Comparison
@@ -911,7 +989,9 @@ results = Evaluator.run_parallel(
     auto_save=True,  # Save results to CSV
 )
 
-# Total runs: 2 + 1 = 3 parallel evaluations
+# Total runs: 2 + 1 = 3 parallel evaluations.
+# Pass observer=ProgressCallbackObserver(on_progress) to receive one run_matrix
+# event for these 3 runs before per-run run_start/item/metric events begin.
 ```
 
 ### Model Parameter in Your Task
@@ -1359,6 +1439,7 @@ results = Evaluator.run_parallel(
     auto_save=True,         # Save each run's results
     save_format="csv",      # "csv", "json", or "xlsx"
     max_parallel_runs=None, # Control how many runs execute at once (see below)
+    observer=None,          # Optional observer for run_matrix and per-run events
 )
 ```
 

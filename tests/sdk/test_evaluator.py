@@ -2,9 +2,15 @@ import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 import asyncio
 from qym.core.dashboard import RunDashboard
-from qym.core.evaluator import Evaluator, ItemSpans, TaskAttemptResult, _graceful_interrupt_signals
+from qym.core.evaluator import (
+    Evaluator,
+    ItemSpans,
+    TaskAttemptResult,
+    _graceful_interrupt_signals,
+)
 from qym.core.dataset import CsvDataset
 import signal
+
 
 class TestEvaluator:
     def test_graceful_interrupt_signals_translate_sigterm_to_keyboard_interrupt(self):
@@ -24,9 +30,9 @@ class TestEvaluator:
                 dataset=mock_dataset,  # Injected dataset
                 metrics=["exact_match"],
                 config={"run_name": "test-run"},
-                langfuse_client=mock_langfuse  # Injected client
+                langfuse_client=mock_langfuse,  # Injected client
             )
-            
+
             assert evaluator.dataset == mock_dataset
             assert evaluator.client == mock_langfuse
             # Evaluator appends a timestamp suffix for uniqueness
@@ -42,32 +48,34 @@ class TestEvaluator:
                 dataset=mock_dataset,
                 metrics=[],
                 config={"run_name": "test-run"},
-                langfuse_client=mock_langfuse
+                langfuse_client=mock_langfuse,
             )
-            
+
             # Mock internal components
             evaluator.task_adapter = MagicMock()
             evaluator.task_adapter.arun = AsyncMock(return_value="test_output")
             evaluator._notify_observer = MagicMock()
             evaluator._compute_metric = AsyncMock(return_value=1.0)
             evaluator.model_name = "test-model"
-            
+
             # Mock item
             item = MagicMock()
             item.input = "test_input"
             item.run.return_value.__enter__.return_value = MagicMock()
-            
+
             tracker = MagicMock()
-            
+
             result = await evaluator._evaluate_item(0, item, tracker)
-            
+
             assert result["success"] is True
             assert result["output"] == "test_output"
             tracker.start_item.assert_called_once_with(0)
             tracker.complete_item.assert_called_once_with(0)
 
     @pytest.mark.asyncio
-    async def test_csv_dataset_without_langfuse_credentials_does_not_require_client(self, tmp_path, mock_task, monkeypatch):
+    async def test_csv_dataset_without_langfuse_credentials_does_not_require_client(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -99,7 +107,9 @@ class TestEvaluator:
         assert res["output"] == "ok"
 
     @pytest.mark.asyncio
-    async def test_run_single_task_attempt_emits_item_attempt_started(self, mock_task, mock_langfuse, mock_dataset):
+    async def test_run_single_task_attempt_emits_item_attempt_started(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
@@ -113,7 +123,9 @@ class TestEvaluator:
         evaluator.task_adapter.arun = AsyncMock(return_value="ok")
         evaluator.model_name_full = "test-model"
         evaluator._platform_stream = MagicMock()
-        evaluator._create_item_spans = MagicMock(return_value=ItemSpans(trace_id="trace-1", trace_url="url-1"))
+        evaluator._create_item_spans = MagicMock(
+            return_value=ItemSpans(trace_id="trace-1", trace_url="url-1")
+        )
 
         item = MagicMock()
         item.input = "test_input"
@@ -124,7 +136,11 @@ class TestEvaluator:
         assert result.success is True
         assert result.spans.trace_id == "trace-1"
         emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
-        started = [payload for event_type, payload in emitted if event_type == "item_attempt_started"]
+        started = [
+            payload
+            for event_type, payload in emitted
+            if event_type == "item_attempt_started"
+        ]
         assert len(started) == 1
         assert started[0]["item_id"] == "item-1"
         assert started[0]["attempt_number"] == 1
@@ -133,7 +149,9 @@ class TestEvaluator:
         assert started[0]["task_started_at_ms"] is not None
 
     @pytest.mark.asyncio
-    async def test_run_single_task_attempt_does_not_mislabel_inner_timeout_as_qym_timeout(self, mock_task, mock_langfuse, mock_dataset):
+    async def test_run_single_task_attempt_does_not_mislabel_inner_timeout_as_qym_timeout(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
@@ -144,9 +162,13 @@ class TestEvaluator:
             )
 
         evaluator.task_adapter = MagicMock()
-        evaluator.task_adapter.arun = AsyncMock(side_effect=asyncio.TimeoutError("client timeout after 240s"))
+        evaluator.task_adapter.arun = AsyncMock(
+            side_effect=asyncio.TimeoutError("client timeout after 240s")
+        )
         evaluator.model_name_full = "test-model"
-        evaluator._create_item_spans = MagicMock(return_value=ItemSpans(trace_id="trace-1", trace_url="url-1"))
+        evaluator._create_item_spans = MagicMock(
+            return_value=ItemSpans(trace_id="trace-1", trace_url="url-1")
+        )
 
         item = MagicMock()
         item.input = "test_input"
@@ -160,7 +182,9 @@ class TestEvaluator:
         assert "Task timed out after 1800s" not in result.error
 
     @pytest.mark.asyncio
-    async def test_evaluate_item_uses_last_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
+    async def test_evaluate_item_uses_last_attempt_trace_and_time(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
@@ -188,7 +212,9 @@ class TestEvaluator:
             latency_s=0.25,
             output="final-output",
         )
-        evaluator._execute_task = AsyncMock(return_value=(attempt_two, [attempt_one, attempt_two], 1))
+        evaluator._execute_task = AsyncMock(
+            return_value=(attempt_two, [attempt_one, attempt_two], 1)
+        )
 
         item = MagicMock()
         item.input = "test_input"
@@ -204,15 +230,23 @@ class TestEvaluator:
         assert result["retry_count"] == 1
 
         emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
-        completed = [payload for event_type, payload in emitted if event_type == "item_completed"]
-        attempt_events = [payload for event_type, payload in emitted if event_type == "item_attempt_finished"]
+        completed = [
+            payload for event_type, payload in emitted if event_type == "item_completed"
+        ]
+        attempt_events = [
+            payload
+            for event_type, payload in emitted
+            if event_type == "item_attempt_finished"
+        ]
         assert completed[0]["trace_id"] == "trace-2"
         assert completed[0]["latency_ms"] == pytest.approx(250.0)
         assert attempt_events[0]["attempt_number"] == 2
         assert attempt_events[0]["is_last_attempt"] is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_item_failure_uses_last_failed_attempt_trace_and_time(self, mock_task, mock_langfuse, mock_dataset):
+    async def test_evaluate_item_failure_uses_last_failed_attempt_trace_and_time(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
@@ -239,7 +273,9 @@ class TestEvaluator:
             latency_s=0.25,
             error="boom-2",
         )
-        evaluator._execute_task = AsyncMock(return_value=(None, [attempt_one, attempt_two], 1))
+        evaluator._execute_task = AsyncMock(
+            return_value=(None, [attempt_one, attempt_two], 1)
+        )
 
         item = MagicMock()
         item.input = "test_input"
@@ -254,16 +290,23 @@ class TestEvaluator:
         assert result["task_started_at_ms"] == 2222
 
         emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
-        failed = [payload for event_type, payload in emitted if event_type == "item_failed"]
-        attempt_events = [payload for event_type, payload in emitted if event_type == "item_attempt_finished"]
+        failed = [
+            payload for event_type, payload in emitted if event_type == "item_failed"
+        ]
+        attempt_events = [
+            payload
+            for event_type, payload in emitted
+            if event_type == "item_attempt_finished"
+        ]
         assert failed[0]["trace_id"] == "trace-2"
         assert failed[0]["latency_ms"] == pytest.approx(250.0)
         assert failed[0]["retry_count"] == 1
         assert attempt_events[0]["trace_id"] == "trace-2"
         assert attempt_events[0]["is_last_attempt"] is True
 
-
-    def test_sync_threadpool_advisory_emitted_for_high_effective_concurrency(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_emitted_for_high_effective_concurrency(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -280,7 +323,11 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         evaluator._notify_observer = MagicMock()
@@ -295,7 +342,9 @@ class TestEvaluator:
         assert "20" in message
         assert "AsyncOpenAI" in message
 
-    def test_sync_threadpool_advisory_not_emitted_below_threshold(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_not_emitted_below_threshold(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -312,7 +361,11 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory-low", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory-low",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         evaluator._notify_observer = MagicMock()
@@ -320,7 +373,9 @@ class TestEvaluator:
 
         evaluator._notify_observer.assert_not_called()
 
-    def test_sync_threadpool_advisory_not_emitted_for_async_mode(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_not_emitted_for_async_mode(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -337,7 +392,11 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "async-mode", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "async-mode",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         evaluator._notify_observer = MagicMock()
@@ -345,7 +404,9 @@ class TestEvaluator:
 
         evaluator._notify_observer.assert_not_called()
 
-    def test_sync_threadpool_advisory_emitted_once_per_unique_task(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_emitted_once_per_unique_task(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -362,13 +423,21 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory-one", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory-one",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
             evaluator_two = Evaluator(
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory-two", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory-two",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         advisory_registry = set()
@@ -384,7 +453,9 @@ class TestEvaluator:
         evaluator_two._notify_observer.assert_not_called()
         assert advisory_registry == {"mock_task"}
 
-    def test_sync_threadpool_advisory_emitted_per_distinct_task(self, tmp_path, monkeypatch):
+    def test_sync_threadpool_advisory_emitted_per_distinct_task(
+        self, tmp_path, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -407,13 +478,21 @@ class TestEvaluator:
                 task=task_one,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-task-one", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-task-one",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
             evaluator_two = Evaluator(
                 task=task_two,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-task-two", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-task-two",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         advisory_registry = set()
@@ -429,7 +508,9 @@ class TestEvaluator:
         evaluator_two._notify_observer.assert_called_once()
         assert advisory_registry == {"task_one", "task_two"}
 
-    def test_sync_threadpool_advisory_stays_in_tui_when_dashboard_observer_attached(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_stays_in_tui_when_dashboard_observer_attached(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -446,7 +527,11 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory-tui", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory-tui",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         dashboard = RunDashboard([{"run_id": evaluator.run_name}], enabled=True)
@@ -459,7 +544,9 @@ class TestEvaluator:
         assert len(dashboard._warnings) == 1
         assert "sync-threadpool" in dashboard._warnings[0]
 
-    def test_sync_threadpool_advisory_logs_when_no_tui_dashboard_is_attached(self, tmp_path, mock_task, monkeypatch):
+    def test_sync_threadpool_advisory_logs_when_no_tui_dashboard_is_attached(
+        self, tmp_path, mock_task, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -476,7 +563,11 @@ class TestEvaluator:
                 task=mock_task,
                 dataset=ds,
                 metrics=[],
-                config={"run_name": "sync-advisory-log", "max_concurrency": 5, "otel_enabled": False},
+                config={
+                    "run_name": "sync-advisory-log",
+                    "max_concurrency": 5,
+                    "otel_enabled": False,
+                },
             )
 
         evaluator._notify_observer = MagicMock()
@@ -488,7 +579,9 @@ class TestEvaluator:
         evaluator._notify_observer.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_cancellation_emits_stopped_to_platform(self, tmp_path, monkeypatch):
+    async def test_async_cancellation_emits_stopped_to_platform(
+        self, tmp_path, monkeypatch
+    ):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,world\n", encoding="utf-8")
         ds = CsvDataset(p, input_col="q", expected_col="a")
@@ -529,7 +622,9 @@ class TestEvaluator:
             return "ok"
 
         monkeypatch.setattr("qym.core.evaluator.PlatformClient", FakePlatformClient)
-        monkeypatch.setattr("qym.core.evaluator.PlatformEventStream", FakePlatformEventStream)
+        monkeypatch.setattr(
+            "qym.core.evaluator.PlatformEventStream", FakePlatformEventStream
+        )
 
         evaluator = Evaluator(
             task=slow_task,
@@ -553,6 +648,125 @@ class TestEvaluator:
 
         assert FakePlatformEventStream.instances
         events = FakePlatformEventStream.instances[-1].events
-        completed = [payload for event_type, payload, _sync in events if event_type == "run_completed"]
+        completed = [
+            payload
+            for event_type, payload, _sync in events
+            if event_type == "run_completed"
+        ]
         assert completed
         assert completed[-1]["final_status"] == "STOPPED"
+
+    @pytest.mark.asyncio
+    async def test_observer_run_start_includes_qym_url(self, tmp_path, monkeypatch):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,hello\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        class FakeHandle:
+            run_id = "platform-run-1"
+            live_url = "http://example/live/platform-run-1"
+
+        class FakePlatformClient:
+            def __init__(self, platform_url=None, api_key=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+
+            def create_run(self, **kwargs):
+                return FakeHandle()
+
+        class FakePlatformEventStream:
+            def __init__(self, platform_url=None, api_key=None, run_id=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+                self.run_id = run_id
+
+            def emit(self, event_type, payload, sync=False):
+                return None
+
+            def close(self):
+                return None
+
+        snapshots = []
+        monkeypatch.setattr("qym.core.evaluator.PlatformClient", FakePlatformClient)
+        monkeypatch.setattr(
+            "qym.core.evaluator.PlatformEventStream", FakePlatformEventStream
+        )
+
+        evaluator = Evaluator(
+            task=lambda input_data: input_data,
+            dataset=ds,
+            metrics=[],
+            config={
+                "run_name": "url-start",
+                "otel_enabled": False,
+                "platform_api_key": "test-key",
+                "platform_url": "http://example",
+            },
+            progress_callback=snapshots.append,
+        )
+
+        await evaluator.arun(show_tui=False, auto_save=False)
+
+        run_start = next(
+            snapshot for snapshot in snapshots if snapshot.event == "run_start"
+        )
+        assert run_start.run_info["qym_url"] == "http://example/live/platform-run-1"
+        assert run_start.run_info["html_url"] == "http://example/live/platform-run-1"
+        assert run_start.run_info["platform_run_id"] == "platform-run-1"
+
+    @pytest.mark.asyncio
+    async def test_observer_metric_and_item_events_include_timings(
+        self, tmp_path, monkeypatch
+    ):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,hello\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        def exact(output, expected):
+            return 1.0 if output == expected else 0.0
+
+        snapshots = []
+        evaluator = Evaluator(
+            task=lambda input_data: input_data,
+            dataset=ds,
+            metrics=[exact],
+            config={"run_name": "observer-timings", "otel_enabled": False},
+            progress_callback=snapshots.append,
+        )
+
+        await evaluator.arun(show_tui=False, auto_save=False)
+
+        metric_result = next(
+            snapshot for snapshot in snapshots if snapshot.event == "metric_result"
+        )
+        item_complete = next(
+            snapshot for snapshot in snapshots if snapshot.event == "item_complete"
+        )
+
+        assert metric_result.metadata["duration_ms"] >= 0.0
+        assert metric_result.metadata["duration_seconds"] >= 0.0
+        assert (
+            metric_result.metadata["started_at_ms"]
+            <= metric_result.metadata["completed_at_ms"]
+        )
+        assert metric_result.metadata["status"] == "completed"
+
+        assert item_complete.result["task_time_ms"] >= 0.0
+        assert (
+            item_complete.result["latency_ms"] == item_complete.result["task_time_ms"]
+        )
+        assert (
+            item_complete.result["total_time_ms"]
+            >= item_complete.result["task_time_ms"]
+        )
+        assert (
+            item_complete.result["item_started_at_ms"]
+            <= item_complete.result["item_completed_at_ms"]
+        )
+        assert item_complete.result["scores"]

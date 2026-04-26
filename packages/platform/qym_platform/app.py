@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -77,12 +77,17 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
 
     if docs_available():
         @app.get("/docs", response_model=None)
+        async def docs_index_no_slash(request: Request):
+            return RedirectResponse(str(request.url.replace(path=request.url.path + "/")), status_code=307)
+
         @app.get("/docs/", response_model=None)
         async def docs_index(request: Request):
             return docs_file_response(request, "")
 
         @app.get("/docs/{path:path}", response_model=None)
         async def docs_catchall(path: str, request: Request):
+            if not request.url.path.endswith("/") and "." not in Path(path).name:
+                return RedirectResponse(str(request.url.replace(path=request.url.path + "/")), status_code=307)
             return docs_file_response(request, path)
 
     app.include_router(auth_router)

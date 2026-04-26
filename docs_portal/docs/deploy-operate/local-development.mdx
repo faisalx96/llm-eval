@@ -1,18 +1,7 @@
 # Local Development
 
-Use the repo-root development workflow when you need to iterate on SDK, platform, and docs together.
+Repo-local development has moved to [Contribute To qym](/contributors/local-development).
 
-```bash
-pip install -e packages/sdk[dev] -e packages/platform
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
-```
+Use this page only as a compatibility landing page for older links. Production operators should use [Docker Deployment](/deploy-operate/docker-deployment), [Production](/deploy-operate/production), and [Environment](/deploy-operate/environment).
 
-## Use local development for
-
-- UI and API changes
-- schema and migration validation
-- docs generation and local preview
-
-## Do not confuse this with production
-
-Development convenience settings are not a production hardening model.
+SDK developers who are not modifying qym should install the public package from PyPI with `pip install qym`.

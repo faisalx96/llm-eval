@@ -1,0 +1,23 @@
+import CardGrid from '@site/src/components/CardGrid';
+import DocCard from '@site/src/components/DocCard';
+
+# Contribute To qym
+
+This section is for people changing qym itself. It is not the install path for SDK consumers.
+
+Use [Developers](/getting-started) if you are building with the public SDK from PyPI. Use this section only when you are working inside the qym monorepo, changing the SDK, platform, docs, tests, migrations, generated references, or fallback docs.
+
+<CardGrid>
+  <DocCard title="Local Development" href="/contributors/local-development" eyebrow="Monorepo">
+    Editable installs, Docker Compose dev, tests, migrations, and repo-local validation.
+  </DocCard>
+  <DocCard title="Docs Development" href="/contributors/docs-development" eyebrow="Docs">
+    Docusaurus build, deployed docs, generated references, and fallback docs internals.
+  </DocCard>
+</CardGrid>
+
+## Audience boundary
+
+Contributor docs may include repo paths, editable installs, Docker development files, migrations, tests, and docs build commands.
+
+Do not copy contributor commands into App User or Developer docs. App users use the deployed web app. Developers install `qym` from PyPI.

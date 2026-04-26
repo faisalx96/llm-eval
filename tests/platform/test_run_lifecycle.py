@@ -25,7 +25,7 @@ if "openai" not in sys.modules:
 from qym_platform.app import create_app
 from qym_platform.datetime_utils import utc_now_naive
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunItem, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
 
@@ -242,6 +242,27 @@ def test_runs_list_includes_total_retries(client, session_factory) -> None:
     summaries = payload["tasks"]["task-1"]["nomodel"]
     summary = next(item for item in summaries if item["run_id"] == run_id)
     assert summary["total_retries"] == 5
+
+
+def test_runs_list_metric_average_excludes_in_flight_unscored_items(client, session_factory) -> None:
+    run_id = "00000000-0000-0000-0000-000000000106"
+    with session_factory() as session:
+        run = _seed_run(session, run_id=run_id)
+        run.metrics = ["judge"]
+        session.add_all([
+            RunItem(run_id=run_id, item_id="item-1", index=0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-2", index=1, input={"q": "still running"}),
+            RunItem(run_id=run_id, item_id="item-3", index=2, error="boom"),
+            RunItemScore(run_id=run_id, item_id="item-1", metric_name="judge", score_numeric=1.0, score_raw=1.0),
+        ])
+        session.commit()
+
+    response = client.get("/api/runs", headers=_ui_headers("admin@example.com"))
+    assert response.status_code == 200
+    payload = response.json()
+    summaries = payload["tasks"]["task-1"]["nomodel"]
+    summary = next(item for item in summaries if item["run_id"] == run_id)
+    assert summary["metric_averages"]["judge"] == pytest.approx(0.5)
 
 
 def test_heartbeat_reopens_run_stopped_by_lease_timeout(client, session_factory) -> None:

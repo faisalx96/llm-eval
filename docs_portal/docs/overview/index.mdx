@@ -3,22 +3,48 @@ import DocCard from '@site/src/components/DocCard';
 
 # Overview
 
-The qym portal is organized around one core loop: execute an evaluation, inspect its results, and operationalize what you learn through review, analysis, and deployment.
+qym has three audience paths:
+
+| Audience | What they do | Start here |
+|----------|--------------|------------|
+| App Users | Use the deployed qym web app to review, compare, and approve runs. | [App Users](/app-users) |
+| Developers | Build evaluations and integrations with the PyPI SDK, API, CLI, observers, wrappers, datasets, metrics, and platform streaming. | [Developers](/getting-started) |
+| Operators & Contributors | Deploy the platform or modify qym itself. | [Operators & Contributors](/deploy-operate) |
+
+The shared product loop is:
+
+```text
+developer creates evaluation -> platform stores evidence -> app user reviews result -> operator keeps runtime healthy
+```
 
 <CardGrid>
-  <DocCard title="Getting Started" href="/getting-started" eyebrow="First Success">
-    Installation, environment setup, first evaluation, and first platform review.
+  <DocCard title="App User Guide" href="/app-users" eyebrow="Use">
+    Deployed app workflows without development commands.
   </DocCard>
-  <DocCard title="Concepts" href="/concepts" eyebrow="Mental Model">
-    Learn what qym means by runs, datasets, metrics, streaming, and review workflows.
+  <DocCard title="Developer Guide" href="/getting-started" eyebrow="Build">
+    SDK-first implementation docs with CLI as secondary automation.
   </DocCard>
-  <DocCard title="Workflow Guides" href="/overview/workflows" eyebrow="Recommended Paths">
-    Follow generated guides when you want an opinionated sequence instead of raw reference.
+  <DocCard title="Operator Guide" href="/deploy-operate" eyebrow="Run">
+    Production runtime, auth, secrets, upgrades, and air-gapped deployment.
+  </DocCard>
+  <DocCard title="Contributor Guide" href="/contributors" eyebrow="Change">
+    Repository setup, docs development, tests, migrations, and packaging internals.
   </DocCard>
 </CardGrid>
 
-## Developer and operator concerns
+## Boundaries
 
-- Developers usually start with SDK, CLI, examples, and API workflows.
-- Operators usually start with deployment, auth, environment matrices, and air-gapped packaging.
-- Both paths converge on the same platform concepts and runtime behavior.
+- App User docs must stay UI-only.
+- Developer docs assume external package consumption and begin from `pip install qym`.
+- Contributor docs are the only place for repo-local editable installs, monorepo paths, docs builds, tests, migrations, and packaging internals.
+
+## For implementation work
+
+If you are building with qym, the main path is:
+
+1. [Install qym](/getting-started/install)
+2. [Run your first evaluation](/getting-started/first-evaluation)
+3. [Read the Python API](/sdk/python-api)
+4. [Configure the SDK](/sdk/configuration)
+5. [Add progress, observers, and wrappers](/sdk/progress-observers-wrappers)
+6. [Stream to the platform](/sdk/platform-streaming)

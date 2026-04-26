@@ -2,10 +2,11 @@
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'qym Developer Portal',
-  tagline: 'Self-hosted docs for the qym SDK, CLI, and platform.',
+  title: 'qym Docs',
+  tagline: 'Docs for qym app users, SDK developers, platform operators, and contributors.',
   url: 'https://docs.qym.local',
   baseUrl: '/docs/',
+  favicon: 'img/qym_icon.png',
   organizationName: 'qym',
   projectName: 'qym-docs',
   onBrokenLinks: 'throw',

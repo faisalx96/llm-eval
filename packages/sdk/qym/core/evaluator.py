@@ -39,6 +39,8 @@ from .observers import (
     EvaluationObserver,
     NullEvaluationObserver,
     CompositeEvaluationObserver,
+    ProgressCallbackObserver,
+    ProgressSnapshot,
 )
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
@@ -49,9 +51,9 @@ from ..utils.env import load_cwd_dotenv
 def _strip_model_provider(model_name: Optional[str]) -> str:
     """Remove provider prefix from model name (e.g., 'qwen/qwen3-235b' -> 'qwen3-235b')."""
     if not model_name:
-        return ''
-    slash_idx = model_name.find('/')
-    return model_name[slash_idx + 1:] if slash_idx > 0 else model_name
+        return ""
+    slash_idx = model_name.find("/")
+    return model_name[slash_idx + 1 :] if slash_idx > 0 else model_name
 
 
 def _compute_run_config_id(config: Dict[str, Any]) -> str:
@@ -61,13 +63,15 @@ def _compute_run_config_id(config: Dict[str, Any]) -> str:
     """
     import hashlib
     import json
-    ephemeral = {'run_name', 'resume_from', 'cli_invocation', 'run_metadata'}
+
+    ephemeral = {"run_name", "resume_from", "cli_invocation", "run_metadata"}
     stable = {k: v for k, v in sorted(config.items()) if k not in ephemeral}
     raw = json.dumps(stable, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
+
 # UIServer has been removed - platform streaming is now required
 # from ..server.app import UIServer  # DEPRECATED
 import json
@@ -125,15 +129,16 @@ def _graceful_interrupt_signals():
             except Exception:
                 pass
 
+
 try:
     from ..platform.client import PlatformClient, PlatformEventStream  # type: ignore
 except Exception:  # pragma: no cover
     PlatformClient = None  # type: ignore
     PlatformEventStream = None  # type: ignore
- 
 
 
 console = Console()
+
 
 @dataclass
 class ItemSpans:
@@ -143,6 +148,7 @@ class ItemSpans:
     task function, and metrics evaluation. Provides helpers to create
     and end spans with proper OpenInference attributes.
     """
+
     eval_span: Any = None
     eval_token: Any = None
     task_span: Any = None
@@ -162,13 +168,17 @@ class ItemSpans:
         span.set_attribute("openinference.span.kind", kind)
         if input_value is not None:
             try:
-                span.set_attribute("input.value", _json.dumps(input_value, default=str)[:16000])
+                span.set_attribute(
+                    "input.value", _json.dumps(input_value, default=str)[:16000]
+                )
                 span.set_attribute("input.mime_type", "application/json")
             except Exception:
                 span.set_attribute("input.value", str(input_value)[:16000])
         if metadata:
             try:
-                span.set_attribute("metadata", _json.dumps(metadata, default=str)[:8000])
+                span.set_attribute(
+                    "metadata", _json.dumps(metadata, default=str)[:8000]
+                )
             except Exception:
                 pass
         token = _ctx.attach(_trace.set_span_in_context(span))
@@ -182,13 +192,19 @@ class ItemSpans:
         if error is not None:
             try:
                 from opentelemetry.trace import StatusCode
+
                 span.set_status(StatusCode.ERROR, str(error))
-                span.set_attribute("output.value", _json.dumps({"error": str(error)}, default=str)[:16000])
+                span.set_attribute(
+                    "output.value",
+                    _json.dumps({"error": str(error)}, default=str)[:16000],
+                )
             except Exception:
                 pass
         elif output_value is not None:
             try:
-                span.set_attribute("output.value", _json.dumps(output_value, default=str)[:16000])
+                span.set_attribute(
+                    "output.value", _json.dumps(output_value, default=str)[:16000]
+                )
                 span.set_attribute("output.mime_type", "application/json")
             except Exception:
                 span.set_attribute("output.value", str(output_value)[:16000])
@@ -204,7 +220,9 @@ class ItemSpans:
     def end_task(self, output=None, error=None):
         """End the task span."""
         if self.task_span:
-            self._end_span(self.task_span, self.task_token, output_value=output, error=error)
+            self._end_span(
+                self.task_span, self.task_token, output_value=output, error=error
+            )
             self.task_span = None
             self.task_token = None
 
@@ -231,7 +249,9 @@ class ItemSpans:
     def end_eval(self, output=None, error=None):
         """End the root eval span."""
         if self.eval_span:
-            self._end_span(self.eval_span, self.eval_token, output_value=output, error=error)
+            self._end_span(
+                self.eval_span, self.eval_token, output_value=output, error=error
+            )
             self.eval_span = None
             self.eval_token = None
 
@@ -274,7 +294,12 @@ class NullTrace:
     Provides the interface adapters expect (.update, .trace_id).
     """
 
-    def __init__(self, name: str = "", input: Any = None, metadata: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        name: str = "",
+        input: Any = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         self.name = name
         self.input = input
         self.metadata = metadata or {}
@@ -287,7 +312,12 @@ class NullTrace:
         if "output" in kwargs:
             self.output = kwargs.get("output")
 
-    def start_span(self, name: str = "", input: Any = None, metadata: Optional[Dict[str, Any]] = None) -> "NullTrace":
+    def start_span(
+        self,
+        name: str = "",
+        input: Any = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "NullTrace":
         return NullTrace(name=name, input=input, metadata=metadata)
 
     def score(self, **kwargs: Any) -> None:
@@ -300,7 +330,9 @@ class NullTrace:
 from .config import EvaluatorConfig
 
 
-def _detect_git_info(config: Optional[EvaluatorConfig] = None) -> Dict[str, Optional[str]]:
+def _detect_git_info(
+    config: Optional[EvaluatorConfig] = None,
+) -> Dict[str, Optional[str]]:
     """Auto-detect git branch and commit hash. Config overrides take precedence."""
     branch = getattr(config, "git_branch", None) if config else None
     commit = getattr(config, "git_commit", None) if config else None
@@ -346,9 +378,20 @@ class Evaluator:
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
         langfuse_client: Optional[Any] = None,
+        progress_callback: Optional[Callable[[ProgressSnapshot], None]] = None,
     ):
         """
         Initialize the evaluator.
+
+        Args:
+            task: Callable or framework object to evaluate.
+            dataset: Langfuse dataset name or dataset object.
+            metrics: Metric names or callables.
+            config: Optional evaluator configuration.
+            observer: Optional lifecycle observer for advanced integrations.
+            model: Optional model override or list of models.
+            langfuse_client: Optional injected Langfuse client.
+            progress_callback: Optional callback receiving ProgressSnapshot updates.
         """
 
         # Parse config
@@ -357,7 +400,7 @@ class Evaluator:
         else:
             self.config = EvaluatorConfig(**(config or {}))
         self._task_name = self.config.task_name or _derive_task_name(task)
-            
+
         # Override model if provided explicitly
         if model is not None:
             if isinstance(model, str):
@@ -373,10 +416,11 @@ class Evaluator:
 
         # Load only the caller's cwd .env before any config/env auto-detection.
         load_cwd_dotenv()
-        
+
         # Initialize OpenLLMetry auto-instrumentation FIRST so TracerProvider exists
         # before Langfuse (which will attach its processor to the same provider).
         from .otel import create_otel_manager
+
         self._otel = create_otel_manager(self.config)
 
         # Initialize Langfuse client ONLY when credentials exist (or user provided a client).
@@ -400,15 +444,19 @@ class Evaluator:
                     "or use a CSV dataset object / --dataset-csv."
                 )
             from .dataset import LangfuseDataset
+
             self.dataset = LangfuseDataset(self.client, dataset)
         else:
             self.dataset = dataset
-            self.dataset_name = getattr(dataset, "dataset_name", getattr(dataset, "name", "unknown"))
-        
+            self.dataset_name = getattr(
+                dataset, "dataset_name", getattr(dataset, "name", "unknown")
+            )
+
         # Prepare task adapter
         self.task_adapter = auto_detect_task(task, self.client)
         self.task_adapter._warning_callback = lambda msg: self._notify_observer(
-            "on_warning", message=msg,
+            "on_warning",
+            message=msg,
         )
 
         # Configuration shortcuts
@@ -421,8 +469,12 @@ class Evaluator:
         # Model handling - strip provider prefix once, keep full name for user's task
         # e.g., "qwen/qwen3-235b" -> model_name="qwen3-235b", model_name_full="qwen/qwen3-235b"
         # Use model_full when set (multi-model runs pass provider-prefixed ID for API calls)
-        self.model_name_full = self.config.model_full or self.config.model  # Full ID for user's task (OpenRouter, etc.)
-        self.model_name = _strip_model_provider(self.config.model)  # Stripped (for display, paths, IDs)
+        self.model_name_full = (
+            self.config.model_full or self.config.model
+        )  # Full ID for user's task (OpenRouter, etc.)
+        self.model_name = _strip_model_provider(
+            self.config.model
+        )  # Stripped (for display, paths, IDs)
         self.models = [_strip_model_provider(m) for m in (self.config.models or [])]
         self.models_full = self.config.models or []  # Original list with providers
 
@@ -439,32 +491,36 @@ class Evaluator:
             self.run_name, self.display_name = self.build_run_identifiers(
                 base_name=base_name,
                 model_name=self.model_name,  # Use stripped model name
-                add_suffix=not user_provided_name
+                add_suffix=not user_provided_name,
             )
         self.run_metadata = self.config.run_metadata
         if self._task_name:
             self.run_metadata["task_name"] = self._task_name
 
         if self.model_name:
-            self.run_metadata.setdefault('model', self.model_name)
+            self.run_metadata.setdefault("model", self.model_name)
 
         # Display name for UI: prefer run_name, but keep a readable task hint
         self.display_name = self.config.run_name
         if self._task_name and self._task_name not in (self.display_name or ""):
             self.display_name = f"{self.display_name} [{self._task_name}]"
-            
-        base_observer = observer or NullEvaluationObserver()
-        self.observer = CompositeEvaluationObserver([base_observer])
+
+        observers: List[EvaluationObserver] = [observer or NullEvaluationObserver()]
+        if progress_callback is not None:
+            observers.append(ProgressCallbackObserver(progress_callback))
+        self.observer = CompositeEvaluationObserver(observers)
 
         # Langfuse IDs for URL building (populated during run)
-        self._langfuse_dataset_id: Optional[str] = getattr(self.dataset, 'id', None)
+        self._langfuse_dataset_id: Optional[str] = getattr(self.dataset, "id", None)
         self._langfuse_run_id: Optional[str] = None
 
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
 
     @staticmethod
-    def build_run_identifiers(base_name: str, model_name: Optional[str], add_suffix: bool = False) -> Tuple[str, str]:
+    def build_run_identifiers(
+        base_name: str, model_name: Optional[str], add_suffix: bool = False
+    ) -> Tuple[str, str]:
         """Return (run_id_with_suffixes, display_name_for_tui).
 
         Ensures unique run IDs even when the same model is used multiple times
@@ -482,7 +538,7 @@ class Evaluator:
             display = base_name
             display = re.sub(timestamp_pattern, "", display)
             if add_suffix and not display.endswith("_task"):
-                 display = f"{display}_task"
+                display = f"{display}_task"
             return run_id, display
 
         timestamp = datetime.now().strftime("%y%m%d-%H%M")
@@ -509,7 +565,6 @@ class Evaluator:
 
         return run_id, display
 
-
     def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
         """Extract trace_id and build Langfuse URL.
 
@@ -518,25 +573,35 @@ class Evaluator:
         """
         meta: Dict[str, Any] = {"trace_id": None, "trace_url": None}
         try:
-            tid = getattr(trace, 'trace_id', None) or getattr(trace, 'id', None)
+            tid = getattr(trace, "trace_id", None) or getattr(trace, "id", None)
             meta["trace_id"] = str(tid) if tid else None
         except Exception:
             pass
-        if meta["trace_id"] and getattr(self, 'langfuse_host', None) and getattr(self, 'langfuse_project_id', None):
-            host = self.langfuse_host.rstrip('/')
-            meta["trace_url"] = f"{host}/project/{self.langfuse_project_id}/traces/{meta['trace_id']}"
+        if (
+            meta["trace_id"]
+            and getattr(self, "langfuse_host", None)
+            and getattr(self, "langfuse_project_id", None)
+        ):
+            host = self.langfuse_host.rstrip("/")
+            meta[
+                "trace_url"
+            ] = f"{host}/project/{self.langfuse_project_id}/traces/{meta['trace_id']}"
         return meta
 
-    def _build_run_info(self, result: Optional[EvaluationResult] = None) -> Dict[str, Any]:
+    def _build_run_info(
+        self, result: Optional[EvaluationResult] = None
+    ) -> Dict[str, Any]:
         """Assemble run-level metadata for the frontend."""
         # Version
         version = None
         try:
             from .. import __version__ as _v
+
             version = _v
         except Exception:
             try:
                 import importlib.metadata as _im
+
                 version = _im.version("qym")
             except Exception:
                 version = None
@@ -559,37 +624,43 @@ class Evaluator:
             "git_branch": git_info["git_branch"],
             "cli_invocation": self.config.cli_invocation,
             "metric_names": list(self.metrics.keys()),
-            "langfuse_host": getattr(self, 'langfuse_host', None),
-            "langfuse_project_id": getattr(self, 'langfuse_project_id', None),
+            "langfuse_host": getattr(self, "langfuse_host", None),
+            "langfuse_project_id": getattr(self, "langfuse_project_id", None),
             "trace": {
                 "destinations": {
                     "phoenix": bool(getattr(self._otel, "phoenix_enabled", False)),
                     "langfuse": bool(self.langfuse_enabled),
                     "platform": False,
                 },
-                "instrumentors": list(getattr(self._otel, "registered_instrumentors", []) or []),
+                "instrumentors": list(
+                    getattr(self._otel, "registered_instrumentors", []) or []
+                ),
             },
         }
 
         if result is not None:
             try:
-                run_block["started_at"] = result.start_time.isoformat() if result.start_time else None
-                run_block["ended_at"] = result.end_time.isoformat() if result.end_time else None
+                run_block["started_at"] = (
+                    result.start_time.isoformat() if result.start_time else None
+                )
+                run_block["ended_at"] = (
+                    result.end_time.isoformat() if result.end_time else None
+                )
                 run_block["total_items"] = result.total_items
             except Exception:
                 pass
 
         return run_block
-    
+
     def _init_langfuse(self) -> Any:
         """Initialize Langfuse client with error handling."""
         load_cwd_dotenv()
-        
+
         # Get credentials from config or environment
-        public_key = self.config.langfuse_public_key or os.getenv('LANGFUSE_PUBLIC_KEY')
-        secret_key = self.config.langfuse_secret_key or os.getenv('LANGFUSE_SECRET_KEY')
+        public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
+        secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
         host = self.config.langfuse_host or get_langfuse_host_env()
-        
+
         # Validate required credentials
         if not public_key:
             raise LangfuseConnectionError(
@@ -598,7 +669,7 @@ class Evaluator:
                 "2. Add 'langfuse_public_key' to evaluator config, or\n"
                 "3. Create a .env file with LANGFUSE_PUBLIC_KEY=your_key"
             )
-        
+
         if not secret_key:
             raise LangfuseConnectionError(
                 "Missing Langfuse secret key. Please:\n"
@@ -606,7 +677,7 @@ class Evaluator:
                 "2. Add 'langfuse_secret_key' to evaluator config, or\n"
                 "3. Create a .env file with LANGFUSE_SECRET_KEY=your_key"
             )
-        
+
         try:
             from langfuse import Langfuse
 
@@ -621,27 +692,27 @@ class Evaluator:
             )
             if self._otel.enabled:
                 from opentelemetry import trace as otel_trace
+
                 provider = otel_trace.get_tracer_provider()
                 init_kwargs["tracer_provider"] = provider
             client = Langfuse(**init_kwargs)
             # Expose host for frontend links (default to cloud)
             try:
-                self.langfuse_host = host or 'https://cloud.langfuse.com'
+                self.langfuse_host = host or "https://cloud.langfuse.com"
             except Exception:
-                self.langfuse_host = 'https://cloud.langfuse.com'
+                self.langfuse_host = "https://cloud.langfuse.com"
             # Get project ID for deep-links (auto-detect from API if not provided)
             try:
-                self.langfuse_project_id = (
-                    self.config.langfuse_project_id
-                    or os.getenv('LANGFUSE_PROJECT_ID')
+                self.langfuse_project_id = self.config.langfuse_project_id or os.getenv(
+                    "LANGFUSE_PROJECT_ID"
                 )
                 # Auto-detect from Langfuse client if not provided
                 if not self.langfuse_project_id:
                     # Try private method first (cached, no extra API call)
-                    if hasattr(client, '_get_project_id'):
+                    if hasattr(client, "_get_project_id"):
                         self.langfuse_project_id = client._get_project_id()
                     # Fallback to public API
-                    if not self.langfuse_project_id and hasattr(client, 'api'):
+                    if not self.langfuse_project_id and hasattr(client, "api"):
                         result = client.api.projects.get()
                         if result.data:
                             self.langfuse_project_id = result.data[0].id
@@ -671,27 +742,29 @@ class Evaluator:
         public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
         return bool(public_key and secret_key)
-    
 
-
-    def _prepare_metrics(self, metrics: List[Union[str, Callable]]) -> Dict[str, Callable]:
+    def _prepare_metrics(
+        self, metrics: List[Union[str, Callable]]
+    ) -> Dict[str, Callable]:
         """Convert metric list to dict of callables."""
         prepared = {}
         for metric in metrics:
             if isinstance(metric, str):
                 prepared[metric] = get_metric(metric)
             elif callable(metric):
-                name = getattr(metric, '__name__', f'custom_metric_{len(prepared)}')
+                name = getattr(metric, "__name__", f"custom_metric_{len(prepared)}")
                 prepared[name] = metric
             else:
-                raise ValueError(f"Metric must be string or callable, got {type(metric)}")
+                raise ValueError(
+                    f"Metric must be string or callable, got {type(metric)}"
+                )
         return prepared
 
     def _build_langfuse_url(self) -> Optional[str]:
         """Build Langfuse dataset run URL using dataset ID and run ID."""
         try:
-            host = getattr(self, 'langfuse_host', None)
-            project_id = getattr(self, 'langfuse_project_id', None)
+            host = getattr(self, "langfuse_host", None)
+            project_id = getattr(self, "langfuse_project_id", None)
             dataset_id = self._langfuse_dataset_id
             run_id = self._langfuse_run_id
 
@@ -790,7 +863,7 @@ class Evaluator:
         if not self._warning_should_render_only_in_tui():
             logger.warning(warning_msg)
         self._notify_observer("on_warning", message=warning_msg)
-    
+
     def run(
         self,
         show_tui: bool = True,
@@ -822,6 +895,7 @@ class Evaluator:
             asyncio.get_running_loop()
             # We're in a running loop (like Jupyter), use nest_asyncio
             import nest_asyncio
+
             nest_asyncio.apply()
         except RuntimeError:
             # No event loop running, which is fine
@@ -829,17 +903,24 @@ class Evaluator:
 
         # Fix Windows event loop issues
         import sys
-        if sys.platform == 'win32':
+
+        if sys.platform == "win32":
             # Use SelectorEventLoop on Windows to avoid ProactorEventLoop issues
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         if len(self.models) > 1:
-            return self._run_multi_model(show_tui, auto_save, save_format, max_parallel_runs)
+            return self._run_multi_model(
+                show_tui, auto_save, save_format, max_parallel_runs
+            )
 
         # Run the async evaluation
         try:
             with _graceful_interrupt_signals():
-                result = asyncio.run(self.arun(show_tui=show_tui, auto_save=auto_save, save_format=save_format))
+                result = asyncio.run(
+                    self.arun(
+                        show_tui=show_tui, auto_save=auto_save, save_format=save_format
+                    )
+                )
         except KeyboardInterrupt:
             # asyncio.run() tears down the event loop on Ctrl+C before arun's
             # finalization code can send run_completed. Send STOPPED synchronously here.
@@ -862,15 +943,15 @@ class Evaluator:
             raise
 
         # Always print summary (silently no-op when disabled)
-        html_url = getattr(result, 'html_url', None)
+        html_url = getattr(result, "html_url", None)
         result.print_summary(html_url)
         _announce_saved_results([result], include_run_name=False)
 
-
         return result
-    
-    
-    async def arun(self, show_tui: bool = True, auto_save: bool = False, save_format: str = "csv") -> EvaluationResult:
+
+    async def arun(
+        self, show_tui: bool = True, auto_save: bool = False, save_format: str = "csv"
+    ) -> EvaluationResult:
         """
         Run the evaluation asynchronously.
 
@@ -888,7 +969,7 @@ class Evaluator:
         # Size the thread pool to match concurrency so sync tasks don't queue.
         # Skip if MultiModelRunner already sized the pool for all models.
         loop = asyncio.get_running_loop()
-        if not getattr(loop, '_qym_executor_set', False):
+        if not getattr(loop, "_qym_executor_set", False):
             loop.set_default_executor(
                 concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency)
             )
@@ -913,7 +994,7 @@ class Evaluator:
                 "max_metric_concurrency": self.max_metric_concurrency,
                 "timeout": self.timeout,
                 "user_provided_run_name": bool(self.config.run_name),
-            }
+            },
         )
 
         items = self.dataset.get_items()
@@ -929,18 +1010,21 @@ class Evaluator:
         # Initialize progress tracker
         metric_names = list(self.metrics.keys())
         tracker = ProgressTracker(items, metric_names)
-    
+
         # Live UI setup (platform streaming required):
         # Local UIServer has been removed - all live viewing is via the platform
         html_url = None
         self._platform_stream = None
         otel_stream_token = None
-        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv("QYM_API_KEY")
+        platform_api_key = getattr(self.config, "platform_api_key", None) or os.getenv(
+            "QYM_API_KEY"
+        )
         live_mode = str(getattr(self.config, "live_mode", "platform")).lower()
 
         # Platform streaming is now required for live UI
         if live_mode == "local":
             import warnings
+
             warnings.warn(
                 "live_mode='local' is deprecated - local UIServer has been removed. "
                 "Please configure platform streaming (QYM_API_KEY) or use TUI only.",
@@ -949,9 +1033,13 @@ class Evaluator:
             )
             # Continue without live UI - TUI will still work
         elif platform_api_key:
-            platform_url = getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
+            platform_url = (
+                getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
+            )
             if PlatformClient is None:
-                raise RuntimeError("Platform streaming requires the platform client module")
+                raise RuntimeError(
+                    "Platform streaming requires the platform client module"
+                )
             client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
             # Include total_items in metadata for progress tracking
             start_metadata = dict(self.run_metadata or {})
@@ -970,13 +1058,29 @@ class Evaluator:
                     "timeout": self.timeout,
                     "run_name": self.run_name,
                     "task_name": self._task_name,
-                    "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                    "run_config_id": _compute_run_config_id(
+                        {
+                            "max_concurrency": self.max_concurrency,
+                            "max_metric_concurrency": self.max_metric_concurrency,
+                            "timeout": self.timeout,
+                            "model": self.model_name,
+                            "task": self._task_name,
+                            "dataset": str(self.dataset_name),
+                        }
+                    ),
                     "git_branch": git_info["git_branch"],
                     "git_commit": git_info["git_commit"],
                 },
             )
             html_url = handle.live_url
-            self._platform_stream = PlatformEventStream(platform_url=platform_url, api_key=platform_api_key, run_id=handle.run_id)
+            run_info["qym_url"] = handle.live_url
+            run_info["html_url"] = handle.live_url
+            run_info["platform_run_id"] = handle.run_id
+            self._platform_stream = PlatformEventStream(
+                platform_url=platform_url,
+                api_key=platform_api_key,
+                run_id=handle.run_id,
+            )
             # Connect QymSpanProcessor to platform stream for local DB capture
             if self._otel.enabled and self._otel.qym_processor:
                 self._otel.qym_processor.set_stream(self._platform_stream)
@@ -999,7 +1103,16 @@ class Evaluator:
                             "timeout": self.timeout,
                             "run_name": self.run_name,
                             "task_name": self._task_name,
-                            "run_config_id": _compute_run_config_id({"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout, "model": self.model_name, "task": self._task_name, "dataset": str(self.dataset_name)}),
+                            "run_config_id": _compute_run_config_id(
+                                {
+                                    "max_concurrency": self.max_concurrency,
+                                    "max_metric_concurrency": self.max_metric_concurrency,
+                                    "timeout": self.timeout,
+                                    "model": self.model_name,
+                                    "task": self._task_name,
+                                    "dataset": str(self.dataset_name),
+                                }
+                            ),
                         },
                         "started_at": _utc_now_str(),
                     },
@@ -1057,9 +1170,14 @@ class Evaluator:
             checkpoint_path = self.config.resume_from or result._default_save_path(
                 "csv", output_dir=self.config.output_dir
             )
-            checkpoint_state = checkpoint_state or load_checkpoint_state(checkpoint_path)
+            checkpoint_state = checkpoint_state or load_checkpoint_state(
+                checkpoint_path
+            )
             if checkpoint_state:
-                if checkpoint_state.dataset_name and checkpoint_state.dataset_name != self.dataset_name:
+                if (
+                    checkpoint_state.dataset_name
+                    and checkpoint_state.dataset_name != self.dataset_name
+                ):
                     raise ValueError(
                         f"Resume dataset mismatch: {checkpoint_state.dataset_name} != {self.dataset_name}"
                     )
@@ -1082,12 +1200,16 @@ class Evaluator:
                         if val is not None:
                             resume_metric_totals[m] += float(val)
                             resume_metric_counts[m] += 1
-                    item_id, row_result, is_error = parse_checkpoint_row(row, metric_names)
+                    item_id, row_result, is_error = parse_checkpoint_row(
+                        row, metric_names
+                    )
                     if not item_id:
                         continue
                     if is_error:
                         error_output = str(row_result.get("output", "") or "")
-                        error_msg = error_output.replace("ERROR:", "").strip() or "error"
+                        error_msg = (
+                            error_output.replace("ERROR:", "").strip() or "error"
+                        )
                         result.add_error(
                             item_id,
                             error_msg,
@@ -1142,10 +1264,13 @@ class Evaluator:
             item_id = fallback_id if use_fallback_ids or not primary_id else primary_id
             result.add_input(item_id, item.input)
             result.add_metadata(item_id, getattr(item, "metadata", {}))
-            if item_id in completed_item_ids or fallback_id in completed_item_ids or (primary_id in completed_item_ids if primary_id else False):
+            if (
+                item_id in completed_item_ids
+                or fallback_id in completed_item_ids
+                or (primary_id in completed_item_ids if primary_id else False)
+            ):
                 continue
             pending_entries.append((idx, item_id, item))
-
 
         cancel_exc: Optional[BaseException] = None
 
@@ -1203,11 +1328,14 @@ class Evaluator:
                         try:
                             ps = getattr(self, "_platform_stream", None)
                             if ps is not None:
-                                ps.emit("item_failed", {
-                                    "item_id": str(item_id),
-                                    "index": int(idx),
-                                    "error": str(e),
-                                })
+                                ps.emit(
+                                    "item_failed",
+                                    {
+                                        "item_id": str(item_id),
+                                        "index": int(idx),
+                                        "error": str(e),
+                                    },
+                                )
                         except Exception:
                             pass
 
@@ -1218,7 +1346,11 @@ class Evaluator:
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
+                            run_config={
+                                "max_concurrency": self.max_concurrency,
+                                "max_metric_concurrency": self.max_metric_concurrency,
+                                "timeout": self.timeout,
+                            },
                             trace_id="",
                             item_id=item_id,
                             item_input=item.input,
@@ -1243,7 +1375,11 @@ class Evaluator:
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
+                            run_config={
+                                "max_concurrency": self.max_concurrency,
+                                "max_metric_concurrency": self.max_metric_concurrency,
+                                "timeout": self.timeout,
+                            },
                             trace_id=eval_result.get("_trace_id") or "",
                             item_id=item_id,
                             item_input=item.input,
@@ -1263,13 +1399,19 @@ class Evaluator:
                         for m in metric_names:
                             sc = scores.get(m)
                             score_row[m] = _main_score(sc)
-                            if isinstance(sc, dict) and isinstance(sc.get("metadata"), dict):
+                            if isinstance(sc, dict) and isinstance(
+                                sc.get("metadata"), dict
+                            ):
                                 metric_meta[m] = sc["metadata"]
                         row = serialize_checkpoint_row(
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
-                            run_config={"max_concurrency": self.max_concurrency, "max_metric_concurrency": self.max_metric_concurrency, "timeout": self.timeout},
+                            run_config={
+                                "max_concurrency": self.max_concurrency,
+                                "max_metric_concurrency": self.max_metric_concurrency,
+                                "timeout": self.timeout,
+                            },
                             trace_id=eval_result.get("trace_id") or "",
                             item_id=item_id,
                             item_input=item.input,
@@ -1292,8 +1434,12 @@ class Evaluator:
             for _ in range(self.max_concurrency):
                 await work_queue.put(None)
 
-            writer_task = asyncio.create_task(_write_loop()) if checkpoint_writer else None
-            worker_tasks = [asyncio.create_task(_worker()) for _ in range(self.max_concurrency)]
+            writer_task = (
+                asyncio.create_task(_write_loop()) if checkpoint_writer else None
+            )
+            worker_tasks = [
+                asyncio.create_task(_worker()) for _ in range(self.max_concurrency)
+            ]
 
             try:
                 await asyncio.gather(*worker_tasks)
@@ -1333,7 +1479,6 @@ class Evaluator:
                 result.interrupted = True
                 result.last_saved_path = checkpoint_path
 
-
             if live_tui and dashboard:
                 final_panel = dashboard.render()
 
@@ -1366,7 +1511,7 @@ class Evaluator:
                 "run_metadata": result.run_metadata,
             },
         )
-        
+
         # Store UI URL if available
         if html_url:
             result.html_url = html_url
@@ -1419,7 +1564,9 @@ class Evaluator:
             try:
                 result.save(format=save_format, output_dir=self.config.output_dir)
             except Exception as e:
-                console.print(f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]")
+                console.print(
+                    f"[yellow]⚠️  Warning: Failed to auto-save results: {e}[/yellow]"
+                )
 
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
         try:
@@ -1442,6 +1589,7 @@ class Evaluator:
         auto_save: bool = False,
         save_format: str = "csv",
         max_parallel_runs: Optional[int] = None,
+        observer: Optional[EvaluationObserver] = None,
     ) -> List[EvaluationResult]:
         """
         Evaluate multiple tasks concurrently from Python code.
@@ -1455,6 +1603,7 @@ class Evaluator:
                 None (default) = all runs in parallel
                 1 = sequential (queue mode)
                 N = run N at a time
+            observer: Optional lifecycle observer for aggregate and per-run events.
 
         Note:
             The Web UI is always available at the URL printed at startup.
@@ -1465,12 +1614,13 @@ class Evaluator:
         from .multi_runner import MultiModelRunner
 
         # Delegate to MultiModelRunner
-        runner = MultiModelRunner.from_runs(runs, console=console)
+        runner = MultiModelRunner.from_runs(runs, console=console, observer=observer)
 
         # Ensure async loop is ready
         try:
             asyncio.get_running_loop()
             import nest_asyncio  # type: ignore
+
             nest_asyncio.apply()
         except RuntimeError:
             pass
@@ -1488,9 +1638,16 @@ class Evaluator:
                     )
                 )
         except KeyboardInterrupt:
-            incomplete = [ev for ev in getattr(runner, "_active_evaluators", []) if not getattr(ev, "_run_completed", False)]
+            incomplete = [
+                ev
+                for ev in getattr(runner, "_active_evaluators", [])
+                if not getattr(ev, "_run_completed", False)
+            ]
             if incomplete:
-                print(f"[QYM-SDK] Interrupted — sending STOPPED for {len(incomplete)} incomplete run(s)", flush=True)
+                print(
+                    f"[QYM-SDK] Interrupted — sending STOPPED for {len(incomplete)} incomplete run(s)",
+                    flush=True,
+                )
                 for ev in incomplete:
                     stream = getattr(ev, "_platform_stream", None)
                     if stream is not None:
@@ -1523,20 +1680,22 @@ class Evaluator:
                 elif suffix == ".csv":
                     fmt = "csv"
                 saved_path = result.save(format=fmt, filepath=str(target_path))
-                console.print(f"[green]Saved {spec.run_name} results to {saved_path}[/green]")
+                console.print(
+                    f"[green]Saved {spec.run_name} results to {saved_path}[/green]"
+                )
 
         return results
 
-
-
-    async def _compute_metric(self, metric: Callable, output: Any, expected: Any, input_data: Any = None) -> Any:
+    async def _compute_metric(
+        self, metric: Callable, output: Any, expected: Any, input_data: Any = None
+    ) -> Any:
         """Compute a metric, handling both sync and async functions."""
         import inspect
-        
+
         # Determine metric signature
         sig = inspect.signature(metric)
         params = list(sig.parameters.keys())
-        
+
         # Prepare arguments based on metric signature
         if len(params) == 1:
             args = (output,)
@@ -1547,17 +1706,17 @@ class Evaluator:
             args = (output, expected, input_data)
         else:
             # Try with keyword arguments for flexibility
-            kwargs = {'output': output, 'expected': expected, 'input_data': input_data}
+            kwargs = {"output": output, "expected": expected, "input_data": input_data}
             filtered_kwargs = {k: v for k, v in kwargs.items() if k in params}
             args = tuple(filtered_kwargs.values())
-        
+
         # Call metric (async or sync)
         if inspect.iscoroutinefunction(metric):
             result = await metric(*args)
         else:
             result = metric(*args)
         return result
-    
+
     def _get_score_type(self, score: Any) -> str:
         """Determine Langfuse score data type."""
         if isinstance(score, bool):
@@ -1566,29 +1725,45 @@ class Evaluator:
             return "NUMERIC"
         else:
             return "CATEGORICAL"
-    
+
     # Frontend concerns moved to qym.utils.frontend
 
-    def _run_multi_model(self, show_tui: bool, auto_save: bool, save_format: str, max_parallel_runs: Optional[int] = None):
+    def _run_multi_model(
+        self,
+        show_tui: bool,
+        auto_save: bool,
+        save_format: str,
+        max_parallel_runs: Optional[int] = None,
+    ):
         """Kick off multiple model evaluations via the MultiModelRunner helper."""
         runs = []
         base_name = (self.config.run_name or "").strip() or self._task_name
 
         # Create base config dict from Pydantic model
-        base_config_dict = self.config.model_dump(exclude={'models', 'model', 'run_name', 'run_metadata'})
+        base_config_dict = self.config.model_dump(
+            exclude={"models", "model", "run_name", "run_metadata"}
+        )
 
         # Iterate over both stripped and full model names
-        for idx, (model_name, model_name_full) in enumerate(zip(self.models, self.models_full), start=1):
+        for idx, (model_name, model_name_full) in enumerate(
+            zip(self.models, self.models_full), start=1
+        ):
             run_config = copy.deepcopy(base_config_dict)
-            run_config['model'] = model_name  # #17: Stripped name for consistent platform display
-            run_config['model_full'] = model_name_full  # Full name preserved for user's task
+            run_config[
+                "model"
+            ] = model_name  # #17: Stripped name for consistent platform display
+            run_config[
+                "model_full"
+            ] = model_name_full  # Full name preserved for user's task
 
             run_metadata = dict(self.run_metadata or {})
-            run_metadata['model'] = model_name  # Stripped name for display/metadata
-            run_config['run_metadata'] = run_metadata
+            run_metadata["model"] = model_name  # Stripped name for display/metadata
+            run_config["run_metadata"] = run_metadata
 
-            run_name, display_name = self.build_run_identifiers(base_name, model_name)  # Stripped for run ID
-            run_config['run_name'] = run_name
+            run_name, display_name = self.build_run_identifiers(
+                base_name, model_name
+            )  # Stripped for run ID
+            run_config["run_name"] = run_name
 
             runs.append(
                 {
@@ -1608,21 +1783,25 @@ class Evaluator:
             auto_save=auto_save,
             save_format=save_format,
             max_parallel_runs=max_parallel_runs,
+            observer=self.observer,
         )
-    
+
     # ------------------------------------------------------------------
     # _evaluate_item: decomposed into focused sub-methods
     # ------------------------------------------------------------------
 
-    def _create_item_spans(self, index: int, item: Any, attempt_number: int) -> ItemSpans:
+    def _create_item_spans(
+        self, index: int, item: Any, attempt_number: int
+    ) -> ItemSpans:
         """Create OTEL spans with OpenInference attributes for an eval item."""
         spans = ItemSpans()
-        item_metadata = getattr(item, 'metadata', {})
+        item_metadata = getattr(item, "metadata", {})
 
         if not self._otel.enabled:
             return spans
 
         from opentelemetry import trace as otel_trace
+
         spans.tracer = otel_trace.get_tracer("qym")
 
         # Root eval span
@@ -1635,7 +1814,7 @@ class Evaluator:
                 **self.run_metadata,
                 "item_index": index,
                 "attempt_number": attempt_number,
-                "dataset_item_id": getattr(item, 'id', None),
+                "dataset_item_id": getattr(item, "id", None),
                 "run_name": self.run_name,
                 "item_metadata": item_metadata,
             },
@@ -1644,10 +1823,14 @@ class Evaluator:
         # Extract trace_id from the OTEL span
         _ctx = spans.eval_span.get_span_context()
         if _ctx.is_valid:
-            spans.trace_id = format(_ctx.trace_id, '032x')
-            if getattr(self, 'langfuse_host', None) and getattr(self, 'langfuse_project_id', None):
-                host = self.langfuse_host.rstrip('/')
-                spans.trace_url = f"{host}/project/{self.langfuse_project_id}/traces/{spans.trace_id}"
+            spans.trace_id = format(_ctx.trace_id, "032x")
+            if getattr(self, "langfuse_host", None) and getattr(
+                self, "langfuse_project_id", None
+            ):
+                host = self.langfuse_host.rstrip("/")
+                spans.trace_url = (
+                    f"{host}/project/{self.langfuse_project_id}/traces/{spans.trace_id}"
+                )
 
         # Task function span (child of eval, parent of LLM calls)
         task_name = getattr(self.task_adapter.task, "__name__", "task")
@@ -1660,6 +1843,7 @@ class Evaluator:
 
         # Reset tool call tracking for this item
         from .otel import _emitted_tool_ids
+
         _emitted_tool_ids.set(set())
 
         return spans
@@ -1670,19 +1854,26 @@ class Evaluator:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
                 item_id = getattr(item, "id", None) or f"item_{index}"
-                ps.emit("item_started", {
-                    "item_id": str(item_id),
-                    "index": int(index),
-                    "input": item.input,
-                    "expected": getattr(item, "expected_output", None),
-                    "item_metadata": getattr(item, "metadata", {}) or {},
-                })
+                ps.emit(
+                    "item_started",
+                    {
+                        "item_id": str(item_id),
+                        "index": int(index),
+                        "input": item.input,
+                        "expected": getattr(item, "expected_output", None),
+                        "item_metadata": getattr(item, "metadata", {}) or {},
+                    },
+                )
         except Exception:
             pass
-        self._notify_observer("on_item_start", item_index=index, payload={
-            "input": item.input,
-            "expected": getattr(item, 'expected_output', None),
-        })
+        self._notify_observer(
+            "on_item_start",
+            item_index=index,
+            payload={
+                "input": item.input,
+                "expected": getattr(item, "expected_output", None),
+            },
+        )
 
     def _emit_item_attempt_started(
         self,
@@ -1698,18 +1889,23 @@ class Evaluator:
             if ps is None:
                 return
             item_id = getattr(item, "id", None) or f"item_{index}"
-            ps.emit("item_attempt_started", {
-                "item_id": str(item_id),
-                "index": int(index),
-                "attempt_number": int(attempt_number),
-                "trace_id": spans.trace_id,
-                "trace_url": spans.trace_url,
-                "task_started_at_ms": task_started_at_ms,
-            })
+            ps.emit(
+                "item_attempt_started",
+                {
+                    "item_id": str(item_id),
+                    "index": int(index),
+                    "attempt_number": int(attempt_number),
+                    "trace_id": spans.trace_id,
+                    "trace_url": spans.trace_url,
+                    "task_started_at_ms": task_started_at_ms,
+                },
+            )
         except Exception:
             pass
 
-    async def _run_single_task_attempt(self, index: int, item: Any, attempt_number: int) -> TaskAttemptResult:
+    async def _run_single_task_attempt(
+        self, index: int, item: Any, attempt_number: int
+    ) -> TaskAttemptResult:
         """Execute a single task attempt with its own trace."""
         spans = self._create_item_spans(index, item, attempt_number)
         # Create a NullTrace for adapter compatibility
@@ -1720,12 +1916,15 @@ class Evaluator:
         adapter_trace.trace_id = spans.trace_id
 
         task_started_at_ms = int(time.time() * 1000)
-        self._emit_item_attempt_started(index, item, attempt_number, spans, task_started_at_ms)
+        self._emit_item_attempt_started(
+            index, item, attempt_number, spans, task_started_at_ms
+        )
         attempt_start_time = time.monotonic()
         forced_model_token = None
         try:
             if self.config.force_model_override and self.model_name_full:
                 forced_model_token = self._otel.bind_forced_model(self.model_name_full)
+
             async def _task_call():
                 try:
                     return await self.task_adapter.arun(
@@ -1734,7 +1933,9 @@ class Evaluator:
                         model_name=self.model_name_full,
                     )
                 except asyncio.TimeoutError as exc:
-                    raise TaskExecutionTimeoutError(str(exc) or "task raised TimeoutError") from exc
+                    raise TaskExecutionTimeoutError(
+                        str(exc) or "task raised TimeoutError"
+                    ) from exc
 
             coro = _task_call()
             if self.timeout is not None:
@@ -1773,7 +1974,9 @@ class Evaluator:
             error=error,
         )
 
-    async def _execute_task(self, index: int, item: Any) -> Tuple[Optional[TaskAttemptResult], List[TaskAttemptResult], int]:
+    async def _execute_task(
+        self, index: int, item: Any
+    ) -> Tuple[Optional[TaskAttemptResult], List[TaskAttemptResult], int]:
         """Execute task retries and return the successful or last attempt."""
         attempts: List[TaskAttemptResult] = []
 
@@ -1785,16 +1988,20 @@ class Evaluator:
 
             is_terminal_attempt = attempt_number == 1 + self.max_retries
             if not is_terminal_attempt:
-                self._emit_item_attempt_finished(index, item, attempt, is_last_attempt=False)
+                self._emit_item_attempt_finished(
+                    index, item, attempt, is_last_attempt=False
+                )
                 base_delay = min(2 ** (attempt_number - 1), 30)
                 jitter = random.uniform(0, base_delay * 0.5)
                 await asyncio.sleep(base_delay + jitter)
 
         return None, attempts, len(attempts) - 1
 
-    async def _compute_metrics(self, index: int, item: Any, output: Any, spans: ItemSpans) -> Dict[str, Any]:
+    async def _compute_metrics(
+        self, index: int, item: Any, output: Any, spans: ItemSpans
+    ) -> Dict[str, Any]:
         """Compute all metrics concurrently. Returns {metric_name: score_dict}."""
-        expected_output = getattr(item, 'expected_output', None)
+        expected_output = getattr(item, "expected_output", None)
 
         # Create metrics parent span
         if spans.tracer:
@@ -1809,17 +2016,29 @@ class Evaluator:
         async def run_one(m_name: str, m_func: Callable) -> Tuple[str, Any]:
             async with _metric_sem:
                 return await self._run_single_metric(
-                    m_name, m_func, output, expected_output, index, item, spans,
+                    m_name,
+                    m_func,
+                    output,
+                    expected_output,
+                    index,
+                    item,
+                    spans,
                 )
 
-        results = await asyncio.gather(*[
-            run_one(m_name, m_func) for m_name, m_func in self.metrics.items()
-        ])
+        results = await asyncio.gather(
+            *[run_one(m_name, m_func) for m_name, m_func in self.metrics.items()]
+        )
         return dict(results)
 
     async def _run_single_metric(
-        self, m_name: str, m_func: Callable, output: Any, expected: Any,
-        index: int, item: Any, spans: ItemSpans,
+        self,
+        m_name: str,
+        m_func: Callable,
+        output: Any,
+        expected: Any,
+        index: int,
+        item: Any,
+        spans: ItemSpans,
     ) -> Tuple[str, Any]:
         """Run a single metric, emit score event, and notify platform.
 
@@ -1829,6 +2048,22 @@ class Evaluator:
         one misbehaving metric (e.g. an LLM judge that never returns) cannot hold
         the whole item hostage in ``asyncio.gather``.
         """
+        metric_started_at_ms = int(time.time() * 1000)
+        metric_started_monotonic = time.monotonic()
+        metric_status = "completed"
+
+        def _metric_observer_metadata() -> Dict[str, Any]:
+            duration_s = max(time.monotonic() - metric_started_monotonic, 0.0)
+            return {
+                "input": item.input,
+                "expected": getattr(item, "expected_output", None),
+                "duration_ms": duration_s * 1000.0,
+                "duration_seconds": duration_s,
+                "started_at_ms": metric_started_at_ms,
+                "completed_at_ms": metric_started_at_ms + int(duration_s * 1000.0),
+                "status": metric_status,
+            }
+
         # Inline helper that runs the actual metric compute (preserves the
         # existing probe logic for async metrics that accidentally block the loop).
         async def _run_metric_inner():
@@ -1837,7 +2072,9 @@ class Evaluator:
                 should_probe = func_id not in Evaluator._metric_blocking_probed
 
                 if not should_probe:
-                    return await self._compute_metric(m_func, output, expected, item.input)
+                    return await self._compute_metric(
+                        m_func, output, expected, item.input
+                    )
 
                 Evaluator._metric_blocking_probed.add(func_id)
                 _hb_ticks = 0
@@ -1852,7 +2089,9 @@ class Evaluator:
                 hb_task = asyncio.create_task(_hb())
                 _t0 = time.monotonic()
                 try:
-                    return await self._compute_metric(m_func, output, expected, item.input)
+                    return await self._compute_metric(
+                        m_func, output, expected, item.input
+                    )
                 finally:
                     _hb_stop = True
                     _elapsed = time.monotonic() - _t0
@@ -1865,7 +2104,7 @@ class Evaluator:
                     if _elapsed > 1.0 and _hb_ticks < 2:
                         if func_id not in Evaluator._metric_blocking_warned:
                             Evaluator._metric_blocking_warned.add(func_id)
-                            _fname = getattr(m_func, '__name__', m_name)
+                            _fname = getattr(m_func, "__name__", m_name)
                             warning_msg = (
                                 f"Async metric '{_fname}' appears to block "
                                 f"the event loop ({_elapsed:.1f}s elapsed, "
@@ -1877,18 +2116,26 @@ class Evaluator:
                             self._notify_observer("on_warning", message=warning_msg)
             else:
                 return await asyncio.to_thread(
-                    self._compute_metric_sync, m_func, output, expected, item.input,
+                    self._compute_metric_sync,
+                    m_func,
+                    output,
+                    expected,
+                    item.input,
                 )
 
         try:
             # Apply wall-clock cap on the metric call itself.
             if self.metric_timeout is not None:
                 try:
-                    score = await asyncio.wait_for(_run_metric_inner(), timeout=self.metric_timeout)
+                    score = await asyncio.wait_for(
+                        _run_metric_inner(), timeout=self.metric_timeout
+                    )
                 except asyncio.TimeoutError:
+                    metric_status = "timeout"
                     logger.warning(
                         "Metric %s timed out after %.1fs — recording sentinel score",
-                        m_name, self.metric_timeout,
+                        m_name,
+                        self.metric_timeout,
                     )
                     score = {
                         "score": 0.0,
@@ -1902,6 +2149,7 @@ class Evaluator:
 
             # Wrap in MetricResult
             from qym.metrics.result import MetricResult
+
             result = MetricResult.from_raw(score)
             main_val = result.score
 
@@ -1911,7 +2159,9 @@ class Evaluator:
             # Langfuse: push score to Langfuse API (for UI score badges + dataset linkage)
             if self.client and spans.trace_id:
                 try:
-                    comment = result.explanation or (str(score) if not isinstance(main_val, (int, float)) else None)
+                    comment = result.explanation or (
+                        str(score) if not isinstance(main_val, (int, float)) else None
+                    )
                     self.client.create_score(
                         trace_id=spans.trace_id,
                         name=m_name,
@@ -1926,31 +2176,57 @@ class Evaluator:
                 ps = getattr(self, "_platform_stream", None)
                 if ps is not None:
                     item_id = getattr(item, "id", None) or f"item_{index}"
-                    ps.emit("metric_scored", {
-                        "item_id": str(item_id),
-                        "metric_name": str(m_name),
-                        "score_numeric": result.score,
-                        "score_raw": result.to_legacy_dict(),
-                        "meta": result.metadata or {},
-                        "label": result.label,
-                        "explanation": result.explanation,
-                    })
+                    ps.emit(
+                        "metric_scored",
+                        {
+                            "item_id": str(item_id),
+                            "metric_name": str(m_name),
+                            "score_numeric": result.score,
+                            "score_raw": result.to_legacy_dict(),
+                            "meta": result.metadata or {},
+                            "label": result.label,
+                            "explanation": result.explanation,
+                        },
+                    )
             except Exception:
                 pass
 
+            self._notify_observer(
+                "on_metric_result",
+                item_index=index,
+                metric_name=m_name,
+                score=score,
+                metadata=_metric_observer_metadata(),
+            )
             return m_name, score
         except Exception as e:
+            metric_status = "error"
             logger.error(f"Metric {m_name} failed: {e}")
-            return m_name, {"score": 0, "error": traceback.format_exc()}
+            score = {"score": 0, "error": traceback.format_exc()}
+            self._notify_observer(
+                "on_metric_result",
+                item_index=index,
+                metric_name=m_name,
+                score=score,
+                metadata=_metric_observer_metadata(),
+            )
+            return m_name, score
 
-    async def _link_dataset_item(self, index: int, item: Any, spans: ItemSpans, error: Optional[str] = None):
+    async def _link_dataset_item(
+        self, index: int, item: Any, spans: ItemSpans, error: Optional[str] = None
+    ):
         """Link trace to Langfuse dataset run item (Langfuse datasets only)."""
-        dataset_item_id = getattr(item, 'id', None)
+        dataset_item_id = getattr(item, "id", None)
         trace_id = spans.trace_id
-        if not (self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id):
+        if not (
+            self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id
+        ):
             return
         try:
-            from langfuse.api.resources.dataset_run_items.types import CreateDatasetRunItemRequest
+            from langfuse.api.resources.dataset_run_items.types import (
+                CreateDatasetRunItemRequest,
+            )
+
             metadata = {**self.run_metadata}
             if error:
                 metadata["error"] = error
@@ -1965,46 +2241,55 @@ class Evaluator:
             )
             if self._langfuse_run_id is None and response:
                 run_id = (
-                    getattr(response, 'run_id', None) or
-                    getattr(response, 'runId', None) or
-                    getattr(response, 'dataset_run_id', None) or
-                    getattr(response, 'datasetRunId', None)
+                    getattr(response, "run_id", None)
+                    or getattr(response, "runId", None)
+                    or getattr(response, "dataset_run_id", None)
+                    or getattr(response, "datasetRunId", None)
                 )
-                if not run_id and hasattr(response, 'run'):
-                    run_id = getattr(response.run, 'id', None)
+                if not run_id and hasattr(response, "run"):
+                    run_id = getattr(response.run, "id", None)
                 self._langfuse_run_id = run_id
                 if self._langfuse_run_id and self._platform_stream:
                     langfuse_url = self._build_langfuse_url()
                     if langfuse_url:
                         try:
-                            self._platform_stream.emit("metadata_update", {
-                                "langfuse_url": langfuse_url,
-                                "langfuse_dataset_id": self._langfuse_dataset_id,
-                                "langfuse_run_id": self._langfuse_run_id,
-                            })
+                            self._platform_stream.emit(
+                                "metadata_update",
+                                {
+                                    "langfuse_url": langfuse_url,
+                                    "langfuse_dataset_id": self._langfuse_dataset_id,
+                                    "langfuse_run_id": self._langfuse_run_id,
+                                },
+                            )
                         except Exception:
                             pass
         except Exception as e:
             logger.debug(f"Failed to link dataset run item: {e}")
 
     def _update_tracker(
-        self, index: int, item: Any, output: Any, scores: Dict,
-        task_time: float, retry_count: int, spans: ItemSpans,
+        self,
+        index: int,
+        item: Any,
+        output: Any,
+        scores: Dict,
+        task_time: float,
+        retry_count: int,
+        spans: ItemSpans,
         tracker: "ProgressObserver",
     ):
         """Update the progress tracker with results."""
         tracker.update_trace_info(index, spans.trace_id, spans.trace_url)
         tracker.update_output(index, output)
         if retry_count > 0:
-            tracker.item_statuses[index]['retry_count'] = retry_count
+            tracker.item_statuses[index]["retry_count"] = retry_count
 
         for m_name, score in scores.items():
             if score is not None:
                 main_val = score
                 meta_map = {}
                 if isinstance(score, dict):
-                    main_val = score.get('score', None)
-                    md = score.get('metadata', {})
+                    main_val = score.get("score", None)
+                    md = score.get("metadata", {})
                     if isinstance(md, dict):
                         for k, v in md.items():
                             if isinstance(v, dict):
@@ -2013,9 +2298,6 @@ class Evaluator:
                             else:
                                 meta_map[str(k)] = v
                 tracker.update_metric(index, m_name, main_val, meta_map)
-                self._notify_observer("on_metric_result", item_index=index,
-                                      metric_name=m_name, score=score,
-                                      metadata={"input": item.input, "expected": getattr(item, 'expected_output', None)})
             else:
                 tracker.set_metric_error(index, m_name)
 
@@ -2036,49 +2318,98 @@ class Evaluator:
             if ps is None:
                 return
             item_id = getattr(item, "id", None) or f"item_{index}"
-            ps.emit("item_attempt_finished", {
-                "item_id": str(item_id),
-                "index": int(index),
-                "attempt_number": attempt.attempt_number,
-                "status": attempt.status,
-                "trace_id": attempt.spans.trace_id,
-                "trace_url": attempt.spans.trace_url,
-                "latency_ms": attempt.latency_ms,
-                "task_started_at_ms": attempt.task_started_at_ms,
-                "error": attempt.error,
-                "is_last_attempt": is_last_attempt,
-            })
+            ps.emit(
+                "item_attempt_finished",
+                {
+                    "item_id": str(item_id),
+                    "index": int(index),
+                    "attempt_number": attempt.attempt_number,
+                    "status": attempt.status,
+                    "trace_id": attempt.spans.trace_id,
+                    "trace_url": attempt.spans.trace_url,
+                    "latency_ms": attempt.latency_ms,
+                    "task_started_at_ms": attempt.task_started_at_ms,
+                    "error": attempt.error,
+                    "is_last_attempt": is_last_attempt,
+                },
+            )
         except Exception:
             pass
 
     def _emit_item_completed(
-        self, index: int, item: Any, output: Any, task_time: float,
-        spans: ItemSpans, retry_count: int, task_started_at_ms: Optional[int],
+        self,
+        index: int,
+        item: Any,
+        output: Any,
+        scores: Dict[str, Any],
+        task_time: float,
+        item_time: float,
+        spans: ItemSpans,
+        retry_count: int,
+        task_started_at_ms: Optional[int],
+        item_started_at_ms: int,
     ):
         """Emit item_completed to platform stream and notify observer."""
+        item_completed_at_ms = int(time.time() * 1000)
+        task_completed_at_ms = (
+            task_started_at_ms + int(task_time * 1000.0)
+            if task_started_at_ms is not None
+            else None
+        )
         try:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
                 item_id = getattr(item, "id", None) or f"item_{index}"
-                ps.emit("item_completed", {
-                    "item_id": str(item_id),
-                    "index": int(index),
-                    "output": output,
-                    "latency_ms": float(task_time * 1000.0),
-                    "trace_id": spans.trace_id,
-                    "trace_url": spans.trace_url,
-                    "task_started_at_ms": task_started_at_ms,
-                    "retry_count": retry_count,
-                })
+                ps.emit(
+                    "item_completed",
+                    {
+                        "item_id": str(item_id),
+                        "index": int(index),
+                        "output": output,
+                        "latency_ms": float(task_time * 1000.0),
+                        "total_latency_ms": float(item_time * 1000.0),
+                        "trace_id": spans.trace_id,
+                        "trace_url": spans.trace_url,
+                        "task_started_at_ms": task_started_at_ms,
+                        "task_completed_at_ms": task_completed_at_ms,
+                        "item_started_at_ms": item_started_at_ms,
+                        "item_completed_at_ms": item_completed_at_ms,
+                        "retry_count": retry_count,
+                    },
+                )
         except Exception:
             pass
-        self._notify_observer("on_item_complete", item_index=index, result={
-            "output": output, "scores": {}, "task_time": task_time,
-        })
+        self._notify_observer(
+            "on_item_complete",
+            item_index=index,
+            result={
+                "output": output,
+                "scores": scores,
+                "task_time": task_time,
+                "task_time_ms": float(task_time * 1000.0),
+                "time": task_time,
+                "latency_ms": float(task_time * 1000.0),
+                "item_time": item_time,
+                "item_time_ms": float(item_time * 1000.0),
+                "total_time": item_time,
+                "total_time_ms": float(item_time * 1000.0),
+                "task_started_at_ms": task_started_at_ms,
+                "task_completed_at_ms": task_completed_at_ms,
+                "item_started_at_ms": item_started_at_ms,
+                "item_completed_at_ms": item_completed_at_ms,
+                "trace_id": spans.trace_id,
+                "trace_url": spans.trace_url,
+                "retry_count": retry_count,
+            },
+        )
 
     async def _handle_item_error(
-        self, index: int, item: Any, error: Exception,
-        spans: ItemSpans, tracker: "ProgressObserver",
+        self,
+        index: int,
+        item: Any,
+        error: Exception,
+        spans: ItemSpans,
+        tracker: "ProgressObserver",
         *,
         attempt: Optional[TaskAttemptResult] = None,
         retry_count: int = 0,
@@ -2098,16 +2429,19 @@ class Evaluator:
         try:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
-                ps.emit("item_failed", {
-                    "item_id": str(item_id),
-                    "index": int(index),
-                    "error": error_str,
-                    "latency_ms": latency_ms,
-                    "trace_id": trace_id,
-                    "trace_url": trace_url,
-                    "task_started_at_ms": task_started_at_ms,
-                    "retry_count": retry_count,
-                })
+                ps.emit(
+                    "item_failed",
+                    {
+                        "item_id": str(item_id),
+                        "index": int(index),
+                        "error": error_str,
+                        "latency_ms": latency_ms,
+                        "trace_id": trace_id,
+                        "trace_url": trace_url,
+                        "task_started_at_ms": task_started_at_ms,
+                        "retry_count": retry_count,
+                    },
+                )
         except Exception:
             pass
         if attempt is not None:
@@ -2115,9 +2449,11 @@ class Evaluator:
         # 2. Update local tracker
         try:
             tracker.update_trace_info(index, trace_id, trace_url)
-            tracker.fail_item(index, error_str, elapsed_time=attempt.latency_s if attempt else None)
+            tracker.fail_item(
+                index, error_str, elapsed_time=attempt.latency_s if attempt else None
+            )
             if retry_count > 0:
-                tracker.item_statuses[index]['retry_count'] = retry_count
+                tracker.item_statuses[index]["retry_count"] = retry_count
         except Exception:
             pass
         try:
@@ -2144,6 +2480,8 @@ class Evaluator:
         retry_count: int,
         active_spans: ItemSpans,
         tracker: "ProgressObserver",
+        item_started_at_ms: int,
+        item_started_monotonic: float,
     ) -> None:
         """Run the durable emit phase of a successful item atomically.
 
@@ -2177,10 +2515,13 @@ class Evaluator:
             index,
             item,
             success_attempt.output,
+            scores,
             success_attempt.latency_s,
+            max(time.monotonic() - item_started_monotonic, 0.0),
             active_spans,
             retry_count,
             success_attempt.task_started_at_ms,
+            item_started_at_ms,
         )
         # Dataset linking (async Langfuse HTTP call, best-effort)
         try:
@@ -2188,7 +2529,9 @@ class Evaluator:
         except Exception:
             pass
         # Per-attempt finished event
-        self._emit_item_attempt_finished(index, item, success_attempt, is_last_attempt=True)
+        self._emit_item_attempt_finished(
+            index, item, success_attempt, is_last_attempt=True
+        )
 
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):
         """Evaluate a single item: create spans, run task, compute metrics, emit results."""
@@ -2196,16 +2539,24 @@ class Evaluator:
         active_spans = ItemSpans()
         active_attempt: Optional[TaskAttemptResult] = None
         active_retry_count = 0
+        item_started_at_ms = int(time.time() * 1000)
+        item_started_monotonic = time.monotonic()
 
         try:
             tracker.start_item(index)
             self._emit_item_started(index, item)
 
-            success_attempt, attempts, retry_count = await self._execute_task(index, item)
+            success_attempt, attempts, retry_count = await self._execute_task(
+                index, item
+            )
             active_retry_count = retry_count
             last_attempt = attempts[-1] if attempts else None
             if success_attempt is None or last_attempt is None:
-                error = RuntimeError(last_attempt.error if last_attempt and last_attempt.error else "Task failed")
+                error = RuntimeError(
+                    last_attempt.error
+                    if last_attempt and last_attempt.error
+                    else "Task failed"
+                )
                 await self._handle_item_error(
                     index,
                     item,
@@ -2220,7 +2571,9 @@ class Evaluator:
                     "_error": str(error),
                     "_trace_id": last_attempt.spans.trace_id if last_attempt else None,
                     "time": last_attempt.latency_s if last_attempt else None,
-                    "task_started_at_ms": last_attempt.task_started_at_ms if last_attempt else None,
+                    "task_started_at_ms": last_attempt.task_started_at_ms
+                    if last_attempt
+                    else None,
                 }
 
             active_spans = success_attempt.spans
@@ -2229,7 +2582,9 @@ class Evaluator:
                 active_spans.end_task(output=success_attempt.output)
             except Exception:
                 pass
-            scores = await self._compute_metrics(index, item, success_attempt.output, active_spans)
+            scores = await self._compute_metrics(
+                index, item, success_attempt.output, active_spans
+            )
 
             # Mark the item as finished IMMEDIATELY after metrics compute. Once we
             # have scores, the work is functionally done — any subsequent emit
@@ -2254,14 +2609,24 @@ class Evaluator:
             # Now the durable emit phase (platform stream + tracker + Langfuse
             # dataset linking) runs under asyncio.shield so it completes
             # atomically even if the caller is cancelled mid-flight.
-            await asyncio.shield(self._finalize_item(
-                index, item, success_attempt, scores, retry_count, active_spans, tracker,
-            ))
+            await asyncio.shield(
+                self._finalize_item(
+                    index,
+                    item,
+                    success_attempt,
+                    scores,
+                    retry_count,
+                    active_spans,
+                    tracker,
+                    item_started_at_ms,
+                    item_started_monotonic,
+                )
+            )
 
             return {
                 "input": item.input,
                 "output": success_attempt.output,
-                "expected": getattr(item, 'expected_output', None),
+                "expected": getattr(item, "expected_output", None),
                 "scores": {k: v for k, v in scores.items() if v is not None},
                 "trace_id": active_spans.trace_id,
                 "trace_url": active_spans.trace_url,
@@ -2286,7 +2651,9 @@ class Evaluator:
                 "_error": str(e),
                 "_trace_id": active_spans.trace_id,
                 "time": active_attempt.latency_s if active_attempt else None,
-                "task_started_at_ms": active_attempt.task_started_at_ms if active_attempt else None,
+                "task_started_at_ms": active_attempt.task_started_at_ms
+                if active_attempt
+                else None,
             }
         finally:
             # Guard against CancelledError / KeyboardInterrupt leaving items
@@ -2297,16 +2664,19 @@ class Evaluator:
                     ps = getattr(self, "_platform_stream", None)
                     if ps is not None:
                         item_id = getattr(item, "id", None) or f"item_{index}"
-                        ps.emit("item_failed", {
-                            "item_id": str(item_id),
-                            "index": int(index),
-                            "error": "Cancelled",
-                            "latency_ms": None,
-                            "trace_id": active_spans.trace_id,
-                            "trace_url": active_spans.trace_url,
-                            "task_started_at_ms": None,
-                            "retry_count": 0,
-                        })
+                        ps.emit(
+                            "item_failed",
+                            {
+                                "item_id": str(item_id),
+                                "index": int(index),
+                                "error": "Cancelled",
+                                "latency_ms": None,
+                                "trace_id": active_spans.trace_id,
+                                "trace_url": active_spans.trace_url,
+                                "task_started_at_ms": None,
+                                "retry_count": 0,
+                            },
+                        )
                 except Exception:
                     pass
                 try:
@@ -2318,7 +2688,9 @@ class Evaluator:
                 except Exception:
                     pass
 
-    def _compute_metric_sync(self, metric_func: Callable, output: Any, expected: Any, input_data: Any) -> Any:
+    def _compute_metric_sync(
+        self, metric_func: Callable, output: Any, expected: Any, input_data: Any
+    ) -> Any:
         """Synchronous version of metric computation for thread pool execution."""
         try:
             sig = inspect.signature(metric_func)
@@ -2334,11 +2706,15 @@ class Evaluator:
                 return metric_func()
         except Exception as e:
             error_tb = traceback.format_exc()
-            logger.error(f"Metric {getattr(metric_func, '__name__', 'unknown')} failed: {error_tb}")
+            logger.error(
+                f"Metric {getattr(metric_func, '__name__', 'unknown')} failed: {error_tb}"
+            )
             return {"score": 0, "error": str(e), "traceback": error_tb}
 
 
-def _announce_saved_results(results: Sequence[EvaluationResult], *, include_run_name: bool) -> None:
+def _announce_saved_results(
+    results: Sequence[EvaluationResult], *, include_run_name: bool
+) -> None:
     table = Table(box=None, show_header=False, padding=(0, 0))
     table.add_column("Saved to", style="dim")
 

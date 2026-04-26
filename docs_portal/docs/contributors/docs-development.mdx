@@ -1,0 +1,55 @@
+# Docs Development
+
+Use this page when changing the qym docs portal or the platform's bundled docs behavior.
+
+## Source docs
+
+The Docusaurus source lives under `docs_portal`. Edit MDX pages there first.
+
+```bash
+cd docs_portal
+npm run build
+```
+
+The build writes static output under `docs_portal/build`.
+
+## Local docs development
+
+Use the Docusaurus development server when iterating on docs content, navigation, or styling.
+
+```bash
+cd docs_portal
+npm run start
+```
+
+Run a production build before finishing a docs change because the deployed platform serves built static files.
+
+## Fallback docs
+
+The platform includes lightweight fallback docs for environments where the full Docusaurus build is unavailable. Fallback docs are not the authoring source of truth.
+
+Use fallback docs only for:
+
+- degraded self-hosted environments;
+- development containers missing the full build;
+- basic docs availability during packaging failures.
+
+If the platform serves fallback docs unexpectedly, check that `docs_portal/build` is present in the image or mounted development container.
+
+## Generated references
+
+Generated CLI and API reference pages should be regenerated through the repository's documented generation workflow, then reviewed in Docusaurus. Do not hand-edit generated output unless the generator itself cannot express the needed correction.
+
+## Audience audit
+
+Before finishing a docs change, search for repo-local commands that leaked into App User or Developer onboarding:
+
+```bash
+rg "pip install -e|packages/sdk|packages/platform|docs_portal|docker/docker-compose.dev.yml|npm run build|pytest|alembic|fallback docs" docs_portal/docs
+```
+
+Allowed placement:
+
+- App User docs: no development commands.
+- Developer docs: PyPI install, SDK/API/CLI usage, platform integration.
+- Contributor docs: repo-local commands, docs build, migrations, tests, fallback docs internals.

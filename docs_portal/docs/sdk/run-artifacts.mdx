@@ -1,0 +1,132 @@
+# Run Artifacts
+
+qym saves local artifacts for every run. Treat these files as the durable fallback even when the platform is enabled.
+
+## High-Level Model
+
+Artifacts support:
+
+- offline review
+- failed run recovery
+- delayed platform upload
+- downstream analysis
+- spreadsheet inspection
+- CI evidence
+
+Default location:
+
+```text
+qym_results/<task>/<model>/<date>/<run-file>
+```
+
+## Detailed Behavior
+
+Supported save formats:
+
+| Format | Use For |
+|--------|---------|
+| CSV | Spreadsheet review and platform upload. |
+| JSON | Programmatic consumers. |
+| XLSX | Business review in Excel-compatible tools. |
+
+### CSV/XLSX Columns
+
+CSV and XLSX exports use the same logical fields.
+
+Base fields:
+
+| Column | Meaning |
+|--------|---------|
+| `dataset_name` | Dataset name or file-backed dataset label. |
+| `run_name` | qym run name. |
+| `run_metadata` | JSON metadata attached to the run. |
+| `run_config` | JSON config snapshot. |
+| `trace_id` | Trace ID for the item when available. |
+| `item_id` | Dataset item ID. |
+| `input` | Task input. |
+| `item_metadata` | JSON/string metadata for the item. |
+| `output` | Task output, or `ERROR: ...` for failed items. |
+| `expected_output` | Expected/reference output. |
+| `time` | Task duration in seconds. |
+| `task_started_at_ms` | Epoch milliseconds when task execution began. |
+
+Metric fields:
+
+```text
+<metric>_score
+<metric>__meta__<key>
+```
+
+Example:
+
+```text
+exact_match_score
+relevance_score
+relevance__meta__label
+relevance__meta__explanation
+```
+
+### Failed Items
+
+Failed items are written as rows too:
+
+- `output` starts with `ERROR:`.
+- metric scores are `N/A`.
+- trace and timing fields are included when available.
+
+### JSON Export
+
+JSON export preserves the structured result object, including:
+
+- dataset name
+- run name
+- metrics
+- run metadata
+- run config
+- per-item results
+- errors
+- paths and URLs when available
+
+Use JSON when another program consumes qym results directly.
+
+## For Developers
+
+### Save Explicitly
+
+```python
+result = Evaluator(...).run()
+
+csv_path = result.save("csv")
+json_path = result.save("json")
+xlsx_path = result.save("xlsx")
+```
+
+### Upload Later
+
+```bash
+qym submit --file qym_results/.../run.csv --task my_task --dataset my_dataset
+```
+
+### Downstream Parsing
+
+When parsing CSV:
+
+- Parse `run_metadata`, `run_config`, and `item_metadata` as JSON when possible.
+- Treat `ERROR:` output as a failed item.
+- Treat `N/A` metric scores as missing due to item failure.
+- Parse metric metadata columns using the `__meta__` separator.
+
+### Common Mistakes
+
+| Mistake | Impact | Fix |
+|---------|--------|-----|
+| Consuming only successful rows | Failure rate disappears. | Include rows where `output` starts with `ERROR:`. |
+| Ignoring metric metadata | Judge labels/explanations are lost. | Parse `<metric>__meta__*` fields. |
+| Treating artifact path as stable API | Path includes task/model/date naming. | Use returned `last_saved_path` or explicit filepath. |
+| Storing secrets in metadata | Secrets can land in artifacts. | Keep metadata non-sensitive. |
+
+## Related Docs
+
+- [SDK Configuration](/sdk/configuration)
+- [Platform Upload Workflow](/examples/platform-upload)
+- [API Ingestion Guide](/api/ingestion-guide)

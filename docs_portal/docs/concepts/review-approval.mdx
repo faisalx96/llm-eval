@@ -1,0 +1,105 @@
+# Review And Approval Workflow
+
+Use this page when qym results need human review, approval, correction, or governance after an evaluation run completes.
+
+## High-Level Model
+
+Evaluation produces evidence. Review turns that evidence into an operational decision.
+
+```text
+run completed -> inspect failures -> add corrections -> submit -> approve/reject -> compare/report
+```
+
+Review state lives in the platform. It does not change how the SDK executed the run.
+
+## Detailed Behavior
+
+### Run Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING` | Run was created but has not started. |
+| `RUNNING` | SDK is actively streaming or platform believes run is active. |
+| `COMPLETED` | Run finished normally. |
+| `FAILED` | Run ended due to fatal failure. |
+| `STOPPED` | SDK was interrupted and sent stopped status. |
+| `DRAFT` | Run is complete but not submitted for approval. |
+| `SUBMITTED` | Run is waiting for approval. |
+| `APPROVED` | Manager/admin approved the run. |
+| `REJECTED` | Manager/admin rejected the run. |
+
+### Corrections
+
+Corrections annotate run items with review information such as:
+
+- root cause category
+- root cause detail
+- reviewer note
+- solution category
+- solution note
+- approval status
+
+Corrections can be AI-suggested or human-confirmed. Human-confirmed corrections should be treated as higher authority than AI suggestions.
+
+### Roles And Visibility
+
+Typical role behavior:
+
+| Role | Typical Visibility | Review Power |
+|------|--------------------|--------------|
+| Employee | Own runs | Submit runs. |
+| Manager | Managed team runs | Approve/reject. |
+| GM / VP | Approved runs, depending on settings | Usually read/review. |
+| Admin | All runs | Full control. |
+
+Exact visibility depends on platform settings and organization membership.
+
+## For Developers
+
+### Build Review-Friendly Runs
+
+Include metadata that makes review meaningful:
+
+```python
+config={
+    "run_metadata": {
+        "owner": "search-platform",
+        "release": "2026-04-24",
+        "prompt_version": "v17",
+        "dataset_version": "qa-regression-v4",
+    }
+}
+```
+
+Include item metadata for filtering:
+
+```csv
+id,question,answer,difficulty,domain,risk_level
+qa-001,What is refund policy?,...,medium,billing,high
+```
+
+### Review Automation
+
+Use API workflows for bulk review tools:
+
+```text
+GET /api/runs/{run_id}
+GET /api/runs/{run_id}/corrections
+POST /api/corrections/{correction_id}/approve
+POST /api/corrections/{correction_id}/reject
+```
+
+### Common Mistakes
+
+| Mistake | Impact | Fix |
+|---------|--------|-----|
+| No metadata | Reviewers cannot slice failures. | Add domain/difficulty/risk metadata. |
+| Treating AI analysis as approval | Governance gap. | Require human review where policy demands it. |
+| Comparing runs with different datasets | Misleading conclusions. | Use stable item IDs and shared datasets. |
+| Not documenting prompt/model version | Approved run cannot be reproduced. | Store versions in `run_metadata`. |
+
+## Related Docs
+
+- [Platform Review](/getting-started/platform-review)
+- [API Workflows](/api/workflows)
+- [Concepts](/concepts)

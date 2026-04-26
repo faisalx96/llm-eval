@@ -524,19 +524,21 @@
     filtered.forEach(function (p) {
       var isActive = _currentProject && _currentProject.slug === p.slug;
       var initials = p.name.split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
-      html += '<div class="popover-item' + (isActive ? ' active' : '') + '" data-slug="' + esc(p.slug) + '">'
+      html += '<a class="popover-item' + (isActive ? ' active' : '') + '" data-slug="' + esc(p.slug) + '" href="' + projectUrl(p.slug) + '">'
         + '<span class="popover-item-icon">' + esc(initials) + '</span>'
         + '<span>' + esc(p.name) + '</span>'
         + (isActive ? '<span class="popover-item-check">' + iconRaw('check', 14, 14) + '</span>' : '')
-        + '</div>';
+        + '</a>';
     });
     if (!filtered.length) html = '<div style="padding:8px 10px;font-size:12px;color:var(--text-dim)">No projects found</div>';
     list.innerHTML = html;
 
     // Bind click handlers
     list.querySelectorAll('.popover-item[data-slug]').forEach(function (item) {
-      item.addEventListener('click', function () {
+      item.addEventListener('click', function (e) {
+        if (isModifiedEvent(e)) return;
         switchProject(item.getAttribute('data-slug'));
+        e.preventDefault();
       });
     });
   }
@@ -925,6 +927,7 @@
     _navigating = true;
 
     var content = document.getElementById('shell-content');
+    document.dispatchEvent(new CustomEvent('qym:before-navigate', { detail: { url: url, opts: opts } }));
     if (!content) { window.location.href = url; return; }
 
     closeShellPopovers();

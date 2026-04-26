@@ -20,6 +20,7 @@ services:
       - ../packages/platform:/app/packages/platform
       - ../packages/sdk:/app/packages/sdk
       - ../tools:/app/tools
+      - ../docs_portal:/app/docs_portal
     command:
       - uvicorn
       - qym_platform.main:app
@@ -34,3 +35,5 @@ services:
       - /app/packages/sdk
       - --reload-dir
       - /app/tools
+      - --reload-dir
+      - /app/docs_portal

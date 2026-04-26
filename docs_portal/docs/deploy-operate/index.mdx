@@ -3,19 +3,25 @@ import DocCard from '@site/src/components/DocCard';
 
 # Deploy & Operate
 
-This section is for operators and platform owners. It covers local development, Docker deployment, production configuration, auth modes, environment matrices, air-gapped runtime behavior, and upgrade procedures.
+This section is for platform operators and qym contributors. It covers production deployment, Docker deployment, auth modes, environment matrices, secrets, air-gapped runtime behavior, upgrades, and contributor-only local development.
 
 <CardGrid>
-  <DocCard title="Local Development" href="/deploy-operate/local-development" eyebrow="Dev">
-    Repo-local development and validation loop.
-  </DocCard>
   <DocCard title="Docker Deployment" href="/deploy-operate/docker-deployment" eyebrow="Default">
     The standard way to build and run the platform.
   </DocCard>
   <DocCard title="Production" href="/deploy-operate/production" eyebrow="Operate">
     Production expectations for Postgres, secrets, auth, and URL routing.
   </DocCard>
+  <DocCard title="Security And Secrets" href="/deploy-operate/security-secrets" eyebrow="Protect">
+    Handle API keys, LLM provider keys, database secrets, encryption keys, and metadata safety.
+  </DocCard>
+  <DocCard title="Compatibility" href="/deploy-operate/compatibility" eyebrow="Upgrade">
+    Understand SDK/platform event compatibility, migrations, artifact compatibility, and smoke tests.
+  </DocCard>
   <DocCard title="Air-Gapped" href="/deploy-operate/air-gapped" eyebrow="Offline">
     Runtime offline behavior, image transfer, and docs availability.
+  </DocCard>
+  <DocCard title="Contribute To qym" href="/contributors" eyebrow="Repo">
+    Repository setup, docs development, tests, migrations, and packaging internals.
   </DocCard>
 </CardGrid>

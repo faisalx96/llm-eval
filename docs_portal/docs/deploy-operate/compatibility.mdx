@@ -1,0 +1,83 @@
+# Compatibility And Upgrades
+
+Use this page when SDK clients and the platform may be upgraded independently.
+
+## High-Level Model
+
+qym has multiple compatibility boundaries:
+
+| Boundary | Compatibility Concern |
+|----------|-----------------------|
+| SDK -> platform events | Event schema and ingestion behavior. |
+| CLI -> platform API | Endpoint availability and auth behavior. |
+| Platform -> database | Alembic migrations and schema changes. |
+| Docs -> deployed image | Static docs generated at build time. |
+| Saved artifacts -> upload importer | CSV/JSON/XLSX field compatibility. |
+
+The safest production posture is to upgrade platform first, then SDK/CLI clients.
+
+## Detailed Behavior
+
+### Event Schema
+
+Platform streaming events include:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "uuid",
+  "sequence": 1,
+  "type": "run_started",
+  "payload": {}
+}
+```
+
+Compatibility expectations:
+
+- `schema_version=1` should remain accepted long-term.
+- New SDK versions may add optional payload fields.
+- Platform should ignore unknown optional fields.
+- Breaking event changes require a schema version bump.
+
+### Database Migrations
+
+Platform upgrades require database migrations. The container entrypoint should run migrations automatically. Manual production deployments must run the migration step through the deployment process before starting app traffic.
+
+Contributor-only migration commands live in [Local Monorepo Development](/contributors/local-development).
+
+### Saved Artifacts
+
+CSV/JSON/XLSX artifacts should remain uploadable when possible. If artifact columns change, upload/import code should handle older columns or fail with clear errors.
+
+## For Developers
+
+### Recommended Upgrade Order
+
+1. Back up the platform database.
+2. Deploy the new platform version.
+3. Run migrations.
+4. Validate `/healthz`.
+5. Run `qym config check --json` from a client.
+6. Run one small CSV smoke evaluation.
+7. Upgrade SDK/CLI clients.
+8. Run a platform-streamed evaluation and verify item counts, metrics, traces, and final status.
+
+### Compatibility Smoke Test
+
+After the platform is healthy, ask a developer client to run the standard SDK or CLI smoke workflow against the upgraded platform. The smoke run should confirm platform connectivity, item ingestion, metric display, traces when enabled, and final run status.
+
+### Common Mistakes
+
+| Mistake | Impact | Fix |
+|---------|--------|-----|
+| SDK upgraded before platform supports new event fields | Event rejection or missing UI data. | Upgrade platform first. |
+| Migrations skipped | Runtime database errors. | Run the deployment migration step before app traffic. |
+| No smoke run after deploy | Breakage found by users. | Run config check and small evaluation. |
+| Hard-coded API assumptions in external tools | Tools break after endpoint changes. | Use generated API reference and stable workflows. |
+
+## Related Docs
+
+- [Platform Streaming](/sdk/platform-streaming)
+- [API Ingestion Guide](/api/ingestion-guide)
+- [Upgrades And Rebuilds](/deploy-operate/upgrades)
+- [Docker Deployment](/deploy-operate/docker-deployment)

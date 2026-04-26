@@ -2,65 +2,54 @@ import CardGrid from '@site/src/components/CardGrid';
 import DocCard from '@site/src/components/DocCard';
 import CommandBlock from '@site/src/components/CommandBlock';
 
-# qym Developer Portal
+# qym Docs
 
-qym is an evaluation operating system for LLM products. This portal is the canonical path for developers who need to run evaluations and for operators who need to deploy, secure, and maintain the platform.
-
-:::tip First Success
-The shortest path is: install qym, configure connectivity, run one small evaluation, then inspect the result in the platform.
-:::
+qym has three documentation paths. Choose the one that matches what you are doing now.
 
 <CardGrid>
-  <DocCard title="Developer Path" href="/getting-started" eyebrow="Start Here">
-    Install the SDK, run a first evaluation, and move into SDK, CLI, API, and examples from a known-good baseline.
+  <DocCard title="App Users" href="/app-users" eyebrow="Use The Deployed App">
+    Review runs, inspect items and traces, compare results, approve or reject evaluations, and troubleshoot access or visibility.
   </DocCard>
-  <DocCard title="Operator Path" href="/deploy-operate" eyebrow="Operate">
-    Stand up the platform with Docker or a production deployment, configure auth and secrets, and keep docs available in air-gapped environments.
+  <DocCard title="Developers" href="/getting-started" eyebrow="Build With qym">
+    Install the PyPI SDK, run evaluations from Python, add datasets and metrics, build wrappers, stream to the platform, and automate with the CLI.
   </DocCard>
-  <DocCard title="API Reference" href="/api" eyebrow="Integrate">
-    Learn the auth model, project scoping, and common API workflows before dropping into generated endpoint reference.
-  </DocCard>
-  <DocCard title="Canonical Examples" href="/examples" eyebrow="Copy A Working Pattern">
-    Use the curated examples when you need a minimal path, CSV workflow, judge metrics, multi-model comparison, or upload flow.
+  <DocCard title="Operators & Contributors" href="/deploy-operate" eyebrow="Run Or Change qym">
+    Deploy the platform, configure auth and secrets, manage upgrades, or work inside the qym monorepo.
   </DocCard>
 </CardGrid>
 
-## What qym covers
+## App users
 
-- Run repeatable evaluations from Python or the CLI.
-- Score outputs with deterministic metrics, custom metrics, or LLM judges.
-- Stream runs into the platform for shared review, comparison, and analysis.
-- Operate the platform in connected or air-gapped production environments.
+App users work in a deployed qym web application. They do not need Python packages, terminal commands, repository paths, or environment variables.
 
-## Common tasks
+Start here when you need to:
 
-<CardGrid>
-  <DocCard title="Run First Evaluation" href="/getting-started/first-evaluation" eyebrow="Developers">
-    Get from install to a completed run with the minimum required configuration.
-  </DocCard>
-  <DocCard title="Inspect Runs" href="/cli/inspecting-runs" eyebrow="CLI">
-    Find runs, fetch failed items, compare runs, and trigger analysis from the command line.
-  </DocCard>
-  <DocCard title="Deploy Platform" href="/deploy-operate/docker-deployment" eyebrow="Operators">
-    Bring up the platform with Docker, Postgres, and the required environment variables.
-  </DocCard>
-  <DocCard title="Air-Gapped Runtime" href="/deploy-operate/air-gapped" eyebrow="Offline">
-    Understand what must happen at build time versus what works fully offline at runtime.
-  </DocCard>
-</CardGrid>
+- find runs and understand their status;
+- inspect item-level outputs, expected values, metrics, and traces;
+- compare runs before approving a change;
+- review, approve, reject, or annotate results;
+- troubleshoot missing runs, stale progress, or access problems.
 
-## Quickstart
+## Developers
+
+Developers build evaluations and integrations with qym. The developer path assumes you install qym from PyPI into your own application, notebook, worker, CI job, or service.
 
 <CommandBlock
-  title="Baseline CLI loop"
-  command={`pip install -e packages/sdk[dev] -e packages/platform\nqym config check --json\nqym run create --task-file examples/example.py --task-function my_task --dataset my-set --metrics exact_match`}
-  result="A successful run yields local artifacts and, when configured, a platform-visible run you can inspect in the UI."
+  title="Install the SDK"
+  command={`pip install qym`}
+  result="Use this for application code and SDK integration. Repo-local editable installs are contributor-only."
 />
+
+The developer docs cover `Evaluator`, datasets, metrics, custom judges, progress callbacks, observers, wrapper patterns, local artifacts, platform streaming, CLI automation, and direct API integration.
+
+## Operators & contributors
+
+Operators run the shared platform. Contributors modify qym itself.
+
+Use this path for production deployment, auth, secrets, database configuration, upgrades, air-gapped behavior, and repository contribution workflows.
 
 ## Read in this order
 
-1. [Getting Started](/getting-started)
-2. [Examples](/examples)
-3. [CLI](/cli) or [SDK](/sdk), depending on how you prefer to work
-4. [Deploy & Operate](/deploy-operate) if you own platform runtime
-5. [API](/api) when you need external integrations or automation beyond the CLI
+1. [App Users](/app-users) if you only use the deployed qym web app.
+2. [Developers](/getting-started) if you build evaluations with the SDK, API, CLI, observers, or wrappers.
+3. [Operators & Contributors](/deploy-operate) if you deploy qym or work inside the repository.

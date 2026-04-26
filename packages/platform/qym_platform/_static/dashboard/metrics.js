@@ -294,6 +294,37 @@ function calculateMedian(values) {
  * @returns {Object}
  */
 function calculateGroupedOutcomeBuckets(options) {
+  const grouped = calculateGroupedCohortComparison(options);
+  return {
+    eligibleItems: grouped.eligibleItems || 0,
+    leftRunCount: grouped.leftRunCount || 0,
+    rightRunCount: grouped.rightRunCount || 0,
+    buckets: grouped.buckets || {
+      a_sweeps_b: { count: 0, percentage: 0, itemIds: [] },
+      b_sweeps_a: { count: 0, percentage: 0, itemIds: [] },
+      both_pass: { count: 0, percentage: 0, itemIds: [] },
+      both_fail: { count: 0, percentage: 0, itemIds: [] },
+    },
+  };
+}
+
+/**
+ * Calculate grouped cohort comparison stats for two K-run groups.
+ *
+ * Only items present with a non-null score in every selected run are eligible.
+ * Errors are treated as score 0 via getRowScore(), so they count as failures.
+ *
+ * @param {Object} options
+ * @param {Array} options.runsData
+ * @param {Array<string>} options.leftRunIds
+ * @param {Array<string>} options.rightRunIds
+ * @param {number} options.threshold
+ * @param {Function} options.getMetricIndex
+ * @param {Function} options.getItemId
+ * @param {Function} options.getRunId
+ * @returns {Object}
+ */
+function calculateGroupedCohortComparison(options) {
   const {
     runsData,
     leftRunIds,
@@ -309,6 +340,37 @@ function calculateGroupedOutcomeBuckets(options) {
     eligibleItems: 0,
     leftRunCount: Array.isArray(leftRunIds) ? leftRunIds.length : 0,
     rightRunCount: Array.isArray(rightRunIds) ? rightRunIds.length : 0,
+    k: Array.isArray(leftRunIds) ? leftRunIds.length : 0,
+    left: {
+      passAtK: 0,
+      passHatK: 0,
+      avgAtK: 0,
+      consistency: null,
+      reliability: null,
+      avgAttempts: 0,
+    },
+    right: {
+      passAtK: 0,
+      passHatK: 0,
+      avgAtK: 0,
+      consistency: null,
+      reliability: null,
+      avgAttempts: 0,
+    },
+    deltas: {
+      passAtK: 0,
+      passHatK: 0,
+      avgAtK: 0,
+      consistency: 0,
+      reliability: 0,
+    },
+    summary: {
+      improvedCount: 0,
+      regressedCount: 0,
+      unchangedCount: 0,
+      avgAttemptsDelta: 0,
+    },
+    items: [],
     buckets: bucketKeys.reduce((acc, key) => {
       acc[key] = { count: 0, percentage: 0, itemIds: [] };
       return acc;
@@ -346,35 +408,129 @@ function calculateGroupedOutcomeBuckets(options) {
     });
   });
 
-  function collectPasses(groupRuns) {
-    const values = [];
+  function makeAggregateState() {
+    return {
+      passAtKCount: 0,
+      passHatKCount: 0,
+      totalConsistencySum: 0,
+      itemsWithMultipleRuns: 0,
+      totalReliabilitySum: 0,
+      itemsWithAtLeastOnePass: 0,
+      totalScoreSum: 0,
+      totalScoreCount: 0,
+      totalAttemptsSum: 0,
+      totalAttemptsCount: 0,
+    };
+  }
+
+  function finalizeAggregateState(agg) {
+    return {
+      passAtK: result.eligibleItems > 0 ? agg.passAtKCount / result.eligibleItems : 0,
+      passHatK: result.eligibleItems > 0 ? agg.passHatKCount / result.eligibleItems : 0,
+      avgAtK: agg.totalScoreCount > 0 ? agg.totalScoreSum / agg.totalScoreCount : 0,
+      consistency: agg.itemsWithMultipleRuns > 0 ? agg.totalConsistencySum / agg.itemsWithMultipleRuns : null,
+      reliability: agg.itemsWithAtLeastOnePass > 0 ? agg.totalReliabilitySum / agg.itemsWithAtLeastOnePass : null,
+      avgAttempts: agg.totalAttemptsCount > 0 ? agg.totalAttemptsSum / agg.totalAttemptsCount : 0,
+    };
+  }
+
+  function collectGroupValues(groupRuns, itemId) {
+    const scores = [];
+    const passes = [];
+    const attempts = [];
+    const rowList = [];
     for (const runData of groupRuns) {
-      const rows = runData?.snapshot?.rows || [];
-      const row = rows.find(candidate => getItemId(candidate) === currentItemId);
+      const runRows = runData?.snapshot?.rows || [];
+      const row = runRows.find(candidate => getItemId(candidate) === itemId);
       if (!row) return null;
       const metricIdx = getMetricIndex(runData);
       if (metricIdx < 0) return null;
       const { score } = getRowScore(row, metricIdx);
       if (score === null) return null;
-      values.push(score >= threshold);
+      scores.push(score);
+      passes.push(score >= threshold);
+      attempts.push(Math.max(1, Number(row?.retry_count || 0) + 1));
+      rowList.push(row);
     }
-    return values;
+    return { scores, passes, attempts, rows: rowList };
   }
 
-  let currentItemId = null;
+  function updateAggregateState(agg, groupValues) {
+    const numCorrect = groupValues.passes.filter(Boolean).length;
+    const numScores = groupValues.scores.length;
+
+    agg.totalScoreSum += groupValues.scores.reduce((sum, score) => sum + score, 0);
+    agg.totalScoreCount += numScores;
+    agg.totalAttemptsSum += groupValues.attempts.reduce((sum, attempt) => sum + attempt, 0);
+    agg.totalAttemptsCount += groupValues.attempts.length;
+
+    if (numCorrect > 0) agg.passAtKCount += 1;
+    if (numCorrect === numScores && numScores > 0) agg.passHatKCount += 1;
+    if (numScores > 1) {
+      const numFail = numScores - numCorrect;
+      const maxAgreement = Math.max(numCorrect, numFail);
+      agg.totalConsistencySum += (2 * maxAgreement / numScores) - 1;
+      agg.itemsWithMultipleRuns += 1;
+      if (numCorrect > 0) {
+        agg.totalReliabilitySum += numCorrect / numScores;
+        agg.itemsWithAtLeastOnePass += 1;
+      }
+    }
+  }
+
+  const leftAgg = makeAggregateState();
+  const rightAgg = makeAggregateState();
+  let totalAttemptsDelta = 0;
+
   itemIds.forEach((itemId) => {
-    currentItemId = itemId;
-    const leftPasses = collectPasses(leftRuns);
-    if (!leftPasses || leftPasses.length !== leftRuns.length) return;
-    const rightPasses = collectPasses(rightRuns);
-    if (!rightPasses || rightPasses.length !== rightRuns.length) return;
+    const leftValues = collectGroupValues(leftRuns, itemId);
+    if (!leftValues || leftValues.scores.length !== leftRuns.length) return;
+    const rightValues = collectGroupValues(rightRuns, itemId);
+    if (!rightValues || rightValues.scores.length !== rightRuns.length) return;
 
     result.eligibleItems += 1;
+    updateAggregateState(leftAgg, leftValues);
+    updateAggregateState(rightAgg, rightValues);
 
-    const leftAllPass = leftPasses.every(Boolean);
-    const leftAllFail = leftPasses.every(value => !value);
-    const rightAllPass = rightPasses.every(Boolean);
-    const rightAllFail = rightPasses.every(value => !value);
+    const leftPassCount = leftValues.passes.filter(Boolean).length;
+    const rightPassCount = rightValues.passes.filter(Boolean).length;
+    const move = rightPassCount - leftPassCount;
+
+    if (move > 0) result.summary.improvedCount += 1;
+    else if (move < 0) result.summary.regressedCount += 1;
+    else result.summary.unchangedCount += 1;
+
+    const leftAvgAttempts = leftValues.attempts.length
+      ? leftValues.attempts.reduce((sum, attempt) => sum + attempt, 0) / leftValues.attempts.length
+      : 0;
+    const rightAvgAttempts = rightValues.attempts.length
+      ? rightValues.attempts.reduce((sum, attempt) => sum + attempt, 0) / rightValues.attempts.length
+      : 0;
+    totalAttemptsDelta += rightAvgAttempts - leftAvgAttempts;
+
+    const representativeRow = leftValues.rows.find(Boolean) || rightValues.rows.find(Boolean) || null;
+    result.items.push({
+      itemId,
+      rawItemId: representativeRow?.item_id || '',
+      metadata: representativeRow?.item_metadata || {},
+      leftScores: [...leftValues.scores],
+      rightScores: [...rightValues.scores],
+      leftPasses: leftValues.passes,
+      rightPasses: rightValues.passes,
+      leftAttempts: [...leftValues.attempts],
+      rightAttempts: [...rightValues.attempts],
+      leftPassCount,
+      rightPassCount,
+      leftAvgAttempts,
+      rightAvgAttempts,
+      move,
+      bucketKey: null,
+    });
+
+    const leftAllPass = leftValues.passes.every(Boolean);
+    const leftAllFail = leftValues.passes.every(value => !value);
+    const rightAllPass = rightValues.passes.every(Boolean);
+    const rightAllFail = rightValues.passes.every(value => !value);
 
     let bucketKey = null;
     if (leftAllPass && rightAllFail) bucketKey = 'a_sweeps_b';
@@ -383,6 +539,7 @@ function calculateGroupedOutcomeBuckets(options) {
     else if (leftAllFail && rightAllFail) bucketKey = 'both_fail';
 
     if (!bucketKey) return;
+    result.items[result.items.length - 1].bucketKey = bucketKey;
     result.buckets[bucketKey].count += 1;
     result.buckets[bucketKey].itemIds.push(itemId);
   });
@@ -391,6 +548,23 @@ function calculateGroupedOutcomeBuckets(options) {
     result.buckets[key].percentage = result.eligibleItems > 0
       ? result.buckets[key].count / result.eligibleItems
       : 0;
+  });
+
+  result.left = finalizeAggregateState(leftAgg);
+  result.right = finalizeAggregateState(rightAgg);
+  result.deltas = {
+    passAtK: result.right.passAtK - result.left.passAtK,
+    passHatK: result.right.passHatK - result.left.passHatK,
+    avgAtK: result.right.avgAtK - result.left.avgAtK,
+    consistency: (result.right.consistency ?? 0) - (result.left.consistency ?? 0),
+    reliability: (result.right.reliability ?? 0) - (result.left.reliability ?? 0),
+  };
+  result.summary.avgAttemptsDelta = result.eligibleItems > 0 ? totalAttemptsDelta / result.eligibleItems : 0;
+  result.items.sort((a, b) => {
+    if (b.move !== a.move) return b.move - a.move;
+    if (b.rightPassCount !== a.rightPassCount) return b.rightPassCount - a.rightPassCount;
+    if (a.leftPassCount !== b.leftPassCount) return a.leftPassCount - b.leftPassCount;
+    return String(a.itemId || a.rawItemId).localeCompare(String(b.itemId || b.rawItemId));
   });
 
   return result;
@@ -598,6 +772,7 @@ if (typeof window !== 'undefined') {
     // Metrics calculation
     calculateItemLevelMetrics,
     calculateGroupedOutcomeBuckets,
+    calculateGroupedCohortComparison,
     calculateMedian,
     // Type detection
     detectMetricType,

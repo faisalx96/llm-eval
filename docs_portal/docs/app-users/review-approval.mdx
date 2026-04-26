@@ -1,0 +1,43 @@
+# Review And Approval
+
+Review turns evaluation evidence into a decision. Use it when a run needs human judgment before a release, prompt update, model change, or workflow change is accepted.
+
+## Review states
+
+| State | Meaning |
+|-------|---------|
+| Draft | The run exists but has not been submitted for approval. |
+| Submitted | The run is ready for review. |
+| Approved | The reviewer accepted the run as sufficient evidence. |
+| Rejected | The reviewer found issues that need changes or another run. |
+
+Other run statuses, such as running, completed, failed, or stopped, describe execution state. Review states describe human decision state.
+
+## Review checklist
+
+1. Confirm the run belongs to the expected project, task, dataset, and model.
+2. Check total item count and completion status.
+3. Read aggregate metrics, then inspect representative failed rows.
+4. Compare against the previous accepted run when available.
+5. Review generated analysis as a summary, not as final authority.
+6. Add corrections or notes for important failure patterns.
+7. Approve only when the evidence supports the decision.
+
+## Corrections and notes
+
+Corrections capture human judgment about an item. Use them to record root cause, expected fix, reviewer notes, and whether a generated suggestion was correct.
+
+Good notes are short and specific:
+
+- what failed;
+- why it matters;
+- what should change;
+- whether the issue blocks approval.
+
+## Roles and permissions
+
+Your available actions depend on your role and organization settings. If you can see a run but cannot submit, approve, reject, or edit corrections, ask your qym administrator to verify your project membership and role.
+
+## Approval quality
+
+Avoid approving a run based only on a single aggregate score. Check item-level evidence and compare against a relevant baseline when the decision affects a release or customer-facing behavior.

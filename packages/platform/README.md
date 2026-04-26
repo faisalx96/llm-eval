@@ -200,6 +200,29 @@ python -m qym_platform.tools.import_local_results --owner-email you@company.com 
 
 This ingests local CSV or JSON results into the platform database. Raw artifacts are parsed and ingested, not stored as permanent source files.
 
+## SDK Progress Hooks
+
+The platform receives live run events when SDK clients set `QYM_PLATFORM_URL` and `QYM_API_KEY`. If a wrapper around the SDK also needs local progress, use the SDK's `progress_callback`; it does not replace platform streaming.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+def on_progress(snapshot: ProgressSnapshot):
+    update_job(
+        run_id=snapshot.run_id,
+        finished=snapshot.finished,
+        total=snapshot.total_items,
+        percent=snapshot.percent_complete,
+    )
+
+Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
 ## Related Docs
 
 - [Platform User Guide](docs/USER_GUIDE.md)

@@ -715,24 +715,35 @@ def legacy_list_runs(
         ] = _median(values)
 
     # --- Batch query: score sums per run+metric ---
-    # We divide by the run's total_items (not COUNT(score_numeric)) so that items
-    # which errored out and therefore produced no score row count as 0. Using
-    # SQL AVG would exclude them and inflate the average (e.g. a run with 3/100
-    # items succeeding at score 1.0 would report 100% instead of 3%).
+    # Match run-detail semantics:
+    # - errored items count as 0
+    # - scored items count normally
+    # - in-flight / unscored items are excluded from the denominator
     score_agg_rows = (
         db.query(
             RunItemScore.run_id,
             RunItemScore.metric_name,
             func.sum(RunItemScore.score_numeric).label("score_sum"),
+            func.count(RunItemScore.score_numeric).label("score_count"),
         )
-        .filter(RunItemScore.run_id.in_(run_ids))
+        .join(
+            RunItem,
+            (RunItem.run_id == RunItemScore.run_id) & (RunItem.item_id == RunItemScore.item_id),
+        )
+        .filter(
+            RunItemScore.run_id.in_(run_ids),
+            RunItem.error.is_(None),
+        )
         .group_by(RunItemScore.run_id, RunItemScore.metric_name)
         .all()
     )
-    # Build nested map: run_id -> {metric_name: sum}
-    score_sum_agg: Dict[str, Dict[str, float]] = {}
+    # Build nested map: run_id -> {metric_name: {"sum": ..., "count": ...}}
+    score_agg: Dict[str, Dict[str, Dict[str, float]]] = {}
     for row in score_agg_rows:
-        score_sum_agg.setdefault(row.run_id, {})[row.metric_name] = float(row.score_sum) if row.score_sum is not None else 0.0
+        score_agg.setdefault(row.run_id, {})[row.metric_name] = {
+            "sum": float(row.score_sum) if row.score_sum is not None else 0.0,
+            "count": float(row.score_count or 0),
+        }
 
     # --- Batch query: approvals ---
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
@@ -771,9 +782,16 @@ def legacy_list_runs(
                 expected_total = None
 
         metrics = list(r.metrics or [])
-        run_score_sums = score_sum_agg.get(r.id, {})
+        run_score_agg = score_agg.get(r.id, {})
         metric_averages = {
-            m: (run_score_sums.get(m, 0.0) / total_items) if total_items else 0.0
+            m: (
+                (
+                    run_score_agg.get(m, {}).get("sum", 0.0)
+                    / (run_score_agg.get(m, {}).get("count", 0.0) + error_count)
+                )
+                if (run_score_agg.get(m, {}).get("count", 0.0) + error_count)
+                else 0.0
+            )
             for m in metrics
         }
 
@@ -1154,6 +1172,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "compare_item_id": identity["compare_item_id"],
                 "compare_alignment_source": identity["compare_alignment_source"],
                 "status": status,
+                "error": it.error or "",
                 "input": _stringify(it.input),
                 "input_full": _stringify(it.input),
                 "output": _stringify(it.output) if not is_error else f"ERROR: {it.error}",
@@ -1491,6 +1510,7 @@ def update_metric(
         "compare_item_id": identity["compare_item_id"],
         "compare_alignment_source": identity["compare_alignment_source"],
         "status": status,
+        "error": item.error or "",
         "input": item.input,
         "input_full": item.input,
         "output": item.output if not is_error else f"ERROR: {item.error}",

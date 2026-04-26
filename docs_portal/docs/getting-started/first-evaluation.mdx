@@ -2,31 +2,146 @@ import CommandBlock from '@site/src/components/CommandBlock';
 
 # Run Your First Evaluation
 
-Your first run should prove four things: the task imports correctly, the dataset resolves, the metric executes, and the CLI can persist a result.
+Your first run should use the Python SDK. It should prove four things: your task function runs, your dataset shape is correct, your metric can score the output, and qym writes artifacts you can inspect.
 
-<CommandBlock
-  title="Minimal first run"
-  command={`qym run create \\\n  --task-file examples/example.py \\\n  --task-function my_task \\\n  --dataset my-set \\\n  --metrics exact_match`}
-  result="A successful run leaves a local artifact under `qym_results/` and, when platform connectivity is configured, also appears in the platform."
-/>
+## Python SDK first run
 
-## Use a CSV instead when needed
+Create a tiny CSV:
 
-```bash
-qym run create \
-  --task-file examples/csv_dataset_eval.py \
-  --task-function my_task \
-  --dataset-csv ./qa.csv \
-  --metrics exact_match,fuzzy_match
+```csv title="examples/qa.csv"
+id,question,answer,topic
+1,"What is 2 + 2?","4","math"
+2,"What color is the sky on a clear day?","blue","general"
 ```
 
-## What to look for
+Run the evaluation from Python:
 
-1. The task function imports without error.
-2. The run completes without judge-provider or platform-connectivity noise.
-3. The local artifact lands under `qym_results/`.
-4. The metric output is understandable enough to debug one bad item manually.
+```python title="first_eval.py"
+from qym import Evaluator
+from qym.core.dataset import CsvDataset
 
-:::warning Raise Your Bar Early
-If the first run only succeeds with undocumented shell state or hidden local credentials, the setup is not stable enough yet. Fix that before scaling up.
+
+def answer_question(question: str) -> str:
+    # Replace this with your LLM call once the qym loop is working.
+    if "2 + 2" in question:
+        return "4"
+    return "blue"
+
+
+dataset = CsvDataset(
+    "examples/qa.csv",
+    input_col="question",
+    expected_col="answer",
+    id_col="id",
+    metadata_cols=["topic"],
+)
+
+result = Evaluator(
+    task=answer_question,
+    dataset=dataset,
+    metrics=["exact_match"],
+    config={
+        "run_name": "first-python-eval",
+        "task_name": "answer-question",
+        "max_concurrency": 2,
+        "max_retries": 0,
+        "run_metadata": {"owner": "docs", "suite": "smoke"},
+    },
+).run(show_tui=False)
+
+print("run", result.run_name)
+print("items", result.total_items)
+print("success_rate", result.success_rate)
+print("artifact", result.last_saved_path)
+```
+
+Run it:
+
+```bash
+python first_eval.py
+```
+
+## What each part does
+
+| Part | What it controls | Why it matters |
+|------|------------------|----------------|
+| `CsvDataset(...)` | CSV path, input column, expected output column, ID column, metadata columns. | Keeps the first run local, stable, and inspectable. |
+| `task=answer_question` | The Python function being evaluated. | This is the implementation under test. |
+| `metrics=["exact_match"]` | The scoring strategy. | Deterministic metrics are easiest to debug first. |
+| `run_name` | Human-readable run name. | Makes artifacts and platform runs easier to find. |
+| `task_name` | Stable task identity. | Prevents auto-derived names from changing when code moves. |
+| `max_concurrency` | Number of items evaluated concurrently. | Start low, then tune once providers and metrics are stable. |
+| `max_retries` | Task retries after failure. | For a smoke test, fail fast instead of hiding errors. |
+| `run_metadata` | Non-secret tags stored with results. | Use for prompt version, job ID, dataset version, owner, and release. |
+| `show_tui=False` | Disables terminal UI. | Useful for notebooks, scripts, services, and tests. |
+
+## Add platform streaming
+
+Once local artifacts look correct, stream the same run to the platform:
+
+```bash
+export QYM_PLATFORM_URL=https://qym.example.com
+export QYM_API_KEY=<platform-api-key>
+```
+
+```python
+result = Evaluator(
+    task=answer_question,
+    dataset=dataset,
+    metrics=["exact_match"],
+    config={
+        "run_name": "first-platform-eval",
+        "platform_url": "https://qym.example.com",
+        # Prefer env var for real secrets. This explicit field is useful in services.
+        "platform_api_key": "<platform-api-key>",
+    },
+).run(show_tui=False)
+```
+
+Platform streaming creates a platform run, streams item events and metrics, and still writes local artifacts. If streaming is unavailable, debug the local run first.
+
+## Add progress for your wrapper
+
+Use `progress_callback` when another service, UI, queue worker, or notebook needs progress updates.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -> None:
+    if snapshot.event in {"run_start", "item_complete", "run_complete"}:
+        print(snapshot.event, snapshot.finished, "/", snapshot.total_items)
+
+
+result = Evaluator(
+    task=answer_question,
+    dataset=dataset,
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
+Progress callbacks are local SDK events. They do not replace platform streaming.
+
+## Equivalent CLI command
+
+Use the CLI for CI, shell scripts, or agent execution after the Python contract is clear.
+
+<CommandBlock
+  title="Equivalent CLI run"
+  command={`qym run create \\\n  --task-file first_eval.py \\\n  --task-function answer_question \\\n  --dataset-csv examples/qa.csv \\\n  --csv-input-col question \\\n  --csv-expected-col answer \\\n  --csv-id-col id \\\n  --csv-metadata-cols topic \\\n  --metrics exact_match \\\n  --task-name answer-question \\\n  --config '{\"run_name\":\"first-cli-eval\",\"max_concurrency\":2,\"max_retries\":0}'`}
+  result="The CLI delegates to the SDK. Use it when a shell entrypoint is more appropriate than Python code owning the run."
+/>
+
+## What to inspect
+
+1. `result.total_items` equals the dataset size.
+2. `result.success_rate` matches your expectations.
+3. The saved artifact exists under `qym_results/`.
+4. Failed rows are easy to identify and reproduce manually.
+5. Metadata includes only non-secret context.
+6. Platform runs appear only after credentials are set.
+
+:::warning Do Not Scale A Mystery
+If the first run only works because of hidden shell state, hardcoded credentials, or an unclear dataset shape, stop and fix that before adding models, judges, platform streaming, or parallelism.
 :::

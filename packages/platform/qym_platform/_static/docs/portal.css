@@ -251,6 +251,35 @@ pre {
   margin-bottom: 8px;
 }
 
+.portal-admonition {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--portal-border);
+  background: rgba(0, 88, 79, 0.06);
+  margin: 18px 0;
+}
+
+.portal-admonition-warning,
+.portal-admonition-caution,
+.portal-admonition-danger {
+  background: rgba(138, 75, 0, 0.08);
+  border-color: rgba(138, 75, 0, 0.18);
+}
+
+.portal-admonition-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: capitalize;
+}
+
+.portal-admonition-body > :first-child {
+  margin-top: 0;
+}
+
+.portal-admonition-body > :last-child {
+  margin-bottom: 0;
+}
+
 .portal-results {
   margin-top: 18px;
   padding: 18px;
@@ -293,4 +322,3 @@ pre {
     flex-direction: column;
   }
 }
-

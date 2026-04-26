@@ -56,6 +56,14 @@
     return match ? decodeURIComponent(match[1]) : '';
   }
 
+  function getRunVersionKey(run) {
+    if (!run) return '';
+    const branch = String(run.git_branch || '').trim();
+    const commit = String(run.git_commit || '').trim();
+    if (branch && commit) return `${branch}/${commit}`;
+    return commit || branch || '';
+  }
+
   function getProjectStorageKey() {
     return 'qym:last-project-slug';
   }
@@ -88,6 +96,18 @@
     window.location.href = url;
   }
 
+  function isModifiedEvent(e) {
+    return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button === 1));
+  }
+
+  function openUrl(url, e) {
+    if (isModifiedEvent(e)) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    navigateTo(url);
+  }
+
   // ═══════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════
@@ -105,6 +125,8 @@
     filterDatasets: new Set(),
     filterStatuses: new Set(),
     filterVersions: new Set(),
+    knownVersions: new Set(),
+    knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
     selectedRuns: new Set(),
     focusedIndex: -1,
@@ -118,6 +140,7 @@
     currentUser: null,
     availableProjects: [],
     currentProject: null,
+    cohortAnchorRuns: null,
     // Models view state (uses global filterTasks/filterDatasets for task+dataset)
     modelsViewState: {
       selectedMetric: '',
@@ -1475,7 +1498,7 @@
       runs = [];
     }
     if (state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
-      runs = runs.filter(r => matchesFilterSelection(state.filterVersions, r.git_commit));
+      runs = runs.filter(r => matchesFilterSelection(state.filterVersions, getRunVersionKey(r)));
     } else if (state.filterVersions.has('__none__')) {
       runs = [];
     }
@@ -2305,7 +2328,16 @@
         const target = e.target.closest('.chart-bar-label');
         const filePath = target?.dataset.file;
         if (filePath) {
-          openRun(filePath);
+          openRun(filePath, e);
+        }
+      });
+      label.addEventListener('auxclick', (e) => {
+        if (e.button !== 1) return;
+        const target = e.target.closest('.chart-bar-label');
+        const filePath = target?.dataset.file;
+        if (filePath) {
+          e.preventDefault();
+          openRun(filePath, e);
         }
       });
     });
@@ -2924,7 +2956,13 @@
 
       tr.querySelector('.run-id').addEventListener('click', (e) => {
         e.stopPropagation();
-        openRun(filePath);
+        openRun(filePath, e);
+      });
+      tr.querySelector('.run-id').addEventListener('auxclick', (e) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openRun(filePath, e);
       });
 
       const closeDropdown = () => {
@@ -3157,7 +3195,12 @@
 
     container.querySelectorAll('.timeline-run').forEach(runEl => {
       const filePath = decodeURIComponent(runEl.dataset.file);
-      runEl.addEventListener('click', () => openRun(filePath));
+      runEl.addEventListener('click', (e) => openRun(filePath, e));
+      runEl.addEventListener('auxclick', (e) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        openRun(filePath, e);
+      });
     });
   }
 
@@ -3210,22 +3253,71 @@
   function renderComparePanel() {
     const panel = el('compare-panel');
     const selected = state.selectedRuns;
+    const cohortAnchor = Array.isArray(state.cohortAnchorRuns) ? state.cohortAnchorRuns : null;
+    const isCohortMode = !!(cohortAnchor && cohortAnchor.length > 0);
 
     if (!panel) return;
-    if (selected.size === 0) {
+    if (selected.size === 0 && !isCohortMode) {
       panel.style.display = 'none';
       return;
     }
 
     panel.style.display = 'block';
-    el('compare-count').textContent = selected.size;
+    const countEl = el('compare-count');
+    if (countEl) {
+      countEl.textContent = isCohortMode ? `${selected.size}/${cohortAnchor.length}` : selected.size;
+    }
 
     const chips = el('compare-chips');
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
+    const anchorRuns = isCohortMode
+      ? cohortAnchor.map(filePath => state.flatRuns.find(run => run.file_path === filePath)).filter(Boolean)
+      : [];
 
     // Hide Langfuse button - it's available in row actions
     const langfuseBtn = el('langfuse-btn');
     if (langfuseBtn) langfuseBtn.style.display = 'none';
+
+    const compareBtn = el('compare-view');
+    const cohortBtn = el('cohort-view');
+    const clearBtn = el('compare-clear');
+    const deleteBtn = el('delete-selected');
+    const headerLabel = panel.querySelector('.compare-header > span');
+    const subtitleEl = el('compare-subtitle');
+    const hasOverlap = isCohortMode && selectedRuns.some(run => cohortAnchor.includes(run.file_path));
+
+    if (headerLabel) {
+      headerLabel.textContent = isCohortMode
+        ? `⊕ COHORT B ${selected.size}/${cohortAnchor.length} RUNS`
+        : `⊕ SELECTED ${selected.size} RUNS`;
+    }
+    if (subtitleEl) {
+      subtitleEl.classList.remove('is-warning', 'is-ready');
+      if (!isCohortMode) {
+        subtitleEl.textContent = selected.size >= 2
+          ? 'Ready to open a flat comparison, or lock this selection as Cohort A.'
+          : 'Select runs, then use Compare for a flat comparison or Cohort for an explicit A vs B setup.';
+      } else if (hasOverlap) {
+        subtitleEl.textContent = 'Cohort B cannot include runs already locked in Cohort A.';
+        subtitleEl.classList.add('is-warning');
+      } else if (selected.size < cohortAnchor.length) {
+        subtitleEl.textContent = `Cohort A is locked. Select ${cohortAnchor.length - selected.size} more run${cohortAnchor.length - selected.size === 1 ? '' : 's'} for Cohort B.`;
+      } else if (selected.size === cohortAnchor.length) {
+        subtitleEl.textContent = 'Cohort B is ready. Click Open Cohort to compare the two groups.';
+        subtitleEl.classList.add('is-ready');
+      }
+    }
+    if (compareBtn) compareBtn.style.display = isCohortMode ? 'none' : 'inline-block';
+    if (cohortBtn) {
+      cohortBtn.style.display = 'inline-block';
+      cohortBtn.textContent = isCohortMode ? 'Open Cohort' : 'Cohort';
+      cohortBtn.disabled = isCohortMode ? (selected.size !== cohortAnchor.length || hasOverlap) : (selected.size < 1);
+      cohortBtn.title = isCohortMode
+        ? (hasOverlap ? 'Cohort B cannot reuse runs from Cohort A' : `Select exactly ${cohortAnchor.length} runs for Cohort B`)
+        : 'Lock the current selection as Cohort A';
+    }
+    if (clearBtn) clearBtn.textContent = isCohortMode ? 'Cancel Cohort' : 'Clear';
+    if (deleteBtn) deleteBtn.style.display = isCohortMode ? 'none' : 'inline-block';
 
     // Show Submit button only if:
     // 1. User is not a manager (managers approve/reject, not submit)
@@ -3239,16 +3331,23 @@
         const status = r.status || '';
         return status === 'COMPLETED' || status === 'FAILED';
       });
-      publishBtn.style.display = (!isManager && allSubmittable) ? 'inline-block' : 'none';
+      publishBtn.style.display = (!isManager && allSubmittable && !isCohortMode) ? 'inline-block' : 'none';
       publishBtn.textContent = 'Submit';
     }
 
-    chips.innerHTML = selectedRuns.map(run => `
-      <span class="compare-chip">
-        <span>${run.run_id}</span>
-        <span class="remove" data-file="${encodeURIComponent(run.file_path)}">×</span>
-      </span>
-    `).join('');
+    chips.innerHTML = [
+      ...anchorRuns.map(run => `
+        <span class="compare-chip is-cohort-a">
+          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
+        </span>
+      `),
+      ...selectedRuns.map(run => `
+        <span class="compare-chip is-cohort-b">
+          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
+          <span class="remove" data-file="${encodeURIComponent(run.file_path)}">×</span>
+        </span>
+      `),
+    ].join('');
 
     chips.querySelectorAll('.remove').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -4120,10 +4219,36 @@
   // ACTIONS
   // ═══════════════════════════════════════════════════
 
+  function getActiveCohortAnchorRuns() {
+    return Array.isArray(state.cohortAnchorRuns) ? state.cohortAnchorRuns : null;
+  }
+
+  function canSelectForCohortB(filePath, options = {}) {
+    const { showError = true } = options;
+    const cohortAnchor = getActiveCohortAnchorRuns();
+    if (!cohortAnchor || !cohortAnchor.length) return true;
+
+    if (state.selectedRuns.has(filePath)) return true;
+    if (cohortAnchor.includes(filePath)) {
+      if (showError) {
+        showToast('error', 'Run Already In Cohort A', 'Pick a different run for Cohort B. The two cohorts must be disjoint.');
+      }
+      return false;
+    }
+    if (state.selectedRuns.size >= cohortAnchor.length) {
+      if (showError) {
+        showToast('error', 'Cohort B Is Full', `Cohort B already has ${cohortAnchor.length}/${cohortAnchor.length} runs. Remove one or open the cohort comparison.`);
+      }
+      return false;
+    }
+    return true;
+  }
+
   function toggleSelect(filePath) {
     if (state.selectedRuns.has(filePath)) {
       state.selectedRuns.delete(filePath);
     } else {
+      if (!canSelectForCohortB(filePath)) return;
       state.selectedRuns.add(filePath);
     }
     render();
@@ -4158,6 +4283,10 @@
   }
 
   function selectAll() {
+    if (getActiveCohortAnchorRuns()) {
+      showToast('error', 'Select All Disabled In Cohort Mode', 'Choose Cohort B runs explicitly so you can control membership and avoid overlap with Cohort A.');
+      return;
+    }
     const { pageRuns } = getTablePageSlice(state.filteredRuns);
     const visibleFilePaths = pageRuns.map(run => run.file_path);
     const allVisibleSelected = visibleFilePaths.length > 0 && visibleFilePaths.every(filePath => state.selectedRuns.has(filePath));
@@ -4171,11 +4300,32 @@
 
   function clearSelection() {
     state.selectedRuns.clear();
+    state.cohortAnchorRuns = null;
     render();
+  }
+
+  function getCohortRunDisplayName(filePath) {
+    const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+    if (!run) return '';
+    return stripProviderFromRunId(run.run_id || run.run_name || filePath);
+  }
+
+  function buildCohortLabel(filePaths) {
+    const labels = (filePaths || [])
+      .map(getCohortRunDisplayName)
+      .filter(Boolean);
+    if (labels.length === 0) return 'Cohort';
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return `${labels[0]}, ${labels[1]}`;
+    return `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
   }
 
   function toggleGroupSelection(filePaths) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return;
+    if (getActiveCohortAnchorRuns()) {
+      showToast('error', 'Group Selection Disabled In Cohort Mode', 'Select Cohort B runs one by one. Cohort mode requires an exact, disjoint set.');
+      return;
+    }
     const allSelected = filePaths.every(filePath => state.selectedRuns.has(filePath));
     if (allSelected) {
       filePaths.forEach(filePath => state.selectedRuns.delete(filePath));
@@ -4185,24 +4335,65 @@
     render();
   }
 
-  function openRun(filePath) {
+  function openRun(filePath, e) {
     sessionStorage.setItem('dashboardRunFile', filePath);
-    if (state.currentProject && state.currentProject.slug) {
-      navigateTo(projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`));
-      return;
-    }
-    navigateTo(apiUrl(`run/${encodeURIComponent(filePath)}`));
+    const url = state.currentProject && state.currentProject.slug
+      ? projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`)
+      : apiUrl(`run/${encodeURIComponent(filePath)}`);
+    openUrl(url, e);
   }
 
-  function openComparison() {
+  function openComparison(e) {
     if (state.selectedRuns.size < 2) {
       showToast('error', 'Cannot Compare', 'Select at least 2 runs to compare');
       return;
     }
     const files = Array.from(state.selectedRuns);
+    sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-    navigateTo(apiUrl('compare?' + params));
+    openUrl(apiUrl('compare?' + params), e);
+  }
+
+  function openCohortComparison(e) {
+    const selectedFiles = Array.from(state.selectedRuns);
+    if (!Array.isArray(state.cohortAnchorRuns) || state.cohortAnchorRuns.length === 0) {
+      if (selectedFiles.length < 1) {
+        showToast('error', 'Cannot Start Cohort Mode', 'Select at least 1 run, then click Cohort to lock them as Cohort A.');
+        return;
+      }
+      state.cohortAnchorRuns = selectedFiles;
+      state.selectedRuns.clear();
+      render();
+      showToast('success', 'Cohort A Locked', `Now select exactly ${selectedFiles.length} run${selectedFiles.length === 1 ? '' : 's'} for Cohort B, then click Open Cohort.`);
+      return;
+    }
+
+    const left = state.cohortAnchorRuns;
+    const right = selectedFiles;
+    if (right.length !== left.length) {
+      showToast('error', 'Cohort B Incomplete', `Cohort A has ${left.length} runs. Select exactly ${left.length} runs for Cohort B before opening the comparison.`);
+      return;
+    }
+    if (right.some(file => left.includes(file))) {
+      showToast('error', 'Cohorts Must Be Disjoint', 'One or more selected runs are already in Cohort A. Remove them from Cohort B and pick different runs.');
+      return;
+    }
+
+    const cohortPayload = {
+      left,
+      right,
+      leftLabel: buildCohortLabel(left),
+      rightLabel: buildCohortLabel(right),
+    };
+    sessionStorage.setItem('compareCohorts', JSON.stringify(cohortPayload));
+    sessionStorage.setItem('compareRuns', JSON.stringify([...left, ...right]));
+    const params = new URLSearchParams();
+    left.forEach(file => params.append('cohortA', file));
+    right.forEach(file => params.append('cohortB', file));
+    params.set('cohortALabel', cohortPayload.leftLabel);
+    params.set('cohortBLabel', cohortPayload.rightLabel);
+    openUrl(apiUrl('compare?' + params.toString()), e);
   }
 
   function confirmDeleteRun(filePath, runId) {
@@ -4436,6 +4627,11 @@
     return `qym:runs-cache:${projectSlug}`;
   }
 
+  function getDashboardStateKey() {
+    const projectSlug = getProjectSlugFromPath() || '__global__';
+    return `qym:dashboard-state:${projectSlug}`;
+  }
+
   function saveRunsDataCache(data) {
     try {
       const payload = {
@@ -4501,6 +4697,19 @@
       }
     }
     const { runs, metrics, metricTypes } = flattenRuns(data);
+    const projectSlug = (data && data.project && data.project.slug) || '';
+    if (state.knownVersionsProjectSlug !== projectSlug) {
+      state.knownVersions = new Set();
+      state.knownVersionsProjectSlug = projectSlug;
+    }
+    const currentVersionKeys = runs.map(getRunVersionKey).filter(v => !isEmptyFilterValue(v));
+    const totalCount = Number((data && data.total_count) || 0);
+    const hasCompleteRunSet = totalCount === 0 || runs.length >= totalCount;
+    if (hasCompleteRunSet) {
+      state.knownVersions = new Set(currentVersionKeys);
+    } else {
+      currentVersionKeys.forEach(v => state.knownVersions.add(v));
+    }
     state.flatRuns = runs;
     state.allMetrics = metrics;
     state._metricTypes = metricTypes;
@@ -4959,17 +5168,19 @@
     wrapper.style.display = '';
     trigger.textContent = state.currentProject && state.currentProject.name ? state.currentProject.name : 'Choose Project';
     menu.innerHTML = projects.map(project => `
-      <button class="project-switcher-item${state.currentProject && state.currentProject.slug === project.slug ? ' active' : ''}" data-project-switch="${escapeHtml(project.slug)}">
+      <a class="project-switcher-item${state.currentProject && state.currentProject.slug === project.slug ? ' active' : ''}" data-project-switch="${escapeHtml(project.slug)}" href="${projectUrl(project.slug)}">
         <span>${escapeHtml(project.name)}</span>
         <span>${escapeHtml(project.role || '')}</span>
-      </button>
+      </a>
     `).join('');
     menu.querySelectorAll('[data-project-switch]').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        if (isModifiedEvent(e)) return;
         const slug = btn.getAttribute('data-project-switch') || '';
         if (!slug) return;
         storeProjectSlug(slug);
         navigateTo(projectUrl(slug));
+        e.preventDefault();
       });
     });
   }
@@ -5029,7 +5240,7 @@
         runs = runs.filter(r => matchesFilterSelection(state.filterStatuses, r.status));
       }
       if (skipFilter !== 'versions' && state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
-        runs = runs.filter(r => matchesFilterSelection(state.filterVersions, r.git_commit));
+        runs = runs.filter(r => matchesFilterSelection(state.filterVersions, getRunVersionKey(r)));
       }
       return runs;
     }
@@ -5038,14 +5249,17 @@
     const datasets = collectFilterValues(runsExcluding('datasets'), r => r.dataset_name);
     const models = collectFilterValues(runsExcluding('models'), r => getRunModelKey(r)).sort(compareModelVariantKeys);
     const statusValues = collectFilterValues(runsExcluding('statuses'), r => r.status);
-    const versions = collectFilterValues(runsExcluding('versions'), r => r.git_commit);
+    const constrainingFiltersActive = state.quickFilter !== 'all'
+      || state.filterTasks.size > 0
+      || state.filterDatasets.size > 0
+      || state.filterModels.size > 0
+      || state.filterStatuses.size > 0;
+    const versionValues = collectFilterValues(runsExcluding('versions'), r => getRunVersionKey(r));
+    const versions = (!constrainingFiltersActive && state.knownVersions.size > versionValues.length)
+      ? Array.from(new Set([...versionValues, ...state.knownVersions])).sort()
+      : versionValues;
 
     state.allModels = [...new Set(state.flatRuns.map(r => getRunModelKey(r)).filter(m => !isEmptyFilterValue(m)))].sort(compareModelVariantKeys);
-
-    const branchMap = {};
-    state.flatRuns.forEach(r => {
-      if (r.git_commit && r.git_branch) branchMap[r.git_commit] = r.git_branch;
-    });
 
     // Task multi-select
     buildMultiSelect({
@@ -5089,8 +5303,7 @@
       stateSet: state.filterVersions, values: versions,
       labelFn: (v) => {
         if (v === EMPTY_FILTER_VALUE) return 'Empty / Missing';
-        const b = branchMap[v];
-        return b ? b + '/' + v : v;
+        return v;
       },
       defaultLabel: 'All Versions', showSearch: true, searchPlaceholder: 'Search versions...',
     });
@@ -5214,6 +5427,7 @@
 
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);
+  el('cohort-view')?.addEventListener('click', openCohortComparison);
   el('delete-selected')?.addEventListener('click', confirmDeleteSelected);
   el('compare-clear')?.addEventListener('click', clearSelection);
 
@@ -5261,7 +5475,10 @@
         toggleFocusedSelect();
         break;
       case 'c':
-        if (state.selectedRuns.size >= 2) {
+        if (state.cohortAnchorRuns) {
+          e.preventDefault();
+          openCohortComparison();
+        } else if (state.selectedRuns.size >= 2) {
           e.preventDefault();
           openComparison();
         }
@@ -5441,11 +5658,11 @@
       quickFilter: state.quickFilter,
       chartFirstColWidth: state.chartFirstColWidth,
     };
-    sessionStorage.setItem('dashboardState', JSON.stringify(stateToSave));
+    sessionStorage.setItem(getDashboardStateKey(), JSON.stringify(stateToSave));
   }
 
   function restoreDashboardState() {
-    const saved = sessionStorage.getItem('dashboardState');
+    const saved = sessionStorage.getItem(getDashboardStateKey());
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -5494,6 +5711,8 @@
 
   // Save state before navigating away
   window.addEventListener('beforeunload', saveDashboardState);
+  window.addEventListener('pagehide', saveDashboardState);
+  document.addEventListener('qym:before-navigate', saveDashboardState);
 
   // Also save on visibility change (for mobile)
   document.addEventListener('visibilitychange', () => {

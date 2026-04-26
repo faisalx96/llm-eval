@@ -2,8 +2,90 @@
 
 Start with the issue that most closely matches the observed symptom. These pages focus on the failures that block real adoption: connectivity, judge metrics, and offline packaging.
 
+## High-Level Triage
+
+First classify the failure:
+
+| Failure Class | Examples | First Check |
+|---------------|----------|-------------|
+| Local SDK | Task import fails, CSV fails, metric crashes. | Reproduce with a tiny local CSV and `show_tui=False`. |
+| Platform connectivity | Run does not appear, auth fails, stale progress. | Run `qym config check --json`. |
+| Provider config | Judge metric fails, LLM call errors. | Check provider env vars and model names. |
+| Deployment | UI unavailable, API errors, migration errors. | Check platform logs, database, and `/healthz`. |
+| Review workflow | Approval visibility, corrections, role access. | Check user role, org membership, and status filters. |
+
 ## Recommended approach
 
 1. Confirm whether the failure is local-only, platform-only, or deployment-wide.
 2. Reproduce it with the smallest command or endpoint possible.
 3. Only then escalate into analysis, broader refactors, or deployment changes.
+
+## Detailed Checks
+
+### Local SDK Failures
+
+Use a minimal dataset and deterministic metric:
+
+```bash
+qym run create \
+  --task-file eval_task.py \
+  --task-function run \
+  --dataset-csv datasets/smoke.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --metrics exact_match \
+  --no-progress
+```
+
+If this fails, debug the task, dataset, or metric before investigating platform streaming.
+
+### Platform Connectivity
+
+```bash
+qym config show --json
+qym config check --json
+```
+
+Check `QYM_PLATFORM_URL`, `QYM_API_KEY`, network reachability, and API key permissions.
+
+### Streaming Problems
+
+If a run appears but progress is stale:
+
+- Confirm the SDK process is still running.
+- Look for `run_heartbeat` events.
+- Check that `total_items` was sent.
+- Check platform ingestion logs for rejected events.
+- Confirm final `run_completed` was sent.
+
+### Judge Metric Problems
+
+Check:
+
+- `QYM_JUDGE_MODEL`
+- `QYM_JUDGE_API_KEY` or provider-specific key
+- `QYM_JUDGE_BASE_URL` for OpenAI-compatible providers
+- Prompt variables expected by the judge
+- Provider rate limits and timeout errors
+
+## For Developers
+
+When filing or debugging an issue, capture:
+
+- qym SDK version.
+- Exact command or Python snippet.
+- Dataset type: Langfuse, CSV, or custom object.
+- Metric list.
+- Whether `QYM_PLATFORM_URL` and `QYM_API_KEY` were set.
+- Whether the run saved local artifacts.
+- The run ID and platform URL, if any.
+- Relevant stderr logs or `--json` output.
+
+Prefer narrow reproductions. A five-row CSV with one deterministic metric is the fastest way to separate task bugs from platform or provider bugs.
+
+## Related Docs
+
+- [Platform Connectivity](/troubleshooting/generated/platform-connectivity)
+- [Judge Metrics](/troubleshooting/generated/judge-metrics)
+- [Air-Gapped Docs](/troubleshooting/generated/air-gapped-docs)
+- [Platform Streaming](/sdk/platform-streaming)

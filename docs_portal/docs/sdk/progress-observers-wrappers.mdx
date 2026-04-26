@@ -1,0 +1,197 @@
+# Progress, Observers, And Wrappers
+
+Use this page when you are embedding qym inside another Python system: a service, queue worker, notebook, CI harness, internal dashboard, scheduler, or evaluation platform wrapper.
+
+qym exposes two progress integration layers:
+
+| Layer | Use it when | API |
+|-------|-------------|-----|
+| Progress callback | You want simple structured progress snapshots. | `Evaluator(..., progress_callback=fn)` |
+| Observer | You need lower-level lifecycle hooks or explicit composition. | `observer=ProgressCallbackObserver(fn)` or a custom `EvaluationObserver` |
+
+Platform streaming is separate. Streaming sends run evidence to the qym platform. Progress callbacks and observers let your own wrapper react locally.
+
+## Progress callback
+
+For most wrappers, pass a callback to `Evaluator`.
+
+```python
+from qym import Evaluator, ProgressCallbackObserver, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -> None:
+    jobs.update(
+        run_id=snapshot.run_id,
+        event=snapshot.event,
+        finished=snapshot.finished,
+        failed=snapshot.failed,
+        total=snapshot.total_items,
+        percent=snapshot.percent_complete,
+    )
+
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
+Use `show_tui=False` when qym is running inside a service, worker, notebook, or CI process and your wrapper owns status display.
+
+## Snapshot fields
+
+`ProgressSnapshot` is designed for wrapper code. It gives you a stable event name plus current counters and optional event-specific context.
+
+Common fields:
+
+| Field | Meaning |
+|-------|---------|
+| `event` | Lifecycle event such as `run_matrix`, `run_start`, `item_complete`, `item_error`, `metric_complete`, `warning`, or `run_complete`. |
+| `run_id` | qym run identifier for the active run when one exists. |
+| `finished` | Number of completed items. |
+| `failed` | Number of failed items. |
+| `total_items` | Total item count when known. |
+| `percent_complete` | Completion percentage computed from finished and total. |
+| `run_info` | Run metadata emitted at run start, including platform links when available. |
+| `run_matrix` | Planned run rows for multi-run or multi-model evaluations. |
+
+When platform streaming is enabled, `run_start` includes platform information in `snapshot.run_info`, including `qym_url`, `html_url`, and `platform_run_id` when available.
+
+## Multi-run wrappers
+
+For multi-run evaluations, qym emits a `run_matrix` snapshot before individual runs start. Use it to create pending rows in your own UI or job table.
+
+```python
+from qym import Evaluator, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -> None:
+    if snapshot.event == "run_matrix":
+        for run in snapshot.run_matrix or []:
+            jobs.create_pending(
+                run_id=run["run_id"],
+                name=run.get("name"),
+                model=run.get("model"),
+                status=run.get("status"),
+            )
+        return
+
+    if snapshot.event == "run_start":
+        jobs.attach_platform_link(
+            run_id=snapshot.run_id,
+            qym_url=(snapshot.run_info or {}).get("qym_url"),
+            platform_run_id=(snapshot.run_info or {}).get("platform_run_id"),
+        )
+        return
+
+    jobs.update_progress(
+        run_id=snapshot.run_id,
+        event=snapshot.event,
+        percent=snapshot.percent_complete,
+    )
+
+
+results = Evaluator.run_parallel(
+    run_specs,
+    observer=ProgressCallbackObserver(on_progress),
+    show_tui=False,
+)
+```
+
+The `progress_callback` shortcut belongs to the `Evaluator(...)` constructor. For `Evaluator.run_parallel(...)`, pass `observer=ProgressCallbackObserver(on_progress)`.
+
+## Custom observer
+
+Use a custom observer when you want explicit lifecycle methods instead of one callback function.
+
+```python
+from qym import EvaluationObserver
+
+
+class OurObserver(EvaluationObserver):
+    def on_run_matrix(self, matrix_id, runs, total_runs):
+        for run in runs:
+            jobs.create_pending(
+                matrix_id=matrix_id,
+                run_id=run["run_id"],
+                name=run.get("name"),
+                model=run.get("model"),
+            )
+
+    def on_run_start(self, run_id, run_info, total_items, metrics):
+        jobs.mark_running(
+            run_id=run_id,
+            total_items=total_items,
+            metrics=metrics,
+            qym_url=run_info.get("qym_url"),
+        )
+
+    def on_item_complete(self, run_id, item_index, result):
+        jobs.record_item(run_id=run_id, item_index=item_index, status="complete")
+
+    def on_item_error(self, run_id, item_index, error):
+        jobs.record_item(run_id=run_id, item_index=item_index, status="error", error=str(error))
+
+    def on_run_complete(self, run_id, result):
+        jobs.mark_complete(run_id=run_id, success_rate=result.success_rate)
+```
+
+Then pass the observer:
+
+```python
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    observer=OurObserver(),
+).run(show_tui=False)
+```
+
+## Wrapper patterns
+
+### Service job table
+
+Use progress snapshots to keep your own job table current, and use platform streaming to give reviewers a shared qym app URL.
+
+```python
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config={
+        "run_name": job.name,
+        "run_metadata": {"job_id": job.id, "owner": job.owner},
+    },
+    progress_callback=on_progress,
+).run(show_tui=False)
+```
+
+### Notebook cell
+
+Use a lightweight callback that updates the current cell output. Keep callbacks fast because they run inside the evaluation process.
+
+### Queue worker
+
+Record progress in your queue backend and avoid long network calls inside the callback. If progress publication can block, push updates to a local queue and let another worker publish them.
+
+### CI
+
+Emit concise progress logs and save artifacts. Use the CLI only when the CI boundary must be shell-based; otherwise keep the SDK in Python so the same code can run locally.
+
+## Rules for reliable wrappers
+
+- Keep callbacks fast and non-blocking.
+- Treat progress as status, not the source of evaluation results.
+- Use `run_metadata` for non-secret correlation IDs.
+- Use platform streaming for shared review links.
+- Use local result artifacts for durable output.
+- Do not put secrets in metadata, item metadata, callback logs, or artifact paths.
+
+## Related docs
+
+- [Python API](/sdk/python-api)
+- [SDK Configuration](/sdk/configuration)
+- [Platform Streaming](/sdk/platform-streaming)
+- [Run Artifacts](/sdk/run-artifacts)
