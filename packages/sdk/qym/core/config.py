@@ -58,6 +58,7 @@ class EvaluatorConfig(BaseModel):
     # Platform integration (deployed web app)
     platform_url: Optional[str] = None
     platform_api_key: Optional[str] = None
+    platform_timeout: float = Field(default=5.0, gt=0)
     # Default policy: stream to platform. Users may explicitly opt out via live_mode="local".
     live_mode: str = "platform"  # local|platform|auto
 

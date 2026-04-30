@@ -80,6 +80,38 @@ def test_platform_event_stream_sanitizes_non_json_payloads(monkeypatch):
     assert metric_payload["meta"] == {"raw_payload": {"label": "meta"}}
 
 
+def test_platform_client_create_run_uses_bounded_timeout(monkeypatch):
+    calls = []
+
+    def fake_post_json(
+        url: str, payload: dict, api_key: str, *, timeout: float = 30
+    ) -> dict:
+        calls.append((url, payload, api_key, timeout))
+        return {
+            "run_id": "run-123",
+            "live_url": "https://platform.example/runs/run-123",
+        }
+
+    monkeypatch.setattr(client_module, "_post_json", fake_post_json)
+
+    client = client_module.PlatformClient(
+        platform_url="https://platform.example",
+        api_key="secret-token",
+    )
+    handle = client.create_run(
+        external_run_id="external-1",
+        task="task",
+        dataset="dataset",
+        model=None,
+        metrics=[],
+        run_metadata={},
+        run_config={},
+    )
+
+    assert handle.run_id == "run-123"
+    assert calls[0][3] == client_module.PlatformClient.CREATE_RUN_TIMEOUT
+
+
 def test_platform_event_stream_sends_late_events_during_shutdown(monkeypatch):
     sent_events = []
     first_post_started = threading.Event()

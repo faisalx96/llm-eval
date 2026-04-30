@@ -1037,88 +1037,104 @@ class Evaluator:
                 getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
             )
             if PlatformClient is None:
-                raise RuntimeError(
-                    "Platform streaming requires the platform client module"
+                warning_msg = "Platform streaming requires the platform client module"
+                logger.warning(warning_msg)
+                self._notify_observer("on_warning", message=warning_msg)
+            else:
+                client = PlatformClient(
+                    platform_url=platform_url, api_key=platform_api_key
                 )
-            client = PlatformClient(platform_url=platform_url, api_key=platform_api_key)
-            # Include total_items in metadata for progress tracking
-            start_metadata = dict(self.run_metadata or {})
-            start_metadata["total_items"] = len(items)
-            git_info = _detect_git_info(self.config)
-            handle = client.create_run(
-                external_run_id=self.run_name,
-                task=self._task_name,
-                dataset=str(self.dataset_name),
-                model=self.model_name,
-                metrics=list(self.metrics.keys()),
-                run_metadata=start_metadata,
-                run_config={
-                    "max_concurrency": self.max_concurrency,
-                    "max_metric_concurrency": self.max_metric_concurrency,
-                    "timeout": self.timeout,
-                    "run_name": self.run_name,
-                    "task_name": self._task_name,
-                    "run_config_id": _compute_run_config_id(
-                        {
-                            "max_concurrency": self.max_concurrency,
-                            "max_metric_concurrency": self.max_metric_concurrency,
-                            "timeout": self.timeout,
-                            "model": self.model_name,
-                            "task": self._task_name,
-                            "dataset": str(self.dataset_name),
-                        }
-                    ),
-                    "git_branch": git_info["git_branch"],
-                    "git_commit": git_info["git_commit"],
-                },
-            )
-            html_url = handle.live_url
-            run_info["qym_url"] = handle.live_url
-            run_info["html_url"] = handle.live_url
-            run_info["platform_run_id"] = handle.run_id
-            self._platform_stream = PlatformEventStream(
-                platform_url=platform_url,
-                api_key=platform_api_key,
-                run_id=handle.run_id,
-            )
-            # Connect QymSpanProcessor to platform stream for local DB capture
-            if self._otel.enabled and self._otel.qym_processor:
-                self._otel.qym_processor.set_stream(self._platform_stream)
-                otel_stream_token = self._otel.bind_stream(self._platform_stream)
-            # Seed run_started event (platform also has run record already; this is for richer metadata)
-            try:
-                self._platform_stream.emit(
-                    "run_started",
+                # Include total_items in metadata for progress tracking
+                start_metadata = dict(self.run_metadata or {})
+                start_metadata["total_items"] = len(items)
+                git_info = _detect_git_info(self.config)
+                run_config_id = _compute_run_config_id(
                     {
-                        "external_run_id": self.run_name,
+                        "max_concurrency": self.max_concurrency,
+                        "max_metric_concurrency": self.max_metric_concurrency,
+                        "timeout": self.timeout,
+                        "model": self.model_name,
                         "task": self._task_name,
                         "dataset": str(self.dataset_name),
-                        "model": self.model_name,
-                        "metrics": list(self.metrics.keys()),
-                        "total_items": int(self.total_items),
-                        "run_metadata": dict(self.run_metadata or {}),
-                        "run_config": {
+                    }
+                )
+                try:
+                    handle = await asyncio.to_thread(
+                        client.create_run,
+                        external_run_id=self.run_name,
+                        task=self._task_name,
+                        dataset=str(self.dataset_name),
+                        model=self.model_name,
+                        metrics=list(self.metrics.keys()),
+                        run_metadata=start_metadata,
+                        run_config={
                             "max_concurrency": self.max_concurrency,
                             "max_metric_concurrency": self.max_metric_concurrency,
                             "timeout": self.timeout,
                             "run_name": self.run_name,
                             "task_name": self._task_name,
-                            "run_config_id": _compute_run_config_id(
-                                {
+                            "run_config_id": run_config_id,
+                            "git_branch": git_info["git_branch"],
+                            "git_commit": git_info["git_commit"],
+                        },
+                        timeout=getattr(self.config, "platform_timeout", 5.0),
+                    )
+                except Exception as exc:
+                    error_text = (
+                        f"{type(exc).__name__}: {exc}"
+                        if str(exc)
+                        else type(exc).__name__
+                    )
+                    warning_msg = (
+                        f"Platform live UI disabled: failed to create run at "
+                        f"{platform_url.rstrip('/')}/v1/runs ({error_text})"
+                    )
+                    logger.warning(warning_msg)
+                    self._notify_observer("on_warning", message=warning_msg)
+                    run_info.setdefault("trace", {}).setdefault("destinations", {})[
+                        "platform_error"
+                    ] = error_text
+                else:
+                    html_url = handle.live_url
+                    run_info["qym_url"] = handle.live_url
+                    run_info["html_url"] = handle.live_url
+                    run_info["platform_run_id"] = handle.run_id
+                    self._platform_stream = PlatformEventStream(
+                        platform_url=platform_url,
+                        api_key=platform_api_key,
+                        run_id=handle.run_id,
+                    )
+                    # Connect QymSpanProcessor to platform stream for local DB capture
+                    if self._otel.enabled and self._otel.qym_processor:
+                        self._otel.qym_processor.set_stream(self._platform_stream)
+                        otel_stream_token = self._otel.bind_stream(
+                            self._platform_stream
+                        )
+                    # Seed run_started event (platform also has run record already; this is for richer metadata)
+                    try:
+                        self._platform_stream.emit(
+                            "run_started",
+                            {
+                                "external_run_id": self.run_name,
+                                "task": self._task_name,
+                                "dataset": str(self.dataset_name),
+                                "model": self.model_name,
+                                "metrics": list(self.metrics.keys()),
+                                "total_items": int(self.total_items),
+                                "run_metadata": dict(self.run_metadata or {}),
+                                "run_config": {
                                     "max_concurrency": self.max_concurrency,
                                     "max_metric_concurrency": self.max_metric_concurrency,
                                     "timeout": self.timeout,
-                                    "model": self.model_name,
-                                    "task": self._task_name,
-                                    "dataset": str(self.dataset_name),
-                                }
-                            ),
-                        },
-                        "started_at": _utc_now_str(),
-                    },
-                )
-            except Exception:
-                pass
+                                    "run_name": self.run_name,
+                                    "task_name": self._task_name,
+                                    "run_config_id": run_config_id,
+                                },
+                                "started_at": _utc_now_str(),
+                            },
+                        )
+                    except Exception:
+                        pass
         else:
             # No platform configured - TUI only, no live web UI
             pass

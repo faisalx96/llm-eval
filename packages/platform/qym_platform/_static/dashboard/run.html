@@ -1481,6 +1481,16 @@
       margin-bottom: var(--space-sm);
     }
     .breakdown-icon { font-size: var(--font-sm); line-height: 1; }
+    svg.breakdown-icon {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
     .breakdown-complexity .breakdown-icon,
     .breakdown-complexity .breakdown-header { color: #fbbf24; }
     .breakdown-domain .breakdown-icon,
@@ -1488,12 +1498,19 @@
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header { color: var(--text-primary); }
     .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
-    .breakdown-errors .breakdown-icon,
-    .breakdown-errors .breakdown-header { color: var(--error); }
-    .breakdown-errors .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
-    .breakdown-errors .breakdown-card:hover {
+    .breakdown-errors.task-error-group .breakdown-icon,
+    .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
+    .breakdown-errors.trace-error-group .breakdown-icon,
+    .breakdown-errors.trace-error-group .breakdown-header { color: var(--warning); }
+    .breakdown-errors.task-error-group .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
+    .breakdown-errors.trace-error-group .breakdown-card { border-left: 3px solid rgba(245, 158, 11, 0.42); }
+    .breakdown-errors.task-error-group .breakdown-card:hover {
       border-color: var(--border-default);
       border-left-color: rgba(239, 68, 68, 0.35);
+    }
+    .breakdown-errors.trace-error-group .breakdown-card:hover {
+      border-color: var(--border-default);
+      border-left-color: rgba(245, 158, 11, 0.42);
     }
     .breakdown-errors .error-card {
       flex: 0 0 300px;
@@ -1503,7 +1520,7 @@
     .breakdown-errors .breakdown-grid {
       display: flex;
       flex-wrap: wrap;
-      align-items: stretch;
+      align-items: flex-start;
       gap: var(--space-md);
     }
     .error-card {
@@ -1522,6 +1539,11 @@
       border-color: rgba(239, 68, 68, 0.65);
       border-left-color: rgba(239, 68, 68, 0.65);
       box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+    }
+    .trace-error-group .error-card.active {
+      border-color: rgba(245, 158, 11, 0.72);
+      border-left-color: rgba(245, 158, 11, 0.72);
+      box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.24);
     }
     .error-card-top {
       display: flex;
@@ -1546,49 +1568,53 @@
       color: var(--text-muted);
       line-height: 1.45;
       word-break: break-word;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
       overflow: hidden;
       max-width: 100%;
     }
-    .error-detail-expander {
-      margin-top: 6px;
-      font-size: var(--font-xs);
-      color: var(--text-muted);
+    .error-card-detail:not([data-expanded="1"]) {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      white-space: nowrap;
     }
-    .error-detail-expander summary {
-      cursor: pointer;
+    .error-card-detail:not([data-expanded="1"]) .error-detail-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .error-detail-more {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .error-card-detail[data-expanded="1"] .error-detail-more {
+      margin-left: 4px;
+    }
+    .error-detail-toggle {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      font-size: var(--font-xs);
       color: var(--text-secondary);
       font-weight: 600;
-      width: fit-content;
-    }
-    .error-detail-full {
-      margin-top: 6px;
-      padding: 8px 10px;
-      border-radius: 6px;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-subtle);
-      font-family: var(--font-mono);
-      font-size: 11px;
-      line-height: 1.45;
-      color: var(--text-secondary);
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 180px;
-      overflow: auto;
+      cursor: pointer;
+      display: inline;
     }
     .error-card-count {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
       font-family: var(--font-mono);
       font-size: var(--font-lg);
       font-weight: 700;
-      color: var(--error);
       line-height: 1;
       white-space: nowrap;
     }
+    .task-error-group .error-card-count { color: var(--error); }
+    .trace-error-group .error-card-count { color: var(--warning); }
     .error-card-count-label {
-      display: block;
-      margin-top: 3px;
       font-family: var(--font-sans);
       font-size: 9px;
       font-weight: 600;
@@ -5248,7 +5274,7 @@
         if (!text) text = fallback || 'Unknown error';
         text = text.replace(/^ERROR:\s*/i, '').split(/\r?\n/).map(s => s.trim()).filter(Boolean).join(' ') || text;
         text = text.replace(/\s+/g, ' ').trim();
-        return text.length > 320 ? text.slice(0, 317) + '...' : text;
+        return text;
       }
 
       function splitErrorLabel(label) {
@@ -5261,20 +5287,27 @@
         return { title: title, detail: detail };
       }
 
+      function getErrorBucketKey(kind, label) {
+        const parts = splitErrorLabel(label);
+        const title = parts.title.replace(/\s+/g, ' ').trim();
+        const detail = parts.detail.replace(/\s+/g, ' ').trim();
+        const visibleDetail = detail.length > 72 ? detail.slice(0, 69).trimEnd() : detail;
+        return kind + '||' + title + '||' + visibleDetail;
+      }
+
       function renderErrorDetailHtml(detail) {
         const text = String(detail || '').trim();
         if (!text) return '';
         const needsExpand = text.length > 120;
-        const preview = needsExpand ? text.slice(0, 117).trimEnd() + '...' : text;
-        return '<div class="error-card-detail">' + escapeHtml(preview) + '</div>' +
-          (needsExpand
-            ? '<details class="error-detail-expander"><summary>Show full details</summary><pre class="error-detail-full">' + escapeHtml(text) + '</pre></details>'
-            : '');
+        if (!needsExpand) return '<div class="error-card-detail">' + escapeHtml(text) + '</div>';
+        return '<div class="error-card-detail" data-error-full="' + escapeAttr(text) + '">' +
+          '<span class="error-detail-text">' + escapeHtml(text) + '</span><span class="error-detail-more">' +
+          '<button type="button" class="error-detail-toggle">Show more</button></span></div>';
       }
 
       function addErrorBucket(buckets, kind, label, count, itemId) {
         const safeCount = Math.max(1, Number(count) || 1);
-        const key = kind + '||' + label;
+        const key = getErrorBucketKey(kind, label);
         if (!buckets[key]) {
           buckets[key] = { kind: kind, label: label, count: 0, itemIds: new Set() };
         }
@@ -5286,7 +5319,7 @@
         if (!filter) return true;
         const buckets = {};
         collectRowErrors(row, buckets);
-        return !!buckets[filter.kind + '||' + filter.label];
+        return !!buckets[getErrorBucketKey(filter.kind, filter.label)];
       }
 
       function rowMatchesActiveErrorFilters(row) {
@@ -5354,24 +5387,28 @@
             const isActive = activeFilter && activeFilter.kind === entry.kind && activeFilter.label === entry.label;
             cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
               '<div class="error-card-top">' +
-                '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div>' +
-                renderErrorDetailHtml(labelParts.detail) +
-                itemCountHtml + '</div>' +
+                '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div></div>' +
                 '<div class="error-card-count">' + entry.count + '<span class="error-card-count-label">' + countLabel + '</span></div>' +
               '</div>' +
+              renderErrorDetailHtml(labelParts.detail) +
+              itemCountHtml +
             '</div>';
           }
           return cards + '</div>';
         }
 
-        function renderErrorGroup(title, icon, entries, alwaysShow) {
-          if (!alwaysShow && entries.length === 0) return '';
-          const groupTotal = entries.reduce((sum, entry) => sum + entry.count, 0);
-          return '<div class="breakdown-section breakdown-errors">' +
-            '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(title) + ' <span class="breakdown-metric">' + groupTotal + '</span></div>' +
+      function renderErrorGroup(title, icon, entries, alwaysShow) {
+        if (!alwaysShow && entries.length === 0) return '';
+        const groupTotal = entries.reduce((sum, entry) => sum + entry.count, 0);
+          const iconHtml = icon === 'task'
+            ? '<svg class="breakdown-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
+            : '<svg class="breakdown-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h4l2-7 4 14 2-7h4"/></svg>';
+          const groupClass = icon === 'task' ? 'task-error-group' : 'trace-error-group';
+        return '<div class="breakdown-section breakdown-errors ' + groupClass + '">' +
+            '<div class="breakdown-header">' + iconHtml + ' ' + escapeHtml(title) + ' <span class="breakdown-metric">' + groupTotal + '</span></div>' +
             renderErrorCards(entries) +
           '</div>';
-        }
+      }
 
         const taskStats = stats.filter(entry => entry.kind === 'Task error');
         const traceStats = stats.filter(entry => entry.kind === 'Trace error');
@@ -5379,21 +5416,33 @@
 
         let html = '<h3 class="section-title">Error Distribution</h3>';
         html += '<div class="comparison-stats">';
-        html += renderErrorGroup('Task Errors', '!', taskStats, true);
-        html += renderErrorGroup('Trace Errors', '!', traceStats, true);
-        html += renderErrorGroup('Analysis Errors', '!', analysisStats, false);
+        html += renderErrorGroup('Task Errors', 'task', taskStats, true);
+        html += renderErrorGroup('Trace Errors', 'trace', traceStats, true);
+        html += renderErrorGroup('Analysis Errors', 'trace', analysisStats, false);
         html += '</div>';
         section.innerHTML = html;
 
         section.querySelectorAll('.error-card[data-error-kind]').forEach(card => {
           card.addEventListener('click', (e) => {
-            if (e.target.closest('details')) return;
+            if (e.target.closest('.error-detail-toggle')) return;
             const nextFilter = { kind: card.dataset.errorKind, label: card.dataset.errorLabel };
             const slot = getErrorFilterSlot(nextFilter.kind);
             const current = state[slot];
             state[slot] = current && current.kind === nextFilter.kind && current.label === nextFilter.label ? null : nextFilter;
             state.page = 1;
             renderItems();
+          });
+        });
+        section.querySelectorAll('.error-detail-toggle').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const detail = btn.closest('.error-card-detail');
+            if (!detail) return;
+            const textEl = detail.querySelector('.error-detail-text');
+            const expanded = detail.dataset.expanded === '1';
+            detail.dataset.expanded = expanded ? '0' : '1';
+            textEl.textContent = detail.dataset.errorFull;
+            btn.textContent = expanded ? 'Show more' : 'Show less';
           });
         });
       }

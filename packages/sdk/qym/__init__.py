@@ -9,6 +9,11 @@ Evaluate any LLM task with just 3 lines of code:
 __version__ = "0.9.0"
 
 from .core.evaluator import Evaluator
+from .core.group_analysis import (
+    GroupRunAnalysis,
+    analyze_group_runs,
+    compare_group_runs,
+)
 from .core.multi_runner import MultiModelRunner
 from .core.observers import (
     EvaluationObserver,
@@ -24,11 +29,14 @@ __all__ = [
     "Evaluator",
     "EvaluationObserver",
     "EvaluationResult",
+    "GroupRunAnalysis",
     "MultiModelRunner",
     "ProgressCallbackObserver",
     "ProgressSnapshot",
     "RunSpec",
     "CsvDataset",
+    "analyze_group_runs",
     "builtin_metrics",
+    "compare_group_runs",
     "list_available_metrics",
 ]

@@ -32,6 +32,7 @@ module.exports = {
           label: 'SDK',
           link: {type: 'doc', id: 'sdk'},
           items: [
+            'sdk/integration-guide',
             'sdk/python-api',
             'sdk/configuration',
             'sdk/dataset-authoring',

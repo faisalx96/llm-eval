@@ -129,4 +129,4 @@ tmp/
 *.code-workspace
 
 # Border test
-/border test
+/results

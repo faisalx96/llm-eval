@@ -718,6 +718,55 @@ class TestEvaluator:
         assert run_start.run_info["platform_run_id"] == "platform-run-1"
 
     @pytest.mark.asyncio
+    async def test_platform_create_run_timeout_does_not_abort_eval(
+        self, tmp_path, monkeypatch
+    ):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\nhello,hello\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        class SlowPlatformClient:
+            def __init__(self, platform_url=None, api_key=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+
+            def create_run(self, **kwargs):
+                raise TimeoutError("timed out")
+
+        snapshots = []
+        monkeypatch.setattr("qym.core.evaluator.PlatformClient", SlowPlatformClient)
+
+        evaluator = Evaluator(
+            task=lambda input_data: input_data,
+            dataset=ds,
+            metrics=[],
+            config={
+                "run_name": "platform-timeout",
+                "otel_enabled": False,
+                "platform_api_key": "test-key",
+                "platform_url": "http://example",
+                "platform_timeout": 0.01,
+            },
+            progress_callback=snapshots.append,
+        )
+
+        result = await evaluator.arun(show_tui=False, auto_save=False)
+
+        assert result.total_items == 1
+        assert not getattr(result, "html_url", None)
+        warnings = [snapshot for snapshot in snapshots if snapshot.event == "warning"]
+        assert warnings
+        assert "Platform live UI disabled" in warnings[0].message
+        run_start = next(
+            snapshot for snapshot in snapshots if snapshot.event == "run_start"
+        )
+        assert run_start.run_info["trace"]["destinations"]["platform"] is False
+        assert "platform_error" in run_start.run_info["trace"]["destinations"]
+
+    @pytest.mark.asyncio
     async def test_observer_metric_and_item_events_include_timings(
         self, tmp_path, monkeypatch
     ):

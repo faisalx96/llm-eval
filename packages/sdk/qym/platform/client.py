@@ -353,6 +353,8 @@ class PlatformEventStream:
 
 
 class PlatformClient:
+    CREATE_RUN_TIMEOUT = 5.0
+
     def __init__(self, platform_url: str, api_key: str) -> None:
         self.platform_url = platform_url.rstrip("/")
         self.api_key = api_key
@@ -367,6 +369,7 @@ class PlatformClient:
         metrics: list[str],
         run_metadata: Dict[str, Any],
         run_config: Dict[str, Any],
+        timeout: Optional[float] = None,
     ) -> PlatformRunHandle:
         payload = {
             "external_run_id": external_run_id,
@@ -377,7 +380,12 @@ class PlatformClient:
             "run_metadata": run_metadata,
             "run_config": run_config,
         }
-        data = _post_json(f"{self.platform_url}/v1/runs", payload, self.api_key)
+        data = _post_json(
+            f"{self.platform_url}/v1/runs",
+            payload,
+            self.api_key,
+            timeout=timeout if timeout is not None else self.CREATE_RUN_TIMEOUT,
+        )
         run_id = str(data.get("run_id") or "")
         live_url = str(data.get("live_url") or "")
         if not run_id or not live_url:
