@@ -198,8 +198,10 @@ def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[Redirect
     if get_session_user_and_provider(db, request):
         return None
     root = request_root_path(request)
-    full_path = root + request.url.path + (f"?{request.url.query}" if request.url.query else "")
-    next_value = sanitize_next(full_path, default=root + "/")
+    # ``request.url.path`` already includes ``root_path`` under a Starlette mount,
+    # so do NOT prepend it again here. Only the redirect target needs the prefix.
+    full_path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    next_value = sanitize_next(full_path, default=(root + "/") if root else "/")
     return RedirectResponse(url=f"{root}/login?next={next_value}", status_code=303)
 
 

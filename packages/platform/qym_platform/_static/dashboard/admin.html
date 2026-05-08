@@ -103,7 +103,8 @@
       'use strict';
 
       function apiUrl(path) {
-        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return `${window.location.origin}${root}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
       function escapeHtml(value) {
@@ -151,7 +152,7 @@
             <td>${p.is_active ? '<span style="color:var(--success)">Active</span>' : '<span style="color:var(--text-muted)">Archived</span>'}</td>
             <td>${escapeHtml(String(p.member_count || 0))}</td>
             <td><div class="row-actions">
-              <a class="btn btn-secondary" href="/projects/${encodeURIComponent(p.slug)}/settings" style="padding:4px 10px;font-size:var(--font-xs)">Settings</a>
+              <a class="btn btn-secondary" href="${(window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '')}/projects/${encodeURIComponent(p.slug)}/settings" style="padding:4px 10px;font-size:var(--font-xs)">Settings</a>
               <button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-project-delete="${escapeHtml(p.id)}">Archive</button>
             </div></td>
           </tr>`).join('');

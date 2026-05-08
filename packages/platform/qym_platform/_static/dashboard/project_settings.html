@@ -206,7 +206,8 @@
 
       // ── Utilities ──
       function apiUrl(path) {
-        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return `${window.location.origin}${root}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
       function escapeHtml(value) {
@@ -386,7 +387,7 @@
           window.QymShell.navigateTo('/');
           return;
         }
-        window.location.href = '/';
+        window.location.href = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/';
       }
 
       function showProjectRemovalError(err) {

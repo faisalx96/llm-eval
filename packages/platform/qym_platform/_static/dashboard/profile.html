@@ -188,7 +188,8 @@
       'use strict';
 
       function apiUrl(path) {
-        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return `${window.location.origin}${root}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
       function escapeHtml(value) {
@@ -201,8 +202,9 @@
       }
 
       function projectUrl(slug, suffix = '') {
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
         const clean = String(suffix || '').replace(/^\/+/, '');
-        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
+        return `${root}/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
       }
 
       async function loadProfile() {
@@ -222,7 +224,7 @@
       function renderProfile(me, cfg) {
         const defaultProject = me.default_project;
         var openBtn = document.getElementById('open-default-project');
-        if (openBtn) openBtn.href = defaultProject ? projectUrl(defaultProject.slug) : '/';
+        if (openBtn) openBtn.href = defaultProject ? projectUrl(defaultProject.slug) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/');
 
         document.getElementById('account-grid').innerHTML = [
           ['Display Name', me.display_name || '—'],

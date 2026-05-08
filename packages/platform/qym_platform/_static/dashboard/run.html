@@ -3520,7 +3520,7 @@
     (() => {
       'use strict';
 
-      const API_ROOT = `${window.location.origin}/`;
+      const API_ROOT = `${window.location.origin}${(window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '')}/`;
       const CURRENT_PROJECT_SLUG = (() => {
         const match = window.location.pathname.match(/\/projects\/([^/]+)/);
         return match ? decodeURIComponent(match[1]) : '';
@@ -3539,12 +3539,14 @@
       }
 
       function projectUrl(slug, suffix) {
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
         const clean = String(suffix || '').replace(/^\/+/, '');
-        return `/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
+        return `${root}/projects/${encodeURIComponent(slug)}${clean ? `/${clean}` : ''}`;
       }
 
       function dashboardUrl() {
-        return CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG) : '/';
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG) : (root + '/');
       }
 
       function setHrefIfPresent(id, href) {

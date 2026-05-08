@@ -104,7 +104,8 @@
       'use strict';
 
       function apiUrl(path) {
-        return `${window.location.origin}/${String(path || '').replace(/^\/+/, '')}`;
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return `${window.location.origin}${root}/${String(path || '').replace(/^\/+/, '')}`;
       }
 
       function esc(v) {
@@ -156,7 +157,7 @@
         grid.innerHTML = projects.map(p => {
           const role = (p.role || 'MEMBER').toLowerCase();
           const roleClass = role === 'manager' || role === 'admin' ? 'manager' : 'member';
-          return `<a class="project-card" href="/projects/${encodeURIComponent(p.slug)}">
+          return `<a class="project-card" href="${(window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '')}/projects/${encodeURIComponent(p.slug)}">
             <div class="project-card-top">
               <div class="project-card-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="1.75"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>

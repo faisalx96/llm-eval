@@ -93,8 +93,8 @@
       'use strict';
 
       function apiUrl(path) {
-        const root = window.QymShell ? window.location.origin + '/' : window.location.origin + '/';
-        return root + String(path || '').replace(/^\/+/, '');
+        const prefix = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return window.location.origin + prefix + '/' + String(path || '').replace(/^\/+/, '');
       }
 
       function esc(v) { const d = document.createElement('div'); d.textContent = v == null ? '' : v; return d.innerHTML; }
@@ -116,7 +116,8 @@
       }
 
       function projectUrl(slug, sub) {
-        return '/projects/' + encodeURIComponent(slug) + (sub ? '/' + sub : '');
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        return root + '/projects/' + encodeURIComponent(slug) + (sub ? '/' + sub : '');
       }
 
       function relativeTime(dateStr) {
@@ -209,7 +210,7 @@
               const scoreValue = getPrimaryMetricScore(r);
               const score = scoreValue != null ? (scoreValue * 100).toFixed(0) + '%' : '—';
               const scoreColor = scoreValue != null && scoreValue >= 0.75 ? 'var(--success)' : 'var(--warning)';
-              const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : '/run/' + r.run_id;
+              const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/run/' + r.run_id);
               return '<tr>'
                 + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
                 + '<td style="font-family:var(--font-mono);font-size:11px">' + renderModelLabel(model, hasReasoningTraceStats(r.trace_stats)) + '</td>'
