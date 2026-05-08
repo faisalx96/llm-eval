@@ -14,7 +14,13 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
-from qym_platform.auth_oidc import get_session_user_and_provider, sanitize_next, session_auth_enabled
+from qym_platform.auth_oidc import (
+    get_session_user_and_provider,
+    request_root_path,
+    sanitize_next,
+    session_auth_enabled,
+    with_root_path,
+)
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     Approval,
@@ -104,6 +110,25 @@ def _platform_static_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "_static"
 
 
+def _dashboard_html_response(idx: Path, request: Request) -> HTMLResponse:
+    """Serve a dashboard HTML page, rewriting absolute asset paths and
+    injecting ``window.__QYM_ROOT_PATH__`` so client-side JS can build
+    correct URLs when the platform is mounted under a sub-path (e.g. ``/qym``)."""
+    html = idx.read_text(encoding="utf-8")
+    root = request_root_path(request)
+    if root:
+        html = html.replace('="/static/', f'="{root}/static/')
+        html = html.replace("='/static/", f"='{root}/static/")
+        html = html.replace('="/ui/', f'="{root}/ui/')
+        html = html.replace("='/ui/", f"='{root}/ui/")
+    injection = f'<script>window.__QYM_ROOT_PATH__ = {json.dumps(root)};</script>'
+    if "<head>" in html:
+        html = html.replace("<head>", "<head>\n  " + injection, 1)
+    else:
+        html = injection + html
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+
+
 def _platform_static_ui_index() -> Path:
     return _platform_static_dir() / "ui" / "index.html"
 
@@ -172,8 +197,10 @@ def _maybe_redirect_to_login(request: Request, db: Session) -> Optional[Redirect
         return None
     if get_session_user_and_provider(db, request):
         return None
-    next_value = sanitize_next(request.url.path + (f"?{request.url.query}" if request.url.query else ""))
-    return RedirectResponse(url=f"/login?next={next_value}", status_code=303)
+    root = request_root_path(request)
+    full_path = root + request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    next_value = sanitize_next(full_path, default=root + "/")
+    return RedirectResponse(url=f"{root}/login?next={next_value}", status_code=303)
 
 
 def _project_not_found_page(request: Request, project_slug: str) -> HTMLResponse:
@@ -473,7 +500,7 @@ def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_projects()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Projects UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}", response_model=None)
@@ -484,7 +511,7 @@ def dashboard_project_index(project_slug: str, request: Request, db: Session = D
     idx = _platform_static_dashboard_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Dashboard UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/profile", response_model=None)
@@ -495,7 +522,7 @@ def profile_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_profile_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Profile UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/admin", response_model=None)
@@ -506,7 +533,7 @@ def admin_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_admin_index()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Admin UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/compare", response_model=None)
@@ -517,7 +544,7 @@ def compare_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_dashboard_compare()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Compare UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/trash", response_model=None)
@@ -528,7 +555,7 @@ def trash_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_dir() / "dashboard" / "trash.html"
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Trash UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/reviews", response_model=None)
@@ -539,7 +566,7 @@ def reviews_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_dir() / "dashboard" / "reviews.html"
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Reviews UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}/reviews", response_model=None)
@@ -558,7 +585,7 @@ def project_charts(project_slug: str, request: Request, db: Session = Depends(ge
     idx = _platform_static_charts()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Charts UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}/models", response_model=None)
@@ -569,7 +596,7 @@ def project_models(project_slug: str, request: Request, db: Session = Depends(ge
     idx = _platform_static_models()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Models UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}/overview", response_model=None)
@@ -580,7 +607,7 @@ def project_overview(project_slug: str, request: Request, db: Session = Depends(
     idx = _platform_static_overview()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Overview UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}/settings", response_model=None)
@@ -591,7 +618,7 @@ def project_settings_index(project_slug: str, request: Request, db: Session = De
     idx = _platform_static_project_settings()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Project settings UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/run/{run_id:path}", response_model=None)
@@ -602,7 +629,7 @@ def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_dashboard_run()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Run UI not found")
-    return FileResponse(str(idx), media_type="text/html; charset=utf-8")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/projects/{project_slug}/runs/{run_id:path}", response_model=None)

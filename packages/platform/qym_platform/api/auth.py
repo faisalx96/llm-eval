@@ -21,11 +21,13 @@ from qym_platform.auth_oidc import (
     local_auth_enabled,
     pop_login_next,
     provider_catalog,
+    request_root_path,
     resolve_or_provision_user,
     sanitize_next,
     session_auth_enabled,
     set_authenticated_session,
     store_login_next,
+    with_root_path,
 )
 from qym_platform.db.models import LocalAuthCredential, User, UserIdentity, UserRole
 from qym_platform.deps import get_db
@@ -53,7 +55,8 @@ def _login_bootstrap_payload(settings: PlatformSettings) -> Dict[str, Any]:
 
 
 def _resolve_next(request: Request) -> str:
-    return sanitize_next(request.query_params.get("next"))
+    default = with_root_path(request, "/")
+    return sanitize_next(request.query_params.get("next"), default=default)
 
 
 def _normalize_email(email: str) -> str:
@@ -98,7 +101,10 @@ def login_page(
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Login UI not found")
     html = idx.read_text(encoding="utf-8")
+    root_path = request_root_path(request)
     html = html.replace("__QYM_LOGIN_BOOTSTRAP_JSON__", json.dumps(_login_bootstrap_payload(settings)))
+    html = html.replace("__QYM_ROOT_PATH_JSON__", json.dumps(root_path))
+    html = html.replace("__QYM_PREFIX__", root_path)
     html = html.replace(
         "<!--__QYM_LOCAL_AUTH_MARKER__-->",
         '<meta name="qym-local-auth" content="enabled">' if local_auth_enabled(settings) else "",

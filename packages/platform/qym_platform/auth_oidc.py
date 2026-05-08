@@ -74,14 +74,28 @@ def provider_catalog(settings: PlatformSettings) -> list[dict[str, Any]]:
     return providers
 
 
-def sanitize_next(next_value: Optional[str]) -> str:
+def request_root_path(request: Request) -> str:
+    """Return the URL prefix the app is mounted under (e.g. ``/qym``) or ``""``."""
+    return (request.scope.get("root_path") or "").rstrip("/")
+
+
+def with_root_path(request: Request, path: str) -> str:
+    """Prepend the request's root_path to an absolute path, leaving others alone."""
+    if not path:
+        return request_root_path(request) + "/"
+    if path.startswith("/") and not path.startswith("//"):
+        return request_root_path(request) + path
+    return path
+
+
+def sanitize_next(next_value: Optional[str], default: str = "/") -> str:
     value = (next_value or "").strip()
     if not value:
-        return "/"
+        return default
     if not value.startswith("/"):
-        return "/"
+        return default
     if value.startswith("//"):
-        return "/"
+        return default
     return value
 
 
@@ -93,13 +107,15 @@ def _session_store(request: Request) -> dict[str, Any]:
 
 
 def store_login_next(request: Request, next_value: Optional[str]) -> str:
-    sanitized = sanitize_next(next_value)
+    default = with_root_path(request, "/")
+    sanitized = sanitize_next(next_value, default=default)
     request.scope.setdefault("session", {})[SESSION_NEXT_KEY] = sanitized
     return sanitized
 
 
 def pop_login_next(request: Request) -> str:
-    return sanitize_next(_session_store(request).pop(SESSION_NEXT_KEY, "/"))
+    default = with_root_path(request, "/")
+    return sanitize_next(_session_store(request).pop(SESSION_NEXT_KEY, default), default=default)
 
 
 def set_authenticated_session(request: Request, user: User, provider: str) -> None:

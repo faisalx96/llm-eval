@@ -1,11 +1,55 @@
 (function () {
+  // Capture script URL at load-time so we can derive the deployment prefix
+  // (e.g. "/qym") without relying on the page URL or server templating.
+  var SCRIPT_URL = (function () {
+    try {
+      if (document.currentScript && document.currentScript.src) {
+        return document.currentScript.src;
+      }
+    } catch (_) {}
+    return '';
+  })();
+
+  function derivePrefixFromScriptUrl() {
+    if (!SCRIPT_URL) return '';
+    try {
+      var u = new URL(SCRIPT_URL, window.location.origin);
+      // Path looks like ".../static/auth.js" — strip "/static/auth.js" to get prefix.
+      var m = u.pathname.match(/^(.*?)\/static\/[^/]+$/);
+      return m ? m[1] : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function rootPath() {
+    if (typeof window.__QYM_ROOT_PATH__ === 'string') {
+      return window.__QYM_ROOT_PATH__.replace(/\/$/, '');
+    }
+    var derived = derivePrefixFromScriptUrl();
+    if (derived) return derived.replace(/\/$/, '');
+    if (window.QymBaseUrl) {
+      try {
+        return new URL(window.QymBaseUrl).pathname.replace(/\/$/, '');
+      } catch (_) {}
+    }
+    return '';
+  }
+
+  function withPrefix(p) {
+    var prefix = rootPath();
+    if (!p) return prefix + '/';
+    if (p.charAt(0) === '/' && p.charAt(1) !== '/') return prefix + p;
+    return p;
+  }
+
   function currentPath() {
     return window.location.pathname + window.location.search;
   }
 
   function loginUrl(next) {
-    const target = next || currentPath();
-    return '/login?next=' + encodeURIComponent(target);
+    var target = next || currentPath();
+    return withPrefix('/login') + '?next=' + encodeURIComponent(target);
   }
 
   function redirectToLogin(next) {
@@ -14,13 +58,13 @@
 
   async function logout() {
     try {
-      await fetch('/v1/auth/logout', {
+      await fetch(withPrefix('/v1/auth/logout'), {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (_) {}
-    redirectToLogin('/');
+    redirectToLogin(withPrefix('/'));
   }
 
   function handle401(response, next) {
@@ -42,7 +86,7 @@
     el.innerHTML = `
       <div style="display:flex;flex:1;width:100%;align-items:center;justify-content:center;min-height:calc(100vh - 100px);">
         <div style="text-align:center;max-width:360px;padding:40px;">
-          <img src="/static/qym_icon.png" alt="قيِّم" style="height:64px;margin-bottom:24px;" />
+          <img src="${withPrefix('/static/qym_icon.png')}" alt="قيِّم" style="height:64px;margin-bottom:24px;" />
           <h1 style="font-size:24px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">${title}</h1>
           <p style="color:var(--text-muted);margin-bottom:32px;">${message}</p>
           <a href="${loginUrl()}" style="display:inline-flex;width:100%;padding:12px 24px;background:var(--accent-primary);color:var(--bg-base);border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
@@ -85,6 +129,8 @@
   document.addEventListener('DOMContentLoaded', injectLogoutMenuItem);
 
   window.QymAuth = {
+    rootPath: rootPath,
+    withPrefix: withPrefix,
     loginUrl: loginUrl,
     redirectToLogin: redirectToLogin,
     handle401: handle401,

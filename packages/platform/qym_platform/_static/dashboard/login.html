@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in</title>
   <!--__QYM_LOCAL_AUTH_MARKER__-->
-  <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="icon" type="image/png" href="__QYM_PREFIX__/static/qym_icon.png">
+  <link rel="stylesheet" href="__QYM_PREFIX__/static/dashboard.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
@@ -429,9 +429,9 @@
 
   <div class="login-card">
     <div class="login-brand">
-      <img src="/static/qym_icon.png" alt="" class="login-logo">
+      <img src="__QYM_PREFIX__/static/qym_icon.png" alt="" class="login-logo">
       <br>
-      <img src="/static/qym_text.png" alt="" class="login-wordmark">
+      <img src="__QYM_PREFIX__/static/qym_text.png" alt="" class="login-wordmark">
     </div>
 
     <div class="login-body">
@@ -448,11 +448,18 @@
 
   <script>
     window.__QYM_LOGIN_BOOTSTRAP__ = __QYM_LOGIN_BOOTSTRAP_JSON__;
+    window.__QYM_ROOT_PATH__ = __QYM_ROOT_PATH_JSON__;
   </script>
   <script>
     (function () {
+      var QYM_PREFIX = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+      function withPrefix(p) {
+        if (!p) return QYM_PREFIX + '/';
+        if (p.charAt(0) === '/' && p.charAt(1) !== '/') return QYM_PREFIX + p;
+        return p;
+      }
       var params = new URLSearchParams(window.location.search);
-      var next = params.get('next') || '/';
+      var next = params.get('next') || (QYM_PREFIX + '/');
       var root = document.getElementById('auth-root');
       var state = {
         mode: 'signin',
@@ -538,7 +545,7 @@
           + '<div class="providers">'
           + providers.map(function (provider) {
               var theme = providerTheme(provider.id);
-              var href = '/v1/auth/login/' + encodeURIComponent(provider.id) + '?next=' + encodeURIComponent(next);
+              var href = withPrefix('/v1/auth/login/') + encodeURIComponent(provider.id) + '?next=' + encodeURIComponent(next);
               return ''
                 + '<a href="' + esc(href) + '" class="provider-btn provider-' + theme.key + '">'
                 + '  <span class="provider-icon">' + theme.icon + '</span>'
@@ -599,7 +606,7 @@
         render();
 
         try {
-          var endpoint = state.mode === 'signup' ? '/v1/auth/signup/password' : '/v1/auth/login/password';
+          var endpoint = withPrefix(state.mode === 'signup' ? '/v1/auth/signup/password' : '/v1/auth/login/password');
           var response = await fetch(endpoint + '?next=' + encodeURIComponent(next), {
             method: 'POST',
             credentials: 'same-origin',
@@ -617,7 +624,7 @@
           state.message = state.mode === 'signup' ? 'Account created. Redirecting...' : 'Signed in. Redirecting...';
           state.messageType = 'success';
           render();
-          window.location.href = data.next || '/';
+          window.location.href = data.next || (QYM_PREFIX + '/');
         } catch (err) {
           state.message = 'Could not complete the request. Please try again.';
           state.messageType = 'error';
