@@ -2270,6 +2270,9 @@
       max-height: 300px;
       overflow-y: auto;
     }
+    .item-run-output .output-text:has(.formatted-table-grid) {
+      max-height: 640px;
+    }
 
     /* Metric edit */
     .metric-edit-block {
@@ -2746,61 +2749,141 @@
       word-break: break-word;
       line-height: 1.6;
     }
-    .metric-detail-value .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 4px 0;
+    .metric-detail-value .meta-table,
+    .formatted-table-cell .meta-table {
+      width: max-content;
+      min-width: min(360px, 100%);
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 0;
       font-size: var(--font-xs);
       white-space: nowrap;
+      background: var(--bg-surface);
     }
     .metric-detail-value .meta-table th,
-    .metric-detail-value .meta-table td {
-      padding: 3px 10px;
-      border: 1px solid var(--border-subtle);
+    .metric-detail-value .meta-table td,
+    .formatted-table-cell .meta-table th,
+    .formatted-table-cell .meta-table td {
+      padding: 6px 12px;
+      border-right: 1px solid var(--border-default);
+      border-bottom: 1px solid var(--border-subtle);
       text-align: start;
     }
-    .metric-detail-value .meta-table th {
+    .metric-detail-value .meta-table th:last-child,
+    .metric-detail-value .meta-table td:last-child,
+    .formatted-table-cell .meta-table th:last-child,
+    .formatted-table-cell .meta-table td:last-child {
+      border-right: 0;
+    }
+    .metric-detail-value .meta-table tbody tr:last-child td,
+    .formatted-table-cell .meta-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .metric-detail-value .meta-table th,
+    .formatted-table-cell .meta-table th {
       background: var(--bg-elevated);
       color: var(--text-muted);
       font-weight: 600;
     }
-    .metric-detail-value .meta-table td {
+    .metric-detail-value .meta-table-sort,
+    .formatted-table-cell .meta-table-sort {
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+    }
+    .metric-detail-value .meta-table-sort::after,
+    .formatted-table-cell .meta-table-sort::after {
+      content: '\2195';
+      color: var(--text-faint);
+      font-size: 10px;
+    }
+    .metric-detail-value .meta-table-sort[aria-sort="ascending"]::after,
+    .formatted-table-cell .meta-table-sort[aria-sort="ascending"]::after {
+      content: '\2191';
+      color: var(--accent-primary);
+    }
+    .metric-detail-value .meta-table-sort[aria-sort="descending"]::after,
+    .formatted-table-cell .meta-table-sort[aria-sort="descending"]::after {
+      content: '\2193';
+      color: var(--accent-primary);
+    }
+    .metric-detail-value .meta-table-sort:hover,
+    .formatted-table-cell .meta-table-sort:hover {
+      color: var(--text-primary);
+    }
+    .metric-detail-value .meta-table td,
+    .formatted-table-cell .meta-table td {
       color: var(--text-secondary);
     }
-    .metric-detail-value .meta-table tr:hover td {
+    .metric-detail-value .meta-table tr:hover td,
+    .formatted-table-cell .meta-table tr:hover td {
       background: var(--bg-hover);
     }
     .meta-table-wrapper {
       position: relative;
+      display: inline-block;
+      max-width: min(100%, 760px);
+      max-height: 360px;
+      margin: 4px 0;
+      overflow: auto;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-surface);
     }
-    .meta-table-wrapper.collapsed {
-      max-height: 180px;
-      overflow: hidden;
+    .meta-table-wrapper .meta-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
-    .meta-table-wrapper.collapsed::after {
-      content: '';
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      height: 40px;
-      background: linear-gradient(transparent, var(--bg-primary));
-      pointer-events: none;
+    .meta-table-truncated {
+      width: fit-content;
+      max-width: min(100%, 760px);
+      margin: 2px 0 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--warning);
+      border-radius: 6px;
+      background: rgba(245, 158, 11, 0.08);
+      color: var(--warning);
+      font-family: var(--font-sans);
+      font-size: var(--font-xs);
+      font-weight: 600;
     }
     .meta-table-toggle {
-      display: inline-block;
-      margin-top: 4px;
-      font-size: var(--font-xs);
-      color: var(--accent-primary);
-      cursor: pointer;
-      font-weight: 600;
-      background: none;
-      border: none;
-      padding: 0;
-      font-family: var(--font-sans);
+      display: none !important;
     }
-    .meta-table-toggle:hover { text-decoration: underline; }
-
     /* Formatted objects */
     .formatted-object, .formatted-array { font-family: var(--font-mono); font-size: var(--font-sm); line-height: 1.6; }
+    .formatted-table-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 14px 20px;
+      width: fit-content;
+      max-width: 100%;
+      margin: 8px 0 4px;
+    }
+    .formatted-table-cell {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .formatted-table-cell > .formatted-key {
+      margin-bottom: 6px;
+    }
+    .formatted-table-cell .meta-table-wrapper {
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+    }
     .formatted-row {
       padding: 6px 0;
       padding-left: var(--space-md);
@@ -3909,14 +3992,111 @@
         }
         const entries = Object.entries(obj);
         if (!entries.length) return '<span class="formatted-object">{}</span>';
-        return '<div class="formatted-object">' + entries.map(([k,v]) => {
+
+        // Group consecutive table-like children so they render side-by-side.
+        const groups = [];
+        let tableBuffer = [];
+        function flushTables() {
+          if (!tableBuffer.length) return;
+          const cells = tableBuffer.map(({ key, table }) =>
+            '<div class="formatted-table-cell"><span class="formatted-key">' + escapeHtml(formatFieldName(key)) + '</span>' + formatMetaTable(table) + '</div>'
+          ).join('');
+          groups.push('<div class="formatted-table-grid">' + cells + '</div>');
+          tableBuffer = [];
+        }
+        for (const [k, v] of entries) {
+          const table = (v && typeof v === 'object') ? normalizeMetaTableValue(v) : null;
+          if (table) { tableBuffer.push({ key: k, table: table }); continue; }
+          flushTables();
           let f; if(v===null||v===undefined) f='<span class="formatted-null">null</span>'; else if(typeof v==='object') f=formatObjectAsHtml(v); else if(typeof v==='string') f=fmtStr(v); else if(typeof v==='number') f='<span class="formatted-number">'+v+'</span>'; else if(typeof v==='boolean') f='<span class="formatted-boolean">'+v+'</span>'; else f=escapeHtml(String(v));
-          return '<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>';
-        }).join('') + '</div>';
+          groups.push('<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>');
+        }
+        flushTables();
+        return '<div class="formatted-object">' + groups.join('') + '</div>';
       }
 
       function formatFieldName(name) {
         return name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
+
+      function metaCellText(value) {
+        if (value === undefined || value === null) return '';
+        if (typeof value === 'object') {
+          try { return JSON.stringify(value); }
+          catch { return String(value); }
+        }
+        return String(value);
+      }
+
+      function normalizeMetaTableValue(val) {
+        if (Array.isArray(val)) {
+          if (val.length === 0 || !val.every(function(r) { return Array.isArray(r); })) return null;
+          var colCount = Math.max.apply(null, val.map(function(r) { return r.length; }).concat([0]));
+          if (colCount === 0) return null;
+          return {
+            columns: Array.from({length: colCount}, function(_, i) { return 'Col ' + (i + 1); }),
+            rows: val.map(function(r) {
+              return Array.from({length: colCount}, function(_, i) { return i < r.length ? r[i] : ''; });
+            })
+          };
+        }
+
+        if (!val || typeof val !== 'object' || !Array.isArray(val.columns) || !Array.isArray(val.rows)) {
+          return null;
+        }
+
+        var declaredColumns = val.columns.map(function(c) { return String(c == null ? '' : c); });
+        var discoveredColumns = declaredColumns.slice();
+        var sourceRows = val.rows;
+        var colCountObj = declaredColumns.length;
+        for (var ri = 0; ri < sourceRows.length; ri++) {
+          var row = sourceRows[ri];
+          if (Array.isArray(row)) colCountObj = Math.max(colCountObj, row.length);
+          else if (row && typeof row === 'object' && declaredColumns.length === 0) {
+            Object.keys(row).forEach(function(key) {
+              if (!discoveredColumns.includes(key)) discoveredColumns.push(key);
+            });
+            colCountObj = Math.max(colCountObj, discoveredColumns.length);
+          }
+          else if (colCountObj === 0) colCountObj = 1;
+        }
+        if (colCountObj === 0) return null;
+
+        var columns = Array.from({length: colCountObj}, function(_, i) { return discoveredColumns[i] || ('Col ' + (i + 1)); });
+        var rows = sourceRows.map(function(row) {
+          if (Array.isArray(row)) {
+            return Array.from({length: colCountObj}, function(_, i) { return i < row.length ? row[i] : ''; });
+          }
+          if (row && typeof row === 'object') {
+            return columns.map(function(column) {
+              return Object.prototype.hasOwnProperty.call(row, column) ? row[column] : '';
+            });
+          }
+          return Array.from({length: colCountObj}, function(_, i) { return i === 0 ? row : ''; });
+        });
+
+        return { columns: columns, rows: rows };
+      }
+
+      function formatMetaTable(table) {
+        var maxRows = 200;
+        var visibleRows = table.rows.slice(0, maxRows);
+        var hiddenRows = Math.max(table.rows.length - visibleRows.length, 0);
+        var headerRow = '<tr>' + table.columns.map(function(column, i) {
+          return '<th><button type="button" class="meta-table-sort" data-col-index="' + i + '" aria-sort="none" onclick="sortMetaTable(this)">' + escapeHtml(column) + '</button></th>';
+        }).join('') + '</tr>';
+        var bodyRows = visibleRows.map(function(r) {
+          var cells = table.columns.map(function(_, i) {
+            var text = metaCellText(i < r.length ? r[i] : '');
+            return '<td data-sort-value="' + escapeAttr(text) + '">' + escapeHtml(text) + '</td>';
+          }).join('');
+          return '<tr>' + cells + '</tr>';
+        }).join('');
+        var tableHtml = '<table class="meta-table"><thead>' + headerRow + '</thead><tbody>' + bodyRows + '</tbody></table>';
+        var truncatedHtml = hiddenRows > 0
+          ? '<div class="meta-table-truncated">Showing first ' + maxRows + ' of ' + table.rows.length + ' rows. ' + hiddenRows + ' rows are not loaded in this page.</div>'
+          : '';
+        return '<div class="meta-table-wrapper">' + tableHtml + '</div>' + truncatedHtml;
       }
 
       function formatMetaValue(val) {
@@ -3924,27 +4104,9 @@
         if (typeof val === 'boolean') return escapeHtml(String(val));
         if (typeof val === 'number') return escapeHtml(String(val));
         if (typeof val === 'string') return escapeHtml(val);
+        var table = normalizeMetaTableValue(val);
+        if (table) return formatMetaTable(table);
         if (Array.isArray(val)) {
-          if (val.length === 0) return '[]';
-          var isTabular = val.every(function(r) { return Array.isArray(r); });
-          if (isTabular) {
-            var colCount = Math.max.apply(null, val.map(function(r) { return r.length; }));
-            var headerRow = colCount <= 10
-              ? '<tr>' + Array.from({length: colCount}, function(_, i) { return '<th>Col ' + (i + 1) + '</th>'; }).join('') + '</tr>'
-              : '';
-            var bodyRows = val.map(function(r) {
-              return '<tr>' + Array.from({length: colCount}, function(_, i) {
-                var c = i < r.length ? r[i] : '';
-                return '<td>' + escapeHtml(String(c == null ? '' : c)) + '</td>';
-              }).join('') + '</tr>';
-            }).join('');
-            var tableHtml = '<table class="meta-table">' + (headerRow ? '<thead>' + headerRow + '</thead>' : '') + '<tbody>' + bodyRows + '</tbody></table>';
-            if (val.length > 5) {
-              var uid = 'mt_' + Math.random().toString(36).slice(2, 8);
-              return '<div class="meta-table-wrapper collapsed" id="' + uid + '">' + tableHtml + '</div><button class="meta-table-toggle" onclick="var w=document.getElementById(\'' + uid + '\');w.classList.toggle(\'collapsed\');this.textContent=w.classList.contains(\'collapsed\')?\'Show all ' + val.length + ' rows \u25BC\':\'Show less \u25B2\';">Show all ' + val.length + ' rows \u25BC</button>';
-            }
-            return tableHtml;
-          }
           var isFlatPrimitive = val.every(function(v) { return v === null || typeof v !== 'object'; });
           if (isFlatPrimitive) return escapeHtml(val.map(function(v) { return String(v == null ? '' : v); }).join(', '));
           return formatObjectAsHtml(val);
@@ -6711,6 +6873,43 @@
         const isExpanded = details[0].classList.contains('expanded');
         details.forEach(d => { if (isExpanded) d.classList.remove('expanded'); else d.classList.add('expanded'); });
         if (icon) icon.textContent = isExpanded ? '\u25B6' : '\u25BC';
+      };
+
+      window.sortMetaTable = function(button) {
+        const table = button?.closest('table.meta-table');
+        const tbody = table?.querySelector('tbody');
+        if (!table || !tbody) return;
+
+        const colIndex = Number(button.dataset.colIndex || 0);
+        const current = button.getAttribute('aria-sort');
+        const nextDir = current === 'ascending' ? 'descending' : 'ascending';
+        const direction = nextDir === 'ascending' ? 1 : -1;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        table.querySelectorAll('.meta-table-sort').forEach((sortButton) => {
+          sortButton.setAttribute('aria-sort', sortButton === button ? nextDir : 'none');
+        });
+
+        rows.sort((rowA, rowB) => {
+          const cellA = rowA.children[colIndex];
+          const cellB = rowB.children[colIndex];
+          const rawA = cellA?.dataset.sortValue ?? cellA?.textContent ?? '';
+          const rawB = cellB?.dataset.sortValue ?? cellB?.textContent ?? '';
+          const emptyA = rawA === '';
+          const emptyB = rawB === '';
+          if (emptyA && emptyB) return 0;
+          if (emptyA) return 1;
+          if (emptyB) return -1;
+
+          const numA = Number(rawA);
+          const numB = Number(rawB);
+          const bothNumeric = rawA.trim() !== '' && rawB.trim() !== '' && Number.isFinite(numA) && Number.isFinite(numB);
+          if (bothNumeric && numA !== numB) return (numA - numB) * direction;
+
+          return rawA.localeCompare(rawB, undefined, { numeric: true, sensitivity: 'base' }) * direction;
+        });
+
+        rows.forEach(row => tbody.appendChild(row));
       };
 
       // ── Category dropdowns ──

@@ -491,6 +491,17 @@
       border-bottom: none;
     }
 
+    .sweep-item-row {
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .sweep-item-row:hover,
+    .sweep-item-row:focus-visible {
+      background: rgba(255, 255, 255, 0.035);
+      outline: none;
+    }
+
     .sweep-issue-id {
       font-size: 13px;
       font-weight: 700;
@@ -576,6 +587,90 @@
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
       border-radius: 8px;
+    }
+
+    .item-comparison-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 5000;
+      display: none;
+      align-items: stretch;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(3, 7, 18, 0.76);
+      backdrop-filter: blur(6px);
+    }
+
+    .item-comparison-modal-overlay.open {
+      display: flex;
+    }
+
+    .item-comparison-modal {
+      width: min(1500px, 100%);
+      max-height: calc(100vh - 56px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    .item-comparison-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+
+    .item-comparison-modal-title {
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .item-comparison-modal-close {
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .item-comparison-modal-close:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .item-comparison-modal-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .item-comparison-modal-body .item-comparison-row {
+      border: none;
+      padding: 0;
+      background: transparent;
+    }
+
+    .item-comparison-modal-body .item-run-output .output-text {
+      max-height: 320px;
     }
 
     .sweep-metadata-shell {
@@ -2658,6 +2753,32 @@
       line-height: 1.6;
     }
 
+    .formatted-table-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 14px 20px;
+      width: fit-content;
+      max-width: 100%;
+      margin: 8px 0 4px;
+    }
+
+    .formatted-table-cell {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .formatted-table-cell > .formatted-key {
+      margin-bottom: 6px;
+    }
+
+    .formatted-table-cell .meta-table-wrapper {
+      display: block;
+      width: fit-content;
+      max-width: 100%;
+    }
+
     .formatted-row {
       padding: 6px 0;
       padding-left: var(--space-md);
@@ -2786,60 +2907,118 @@
       line-height: 1.6;
     }
 
-    .metric-detail-value .meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 4px 0;
+    .metric-detail-value .meta-table,
+    .formatted-table-cell .meta-table {
+      width: max-content;
+      min-width: min(360px, 100%);
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 0;
       font-size: var(--font-xs);
       white-space: nowrap;
+      background: var(--bg-surface);
     }
     .metric-detail-value .meta-table th,
-    .metric-detail-value .meta-table td {
-      padding: 3px 10px;
-      border: 1px solid var(--border-subtle);
+    .metric-detail-value .meta-table td,
+    .formatted-table-cell .meta-table th,
+    .formatted-table-cell .meta-table td {
+      padding: 6px 12px;
+      border-right: 1px solid var(--border-default);
+      border-bottom: 1px solid var(--border-subtle);
       text-align: start;
     }
-    .metric-detail-value .meta-table th {
+    .metric-detail-value .meta-table th:last-child,
+    .metric-detail-value .meta-table td:last-child,
+    .formatted-table-cell .meta-table th:last-child,
+    .formatted-table-cell .meta-table td:last-child {
+      border-right: 0;
+    }
+    .metric-detail-value .meta-table tbody tr:last-child td,
+    .formatted-table-cell .meta-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .metric-detail-value .meta-table th,
+    .formatted-table-cell .meta-table th {
       background: var(--bg-elevated);
       color: var(--text-muted);
       font-weight: 600;
     }
-    .metric-detail-value .meta-table td {
+    .metric-detail-value .meta-table-sort,
+    .formatted-table-cell .meta-table-sort {
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+    }
+    .metric-detail-value .meta-table-sort::after,
+    .formatted-table-cell .meta-table-sort::after {
+      content: '\2195';
+      color: var(--text-faint);
+      font-size: 10px;
+    }
+    .metric-detail-value .meta-table-sort[aria-sort="ascending"]::after,
+    .formatted-table-cell .meta-table-sort[aria-sort="ascending"]::after {
+      content: '\2191';
+      color: var(--accent-primary);
+    }
+    .metric-detail-value .meta-table-sort[aria-sort="descending"]::after,
+    .formatted-table-cell .meta-table-sort[aria-sort="descending"]::after {
+      content: '\2193';
+      color: var(--accent-primary);
+    }
+    .metric-detail-value .meta-table-sort:hover,
+    .formatted-table-cell .meta-table-sort:hover {
+      color: var(--text-primary);
+    }
+    .metric-detail-value .meta-table td,
+    .formatted-table-cell .meta-table td {
       color: var(--text-secondary);
     }
-    .metric-detail-value .meta-table tr:hover td {
+    .metric-detail-value .meta-table tr:hover td,
+    .formatted-table-cell .meta-table tr:hover td {
       background: var(--bg-hover);
     }
 
     .meta-table-wrapper {
       position: relative;
+      display: inline-block;
+      max-width: min(100%, 760px);
+      max-height: 360px;
+      margin: 4px 0;
+      overflow: auto;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-surface);
     }
-    .meta-table-wrapper.collapsed {
-      max-height: 180px;
-      overflow: hidden;
+    .meta-table-wrapper .meta-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
-    .meta-table-wrapper.collapsed::after {
-      content: '';
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      height: 40px;
-      background: linear-gradient(transparent, var(--bg-primary));
-      pointer-events: none;
+    .meta-table-truncated {
+      width: fit-content;
+      max-width: min(100%, 760px);
+      margin: 2px 0 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--warning);
+      border-radius: 6px;
+      background: rgba(245, 158, 11, 0.08);
+      color: var(--warning);
+      font-family: var(--font-sans);
+      font-size: var(--font-xs);
+      font-weight: 600;
     }
     .meta-table-toggle {
-      display: inline-block;
-      margin-top: 4px;
-      font-size: var(--font-xs);
-      color: var(--accent-primary);
-      cursor: pointer;
-      font-weight: 600;
-      background: none;
-      border: none;
-      padding: 0;
-      font-family: var(--font-sans);
+      display: none !important;
     }
-    .meta-table-toggle:hover { text-decoration: underline; }
-
     /* Metric tabs */
     .metric-tabs {
       display: flex;
@@ -5427,7 +5606,7 @@
           const moveClass = getDeltaClass(item.move);
           const movePrefix = item.move > 0 ? '+' : '';
           return `
-            <tr>
+            <tr class="sweep-item-row" data-sweep-item-id="${escapeAttr(item.itemId || item.rawItemId || '')}" tabindex="0" title="Open item comparison">
               <td>
                 <div class="sweep-issue-id">${escapeHtml(itemLabel)}</div>
               </td>
@@ -5721,6 +5900,18 @@
           header.addEventListener('click', () => {
             toggleSweepSort('sweepTableSortKey', 'sweepTableSortDir', header.dataset.sweepTableSort, header.dataset.sweepTableSort === 'issue' ? 'asc' : 'desc');
             renderSweepView();
+          });
+        });
+
+        container.querySelectorAll('.sweep-item-row[data-sweep-item-id]').forEach((row) => {
+          row.addEventListener('click', () => {
+            openItemComparisonModal(row.dataset.sweepItemId || '');
+          });
+          row.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openItemComparisonModal(row.dataset.sweepItemId || '');
+            }
           });
         });
 
@@ -8526,63 +8717,25 @@
         host.scrollTop += currentTop - anchorTop;
       }
 
-      function renderItems(scrollToTop = false) {
-        const preserveAnchor = state.hasRenderedItems && !scrollToTop;
-        const anchorTop = preserveAnchor ? getItemsGridTop() : null;
-        // Keep Performance by Category and Root Cause Analysis in sync with filters
-        renderMetadataBreakdown();
-        renderErrorDistributionSection();
-        renderRootCauseSection();
-
-        const container = el('items-grid');
-        const paginationEl = el('pagination');
-        const filterCountEl = el('filter-count');
-        const warningEl = el('alignment-warning');
-        const filterPanel = document.querySelector('.items-comparison .filter-panel');
-        if (!canRenderItemComparison()) {
-          if (warningEl) {
-            warningEl.innerHTML = getAlignmentWarningHtml('Item-by-Item Comparison Unavailable');
-            warningEl.style.display = 'flex';
-          }
-          if (filterPanel) filterPanel.style.display = 'none';
-          if (filterCountEl) filterCountEl.textContent = '';
-          container.innerHTML = '';
-          paginationEl.innerHTML = '';
-          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
-          return;
+      function makeSafeDomId(value) {
+        const raw = String(value ?? '');
+        try {
+          const binary = encodeURIComponent(raw).replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+          return btoa(binary).replace(/[+/=]/g, '_') || 'item';
+        } catch {
+          return raw.replace(/[^A-Za-z0-9_-]/g, '_') || 'item';
         }
-        if (warningEl) warningEl.style.display = 'none';
-        if (filterPanel) filterPanel.style.display = '';
-        const items = getFilteredItems();
+      }
 
-        // Update filter count & clear button
-        filterCountEl.innerHTML = `Showing <span class="count-num">${items.length}</span> items`;
-        updateClearButton();
-
-        // Set CSS variable for grid columns
-        container.style.setProperty('--run-count', state.runs.length);
-
-        // Pagination
-        const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
-        if (state.page > totalPages) state.page = totalPages;
-        const start = (state.page - 1) * state.pageSize;
-        const pageItems = items.slice(start, start + state.pageSize);
-
-        if (items.length === 0) {
-          container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
-          paginationEl.innerHTML = '';
-          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
-          return;
-        }
-
-        container.innerHTML = pageItems.map(({ itemId, rowData }) => {
+      function renderItemComparisonCard(itemId, rowData, options = {}) {
           // Get input and expected from any available row
           const inputRow = rowData.find(r => r);
           const input = inputRow?.input_full || inputRow?.input || '—';
           const expected = inputRow?.expected_full || inputRow?.expected || '';
 
           // Use a safe ID for DOM elements by encoding the itemId
-          const safeId = btoa(itemId).replace(/[+/=]/g, '_');
+          const safeBaseId = makeSafeDomId(itemId);
+          const safeId = options.idSuffix ? `${safeBaseId}_${options.idSuffix}` : safeBaseId;
 
           const perRunDetails = [];
           const outputCells = rowData.map((row, runIdx) => {
@@ -8927,7 +9080,189 @@
               </div>` : ''}
             </div>
           `;
-        }).join('');
+
+      }
+
+      function getComparisonRowDataForItem(itemId) {
+        return state.runs.map(run => findRowByCompareId(run.snapshot?.rows || [], itemId));
+      }
+
+      function hasComparisonRowData(rowData) {
+        return Array.isArray(rowData) && rowData.some(Boolean);
+      }
+
+      function getItemCopyText(itemId, rowData) {
+        const inputRow = rowData.find(r => r);
+        const parts = [];
+        const inp = inputRow?.input_full || inputRow?.input || '';
+        parts.push('Input: ' + (typeof inp === 'object' ? JSON.stringify(inp, null, 2) : String(inp)));
+        const exp = inputRow?.expected_full || inputRow?.expected || '';
+        if (exp) parts.push('Expected: ' + (typeof exp === 'object' ? JSON.stringify(exp, null, 2) : String(exp)));
+        rowData.forEach((rd, ri) => {
+          const rName = state.runs[ri]?.run?.run_name || `Run ${ri + 1}`;
+          const out = rd?.output_full || rd?.output || '';
+          parts.push(`${rName} Output: ${typeof out === 'object' ? JSON.stringify(out, null, 2) : String(out)}`);
+        });
+        return parts.join('\n\n');
+      }
+
+      function markCopyButtonCopied(btn) {
+        btn.innerHTML = CHECK_ICON;
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
+      }
+
+      function wireComparisonCardCopyHandlers(scope, fallbackItem = null) {
+        if (!scope) return;
+        scope.querySelectorAll('.copy-btn[data-item-id]').forEach(btn => {
+          btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const id = btn.dataset.itemId;
+            const item = fallbackItem?.itemId === id
+              ? fallbackItem
+              : getFilteredItems().find(it => it.itemId === id);
+            if (!item) return;
+            navigator.clipboard.writeText(getItemCopyText(id, item.rowData)).then(() => markCopyButtonCopied(btn));
+          });
+        });
+
+        scope.querySelectorAll('.copy-btn[data-copy-text]').forEach(btn => {
+          btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            navigator.clipboard.writeText(btn.dataset.copyText).then(() => markCopyButtonCopied(btn));
+          });
+        });
+      }
+
+      function ensureItemComparisonModal() {
+        let overlay = document.getElementById('item-comparison-modal-overlay');
+        if (overlay) return overlay;
+
+        overlay = document.createElement('div');
+        overlay.id = 'item-comparison-modal-overlay';
+        overlay.className = 'item-comparison-modal-overlay';
+        overlay.innerHTML = `
+          <div class="item-comparison-modal" role="dialog" aria-modal="true" aria-labelledby="item-comparison-modal-title">
+            <div class="item-comparison-modal-header">
+              <div class="item-comparison-modal-title" id="item-comparison-modal-title"></div>
+              <button type="button" class="item-comparison-modal-close" id="item-comparison-modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="item-comparison-modal-body" id="item-comparison-modal-body"></div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', (event) => {
+          if (event.target === overlay) closeItemComparisonModal();
+        });
+        overlay.querySelector('#item-comparison-modal-close')?.addEventListener('click', closeItemComparisonModal);
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && overlay.classList.contains('open')) closeItemComparisonModal();
+        });
+        return overlay;
+      }
+
+      function closeItemComparisonModal() {
+        const overlay = document.getElementById('item-comparison-modal-overlay');
+        if (!overlay) return;
+        overlay.classList.remove('open');
+        delete overlay.dataset.itemId;
+        document.body.style.overflow = '';
+        document.querySelectorAll('.root-cause-dropdown, .solution-dropdown').forEach(d => d.remove());
+      }
+
+      function renderItemComparisonModalBody(overlay, itemId, rowData) {
+        const title = overlay.querySelector('#item-comparison-modal-title');
+        const body = overlay.querySelector('#item-comparison-modal-body');
+        if (title) title.textContent = `Item Comparison · ${itemId}`;
+        if (body) {
+          body.innerHTML = renderItemComparisonCard(itemId, rowData, { idSuffix: 'modal' });
+          wireMetricEditHandlers(body);
+          wireRootCauseHandlers(body);
+          wireSolutionHandlers(body);
+          wireComparisonCardCopyHandlers(body, { itemId, rowData });
+          initExpectedToggles();
+          alignOutputHeights();
+        }
+      }
+
+      function refreshOpenItemComparisonModal() {
+        const overlay = document.getElementById('item-comparison-modal-overlay');
+        if (!overlay || !overlay.classList.contains('open') || !overlay.dataset.itemId) return;
+        const itemId = overlay.dataset.itemId;
+        const rowData = getComparisonRowDataForItem(itemId);
+        if (hasComparisonRowData(rowData)) renderItemComparisonModalBody(overlay, itemId, rowData);
+      }
+
+      function openItemComparisonModal(itemId) {
+        if (!itemId || !canRenderItemComparison()) {
+          showToast('error', 'Comparison Unavailable', 'Item comparison is unavailable for this selection.');
+          return;
+        }
+        const rowData = getComparisonRowDataForItem(itemId);
+        if (!hasComparisonRowData(rowData)) {
+          showToast('error', 'Item Not Found', 'No aligned run rows were found for this item.');
+          return;
+        }
+
+        const overlay = ensureItemComparisonModal();
+        overlay.dataset.itemId = itemId;
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        renderItemComparisonModalBody(overlay, itemId, rowData);
+        overlay.querySelector('#item-comparison-modal-close')?.focus();
+      }
+
+      function renderItems(scrollToTop = false) {
+        const preserveAnchor = state.hasRenderedItems && !scrollToTop;
+        const anchorTop = preserveAnchor ? getItemsGridTop() : null;
+        // Keep Performance by Category and Root Cause Analysis in sync with filters
+        renderMetadataBreakdown();
+        renderErrorDistributionSection();
+        renderRootCauseSection();
+
+        const container = el('items-grid');
+        const paginationEl = el('pagination');
+        const filterCountEl = el('filter-count');
+        const warningEl = el('alignment-warning');
+        const filterPanel = document.querySelector('.items-comparison .filter-panel');
+        if (!canRenderItemComparison()) {
+          if (warningEl) {
+            warningEl.innerHTML = getAlignmentWarningHtml('Item-by-Item Comparison Unavailable');
+            warningEl.style.display = 'flex';
+          }
+          if (filterPanel) filterPanel.style.display = 'none';
+          if (filterCountEl) filterCountEl.textContent = '';
+          container.innerHTML = '';
+          paginationEl.innerHTML = '';
+          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          return;
+        }
+        if (warningEl) warningEl.style.display = 'none';
+        if (filterPanel) filterPanel.style.display = '';
+        const items = getFilteredItems();
+
+        // Update filter count & clear button
+        filterCountEl.innerHTML = `Showing <span class="count-num">${items.length}</span> items`;
+        updateClearButton();
+
+        // Set CSS variable for grid columns
+        container.style.setProperty('--run-count', state.runs.length);
+
+        // Pagination
+        const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+        if (state.page > totalPages) state.page = totalPages;
+        const start = (state.page - 1) * state.pageSize;
+        const pageItems = items.slice(start, start + state.pageSize);
+
+        if (items.length === 0) {
+          container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
+          paginationEl.innerHTML = '';
+          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          return;
+        }
+
+        container.innerHTML = pageItems.map(({ itemId, rowData }) => renderItemComparisonCard(itemId, rowData)).join('');
 
         // Pagination controls
         paginationEl.innerHTML = `
@@ -8953,43 +9288,8 @@
         wireSolutionHandlers();
         initExpectedToggles();
         alignOutputHeights();
-
-        // #16: Wire copy-all buttons (per item — header icon)
-        container.querySelectorAll('.copy-btn[data-item-id]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.dataset.itemId;
-            const item = getFilteredItems().find(it => it.itemId === id);
-            if (!item) return;
-            const inputRow = item.rowData.find(r => r);
-            const parts = [];
-            const inp = inputRow?.input_full || inputRow?.input || '';
-            parts.push('Input: ' + (typeof inp === 'object' ? JSON.stringify(inp, null, 2) : String(inp)));
-            const exp = inputRow?.expected_full || inputRow?.expected || '';
-            if (exp) parts.push('Expected: ' + (typeof exp === 'object' ? JSON.stringify(exp, null, 2) : String(exp)));
-            item.rowData.forEach((rd, ri) => {
-              const rName = state.runs[ri]?.run?.run_name || `Run ${ri + 1}`;
-              const out = rd?.output_full || rd?.output || '';
-              parts.push(`${rName} Output: ${typeof out === 'object' ? JSON.stringify(out, null, 2) : String(out)}`);
-            });
-            navigator.clipboard.writeText(parts.join('\n\n')).then(() => {
-              btn.innerHTML = CHECK_ICON;
-              btn.classList.add('copied');
-              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
-            });
-          });
-        });
-
-        // #16: Wire all data-copy-text buttons (input, expected, output, per-field)
-        container.querySelectorAll('.copy-btn[data-copy-text]').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            navigator.clipboard.writeText(btn.dataset.copyText).then(() => {
-              btn.innerHTML = CHECK_ICON;
-              btn.classList.add('copied');
-              setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove('copied'); }, 1500);
-            });
-          });
-        });
+        wireComparisonCardCopyHandlers(container);
+        refreshOpenItemComparisonModal();
       }
 
       // #4: Safe markdown rendering (basic inline markdown: bold, italic, code, links)
@@ -9216,13 +9516,14 @@
         applyCompareMode();
       }
 
-      function wireMetricEditHandlers() {
-        document.querySelectorAll('.metric-edit-open').forEach(btn => {
+      function wireMetricEditHandlers(scope = document) {
+        const root = scope || document;
+        root.querySelectorAll('.metric-edit-open').forEach(btn => {
           btn.onclick = () => {
             const runIdx = btn.dataset.runIdx;
             const rowIndex = btn.dataset.rowIndex;
             const metric = btn.dataset.metric;
-            const block = document.querySelector(`.metric-edit-block[data-run-idx="${runIdx}"][data-row-index="${rowIndex}"][data-metric="${metric}"]`);
+            const block = root.querySelector(`.metric-edit-block[data-run-idx="${runIdx}"][data-row-index="${rowIndex}"][data-metric="${metric}"]`);
             if (!block) return;
             const isHidden = block.classList.contains('hidden');
             block.classList.toggle('hidden');
@@ -9231,7 +9532,7 @@
             btn.setAttribute('aria-label', isHidden ? 'Close edit' : 'Edit');
           };
         });
-        document.querySelectorAll('.metric-edit-save').forEach(btn => {
+        root.querySelectorAll('.metric-edit-save').forEach(btn => {
           btn.onclick = async () => {
             const runIdx = Number(btn.dataset.runIdx);
             const rowIndex = Number(btn.dataset.rowIndex);
@@ -9266,22 +9567,23 @@
 
       // ── Root cause + feedback handlers ──
 
-      function wireRootCauseHandlers() {
-        document.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
+      function wireRootCauseHandlers(scope = document) {
+        const root = scope || document;
+        root.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             const runIdx = parseInt(trigger.dataset.rcRunIdx, 10);
             showRootCauseDropdown(trigger.dataset.rcItem, runIdx, trigger);
           });
         });
-        document.querySelectorAll('[data-rcdetail-item]').forEach(trigger => {
+        root.querySelectorAll('[data-rcdetail-item]').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             const runIdx = parseInt(trigger.dataset.rcdetailRunIdx, 10);
             showRcDetailDropdown(trigger.dataset.rcdetailItem, runIdx, trigger);
           });
         });
-        document.querySelectorAll('[data-feedback-item]').forEach(trigger => {
+        root.querySelectorAll('[data-feedback-item]').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             const itemId = trigger.dataset.feedbackItem;
@@ -9631,8 +9933,9 @@
         } catch (err) { console.error('Error saving root cause detail:', err); }
       }
 
-      function wireSolutionHandlers() {
-        document.querySelectorAll('[data-sol-item]').forEach(trigger => {
+      function wireSolutionHandlers(scope = document) {
+        const root = scope || document;
+        root.querySelectorAll('[data-sol-item]').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
             const runIdx = parseInt(trigger.dataset.solRunIdx, 10);
@@ -9760,6 +10063,43 @@
         const isExpanded = details.length > 0 && details[0].style.display === 'block';
         details.forEach(d => d.style.display = isExpanded ? 'none' : 'block');
         if (icon) icon.textContent = isExpanded ? '▶' : '▼';
+      };
+
+      window.sortMetaTable = function(button) {
+        const table = button?.closest('table.meta-table');
+        const tbody = table?.querySelector('tbody');
+        if (!table || !tbody) return;
+
+        const colIndex = Number(button.dataset.colIndex || 0);
+        const current = button.getAttribute('aria-sort');
+        const nextDir = current === 'ascending' ? 'descending' : 'ascending';
+        const direction = nextDir === 'ascending' ? 1 : -1;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        table.querySelectorAll('.meta-table-sort').forEach((sortButton) => {
+          sortButton.setAttribute('aria-sort', sortButton === button ? nextDir : 'none');
+        });
+
+        rows.sort((rowA, rowB) => {
+          const cellA = rowA.children[colIndex];
+          const cellB = rowB.children[colIndex];
+          const rawA = cellA?.dataset.sortValue ?? cellA?.textContent ?? '';
+          const rawB = cellB?.dataset.sortValue ?? cellB?.textContent ?? '';
+          const emptyA = rawA === '';
+          const emptyB = rawB === '';
+          if (emptyA && emptyB) return 0;
+          if (emptyA) return 1;
+          if (emptyB) return -1;
+
+          const numA = Number(rawA);
+          const numB = Number(rawB);
+          const bothNumeric = rawA.trim() !== '' && rawB.trim() !== '' && Number.isFinite(numA) && Number.isFinite(numB);
+          if (bothNumeric && numA !== numB) return (numA - numB) * direction;
+
+          return rawA.localeCompare(rawB, undefined, { numeric: true, sensitivity: 'base' }) * direction;
+        });
+
+        rows.forEach(row => tbody.appendChild(row));
       };
 
       // Format field names to be more readable
@@ -9990,7 +10330,21 @@
         const entries = Object.entries(obj);
         if (entries.length === 0) return '<span class="formatted-object">{}</span>';
 
-        const rows = entries.map(([key, val]) => {
+        // Group consecutive table-like children so they render side-by-side.
+        const groups = [];
+        let tableBuffer = [];
+        const flushTables = () => {
+          if (!tableBuffer.length) return;
+          const cells = tableBuffer.map(({ key, table }) => (
+            `<div class="formatted-table-cell"><span class="formatted-key">${escapeHtml(formatFieldName(key))}</span>${formatMetaTable(table)}</div>`
+          )).join('');
+          groups.push(`<div class="formatted-table-grid">${cells}</div>`);
+          tableBuffer = [];
+        };
+        for (const [key, val] of entries) {
+          const table = (val && typeof val === 'object') ? normalizeMetaTableValue(val) : null;
+          if (table) { tableBuffer.push({ key, table }); continue; }
+          flushTables();
           let formattedVal;
           if (val === null || val === undefined) {
             formattedVal = '<span class="formatted-null">null</span>';
@@ -10006,10 +10360,86 @@
             formattedVal = escapeHtml(String(val));
           }
           const copyVal = String(val ?? '');
-          return `<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}<button class="copy-btn" data-copy-text="${escapeAttr(copyVal)}" title="Copy ${escapeHtml(key)}">${COPY_ICON}</button></div>`;
-        }).join('');
+          groups.push(`<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}<button class="copy-btn" data-copy-text="${escapeAttr(copyVal)}" title="Copy ${escapeHtml(key)}">${COPY_ICON}</button></div>`);
+        }
+        flushTables();
 
-        return `<div class="formatted-object">${rows}</div>`;
+        return `<div class="formatted-object">${groups.join('')}</div>`;
+      }
+
+      function metaCellText(value) {
+        if (value === undefined || value === null) return '';
+        if (typeof value === 'object') {
+          try { return JSON.stringify(value); }
+          catch { return String(value); }
+        }
+        return String(value);
+      }
+
+      function normalizeMetaTableValue(val) {
+        if (Array.isArray(val)) {
+          if (val.length === 0 || !val.every(r => Array.isArray(r))) return null;
+          const colCount = Math.max(...val.map(r => r.length), 0);
+          if (colCount === 0) return null;
+          return {
+            columns: Array.from({length: colCount}, (_, i) => `Col ${i + 1}`),
+            rows: val.map(r => Array.from({length: colCount}, (_, i) => i < r.length ? r[i] : '')),
+          };
+        }
+
+        if (!val || typeof val !== 'object' || Array.isArray(val.columns) === false || Array.isArray(val.rows) === false) {
+          return null;
+        }
+
+        const declaredColumns = val.columns.map(c => String(c ?? ''));
+        const discoveredColumns = declaredColumns.slice();
+        const sourceRows = val.rows;
+        let colCount = declaredColumns.length;
+        for (const row of sourceRows) {
+          if (Array.isArray(row)) colCount = Math.max(colCount, row.length);
+          else if (row && typeof row === 'object' && declaredColumns.length === 0) {
+            for (const key of Object.keys(row)) {
+              if (!discoveredColumns.includes(key)) discoveredColumns.push(key);
+            }
+            colCount = Math.max(colCount, discoveredColumns.length);
+          }
+          else if (colCount === 0) colCount = 1;
+        }
+        if (colCount === 0) return null;
+
+        const columns = Array.from({length: colCount}, (_, i) => discoveredColumns[i] || `Col ${i + 1}`);
+        const rows = sourceRows.map(row => {
+          if (Array.isArray(row)) {
+            return Array.from({length: colCount}, (_, i) => i < row.length ? row[i] : '');
+          }
+          if (row && typeof row === 'object') {
+            return columns.map(column => Object.prototype.hasOwnProperty.call(row, column) ? row[column] : '');
+          }
+          return Array.from({length: colCount}, (_, i) => i === 0 ? row : '');
+        });
+
+        return { columns, rows };
+      }
+
+      function formatMetaTable(table) {
+        const maxRows = 200;
+        const visibleRows = table.rows.slice(0, maxRows);
+        const hiddenRows = Math.max(table.rows.length - visibleRows.length, 0);
+        const headerRow = '<tr>' + table.columns.map((column, i) => (
+          `<th><button type="button" class="meta-table-sort" data-col-index="${i}" aria-sort="none" onclick="sortMetaTable(this)">${escapeHtml(column)}</button></th>`
+        )).join('') + '</tr>';
+        const bodyRows = visibleRows.map(r => {
+          const cells = table.columns.map((_, i) => {
+            const text = metaCellText(i < r.length ? r[i] : '');
+            return `<td data-sort-value="${escapeAttr(text)}">${escapeHtml(text)}</td>`;
+          }).join('');
+          return `<tr>${cells}</tr>`;
+        }).join('');
+        const tableHtml = `<table class="meta-table"><thead>${headerRow}</thead><tbody>${bodyRows}</tbody></table>`;
+        const truncatedHtml = hiddenRows > 0
+          ? `<div class="meta-table-truncated">Showing first ${maxRows} of ${table.rows.length} rows. ${hiddenRows} rows are not loaded in this page.</div>`
+          : '';
+        return `<div class="meta-table-wrapper">${tableHtml}</div>${truncatedHtml}`;
       }
 
       function formatMetaValue(val) {
@@ -10018,28 +10448,10 @@
         if (typeof val === 'number') return escapeHtml(String(val));
         if (typeof val === 'string') return escapeHtml(val);
 
+        const table = normalizeMetaTableValue(val);
+        if (table) return formatMetaTable(table);
+
         if (Array.isArray(val)) {
-          if (val.length === 0) return '[]';
-          const isTabular = val.every(r => Array.isArray(r));
-          if (isTabular) {
-            const colCount = Math.max(...val.map(r => r.length));
-            const headerRow = colCount <= 10
-              ? '<tr>' + Array.from({length: colCount}, (_, i) => `<th>Col ${i + 1}</th>`).join('') + '</tr>'
-              : '';
-            const bodyRows = val.map(r => {
-              const cells = Array.from({length: colCount}, (_, i) => {
-                const c = i < r.length ? r[i] : '';
-                return `<td>${escapeHtml(String(c ?? ''))}</td>`;
-              }).join('');
-              return `<tr>${cells}</tr>`;
-            }).join('');
-            const tableHtml = `<table class="meta-table">${headerRow ? '<thead>' + headerRow + '</thead>' : ''}<tbody>${bodyRows}</tbody></table>`;
-            if (val.length > 5) {
-              const uid = 'mt_' + Math.random().toString(36).slice(2, 8);
-              return `<div class="meta-table-wrapper collapsed" id="${uid}">${tableHtml}</div><button class="meta-table-toggle" onclick="var w=document.getElementById('${uid}');w.classList.toggle('collapsed');this.textContent=w.classList.contains('collapsed')?'Show all ${val.length} rows \u25BC':'Show less \u25B2';">Show all ${val.length} rows \u25BC</button>`;
-            }
-            return tableHtml;
-          }
           const isFlatPrimitive = val.every(v => v === null || typeof v !== 'object');
           if (isFlatPrimitive) {
             return escapeHtml(val.map(v => String(v ?? '')).join(', '));
