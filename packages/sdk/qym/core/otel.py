@@ -40,21 +40,30 @@ _phoenix_endpoint: Optional[str] = None
 
 # Track emitted tool_call_ids per trace context to avoid duplicates
 _emitted_tool_ids: contextvars.ContextVar[Set[str]] = contextvars.ContextVar(
-    "_emitted_tool_ids", default=None,
+    "_emitted_tool_ids",
+    default=None,
 )
 
 # Timestamp (ns) recorded after the last LLM call returned.
 # Used as the approximate start time for tool execution spans.
 _last_llm_end_ns: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
-    "_last_llm_end_ns", default=None,
+    "_last_llm_end_ns",
+    default=None,
 )
 
 _active_qym_stream: contextvars.ContextVar[Optional[Any]] = contextvars.ContextVar(
-    "_active_qym_stream", default=None,
+    "_active_qym_stream",
+    default=None,
 )
 
 _forced_llm_model: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_forced_llm_model", default=None,
+    "_forced_llm_model",
+    default=None,
+)
+
+_qym_usage_scope: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_qym_usage_scope",
+    default=None,
 )
 
 
@@ -80,6 +89,12 @@ class NullOtelManager:
         return None
 
     def reset_forced_model(self, token) -> None:
+        pass
+
+    def bind_usage_scope(self, scope: Optional[str]):
+        return None
+
+    def reset_usage_scope(self, token) -> None:
         pass
 
 
@@ -110,20 +125,29 @@ def _make_qym_span_processor_class():
             _active_qym_stream.reset(token)
 
         def on_start(self, span, parent_context=None):
+            usage_scope = _qym_usage_scope.get(None)
+            if usage_scope:
+                try:
+                    span.set_attribute("qym.usage_scope", usage_scope)
+                except Exception:
+                    pass
+
             # Record LLM spans at start time so on_end can detect nested
             # duplicates.  Check both attributes and span name since
             # attributes may not be set yet at start time.
             is_llm = False
             attrs = span.attributes or {}
-            kind = str(attrs.get("openinference.span.kind", "") or
-                       attrs.get("ai.openinference.span.kind", "")).upper()
+            kind = str(
+                attrs.get("openinference.span.kind", "")
+                or attrs.get("ai.openinference.span.kind", "")
+            ).upper()
             if kind == "LLM":
                 is_llm = True
             elif span.name in ("ChatCompletion", "Completion"):
                 is_llm = True
             if is_llm:
                 ctx = span.get_span_context()
-                self._llm_span_ids.add(format(ctx.span_id, '016x'))
+                self._llm_span_ids.add(format(ctx.span_id, "016x"))
                 if len(self._llm_span_ids) > 10000:
                     self._llm_span_ids.clear()
 
@@ -132,8 +156,10 @@ def _make_qym_span_processor_class():
         def _is_llm_span(self, span):
             """Check if a span is an LLM span (from any instrumentor)."""
             attrs = span.attributes or {}
-            kind = str(attrs.get("openinference.span.kind", "") or
-                       attrs.get("ai.openinference.span.kind", "")).upper()
+            kind = str(
+                attrs.get("openinference.span.kind", "")
+                or attrs.get("ai.openinference.span.kind", "")
+            ).upper()
             return kind == "LLM"
 
         def on_end(self, span):
@@ -149,7 +175,7 @@ def _make_qym_span_processor_class():
             # same LLM call produces two nested LLM spans.  Keep the outer one
             # (framework), skip the inner one (provider).
             if self._is_llm_span(span):
-                parent_id = format(span.parent.span_id, '016x') if span.parent else None
+                parent_id = format(span.parent.span_id, "016x") if span.parent else None
                 if parent_id and parent_id in self._llm_span_ids:
                     # Parent is also an LLM span — this is a provider duplicate
                     return
@@ -157,36 +183,56 @@ def _make_qym_span_processor_class():
                 ctx = span.get_span_context()
                 # Extract span links (used by retry/coupled span detection)
                 links = []
-                for lnk in (getattr(span, 'links', None) or []):
+                for lnk in getattr(span, "links", None) or []:
                     lctx = lnk.context
                     if lctx and lctx.is_valid:
-                        links.append({
-                            "trace_id": format(lctx.trace_id, '032x'),
-                            "span_id": format(lctx.span_id, '016x'),
-                            "attributes": dict(lnk.attributes) if lnk.attributes else {},
-                        })
+                        links.append(
+                            {
+                                "trace_id": format(lctx.trace_id, "032x"),
+                                "span_id": format(lctx.span_id, "016x"),
+                                "attributes": dict(lnk.attributes)
+                                if lnk.attributes
+                                else {},
+                            }
+                        )
 
-                self._stream.emit("span_completed", {
-                    "trace_id": format(ctx.trace_id, '032x'),
-                    "span_id": format(ctx.span_id, '016x'),
-                    "parent_span_id": format(span.parent.span_id, '016x') if span.parent else None,
-                    "name": span.name,
-                    "kind": span.kind.name if span.kind else "INTERNAL",
-                    "start_time_ns": span.start_time,
-                    "end_time_ns": span.end_time,
-                    "duration_ms": (span.end_time - span.start_time) / 1e6 if span.end_time and span.start_time else None,
-                    "status": span.status.status_code.name if span.status else "UNSET",
-                    "attributes": dict(span.attributes) if span.attributes else {},
-                    "events": [
-                        {
-                            "name": e.name,
-                            "timestamp_ns": e.timestamp,
-                            "attributes": dict(e.attributes) if e.attributes else {},
-                        }
-                        for e in (span.events or [])
-                    ],
-                    "links": links,
-                })
+                attributes = dict(span.attributes) if span.attributes else {}
+                usage_scope = _qym_usage_scope.get(None)
+                if usage_scope and "qym.usage_scope" not in attributes:
+                    attributes["qym.usage_scope"] = usage_scope
+
+                self._stream.emit(
+                    "span_completed",
+                    {
+                        "trace_id": format(ctx.trace_id, "032x"),
+                        "span_id": format(ctx.span_id, "016x"),
+                        "parent_span_id": format(span.parent.span_id, "016x")
+                        if span.parent
+                        else None,
+                        "name": span.name,
+                        "kind": span.kind.name if span.kind else "INTERNAL",
+                        "start_time_ns": span.start_time,
+                        "end_time_ns": span.end_time,
+                        "duration_ms": (span.end_time - span.start_time) / 1e6
+                        if span.end_time and span.start_time
+                        else None,
+                        "status": span.status.status_code.name
+                        if span.status
+                        else "UNSET",
+                        "attributes": attributes,
+                        "events": [
+                            {
+                                "name": e.name,
+                                "timestamp_ns": e.timestamp,
+                                "attributes": dict(e.attributes)
+                                if e.attributes
+                                else {},
+                            }
+                            for e in (span.events or [])
+                        ],
+                        "links": links,
+                    },
+                )
             except Exception:
                 pass
 
@@ -197,6 +243,7 @@ def _make_qym_span_processor_class():
             return True
 
     return QymSpanProcessor
+
 
 QymSpanProcessor = _make_qym_span_processor_class()
 
@@ -239,9 +286,18 @@ class OtelManager:
             return
         _forced_llm_model.reset(token)
 
+    def bind_usage_scope(self, scope: Optional[str]):
+        return _qym_usage_scope.set(scope or None)
+
+    def reset_usage_scope(self, token) -> None:
+        if token is None:
+            return
+        _qym_usage_scope.reset(token)
+
     def shutdown(self):
         try:
             from opentelemetry import trace
+
             provider = trace.get_tracer_provider()
             if hasattr(provider, "shutdown"):
                 provider.shutdown()
@@ -252,6 +308,7 @@ class OtelManager:
 # ---------------------------------------------------------------------------
 # OpenAI enrichments (tool spans + reasoning capture)
 # ---------------------------------------------------------------------------
+
 
 def _normalize_message_content(content: Any) -> str:
     """Best-effort text extraction from plain or structured message content."""
@@ -323,6 +380,145 @@ def _serialize_span_value(value: Any) -> str:
         return str(value)
 
 
+def _to_jsonable(value: Any) -> Any:
+    """Best-effort conversion for provider SDK response/request objects."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+
+    for method_name, kwargs in (
+        ("model_dump", {"mode": "json"}),
+        ("dict", {}),
+    ):
+        method = getattr(value, method_name, None)
+        if callable(method):
+            try:
+                return _to_jsonable(method(**kwargs))
+            except TypeError:
+                try:
+                    return _to_jsonable(method())
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    return str(value)
+
+
+def _set_span_attr_if_missing(span: Any, key: str, value: Any) -> None:
+    if value in (None, ""):
+        return
+    try:
+        attrs = getattr(span, "attributes", None) or {}
+        if key in attrs and attrs.get(key) not in (None, ""):
+            return
+    except Exception:
+        pass
+    try:
+        span.set_attribute(key, value)
+    except Exception:
+        pass
+
+
+def _set_message_span_attrs(span: Any, prefix: str, messages: Any) -> None:
+    if not isinstance(messages, (list, tuple)):
+        return
+    for i, msg in enumerate(messages[:50]):
+        role = _obj_get(msg, "role") or (
+            "assistant" if prefix.endswith("output_messages") else ""
+        )
+        content = _normalize_message_content(_obj_get(msg, "content"))
+        reasoning = _extract_reasoning_text(msg)
+        tool_call_id = _obj_get(msg, "tool_call_id")
+        _set_span_attr_if_missing(span, f"{prefix}.{i}.message.role", str(role or ""))
+        if content:
+            _set_span_attr_if_missing(span, f"{prefix}.{i}.message.content", content)
+        if reasoning:
+            _set_span_attr_if_missing(
+                span, f"{prefix}.{i}.message.reasoning", reasoning
+            )
+        if tool_call_id:
+            _set_span_attr_if_missing(
+                span, f"{prefix}.{i}.message.tool_call_id", str(tool_call_id)
+            )
+        for j, (tc_id, name, args) in enumerate(
+            _extract_tool_calls_from_message(msg)[:20]
+        ):
+            base = f"{prefix}.{i}.message.tool_calls.{j}.tool_call"
+            _set_span_attr_if_missing(span, f"{base}.id", tc_id)
+            _set_span_attr_if_missing(span, f"{base}.function.name", name)
+            _set_span_attr_if_missing(span, f"{base}.function.arguments", args)
+
+
+def _extract_output_messages(result: Any) -> List[Any]:
+    try:
+        choices = list(_obj_get(result, "choices", None) or [])
+    except Exception:
+        return []
+    messages: List[Any] = []
+    for choice in choices:
+        msg = _obj_get(choice, "message", None)
+        if msg is not None:
+            messages.append(msg)
+    return messages
+
+
+def _enrich_openai_span_io(
+    span: Any, *, messages: Any, kwargs: Dict[str, Any], result: Any
+) -> None:
+    """Populate core OpenAI IO attrs when the installed instrumentor omits them."""
+    try:
+        if span is None or not span.is_recording():
+            return
+    except Exception:
+        return
+
+    request_payload = {
+        key: _to_jsonable(value)
+        for key, value in kwargs.items()
+        if key not in {"api_key", "extra_headers", "default_headers"}
+    }
+    if messages is not None:
+        request_payload["messages"] = _to_jsonable(messages)
+    if request_payload:
+        _set_span_attr_if_missing(
+            span,
+            "input.value",
+            _json.dumps(request_payload, ensure_ascii=False, default=str)[:64000],
+        )
+        _set_span_attr_if_missing(span, "input.mime_type", "application/json")
+
+    if messages:
+        _set_message_span_attrs(span, "llm.input_messages", messages)
+
+    result_payload = _to_jsonable(result)
+    _set_span_attr_if_missing(
+        span,
+        "output.value",
+        _json.dumps(result_payload, ensure_ascii=False, default=str)[:64000],
+    )
+    _set_span_attr_if_missing(span, "output.mime_type", "application/json")
+
+    output_messages = _extract_output_messages(result)
+    if output_messages:
+        _set_message_span_attrs(span, "llm.output_messages", output_messages)
+
+    usage = _obj_get(result, "usage")
+    if usage is not None:
+        _set_span_attr_if_missing(
+            span, "llm.token_count.prompt", _obj_get(usage, "prompt_tokens")
+        )
+        _set_span_attr_if_missing(
+            span, "llm.token_count.completion", _obj_get(usage, "completion_tokens")
+        )
+        _set_span_attr_if_missing(
+            span, "llm.token_count.total", _obj_get(usage, "total_tokens")
+        )
+
+
 def _block_type(block: Any) -> str:
     return str(_obj_get(block, "type", "") or "")
 
@@ -346,8 +542,16 @@ def _extract_tool_calls_from_message(msg: Any) -> List[Tuple[str, str, str]]:
             if isinstance(tc, dict):
                 tc_id = tc.get("id", "")
                 fn = tc.get("function", {})
-                name = fn.get("name", "unknown") if isinstance(fn, dict) else getattr(fn, "name", "unknown")
-                args = fn.get("arguments", "") if isinstance(fn, dict) else getattr(fn, "arguments", "")
+                name = (
+                    fn.get("name", "unknown")
+                    if isinstance(fn, dict)
+                    else getattr(fn, "name", "unknown")
+                )
+                args = (
+                    fn.get("arguments", "")
+                    if isinstance(fn, dict)
+                    else getattr(fn, "arguments", "")
+                )
             else:
                 tc_id = getattr(tc, "id", "")
                 fn = getattr(tc, "function", None)
@@ -360,8 +564,15 @@ def _extract_tool_calls_from_message(msg: Any) -> List[Tuple[str, str, str]]:
         for block in content:
             if _block_type(block) not in {"tool_use", "tool_call"}:
                 continue
-            tc_id = str(_obj_get(block, "id") or _obj_get(block, "tool_use_id") or _obj_get(block, "tool_call_id") or "")
-            name = str(_obj_get(block, "name") or _obj_get(block, "tool_name") or "unknown")
+            tc_id = str(
+                _obj_get(block, "id")
+                or _obj_get(block, "tool_use_id")
+                or _obj_get(block, "tool_call_id")
+                or ""
+            )
+            name = str(
+                _obj_get(block, "name") or _obj_get(block, "tool_name") or "unknown"
+            )
             raw_args = _obj_get(block, "input")
             if raw_args is None:
                 raw_args = _obj_get(block, "arguments")
@@ -401,7 +612,12 @@ def _extract_tool_results_from_message(msg: Any) -> List[Tuple[str, str]]:
         for block in content:
             if _block_type(block) not in {"tool_result", "tool_output"}:
                 continue
-            tc_id = str(_obj_get(block, "tool_use_id") or _obj_get(block, "tool_call_id") or _obj_get(block, "id") or "")
+            tc_id = str(
+                _obj_get(block, "tool_use_id")
+                or _obj_get(block, "tool_call_id")
+                or _obj_get(block, "id")
+                or ""
+            )
             text = _normalize_message_content(_obj_get(block, "content"))
             if tc_id or text:
                 results.append((tc_id, text))
@@ -416,7 +632,9 @@ def _extract_reasoning_text(message: Any) -> str:
         reasoning = message.get("reasoning") or message.get("reasoning_content")
         content = message.get("content")
     else:
-        reasoning = getattr(message, "reasoning", None) or getattr(message, "reasoning_content", None)
+        reasoning = getattr(message, "reasoning", None) or getattr(
+            message, "reasoning_content", None
+        )
         content = getattr(message, "content", None)
     if reasoning:
         for key in ("content", "summary", "thinking", "text", "value"):
@@ -434,7 +652,11 @@ def _extract_reasoning_text(message: Any) -> str:
             if type_ not in {"reasoning", "thinking"}:
                 continue
             summary = _obj_get(block, "summary")
-            text = _normalize_message_content(summary if summary is not None else _obj_get(block, "thinking", _obj_get(block, "text")))
+            text = _normalize_message_content(
+                summary
+                if summary is not None
+                else _obj_get(block, "thinking", _obj_get(block, "text"))
+            )
             if text:
                 parts.append(text)
         if parts:
@@ -447,12 +669,18 @@ def _extract_reasoning_text(message: Any) -> str:
 # `<tool_call>`, Anthropic-style `<function_calls><invoke>`, Llama
 # `<|python_tag|>`, Mistral `[TOOL_CALLS]`, and DeepSeek V3.
 _MALFORMED_TOKENS = (
-    "<tool_call>", "</tool_call>",
-    "<function=", "</function>",
-    "<parameter=", "</parameter>",
-    "<function_calls>", "</function_calls>",
-    "<invoke name=", "</invoke>",
-    "<|python_tag|>", "[TOOL_CALLS]",
+    "<tool_call>",
+    "</tool_call>",
+    "<function=",
+    "</function>",
+    "<parameter=",
+    "</parameter>",
+    "<function_calls>",
+    "</function_calls>",
+    "<invoke name=",
+    "</invoke>",
+    "<|python_tag|>",
+    "[TOOL_CALLS]",
     "<\uff5ctool\u2581calls\u2581begin\uff5c>",  # DeepSeek V3
 )
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
@@ -518,7 +746,9 @@ def _classify_response(result: Any) -> None:
             except Exception:
                 err_obj = None
         if isinstance(err_obj, dict) and err_obj:
-            err_type = str(err_obj.get("type") or err_obj.get("code") or "ProviderError")
+            err_type = str(
+                err_obj.get("type") or err_obj.get("code") or "ProviderError"
+            )
             err_msg = str(err_obj.get("message") or "")
             try:
                 span.add_event(
@@ -544,7 +774,11 @@ def _classify_response(result: Any) -> None:
         has_tc = _has_structured_tool_calls(msg)
 
         content_raw = _obj_get(msg, "content", None)
-        content_str = content_raw if isinstance(content_raw, str) else _normalize_message_content(content_raw)
+        content_str = (
+            content_raw
+            if isinstance(content_raw, str)
+            else _normalize_message_content(content_raw)
+        )
         content_hits = _classify_text(content_str)
 
         reasoning_str = _extract_reasoning_text(msg)
@@ -586,9 +820,15 @@ def _classify_response(result: Any) -> None:
         span.set_attribute("qym.response.classification", kind)
         span.set_attribute("qym.response.where", where)
         if evidence:
-            span.set_attribute("qym.response.evidence", ",".join(sorted(set(evidence))[:20]))
+            span.set_attribute(
+                "qym.response.evidence", ",".join(sorted(set(evidence))[:20])
+            )
         if fatal:
-            status_msg = "no actionable output (reasoning only)" if where == "reasoning_only" else "malformed tool call"
+            status_msg = (
+                "no actionable output (reasoning only)"
+                if where == "reasoning_only"
+                else "malformed tool call"
+            )
             span.set_status(StatusCode.ERROR, status_msg)
     except Exception:
         pass
@@ -707,10 +947,14 @@ def _emit_tool_spans(tracer, messages):
         if err_source:
             try:
                 from opentelemetry.trace import StatusCode
-                span.add_event("exception", attributes={
-                    "exception.type": err_type,
-                    "exception.message": err_msg,
-                })
+
+                span.add_event(
+                    "exception",
+                    attributes={
+                        "exception.type": err_type,
+                        "exception.message": err_msg,
+                    },
+                )
                 span.set_status(StatusCode.ERROR, err_msg or err_type)
                 span.set_attribute("qym.tool.error_source", err_source)
             except Exception:
@@ -723,6 +967,7 @@ def _enrich_with_reasoning(result):
     """Add reasoning field to current span if present in response."""
     try:
         from opentelemetry import trace as otel_trace
+
         span = otel_trace.get_current_span()
         if not span or not span.is_recording():
             return
@@ -780,9 +1025,11 @@ def _patch_openai_enrichments():
         messages = kwargs.get("messages") or (args[0] if args else None)
         if messages:
             _emit_tool_spans(tracer, messages)
-        _apply_forced_model(otel_trace.get_current_span(), kwargs)
+        span = otel_trace.get_current_span()
+        _apply_forced_model(span, kwargs)
         result = _real_create(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
+        _enrich_openai_span_io(span, messages=messages, kwargs=kwargs, result=result)
         _enrich_with_reasoning(result)
         _classify_response(result)
         return result
@@ -797,9 +1044,11 @@ def _patch_openai_enrichments():
         messages = kwargs.get("messages") or (args[0] if args else None)
         if messages:
             _emit_tool_spans(tracer, messages)
-        _apply_forced_model(otel_trace.get_current_span(), kwargs)
+        span = otel_trace.get_current_span()
+        _apply_forced_model(span, kwargs)
         result = await _real_acreate(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
+        _enrich_openai_span_io(span, messages=messages, kwargs=kwargs, result=result)
         _enrich_with_reasoning(result)
         _classify_response(result)
         return result
@@ -828,9 +1077,11 @@ def _patch_anthropic_enrichments():
         result = _real_create(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         if hasattr(result, "content"):
-            wrapped = type("AnthropicResult", (), {
-                "choices": [type("Choice", (), {"index": 0, "message": result})()]
-            })()
+            wrapped = type(
+                "AnthropicResult",
+                (),
+                {"choices": [type("Choice", (), {"index": 0, "message": result})()]},
+            )()
             _enrich_with_reasoning(wrapped)
             _classify_response(wrapped)
         return result
@@ -847,9 +1098,11 @@ def _patch_anthropic_enrichments():
         result = await _real_acreate(self, *args, **kwargs)
         _last_llm_end_ns.set(time.time_ns())
         if hasattr(result, "content"):
-            wrapped = type("AnthropicResult", (), {
-                "choices": [type("Choice", (), {"index": 0, "message": result})()]
-            })()
+            wrapped = type(
+                "AnthropicResult",
+                (),
+                {"choices": [type("Choice", (), {"index": 0, "message": result})()]},
+            )()
             _enrich_with_reasoning(wrapped)
             _classify_response(wrapped)
         return result
@@ -886,11 +1139,14 @@ _OTEL_DISCOVERY_SKIP: Set[str] = {
     "openai_v2",
 }
 
+
 def _register_instrumentors(provider):
     """Register all available OpenInference instrumentors on the given TracerProvider."""
     # Suppress noisy DependencyConflict errors from instrumentors
     # whose provider SDKs aren't installed.
-    _instrumentor_logger = logging.getLogger("opentelemetry.instrumentation.instrumentor")
+    _instrumentor_logger = logging.getLogger(
+        "opentelemetry.instrumentation.instrumentor"
+    )
     _prev_level = _instrumentor_logger.level
     _instrumentor_logger.setLevel(logging.CRITICAL)
 
@@ -916,7 +1172,7 @@ def _register_instrumentors(provider):
             mod = __import__(module_path, fromlist=[class_name])
             instrumentor_cls = getattr(mod, class_name)
             instrumentor = instrumentor_cls()
-            if not getattr(instrumentor, '_is_instrumented_by_opentelemetry', False):
+            if not getattr(instrumentor, "_is_instrumented_by_opentelemetry", False):
                 instrumentor.instrument(tracer_provider=provider)
                 _record_registered(_display_name(module_path))
                 return True
@@ -949,7 +1205,9 @@ def _register_instrumentors(provider):
         for instrumentor_cls in classes:
             try:
                 instrumentor = instrumentor_cls()
-                if not getattr(instrumentor, "_is_instrumented_by_opentelemetry", False):
+                if not getattr(
+                    instrumentor, "_is_instrumented_by_opentelemetry", False
+                ):
                     instrumentor.instrument(tracer_provider=provider)
                     _record_registered(_display_name(module_path))
                     return True
@@ -991,6 +1249,7 @@ def _register_instrumentors(provider):
 # Factory
 # ---------------------------------------------------------------------------
 
+
 def create_otel_manager(config) -> Any:
     """Create an OtelManager with OpenInference auto-instrumentation.
 
@@ -1024,20 +1283,19 @@ def create_otel_manager(config) -> Any:
             else:
                 provider = existing
 
-            # Register instrumentors — framework instrumentors first so we
-            # know whether to skip provider-level enrichments.
+            # Apply provider SDK enrichments (tool span emission, reasoning
+            # capture, and IO fallback) before instrumentors register. The
+            # instrumentor then wraps these enriched SDK methods, so enrichment
+            # code runs inside the active LLM span.
+            _patch_openai_enrichments()
+            _patch_anthropic_enrichments()
+
             registered = _register_instrumentors(provider)
             _registered_instrumentors = list(registered)
             if not registered:
-                logger.debug("No OpenInference instrumentors found — auto-instrumentation inactive")
-
-            # Apply provider SDK enrichments (tool span emission, reasoning
-            # capture).  These wrap SDK methods AFTER instrumentors so the
-            # enrichment spans nest inside the instrumentor's span context.
-            # When a framework instrumentor (LangChain, etc.) is also active,
-            # the trace viewer collapses any duplicate tool spans.
-            _patch_openai_enrichments()
-            _patch_anthropic_enrichments()
+                logger.debug(
+                    "No OpenInference instrumentors found — auto-instrumentation inactive"
+                )
 
             # Optional: Phoenix OTLP export for dual tracing.
             # Auto-enable if an endpoint is configured, matching the
@@ -1051,7 +1309,8 @@ def create_otel_manager(config) -> Any:
             )
             phoenix_enabled = (
                 getattr(config, "phoenix_enabled", False)
-                or os.environ.get("PHOENIX_ENABLED", "").lower() == "true"  # legacy compatibility
+                or os.environ.get("PHOENIX_ENABLED", "").lower()
+                == "true"  # legacy compatibility
                 or bool(phoenix_endpoint)
             )
             _phoenix_enabled = bool(phoenix_enabled and phoenix_endpoint)
@@ -1059,13 +1318,17 @@ def create_otel_manager(config) -> Any:
             if phoenix_enabled and phoenix_endpoint:
                 try:
                     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-                    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+                    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                        OTLPSpanExporter,
+                    )
 
                     phoenix_exporter = OTLPSpanExporter(endpoint=phoenix_endpoint)
                     provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
                     logger.info(f"Phoenix trace export enabled -> {phoenix_endpoint}")
                 except ImportError:
-                    logger.warning("opentelemetry-exporter-otlp not installed — Phoenix export disabled")
+                    logger.warning(
+                        "opentelemetry-exporter-otlp not installed — Phoenix export disabled"
+                    )
 
             _initialized = True
             logger.info("OTEL auto-instrumentation initialized")
@@ -1076,7 +1339,7 @@ def create_otel_manager(config) -> Any:
 
     # Register QymSpanProcessor on the provider
     provider = trace.get_tracer_provider()
-    if hasattr(provider, 'add_span_processor'):
+    if hasattr(provider, "add_span_processor"):
         provider.add_span_processor(qym_processor)
 
     tracer = trace.get_tracer("qym")

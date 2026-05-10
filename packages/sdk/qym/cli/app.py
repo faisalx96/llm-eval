@@ -18,7 +18,9 @@ from .run import run_app
 from .metric import metric_app
 from .analyze import analyze_app
 from .config_cmd import config_app
-from ..utils.env import get_platform_url_env
+from ..utils.env import get_platform_url_env, load_cwd_dotenv
+
+load_cwd_dotenv()
 
 app = typer.Typer(
     name="qym",

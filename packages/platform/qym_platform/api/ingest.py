@@ -30,9 +30,22 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from qym_platform.auth import Principal, require_api_key_principal, require_api_key_scope
+from qym_platform.auth import (
+    Principal,
+    require_api_key_principal,
+    require_api_key_scope,
+)
 from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
-from qym_platform.db.models import Project, Run, RunEvent, RunItem, RunItemScore, RunTraceAggregate, RunWorkflowStatus, Span
+from qym_platform.db.models import (
+    Project,
+    Run,
+    RunEvent,
+    RunItem,
+    RunItemScore,
+    RunTraceAggregate,
+    RunWorkflowStatus,
+    Span,
+)
 from qym_platform.db.models import RunItemAttempt
 from qym_platform.deps import get_db
 from qym_platform.events import (
@@ -49,8 +62,15 @@ from qym_platform.events import (
     RunStartedPayload,
     SpanCompletedPayload,
 )
-from qym_platform.item_identity import build_identity_fingerprint, looks_like_positional_item_id
-from qym_platform.services.run_lifecycle import mark_run_running, mark_run_terminal, touch_run_event
+from qym_platform.item_identity import (
+    build_identity_fingerprint,
+    looks_like_positional_item_id,
+)
+from qym_platform.services.run_lifecycle import (
+    mark_run_running,
+    mark_run_terminal,
+    touch_run_event,
+)
 from qym_platform.settings import PlatformSettings
 
 
@@ -59,8 +79,16 @@ router = APIRouter(prefix="/v1", tags=["ingestion"])
 _TRACE_LATENCY_FIELDS = {
     "llm": ("llm_duration_ms_total", "llm_duration_ms_count", "avg_llm_ms"),
     "tool": ("tool_duration_ms_total", "tool_duration_ms_count", "avg_tool_ms"),
-    "retriever": ("retriever_duration_ms_total", "retriever_duration_ms_count", "avg_retriever_ms"),
-    "evaluator": ("evaluator_duration_ms_total", "evaluator_duration_ms_count", "avg_evaluator_ms"),
+    "retriever": (
+        "retriever_duration_ms_total",
+        "retriever_duration_ms_count",
+        "avg_retriever_ms",
+    ),
+    "evaluator": (
+        "evaluator_duration_ms_total",
+        "evaluator_duration_ms_count",
+        "avg_evaluator_ms",
+    ),
     "top_level_chain": (
         "top_level_chain_duration_ms_total",
         "top_level_chain_duration_ms_count",
@@ -109,7 +137,9 @@ def _extract_reasoning_signal(attrs: Dict[str, Any]) -> Dict[str, Any]:
                     raw_reasoning_tokens = completion_details.get("reasoning_tokens")
                     if raw_reasoning_tokens not in (None, "", 0, "0"):
                         try:
-                            reasoning_tokens = max(reasoning_tokens, int(float(raw_reasoning_tokens)))
+                            reasoning_tokens = max(
+                                reasoning_tokens, int(float(raw_reasoning_tokens))
+                            )
                         except (ValueError, TypeError):
                             pass
             choices = parsed.get("choices")
@@ -144,6 +174,8 @@ def _empty_trace_bucket() -> Dict[str, Any]:
         "has_reasoning": False,
         "has_reasoning_tokens": False,
         "reasoning_tokens": 0,
+        "outer_scope_parent_span_ms": {},
+        "outer_scope_parent_span_counts": {},
     }
     for total_key, count_key, _avg_key in _TRACE_LATENCY_FIELDS.values():
         bucket[total_key] = 0.0
@@ -161,6 +193,10 @@ def _span_oi_kind(attrs: Dict[str, Any]) -> str:
     return raw
 
 
+def _span_usage_scope(attrs: Dict[str, Any]) -> str:
+    return str((attrs or {}).get("qym.usage_scope", "") or "").lower()
+
+
 def _trace_latency_average(bucket: Dict[str, Any], bucket_name: str) -> Optional[float]:
     total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
     total = float(bucket.get(total_key) or 0.0)
@@ -170,7 +206,9 @@ def _trace_latency_average(bucket: Dict[str, Any], bucket_name: str) -> Optional
     return total / count
 
 
-def _trace_latency_average_from_buckets(item_buckets: list[dict[str, Any]], bucket_name: str) -> Optional[float]:
+def _trace_latency_average_from_buckets(
+    item_buckets: list[dict[str, Any]], bucket_name: str
+) -> Optional[float]:
     total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
     total = sum(float(bucket.get(total_key) or 0.0) for bucket in item_buckets)
     count = sum(int(bucket.get(count_key) or 0) for bucket in item_buckets)
@@ -179,7 +217,46 @@ def _trace_latency_average_from_buckets(item_buckets: list[dict[str, Any]], buck
     return total / count
 
 
-def _accumulate_trace_latency(bucket: Dict[str, Any], bucket_name: str, duration_ms: Any) -> None:
+def _named_latency_averages_from_buckets(
+    item_buckets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    totals: dict[str, float] = defaultdict(float)
+    counts: dict[str, int] = defaultdict(int)
+    first_seen_order: dict[str, int] = {}
+
+    for bucket in item_buckets:
+        bucket_totals = bucket.get("outer_scope_parent_span_ms") or {}
+        bucket_counts = bucket.get("outer_scope_parent_span_counts") or {}
+        if not isinstance(bucket_totals, dict) or not isinstance(bucket_counts, dict):
+            continue
+        for name, total in bucket_totals.items():
+            count = int(bucket_counts.get(name) or 0)
+            if count <= 0:
+                continue
+            try:
+                duration = float(total)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(duration) or duration < 0:
+                continue
+            if name not in first_seen_order:
+                first_seen_order[name] = len(first_seen_order)
+            totals[name] += duration
+            counts[name] += count
+
+    averages: list[dict[str, Any]] = []
+    for name, total in totals.items():
+        count = counts.get(name, 0)
+        if count <= 0:
+            continue
+        averages.append({"name": name, "avg_ms": total / count, "count": count})
+    averages.sort(key=lambda item: first_seen_order.get(str(item.get("name")), 0))
+    return averages
+
+
+def _accumulate_trace_latency(
+    bucket: Dict[str, Any], bucket_name: str, duration_ms: Any
+) -> None:
     try:
         duration = float(duration_ms)
     except (TypeError, ValueError):
@@ -189,6 +266,26 @@ def _accumulate_trace_latency(bucket: Dict[str, Any], bucket_name: str, duration
     total_key, count_key, _avg_key = _TRACE_LATENCY_FIELDS[bucket_name]
     bucket[total_key] += duration
     bucket[count_key] += 1
+
+
+def _accumulate_named_outer_scope_parent_latency(
+    bucket: Dict[str, Any], name: str, duration_ms: Any
+) -> None:
+    name = str(name or "").strip()
+    if not name:
+        return
+    try:
+        duration = float(duration_ms)
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(duration) or duration < 0:
+        return
+    totals = bucket.setdefault("outer_scope_parent_span_ms", {})
+    counts = bucket.setdefault("outer_scope_parent_span_counts", {})
+    if not isinstance(totals, dict) or not isinstance(counts, dict):
+        return
+    totals[name] = float(totals.get(name) or 0.0) + duration
+    counts[name] = int(counts.get(name) or 0) + 1
 
 
 def _public_trace_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
@@ -207,15 +304,20 @@ def _public_trace_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     }
     for bucket_name, (_total_key, _count_key, avg_key) in _TRACE_LATENCY_FIELDS.items():
         public[avg_key] = _trace_latency_average(bucket, bucket_name)
+    public["outer_scope_parent_spans"] = _named_latency_averages_from_buckets([bucket])
     return public
 
 
 def _tool_call_attempts(bucket: Dict[str, Any]) -> int:
     """Return attempted tool calls, including malformed assistant responses."""
-    return int(bucket.get("tool_calls") or 0) + int(bucket.get("malformed_tool_calls") or 0)
+    return int(bucket.get("tool_calls") or 0) + int(
+        bucket.get("malformed_tool_calls") or 0
+    )
 
 
-def _apply_response_classification(bucket: Dict[str, Any], attrs: Dict[str, Any]) -> None:
+def _apply_response_classification(
+    bucket: Dict[str, Any], attrs: Dict[str, Any]
+) -> None:
     classification = attrs.get("qym.response.classification")
     if classification == "malformed_tool_call":
         bucket["malformed_tool_calls"] += 1
@@ -254,14 +356,20 @@ def _apply_span_to_bucket(
     status: Optional[str],
     duration_ms: Any = None,
     parent_oi_kind: Optional[str] = None,
+    exclude_usage: bool = False,
 ) -> None:
     bucket["span_count"] += 1
     attrs = attributes or {}
+    if exclude_usage or _span_usage_scope(attrs) == "metric":
+        return
+
     oi_kind = _span_oi_kind(attrs)
     if oi_kind == "LLM":
         bucket["llm_calls"] += 1
         _accumulate_trace_latency(bucket, "llm", duration_ms)
-        tokens = attrs.get("llm.token_count.total") or attrs.get("gen_ai.usage.total_tokens")
+        tokens = attrs.get("llm.token_count.total") or attrs.get(
+            "gen_ai.usage.total_tokens"
+        )
         if tokens is not None:
             try:
                 bucket["tokens"] += int(float(tokens))
@@ -274,9 +382,11 @@ def _apply_span_to_bucket(
             except (ValueError, TypeError):
                 pass
         reasoning_signal = _extract_reasoning_signal(attrs)
-        bucket["has_reasoning"] = bucket["has_reasoning"] or bool(reasoning_signal["has_reasoning"])
-        bucket["has_reasoning_tokens"] = (
-            bucket["has_reasoning_tokens"] or bool(reasoning_signal["has_reasoning_tokens"])
+        bucket["has_reasoning"] = bucket["has_reasoning"] or bool(
+            reasoning_signal["has_reasoning"]
+        )
+        bucket["has_reasoning_tokens"] = bucket["has_reasoning_tokens"] or bool(
+            reasoning_signal["has_reasoning_tokens"]
         )
         bucket["reasoning_tokens"] += int(reasoning_signal["reasoning_tokens"] or 0)
     elif oi_kind == "TOOL":
@@ -304,6 +414,64 @@ def _build_trace_buckets_from_spans(spans: list[Span]) -> Dict[str, Dict[str, An
     for trace_id, trace_spans in spans_by_trace.items():
         bucket = _empty_trace_bucket()
         spans_by_id = {span.span_id: span for span in trace_spans}
+        metric_root_ids = {
+            span.span_id
+            for span in trace_spans
+            if span.name == "eval_metrics"
+            or _span_usage_scope(span.attributes or {}) == "metric"
+        }
+        metric_descendant_ids: set[str] = set()
+
+        def _is_metric_descendant(span: Span) -> bool:
+            parent_id = span.parent_span_id
+            seen: set[str] = set()
+            while parent_id:
+                if parent_id in metric_root_ids:
+                    return True
+                if parent_id in seen:
+                    return False
+                seen.add(parent_id)
+                parent = spans_by_id.get(parent_id)
+                if parent is None:
+                    return False
+                parent_id = parent.parent_span_id
+            return False
+
+        for span in trace_spans:
+            if _span_usage_scope(span.attributes or {}) == "metric" or _is_metric_descendant(
+                span
+            ):
+                metric_descendant_ids.add(span.span_id)
+
+        roots = [
+            span
+            for span in trace_spans
+            if not span.parent_span_id or span.parent_span_id not in spans_by_id
+        ]
+        non_metric_roots = [
+            span for span in roots if span.span_id not in metric_descendant_ids
+        ]
+        if len(non_metric_roots) == 1:
+            root = non_metric_roots[0]
+            outer_scope_parent_spans = [
+                span
+                for span in trace_spans
+                if span.parent_span_id == root.span_id
+                and span.span_id not in metric_descendant_ids
+                and span.span_id not in metric_root_ids
+            ]
+        else:
+            outer_scope_parent_spans = [
+                span for span in non_metric_roots if span.span_id not in metric_root_ids
+            ]
+        for span in outer_scope_parent_spans:
+            oi_kind = _span_oi_kind(span.attributes or {})
+            if oi_kind in {"LLM", "TOOL", "RETRIEVER"}:
+                continue
+            _accumulate_named_outer_scope_parent_latency(
+                bucket, span.name, span.duration_ms
+            )
+
         for span in trace_spans:
             parent = spans_by_id.get(span.parent_span_id or "")
             parent_oi_kind = _span_oi_kind(parent.attributes or {}) if parent else None
@@ -313,6 +481,7 @@ def _build_trace_buckets_from_spans(spans: list[Span]) -> Dict[str, Dict[str, An
                 status=span.status,
                 duration_ms=span.duration_ms,
                 parent_oi_kind=parent_oi_kind,
+                exclude_usage=span.span_id in metric_descendant_ids,
             )
         trace_buckets[trace_id] = bucket
     return trace_buckets
@@ -325,22 +494,42 @@ def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]
     n = len(item_buckets)
     total_tool_errors = sum(int(b.get("tool_errors") or 0) for b in item_buckets)
     total_tool_attempts = sum(_tool_call_attempts(b) for b in item_buckets)
-    tool_success_rate = (1 - total_tool_errors / total_tool_attempts) if total_tool_attempts > 0 else None
+    tool_success_rate = (
+        (1 - total_tool_errors / total_tool_attempts)
+        if total_tool_attempts > 0
+        else None
+    )
     trace_stats = {
         "avg_tokens": sum(int(b.get("tokens") or 0) for b in item_buckets) / n,
         "avg_llm_calls": sum(int(b.get("llm_calls") or 0) for b in item_buckets) / n,
         "avg_tool_calls": sum(int(b.get("tool_calls") or 0) for b in item_buckets) / n,
         "tool_success_rate": tool_success_rate,
-        "total_malformed_tool_calls": sum(int(b.get("malformed_tool_calls") or 0) for b in item_buckets),
-        "total_noisy_reasoning": sum(int(b.get("noisy_reasoning") or 0) for b in item_buckets),
-        "total_provider_errors": sum(int(b.get("provider_errors") or 0) for b in item_buckets),
+        "total_malformed_tool_calls": sum(
+            int(b.get("malformed_tool_calls") or 0) for b in item_buckets
+        ),
+        "total_noisy_reasoning": sum(
+            int(b.get("noisy_reasoning") or 0) for b in item_buckets
+        ),
+        "total_provider_errors": sum(
+            int(b.get("provider_errors") or 0) for b in item_buckets
+        ),
         "has_reasoning": any(bool(b.get("has_reasoning")) for b in item_buckets),
-        "has_reasoning_tokens": any(bool(b.get("has_reasoning_tokens")) for b in item_buckets),
-        "avg_reasoning_tokens": sum(int(b.get("reasoning_tokens") or 0) for b in item_buckets) / n,
+        "has_reasoning_tokens": any(
+            bool(b.get("has_reasoning_tokens")) for b in item_buckets
+        ),
+        "avg_reasoning_tokens": sum(
+            int(b.get("reasoning_tokens") or 0) for b in item_buckets
+        )
+        / n,
         "has_spans": True,
     }
     for bucket_name, (_total_key, _count_key, avg_key) in _TRACE_LATENCY_FIELDS.items():
-        trace_stats[avg_key] = _trace_latency_average_from_buckets(item_buckets, bucket_name)
+        trace_stats[avg_key] = _trace_latency_average_from_buckets(
+            item_buckets, bucket_name
+        )
+    trace_stats["outer_scope_parent_spans"] = _named_latency_averages_from_buckets(
+        item_buckets
+    )
     return trace_stats
 
 
@@ -373,10 +562,15 @@ def _refresh_live_trace_stats(db: Session, run: Run) -> None:
     run.run_metadata = _sanitize_for_json(current)
 
 
-def _upsert_trace_aggregate(db: Session, run_id: str, payload: SpanCompletedPayload) -> None:
+def _upsert_trace_aggregate(
+    db: Session, run_id: str, payload: SpanCompletedPayload
+) -> None:
     agg = (
         db.query(RunTraceAggregate)
-        .filter(RunTraceAggregate.run_id == run_id, RunTraceAggregate.trace_id == payload.trace_id)
+        .filter(
+            RunTraceAggregate.run_id == run_id,
+            RunTraceAggregate.trace_id == payload.trace_id,
+        )
         .first()
     )
     if not agg:
@@ -384,8 +578,14 @@ def _upsert_trace_aggregate(db: Session, run_id: str, payload: SpanCompletedPayl
         db.add(agg)
         db.flush()
 
-    bucket = _trace_bucket_from_aggregate(agg)
-    _apply_span_to_bucket(bucket, attributes=payload.attributes, status=payload.status)
+    spans = (
+        db.query(Span)
+        .filter(Span.run_id == run_id, Span.trace_id == payload.trace_id)
+        .all()
+    )
+    bucket = _build_trace_buckets_from_spans(spans).get(
+        payload.trace_id, _empty_trace_bucket()
+    )
     agg.span_count = int(bucket["span_count"])
     agg.tokens = int(bucket["tokens"])
     agg.cost = float(bucket["cost"])
@@ -414,29 +614,37 @@ def _store_trace_stats(db: Session, run: Run) -> None:
     logger.info("_store_trace_stats: found %d spans for run %s", len(spans), run.id)
 
     # Map last-attempt trace_id -> item
-    items = db.query(RunItem).filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None)).all()
+    items = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None))
+        .all()
+    )
     # Group spans by trace_id and compute per-item stats
     trace_buckets = _build_trace_buckets_from_spans(spans)
 
     # Reconcile persistent per-trace aggregates with final span-derived truth.
-    db.query(RunTraceAggregate).filter(RunTraceAggregate.run_id == run.id).delete(synchronize_session=False)
+    db.query(RunTraceAggregate).filter(RunTraceAggregate.run_id == run.id).delete(
+        synchronize_session=False
+    )
     for trace_id, bucket in trace_buckets.items():
-        db.add(RunTraceAggregate(
-            run_id=run.id,
-            trace_id=trace_id,
-            span_count=int(bucket["span_count"]),
-            tokens=int(bucket["tokens"]),
-            cost=float(bucket["cost"]),
-            llm_calls=int(bucket["llm_calls"]),
-            tool_calls=int(bucket["tool_calls"]),
-            tool_errors=int(bucket["tool_errors"]),
-            malformed_tool_calls=int(bucket["malformed_tool_calls"]),
-            noisy_reasoning=int(bucket["noisy_reasoning"]),
-            provider_errors=int(bucket["provider_errors"]),
-            has_reasoning=bool(bucket["has_reasoning"]),
-            has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
-            reasoning_tokens=int(bucket["reasoning_tokens"]),
-        ))
+        db.add(
+            RunTraceAggregate(
+                run_id=run.id,
+                trace_id=trace_id,
+                span_count=int(bucket["span_count"]),
+                tokens=int(bucket["tokens"]),
+                cost=float(bucket["cost"]),
+                llm_calls=int(bucket["llm_calls"]),
+                tool_calls=int(bucket["tool_calls"]),
+                tool_errors=int(bucket["tool_errors"]),
+                malformed_tool_calls=int(bucket["malformed_tool_calls"]),
+                noisy_reasoning=int(bucket["noisy_reasoning"]),
+                provider_errors=int(bucket["provider_errors"]),
+                has_reasoning=bool(bucket["has_reasoning"]),
+                has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
+                reasoning_tokens=int(bucket["reasoning_tokens"]),
+            )
+        )
 
     # Store per-item stats from the last-attempt trace only.
     item_buckets: list[dict[str, Any]] = []
@@ -541,7 +749,9 @@ async def ingest_events(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.deleted_at is not None:
-        raise HTTPException(status_code=410, detail=f"Run was deleted on {run.deleted_at.isoformat()}")
+        raise HTTPException(
+            status_code=410, detail=f"Run was deleted on {run.deleted_at.isoformat()}"
+        )
     if run.owner_user_id != principal.user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
     if principal.project_id and run.project_id != principal.project_id:
@@ -554,7 +764,11 @@ async def ingest_events(
     def _get_item(item_id: str) -> Optional[RunItem]:
         if item_id in item_cache:
             return item_cache[item_id]
-        item = db.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == item_id).first()
+        item = (
+            db.query(RunItem)
+            .filter(RunItem.run_id == run_id, RunItem.item_id == item_id)
+            .first()
+        )
         item_cache[item_id] = item
         return item
 
@@ -628,7 +842,11 @@ async def ingest_events(
             logger.warning("Skipping event with run_id mismatch for run %s", run_id)
             continue
 
-        existing = db.query(RunEvent).filter(RunEvent.run_id == run_id, RunEvent.event_id == str(evt.event_id)).first()
+        existing = (
+            db.query(RunEvent)
+            .filter(RunEvent.run_id == run_id, RunEvent.event_id == str(evt.event_id))
+            .first()
+        )
         if existing:
             skipped += 1
             continue
@@ -649,8 +867,15 @@ async def ingest_events(
         # Parse payload explicitly based on event type to avoid Union ambiguity
         raw_payload = raw.get("payload") or {}
         payload_cls = _PAYLOAD_TYPE.get(evt.type)
-        payload = payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
-        logger.debug("Ingest run=%s type=%s payload_type=%s", run_id, evt.type, type(payload).__name__)
+        payload = (
+            payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
+        )
+        logger.debug(
+            "Ingest run=%s type=%s payload_type=%s",
+            run_id,
+            evt.type,
+            type(payload).__name__,
+        )
         touch_run_event(run, evt.sent_at)
 
         if isinstance(payload, RunStartedPayload):
@@ -676,14 +901,16 @@ async def ingest_events(
             mark_run_running(run)
             item = _get_item(payload.item_id)
             if not item:
-                item = _remember_item(RunItem(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    index=payload.index,
-                    input=_sanitize_for_json(payload.input),
-                    expected=_sanitize_for_json(payload.expected),
-                    item_metadata=_sanitize_for_json(payload.item_metadata),
-                ))
+                item = _remember_item(
+                    RunItem(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        index=payload.index,
+                        input=_sanitize_for_json(payload.input),
+                        expected=_sanitize_for_json(payload.expected),
+                        item_metadata=_sanitize_for_json(payload.item_metadata),
+                    )
+                )
                 db.add(item)
             else:
                 item.index = payload.index
@@ -695,16 +922,18 @@ async def ingest_events(
             mark_run_running(run)
             item = _get_item(payload.item_id)
             if not item:
-                item = _remember_item(RunItem(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    index=payload.index if payload.index is not None else 0,
-                    input={},
-                    expected=None,
-                    item_metadata=_build_item_meta(payload.task_started_at_ms),
-                    trace_id=payload.trace_id,
-                    trace_url=payload.trace_url,
-                ))
+                item = _remember_item(
+                    RunItem(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        index=payload.index if payload.index is not None else 0,
+                        input={},
+                        expected=None,
+                        item_metadata=_build_item_meta(payload.task_started_at_ms),
+                        trace_id=payload.trace_id,
+                        trace_url=payload.trace_url,
+                    )
+                )
                 db.add(item)
             else:
                 if item.index == 0 and payload.index is not None and payload.index != 0:
@@ -719,24 +948,30 @@ async def ingest_events(
             try:
                 _refresh_live_trace_stats(db, run)
             except Exception:
-                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
+                logger.warning(
+                    "Failed to refresh live trace stats for run %s",
+                    run_id,
+                    exc_info=True,
+                )
 
         elif isinstance(payload, ItemAttemptFinishedPayload):
             mark_run_running(run)
             attempt = _get_attempt(payload.item_id, payload.attempt_number)
             if not attempt:
-                attempt = _remember_attempt(RunItemAttempt(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    attempt_number=payload.attempt_number,
-                    status=payload.status,
-                    latency_ms=payload.latency_ms,
-                    task_started_at_ms=payload.task_started_at_ms,
-                    trace_id=payload.trace_id,
-                    trace_url=payload.trace_url,
-                    error=payload.error,
-                    is_last_attempt=payload.is_last_attempt,
-                ))
+                attempt = _remember_attempt(
+                    RunItemAttempt(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        attempt_number=payload.attempt_number,
+                        status=payload.status,
+                        latency_ms=payload.latency_ms,
+                        task_started_at_ms=payload.task_started_at_ms,
+                        trace_id=payload.trace_id,
+                        trace_url=payload.trace_url,
+                        error=payload.error,
+                        is_last_attempt=payload.is_last_attempt,
+                    )
+                )
                 db.add(attempt)
             else:
                 attempt.status = payload.status
@@ -762,16 +997,18 @@ async def ingest_events(
             mark_run_running(run)
             score = _get_score(payload.item_id, payload.metric_name)
             if not score:
-                score = _remember_score(RunItemScore(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    metric_name=payload.metric_name,
-                    score_numeric=payload.score_numeric,
-                    score_raw=_sanitize_for_json(payload.score_raw),
-                    meta=_sanitize_for_json(payload.meta),
-                    label=payload.label,
-                    explanation=payload.explanation,
-                ))
+                score = _remember_score(
+                    RunItemScore(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        metric_name=payload.metric_name,
+                        score_numeric=payload.score_numeric,
+                        score_raw=_sanitize_for_json(payload.score_raw),
+                        meta=_sanitize_for_json(payload.meta),
+                        label=payload.label,
+                        explanation=payload.explanation,
+                    )
+                )
                 db.add(score)
             else:
                 score.score_numeric = payload.score_numeric
@@ -793,20 +1030,22 @@ async def ingest_events(
 
             item = _get_item(payload.item_id)
             if not item:
-                item = _remember_item(RunItem(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    index=payload.index if payload.index is not None else 0,
-                    input={},
-                    expected=None,
-                    output=_sanitize_for_json(payload.output),
-                    error=None,
-                    latency_ms=payload.latency_ms,
-                    retry_count=payload.retry_count,
-                    trace_id=payload.trace_id,
-                    trace_url=payload.trace_url,
-                    item_metadata=_build_item_meta(ts_ms, payload.retry_count),
-                ))
+                item = _remember_item(
+                    RunItem(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        index=payload.index if payload.index is not None else 0,
+                        input={},
+                        expected=None,
+                        output=_sanitize_for_json(payload.output),
+                        error=None,
+                        latency_ms=payload.latency_ms,
+                        retry_count=payload.retry_count,
+                        trace_id=payload.trace_id,
+                        trace_url=payload.trace_url,
+                        item_metadata=_build_item_meta(ts_ms, payload.retry_count),
+                    )
+                )
                 db.add(item)
             else:
                 # Update index if it was 0 (placeholder) and we now have the real index
@@ -831,26 +1070,34 @@ async def ingest_events(
             try:
                 _refresh_live_trace_stats(db, run)
             except Exception:
-                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
+                logger.warning(
+                    "Failed to refresh live trace stats for run %s",
+                    run_id,
+                    exc_info=True,
+                )
 
         elif isinstance(payload, ItemFailedPayload):
             mark_run_running(run)
             item = _get_item(payload.item_id)
             if not item:
-                item = _remember_item(RunItem(
-                    run_id=run_id,
-                    item_id=payload.item_id,
-                    index=payload.index if payload.index is not None else 0,
-                    input={},
-                    expected=None,
-                    output=None,
-                    error=payload.error,
-                    latency_ms=payload.latency_ms,
-                    retry_count=payload.retry_count,
-                    trace_id=payload.trace_id,
-                    trace_url=payload.trace_url,
-                    item_metadata=_build_item_meta(payload.task_started_at_ms, payload.retry_count),
-                ))
+                item = _remember_item(
+                    RunItem(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        index=payload.index if payload.index is not None else 0,
+                        input={},
+                        expected=None,
+                        output=None,
+                        error=payload.error,
+                        latency_ms=payload.latency_ms,
+                        retry_count=payload.retry_count,
+                        trace_id=payload.trace_id,
+                        trace_url=payload.trace_url,
+                        item_metadata=_build_item_meta(
+                            payload.task_started_at_ms, payload.retry_count
+                        ),
+                    )
+                )
                 db.add(item)
             else:
                 # Update index if it was 0 (placeholder) and we now have the real index
@@ -873,10 +1120,18 @@ async def ingest_events(
             try:
                 _refresh_live_trace_stats(db, run)
             except Exception:
-                logger.warning("Failed to refresh live trace stats for run %s", run_id, exc_info=True)
+                logger.warning(
+                    "Failed to refresh live trace stats for run %s",
+                    run_id,
+                    exc_info=True,
+                )
 
         elif isinstance(payload, RunCompletedPayload):
-            _FINAL_STATUS = {"COMPLETED": RunWorkflowStatus.COMPLETED, "FAILED": RunWorkflowStatus.FAILED, "STOPPED": RunWorkflowStatus.STOPPED}
+            _FINAL_STATUS = {
+                "COMPLETED": RunWorkflowStatus.COMPLETED,
+                "FAILED": RunWorkflowStatus.FAILED,
+                "STOPPED": RunWorkflowStatus.STOPPED,
+            }
             mark_run_terminal(
                 run,
                 _FINAL_STATUS.get(payload.final_status, RunWorkflowStatus.FAILED),
@@ -885,9 +1140,15 @@ async def ingest_events(
             logger.debug("Run %s status -> %s", run_id, payload.final_status)
             # Allow the client to attach final metadata (e.g., langfuse_url) at completion time.
             try:
-                md = payload.summary.get("run_metadata") if isinstance(payload.summary, dict) else None
+                md = (
+                    payload.summary.get("run_metadata")
+                    if isinstance(payload.summary, dict)
+                    else None
+                )
                 if isinstance(md, dict) and md:
-                    current = run.run_metadata if isinstance(run.run_metadata, dict) else {}
+                    current = (
+                        run.run_metadata if isinstance(run.run_metadata, dict) else {}
+                    )
                     run.run_metadata = _sanitize_for_json({**current, **md})
             except Exception:
                 pass
@@ -897,7 +1158,9 @@ async def ingest_events(
                 db.flush()  # ensure all spans from this batch are visible
                 _store_trace_stats(db, run)
             except Exception:
-                logger.warning("Failed to compute trace stats for run %s", run_id, exc_info=True)
+                logger.warning(
+                    "Failed to compute trace stats for run %s", run_id, exc_info=True
+                )
 
         elif isinstance(payload, MetadataUpdatePayload):
             mark_run_running(run)
@@ -923,10 +1186,14 @@ async def ingest_events(
             span_inserted = False
             try:
                 nested = db.begin_nested()
-                existing = db.query(Span).filter(
-                    Span.run_id == run_id,
-                    Span.span_id == payload.span_id,
-                ).first()
+                existing = (
+                    db.query(Span)
+                    .filter(
+                        Span.run_id == run_id,
+                        Span.span_id == payload.span_id,
+                    )
+                    .first()
+                )
                 if not existing:
                     span_kwargs = dict(
                         run_id=run_id,
@@ -955,7 +1222,9 @@ async def ingest_events(
                     _refresh_live_trace_stats(db, run)
                     nested.commit()
                 except Exception as e:
-                    logger.warning("Live trace aggregation failed for run %s: %s", run_id, e)
+                    logger.warning(
+                        "Live trace aggregation failed for run %s: %s", run_id, e
+                    )
 
         applied += 1
 
@@ -1035,13 +1304,15 @@ async def upload_run(
                     item_metadata=md if isinstance(md, dict) else {},
                 )
                 db.add(item)
-                scores = (r.get("scores") or {})
+                scores = r.get("scores") or {}
                 for m in metrics:
                     val = scores.get(m)
                     score_numeric = None
                     if isinstance(val, (int, float, bool)):
                         score_numeric = float(val)
-                    elif isinstance(val, dict) and isinstance(val.get("score"), (int, float, bool)):
+                    elif isinstance(val, dict) and isinstance(
+                        val.get("score"), (int, float, bool)
+                    ):
                         score_numeric = float(val["score"])
                     meta = {}
                     if isinstance(val, dict) and isinstance(val.get("metadata"), dict):
@@ -1068,7 +1339,9 @@ async def upload_run(
                         output=None,
                         error=str(err_msg),
                         latency_ms=None,
-                        trace_id=(err.get("trace_id") if isinstance(err, dict) else None),
+                        trace_id=(
+                            err.get("trace_id") if isinstance(err, dict) else None
+                        ),
                         trace_url=None,
                         item_metadata=md if isinstance(md, dict) else {},
                     )
@@ -1079,7 +1352,11 @@ async def upload_run(
         text = raw.decode("utf-8")
         reader = csv.DictReader(io.StringIO(text))
         fieldnames = list(reader.fieldnames or [])
-        metrics = [c.replace("_score", "") for c in fieldnames if c.endswith("_score") and "__meta__" not in c]
+        metrics = [
+            c.replace("_score", "")
+            for c in fieldnames
+            if c.endswith("_score") and "__meta__" not in c
+        ]
         run.metrics = metrics
         rows = list(reader)
 
@@ -1091,7 +1368,9 @@ async def upload_run(
                 run.dataset = first["dataset_name"]
             if first.get("run_metadata"):
                 try:
-                    run.run_metadata = _sanitize_for_json(json.loads(first["run_metadata"]))
+                    run.run_metadata = _sanitize_for_json(
+                        json.loads(first["run_metadata"])
+                    )
                 except (json.JSONDecodeError, TypeError):
                     pass
             if first.get("run_config"):
@@ -1116,7 +1395,9 @@ async def upload_run(
                     expected_value=row.get("expected_output") or "",
                     metadata=parsed_meta,
                 )
-                fingerprint_counts[fingerprint] = fingerprint_counts.get(fingerprint, 0) + 1
+                fingerprint_counts[fingerprint] = (
+                    fingerprint_counts.get(fingerprint, 0) + 1
+                )
                 item_id = f"csv_{fingerprint}__{fingerprint_counts[fingerprint]:04d}"
             output = str(row.get("output") or "")
             is_error = output.startswith("ERROR:")
@@ -1175,7 +1456,9 @@ async def upload_run(
                 )
         db.commit()
     else:
-        raise HTTPException(status_code=400, detail="Unsupported file type (use .csv or .json)")
+        raise HTTPException(
+            status_code=400, detail="Unsupported file type (use .csv or .json)"
+        )
 
     settings = PlatformSettings()
     live_url = f"{settings.base_url.rstrip('/')}/run/{run.id}"

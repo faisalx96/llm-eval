@@ -33,7 +33,7 @@ echo -e "${GREEN}=== QYM SDK builder ===${NC}\n"
 
 # Current version from pyproject.toml
 CURRENT_VERSION=$(grep -E '^version\s*=' "$PYPROJECT" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-echo "Current SDK version: ${YELLOW}${CURRENT_VERSION}${NC}"
+echo -e "Current SDK version: ${YELLOW}${CURRENT_VERSION}${NC}"
 
 # Bump prompt
 read -r -p "New version (blank to keep ${CURRENT_VERSION}): " NEW_VERSION
@@ -47,8 +47,8 @@ if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
 fi
 
 # Bundle deps?
-read -r -p "Also bundle transitive dependencies for the air-gapped install? (Y/n): " BUNDLE_DEPS
-BUNDLE_DEPS=${BUNDLE_DEPS:-y}
+read -r -p "Also bundle transitive dependencies for the air-gapped install? (y/N): " BUNDLE_DEPS
+BUNDLE_DEPS=${BUNDLE_DEPS:-n}
 
 PYTARGET="3.9"
 if [[ "$BUNDLE_DEPS" =~ ^[Yy]$ ]]; then
@@ -114,13 +114,14 @@ else
     echo -e "\n${GREEN}[3/4] Skipping transitive deps${NC}"
 fi
 
-# Package into a single tarball
+# Package into a single tarball, then drop the working folder
 echo -e "\n${GREEN}[4/4] Packaging bundle tarball...${NC}"
-( cd "$OUTPUT_DIR" && tar czf "${BUNDLE_NAME}.tar.gz" "$BUNDLE_NAME" )
+FILE_COUNT=$(ls "$BUNDLE_DIR" | wc -l | tr -d ' ')
+( cd "$OUTPUT_DIR" && COPYFILE_DISABLE=1 tar czf "${BUNDLE_NAME}.tar.gz" "$BUNDLE_NAME" )
+rm -rf "$BUNDLE_DIR"
 
 # Summary
 SIZE=$(du -h "$TARBALL" | cut -f1)
-FILE_COUNT=$(ls "$BUNDLE_DIR" | wc -l | tr -d ' ')
 echo ""
 echo -e "${GREEN}=== Done ===${NC}"
 echo "Version: ${NEW_VERSION}"

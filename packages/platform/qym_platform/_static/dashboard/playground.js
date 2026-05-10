@@ -71,16 +71,8 @@ window.QymPlayground = (function () {
     return String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function _tryParseObj(val) {
-    // Returns a plain object for key scanning. Handles raw objects, JSON strings, and arrays.
+  function _tryParseJsonValue(val) {
     if (val && typeof val === 'object') {
-      if (Array.isArray(val)) {
-        // For arrays, try to find the first object element
-        for (var a = 0; a < Math.min(val.length, 3); a++) {
-          if (val[a] && typeof val[a] === 'object' && !Array.isArray(val[a])) return val[a];
-        }
-        return null;
-      }
       return val;
     }
     if (typeof val === 'string') {
@@ -88,16 +80,76 @@ window.QymPlayground = (function () {
       if (!s) return null;
       try {
         var p = JSON.parse(s);
-        if (p && typeof p === 'object') {
-          if (Array.isArray(p)) {
-            for (var a = 0; a < Math.min(p.length, 3); a++) {
-              if (p[a] && typeof p[a] === 'object' && !Array.isArray(p[a])) return p[a];
-            }
-            return null;
-          }
-          return p;
-        }
+        if (p && typeof p === 'object') return p;
       } catch (e) {}
+      return _tryParsePythonLiteralValue(s);
+    }
+    return null;
+  }
+
+  function _tryParsePythonLiteralValue(text) {
+    if (!text || (text[0] !== '{' && text[0] !== '[')) return null;
+    var out = '';
+    var i = 0;
+    while (i < text.length) {
+      var ch = text[i];
+      if (ch === "'" || ch === '"') {
+        var parsed = _readPythonString(text, i);
+        if (!parsed) return null;
+        out += JSON.stringify(parsed.value);
+        i = parsed.next;
+        continue;
+      }
+      if (/[A-Za-z_]/.test(ch)) {
+        var start = i;
+        while (i < text.length && /[A-Za-z_]/.test(text[i])) i++;
+        var word = text.slice(start, i);
+        if (word === 'True') out += 'true';
+        else if (word === 'False') out += 'false';
+        else if (word === 'None') out += 'null';
+        else return null;
+        continue;
+      }
+      out += ch;
+      i++;
+    }
+    try {
+      var parsedValue = JSON.parse(out);
+      return parsedValue && typeof parsedValue === 'object' ? parsedValue : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function _readPythonString(text, start) {
+    var quote = text[start];
+    var value = '';
+    for (var i = start + 1; i < text.length; i++) {
+      var ch = text[i];
+      if (ch === '\\') {
+        i++;
+        if (i >= text.length) return null;
+        var esc = text[i];
+        if (esc === 'n') value += '\n';
+        else if (esc === 'r') value += '\r';
+        else if (esc === 't') value += '\t';
+        else if (esc === 'b') value += '\b';
+        else if (esc === 'f') value += '\f';
+        else if (esc === 'u' && i + 4 < text.length) {
+          var hex = text.slice(i + 1, i + 5);
+          if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+            value += String.fromCharCode(parseInt(hex, 16));
+            i += 4;
+          } else {
+            value += esc;
+          }
+        } else {
+          value += esc;
+        }
+        continue;
+      }
+      if (ch === quote) return { value: value, next: i + 1 };
+      value += ch;
     }
     return null;
   }
@@ -140,24 +192,292 @@ window.QymPlayground = (function () {
   }
 
   function _isFieldJson(fieldName) {
-    return _scanJsonKeys(fieldName).length > 0;
+    return _scanJsonPaths(fieldName).length > 0;
   }
 
-  function _scanJsonKeys(fieldName) {
+  function _scanJsonPaths(fieldName) {
     var rows = _getRows();
-    var keys = {};
+    var paths = {};
     var limit = Math.min(rows.length, 20);
     for (var i = 0; i < limit; i++) {
       // Try the field directly, then the _full variant (raw object before stringify)
       var val = rows[i][fieldName];
       var fullVal = rows[i][fieldName + '_full'];
-      var obj = _tryParseObj(fullVal) || _tryParseObj(val);
-      if (obj) {
-        var objKeys = Object.keys(obj);
-        for (var k = 0; k < objKeys.length; k++) keys[objKeys[k]] = true;
+      var obj = _tryParseJsonValue(fullVal) || _tryParseJsonValue(val);
+      if (obj) _collectJsonPaths(obj, '', paths, 0);
+    }
+    return Object.keys(paths).sort();
+  }
+
+  function _collectJsonPaths(val, prefix, paths, depth) {
+    if (depth > 5 || val == null || typeof val !== 'object') return;
+    if (Array.isArray(val)) {
+      var arrPrefix = prefix ? prefix + '[]' : '[]';
+      var hasNestedObject = false;
+      for (var i = 0; i < Math.min(val.length, 5); i++) {
+        if (val[i] && typeof val[i] === 'object') {
+          hasNestedObject = true;
+          _collectJsonPaths(val[i], arrPrefix, paths, depth + 1);
+        }
+      }
+      if (prefix && !hasNestedObject) paths[prefix] = true;
+      if (!prefix && !hasNestedObject) paths['[]'] = true;
+      return;
+    }
+    Object.keys(val).sort().forEach(function (key) {
+      var path = prefix ? prefix + '.' + key : key;
+      if (val[key] && typeof val[key] === 'object') {
+        _collectJsonPaths(val[key], path, paths, depth + 1);
+      } else {
+        paths[path] = true;
+      }
+    });
+  }
+
+  function _formatPathLabel(path) {
+    return String(path || '').replace(/\[\]/g, '[*]');
+  }
+
+  function _pathsToTree(paths) {
+    var root = { children: [], byLabel: {} };
+    function ensureChild(parent, label, path) {
+      var key = label + '\u0000' + path;
+      if (!parent.byLabel[key]) {
+        parent.byLabel[key] = { label: label, path: path, children: [], byLabel: {} };
+        parent.children.push(parent.byLabel[key]);
+      }
+      return parent.byLabel[key];
+    }
+    for (var i = 0; i < paths.length; i++) {
+      var rawParts = String(paths[i]).split('.');
+      var parent = root;
+      var built = '';
+      for (var p = 0; p < rawParts.length; p++) {
+        var part = rawParts[p];
+        if (!part) continue;
+        if (part.slice(-2) === '[]') {
+          var base = part.slice(0, -2);
+          if (base) {
+            built = built ? built + '.' + base : base;
+            parent = ensureChild(parent, base, built);
+          }
+          var arrayPath = built ? built + '[]' : '[]';
+          parent = ensureChild(parent, '[*]', arrayPath);
+          built = arrayPath;
+        } else {
+          built = built ? built + '.' + part : part;
+          parent = ensureChild(parent, part, built);
+        }
       }
     }
-    return Object.keys(keys).sort();
+    function sortNodes(nodes) {
+      nodes.sort(function (a, b) { return a.label.localeCompare(b.label); });
+      for (var n = 0; n < nodes.length; n++) sortNodes(nodes[n].children);
+    }
+    sortNodes(root.children);
+    return root.children;
+  }
+
+  function _renderPathTree(paths, valuePrefix, checkedByDefault) {
+    var tree = _pathsToTree(paths);
+    if (tree.length === 0) return '';
+    return '<div class="pg-path-tree">' + _renderPathTreeNodes(tree, valuePrefix || '', 0, !!checkedByDefault) + '</div>';
+  }
+
+  function _renderPathTreeNodes(nodes, valuePrefix, level, checkedByDefault) {
+    var html = '';
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var value = valuePrefix ? valuePrefix + node.path : node.path;
+      var hasChildren = node.children.length > 0;
+      var indent = ' style="--pg-path-level:' + level + ';"';
+      var checked = checkedByDefault ? ' checked' : '';
+      var row = '<span class="pg-path-tree-row"' + indent + '>' +
+        '<span class="custom-checkbox"><input type="checkbox" value="' + _escAttr(value) + '"' + checked + ' /><span class="checkmark"></span></span>' +
+        '<span class="pg-path-name">' + _esc(_formatPathLabel(node.label)) + '</span>' +
+        (hasChildren ? '<span class="pg-path-node-type">group</span>' : '') +
+      '</span>';
+      if (hasChildren) {
+        html += '<details class="pg-path-tree-node" open><summary>' + row + '</summary>' +
+          _renderPathTreeNodes(node.children, valuePrefix, level + 1, checkedByDefault) +
+        '</details>';
+      } else {
+        html += '<div class="pg-path-tree-leaf">' + row + '</div>';
+      }
+    }
+    return html;
+  }
+
+  function _buildPathPicker(id, fieldName) {
+    if (fieldName === 'metric_metadata') return _buildMetricMetadataPicker(id);
+    var paths = _scanJsonPaths(fieldName);
+    if (paths.length === 0) return '';
+    var html = '<div class="pg-path-picker" id="' + _escAttr(id) + '" data-field="' + _escAttr(fieldName) + '">';
+    html += '<div class="pg-path-picker-head"><div><span class="pg-path-title">JSON fields</span><span class="pg-path-subtitle">Choose the exact keys to send</span></div><span class="pg-path-summary" id="' + _escAttr(id) + '-summary">Full value</span></div>';
+    html += '<label class="pg-path-full-row"><span class="custom-checkbox"><input type="checkbox" data-full="1" checked /><span class="checkmark"></span></span><span><strong>Use full value</strong><small>Send the complete JSON object for this variable</small></span></label>';
+    html += '<div class="pg-path-list">';
+    html += _renderPathTree(paths, '');
+    html += '</div></div>';
+    return html;
+  }
+
+  function _scanMetricMetadataGroups() {
+    var rows = _getRows();
+    var groups = {};
+    var selectedMetric = _opts.getMetric ? _opts.getMetric() : null;
+    var limit = Math.min(rows.length, 20);
+    for (var i = 0; i < limit; i++) {
+      var byMetric = rows[i].metric_metadata_by_metric;
+      if (byMetric && typeof byMetric === 'object' && !Array.isArray(byMetric)) {
+        Object.keys(byMetric).forEach(function (metricName) {
+          var obj = _tryParseJsonValue(byMetric[metricName]);
+          if (!obj) return;
+          if (!groups[metricName]) groups[metricName] = {};
+          _collectJsonPaths(obj, '', groups[metricName], 0);
+        });
+      } else {
+        var fallback = _tryParseJsonValue(rows[i].metric_metadata);
+        if (fallback) {
+          var name = selectedMetric || 'metric metadata';
+          if (!groups[name]) groups[name] = {};
+          _collectJsonPaths(fallback, '', groups[name], 0);
+        }
+      }
+    }
+    var names = Object.keys(groups).sort(function (a, b) {
+      if (selectedMetric && a === selectedMetric) return -1;
+      if (selectedMetric && b === selectedMetric) return 1;
+      return a.localeCompare(b);
+    });
+    return names.map(function (name) {
+      return { metric: name, paths: Object.keys(groups[name]).sort() };
+    }).filter(function (group) { return group.paths.length > 0; });
+  }
+
+  function _buildMetricMetadataPicker(id) {
+    var groups = _scanMetricMetadataGroups();
+    if (groups.length === 0) return '';
+    var selectedMetric = _opts.getMetric ? _opts.getMetric() : null;
+    var html = '<div class="pg-path-picker pg-metric-path-picker" id="' + _escAttr(id) + '" data-field="metric_metadata" data-grouped="metric" data-default-all="1">';
+    html += '<div class="pg-path-picker-head"><div><span class="pg-path-title">Metric metadata fields</span><span class="pg-path-subtitle">All fields are selected by default</span></div><span class="pg-path-summary" id="' + _escAttr(id) + '-summary">All selected</span></div>';
+    html += '<div class="pg-metric-path-groups">';
+    for (var g = 0; g < groups.length; g++) {
+      var group = groups[g];
+      var metricLabel = group.metric;
+      html += '<details class="pg-metric-path-group"' + (selectedMetric && group.metric === selectedMetric ? ' open' : '') + '>';
+      html += '<summary><span class="pg-metric-path-name">' + _esc(metricLabel) + '</span><span class="pg-metric-path-count">' + group.paths.length + '</span></summary>';
+      html += '<div class="pg-path-list">';
+      var encodedMetric = encodeURIComponent(group.metric).replace(/\./g, '%2E');
+      html += _renderPathTree(group.paths, 'metric_metadata:' + encodedMetric + '.', true);
+      html += '</div></details>';
+    }
+    html += '</div></div>';
+    return html;
+  }
+
+  function _getPathPickerSelection(id, fieldName) {
+    var picker = document.getElementById(id);
+    if (!picker) return { source: fieldName, custom: false };
+    var full = picker.querySelector('input[data-full="1"]');
+    if (full && full.checked) return { source: fieldName, custom: false };
+    var selected = [];
+    picker.querySelectorAll('.pg-path-list input[type="checkbox"]:checked').forEach(function (cb) {
+      if (!cb.value) return;
+      selected.push(picker.dataset.grouped === 'metric' ? cb.value : fieldName + '.' + cb.value);
+    });
+    if (picker.dataset.defaultAll === '1') {
+      var allBoxes = picker.querySelectorAll('.pg-path-list input[type="checkbox"][value]');
+      if (allBoxes.length > 0 && selected.length === allBoxes.length) {
+        return { source: fieldName, custom: false };
+      }
+    }
+    return { source: _pruneSelectedPaths(selected), custom: true };
+  }
+
+  function _pruneSelectedPaths(paths) {
+    var sorted = paths.slice().sort(function (a, b) { return a.length - b.length; });
+    var kept = [];
+    for (var i = 0; i < sorted.length; i++) {
+      var path = sorted[i];
+      var covered = false;
+      for (var k = 0; k < kept.length; k++) {
+        if (path.indexOf(kept[k] + '.') === 0 || path.indexOf(kept[k] + '[]') === 0) {
+          covered = true;
+          break;
+        }
+      }
+      if (!covered) kept.push(path);
+    }
+    return kept;
+  }
+
+  function _updatePathPickerSummary(picker) {
+    if (!picker) return;
+    var summary = picker.querySelector('.pg-path-summary');
+    if (!summary) return;
+    var full = picker.querySelector('input[data-full="1"]');
+    var count = picker.querySelectorAll('.pg-path-list input[type="checkbox"]:checked').length;
+    var total = picker.querySelectorAll('.pg-path-list input[type="checkbox"][value]').length;
+    if (picker.dataset.defaultAll === '1') {
+      summary.textContent = count === total ? 'All selected' : (count === 0 ? 'No fields' : count + ' of ' + total);
+      return;
+    }
+    var fullText = picker.dataset.grouped === 'metric' ? 'All metrics' : 'Full value';
+    summary.textContent = full && full.checked ? fullText : (count === 0 ? 'No fields' : count + ' selected');
+  }
+
+  function _setTreeDescendants(cb, checked) {
+    var node = cb.closest('.pg-path-tree-node');
+    if (!node) return;
+    var inputs = node.querySelectorAll('input[type="checkbox"][value]');
+    inputs.forEach(function (child) {
+      if (child !== cb) {
+        child.checked = checked;
+        child.indeterminate = false;
+      }
+    });
+  }
+
+  function _syncTreeParentStates(picker) {
+    var nodes = Array.prototype.slice.call(picker.querySelectorAll('.pg-path-tree-node')).reverse();
+    nodes.forEach(function (node) {
+      var summary = node.querySelector('summary');
+      var parentCb = summary ? summary.querySelector('input[type="checkbox"][value]') : null;
+      if (!parentCb) return;
+      var descendants = Array.prototype.slice.call(node.querySelectorAll('input[type="checkbox"][value]')).filter(function (input) {
+        return input !== parentCb;
+      });
+      if (descendants.length === 0) return;
+      var checkedCount = descendants.filter(function (input) { return input.checked; }).length;
+      var hasIndeterminate = descendants.some(function (input) { return input.indeterminate; });
+      parentCb.checked = checkedCount === descendants.length && !hasIndeterminate;
+      parentCb.indeterminate = checkedCount > 0 && checkedCount < descendants.length || hasIndeterminate;
+    });
+  }
+
+  function _wirePathPickers(root) {
+    (root || document).querySelectorAll('.pg-path-picker input[type="checkbox"]').forEach(function (cb) {
+      if (cb.dataset.pgWired) return;
+      cb.dataset.pgWired = '1';
+      cb.addEventListener('click', function (e) { e.stopPropagation(); });
+      cb.addEventListener('change', function () {
+        var picker = cb.closest('.pg-path-picker');
+        if (!picker) return;
+        var full = picker.querySelector('input[data-full="1"]');
+        if (cb.dataset.full === '1' && cb.checked) {
+          picker.querySelectorAll('.pg-path-list input[type="checkbox"]').forEach(function (pathCb) { pathCb.checked = false; });
+        } else if (cb.checked && full) {
+          full.checked = false;
+        }
+        if (cb.value) {
+          cb.indeterminate = false;
+          _setTreeDescendants(cb, cb.checked);
+          _syncTreeParentStates(picker);
+        }
+        _updatePathPickerSummary(picker);
+        _scheduleAutoPreview();
+      });
+    });
   }
 
   function _detectCustomVars(text) {
@@ -415,11 +735,12 @@ window.QymPlayground = (function () {
     ];
 
     var body = '';
+    body += '<div class="pg-mapping-layout">';
+    body += '<div class="pg-mapping-core">';
     for (var i = 0; i < standardRows.length; i++) {
       var row = standardRows[i];
       var rowId = 'pg-mapping-' + i;
       var isJson = _isFieldJson(row.defaultField);
-      var keys = isJson ? _scanJsonKeys(row.defaultField) : [];
 
       body += '<div class="pg-mapping-row">';
       body += '<span class="pg-mapping-label">' + row.label + '</span>';
@@ -430,18 +751,10 @@ window.QymPlayground = (function () {
         body += '<option value="' + sourceFields[s] + '"' + sel + '>' + sourceFields[s] + '</option>';
       }
       body += '</select>';
-
-      if (isJson) {
-        body += '<span class="pg-mapping-dot" id="' + rowId + '-dot">.</span>';
-        body += '<select class="pg-mapping-key-select" id="' + rowId + '-key" data-mapping-idx="' + i + '">';
-        body += '<option value="">(full object)</option>';
-        for (var k = 0; k < keys.length; k++) {
-          body += '<option value="' + _escAttr(keys[k]) + '">' + _esc(keys[k]) + '</option>';
-        }
-        body += '</select>';
-      }
+      body += '<span class="pg-path-picker-wrap" id="' + rowId + '-path-wrap">' + (isJson ? _buildPathPicker(rowId + '-paths', row.defaultField) : '') + '</span>';
       body += '</div>';
     }
+    body += '</div>';
 
     // Custom variables from additional instructions
     body += '<div id="pg-custom-vars-section">';
@@ -461,6 +774,11 @@ window.QymPlayground = (function () {
         '<span class="custom-checkbox"><input type="checkbox" data-field="' + extras[e].key + '" checked /><span class="checkmark"></span></span>' +
         '<span>' + extras[e].label + '</span>' +
       '</label>';
+    }
+    body += '</div>';
+    var metadataPicker = _buildPathPicker('pg-metadata-paths', 'metric_metadata');
+    if (metadataPicker) {
+      body += '<div class="pg-metadata-path-row" id="pg-metadata-path-row">' + metadataPicker + '</div>';
     }
     body += '</div>';
     return _section('Variable Mapping', body, { open: false });
@@ -693,6 +1011,10 @@ window.QymPlayground = (function () {
       var fields = { input: true, expected: true, output: true };
       fieldChecks.forEach(function (cb) { fields[cb.dataset.field] = cb.checked; });
       cfg.include_fields = fields;
+      if (fields.metadata) {
+        var metadataSelection = _getPathPickerSelection('pg-metadata-paths', 'metric_metadata');
+        if (metadataSelection.custom) cfg.metadata_fields = metadataSelection.source;
+      }
     }
 
     // Field mapping (standard)
@@ -735,12 +1057,11 @@ window.QymPlayground = (function () {
     for (var i = 0; i < mappingDefs.length; i++) {
       var def = mappingDefs[i];
       var fieldEl = document.getElementById('pg-mapping-' + def.idx + '-field');
-      var keyEl = document.getElementById('pg-mapping-' + def.idx + '-key');
       if (!fieldEl) continue;
       var field = fieldEl.value;
-      var key = keyEl ? keyEl.value : '';
-      var source = key ? field + '.' + key : field;
-      if (source !== def.defaultField) hasCustom = true;
+      var selection = _getPathPickerSelection('pg-mapping-' + def.idx + '-paths', field);
+      var source = selection.source;
+      if (selection.custom || source !== def.defaultField) hasCustom = true;
       mapping[def.key] = source;
     }
     return hasCustom ? mapping : null;
@@ -755,9 +1076,8 @@ window.QymPlayground = (function () {
       var fieldEl = document.getElementById('pg-customvar-' + i + '-field');
       if (!fieldEl || !fieldEl.value) continue;
       var field = fieldEl.value;
-      var keyEl = document.getElementById('pg-customvar-' + i + '-key');
-      var key = keyEl ? keyEl.value : '';
-      mapping[_customVars[i]] = key ? field + '.' + key : field;
+      var selection = _getPathPickerSelection('pg-customvar-' + i + '-paths', field);
+      mapping[_customVars[i]] = selection.source;
       hasAny = true;
     }
     return hasAny ? mapping : null;
@@ -862,13 +1182,17 @@ window.QymPlayground = (function () {
         _scheduleAutoPreview();
       });
     });
-    _overlay.querySelectorAll('.pg-mapping-key-select').forEach(function (sel) {
-      sel.addEventListener('change', function () { _scheduleAutoPreview(); });
-    });
+    _wirePathPickers(_overlay);
 
     // Additional fields checkboxes
     _overlay.querySelectorAll('.pg-field-toggle input[type="checkbox"][data-field]').forEach(function (cb) {
-      cb.addEventListener('change', function () { _scheduleAutoPreview(); });
+      cb.addEventListener('change', function () {
+        if (cb.dataset.field === 'metadata') {
+          var metaRow = document.getElementById('pg-metadata-path-row');
+          if (metaRow) metaRow.style.display = cb.checked ? '' : 'none';
+        }
+        _scheduleAutoPreview();
+      });
     });
 
     // Correction toggles
@@ -1020,46 +1344,17 @@ window.QymPlayground = (function () {
             _scheduleAutoPreview();
           });
         });
+        _wirePathPickers(section);
       }
     }
   }
 
   function _onMappingFieldChange(sel) {
     var idx = sel.dataset.mappingIdx;
-    var keys = _scanJsonKeys(sel.value);
-    var keyEl = document.getElementById('pg-mapping-' + idx + '-key');
-    var dotEl = document.getElementById('pg-mapping-' + idx + '-dot');
-
-    if (keys.length > 0) {
-      if (!keyEl) {
-        var wrapper = sel.parentNode;
-        var dot = document.createElement('span');
-        dot.className = 'pg-mapping-dot';
-        dot.id = 'pg-mapping-' + idx + '-dot';
-        dot.textContent = '.';
-        var keySelect = document.createElement('select');
-        keySelect.className = 'pg-mapping-key-select';
-        keySelect.id = 'pg-mapping-' + idx + '-key';
-        keySelect.dataset.mappingIdx = idx;
-        keySelect.innerHTML = '<option value="">(full object)</option>';
-        for (var k = 0; k < keys.length; k++) {
-          keySelect.innerHTML += '<option value="' + _escAttr(keys[k]) + '">' + _esc(keys[k]) + '</option>';
-        }
-        wrapper.appendChild(dot);
-        wrapper.appendChild(keySelect);
-        keySelect.addEventListener('change', function () { _scheduleAutoPreview(); });
-      } else {
-        keyEl.innerHTML = '<option value="">(full object)</option>';
-        for (var k = 0; k < keys.length; k++) {
-          keyEl.innerHTML += '<option value="' + _escAttr(keys[k]) + '">' + _esc(keys[k]) + '</option>';
-        }
-        keyEl.style.display = '';
-        if (dotEl) dotEl.style.display = '';
-      }
-    } else {
-      if (keyEl) { keyEl.style.display = 'none'; }
-      if (dotEl) { dotEl.style.display = 'none'; }
-    }
+    var wrapper = document.getElementById('pg-mapping-' + idx + '-path-wrap');
+    if (!wrapper) return;
+    wrapper.innerHTML = _buildPathPicker('pg-mapping-' + idx + '-paths', sel.value);
+    _wirePathPickers(wrapper);
   }
 
   function _onCustomVarFieldChange(sel) {
@@ -1070,22 +1365,8 @@ window.QymPlayground = (function () {
 
     if (!field) { wrapper.innerHTML = ''; return; }
 
-    var keys = _scanJsonKeys(field);
-    if (keys.length > 0) {
-      var html = '<span class="pg-mapping-dot">.</span>';
-      html += '<select class="pg-mapping-key-select" id="pg-customvar-' + idx + '-key">';
-      html += '<option value="">(full object)</option>';
-      for (var k = 0; k < keys.length; k++) {
-        html += '<option value="' + _escAttr(keys[k]) + '">' + _esc(keys[k]) + '</option>';
-      }
-      html += '</select>';
-      wrapper.innerHTML = html;
-      wrapper.querySelector('.pg-mapping-key-select').addEventListener('change', function () {
-        _scheduleAutoPreview();
-      });
-    } else {
-      wrapper.innerHTML = '';
-    }
+    wrapper.innerHTML = _buildPathPicker('pg-customvar-' + idx + '-paths', field);
+    _wirePathPickers(wrapper);
   }
 
   // ── Auto Preview (debounced) ──
@@ -1371,29 +1652,39 @@ window.QymPlayground = (function () {
     if (fill) {
       fill.style.transition = 'none';
       fill.style.width = '0%';
+      fill.style.background = '';
       // Force reflow
       void fill.offsetWidth;
-      fill.style.transition = 'width 15s cubic-bezier(0.1, 0.5, 0.2, 1)';
-      fill.style.width = '85%';
+      fill.style.transition = 'width 0.25s ease-out';
     }
     
-    if (progressText) progressText.textContent = 'Analyzing items\u2026';
-    if (subtext) subtext.textContent = 'AI is evaluating root causes. This may take a minute...';
+    if (progressText) progressText.textContent = 'Preparing analysis\u2026';
+    if (subtext) subtext.textContent = 'Starting LLM analysis...';
 
-    fetch(base('api/runs/' + runId + '/analyze'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    .then(function (r) {
-      if (fill) {
-        fill.style.transition = 'width 0.5s ease-out';
-        fill.style.width = '95%';
+    function updateProgress(evt) {
+      var total = Number(evt.total || 0);
+      var completed = Number(evt.completed || 0);
+      var errors = Number(evt.errors || 0);
+      var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      if (fill) fill.style.width = pct + '%';
+      if (progressText) {
+        progressText.textContent = total > 0
+          ? 'Analyzing items: ' + completed + '/' + total + ' (' + pct + '%)'
+          : 'No matching items to analyze';
       }
-      if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Analysis failed'); });
-      return r.json();
-    })
-    .then(function (data) {
+      if (subtext) {
+        if (evt.type === 'started') {
+          subtext.textContent = total > 0
+            ? 'Running up to ' + (evt.concurrency || 20) + ' LLM calls concurrently.'
+            : 'All matching items are already analyzed or filtered out.';
+        } else {
+          var itemText = evt.item_id ? 'Last item: ' + String(evt.item_id).slice(0, 32) : 'Waiting for results...';
+          subtext.textContent = itemText + (errors > 0 ? ' | Errors: ' + errors : '');
+        }
+      }
+    }
+
+    function finishRunAll(data) {
       if (fill) {
         fill.style.transition = 'width 0.3s ease-out';
         fill.style.width = '100%';
@@ -1416,7 +1707,59 @@ window.QymPlayground = (function () {
       setTimeout(function () {
         if (progress) progress.style.display = 'none';
       }, 3000);
+    }
+
+    function readProgressStream(response) {
+      if (!response.body || !window.TextDecoder) {
+        throw new Error('Streaming progress is not supported by this browser.');
+      }
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var finalData = null;
+
+      function consume(text) {
+        buffer += text;
+        var lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(function (line) {
+          if (!line.trim()) return;
+          var evt = JSON.parse(line);
+          if (evt.type === 'started' || evt.type === 'progress') {
+            updateProgress(evt);
+          } else if (evt.type === 'done') {
+            finalData = evt;
+          } else if (evt.type === 'error') {
+            throw new Error(evt.message || 'Analysis failed');
+          }
+        });
+      }
+
+      function pump() {
+        return reader.read().then(function (result) {
+          if (result.done) {
+            if (buffer.trim()) consume('\n');
+            if (!finalData) throw new Error('Analysis ended without a completion event.');
+            return finalData;
+          }
+          consume(decoder.decode(result.value, { stream: true }));
+          return pump();
+        });
+      }
+
+      return pump();
+    }
+
+    fetch(base('api/runs/' + runId + '/analyze-stream'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     })
+    .then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Analysis failed'); });
+      return readProgressStream(r);
+    })
+    .then(finishRunAll)
     .catch(function (err) {
       console.error('Run All error:', err);
       if (progressText) progressText.textContent = 'Failed';

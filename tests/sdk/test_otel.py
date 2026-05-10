@@ -68,6 +68,27 @@ def test_qym_span_processor_emits_only_for_active_stream():
     assert len(stream_a.events) == 1
 
 
+def test_qym_span_processor_tags_metric_usage_scope():
+    processor = QymSpanProcessor()
+    stream = _FakeStream()
+    span = _FakeSpan()
+    span.attributes = dict(span.attributes)
+    span.set_attribute = lambda key, value: span.attributes.__setitem__(key, value)
+    processor.set_stream(stream)
+
+    stream_token = processor.activate_stream()
+    scope_token = otel_module._qym_usage_scope.set("metric")
+    try:
+        processor.on_start(span)
+        processor.on_end(span)
+    finally:
+        otel_module._qym_usage_scope.reset(scope_token)
+        processor.reset_stream(stream_token)
+
+    assert span.attributes["qym.usage_scope"] == "metric"
+    assert stream.events[0][1]["attributes"]["qym.usage_scope"] == "metric"
+
+
 class _FakeRecordingSpan:
     def __init__(self) -> None:
         self.attributes = {}
@@ -82,15 +103,35 @@ class _FakeRecordingSpan:
 def test_openai_enrichment_can_force_override_model(monkeypatch):
     captured = {}
 
+    class _FakeResponse:
+        choices = [{"message": {"role": "assistant", "content": "hello back"}}]
+
+        def __init__(self):
+            self.usage = SimpleNamespace(
+                prompt_tokens=3,
+                completion_tokens=2,
+                total_tokens=5,
+            )
+
+        def model_dump(self, mode="json"):
+            return {
+                "choices": self.choices,
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 2,
+                    "total_tokens": 5,
+                },
+            }
+
     class _FakeCompletions:
         def create(self, *args, **kwargs):
             captured["model"] = kwargs.get("model")
-            return SimpleNamespace(choices=[])
+            return _FakeResponse()
 
     class _FakeAsyncCompletions:
         async def create(self, *args, **kwargs):
             captured["async_model"] = kwargs.get("model")
-            return SimpleNamespace(choices=[])
+            return _FakeResponse()
 
     fake_mod = ModuleType("openai.resources.chat.completions")
     fake_mod.Completions = _FakeCompletions
@@ -98,7 +139,9 @@ def test_openai_enrichment_can_force_override_model(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "openai", ModuleType("openai"))
     monkeypatch.setitem(sys.modules, "openai.resources", ModuleType("openai.resources"))
-    monkeypatch.setitem(sys.modules, "openai.resources.chat", ModuleType("openai.resources.chat"))
+    monkeypatch.setitem(
+        sys.modules, "openai.resources.chat", ModuleType("openai.resources.chat")
+    )
     monkeypatch.setitem(sys.modules, "openai.resources.chat.completions", fake_mod)
 
     span = _FakeRecordingSpan()
@@ -115,7 +158,10 @@ def test_openai_enrichment_can_force_override_model(monkeypatch):
     finally:
         otel_module._forced_llm_model.reset(token)
 
-    assert result.choices == []
+    assert result.choices[0]["message"]["content"] == "hello back"
     assert captured["model"] == "openai/gpt-5.4-mini"
     assert span.attributes["llm.model_name"] == "openai/gpt-5.4-mini"
     assert span.attributes["gen_ai.request.model"] == "openai/gpt-5.4-mini"
+    assert '"hello back"' in span.attributes["output.value"]
+    assert span.attributes["llm.output_messages.0.message.content"] == "hello back"
+    assert span.attributes["llm.token_count.total"] == 5

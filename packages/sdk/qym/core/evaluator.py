@@ -1033,9 +1033,11 @@ class Evaluator:
             )
             # Continue without live UI - TUI will still work
         elif platform_api_key:
-            platform_url = (
-                getattr(self.config, "platform_url", None) or DEFAULT_PLATFORM_URL
-            )
+            from ..utils.env import get_platform_url_env
+
+            platform_url = getattr(
+                self.config, "platform_url", None
+            ) or get_platform_url_env(DEFAULT_PLATFORM_URL)
             if PlatformClient is None:
                 warning_msg = "Platform streaming requires the platform client module"
                 logger.warning(warning_msg)
@@ -2141,8 +2143,10 @@ class Evaluator:
 
         try:
             # Apply wall-clock cap on the metric call itself.
+            usage_scope_token = None
             if self.metric_timeout is not None:
                 try:
+                    usage_scope_token = self._otel.bind_usage_scope("metric")
                     score = await asyncio.wait_for(
                         _run_metric_inner(), timeout=self.metric_timeout
                     )
@@ -2160,8 +2164,14 @@ class Evaluator:
                             "error": f"metric timeout after {self.metric_timeout}s",
                         },
                     }
+                finally:
+                    self._otel.reset_usage_scope(usage_scope_token)
             else:
-                score = await _run_metric_inner()
+                try:
+                    usage_scope_token = self._otel.bind_usage_scope("metric")
+                    score = await _run_metric_inner()
+                finally:
+                    self._otel.reset_usage_scope(usage_scope_token)
 
             # Wrap in MetricResult
             from qym.metrics.result import MetricResult

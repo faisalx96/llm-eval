@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import ast
 import copy
 import inspect
+import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, tuple_
 from sqlalchemy.orm import Session
@@ -33,13 +36,15 @@ from qym_platform.settings import PlatformSettings
 
 router = APIRouter(tags=["analysis"])
 
+MappingSource = Union[str, List[str]]
+
 
 class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
     system_prompt: Optional[str] = None
     additional_instructions: Optional[str] = None
-    custom_variable_mapping: Optional[Dict[str, str]] = None
+    custom_variable_mapping: Optional[Dict[str, MappingSource]] = None
     root_cause_categories: Optional[List[str]] = None
     root_cause_details: Optional[List[str]] = None
     category_details_map: Optional[Dict[str, List[str]]] = None
@@ -47,7 +52,8 @@ class PlaygroundConfig(BaseModel):
     include_fields: Optional[Dict[str, bool]] = None
     correction_ids: Optional[List[int]] = None
     corrections_enabled: bool = True
-    field_mapping: Optional[Dict[str, str]] = None  # e.g. {"input": "input.question", "expected": "expected"}
+    field_mapping: Optional[Dict[str, MappingSource]] = None  # e.g. {"input": "input.question", "expected": "expected"}
+    metadata_fields: Optional[List[str]] = None
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
 
@@ -65,7 +71,7 @@ class AnalyzeRequest(BaseModel):
     domain: Optional[List[str]] = None
     root_cause: Optional[List[str]] = None
     item_ids: Optional[List[str]] = None
-    concurrency: int = Field(default=5, ge=1, le=20)
+    concurrency: int = Field(default=20, ge=1, le=20)
     config: Optional[PlaygroundConfig] = None
 
 
@@ -122,6 +128,8 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
     cfg["corrections_enabled"] = pg.corrections_enabled
     if pg.field_mapping is not None:
         cfg["field_mapping"] = pg.field_mapping
+    if pg.metadata_fields is not None:
+        cfg["metadata_fields"] = pg.metadata_fields
     if pg.additional_instructions is not None:
         cfg["additional_instructions"] = pg.additional_instructions
     if pg.custom_variable_mapping is not None:
@@ -144,6 +152,12 @@ def _rewrite_legacy_metric_metadata_source(source: str) -> str:
     if source.startswith("metric_metadata."):
         return "item_metadata." + source[len("metric_metadata."):]
     return source
+
+
+def _rewrite_legacy_mapping_source(source: Any) -> Any:
+    if isinstance(source, list):
+        return [_rewrite_legacy_metric_metadata_source(str(value)) for value in source]
+    return _rewrite_legacy_metric_metadata_source(str(source))
 
 
 def _adapt_legacy_analyzer_inputs(
@@ -170,16 +184,23 @@ def _adapt_legacy_analyzer_inputs(
     field_mapping = adapted_config.get("field_mapping")
     if isinstance(field_mapping, dict):
         adapted_config["field_mapping"] = {
-            key: _rewrite_legacy_metric_metadata_source(str(source))
+            key: _rewrite_legacy_mapping_source(source)
             for key, source in field_mapping.items()
         }
 
     custom_variable_mapping = adapted_config.get("custom_variable_mapping")
     if isinstance(custom_variable_mapping, dict):
         adapted_config["custom_variable_mapping"] = {
-            key: _rewrite_legacy_metric_metadata_source(str(source))
+            key: _rewrite_legacy_mapping_source(source)
             for key, source in custom_variable_mapping.items()
         }
+
+    metadata_fields = adapted_config.get("metadata_fields")
+    if isinstance(metadata_fields, list):
+        adapted_config["metadata_fields"] = [
+            _rewrite_legacy_metric_metadata_source(str(source))
+            for source in metadata_fields
+        ]
 
     return adapted_item, adapted_config
 
@@ -252,43 +273,87 @@ def _collect_task_root_cause_catalog(
     return all_categories, cat_details_map
 
 
-@router.post("/api/runs/{run_id:path}/analyze")
-async def analyze_run_items(
-    run_id: str,
+def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
+    return {
+        "item_id": result.item_id,
+        "root_cause": result.root_cause,
+        "root_cause_detail": result.root_cause_detail,
+        "root_cause_note": result.root_cause_note,
+        "confidence": result.confidence,
+        "solution": result.solution,
+        "solution_note": result.solution_note,
+        "error": result.error,
+    }
+
+
+def _save_analysis_results(
+    db: Session,
+    run: Run,
+    filtered_items: list[RunItem],
+    results: list[AnalysisResult],
+    principal: Principal,
+) -> tuple[list[Dict[str, Any]], int]:
+    response_results: list[Dict[str, Any]] = []
+    error_count = 0
+
+    for result in results:
+        item = next((i for i in filtered_items if i.item_id == result.item_id), None)
+        if not item:
+            continue
+
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+
+        if result.error:
+            error_count += 1
+            meta["analysis_error"] = result.error
+            item.item_metadata = meta
+        else:
+            if "analysis_error" in meta:
+                meta.pop("analysis_error", None)
+                item.item_metadata = meta
+            apply_root_cause_change(
+                db,
+                run=run,
+                item=item,
+                actor_user_id=principal.user.id if principal.auth_type != "none" else None,
+                actor_source="ai",
+                next_state=build_ai_state(
+                    root_cause=result.root_cause,
+                    root_cause_detail=result.root_cause_detail,
+                    root_cause_note=result.root_cause_note,
+                    confidence=result.confidence,
+                    solution=result.solution,
+                    solution_note=result.solution_note,
+                ),
+            )
+
+        response_results.append(_analysis_result_payload(result))
+
+    db.commit()
+    return response_results, error_count
+
+
+def _filter_analysis_items(
+    run: Run,
     request: AnalyzeRequest,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
-) -> Dict[str, Any]:
-    """Trigger LLM-powered root cause analysis for selected items in a run."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if not can_modify_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
-    llm_config = _get_llm_config(principal)
-
-    all_items, scores_by_item = _load_run_items_and_scores(db, run)
-
-    # Apply filters
+    all_items: list[RunItem],
+    scores_by_item: dict[str, dict[str, RunItemScore]],
+) -> tuple[str | None, list[RunItem]]:
     metric = request.metric or (run.metrics[0] if run.metrics else None)
     filtered_items: list[RunItem] = []
 
     for item in all_items:
         md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
 
-        # Explicit item_ids filter
         if request.item_ids and item.item_id not in request.item_ids:
             continue
 
-        # Never overwrite human labels unless explicitly allowed
         if md.get("root_cause_source") == "human" and not request.allow_human_overwrite:
             continue
 
-        # Skip already-analyzed items if requested
         if request.only_unanalyzed and md.get("root_cause"):
             continue
 
-        # Item filter (pass/fail/errors)
         is_error = bool(item.error)
         if request.item_filter == "errors" and not is_error:
             continue
@@ -306,34 +371,52 @@ async def analyze_run_items(
                 if not score or score.score_numeric is None or score.score_numeric < request.threshold:
                     continue
 
-        # Max score filter
         if request.max_score is not None and metric:
             item_scores = scores_by_item.get(item.item_id, {})
             score = item_scores.get(metric)
             if score and score.score_numeric is not None and score.score_numeric > request.max_score:
                 continue
 
-        # Complexity filter
         if request.complexity is not None:
             item_complexity = str(md.get("complexity", "")).lower()
             if item_complexity not in [c.lower() for c in request.complexity]:
                 continue
 
-        # Domain filter
         if request.domain is not None:
             item_domain = str(md.get("domain", "")).lower()
             if item_domain not in [d.lower() for d in request.domain]:
                 continue
 
-        # Root cause filter
         if request.root_cause is not None:
             item_rc = md.get("root_cause", "")
             if "__none__" in request.root_cause and not item_rc:
-                pass  # include items with no root cause
+                pass
             elif item_rc not in request.root_cause:
                 continue
 
         filtered_items.append(item)
+
+    return metric, filtered_items
+
+
+@router.post("/api/runs/{run_id:path}/analyze")
+async def analyze_run_items(
+    run_id: str,
+    request: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Trigger LLM-powered root cause analysis for selected items in a run."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    llm_config = _get_llm_config(principal)
+
+    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+
+    metric, filtered_items = _filter_analysis_items(run, request, all_items, scores_by_item)
 
     if not filtered_items:
         return {"total_analyzed": 0, "results": [], "errors": 0}
@@ -382,59 +465,161 @@ async def analyze_run_items(
     results: list[AnalysisResult] = await analyze_items_batch(**batch_kwargs)
 
     # Save results to item_metadata and revision history
-    response_results = []
-    error_count = 0
-    for result in results:
-        item = next((i for i in filtered_items if i.item_id == result.item_id), None)
-        if not item:
-            continue
-
-        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-
-        if result.error:
-            error_count += 1
-            meta["analysis_error"] = result.error
-            item.item_metadata = meta
-        else:
-            if "analysis_error" in meta:
-                meta.pop("analysis_error", None)
-                item.item_metadata = meta
-            apply_root_cause_change(
-                db,
-                run=run,
-                item=item,
-                actor_user_id=principal.user.id if principal.auth_type != "none" else None,
-                actor_source="ai",
-                next_state=build_ai_state(
-                    root_cause=result.root_cause,
-                    root_cause_detail=result.root_cause_detail,
-                    root_cause_note=result.root_cause_note,
-                    confidence=result.confidence,
-                    solution=result.solution,
-                    solution_note=result.solution_note,
-                ),
-            )
-
-        response_results.append(
-            {
-                "item_id": result.item_id,
-                "root_cause": result.root_cause,
-                "root_cause_detail": result.root_cause_detail,
-                "root_cause_note": result.root_cause_note,
-                "confidence": result.confidence,
-                "solution": result.solution,
-                "solution_note": result.solution_note,
-                "error": result.error,
-            }
-        )
-
-    db.commit()
+    response_results, error_count = _save_analysis_results(
+        db,
+        run,
+        filtered_items,
+        results,
+        principal,
+    )
 
     return {
         "total_analyzed": len(results),
         "results": response_results,
         "errors": error_count,
     }
+
+
+@router.post("/api/runs/{run_id:path}/analyze-stream")
+async def analyze_run_items_stream(
+    run_id: str,
+    request: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> StreamingResponse:
+    """Stream LLM-powered root cause analysis progress for selected items."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    llm_config = _get_llm_config(principal)
+
+    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    metric, filtered_items = _filter_analysis_items(run, request, all_items, scores_by_item)
+
+    async def stream_events():
+        def encode(event: Dict[str, Any]) -> str:
+            return json.dumps(event, ensure_ascii=False) + "\n"
+
+        total = len(filtered_items)
+        yield encode(
+            {
+                "type": "started",
+                "total": total,
+                "completed": 0,
+                "errors": 0,
+                "concurrency": request.concurrency,
+            }
+        )
+
+        if not filtered_items:
+            yield encode({"type": "done", "total_analyzed": 0, "results": [], "errors": 0})
+            return
+
+        analyzer_config = _playground_config_to_analyzer(request.config)
+        cfg_ids = (analyzer_config or {}).get("correction_ids")
+        corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
+
+        items_with_scores = [
+            (item, scores_by_item.get(item.item_id, {})) for item in filtered_items
+        ]
+
+        client = build_client(llm_config)
+        model = llm_config.get("llm_model", "gpt-4o-mini")
+        batch_items = items_with_scores
+        batch_config = analyzer_config
+        if not _supports_metric_name_arg(analyze_items_batch):
+            adapted_items: list[tuple[RunItem, dict[str, RunItemScore]]] = []
+            for item, item_scores in items_with_scores:
+                adapted_item, batch_config = _adapt_legacy_analyzer_inputs(
+                    item,
+                    item_scores,
+                    batch_config,
+                    metric,
+                )
+                adapted_items.append((adapted_item, item_scores))
+            batch_items = adapted_items
+
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        progress_errors = 0
+
+        async def on_progress(result: AnalysisResult, completed: int, total_count: int) -> None:
+            nonlocal progress_errors
+            if result.error:
+                progress_errors += 1
+            await queue.put(
+                {
+                    "type": "progress",
+                    "completed": completed,
+                    "total": total_count,
+                    "errors": progress_errors,
+                    "item_id": result.item_id,
+                    "root_cause": result.root_cause,
+                    "root_cause_detail": result.root_cause_detail,
+                    "error": result.error,
+                }
+            )
+
+        async def run_batch() -> None:
+            try:
+                batch_kwargs = dict(
+                    client=client,
+                    model=model,
+                    items=batch_items,
+                    corrections=corrections,
+                    concurrency=request.concurrency,
+                    config=batch_config,
+                    temperature=request.config.temperature if request.config else None,
+                    max_tokens=request.config.max_tokens if request.config else None,
+                    progress_callback=on_progress,
+                )
+                if _supports_metric_name_arg(analyze_items_batch):
+                    batch_kwargs["metric_name"] = metric
+                results: list[AnalysisResult] = await analyze_items_batch(**batch_kwargs)
+                await queue.put({"type": "_complete", "results": results})
+            except Exception as exc:
+                logger_msg = f"Analysis stream failed for run {run_id}: {exc}"
+                await queue.put({"type": "error", "message": logger_msg})
+
+        batch_task = asyncio.create_task(run_batch())
+        try:
+            while True:
+                event = await queue.get()
+                if event.get("type") == "_complete":
+                    results = event["results"]
+                    try:
+                        response_results, error_count = _save_analysis_results(
+                            db,
+                            run,
+                            filtered_items,
+                            results,
+                            principal,
+                        )
+                    except Exception as exc:
+                        yield encode({"type": "error", "message": f"Failed to save analysis results: {exc}"})
+                        break
+                    yield encode(
+                        {
+                            "type": "done",
+                            "total_analyzed": len(results),
+                            "results": response_results,
+                            "errors": error_count,
+                        }
+                    )
+                    break
+                yield encode(event)
+                if event.get("type") == "error":
+                    break
+        finally:
+            if not batch_task.done():
+                batch_task.cancel()
+
+    return StreamingResponse(
+        stream_events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/api/runs/{run_id:path}/analyze-preview")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qym"
-version = "1.0.1"
+version = "1.0.4"
 description = "Simple, automated LLM evaluation framework built on Langfuse"
 readme = "README.md"
 license = {text = "MIT"}

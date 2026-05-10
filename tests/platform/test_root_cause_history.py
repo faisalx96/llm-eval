@@ -721,8 +721,187 @@ def test_build_analysis_prompt_resolves_custom_variable_from_selected_metric_met
     )
 
     assert any("Use signal: bad join" in message["content"] for message in messages)
-    assert any("METRIC METADATA (accuracy)" in message["content"] for message in messages)
+    assert any("METRIC METADATA:" in message["content"] for message in messages)
+    assert any('"accuracy": {' in message["content"] for message in messages)
     assert any('"judge": "llm"' in message["content"] for message in messages)
+
+
+def test_build_analysis_prompt_projects_nested_output_mapping() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        expected={"answer": "expected"},
+        output={
+            "answer": "actual",
+            "debug": {"retrieval": {"matched": False}, "tokens": 42},
+            "ignored": "noise",
+        },
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={
+            "field_mapping": {
+                "output": [
+                    "output.answer",
+                    "output.debug.retrieval.matched",
+                ],
+            },
+        },
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert '"answer": "actual"' in user_content
+    assert '"matched": false' in user_content
+    assert "ignored" not in user_content
+    assert '"tokens": 42' not in user_content
+
+
+def test_build_analysis_prompt_projects_python_literal_output_string() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        output='{\'sql\': "select \'x\' as value", \'agent_response\': \'done\', \'debug\': {\'rows\': 3}}',
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={"field_mapping": {"output": ["output.sql", "output.agent_response"]}},
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert '"sql": "select \'x\' as value"' in user_content
+    assert '"agent_response": "done"' in user_content
+    assert "debug" not in user_content
+
+
+def test_build_analysis_prompt_projects_nested_metric_metadata() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        output={"answer": "actual"},
+    )
+    score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="accuracy",
+        score_numeric=0.2,
+        meta={
+            "reason": "bad join",
+            "rubric": {"coverage": {"missing": ["city"]}, "unused": True},
+        },
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {"accuracy": score},
+        [],
+        config={
+            "metadata_fields": [
+                "metric_metadata.reason",
+                "metric_metadata.rubric.coverage.missing",
+            ],
+        },
+        metric_name="accuracy",
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert "METRIC METADATA:" in user_content
+    assert '"reason": "bad join"' in user_content
+    assert '"missing": [' in user_content
+    assert "unused" not in user_content
+
+
+def test_build_analysis_prompt_projects_metric_metadata_by_metric_name() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        output={"answer": "actual"},
+    )
+    accuracy = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="judge.accuracy",
+        score_numeric=0.2,
+        meta={"reason": "bad join", "rubric": {"missing": "city"}},
+    )
+    format_score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="format",
+        score_numeric=1.0,
+        meta={"reason": "valid json"},
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {"judge.accuracy": accuracy, "format": format_score},
+        [],
+        config={
+            "metadata_fields": [
+                "metric_metadata:judge%2Eaccuracy.reason",
+                "metric_metadata:format.reason",
+            ],
+        },
+        metric_name="judge.accuracy",
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert '"judge.accuracy": {' in user_content
+    assert '"reason": "bad join"' in user_content
+    assert '"format": {' in user_content
+    assert '"reason": "valid json"' in user_content
+    assert "missing" not in user_content
+
+
+def test_build_analysis_prompt_includes_all_metric_metadata_by_default() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        output={"answer": "actual"},
+    )
+    accuracy = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="accuracy",
+        score_numeric=0.2,
+        meta={"reason": "bad join"},
+    )
+    format_score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="format",
+        score_numeric=1.0,
+        meta={"reason": "valid json"},
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {"accuracy": accuracy, "format": format_score},
+        [],
+        metric_name="accuracy",
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert "METRIC METADATA:" in user_content
+    assert '"accuracy": {' in user_content
+    assert '"format": {' in user_content
+    assert '"reason": "bad join"' in user_content
+    assert '"reason": "valid json"' in user_content
 
 
 def test_task_root_cause_catalog_includes_defaults_and_task_history(db_session: Session) -> None:

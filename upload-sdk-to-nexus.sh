@@ -110,13 +110,72 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Upload
-echo -e "\n${GREEN}[3/4] Uploading via twine (--skip-existing)...${NC}"
-TWINE_USERNAME="$NEXUS_USER" TWINE_PASSWORD="$NEXUS_PASS" \
-"$PY" -m twine upload \
-    --skip-existing \
-    --repository-url "$NEXUS_URL" \
-    "${WHEELS[@]}" "${SDISTS[@]}"
+# Upload one file at a time. Nexus PyPI auth is per-request and twine's batched
+# upload sometimes drops auth on subsequent files (showing as 401). Per-file
+# uploads also let us continue past a single "already exists" 400 instead of
+# aborting the whole batch.
+echo -e "\n${GREEN}[3/4] Uploading via twine (one file at a time, with retries)...${NC}"
+
+UPLOADED=()
+SKIPPED=()
+FAILED=()
+ALL_FILES=( "${WHEELS[@]}" "${SDISTS[@]}" )
+
+upload_one() {
+    local file="$1"
+    local name attempt rc log
+    name="$(basename "$file")"
+    for attempt in 1 2 3; do
+        log="$(mktemp)"
+        if TWINE_USERNAME="$NEXUS_USER" TWINE_PASSWORD="$NEXUS_PASS" \
+            "$PY" -m twine upload --disable-progress-bar \
+                --repository-url "$NEXUS_URL" \
+                "$file" >"$log" 2>&1; then
+            rm -f "$log"
+            return 0
+        fi
+        rc=$?
+        # Treat "file already exists" as success — Nexus returns 400 on duplicates.
+        if grep -qiE '400.*already|file.*already.*exists|already.*been.*uploaded|reason: bad request' "$log"; then
+            cat "$log" >&2
+            rm -f "$log"
+            return 2
+        fi
+        echo -e "${YELLOW}  attempt ${attempt} failed for ${name} (exit ${rc}); retrying...${NC}" >&2
+        cat "$log" >&2
+        rm -f "$log"
+        sleep 2
+    done
+    return 1
+}
+
+for f in "${ALL_FILES[@]}"; do
+    name="$(basename "$f")"
+    echo -e "  → uploading ${name}"
+    if upload_one "$f"; then
+        UPLOADED+=( "$name" )
+        echo -e "    ${GREEN}OK${NC}"
+    else
+        rc=$?
+        if [[ "$rc" -eq 2 ]]; then
+            SKIPPED+=( "$name" )
+            echo -e "    ${YELLOW}already exists on Nexus, skipped${NC}"
+        else
+            FAILED+=( "$name" )
+            echo -e "    ${RED}FAILED after retries${NC}"
+        fi
+    fi
+done
+
+echo ""
+echo "Upload summary:"
+echo "  uploaded: ${#UPLOADED[@]}"
+echo "  skipped:  ${#SKIPPED[@]}  (already on Nexus)"
+echo "  failed:   ${#FAILED[@]}"
+if (( ${#FAILED[@]} > 0 )); then
+    echo -e "${RED}Failed files:${NC}"
+    for f in "${FAILED[@]}"; do echo "  - $f"; done
+fi
 
 # Verify (assumes the index URL is the upload URL with /simple/ appended)
 INDEX_URL="${NEXUS_URL}simple/"
@@ -132,7 +191,15 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}=== Done ===${NC}"
+if (( ${#FAILED[@]} > 0 )); then
+    echo -e "${RED}=== Done with errors (${#FAILED[@]} file(s) failed) ===${NC}"
+else
+    echo -e "${GREEN}=== Done ===${NC}"
+fi
 echo ""
 echo "Users can install with:"
 echo "  pip install qym --index-url ${INDEX_URL} --trusted-host $(echo "$NEXUS_URL" | awk -F/ '{print $3}')"
+
+if (( ${#FAILED[@]} > 0 )); then
+    exit 1
+fi

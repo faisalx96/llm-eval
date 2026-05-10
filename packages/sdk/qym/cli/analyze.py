@@ -16,7 +16,7 @@ analyze_app = typer.Typer(help="AI-powered root cause analysis.")
 @analyze_app.command("run")
 def analyze_run(
     run_id: str = typer.Argument(help="Run ID to analyze"),
-    concurrency: int = typer.Option(5, help="Parallel analysis threads"),
+    concurrency: int = typer.Option(20, help="Parallel analysis threads"),
 ) -> None:
     """Trigger AI root-cause analysis on a run's items."""
     client = PlatformAPIClient()

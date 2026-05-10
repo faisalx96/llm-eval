@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
+  <link rel="stylesheet" href="./static/dashboard.css?v=variable-mapping-20260510">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js"></script>
   <script src="./static/metrics.js"></script>
   <script src="./static/trace_viewer.js"></script>
-  <script src="./static/playground.js"></script>
+  <script src="./static/playground.js?v=variable-mapping-20260510"></script>
   <style>
     /* Compare-specific styles */
     .compare-container {
@@ -64,7 +64,7 @@
     }
 
     .compare-shared-controls {
-      margin-bottom: var(--space-lg);
+      margin-bottom: 0;
     }
 
     .compare-cohort-banner {
@@ -1211,6 +1211,24 @@
       font-weight: 600;
       color: var(--text-primary);
       margin-bottom: var(--space-md);
+    }
+
+    .comparison-overview-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+      flex-wrap: wrap;
+    }
+
+    .comparison-overview-heading .section-title {
+      margin-bottom: 0;
+    }
+
+    .comparison-overview-heading .metric-tabs-row {
+      justify-content: flex-end;
+      margin-bottom: 0;
     }
 
     .stats-grid {
@@ -4194,17 +4212,6 @@
 
       <div class="compare-cohort-banner" id="compare-cohort-banner"></div>
 
-      <div class="compare-shared-controls" id="compare-shared-controls">
-        <div class="metric-tabs-row">
-          <div class="metric-tabs" id="overview-metric-tabs"></div>
-          <div class="threshold-control" id="threshold-control" style="display: none;">
-            <span class="threshold-label">Pass if ≥</span>
-            <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-            <span class="threshold-value" id="threshold-value">80%</span>
-          </div>
-        </div>
-      </div>
-
       <div class="compare-page-panel active" id="compare-main-panel">
         <!-- Run summaries -->
         <div class="compare-summary" id="run-summaries"></div>
@@ -4219,7 +4226,19 @@
         </div>
 
         <!-- Comparison Statistics -->
-        <h3 class="section-title">Comparison Overview</h3>
+        <div class="comparison-overview-heading">
+          <h3 class="section-title">Comparison Overview</h3>
+          <div class="compare-shared-controls" id="compare-shared-controls">
+            <div class="metric-tabs-row">
+              <div class="metric-tabs" id="overview-metric-tabs"></div>
+              <div class="threshold-control" id="threshold-control" style="display: none;">
+                <span class="threshold-label">Pass if ≥</span>
+                <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+                <span class="threshold-value" id="threshold-value">80%</span>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="comparison-stats" id="comparison-stats">
           <div class="stats-grid" id="stats-grid"></div>
         </div>
@@ -7867,11 +7886,11 @@
             { key: 'avg_llm_calls',  label: '\u26A1 LLM Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
             { key: 'avg_tool_calls', label: '\u26A1 Tool Calls',  fmt: v => v != null ? v.toFixed(1) : '\u2014', best: 'low' },
             { key: 'tool_success_rate', label: '\u26A1 Tool Success Rate', fmt: v => v != null ? (v * 100).toFixed(1) + '%' : '\u2014', best: 'high' },
-            { key: 'avg_llm_ms', label: '\u26A1 Avg LLM ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
-            { key: 'avg_tool_ms', label: '\u26A1 Avg Tool ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
-            { key: 'avg_retriever_ms', label: '\u26A1 Avg Retriever ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
-            { key: 'avg_evaluator_ms', label: '\u26A1 Avg Evaluator ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
-            { key: 'avg_top_level_chain_ms', label: '\u26A1 Avg Top-Level Chain ms', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_llm_ms', label: '\u26A1 Avg LLM Latency', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_tool_ms', label: '\u26A1 Avg Tool Latency', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_retriever_ms', label: '\u26A1 Avg Retriever Latency', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_evaluator_ms', label: '\u26A1 Avg Evaluator Latency', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
+            { key: 'avg_top_level_chain_ms', label: '\u26A1 Avg Trace Latency', fmt: v => v != null ? formatLatency(v) : '\u2014', best: 'low' },
           ];
           for (const td of traceDefs) {
             const vals = state.runs.map(r => {
@@ -11224,6 +11243,7 @@
                       error: r.error,
                       item_metadata: r.item_metadata,
                       metric_metadata: metric ? ((r.metric_meta || {})[metric] || {}) : {},
+                      metric_metadata_by_metric: r.metric_meta || {},
                       scores: r.scores || {},
                       metric_score: metric && r[metric] != null ? parseFloat(r[metric]) : null,
                   };

@@ -51,6 +51,20 @@
     .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
 
     .message { color: var(--accent-primary); font-size: var(--font-sm); padding: 0 var(--space-lg); min-height: 20px; }
+
+    .edit-user-body { display: flex; flex-direction: column; gap: var(--space-md); }
+    .edit-user-body .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .edit-user-body .form-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .edit-user-body .form-input,
+    .edit-user-body .form-select {
+      width: 100%; box-sizing: border-box;
+      background: var(--bg-elevated); border: 1px solid var(--border-default);
+      border-radius: 6px; padding: var(--space-sm) var(--space-md);
+      color: var(--text-primary); font-size: var(--font-sm); font-family: var(--font-sans);
+    }
+    .edit-user-checkbox { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--font-sm); color: var(--text-secondary); cursor: pointer; }
+    .edit-user-error { color: var(--error); font-size: var(--font-xs); min-height: 16px; }
+    .self-warning { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); font-size: var(--font-xs); color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -98,6 +112,42 @@
     </div>
   </main>
 
+  <div class="modal" id="edit-user-modal" style="display:none">
+    <div class="modal-content" style="max-width:440px">
+      <div class="modal-header">
+        <h2>Edit User</h2>
+        <button class="modal-close" type="button" id="edit-user-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body edit-user-body">
+        <div class="form-group">
+          <label class="form-label" for="edit-user-email">Email</label>
+          <input class="form-input" id="edit-user-email" type="email" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-user-name">Display Name</label>
+          <input class="form-input" id="edit-user-name" type="text" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="edit-user-role">Role</label>
+          <select class="form-select" id="edit-user-role">
+            <option value="MEMBER">Member</option>
+            <option value="ADMIN">Admin</option>
+          </select>
+        </div>
+        <label class="edit-user-checkbox">
+          <input type="checkbox" id="edit-user-active" />
+          <span>Active</span>
+        </label>
+        <div id="edit-user-self-note" class="self-warning" style="display:none">You are editing your own account. The role selector is locked to prevent locking yourself out.</div>
+        <div class="edit-user-error" id="edit-user-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" id="edit-user-cancel">Cancel</button>
+        <button class="btn btn-primary" type="button" id="edit-user-save">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     (() => {
       'use strict';
@@ -113,7 +163,7 @@
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
-      let state = { users: [], projects: [] };
+      let state = { users: [], projects: [], me: null, editingUserId: null };
 
       async function fetchJson(path, options) {
         const res = await fetch(apiUrl(path), options);
@@ -130,6 +180,7 @@
           fetchJson('v1/projects'),
         ]);
         if (!me || me.role !== 'ADMIN') throw new Error('Admin access required');
+        state.me = me;
         state.users = users || [];
         state.projects = (projectsPayload && projectsPayload.projects) || [];
 
@@ -203,11 +254,90 @@
             }
           });
         });
+
+        document.querySelectorAll('[data-user-edit]').forEach(btn => {
+          btn.addEventListener('click', () => openEditUserModal(btn.dataset.userEdit));
+        });
+      }
+
+      function openEditUserModal(userId) {
+        const user = state.users.find(u => u.id === userId);
+        if (!user) return;
+        state.editingUserId = userId;
+
+        const isSelf = state.me && state.me.id === userId;
+        document.getElementById('edit-user-email').value = user.email || '';
+        document.getElementById('edit-user-name').value = user.display_name || '';
+        const roleSelect = document.getElementById('edit-user-role');
+        roleSelect.value = user.role === 'ADMIN' ? 'ADMIN' : 'MEMBER';
+        roleSelect.disabled = isSelf;
+        const activeCheckbox = document.getElementById('edit-user-active');
+        activeCheckbox.checked = !!user.is_active;
+        activeCheckbox.disabled = isSelf;
+        document.getElementById('edit-user-self-note').style.display = isSelf ? 'block' : 'none';
+        document.getElementById('edit-user-error').textContent = '';
+        document.getElementById('edit-user-modal').style.display = 'flex';
+      }
+
+      function closeEditUserModal() {
+        document.getElementById('edit-user-modal').style.display = 'none';
+        state.editingUserId = null;
+      }
+
+      async function saveEditUser() {
+        if (!state.editingUserId) return;
+        const errEl = document.getElementById('edit-user-error');
+        errEl.textContent = '';
+
+        const email = document.getElementById('edit-user-email').value.trim();
+        const displayName = document.getElementById('edit-user-name').value.trim();
+        const role = document.getElementById('edit-user-role').value;
+        const isActive = document.getElementById('edit-user-active').checked;
+
+        if (!email) { errEl.textContent = 'Email is required'; return; }
+
+        const saveBtn = document.getElementById('edit-user-save');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        try {
+          const body = { email, display_name: displayName, role, is_active: isActive };
+          const isSelf = state.me && state.me.id === state.editingUserId;
+          if (isSelf) {
+            delete body.role;
+            delete body.is_active;
+          }
+          await fetchJson(`v1/admin/users/${state.editingUserId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          closeEditUserModal();
+          const msgEl = document.getElementById('user-message');
+          if (msgEl) { msgEl.style.color = ''; msgEl.textContent = 'User updated'; }
+          await load();
+        } catch (err) {
+          errEl.textContent = err.message || 'Failed to update user';
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Changes';
+        }
       }
 
       document.getElementById('admin-new-project-btn').addEventListener('click', () => {
         if (window.QymShell && window.QymShell.openCreateProjectDialog) {
           window.QymShell.openCreateProjectDialog();
+        }
+      });
+
+      document.getElementById('edit-user-close').addEventListener('click', closeEditUserModal);
+      document.getElementById('edit-user-cancel').addEventListener('click', closeEditUserModal);
+      document.getElementById('edit-user-save').addEventListener('click', saveEditUser);
+      document.getElementById('edit-user-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeEditUserModal();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('edit-user-modal').style.display === 'flex') {
+          closeEditUserModal();
         }
       });
 

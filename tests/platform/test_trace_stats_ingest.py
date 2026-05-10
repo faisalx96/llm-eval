@@ -22,7 +22,17 @@ if "openai" not in sys.modules:
 from qym_platform.app import create_app
 from qym_platform.api.ingest import _refresh_live_trace_stats, _store_trace_stats
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, Project, Run, RunItem, RunTraceAggregate, RunWorkflowStatus, Span, User, UserRole
+from qym_platform.db.models import (
+    ApiKey,
+    Project,
+    Run,
+    RunItem,
+    RunTraceAggregate,
+    RunWorkflowStatus,
+    Span,
+    User,
+    UserRole,
+)
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
 
@@ -38,7 +48,9 @@ def _seed_owner_and_run(
     run_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> tuple[Project, Run]:
     user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-    project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+    project = Project(
+        id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id
+    )
     api_key = ApiKey(
         id="key-1",
         user_id=user.id,
@@ -77,7 +89,12 @@ def test_store_trace_stats_omits_avg_cost():
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-1",
                 project_id=project.id,
@@ -181,6 +198,355 @@ def test_store_trace_stats_omits_avg_cost():
         engine.dispose()
 
 
+def test_store_trace_stats_excludes_metric_llm_spans():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    try:
+        with SessionLocal() as session:
+            user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
+            run = Run(
+                id="run-1",
+                project_id=project.id,
+                created_by_user_id=user.id,
+                owner_user_id=user.id,
+                task="trace-task",
+                dataset="dataset-1",
+                status=RunWorkflowStatus.COMPLETED,
+                metrics=[],
+                run_metadata={},
+                run_config={},
+            )
+            item = RunItem(
+                run_id=run.id,
+                item_id="item-1",
+                index=0,
+                input={"prompt": "hi"},
+                output={"answer": "ok"},
+                item_metadata={},
+                trace_id="trace-1",
+            )
+            spans = [
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-task-llm",
+                    parent_span_id=None,
+                    name="openai.chat.task",
+                    kind="CLIENT",
+                    duration_ms=1.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 120,
+                        "llm.token_count.completion_details.reasoning": 9,
+                    },
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-metric-llm",
+                    parent_span_id=None,
+                    name="openai.chat.metric",
+                    kind="CLIENT",
+                    duration_ms=1.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 999,
+                        "llm.token_count.completion_details.reasoning": 77,
+                        "qym.usage_scope": "metric",
+                    },
+                    events=[],
+                ),
+            ]
+            session.add_all([user, project, run, item, *spans])
+            session.commit()
+
+            _store_trace_stats(session, run)
+            session.commit()
+            session.refresh(run)
+            session.refresh(item)
+
+            trace_stats = run.run_metadata["trace_stats"]
+            assert trace_stats["avg_tokens"] == 120
+            assert trace_stats["avg_llm_calls"] == 1
+            assert trace_stats["avg_reasoning_tokens"] == 9
+            assert item.item_metadata["trace_stats"]["tokens"] == 120
+            assert item.item_metadata["trace_stats"]["llm_calls"] == 1
+            assert item.item_metadata["trace_stats"]["reasoning_tokens"] == 9
+    finally:
+        engine.dispose()
+
+
+def test_store_trace_stats_excludes_eval_metrics_descendant_spans():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    try:
+        with SessionLocal() as session:
+            user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
+            run = Run(
+                id="run-1",
+                project_id=project.id,
+                created_by_user_id=user.id,
+                owner_user_id=user.id,
+                task="trace-task",
+                dataset="dataset-1",
+                status=RunWorkflowStatus.COMPLETED,
+                metrics=[],
+                run_metadata={},
+                run_config={},
+            )
+            item = RunItem(
+                run_id=run.id,
+                item_id="item-1",
+                index=0,
+                input={"prompt": "hi"},
+                output={"answer": "ok"},
+                item_metadata={},
+                trace_id="trace-1",
+            )
+            spans = [
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-task-llm",
+                    parent_span_id=None,
+                    name="openai.chat.task",
+                    kind="CLIENT",
+                    duration_ms=1.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 120,
+                    },
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-eval-metrics",
+                    parent_span_id=None,
+                    name="eval_metrics",
+                    kind="INTERNAL",
+                    duration_ms=10.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "EVALUATOR"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-metric-chain",
+                    parent_span_id="span-eval-metrics",
+                    name="judge-chain",
+                    kind="INTERNAL",
+                    duration_ms=5.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-metric-llm",
+                    parent_span_id="span-metric-chain",
+                    name="openai.chat.metric",
+                    kind="CLIENT",
+                    duration_ms=1.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 999,
+                    },
+                    events=[],
+                ),
+            ]
+            session.add_all([user, project, run, item, *spans])
+            session.commit()
+
+            _store_trace_stats(session, run)
+            session.commit()
+            session.refresh(run)
+            session.refresh(item)
+
+            trace_stats = run.run_metadata["trace_stats"]
+            assert trace_stats["avg_tokens"] == 120
+            assert trace_stats["avg_llm_calls"] == 1
+            assert item.item_metadata["trace_stats"]["tokens"] == 120
+            assert item.item_metadata["trace_stats"]["llm_calls"] == 1
+    finally:
+        engine.dispose()
+
+
+def test_store_trace_stats_tracks_named_outer_scope_parent_span_averages():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    try:
+        with SessionLocal() as session:
+            user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
+            run = Run(
+                id="run-1",
+                project_id=project.id,
+                created_by_user_id=user.id,
+                owner_user_id=user.id,
+                task="trace-task",
+                dataset="dataset-1",
+                status=RunWorkflowStatus.COMPLETED,
+                metrics=[],
+                run_metadata={},
+                run_config={},
+            )
+            item = RunItem(
+                run_id=run.id,
+                item_id="item-1",
+                index=0,
+                input={"prompt": "hi"},
+                output={"answer": "ok"},
+                item_metadata={},
+                trace_id="trace-1",
+            )
+            spans = [
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-item-root",
+                    parent_span_id=None,
+                    name="eval-spider2-lite-sqlite-item-0-attempt-1",
+                    kind="INTERNAL",
+                    duration_ms=41900.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-task-root",
+                    parent_span_id="span-item-root",
+                    name="spider2_sqlite_task",
+                    kind="INTERNAL",
+                    duration_ms=41100.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-task-llm",
+                    parent_span_id="span-task-root",
+                    name="ChatCompletion",
+                    kind="CLIENT",
+                    duration_ms=2600.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 524,
+                    },
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-postprocess-root",
+                    parent_span_id="span-item-root",
+                    name="postprocess_scope",
+                    kind="INTERNAL",
+                    duration_ms=3000.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-eval-metrics",
+                    parent_span_id="span-item-root",
+                    name="eval_metrics",
+                    kind="INTERNAL",
+                    duration_ms=739.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "EVALUATOR"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-1",
+                    span_id="span-metric-llm",
+                    parent_span_id="span-eval-metrics",
+                    name="ChatCompletion",
+                    kind="CLIENT",
+                    duration_ms=9000.0,
+                    status="OK",
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 99999,
+                    },
+                    events=[],
+                ),
+            ]
+            session.add_all([user, project, run, item, *spans])
+            session.commit()
+
+            _store_trace_stats(session, run)
+            session.commit()
+            session.refresh(run)
+            session.refresh(item)
+
+            trace_stats = run.run_metadata["trace_stats"]
+            assert trace_stats["avg_tokens"] == 524
+            assert trace_stats["avg_llm_calls"] == 1
+            assert trace_stats["avg_llm_ms"] == 2600.0
+            assert trace_stats["avg_evaluator_ms"] == 739.0
+            assert trace_stats["outer_scope_parent_spans"] == [
+                {"name": "spider2_sqlite_task", "avg_ms": 41100.0, "count": 1},
+                {"name": "postprocess_scope", "avg_ms": 3000.0, "count": 1},
+            ]
+            assert item.item_metadata["trace_stats"]["outer_scope_parent_spans"] == [
+                {"name": "spider2_sqlite_task", "avg_ms": 41100.0, "count": 1},
+                {"name": "postprocess_scope", "avg_ms": 3000.0, "count": 1},
+            ]
+    finally:
+        engine.dispose()
+
+
 def test_store_trace_stats_includes_average_span_type_latency_metrics():
     engine = create_engine(
         "sqlite://",
@@ -193,7 +559,12 @@ def test_store_trace_stats_includes_average_span_type_latency_metrics():
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-latency-metrics",
                 project_id=project.id,
@@ -229,7 +600,10 @@ def test_store_trace_stats_includes_average_span_type_latency_metrics():
                     end_time_ns=2,
                     duration_ms=120.0,
                     status="OK",
-                    attributes={"openinference.span.kind": "LLM", "llm.token_count.total": 123},
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 123,
+                    },
                     events=[],
                 ),
                 Span(
@@ -368,7 +742,12 @@ def test_store_trace_stats_counts_malformed_tool_call_as_tool_error():
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-malformed",
                 project_id=project.id,
@@ -442,7 +821,12 @@ def test_store_trace_stats_includes_malformed_tool_calls_in_success_denominator(
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-mixed-tool-attempts",
                 project_id=project.id,
@@ -532,7 +916,12 @@ def test_store_trace_stats_counts_response_classification_on_agent_spans():
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-agent-classification",
                 project_id=project.id,
@@ -639,47 +1028,70 @@ def test_live_trace_stats_update_before_run_completed():
         with SessionLocal() as session:
             _seed_owner_and_run(session, token="test-token", run_id=run_id)
 
-        body = "\n".join(
-            [
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000011",'
-                    '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
-                    '"expected":null,"item_metadata":{}}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000012",'
-                    '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
-                    '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1234}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000013",'
-                    '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
-                    f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
-                    '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
-                    '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":120,'
-                    '"llm.cost.total":0.3,"llm.token_count.completion_details.reasoning":9,'
-                    '"gen_ai.completion.0.reasoning":"Reasoning summary"},"events":[],"links":[]}}'
-                ),
-            ]
-        ) + "\n"
+        body = (
+            "\n".join(
+                [
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000011",'
+                        '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
+                        '"expected":null,"item_metadata":{}}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000012",'
+                        '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
+                        '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1234}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000013",'
+                        '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
+                        '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":120,'
+                        '"llm.cost.total":0.3,"llm.token_count.completion_details.reasoning":9,'
+                        '"gen_ai.completion.0.reasoning":"Reasoning summary"},"events":[],"links":[]}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000014",'
+                        '"sequence":4,"sent_at":"2026-04-10T00:00:02Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-metric","parent_span_id":null,'
+                        '"name":"openai.chat.metric","kind":"CLIENT","start_time_ns":3,"end_time_ns":4,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":999,'
+                        '"llm.token_count.completion_details.reasoning":77,"qym.usage_scope":"metric"},'
+                        '"events":[],"links":[]}}'
+                    ),
+                ]
+            )
+            + "\n"
+        )
 
         with TestClient(app) as client:
             ingest_response = client.post(
                 f"/v1/runs/{run_id}/events",
-                headers={**_auth_headers("test-token"), "Content-Type": "application/x-ndjson"},
+                headers={
+                    **_auth_headers("test-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
                 content=body,
             )
             assert ingest_response.status_code == 200
 
         with SessionLocal() as session:
             run = session.query(Run).filter(Run.id == run_id).first()
-            item = session.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == "item-1").first()
-            agg = session.query(RunTraceAggregate).filter(
-                RunTraceAggregate.run_id == run_id,
-                RunTraceAggregate.trace_id == "trace-1",
-            ).first()
+            item = (
+                session.query(RunItem)
+                .filter(RunItem.run_id == run_id, RunItem.item_id == "item-1")
+                .first()
+            )
+            agg = (
+                session.query(RunTraceAggregate)
+                .filter(
+                    RunTraceAggregate.run_id == run_id,
+                    RunTraceAggregate.trace_id == "trace-1",
+                )
+                .first()
+            )
 
             assert run is not None
             assert item is not None
@@ -710,7 +1122,12 @@ def test_live_trace_stats_match_final_store_for_latency_metrics():
     try:
         with SessionLocal() as session:
             user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
-            project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id=user.id)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
             run = Run(
                 id="run-live-final-match",
                 project_id=project.id,
@@ -746,7 +1163,10 @@ def test_live_trace_stats_match_final_store_for_latency_metrics():
                     end_time_ns=2,
                     duration_ms=90.0,
                     status="OK",
-                    attributes={"openinference.span.kind": "LLM", "llm.token_count.total": 50},
+                    attributes={
+                        "openinference.span.kind": "LLM",
+                        "llm.token_count.total": 50,
+                    },
                     events=[],
                 ),
                 Span(
@@ -825,7 +1245,9 @@ def test_live_trace_stats_match_final_store_for_latency_metrics():
                 "avg_tool_ms",
                 "avg_top_level_chain_ms",
             ):
-                assert item.item_metadata["trace_stats"][key] == live_item_trace_stats[key]
+                assert (
+                    item.item_metadata["trace_stats"][key] == live_item_trace_stats[key]
+                )
     finally:
         engine.dispose()
 
@@ -855,56 +1277,66 @@ def test_live_trace_stats_switch_to_new_attempt_trace():
         with SessionLocal() as session:
             _seed_owner_and_run(session, token="retry-token", run_id=run_id)
 
-        body = "\n".join(
-            [
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000021",'
-                    '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
-                    '"expected":null,"item_metadata":{}}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000022",'
-                    '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
-                    '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1000}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000023",'
-                    '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
-                    f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
-                    '"name":"openai.chat.1","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
-                    '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":120},'
-                    '"events":[],"links":[]}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000024",'
-                    '"sequence":4,"sent_at":"2026-04-10T00:00:02Z","type":"item_attempt_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":2,'
-                    '"trace_id":"trace-2","trace_url":"https://langfuse.example/trace-2","task_started_at_ms":2000}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000025",'
-                    '"sequence":5,"sent_at":"2026-04-10T00:00:03Z","type":"span_completed",'
-                    f'"run_id":"{run_id}","payload":{{"trace_id":"trace-2","span_id":"span-2","parent_span_id":null,'
-                    '"name":"openai.chat.2","kind":"CLIENT","start_time_ns":2,"end_time_ns":3,"duration_ms":1.0,'
-                    '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":30},'
-                    '"events":[],"links":[]}}'
-                ),
-            ]
-        ) + "\n"
+        body = (
+            "\n".join(
+                [
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000021",'
+                        '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
+                        '"expected":null,"item_metadata":{}}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000022",'
+                        '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
+                        '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1000}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000023",'
+                        '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
+                        '"name":"openai.chat.1","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":120},'
+                        '"events":[],"links":[]}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000024",'
+                        '"sequence":4,"sent_at":"2026-04-10T00:00:02Z","type":"item_attempt_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":2,'
+                        '"trace_id":"trace-2","trace_url":"https://langfuse.example/trace-2","task_started_at_ms":2000}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000025",'
+                        '"sequence":5,"sent_at":"2026-04-10T00:00:03Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-2","span_id":"span-2","parent_span_id":null,'
+                        '"name":"openai.chat.2","kind":"CLIENT","start_time_ns":2,"end_time_ns":3,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":30},'
+                        '"events":[],"links":[]}}'
+                    ),
+                ]
+            )
+            + "\n"
+        )
 
         with TestClient(app) as client:
             ingest_response = client.post(
                 f"/v1/runs/{run_id}/events",
-                headers={**_auth_headers("retry-token"), "Content-Type": "application/x-ndjson"},
+                headers={
+                    **_auth_headers("retry-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
                 content=body,
             )
             assert ingest_response.status_code == 200
 
         with SessionLocal() as session:
             run = session.query(Run).filter(Run.id == run_id).first()
-            item = session.query(RunItem).filter(RunItem.run_id == run_id, RunItem.item_id == "item-1").first()
+            item = (
+                session.query(RunItem)
+                .filter(RunItem.run_id == run_id, RunItem.item_id == "item-1")
+                .first()
+            )
 
             assert run is not None
             assert item is not None
@@ -941,53 +1373,63 @@ def test_duplicate_span_event_does_not_double_count_live_trace_stats():
         with SessionLocal() as session:
             _seed_owner_and_run(session, token="dup-token", run_id=run_id)
 
-        body = "\n".join(
-            [
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000031",'
-                    '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
-                    '"expected":null,"item_metadata":{}}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000032",'
-                    '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
-                    f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
-                    '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1000}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000033",'
-                    '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
-                    f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
-                    '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
-                    '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":77},'
-                    '"events":[],"links":[]}}'
-                ),
-                (
-                    '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000034",'
-                    '"sequence":4,"sent_at":"2026-04-10T00:00:02Z","type":"span_completed",'
-                    f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
-                    '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
-                    '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":77},'
-                    '"events":[],"links":[]}}'
-                ),
-            ]
-        ) + "\n"
+        body = (
+            "\n".join(
+                [
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000031",'
+                        '"sequence":1,"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"input":{{"prompt":"hi"}},'
+                        '"expected":null,"item_metadata":{}}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000032",'
+                        '"sequence":2,"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
+                        f'"run_id":"{run_id}","payload":{{"item_id":"item-1","index":0,"attempt_number":1,'
+                        '"trace_id":"trace-1","trace_url":"https://langfuse.example/trace-1","task_started_at_ms":1000}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000033",'
+                        '"sequence":3,"sent_at":"2026-04-10T00:00:01Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
+                        '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":77},'
+                        '"events":[],"links":[]}}'
+                    ),
+                    (
+                        '{"schema_version":1,"event_id":"00000000-0000-0000-0000-000000000034",'
+                        '"sequence":4,"sent_at":"2026-04-10T00:00:02Z","type":"span_completed",'
+                        f'"run_id":"{run_id}","payload":{{"trace_id":"trace-1","span_id":"span-1","parent_span_id":null,'
+                        '"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":1.0,'
+                        '"status":"OK","attributes":{"openinference.span.kind":"LLM","llm.token_count.total":77},'
+                        '"events":[],"links":[]}}'
+                    ),
+                ]
+            )
+            + "\n"
+        )
 
         with TestClient(app) as client:
             ingest_response = client.post(
                 f"/v1/runs/{run_id}/events",
-                headers={**_auth_headers("dup-token"), "Content-Type": "application/x-ndjson"},
+                headers={
+                    **_auth_headers("dup-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
                 content=body,
             )
             assert ingest_response.status_code == 200
 
         with SessionLocal() as session:
             run = session.query(Run).filter(Run.id == run_id).first()
-            agg = session.query(RunTraceAggregate).filter(
-                RunTraceAggregate.run_id == run_id,
-                RunTraceAggregate.trace_id == "trace-1",
-            ).first()
+            agg = (
+                session.query(RunTraceAggregate)
+                .filter(
+                    RunTraceAggregate.run_id == run_id,
+                    RunTraceAggregate.trace_id == "trace-1",
+                )
+                .first()
+            )
 
             assert run is not None
             assert agg is not None

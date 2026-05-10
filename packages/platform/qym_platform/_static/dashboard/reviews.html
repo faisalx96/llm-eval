@@ -945,6 +945,49 @@
       border-top: 1px solid var(--border-default);
     }
 
+    .toast.toast-warning .toast-icon {
+      background: rgba(245, 158, 11, 0.14);
+      color: var(--warning);
+    }
+
+    .toast-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      margin-left: var(--space-sm);
+    }
+
+    .toast-action {
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      font-family: var(--font-sans);
+      padding: 6px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .toast-action:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+
+    .toast-action.danger {
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.08);
+    }
+
+    .toast-action.danger:hover {
+      border-color: rgba(239, 68, 68, 0.55);
+      background: rgba(239, 68, 68, 0.14);
+    }
+
     /* ── Loading state ───────────────────────────── */
 
     .loading-spinner {
@@ -1515,29 +1558,77 @@
 
     /* ── Toast ───────────────────────────────────── */
 
-    function showToast(type, title, message) {
-      const container = el('toast-container');
+    function getToastContainer() {
+      let container = el('toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+      }
+      return container;
+    }
+
+    function toastIcon(type) {
+      if (type === 'success') return '&#10003;';
+      if (type === 'warning') return '!';
+      return '&#10007;';
+    }
+
+    function showToast(type, title, message, options = {}) {
+      const container = getToastContainer();
       const toast = document.createElement('div');
       toast.className = `toast toast-${type}`;
+      const actions = Array.isArray(options.actions) ? options.actions : [];
       toast.innerHTML = `
-        <div class="toast-icon">${type === 'success' ? '&#10003;' : '&#10007;'}</div>
+        <div class="toast-icon">${toastIcon(type)}</div>
         <div class="toast-content">
           <div class="toast-title">${escapeHtml(title)}</div>
           ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
         </div>
+        ${actions.length ? `<div class="toast-actions">${actions.map((action, idx) => `<button type="button" class="toast-action ${action.className || ''}" data-toast-action="${idx}">${escapeHtml(action.label || 'OK')}</button>`).join('')}</div>` : ''}
         <button class="toast-close">&times;</button>
       `;
       container.appendChild(toast);
-      toast.querySelector('.toast-close').addEventListener('click', () => {
+      const closeToast = () => {
+        if (!toast.parentNode) return;
         toast.classList.add('toast-exit');
         setTimeout(() => toast.remove(), 300);
+      };
+      toast.querySelector('.toast-close').addEventListener('click', () => {
+        if (typeof options.onClose === 'function') options.onClose();
+        closeToast();
       });
-      setTimeout(() => {
-        if (toast.parentNode) {
-          toast.classList.add('toast-exit');
-          setTimeout(() => toast.remove(), 300);
-        }
-      }, 4000);
+      toast.querySelectorAll('[data-toast-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = actions[Number(btn.dataset.toastAction)];
+          if (action && typeof action.onClick === 'function') action.onClick();
+          closeToast();
+        });
+      });
+      if (!options.persist) {
+        setTimeout(closeToast, options.duration || 4000);
+      }
+      return { close: closeToast, element: toast };
+    }
+
+    function confirmToast(title, message, confirmLabel = 'Confirm') {
+      return new Promise((resolve) => {
+        let settled = false;
+        const settle = (value) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        showToast('warning', title, message, {
+          persist: true,
+          onClose: () => settle(false),
+          actions: [
+            { label: 'Cancel', onClick: () => settle(false) },
+            { label: confirmLabel, className: 'danger', onClick: () => settle(true) },
+          ],
+        });
+      });
     }
 
     /* ── API ─────────────────────────────────────── */
@@ -1621,6 +1712,70 @@
 
     function applyClientFilters() {
       state.filtered = getClientFilteredCorrections(true);
+    }
+
+    function recomputeStatsFromCurrentFilters() {
+      const list = getClientFilteredCorrections(false);
+      state.stats = {
+        total: list.length,
+        pending: list.filter(c => c.status === 'pending').length,
+        approved: list.filter(c => c.status === 'approved').length,
+        rejected: list.filter(c => c.status === 'rejected').length,
+      };
+    }
+
+    function refreshVisibleCorrections() {
+      applyClientFilters();
+      updateStats();
+      if (typeof updateClearFiltersButton === 'function') updateClearFiltersButton();
+      render();
+    }
+
+    function applyCorrectionUpdate(originalId, updated) {
+      if (!updated || !updated.id) return;
+      const idx = state.corrections.findIndex(c => c.id === originalId || c.id === updated.id);
+      if (idx >= 0) state.corrections[idx] = updated;
+      else state.corrections.unshift(updated);
+      if (updated.id !== originalId) state.corrections = state.corrections.filter(c => c.id !== originalId);
+      state.selected.delete(originalId);
+      state.selected.delete(updated.id);
+      if (state.editingId === originalId || state.editingId === updated.id) state.editingId = null;
+      recomputeStatsFromCurrentFilters();
+      refreshVisibleCorrections();
+    }
+
+    function removeCorrectionIds(ids) {
+      const idSet = new Set(ids.map(Number));
+      state.corrections = state.corrections.filter(c => !idSet.has(c.id));
+      idSet.forEach(id => state.selected.delete(id));
+      if (idSet.has(state.editingId)) state.editingId = null;
+      recomputeStatsFromCurrentFilters();
+      refreshVisibleCorrections();
+    }
+
+    function applyBulkStatusUpdate(ids, status, comment = '') {
+      const idSet = new Set(ids.map(Number));
+      state.corrections = state.corrections.map(c => {
+        if (!idSet.has(c.id)) return c;
+        const next = { ...c, status };
+        if (status === 'pending') {
+          next.reviewed_by = null;
+          next.reviewed_at = null;
+          next.review_comment = '';
+        } else {
+          next.review_comment = comment || '';
+          next.reviewed_at = new Date().toISOString();
+        }
+        return next;
+      });
+      idSet.forEach(id => state.selected.delete(id));
+      if (idSet.has(state.editingId)) state.editingId = null;
+      recomputeStatsFromCurrentFilters();
+      refreshVisibleCorrections();
+    }
+
+    function refreshCorrectionsInBackground() {
+      fetchCorrections().catch(err => showToast('error', 'Refresh failed', err.message));
     }
 
     /* ── Modal ───────────────────────────────────── */
@@ -1806,6 +1961,8 @@
         list.style.display = 'none';
         empty.style.display = 'flex';
         count.textContent = '';
+        updateBulkBar();
+        el('select-all').checked = false;
         return;
       }
 
@@ -2063,9 +2220,10 @@
           e.stopPropagation();
           const id = Number(btn.dataset.approve);
           try {
-            await apiAction('POST', `api/corrections/${id}/approve`, { comment: '' });
+            const updated = await apiAction('POST', `api/corrections/${id}/approve`, { comment: '' });
+            applyCorrectionUpdate(id, updated);
             showToast('success', 'Approved', `Correction #${id} approved`);
-            fetchCorrections();
+            refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
           }
@@ -2085,9 +2243,10 @@
           );
           if (comment === null) return;
           try {
-            await apiAction('POST', `api/corrections/${id}/reject`, { comment });
+            const updated = await apiAction('POST', `api/corrections/${id}/reject`, { comment });
+            applyCorrectionUpdate(id, updated);
             showToast('success', 'Rejected', `Correction #${id} rejected`);
-            fetchCorrections();
+            refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
           }
@@ -2100,9 +2259,10 @@
           e.stopPropagation();
           const id = Number(btn.dataset.reset);
           try {
-            await apiAction('POST', `api/corrections/${id}/reset`, {});
+            const updated = await apiAction('POST', `api/corrections/${id}/reset`, {});
+            applyCorrectionUpdate(id, updated);
             showToast('success', 'Reset', `Correction #${id} reset to pending`);
-            fetchCorrections();
+            refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
           }
@@ -2114,13 +2274,17 @@
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const id = Number(btn.dataset.delete);
-          const confirmed = window.confirm(`Delete correction #${id}? This cannot be undone.`);
+          const confirmed = await confirmToast(
+            'Delete correction?',
+            `Correction #${id} will be permanently removed. This cannot be undone.`,
+            'Delete'
+          );
           if (!confirmed) return;
           try {
             await apiAction('DELETE', `api/corrections/${id}`);
-            state.selected.delete(id);
+            removeCorrectionIds([id]);
             showToast('success', 'Deleted', `Correction #${id} deleted`);
-            fetchCorrections();
+            refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
           }
@@ -2148,10 +2312,10 @@
             body[field.dataset.editField] = field.value;
           });
           try {
-            await apiAction('PUT', `api/corrections/${id}`, body);
-            state.editingId = null;
+            const updated = await apiAction('PUT', `api/corrections/${id}`, body);
+            applyCorrectionUpdate(id, updated);
             showToast('success', 'Saved', 'Correction updated');
-            fetchCorrections();
+            refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
           }
@@ -2297,7 +2461,10 @@
 
     el('bulk-approve').addEventListener('click', async () => {
       const ids = [...state.selected];
-      if (!ids.length) return;
+      if (!ids.length) {
+        showToast('warning', 'Nothing selected', 'Select one or more corrections first.');
+        return;
+      }
       const comment = await openModal(
         `Approve ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
         `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as few-shot examples.`,
@@ -2307,9 +2474,9 @@
       if (comment === null) return;
       try {
         await apiAction('POST', 'api/corrections/bulk', { ids, action: 'approve', comment });
-        state.selected.clear();
+        applyBulkStatusUpdate(ids, 'approved', comment);
         showToast('success', 'Bulk Approved', `${ids.length} corrections approved`);
-        fetchCorrections();
+        refreshCorrectionsInBackground();
       } catch (err) {
         showToast('error', 'Failed', err.message);
       }
@@ -2317,7 +2484,10 @@
 
     el('bulk-reject').addEventListener('click', async () => {
       const ids = [...state.selected];
-      if (!ids.length) return;
+      if (!ids.length) {
+        showToast('warning', 'Nothing selected', 'Select one or more corrections first.');
+        return;
+      }
       const comment = await openModal(
         `Reject ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
         `${ids.length} correction${ids.length > 1 ? 's' : ''} will be rejected.`,
@@ -2327,9 +2497,9 @@
       if (comment === null) return;
       try {
         await apiAction('POST', 'api/corrections/bulk', { ids, action: 'reject', comment });
-        state.selected.clear();
+        applyBulkStatusUpdate(ids, 'rejected', comment);
         showToast('success', 'Bulk Rejected', `${ids.length} corrections rejected`);
-        fetchCorrections();
+        refreshCorrectionsInBackground();
       } catch (err) {
         showToast('error', 'Failed', err.message);
       }
@@ -2337,12 +2507,15 @@
 
     el('bulk-reset').addEventListener('click', async () => {
       const ids = [...state.selected];
-      if (!ids.length) return;
+      if (!ids.length) {
+        showToast('warning', 'Nothing selected', 'Select one or more corrections first.');
+        return;
+      }
       try {
         await apiAction('POST', 'api/corrections/bulk', { ids, action: 'reset' });
-        state.selected.clear();
+        applyBulkStatusUpdate(ids, 'pending');
         showToast('success', 'Bulk Reset', `${ids.length} corrections reset to pending`);
-        fetchCorrections();
+        refreshCorrectionsInBackground();
       } catch (err) {
         showToast('error', 'Failed', err.message);
       }
@@ -2350,14 +2523,21 @@
 
     el('bulk-delete').addEventListener('click', async () => {
       const ids = [...state.selected];
-      if (!ids.length) return;
-      const confirmed = window.confirm(`Delete ${ids.length} correction${ids.length > 1 ? 's' : ''}? This cannot be undone.`);
+      if (!ids.length) {
+        showToast('warning', 'Nothing selected', 'Select one or more corrections first.');
+        return;
+      }
+      const confirmed = await confirmToast(
+        `Delete ${ids.length} correction${ids.length > 1 ? 's' : ''}?`,
+        `The selected correction${ids.length > 1 ? 's' : ''} will be permanently removed. This cannot be undone.`,
+        'Delete'
+      );
       if (!confirmed) return;
       try {
         await apiAction('POST', 'api/corrections/bulk', { ids, action: 'delete' });
-        state.selected.clear();
+        removeCorrectionIds(ids);
         showToast('success', 'Bulk Deleted', `${ids.length} correction${ids.length > 1 ? 's' : ''} deleted`);
-        fetchCorrections();
+        refreshCorrectionsInBackground();
       } catch (err) {
         showToast('error', 'Failed', err.message);
       }

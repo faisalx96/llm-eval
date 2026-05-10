@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
+from urllib.parse import unquote
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
@@ -127,30 +129,164 @@ def get_few_shot_examples(
 
 def _resolve_source(
     item: RunItem,
-    source: str,
+    source: Any,
     scores: dict[str, RunItemScore] | None = None,
     metric_name: str | None = None,
 ) -> Any:
-    """Resolve 'field' or 'field.key' to a value from the RunItem."""
-    parts = source.split(".", 1)
+    """Resolve a source path, or a list of source paths, from the RunItem."""
+    if isinstance(source, list):
+        return _resolve_source_selection(item, source, scores=scores, metric_name=metric_name)
+    if not isinstance(source, str):
+        return None
+
+    if source.startswith("metric_metadata:"):
+        metric_source = source[len("metric_metadata:"):]
+        if "." in metric_source:
+            encoded_metric_name, nested_path = metric_source.split(".", 1)
+            parts = ["metric_metadata", nested_path]
+        else:
+            encoded_metric_name = metric_source
+            parts = ["metric_metadata"]
+        source_metric_name = unquote(encoded_metric_name)
+        metric_score = (scores or {}).get(source_metric_name)
+        raw = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else None
+        if len(parts) == 1:
+            return raw
+        return _resolve_nested_path(raw, parts[1].split("."))
+
+    parts = source.split(".")
     field_name = parts[0]
     raw: Any = None
     if field_name == "metric_metadata":
-        metric_score = (scores or {}).get(metric_name or "") if metric_name else None
+        source_metric_name = metric_name
+        if len(parts) > 1 and scores and parts[1] in scores:
+            source_metric_name = parts[1]
+            parts = [parts[0]] + parts[2:]
+        metric_score = (scores or {}).get(source_metric_name or "") if source_metric_name else None
         raw = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else None
     else:
         raw = getattr(item, field_name, None)
-    if len(parts) > 1 and isinstance(raw, dict):
-        return raw.get(parts[1], raw)  # fallback to full dict if key missing
-    return raw
+
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped and stripped[0] in ("{", "["):
+            try:
+                raw = json.loads(stripped)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(stripped)
+                    if isinstance(parsed, (dict, list)):
+                        raw = parsed
+                except (SyntaxError, ValueError):
+                    pass
+
+    if len(parts) == 1:
+        return raw
+    return _resolve_nested_path(raw, parts[1:])
+
+
+def _resolve_nested_path(value: Any, parts: list[str]) -> Any:
+    """Resolve nested dict/list paths, including array wildcards like items[].name."""
+    if value is None:
+        return None
+    if not parts:
+        return value
+
+    part = parts[0]
+    rest = parts[1:]
+
+    if part == "[]":
+        if not isinstance(value, list):
+            return None
+        return [_resolve_nested_path(item, rest) for item in value]
+
+    if part.endswith("[]"):
+        key = part[:-2]
+        if key:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(key)
+        if not isinstance(value, list):
+            return None
+        return [_resolve_nested_path(item, rest) for item in value]
+
+    if isinstance(value, dict):
+        return _resolve_nested_path(value.get(part), rest)
+    if isinstance(value, list) and part.isdigit():
+        index = int(part)
+        if 0 <= index < len(value):
+            return _resolve_nested_path(value[index], rest)
+    return None
+
+
+def _resolve_source_selection(
+    item: RunItem,
+    sources: list[Any],
+    scores: dict[str, RunItemScore] | None = None,
+    metric_name: str | None = None,
+) -> Any:
+    """Resolve multiple source paths into a compact object keyed by selected path."""
+    projected: dict[str, Any] = {}
+    for source in sources:
+        if not isinstance(source, str):
+            continue
+        val = _resolve_source(item, source, scores=scores, metric_name=metric_name)
+        if val is None:
+            continue
+        _assign_projection(projected, _source_selection_parts(source), val)
+    return projected or None
+
+
+def _source_selection_parts(source: str) -> list[str]:
+    """Return projection path parts while preserving encoded metric names."""
+    if source.startswith("metric_metadata:"):
+        metric_source = source[len("metric_metadata:"):]
+        if "." not in metric_source:
+            return [unquote(metric_source)]
+        encoded_metric_name, path = metric_source.split(".", 1)
+        return [unquote(encoded_metric_name)] + [p for p in path.split(".") if p]
+    label = _source_selection_label(source)
+    return [p for p in label.split(".") if p]
+
+
+def _source_selection_label(source: str) -> str:
+    """Return the label used inside a projected multi-source object."""
+    if source.startswith("metric_metadata:"):
+        metric_source = source[len("metric_metadata:"):]
+        if "." not in metric_source:
+            return unquote(metric_source)
+        encoded_metric_name, path = metric_source.split(".", 1)
+        return f"{unquote(encoded_metric_name)}.{path}"
+    if "." not in source:
+        return source
+    return source.split(".", 1)[1] or source
+
+
+def _assign_projection(target: dict[str, Any], path: str | list[str], value: Any) -> None:
+    """Assign a selected path into a nested object when the path is object-only."""
+    parts = path if isinstance(path, list) else [p for p in path.split(".") if p]
+    if not parts:
+        return
+    if any("[]" in p for p in parts):
+        target[".".join(parts)] = value
+        return
+    cur = target
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
 
 
 def _format_item_context(
     item: RunItem,
     scores: dict[str, RunItemScore],
     include_fields: dict[str, bool] | None = None,
-    field_mapping: dict[str, str] | None = None,
+    field_mapping: dict[str, Any] | None = None,
     metric_name: str | None = None,
+    metadata_fields: list[str] | None = None,
 ) -> str:
     """Format a single item's context for the LLM prompt."""
     fields = include_fields or DEFAULT_INCLUDE_FIELDS
@@ -206,13 +342,20 @@ def _format_item_context(
         if score_lines:
             parts.append("METRIC SCORES:\n" + "\n".join(score_lines))
 
-    # Include metadata for the selected metric when available.
+    # Include metric metadata. By default this is all metrics; a picker selection
+    # can narrow it to specific metric/path pairs.
     if fields.get("metadata", True):
-        metric_score = (scores or {}).get(metric_name or "") if metric_name else None
-        metric_meta = metric_score.meta if metric_score and isinstance(metric_score.meta, dict) else {}
+        if metadata_fields is not None:
+            metric_meta = _resolve_source(item, metadata_fields, scores=scores, metric_name=metric_name) or {}
+        else:
+            metric_meta = {
+                name: score.meta
+                for name, score in (scores or {}).items()
+                if isinstance(score.meta, dict) and score.meta
+            }
         if metric_meta:
             parts.append(
-                f"METRIC METADATA ({metric_name or 'selected metric'}):\n"
+                "METRIC METADATA:\n"
                 f"{json.dumps(metric_meta, indent=2, ensure_ascii=False)}"
             )
 
@@ -334,6 +477,7 @@ def build_analysis_prompt(
 
     include_fields = cfg.get("include_fields")
     field_mapping = cfg.get("field_mapping")
+    metadata_fields = cfg.get("metadata_fields")
 
     # Filter corrections
     corrections_enabled = cfg.get("corrections_enabled", True)
@@ -358,6 +502,7 @@ def build_analysis_prompt(
         include_fields,
         field_mapping,
         metric_name=metric_name,
+        metadata_fields=metadata_fields if isinstance(metadata_fields, list) else None,
     )
 
     user_message = (
@@ -536,21 +681,34 @@ async def analyze_items_batch(
     model: str,
     items: list[tuple[RunItem, dict[str, RunItemScore]]],
     corrections: list[ReviewCorrection],
-    concurrency: int = 5,
+    concurrency: int = 20,
     config: dict[str, Any] | None = None,
     metric_name: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    progress_callback: Callable[[AnalysisResult, int, int], Awaitable[None] | None] | None = None,
 ) -> list[AnalysisResult]:
     """Analyze multiple items with concurrency control."""
     semaphore = asyncio.Semaphore(concurrency)
+    progress_lock = asyncio.Lock()
+    completed = 0
+    total = len(items)
 
     async def _bounded(item: RunItem, scores: dict[str, RunItemScore]) -> AnalysisResult:
+        nonlocal completed
         async with semaphore:
-            return await analyze_single_item(
+            result = await analyze_single_item(
                 client, model, item, scores, corrections,
                 config=config, metric_name=metric_name, temperature=temperature, max_tokens=max_tokens,
             )
+        if progress_callback is not None:
+            async with progress_lock:
+                completed += 1
+                current = completed
+            callback_result = progress_callback(result, current, total)
+            if asyncio.iscoroutine(callback_result):
+                await callback_result
+        return result
 
     tasks = [_bounded(item, scores) for item, scores in items]
     return await asyncio.gather(*tasks)
