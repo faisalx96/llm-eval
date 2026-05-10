@@ -1,5 +1,7 @@
 """Main Typer application for the qym agent-native CLI."""
 
+from __future__ import annotations
+
 import json
 import mimetypes
 import os

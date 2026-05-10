@@ -1,5 +1,7 @@
 """Legacy helper functions moved from the old monolithic cli.py."""
 
+from __future__ import annotations
+
 import copy
 import importlib.util
 import json

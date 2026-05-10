@@ -4,6 +4,8 @@ Uses stdlib urllib to keep SDK dependency-free.
 Auth via QYM_API_KEY env var or explicit api_key parameter.
 """
 
+from __future__ import annotations
+
 import json
 import os
 from typing import Any, Optional

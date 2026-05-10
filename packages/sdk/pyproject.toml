@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qym"
-version = "1.0.0"
+version = "1.0.1"
 description = "Simple, automated LLM evaluation framework built on Langfuse"
 readme = "README.md"
 license = {text = "MIT"}
@@ -33,7 +33,10 @@ dependencies = [
     "arabic-reshaper>=3.0.0",
     "openpyxl>=3.0.0",
     # Auto-instrumentation: keep the core integrations qym supports directly.
-    "openinference-instrumentation-openai>=0.1.0",
+    # Upper-bounded to versions whose transitive dep
+    # `openinference-semantic-conventions` is available in restricted/air-gapped
+    # PyPI mirrors (some only have <=0.1.24 cached).
+    "openinference-instrumentation-openai>=0.1.0,<0.1.43",
     "openinference-instrumentation-langchain>=0.1.0",
     "openinference-instrumentation-litellm>=0.1.0",
 ]

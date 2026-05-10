@@ -1,5 +1,7 @@
 """JSON/Rich output routing for agent-native CLI."""
 
+from __future__ import annotations
+
 import json
 import sys
 from contextvars import ContextVar

@@ -1,5 +1,7 @@
 """Discover and parse historical evaluation runs from local files."""
 
+from __future__ import annotations
+
 import csv
 import json
 import os
