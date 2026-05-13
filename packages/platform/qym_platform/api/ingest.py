@@ -552,7 +552,8 @@ def _refresh_live_trace_stats(db: Session, run: Run) -> None:
         md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         if bucket and int(bucket.get("span_count") or 0) > 0:
             md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
-            item_buckets.append(bucket)
+            if not item.error:
+                item_buckets.append(bucket)
         else:
             md.pop("trace_stats", None)
         item.item_metadata = _sanitize_for_json(md)
@@ -655,7 +656,8 @@ def _store_trace_stats(db: Session, run: Run) -> None:
         if bucket is not None and int(bucket.get("span_count") or 0) > 0:
             sanitized = _sanitize_for_json(_public_trace_bucket(bucket))
             md["trace_stats"] = sanitized
-            item_buckets.append(bucket)
+            if not item.error:
+                item_buckets.append(bucket)
         else:
             md.pop("trace_stats", None)
         item.item_metadata = md

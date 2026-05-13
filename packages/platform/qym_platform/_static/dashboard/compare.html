@@ -4264,6 +4264,7 @@
                   <option value="all">All Items</option>
                   <option value="different">Different Outputs</option>
                   <option value="errors">With Errors</option>
+                  <option value="edited_metrics">With Edited Metrics</option>
                   <option value="all_correct">All Runs Correct</option>
                   <option value="all_wrong">No Run Correct</option>
                   <option value="partially_correct">Partially Correct</option>
@@ -6023,6 +6024,7 @@
           { value: 'all', label: 'All Items' },
           { value: 'different', label: 'Different Outputs' },
           { value: 'errors', label: 'With Errors' },
+          { value: 'edited_metrics', label: 'With Edited Metrics' },
           { value: 'all_correct', label: 'All Runs Correct' },
           { value: 'all_wrong', label: 'No Run Correct' },
           { value: 'partially_correct', label: 'Partially Correct' },
@@ -6144,6 +6146,20 @@
           if (option === 'not_approved') return approvalState === 'not_approved';
           return false;
         });
+      }
+
+      function isMetricMetaEdited(meta) {
+        if (!meta || typeof meta !== 'object') return false;
+        const raw = meta.modified;
+        if (raw === true || raw === 1) return true;
+        const normalized = String(raw ?? '').trim().toLowerCase();
+        return normalized === 'true' || normalized === '1' || normalized === 'yes';
+      }
+
+      function rowHasEditedMetric(row) {
+        const metricMeta = row?.metric_meta;
+        if (!metricMeta || typeof metricMeta !== 'object') return false;
+        return Object.values(metricMeta).some(isMetricMetaEdited);
       }
 
       function getAlignmentWarningHtml(titleText) {
@@ -8620,6 +8636,9 @@
           } else if (state.itemFilter === 'errors') {
             const hasError = rowData.some(r => window.QymMetrics.isErrorRow(r));
             if (!hasError) continue;
+          } else if (state.itemFilter === 'edited_metrics') {
+            const hasEditedMetric = rowData.some(rowHasEditedMetric);
+            if (!hasEditedMetric) continue;
           } else if (state.itemFilter === 'all_correct') {
             // All runs meet threshold (correct)
             const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];

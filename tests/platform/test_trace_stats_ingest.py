@@ -547,6 +547,145 @@ def test_store_trace_stats_tracks_named_outer_scope_parent_span_averages():
         engine.dispose()
 
 
+def test_store_trace_stats_excludes_errored_items_from_run_averages():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    try:
+        with SessionLocal() as session:
+            user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+            project = Project(
+                id="project-1",
+                name="Project 1",
+                slug="project-1",
+                created_by_user_id=user.id,
+            )
+            run = Run(
+                id="run-error-exclusion",
+                project_id=project.id,
+                created_by_user_id=user.id,
+                owner_user_id=user.id,
+                task="trace-task",
+                dataset="dataset-1",
+                status=RunWorkflowStatus.COMPLETED,
+                metrics=[],
+                run_metadata={},
+                run_config={},
+            )
+            completed_item = RunItem(
+                run_id=run.id,
+                item_id="item-ok",
+                index=0,
+                input={"prompt": "ok"},
+                output={"answer": "ok"},
+                item_metadata={},
+                latency_ms=16000.0,
+                trace_id="trace-ok",
+            )
+            errored_item = RunItem(
+                run_id=run.id,
+                item_id="item-timeout",
+                index=1,
+                input={"prompt": "slow"},
+                output=None,
+                error="Task timed out",
+                item_metadata={},
+                latency_ms=690000.0,
+                trace_id="trace-timeout",
+            )
+            spans = [
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-ok",
+                    span_id="root-ok",
+                    parent_span_id=None,
+                    name="eval-item-ok",
+                    kind="INTERNAL",
+                    duration_ms=46000.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-ok",
+                    span_id="agent-ok",
+                    parent_span_id="root-ok",
+                    name="sql_agent_task_async",
+                    kind="INTERNAL",
+                    duration_ms=16000.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "AGENT"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-ok",
+                    span_id="eval-ok",
+                    parent_span_id="root-ok",
+                    name="eval_metrics",
+                    kind="INTERNAL",
+                    duration_ms=30000.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "EVALUATOR"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-timeout",
+                    span_id="root-timeout",
+                    parent_span_id=None,
+                    name="eval-item-timeout",
+                    kind="INTERNAL",
+                    duration_ms=690000.0,
+                    status="ERROR",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+                Span(
+                    run_id=run.id,
+                    trace_id="trace-timeout",
+                    span_id="agent-timeout",
+                    parent_span_id="root-timeout",
+                    name="sql_agent_task_async",
+                    kind="INTERNAL",
+                    duration_ms=690000.0,
+                    status="ERROR",
+                    attributes={"openinference.span.kind": "AGENT"},
+                    events=[],
+                ),
+            ]
+            session.add_all([user, project, run, completed_item, errored_item, *spans])
+            session.commit()
+
+            _store_trace_stats(session, run)
+            session.commit()
+            session.refresh(run)
+            session.refresh(completed_item)
+            session.refresh(errored_item)
+
+            trace_stats = run.run_metadata["trace_stats"]
+            assert trace_stats["avg_top_level_chain_ms"] == 46000.0
+            assert trace_stats["outer_scope_parent_spans"] == [
+                {"name": "sql_agent_task_async", "avg_ms": 16000.0, "count": 1}
+            ]
+            assert (
+                completed_item.item_metadata["trace_stats"]["avg_top_level_chain_ms"]
+                == 46000.0
+            )
+            assert (
+                errored_item.item_metadata["trace_stats"]["avg_top_level_chain_ms"]
+                == 690000.0
+            )
+    finally:
+        engine.dispose()
+
+
 def test_store_trace_stats_includes_average_span_type_latency_metrics():
     engine = create_engine(
         "sqlite://",

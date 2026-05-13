@@ -417,7 +417,11 @@ window.QymPlayground = (function () {
     if (!summary) return;
     var full = picker.querySelector('input[data-full="1"]');
     var count = picker.querySelectorAll('.pg-path-list input[type="checkbox"]:checked').length;
-    var total = picker.querySelectorAll('.pg-path-list input[type="checkbox"][value]').length;
+    var total = parseInt(picker.dataset.totalPathBoxes || '0', 10);
+    if (!total) {
+      total = picker.querySelectorAll('.pg-path-list input[type="checkbox"][value]').length;
+      picker.dataset.totalPathBoxes = String(total);
+    }
     if (picker.dataset.defaultAll === '1') {
       summary.textContent = count === total ? 'All selected' : (count === 0 ? 'No fields' : count + ' of ' + total);
       return;
@@ -438,21 +442,30 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _syncTreeParentStates(picker) {
-    var nodes = Array.prototype.slice.call(picker.querySelectorAll('.pg-path-tree-node')).reverse();
-    nodes.forEach(function (node) {
-      var summary = node.querySelector('summary');
-      var parentCb = summary ? summary.querySelector('input[type="checkbox"][value]') : null;
-      if (!parentCb) return;
-      var descendants = Array.prototype.slice.call(node.querySelectorAll('input[type="checkbox"][value]')).filter(function (input) {
-        return input !== parentCb;
-      });
-      if (descendants.length === 0) return;
-      var checkedCount = descendants.filter(function (input) { return input.checked; }).length;
-      var hasIndeterminate = descendants.some(function (input) { return input.indeterminate; });
-      parentCb.checked = checkedCount === descendants.length && !hasIndeterminate;
-      parentCb.indeterminate = checkedCount > 0 && checkedCount < descendants.length || hasIndeterminate;
+  function _syncTreeNodeState(node) {
+    var summary = node.querySelector('summary');
+    var parentCb = summary ? summary.querySelector('input[type="checkbox"][value]') : null;
+    if (!parentCb) return;
+    var descendants = Array.prototype.slice.call(node.querySelectorAll('input[type="checkbox"][value]')).filter(function (input) {
+      return input !== parentCb;
     });
+    if (descendants.length === 0) return;
+    var checkedCount = 0;
+    var hasIndeterminate = false;
+    for (var i = 0; i < descendants.length; i++) {
+      if (descendants[i].checked) checkedCount++;
+      if (descendants[i].indeterminate) hasIndeterminate = true;
+    }
+    parentCb.checked = checkedCount === descendants.length && !hasIndeterminate;
+    parentCb.indeterminate = (checkedCount > 0 && checkedCount < descendants.length) || hasIndeterminate;
+  }
+
+  function _syncTreeAncestors(cb) {
+    var node = cb.closest('.pg-path-tree-node');
+    while (node) {
+      _syncTreeNodeState(node);
+      node = node.parentElement ? node.parentElement.closest('.pg-path-tree-node') : null;
+    }
   }
 
   function _wirePathPickers(root) {
@@ -472,10 +485,10 @@ window.QymPlayground = (function () {
         if (cb.value) {
           cb.indeterminate = false;
           _setTreeDescendants(cb, cb.checked);
-          _syncTreeParentStates(picker);
+          _syncTreeAncestors(cb);
         }
         _updatePathPickerSummary(picker);
-        _scheduleAutoPreview();
+        _scheduleAutoPreview(900);
       });
     });
   }
@@ -1371,9 +1384,9 @@ window.QymPlayground = (function () {
 
   // ── Auto Preview (debounced) ──
 
-  function _scheduleAutoPreview() {
+  function _scheduleAutoPreview(delayMs) {
     if (_previewTimer) clearTimeout(_previewTimer);
-    _previewTimer = setTimeout(_autoPreview, 500);
+    _previewTimer = setTimeout(_autoPreview, delayMs || 500);
   }
 
   function _autoPreview() {

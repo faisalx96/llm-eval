@@ -3440,6 +3440,7 @@
                 <option value="passed">Passed</option>
                 <option value="failed">Failed</option>
                 <option value="errors">With Errors</option>
+                <option value="edited_metrics">With Edited Metrics</option>
                 <option value="retries">With Retries</option>
                 <option value="trace_errors">With Trace Errors</option>
               </select>
@@ -5010,6 +5011,20 @@
         });
       }
 
+      function isMetricMetaEdited(meta) {
+        if (!meta || typeof meta !== 'object') return false;
+        const raw = meta.modified;
+        if (raw === true || raw === 1) return true;
+        const normalized = String(raw ?? '').trim().toLowerCase();
+        return normalized === 'true' || normalized === '1' || normalized === 'yes';
+      }
+
+      function rowHasEditedMetric(row) {
+        const metricMeta = row?.metric_meta;
+        if (!metricMeta || typeof metricMeta !== 'object') return false;
+        return Object.values(metricMeta).some(isMetricMetaEdited);
+      }
+
       function renderSankeyDiagram(rows, filteredItemIds) {
         const container = document.getElementById('sankey-diagram-container');
         if (!container) return;
@@ -5876,6 +5891,8 @@
             if (!isError && (score === null || score >= threshold)) continue;
           } else if (state.itemFilter === 'errors') {
             if (!window.QymMetrics.isErrorRow(row)) continue;
+          } else if (state.itemFilter === 'edited_metrics') {
+            if (!rowHasEditedMetric(row)) continue;
           } else if (state.itemFilter === 'retries') {
             if ((row.retry_count || 0) <= 0) continue;
           } else if (state.itemFilter === 'trace_errors') {
