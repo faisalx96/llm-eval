@@ -145,6 +145,7 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
         headers=_auth_headers("submit-token"),
         json={
             "preset": "insightor",
+            "dataset": "customer-langfuse-dataset",
             "run_name": "external-test-001",
             "metadata": {"source": "curl"},
             "config": {"timeout": 30},
@@ -159,12 +160,15 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
     assert payload["qym_run_id"] == "run-1"
     assert payload["qym_project_id"] == "project-1"
     assert payload["qym_run_url"] == "http://testserver/run/run-1"
+    assert payload["qym_runs"] == []
+    assert payload["qym_compare_url"] is None
     assert payload["poll_url"] == "/v1/product-evals/run-1"
     assert "run_id" not in payload
     assert "job_id" not in payload
     assert "project_id" not in payload
     assert "preset" not in payload
     assert captured["api_key"] == "submit-token"
+    assert captured["dataset_name"] == "customer-langfuse-dataset"
     assert captured["run_name"] == "external-test-001"
     assert captured["metadata"] == {"source": "curl"}
 
@@ -198,14 +202,75 @@ def test_submit_product_eval_hides_job_id_when_run_is_starting(
     assert payload["qym_run_id"] is None
     assert payload["qym_project_id"] == "project-1"
     assert payload["qym_run_url"] is None
+    assert payload["qym_runs"] == []
+    assert payload["qym_compare_url"] is None
     assert payload["poll_url"] == "/v1/product-evals/jobs/job-1"
     assert "run_id" not in payload
     assert "job_id" not in payload
     assert "project_id" not in payload
 
 
-def test_submit_rejects_invalid_preset(client, session_factory, monkeypatch) -> None:
-    monkeypatch.setenv("EVAL_DATASET", "dataset")
+def test_job_poll_returns_multi_run_compare_url(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="read-token", scopes=["runs:read"])
+
+    job = ProductEvalJob(
+        job_id="job-1",
+        preset="insightor",
+        project_id="project-1",
+        expected_runs=3,
+    )
+    job.record_run_matrix(
+        [
+            {"run_id": "sdk-run-1"},
+            {"run_id": "sdk-run-2"},
+            {"run_id": "sdk-run-3"},
+        ]
+    )
+    job.mark_run(sdk_run_id="sdk-run-1", status="COMPLETED", qym_run_id="qym-run-1")
+    job.mark_run(sdk_run_id="sdk-run-2", status="RUNNING", qym_run_id="qym-run-2")
+    job.mark(status="RUNNING")
+
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda job_id: job)
+
+    response = client.get(
+        "/v1/product-evals/jobs/job-1",
+        headers=_auth_headers("read-token"),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["qym_run_id"] == "qym-run-1"
+    assert payload["qym_run_url"] == "http://testserver/run/qym-run-1"
+    assert payload["qym_compare_url"] == (
+        "http://testserver/compare?runs=qym-run-1&runs=qym-run-2"
+    )
+    assert payload["poll_url"] == "/v1/product-evals/jobs/job-1"
+    assert payload["qym_runs"] == [
+        {
+            "attempt": 1,
+            "status": "COMPLETED",
+            "qym_run_id": "qym-run-1",
+            "qym_run_url": "http://testserver/run/qym-run-1",
+        },
+        {
+            "attempt": 2,
+            "status": "RUNNING",
+            "qym_run_id": "qym-run-2",
+            "qym_run_url": "http://testserver/run/qym-run-2",
+        },
+        {
+            "attempt": 3,
+            "status": "STARTING",
+            "qym_run_id": None,
+            "qym_run_url": None,
+        },
+    ]
+
+
+def test_submit_rejects_invalid_preset(client, session_factory) -> None:
     with session_factory() as session:
         _seed_api_key(session, token="submit-token", scopes=["runs:write"])
 
@@ -221,6 +286,46 @@ def test_submit_rejects_invalid_preset(client, session_factory, monkeypatch) -> 
     assert envelope["data"] is None
     assert envelope["error"]["code"] == "invalid_request"
     assert "Unknown product eval preset" in envelope["error"]["message"]
+
+
+def test_submit_rejects_blank_dataset_name(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
+
+    response = client.post(
+        "/v1/product-evals",
+        headers=_auth_headers("submit-token"),
+        json={"preset": "insightor", "dataset": "   "},
+    )
+
+    assert response.status_code == 400
+    envelope = response.json()
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == "invalid_request"
+    assert (
+        "dataset must be a non-empty Langfuse dataset name"
+        in envelope["error"]["message"]
+    )
+
+
+def test_submit_requires_dataset_for_insightor(
+    client, session_factory, monkeypatch
+) -> None:
+    monkeypatch.delenv("EVAL_DATASET", raising=False)
+    with session_factory() as session:
+        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
+
+    response = client.post(
+        "/v1/product-evals",
+        headers=_auth_headers("submit-token"),
+        json={"preset": "insightor"},
+    )
+
+    assert response.status_code == 400
+    envelope = response.json()
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == "invalid_request"
+    assert "dataset is required for preset 'insightor'" in envelope["error"]["message"]
 
 
 def test_test_preset_uses_self_contained_runner(monkeypatch) -> None:
@@ -248,6 +353,89 @@ def test_run_v2_async_preset_is_removed(client, session_factory) -> None:
     assert envelope["ok"] is False
     assert envelope["error"]["code"] == "invalid_request"
     assert "Unknown product eval preset" in envelope["error"]["message"]
+
+
+def test_insightor_preset_uses_three_run_parallel_attempts(
+    monkeypatch, tmp_path
+) -> None:
+    script = tmp_path / "insightor_eval.py"
+    script.write_text(
+        "\n".join(
+            [
+                "MODEL = 'model-from-script'",
+                "def insightor_api(value):",
+                "    return value",
+                "def accuracy(output, expected):",
+                "    return True",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("EVAL_DATASET", raising=False)
+    monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+
+    import qym
+
+    captured: dict[str, object] = {}
+
+    class FakeEvaluator:
+        @staticmethod
+        def run_parallel(**kwargs):
+            captured.update(kwargs)
+            observer = kwargs["observer"]
+            matrix = [{"run_id": f"sdk-run-{attempt}"} for attempt in range(1, 4)]
+            observer.on_run_matrix(matrix_id="matrix-1", runs=matrix, total_runs=3)
+            for attempt in range(1, 4):
+                observer.on_run_start(
+                    run_id=f"sdk-run-{attempt}",
+                    run_info={"platform_run_id": f"qym-run-{attempt}"},
+                    total_items=1,
+                    metrics=["accuracy"],
+                )
+                observer.on_run_complete(
+                    run_id=f"sdk-run-{attempt}",
+                    result_summary={},
+                )
+            return []
+
+    monkeypatch.setattr(qym, "Evaluator", FakeEvaluator)
+
+    manager = ProductEvalJobManager(max_workers=1)
+    job = manager.submit(
+        preset_name="insightor",
+        api_key="token",
+        run_name="external-run",
+        task_name=None,
+        dataset_name="request-dataset",
+        model="model-1",
+        metadata={"source": "test"},
+        config={"timeout": 30},
+        platform_url="http://testserver",
+    )
+    assert job._future is not None
+    job._future.result(timeout=5)
+
+    assert captured["max_parallel_runs"] == 1
+    assert captured["show_tui"] is False
+    assert captured["auto_save"] is False
+    runs = captured["runs"]
+    assert len(runs) == 3
+    assert [run["name"] for run in runs] == ["external-run"] * 3
+    assert [run["model"] for run in runs] == ["model-1"] * 3
+    assert [run["dataset"] for run in runs] == ["request-dataset"] * 3
+    assert [
+        run["config"]["run_metadata"]["product_eval"]["attempt"] for run in runs
+    ] == [1, 2, 3]
+    assert [
+        run["config"]["run_metadata"]["product_eval"]["attempts"] for run in runs
+    ] == [3, 3, 3]
+    assert job.status == "COMPLETED"
+    assert job.run_id == "qym-run-1"
+    assert [row["qym_run_id"] for row in job.runs] == [
+        "qym-run-1",
+        "qym-run-2",
+        "qym-run-3",
+    ]
 
 
 def test_submit_requires_runs_write_scope(client, session_factory) -> None:
@@ -469,7 +657,6 @@ def test_poll_can_include_item_rows_when_requested(client, session_factory) -> N
 def test_job_manager_records_background_failure(monkeypatch, tmp_path) -> None:
     broken_script = tmp_path / "broken_insightor_eval.py"
     broken_script.write_text("# no expected functions\n", encoding="utf-8")
-    monkeypatch.setenv("EVAL_DATASET", "dataset-1")
     monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(broken_script))
     monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
 
@@ -479,6 +666,7 @@ def test_job_manager_records_background_failure(monkeypatch, tmp_path) -> None:
         api_key="token",
         run_name=None,
         task_name=None,
+        dataset_name="dataset-1",
         model=None,
         metadata={},
         config={},

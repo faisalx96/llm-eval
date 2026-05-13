@@ -10,7 +10,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 from qym_platform.settings import PlatformSettings
@@ -40,6 +40,9 @@ class ProductEvalPreset:
     dataset_env: Optional[str]
     model_env: Optional[str]
     default_config: Dict[str, Any] = field(default_factory=dict)
+    requires_dataset_name: bool = False
+    run_count: int = 1
+    max_parallel_runs: Optional[int] = None
 
 
 @dataclass
@@ -50,9 +53,12 @@ class ProductEvalJob:
     project_id: Optional[str] = None
     status: str = "QUEUED"
     run_id: Optional[str] = None
+    runs: List[Dict[str, Any]] = field(default_factory=list)
+    expected_runs: int = 1
     error: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _run_ready: threading.Event = field(default_factory=threading.Event, repr=False)
     _future: Optional[Future] = field(default=None, repr=False)
 
@@ -63,29 +69,85 @@ class ProductEvalJob:
         run_id: Optional[str] = None,
         error: Optional[str] = None,
     ) -> None:
-        if status is not None:
-            self.status = status
-        if run_id:
-            self.run_id = run_id
-            self._run_ready.set()
-        if error is not None:
-            self.error = error
-        self.updated_at = datetime.utcnow()
+        with self._lock:
+            if status is not None:
+                self.status = status
+            if run_id:
+                self.run_id = run_id
+                self._run_ready.set()
+            if error is not None:
+                self.error = error
+            self.updated_at = datetime.utcnow()
+
+    def record_run_matrix(self, runs: List[Dict[str, Any]]) -> None:
+        with self._lock:
+            current_by_sdk_id = {
+                row.get("sdk_run_id"): row for row in self.runs if row.get("sdk_run_id")
+            }
+            next_rows: List[Dict[str, Any]] = []
+            for index, row in enumerate(runs, start=1):
+                sdk_run_id = str(row.get("run_id") or "")
+                existing = current_by_sdk_id.get(sdk_run_id, {})
+                next_rows.append(
+                    {
+                        "attempt": index,
+                        "sdk_run_id": sdk_run_id,
+                        "qym_run_id": existing.get("qym_run_id")
+                        or row.get("platform_run_id"),
+                        "status": existing.get("status") or "STARTING",
+                    }
+                )
+            self.runs = next_rows
+            self.expected_runs = max(self.expected_runs, len(next_rows))
+            self.updated_at = datetime.utcnow()
+
+    def mark_run(
+        self,
+        *,
+        sdk_run_id: str,
+        status: Optional[str] = None,
+        qym_run_id: Optional[str] = None,
+    ) -> None:
+        with self._lock:
+            target: Optional[Dict[str, Any]] = None
+            for row in self.runs:
+                if row.get("sdk_run_id") == sdk_run_id:
+                    target = row
+                    break
+            if target is None:
+                target = {
+                    "attempt": len(self.runs) + 1,
+                    "sdk_run_id": sdk_run_id,
+                    "qym_run_id": None,
+                    "status": "STARTING",
+                }
+                self.runs.append(target)
+            if status:
+                target["status"] = status
+            if qym_run_id:
+                target["qym_run_id"] = qym_run_id
+                if not self.run_id:
+                    self.run_id = qym_run_id
+                self._run_ready.set()
+            self.updated_at = datetime.utcnow()
 
     def wait_for_run(self, timeout: float) -> bool:
         return self._run_ready.wait(timeout=timeout)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "job_id": self.job_id,
-            "preset": self.preset,
-            "project_id": self.project_id,
-            "status": self.status,
-            "run_id": self.run_id,
-            "error": self.error,
-            "created_at": self.created_at.isoformat() + "Z",
-            "updated_at": self.updated_at.isoformat() + "Z",
-        }
+        with self._lock:
+            return {
+                "job_id": self.job_id,
+                "preset": self.preset,
+                "project_id": self.project_id,
+                "status": self.status,
+                "run_id": self.run_id,
+                "runs": [dict(row) for row in self.runs],
+                "expected_runs": self.expected_runs,
+                "error": self.error,
+                "created_at": self.created_at.isoformat() + "Z",
+                "updated_at": self.updated_at.isoformat() + "Z",
+            }
 
 
 def _default_insightor_script() -> Path:
@@ -111,12 +173,15 @@ def get_preset(name: str) -> ProductEvalPreset:
             script_path=_default_insightor_script(),
             task_name="insightor_api",
             metric_name="accuracy",
-            dataset_env="EVAL_DATASET",
+            dataset_env=None,
             model_env="MODEL",
             default_config={
                 "max_concurrency": 15,
                 "timeout": 900,
             },
+            requires_dataset_name=True,
+            run_count=3,
+            max_parallel_runs=1,
         )
     if name == "test":
         return ProductEvalPreset(
@@ -143,18 +208,28 @@ def validate_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return clean
 
 
+def validate_dataset_name(dataset_name: Optional[str]) -> Optional[str]:
+    if dataset_name is None:
+        return None
+    clean = str(dataset_name).strip()
+    if not clean:
+        raise ProductEvalError("dataset must be a non-empty Langfuse dataset name")
+    return clean
+
+
 def validate_submit_request(
-    *, preset_name: str, config: Optional[Dict[str, Any]]
+    *,
+    preset_name: str,
+    config: Optional[Dict[str, Any]],
+    dataset_name: Optional[str] = None,
 ) -> ProductEvalPreset:
     preset = get_preset(preset_name)
     validate_config(config)
+    requested_dataset = validate_dataset_name(dataset_name)
     if not preset.script_path.exists():
         raise RuntimeError(_format_missing_script_error(preset.script_path))
-    dataset = os.getenv(preset.dataset_env, "").strip() if preset.dataset_env else ""
-    if preset.dataset_env and not dataset:
-        raise RuntimeError(
-            f"{preset.dataset_env} is required for preset '{preset.name}'"
-        )
+    if preset.requires_dataset_name and not requested_dataset:
+        raise ProductEvalError(f"dataset is required for preset '{preset.name}'")
     return preset
 
 
@@ -208,6 +283,7 @@ class ProductEvalJobManager:
         api_key: str,
         run_name: Optional[str],
         task_name: Optional[str],
+        dataset_name: Optional[str],
         model: Optional[str],
         metadata: Dict[str, Any],
         config: Dict[str, Any],
@@ -215,12 +291,18 @@ class ProductEvalJobManager:
         project_id: Optional[str] = None,
         platform_url: Optional[str] = None,
     ) -> ProductEvalJob:
-        preset = validate_submit_request(preset_name=preset_name, config=config)
+        requested_dataset = validate_dataset_name(dataset_name)
+        preset = validate_submit_request(
+            preset_name=preset_name,
+            config=config,
+            dataset_name=requested_dataset,
+        )
         job = ProductEvalJob(
             job_id=str(uuid4()),
             preset=preset.name,
             owner_user_id=owner_user_id,
             project_id=project_id,
+            expected_runs=preset.run_count,
         )
         with self._lock:
             self._jobs[job.job_id] = job
@@ -231,6 +313,7 @@ class ProductEvalJobManager:
             api_key,
             run_name,
             task_name,
+            requested_dataset,
             model,
             dict(metadata or {}),
             validate_config(config),
@@ -250,6 +333,7 @@ class ProductEvalJobManager:
         api_key: str,
         run_name: Optional[str],
         task_name: Optional[str],
+        dataset_name: Optional[str],
         model: Optional[str],
         metadata: Dict[str, Any],
         request_config: Dict[str, Any],
@@ -257,12 +341,16 @@ class ProductEvalJobManager:
     ) -> None:
         job.mark(status="RUNNING")
         try:
-            from qym import Evaluator
+            from qym import Evaluator, ProgressCallbackObserver
 
             module = _load_script(preset.script_path)
             task = _get_function(module, preset.script_path, preset.task_name)
             metric = _get_function(module, preset.script_path, preset.metric_name)
-            if preset.dataset_env:
+            if dataset_name:
+                dataset = dataset_name
+            elif preset.requires_dataset_name:
+                raise RuntimeError(f"dataset is required for preset '{preset.name}'")
+            elif preset.dataset_env:
                 dataset = os.getenv(preset.dataset_env, "").strip()
                 if not dataset:
                     raise RuntimeError(
@@ -282,12 +370,27 @@ class ProductEvalJobManager:
                 platform_url or os.getenv("QYM_PLATFORM_URL") or settings.base_url
             ).rstrip("/")
 
-            run_metadata = dict(metadata or {})
-            run_metadata.setdefault("product_eval", {})
-            if isinstance(run_metadata["product_eval"], dict):
-                run_metadata["product_eval"].update(
-                    {"preset": preset.name, "job_id": job.job_id}
+            product_eval_id = str(uuid4())
+
+            def build_run_metadata(attempt: int) -> Dict[str, Any]:
+                run_metadata = dict(metadata or {})
+                product_eval = run_metadata.get("product_eval")
+                product_eval = (
+                    dict(product_eval) if isinstance(product_eval, dict) else {}
                 )
+                product_eval.update(
+                    {
+                        "preset": preset.name,
+                        "job_id": job.job_id,
+                        "product_eval_id": product_eval_id,
+                        "attempt": attempt,
+                        "attempts": preset.run_count,
+                    }
+                )
+                run_metadata["product_eval"] = product_eval
+                return run_metadata
+
+            run_metadata = build_run_metadata(1)
 
             evaluator_config: Dict[str, Any] = {
                 **preset.default_config,
@@ -319,22 +422,73 @@ class ProductEvalJobManager:
                 evaluator_config["task_name"] = task_name
 
             def on_progress(snapshot: Any) -> None:
-                if getattr(snapshot, "event", None) != "run_start":
+                event = getattr(snapshot, "event", None)
+                if event == "run_matrix":
+                    job.record_run_matrix(getattr(snapshot, "run_matrix", None) or [])
                     return
-                run_info = getattr(snapshot, "run_info", None) or {}
-                platform_run_id = run_info.get("platform_run_id")
-                if platform_run_id:
-                    job.mark(run_id=str(platform_run_id))
+                sdk_run_id = str(getattr(snapshot, "run_id", "") or "")
+                if not sdk_run_id:
+                    return
+                if event == "run_start":
+                    run_info = getattr(snapshot, "run_info", None) or {}
+                    platform_run_id = run_info.get("platform_run_id")
+                    job.mark_run(
+                        sdk_run_id=sdk_run_id,
+                        status="RUNNING",
+                        qym_run_id=str(platform_run_id) if platform_run_id else None,
+                    )
+                elif event == "run_complete":
+                    job.mark_run(sdk_run_id=sdk_run_id, status="COMPLETED")
 
-            evaluator = Evaluator(
-                task=task,
-                dataset=dataset,
-                metrics=[metric],
-                model=resolved_model,
-                config=evaluator_config,
-                progress_callback=on_progress,
-            )
-            evaluator.run(show_tui=False, auto_save=False)
+            if preset.run_count > 1:
+                base_name = (
+                    run_name
+                    or getattr(module, "DEFAULT_RUN_NAME", None)
+                    or "_".join(
+                        part
+                        for part in (
+                            os.getenv("AGENT_VERSION"),
+                            os.getenv("IMAGE_VERSION"),
+                            os.getenv("KB_VERSION"),
+                        )
+                        if part
+                    )
+                    or preset.task_name
+                )
+                runs = []
+                for attempt in range(1, preset.run_count + 1):
+                    attempt_config = {
+                        **evaluator_config,
+                        "run_metadata": build_run_metadata(attempt),
+                        "run_name": base_name,
+                    }
+                    runs.append(
+                        {
+                            "name": base_name,
+                            "task": task,
+                            "dataset": dataset,
+                            "metrics": [metric],
+                            "model": resolved_model,
+                            "config": attempt_config,
+                        }
+                    )
+                Evaluator.run_parallel(
+                    runs=runs,
+                    show_tui=False,
+                    auto_save=False,
+                    max_parallel_runs=preset.max_parallel_runs,
+                    observer=ProgressCallbackObserver(on_progress),
+                )
+            else:
+                evaluator = Evaluator(
+                    task=task,
+                    dataset=dataset,
+                    metrics=[metric],
+                    model=resolved_model,
+                    config=evaluator_config,
+                    progress_callback=on_progress,
+                )
+                evaluator.run(show_tui=False, auto_save=False)
             job.mark(status="COMPLETED")
         except Exception as exc:
             error = _safe_error(exc)

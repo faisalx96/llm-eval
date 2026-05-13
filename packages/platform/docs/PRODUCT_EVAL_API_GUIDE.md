@@ -1,8 +1,10 @@
 # Product Eval API Integration Guide
 
-This API lets an external application trigger a predefined qym evaluation over HTTP, then poll for aggregate progress and final results. The external app does not need Python or the qym SDK.
+This API lets an external application trigger a predefined qym evaluation over HTTP, then poll for progress and qym run links. The external app does not need Python or the qym SDK.
 
 The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
+
+For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(..., max_parallel_runs=1)`. The platform compare view is responsible for showing Pass@3, Avg@3, consistency, reliability, and latency metrics across those runs.
 
 ## Authentication
 
@@ -70,7 +72,8 @@ Request body:
 
 ```json
 {
-  "preset": "test",
+  "preset": "insightor",
+  "dataset": "customer-langfuse-dataset",
   "run_name": "product-eval-smoke-001",
   "model": "optional-model",
   "metadata": {
@@ -88,7 +91,8 @@ Request body:
 
 Fields:
 
-- `preset`: Required preset name. Current smoke-test preset: `test`.
+- `preset`: Required preset name. Use `test` for smoke tests or `insightor` for the real Insightor eval.
+- `dataset`: Langfuse dataset name. Required for `insightor`.
 - `run_name`: Optional display/run name. If omitted, the preset default is used.
 - `model`: Optional model override. Some presets may ignore this.
 - `metadata`: Optional caller metadata stored on the qym run.
@@ -102,6 +106,25 @@ Allowed `config` keys:
 - `metric_timeout`
 - `max_metric_concurrency`
 
+## Insightor Runtime Environment
+
+The Docker image includes `/app/insightor_eval.py`, but secrets are still supplied by environment variables at runtime.
+
+Required for `insightor`:
+
+- `INSIGHTOR_URL`
+- `REFRESH_TOKEN`
+- `DATAIKU_API_KEY`
+- `OPENAI_API_KEY`
+
+Optional:
+
+- `DATAIKU_URL` defaults to the configured Dataiku host.
+- `OPENAI_BASE_URL` is used by the main judge client.
+- `CONTEXT_JUDGE_API_KEY` overrides `OPENAI_API_KEY` for the context judge.
+- `CONTEXT_JUDGE_BASE_URL` defaults to the configured AI gateway host.
+- `MODEL`, `AGENT_VERSION`, `IMAGE_VERSION`, and `KB_VERSION` are used for run/model metadata when present.
+
 Response:
 
 ```json
@@ -112,9 +135,11 @@ Response:
     "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
     "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
+    "qym_runs": [],
+    "qym_compare_url": null,
+    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
     "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z",
-    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30"
+    "updated_at": "2026-05-13T11:17:04.102901Z"
   },
   "error": null
 }
@@ -130,9 +155,11 @@ Sometimes `qym_run_id` is temporarily `null` because the background SDK run has 
     "qym_run_id": null,
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
     "qym_run_url": null,
+    "qym_runs": [],
+    "qym_compare_url": null,
+    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
     "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:03.655197Z",
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf"
+    "updated_at": "2026-05-13T11:17:03.655197Z"
   },
   "error": null
 }
@@ -140,7 +167,7 @@ Sometimes `qym_run_id` is temporarily `null` because the background SDK run has 
 
 ## Poll A Job
 
-Use this only before the qym platform run exists.
+Use this before the qym platform run exists, and for multi-run presets such as `insightor`.
 
 ```http
 GET /v1/product-evals/jobs/{opaque_startup_id}
@@ -157,15 +184,56 @@ Response:
     "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
     "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
+    "qym_runs": [],
+    "qym_compare_url": null,
+    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
     "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z",
-    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30"
+    "updated_at": "2026-05-13T11:17:04.102901Z"
   },
   "error": null
 }
 ```
 
-Once `qym_run_id` is present, switch to polling `/v1/product-evals/{qym_run_id}`.
+For single-run presets, once `qym_run_id` is present, switch to polling `/v1/product-evals/{qym_run_id}`. For `insightor`, keep polling the returned job `poll_url` and use `qym_compare_url` to open the three-run compare view.
+
+Insightor job response:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "status": "RUNNING",
+    "qym_run_id": "run-attempt-1",
+    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
+    "qym_run_url": "https://qym.example.com/run/run-attempt-1",
+    "qym_runs": [
+      {
+        "attempt": 1,
+        "status": "COMPLETED",
+        "qym_run_id": "run-attempt-1",
+        "qym_run_url": "https://qym.example.com/run/run-attempt-1"
+      },
+      {
+        "attempt": 2,
+        "status": "RUNNING",
+        "qym_run_id": "run-attempt-2",
+        "qym_run_url": "https://qym.example.com/run/run-attempt-2"
+      },
+      {
+        "attempt": 3,
+        "status": "STARTING",
+        "qym_run_id": null,
+        "qym_run_url": null
+      }
+    ],
+    "qym_compare_url": "https://qym.example.com/compare?runs=run-attempt-1&runs=run-attempt-2",
+    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
+    "created_at": "2026-05-13T11:17:03.655197Z",
+    "updated_at": "2026-05-13T11:17:04.102901Z"
+  },
+  "error": null
+}
+```
 
 If the background job fails before creating a platform run, the job response contains:
 
@@ -177,6 +245,8 @@ If the background job fails before creating a platform run, the job response con
     "qym_run_id": null,
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
     "qym_run_url": null,
+    "qym_runs": [],
+    "qym_compare_url": null,
     "error": "RuntimeError: sanitized failure message",
     "created_at": "2026-05-13T11:17:03.655197Z",
     "updated_at": "2026-05-13T11:17:04.102901Z",

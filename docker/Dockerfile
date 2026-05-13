@@ -23,6 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY packages/sdk /app/packages/sdk
 COPY packages/platform /app/packages/platform
+COPY insightor_eval.py /app/insightor_eval.py
 COPY tools /app/tools
 
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -56,6 +57,7 @@ FROM python-base AS final
 
 COPY packages/sdk /app/packages/sdk
 COPY packages/platform /app/packages/platform
+COPY insightor_eval.py /app/insightor_eval.py
 COPY examples /app/examples
 COPY tools /app/tools
 COPY docs_portal /app/docs_portal

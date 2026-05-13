@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
@@ -30,6 +31,7 @@ job_manager = ProductEvalJobManager()
 
 class ProductEvalSubmitRequest(BaseModel):
     preset: str = Field(default="insightor")
+    dataset: Optional[str] = None
     run_name: Optional[str] = None
     task_name: Optional[str] = None
     model: Optional[str] = None
@@ -74,32 +76,60 @@ def _qym_run_url(run_id: Optional[str]) -> Optional[str]:
     return f"{settings.base_url.rstrip('/')}/run/{run_id}"
 
 
+def _qym_compare_url(run_ids: List[str]) -> Optional[str]:
+    clean = [run_id for run_id in run_ids if run_id]
+    if len(clean) < 2:
+        return None
+    settings = PlatformSettings()
+    return f"{settings.base_url.rstrip('/')}/compare?{urlencode({'runs': clean}, doseq=True)}"
+
+
 def _job_payload(job: ProductEvalJob, *, internal: bool = False) -> Dict[str, Any]:
-    if job.run_id:
-        poll_url = f"/v1/product-evals/{job.run_id}"
+    snapshot = job.to_dict()
+    qym_runs = []
+    for row in snapshot["runs"]:
+        qym_run_id = row.get("qym_run_id")
+        qym_runs.append(
+            {
+                "attempt": row.get("attempt"),
+                "status": row.get("status"),
+                "qym_run_id": qym_run_id,
+                "qym_run_url": _qym_run_url(qym_run_id),
+            }
+        )
+    qym_run_ids = [
+        str(row["qym_run_id"]) for row in snapshot["runs"] if row.get("qym_run_id")
+    ]
+
+    if snapshot["expected_runs"] > 1:
+        poll_url = f"/v1/product-evals/jobs/{snapshot['job_id']}"
+    elif snapshot["run_id"]:
+        poll_url = f"/v1/product-evals/{snapshot['run_id']}"
     else:
-        poll_url = f"/v1/product-evals/jobs/{job.job_id}"
+        poll_url = f"/v1/product-evals/jobs/{snapshot['job_id']}"
     status = (
         "STARTING"
-        if job.status in {"QUEUED", "RUNNING"} and not job.run_id
-        else job.status
+        if snapshot["status"] in {"QUEUED", "RUNNING"} and not snapshot["run_id"]
+        else snapshot["status"]
     )
     payload: Dict[str, Any] = {
         "status": status,
-        "qym_run_id": job.run_id,
-        "qym_project_id": job.project_id,
-        "qym_run_url": _qym_run_url(job.run_id),
+        "qym_run_id": snapshot["run_id"],
+        "qym_project_id": snapshot["project_id"],
+        "qym_run_url": _qym_run_url(snapshot["run_id"]),
+        "qym_runs": qym_runs,
+        "qym_compare_url": _qym_compare_url(qym_run_ids),
         "poll_url": poll_url,
-        "created_at": job.created_at.isoformat() + "Z",
-        "updated_at": job.updated_at.isoformat() + "Z",
+        "created_at": snapshot["created_at"],
+        "updated_at": snapshot["updated_at"],
     }
-    if job.error:
-        payload["error"] = job.error
+    if snapshot["error"]:
+        payload["error"] = snapshot["error"]
     if internal:
         payload.update(
             {
-                "job_id": job.job_id,
-                "preset": job.preset,
+                "job_id": snapshot["job_id"],
+                "preset": snapshot["preset"],
             }
         )
     return payload
@@ -308,6 +338,7 @@ def submit_product_eval(
             api_key=token,
             run_name=request.run_name,
             task_name=request.task_name,
+            dataset_name=request.dataset,
             model=request.model,
             metadata=request.metadata,
             config=request.config,
