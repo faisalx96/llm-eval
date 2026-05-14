@@ -3004,7 +3004,8 @@
         showWorkflowModal('reject', run.run_id, run.task_name);
       });
 
-      tr.querySelector('.delete-run').addEventListener('click', (e) => {
+      const deleteBtn = tr.querySelector('.delete-run');
+      if (deleteBtn) deleteBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         closeDropdown();
