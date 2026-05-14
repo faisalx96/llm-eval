@@ -4,7 +4,7 @@ This API lets an external application trigger a predefined qym evaluation over H
 
 The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
 
-For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(...)`. By default those runs execute with `max_parallel_runs=1`; clients may request up to `max_parallel_runs=3`. When those runs finish, the API returns the grouped Pass@3, Avg@3, consistency, reliability, and latency metrics, and the platform compare view shows the same cross-run result.
+For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(...)`. Runtime limits such as concurrency and parallel attempts are controlled by `QYM_PRODUCT_EVAL_*` environment variables on the platform. When those runs finish, the API returns the grouped Pass@3, Avg@3, consistency, reliability, and latency metrics, and the platform compare view shows the same cross-run result.
 
 ## Authentication
 
@@ -52,7 +52,7 @@ Shared auth errors may still use the platform's normal FastAPI error shape.
 
 - `200 OK`: Poll succeeded.
 - `202 Accepted`: Submit succeeded and the eval job was accepted.
-- `400 Bad Request`: Invalid request, such as unknown preset or unsupported config key.
+- `400 Bad Request`: Invalid request, such as unknown preset, unsupported field, or a client-sent `config`.
 - `401 Unauthorized`: Missing or invalid bearer API key.
 - `403 Forbidden`: API key lacks scope or project access.
 - `429 Too Many Requests`: All product eval worker slots are busy. The API returns `Retry-After`.
@@ -85,12 +85,6 @@ Request body:
   "metadata": {
     "source": "external-app",
     "customer_id": "customer-123"
-  },
-  "config": {
-    "max_concurrency": 10,
-    "timeout": 900,
-    "max_retries": 1,
-    "max_parallel_runs": 1
   }
 }
 ```
@@ -105,25 +99,29 @@ Fields:
 - `run_name`: Optional display/run name. If omitted, the preset default is used.
 - `model`: Optional model override. Some presets may ignore this.
 - `metadata`: Optional caller metadata stored on the qym run.
-- `config`: Optional qym runtime config overrides. Only safe keys are accepted.
 
-Allowed `config` keys:
+The submit request does not accept `config`. If clients send `config`, the API returns `400 Bad Request` and no eval is created.
 
-- `max_concurrency`
-- `timeout`
-- `max_retries`
-- `max_parallel_runs`
+## Runtime Configuration
 
-Insightor uses a fixed `metric_timeout` of `300` seconds. Clients cannot override `metric_timeout` or `max_metric_concurrency`.
+Operators configure Insightor product eval runtime limits with Qym platform environment variables:
 
-Insightor config bounds:
+| Env var | Default | Range | Description |
+| --- | --- | --- | --- |
+| `QYM_PRODUCT_EVAL_MAX_WORKERS` | `3` | `>= 1` | Maximum active product eval jobs in this platform process. Requests above this return `429`. |
+| `QYM_PRODUCT_EVAL_MAX_CONCURRENCY` | `10` | `1` to `20` | Item-level concurrency inside each Qym run. |
+| `QYM_PRODUCT_EVAL_TIMEOUT` | `900` | `1` to `900` | Overall run timeout in seconds. |
+| `QYM_PRODUCT_EVAL_MAX_RETRIES` | `0` | `0` to `2` | Retries for failed items. |
+| `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS` | `1` | `1` to `3` | Number of Insightor attempts to run at the same time. |
+| `QYM_PRODUCT_EVAL_METRIC_TIMEOUT` | `300` | `>= 1` | Metric timeout in seconds. |
 
-- `max_concurrency`: defaults to `10`, maximum `20`
-- `timeout`: defaults to `900`, maximum `900`
-- `max_retries`: defaults to `0`, maximum `2`
-- `max_parallel_runs`: defaults to `1`, maximum `3`
+The effective concurrency budget must satisfy:
 
-The effective concurrency budget must satisfy `max_concurrency * max_parallel_runs <= 20`.
+```text
+QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS <= 20
+```
+
+Recommended normal settings are the defaults: `QYM_PRODUCT_EVAL_MAX_CONCURRENCY=10` and `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS=1`.
 
 ## Insightor Runtime Inputs
 
@@ -334,9 +332,6 @@ Default response is aggregate-only. It does not include per-item rows.
       "source": "external-app",
       "customer_id": "customer-123",
       "total_items": 50
-    },
-    "config": {
-      "run_name": "product-eval-smoke-001"
     }
   },
   "error": null

@@ -60,39 +60,8 @@ Authorization: Bearer <QYM_API_KEY>
 | `image_version` | string | Optional Insightor image version label. |
 | `kb_version` | string | Optional Insightor knowledge-base version label. |
 | `metadata` | object | Optional caller metadata stored on the Qym runs. Do not put secrets here. |
-| `config` | object | Optional runtime config overrides. Only the keys listed below are accepted. |
 
-If `config` is omitted, the Insightor eval uses these defaults:
-
-```json
-{
-  "max_concurrency": 10,
-  "timeout": 900,
-  "max_retries": 0,
-  "max_parallel_runs": 1
-}
-```
-
-Recommended config for normal use is the default: `max_concurrency=10` and `max_parallel_runs=1`.
-
-Allowed `config` keys and ranges:
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `max_concurrency` | integer | Item-level concurrency inside each Qym run. Default `10`; allowed range `1` to `20`. |
-| `timeout` | number | Overall run timeout in seconds. Default `900`; allowed range `1` to `900`. |
-| `max_retries` | integer | Retries for failed items. Default `0`; allowed range `0` to `2`. |
-| `max_parallel_runs` | integer | Number of Insightor attempts to run at the same time. Default `1`; allowed range `1` to `3`. |
-
-Unsupported `config` keys or out-of-range values return `400 Bad Request`. No eval is created when validation fails.
-
-The effective concurrency budget must be at most `20`:
-
-```text
-max_concurrency * max_parallel_runs <= 20
-```
-
-Insightor uses a fixed `metric_timeout` of `300` seconds. Clients cannot override `metric_timeout` or `max_metric_concurrency`.
+Runtime limits such as concurrency, timeout, retries, and parallel attempts are controlled by the Qym platform deployment. Clients cannot override them in the request. If a request includes `config`, the API returns `400 Bad Request` and no eval is created.
 
 ### Submit Example
 
@@ -424,12 +393,6 @@ Example response:
     "metadata": {
       "source": "external-app",
       "request_id": "req-123"
-    },
-    "config": {
-      "max_concurrency": 10,
-      "timeout": 900,
-      "max_retries": 0,
-      "max_parallel_runs": 1
     }
   },
   "error": null
@@ -529,7 +492,7 @@ Missing required input example:
 }
 ```
 
-Out-of-range config example:
+Unsupported `config` example:
 
 ```json
 {
@@ -537,7 +500,7 @@ Out-of-range config example:
   "data": null,
   "error": {
     "code": "invalid_request",
-    "message": "config.max_concurrency must be between 1 and 20"
+    "message": "config is not accepted on this endpoint. Product eval runtime settings are controlled by QYM_PRODUCT_EVAL_* environment variables."
   }
 }
 ```
@@ -546,7 +509,7 @@ Out-of-range config example:
 
 | Status | Meaning |
 | --- | --- |
-| `400 Bad Request` | Missing required input, unknown preset, empty `dataset`, or unsupported config key. |
+| `400 Bad Request` | Missing required input, unknown preset, empty `dataset`, unsupported field, or a request body containing `config`. |
 | `401 Unauthorized` | Missing or invalid bearer token. |
 | `403 Forbidden` | API key does not have the required scope or project access. |
 | `429 Too Many Requests` | All product eval worker slots are busy. Wait and retry after the `Retry-After` header. |

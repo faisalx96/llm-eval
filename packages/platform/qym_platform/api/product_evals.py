@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import (
@@ -32,6 +32,8 @@ job_manager = ProductEvalJobManager()
 
 
 class ProductEvalSubmitRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     preset: str = Field(default="insightor")
     dataset: Optional[str] = None
     insightor_url: Optional[str] = None
@@ -43,7 +45,6 @@ class ProductEvalSubmitRequest(BaseModel):
     task_name: Optional[str] = None
     model: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    config: Dict[str, Any] = Field(default_factory=dict)
 
 
 def _bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -328,7 +329,6 @@ def build_product_eval_run_payload(
         "ended_at": to_api_timestamp(run.ended_at),
         "created_at": to_api_timestamp(run.created_at),
         "metadata": _public_metadata(run_metadata),
-        "config": run.run_config if isinstance(run.run_config, dict) else {},
     }
     if include_items:
         payload["items"] = rows
@@ -347,6 +347,16 @@ def submit_product_eval(
         raise HTTPException(status_code=401, detail="Missing Bearer API key")
     if not principal.project_id:
         raise HTTPException(status_code=403, detail="API key is not bound to a project")
+    extra_fields = set(request.model_extra or {})
+    if "config" in extra_fields:
+        return _error_response(
+            400,
+            "invalid_request",
+            "config is not accepted on this endpoint. Product eval runtime settings are controlled by QYM_PRODUCT_EVAL_* environment variables.",
+        )
+    if extra_fields:
+        joined = ", ".join(sorted(extra_fields))
+        return _error_response(400, "invalid_request", f"Unsupported field(s): {joined}")
 
     try:
         job = job_manager.submit(
@@ -364,7 +374,6 @@ def submit_product_eval(
             ),
             model=request.model,
             metadata=request.metadata,
-            config=request.config,
             owner_user_id=principal.user.id,
             project_id=principal.project_id,
         )

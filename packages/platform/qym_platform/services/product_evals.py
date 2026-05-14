@@ -18,27 +18,7 @@ from qym_platform.settings import PlatformSettings
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_CONFIG_KEYS = {
-    "max_concurrency",
-    "timeout",
-    "max_retries",
-    "max_parallel_runs",
-}
-
-CONFIG_BOUNDS = {
-    "max_concurrency": (1, 20),
-    "timeout": (1, 900),
-    "max_retries": (0, 2),
-    "max_parallel_runs": (1, 3),
-}
-
 MAX_EFFECTIVE_CONCURRENCY = 20
-
-INTEGER_CONFIG_KEYS = {
-    "max_concurrency",
-    "max_retries",
-    "max_parallel_runs",
-}
 
 
 class ProductEvalError(ValueError):
@@ -206,8 +186,26 @@ def _format_missing_script_error(script_path: Path) -> str:
     return f"Preset script not found: {script_path}"
 
 
+def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
+    settings = PlatformSettings()
+    config = {
+        "max_concurrency": settings.product_eval_max_concurrency,
+        "timeout": settings.product_eval_timeout,
+        "max_retries": settings.product_eval_max_retries,
+        "metric_timeout": settings.product_eval_metric_timeout,
+    }
+    max_parallel_runs = settings.product_eval_max_parallel_runs
+    effective_concurrency = config["max_concurrency"] * max_parallel_runs
+    if effective_concurrency > MAX_EFFECTIVE_CONCURRENCY:
+        raise ProductEvalError(
+            "QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS must be less than or equal to 20"
+        )
+    return config, max_parallel_runs
+
+
 def get_preset(name: str) -> ProductEvalPreset:
     if name == "insightor":
+        default_config, max_parallel_runs = _insightor_platform_config()
         return ProductEvalPreset(
             name="insightor",
             script_path=_default_insightor_script(),
@@ -216,13 +214,9 @@ def get_preset(name: str) -> ProductEvalPreset:
             dataset_env=None,
             model_env="MODEL",
             default_dataset_name="playground_set_v2",
-            default_config={
-                "max_concurrency": 10,
-                "timeout": 900,
-                "metric_timeout": 300,
-            },
+            default_config=default_config,
             run_count=3,
-            max_parallel_runs=1,
+            max_parallel_runs=max_parallel_runs,
         )
     if name == "test":
         return ProductEvalPreset(
@@ -238,48 +232,6 @@ def get_preset(name: str) -> ProductEvalPreset:
             },
         )
     raise ProductEvalError(f"Unknown product eval preset: {name}")
-
-
-def validate_config(
-    config: Optional[Dict[str, Any]],
-    *,
-    preset: Optional[ProductEvalPreset] = None,
-) -> Dict[str, Any]:
-    clean = dict(config or {})
-    disallowed = sorted(set(clean) - ALLOWED_CONFIG_KEYS)
-    if disallowed:
-        joined = ", ".join(disallowed)
-        raise ProductEvalError(f"Unsupported config key(s): {joined}")
-    for key, value in list(clean.items()):
-        min_value, max_value = CONFIG_BOUNDS[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ProductEvalError(f"config.{key} must be a number")
-        if key in INTEGER_CONFIG_KEYS and int(value) != value:
-            raise ProductEvalError(f"config.{key} must be an integer")
-        if value < min_value or value > max_value:
-            raise ProductEvalError(
-                f"config.{key} must be between {min_value} and {max_value}"
-            )
-        if key in INTEGER_CONFIG_KEYS:
-            clean[key] = int(value)
-    if preset is not None:
-        effective_max_concurrency = int(
-            clean.get(
-                "max_concurrency",
-                preset.default_config.get("max_concurrency", 1),
-            )
-        )
-        effective_max_parallel_runs = int(
-            clean.get("max_parallel_runs", preset.max_parallel_runs or 1)
-        )
-        effective_concurrency = (
-            effective_max_concurrency * effective_max_parallel_runs
-        )
-        if effective_concurrency > MAX_EFFECTIVE_CONCURRENCY:
-            raise ProductEvalError(
-                "config.max_concurrency * config.max_parallel_runs must be less than or equal to 20"
-            )
-    return clean
 
 
 def validate_dataset_name(dataset_name: Optional[str]) -> Optional[str]:
@@ -325,12 +277,10 @@ def validate_runtime_inputs(
 def validate_submit_request(
     *,
     preset_name: str,
-    config: Optional[Dict[str, Any]],
     dataset_name: Optional[str] = None,
     runtime_inputs: Optional[ProductEvalRuntimeInputs] = None,
 ) -> ProductEvalPreset:
     preset = get_preset(preset_name)
-    validate_config(config, preset=preset)
     requested_dataset = validate_dataset_name(dataset_name)
     if not preset.script_path.exists():
         raise RuntimeError(_format_missing_script_error(preset.script_path))
@@ -448,7 +398,6 @@ class ProductEvalJobManager:
         runtime_inputs: Optional[ProductEvalRuntimeInputs],
         model: Optional[str],
         metadata: Dict[str, Any],
-        config: Dict[str, Any],
         owner_user_id: Optional[str] = None,
         project_id: Optional[str] = None,
         platform_url: Optional[str] = None,
@@ -456,11 +405,9 @@ class ProductEvalJobManager:
         requested_dataset = validate_dataset_name(dataset_name)
         preset = validate_submit_request(
             preset_name=preset_name,
-            config=config,
             dataset_name=requested_dataset,
             runtime_inputs=runtime_inputs,
         )
-        request_config = validate_config(config, preset=preset)
         validated_runtime_inputs = validate_runtime_inputs(preset, runtime_inputs)
         job = ProductEvalJob(
             job_id=str(uuid4()),
@@ -483,13 +430,12 @@ class ProductEvalJobManager:
                 api_key,
                 run_name,
                 task_name,
-            requested_dataset,
-            validated_runtime_inputs,
-            model,
-            dict(metadata or {}),
-            request_config,
-            platform_url,
-        )
+                requested_dataset,
+                validated_runtime_inputs,
+                model,
+                dict(metadata or {}),
+                platform_url,
+            )
         except Exception:
             with self._lock:
                 self._jobs.pop(job.job_id, None)
@@ -512,20 +458,13 @@ class ProductEvalJobManager:
         runtime_inputs: ProductEvalRuntimeInputs,
         model: Optional[str],
         metadata: Dict[str, Any],
-        request_config: Dict[str, Any],
         platform_url: Optional[str],
     ) -> None:
         job.mark(status="RUNNING")
         try:
             from qym import Evaluator, ProgressCallbackObserver
 
-            request_config = dict(request_config)
-            requested_max_parallel_runs = request_config.pop("max_parallel_runs", None)
-            resolved_max_parallel_runs = (
-                int(requested_max_parallel_runs)
-                if requested_max_parallel_runs is not None
-                else preset.max_parallel_runs
-            )
+            resolved_max_parallel_runs = preset.max_parallel_runs
 
             module = _load_script(preset.script_path)
             configure_runtime = getattr(module, "configure_runtime", None)
@@ -589,7 +528,6 @@ class ProductEvalJobManager:
 
             evaluator_config: Dict[str, Any] = {
                 **preset.default_config,
-                **request_config,
                 "run_metadata": run_metadata,
                 "platform_api_key": api_key,
                 "platform_url": resolved_platform_url,

@@ -46,6 +46,8 @@ from qym_platform.services.product_evals import (
     ProductEvalJobManager,
     ProductEvalQueueFull,
     ProductEvalRuntimeInputs,
+    ProductEvalError,
+    get_preset,
     validate_submit_request,
 )
 
@@ -156,7 +158,6 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
             "kb_version": "kb-v1",
             "run_name": "external-test-001",
             "metadata": {"source": "curl"},
-            "config": {"timeout": 30},
         },
     )
 
@@ -362,83 +363,21 @@ def test_submit_rejects_invalid_preset(client, session_factory) -> None:
     assert "Unknown product eval preset" in envelope["error"]["message"]
 
 
-@pytest.mark.parametrize("config_key", ["metric_timeout", "max_metric_concurrency"])
-def test_submit_rejects_client_controlled_metric_config(
-    client, session_factory, config_key
-) -> None:
+def test_submit_rejects_client_config_field(client, session_factory) -> None:
     with session_factory() as session:
         _seed_api_key(session, token="submit-token", scopes=["runs:write"])
 
     response = client.post(
         "/v1/product-evals",
         headers=_auth_headers("submit-token"),
-        json={"preset": "test", "config": {config_key: 1}},
+        json={"preset": "test", "config": {"max_concurrency": 1}},
     )
 
     assert response.status_code == 400
     envelope = response.json()
     assert envelope["ok"] is False
     assert envelope["error"]["code"] == "invalid_request"
-    assert f"Unsupported config key(s): {config_key}" in envelope["error"]["message"]
-
-
-@pytest.mark.parametrize(
-    ("config", "message"),
-    [
-        ({"max_concurrency": 21}, "config.max_concurrency must be between 1 and 20"),
-        ({"timeout": 901}, "config.timeout must be between 1 and 900"),
-        ({"max_retries": 3}, "config.max_retries must be between 0 and 2"),
-        (
-            {"max_parallel_runs": 4},
-            "config.max_parallel_runs must be between 1 and 3",
-        ),
-        ({"max_parallel_runs": 1.5}, "config.max_parallel_runs must be an integer"),
-    ],
-)
-def test_submit_rejects_out_of_range_config(
-    client, session_factory, config, message
-) -> None:
-    with session_factory() as session:
-        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
-
-    response = client.post(
-        "/v1/product-evals",
-        headers=_auth_headers("submit-token"),
-        json={"preset": "test", "config": config},
-    )
-
-    assert response.status_code == 400
-    envelope = response.json()
-    assert envelope["ok"] is False
-    assert envelope["error"]["code"] == "invalid_request"
-    assert message in envelope["error"]["message"]
-
-
-def test_submit_rejects_effective_concurrency_above_20(
-    client, session_factory
-) -> None:
-    with session_factory() as session:
-        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
-
-    response = client.post(
-        "/v1/product-evals",
-        headers=_auth_headers("submit-token"),
-        json={
-            "preset": "insightor",
-            "insightor_url": "https://insightor.example.com",
-            "refresh_token": "refresh-token-1",
-            "config": {"max_concurrency": 7, "max_parallel_runs": 3},
-        },
-    )
-
-    assert response.status_code == 400
-    envelope = response.json()
-    assert envelope["ok"] is False
-    assert envelope["error"]["code"] == "invalid_request"
-    assert (
-        "config.max_concurrency * config.max_parallel_runs must be less than or equal to 20"
-        in envelope["error"]["message"]
-    )
+    assert "config is not accepted" in envelope["error"]["message"]
 
 
 def test_submit_returns_429_when_product_eval_slots_are_full(
@@ -505,7 +444,6 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
 
     preset = validate_submit_request(
         preset_name="insightor",
-        config={},
         dataset_name=None,
         runtime_inputs=ProductEvalRuntimeInputs(
             insightor_url="https://insightor.example.com",
@@ -515,6 +453,29 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
 
     assert preset.default_dataset_name == "playground_set_v2"
     assert preset.requires_dataset_name is False
+
+
+def test_insightor_preset_rejects_env_effective_concurrency_above_20(
+    monkeypatch, tmp_path
+) -> None:
+    script = tmp_path / "insightor_eval.py"
+    script.write_text(
+        "\n".join(
+            [
+                "def insightor_api(value):",
+                "    return value",
+                "def accuracy(output, expected):",
+                "    return True",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_CONCURRENCY", "11")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "2")
+
+    with pytest.raises(ProductEvalError, match="less than or equal to 20"):
+        get_preset("insightor")
 
 
 def test_submit_requires_insightor_runtime_inputs(client, session_factory) -> None:
@@ -540,7 +501,7 @@ def test_submit_requires_insightor_runtime_inputs(client, session_factory) -> No
 def test_test_preset_uses_self_contained_runner(monkeypatch) -> None:
     monkeypatch.delenv("EVAL_DATASET", raising=False)
 
-    preset = validate_submit_request(preset_name="test", config={})
+    preset = validate_submit_request(preset_name="test")
 
     assert preset.name == "test"
     assert preset.script_path.name == "test_eval.py"
@@ -578,7 +539,6 @@ def test_job_manager_rejects_when_all_worker_slots_are_active(monkeypatch) -> No
         runtime_inputs=None,
         model=None,
         metadata={},
-        config={},
         platform_url="http://testserver",
     )
     assert started.wait(timeout=5)
@@ -593,7 +553,6 @@ def test_job_manager_rejects_when_all_worker_slots_are_active(monkeypatch) -> No
             runtime_inputs=None,
             model=None,
             metadata={},
-            config={},
             platform_url="http://testserver",
         )
 
@@ -641,6 +600,10 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     )
     monkeypatch.delenv("EVAL_DATASET", raising=False)
     monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_CONCURRENCY", "6")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_TIMEOUT", "30")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_RETRIES", "1")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "3")
 
     import qym
     from qym.core.results import EvaluationResult
@@ -702,7 +665,6 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
         ),
         model="model-1",
         metadata={"source": "test"},
-        config={"max_concurrency": 6, "max_parallel_runs": 3, "timeout": 30},
         platform_url="http://testserver",
     )
     assert job._future is not None
@@ -717,6 +679,8 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert [run["model"] for run in runs] == ["model-1"] * 3
     assert [run["dataset"] for run in runs] == ["playground_set_v2"] * 3
     assert [run["config"]["max_concurrency"] for run in runs] == [6] * 3
+    assert [run["config"]["timeout"] for run in runs] == [30] * 3
+    assert [run["config"]["max_retries"] for run in runs] == [1] * 3
     assert "max_parallel_runs" not in runs[0]["config"]
     assert [run["config"]["metric_timeout"] for run in runs] == [300] * 3
     runtime = runs[0]["task"].__globals__["RUNTIME"]
@@ -873,6 +837,7 @@ def test_poll_returns_aggregate_run_progress_by_default(
     assert payload["metadata"]["source"] == "test"
     assert payload["metadata"]["total_items"] == 3
     assert "product_eval" not in payload["metadata"]
+    assert "config" not in payload
     assert "items" not in payload
 
 
@@ -981,7 +946,6 @@ def test_job_manager_records_background_failure(monkeypatch, tmp_path) -> None:
         ),
         model=None,
         metadata={},
-        config={},
         platform_url="http://testserver",
     )
     assert job._future is not None
