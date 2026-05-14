@@ -43,6 +43,7 @@ from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.services.product_evals import (
     ProductEvalJob,
     ProductEvalJobManager,
+    ProductEvalRuntimeInputs,
     validate_submit_request,
 )
 
@@ -146,6 +147,11 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
         json={
             "preset": "insightor",
             "dataset": "customer-langfuse-dataset",
+            "insightor_url": "https://insightor.example.com",
+            "refresh_token": "refresh-token-1",
+            "agent_version": "agent-v1",
+            "image_version": "image-v1",
+            "kb_version": "kb-v1",
             "run_name": "external-test-001",
             "metadata": {"source": "curl"},
             "config": {"timeout": 30},
@@ -169,6 +175,12 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
     assert "preset" not in payload
     assert captured["api_key"] == "submit-token"
     assert captured["dataset_name"] == "customer-langfuse-dataset"
+    runtime_inputs = captured["runtime_inputs"]
+    assert runtime_inputs.insightor_url == "https://insightor.example.com"
+    assert runtime_inputs.refresh_token == "refresh-token-1"
+    assert runtime_inputs.agent_version == "agent-v1"
+    assert runtime_inputs.image_version == "image-v1"
+    assert runtime_inputs.kb_version == "kb-v1"
     assert captured["run_name"] == "external-test-001"
     assert captured["metadata"] == {"source": "curl"}
 
@@ -328,6 +340,26 @@ def test_submit_requires_dataset_for_insightor(
     assert "dataset is required for preset 'insightor'" in envelope["error"]["message"]
 
 
+def test_submit_requires_insightor_runtime_inputs(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
+
+    response = client.post(
+        "/v1/product-evals",
+        headers=_auth_headers("submit-token"),
+        json={"preset": "insightor", "dataset": "dataset-1"},
+    )
+
+    assert response.status_code == 400
+    envelope = response.json()
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == "invalid_request"
+    assert (
+        "insightor_url, refresh_token required for preset 'insightor'"
+        in envelope["error"]["message"]
+    )
+
+
 def test_test_preset_uses_self_contained_runner(monkeypatch) -> None:
     monkeypatch.delenv("EVAL_DATASET", raising=False)
 
@@ -363,6 +395,9 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
         "\n".join(
             [
                 "MODEL = 'model-from-script'",
+                "RUNTIME = {}",
+                "def configure_runtime(**kwargs):",
+                "    RUNTIME.update(kwargs)",
                 "def insightor_api(value):",
                 "    return value",
                 "def accuracy(output, expected):",
@@ -407,6 +442,13 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
         run_name="external-run",
         task_name=None,
         dataset_name="request-dataset",
+        runtime_inputs=ProductEvalRuntimeInputs(
+            insightor_url="https://insightor.example.com",
+            refresh_token="refresh-token-1",
+            agent_version="agent-v1",
+            image_version="image-v1",
+            kb_version="kb-v1",
+        ),
         model="model-1",
         metadata={"source": "test"},
         config={"timeout": 30},
@@ -423,6 +465,12 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert [run["name"] for run in runs] == ["external-run"] * 3
     assert [run["model"] for run in runs] == ["model-1"] * 3
     assert [run["dataset"] for run in runs] == ["request-dataset"] * 3
+    runtime = runs[0]["task"].__globals__["RUNTIME"]
+    assert runtime["INSIGHTOR_URL"] == "https://insightor.example.com"
+    assert runtime["REFRESH_TOKEN"] == "refresh-token-1"
+    assert runtime["AGENT_VERSION"] == "agent-v1"
+    assert runtime["IMAGE_VERSION"] == "image-v1"
+    assert runtime["KB_VERSION"] == "kb-v1"
     assert [
         run["config"]["run_metadata"]["product_eval"]["attempt"] for run in runs
     ] == [1, 2, 3]
@@ -667,6 +715,10 @@ def test_job_manager_records_background_failure(monkeypatch, tmp_path) -> None:
         run_name=None,
         task_name=None,
         dataset_name="dataset-1",
+        runtime_inputs=ProductEvalRuntimeInputs(
+            insightor_url="https://insightor.example.com",
+            refresh_token="refresh-token-1",
+        ),
         model=None,
         metadata={},
         config={},

@@ -74,6 +74,11 @@ Request body:
 {
   "preset": "insightor",
   "dataset": "customer-langfuse-dataset",
+  "insightor_url": "https://insightor.example.com",
+  "refresh_token": "external-app-refresh-token",
+  "agent_version": "agent-v1",
+  "image_version": "image-v1",
+  "kb_version": "kb-v1",
   "run_name": "product-eval-smoke-001",
   "model": "optional-model",
   "metadata": {
@@ -93,6 +98,9 @@ Fields:
 
 - `preset`: Required preset name. Use `test` for smoke tests or `insightor` for the real Insightor eval.
 - `dataset`: Langfuse dataset name. Required for `insightor`.
+- `insightor_url`: Required for `insightor`. Passed to the in-process Insightor task and not returned in polling payloads.
+- `refresh_token`: Required for `insightor`. Treated as a secret input and not logged in product eval metadata or returned by this API.
+- `agent_version`, `image_version`, `kb_version`: Optional Insightor version labels used for run naming and task runtime config.
 - `run_name`: Optional display/run name. If omitted, the preset default is used.
 - `model`: Optional model override. Some presets may ignore this.
 - `metadata`: Optional caller metadata stored on the qym run.
@@ -106,14 +114,18 @@ Allowed `config` keys:
 - `metric_timeout`
 - `max_metric_concurrency`
 
-## Insightor Runtime Environment
+## Insightor Runtime Inputs
 
-The Docker image includes `/app/insightor_eval.py`, but secrets are still supplied by environment variables at runtime.
+The Docker image includes `/app/insightor_eval.py`. Insightor connection inputs are supplied per request, while shared backend credentials are still supplied as server environment variables.
 
-Required for `insightor`:
+Required request fields for `insightor`:
 
-- `INSIGHTOR_URL`
-- `REFRESH_TOKEN`
+- `dataset`
+- `insightor_url`
+- `refresh_token`
+
+Required server environment variables:
+
 - `DATAIKU_API_KEY`
 - `OPENAI_API_KEY`
 
@@ -123,7 +135,7 @@ Optional:
 - `OPENAI_BASE_URL` is used by the main judge client.
 - `CONTEXT_JUDGE_API_KEY` overrides `OPENAI_API_KEY` for the context judge.
 - `CONTEXT_JUDGE_BASE_URL` defaults to the configured AI gateway host.
-- `MODEL`, `AGENT_VERSION`, `IMAGE_VERSION`, and `KB_VERSION` are used for run/model metadata when present.
+- `MODEL` is used when the request does not provide `model`.
 
 Response:
 
@@ -370,15 +382,21 @@ Do not use `include_items=true` for high-frequency production polling.
 
 ## Curl Example
 
-Submit:
+Submit Insightor:
 
 ```bash
 curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
   -H "Authorization: Bearer $QYM_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "preset": "test",
-    "run_name": "product-eval-smoke-001",
+    "preset": "insightor",
+    "dataset": "customer-langfuse-dataset",
+    "insightor_url": "https://insightor.example.com",
+    "refresh_token": "'"$INSIGHTOR_REFRESH_TOKEN"'",
+    "agent_version": "agent-v1",
+    "image_version": "image-v1",
+    "kb_version": "kb-v1",
+    "run_name": "insightor-api-smoke-001",
     "metadata": {
       "source": "curl"
     }

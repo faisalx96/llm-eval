@@ -21,6 +21,7 @@ from qym_platform.services.product_evals import (
     ProductEvalError,
     ProductEvalJob,
     ProductEvalJobManager,
+    ProductEvalRuntimeInputs,
 )
 from qym_platform.settings import PlatformSettings
 
@@ -32,6 +33,11 @@ job_manager = ProductEvalJobManager()
 class ProductEvalSubmitRequest(BaseModel):
     preset: str = Field(default="insightor")
     dataset: Optional[str] = None
+    insightor_url: Optional[str] = None
+    refresh_token: Optional[str] = None
+    agent_version: Optional[str] = None
+    image_version: Optional[str] = None
+    kb_version: Optional[str] = None
     run_name: Optional[str] = None
     task_name: Optional[str] = None
     model: Optional[str] = None
@@ -339,6 +345,13 @@ def submit_product_eval(
             run_name=request.run_name,
             task_name=request.task_name,
             dataset_name=request.dataset,
+            runtime_inputs=ProductEvalRuntimeInputs(
+                insightor_url=request.insightor_url,
+                refresh_token=request.refresh_token,
+                agent_version=request.agent_version,
+                image_version=request.image_version,
+                kb_version=request.kb_version,
+            ),
             model=request.model,
             metadata=request.metadata,
             config=request.config,

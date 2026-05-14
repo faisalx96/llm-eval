@@ -31,6 +31,22 @@ from qym import Evaluator
 
 load_dotenv()
 
+_RUNTIME_OVERRIDES: Dict[str, Optional[str]] = {}
+
+
+def configure_runtime(**kwargs: Optional[str]) -> None:
+    for key, value in kwargs.items():
+        if value is not None:
+            _RUNTIME_OVERRIDES[key] = str(value)
+
+
+def _env(name: str, default: Optional[str] = None) -> Optional[str]:
+    value = _RUNTIME_OVERRIDES.get(name)
+    if value not in (None, ""):
+        return value
+    return os.getenv(name, default)
+
+
 # Initialize Langfuse client for tracking
 client = Langfuse()
 
@@ -1003,7 +1019,7 @@ def insightor_api(question: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing SQL query and Langfuse URL
     """
-    base_url = os.getenv("INSIGHTOR_URL")
+    base_url = _env("INSIGHTOR_URL")
     access_token = None
     session = requests.Session()
 
@@ -1012,7 +1028,7 @@ def insightor_api(question: str) -> Dict[str, Any]:
         try:
             response = requests.post(
                 f"{base_url}/auth/token",
-                json={"refresh_token": os.getenv("REFRESH_TOKEN")},
+                json={"refresh_token": _env("REFRESH_TOKEN")},
                 headers={"Content-Type": "application/json"},
                 verify=False,
                 timeout=30,
@@ -1217,7 +1233,7 @@ if __name__ == "__main__":
     results = Evaluator.run_parallel(
         runs=[
             {
-                "name": f"{os.getenv('AGENT_VERSION')}_{os.getenv('IMAGE_VERSION')}_{os.getenv('KB_VERSION')}",
+                "name": f"{_env('AGENT_VERSION')}_{_env('IMAGE_VERSION')}_{_env('KB_VERSION')}",
                 "task": insightor_api,
                 "dataset": os.getenv("EVAL_DATASET"),
                 "metrics": [accuracy],
@@ -1226,8 +1242,8 @@ if __name__ == "__main__":
                 ),  # "Qwen/Qwen3-Coder-30B-React-V2-150S", #"Qwen/Qwen3.5-27B-SG", #google/gemma-4-31B-it_NT", #Qwen/Qwen3-Coder-480B", #"Qwen3-30B-LongContext", # "Qwen/Qwen3.5-397B", #"Qwen/Qwen3.5-27B", #"Qwen3-30B-LongContext", # Qwen/Qwen3-30B-A3B-Instruct-2507
                 "config": {
                     "max_concurrency": 15,
-                    "host": os.getenv("INSIGHTOR_URL"),
-                    "kb": os.getenv("KB_VERSION"),
+                    "host": _env("INSIGHTOR_URL"),
+                    "kb": _env("KB_VERSION"),
                     "timeout": 900,
                 },
             }

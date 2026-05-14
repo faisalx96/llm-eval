@@ -32,6 +32,15 @@ class ProductEvalError(ValueError):
 
 
 @dataclass(frozen=True)
+class ProductEvalRuntimeInputs:
+    insightor_url: Optional[str] = None
+    refresh_token: Optional[str] = None
+    agent_version: Optional[str] = None
+    image_version: Optional[str] = None
+    kb_version: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class ProductEvalPreset:
     name: str
     script_path: Path
@@ -217,11 +226,43 @@ def validate_dataset_name(dataset_name: Optional[str]) -> Optional[str]:
     return clean
 
 
+def _clean_optional_string(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    clean = str(value).strip()
+    return clean or None
+
+
+def validate_runtime_inputs(
+    preset: ProductEvalPreset,
+    runtime_inputs: Optional[ProductEvalRuntimeInputs],
+) -> ProductEvalRuntimeInputs:
+    inputs = runtime_inputs or ProductEvalRuntimeInputs()
+    clean = ProductEvalRuntimeInputs(
+        insightor_url=_clean_optional_string(inputs.insightor_url),
+        refresh_token=_clean_optional_string(inputs.refresh_token),
+        agent_version=_clean_optional_string(inputs.agent_version),
+        image_version=_clean_optional_string(inputs.image_version),
+        kb_version=_clean_optional_string(inputs.kb_version),
+    )
+    if preset.name == "insightor":
+        missing = []
+        if not clean.insightor_url:
+            missing.append("insightor_url")
+        if not clean.refresh_token:
+            missing.append("refresh_token")
+        if missing:
+            joined = ", ".join(missing)
+            raise ProductEvalError(f"{joined} required for preset '{preset.name}'")
+    return clean
+
+
 def validate_submit_request(
     *,
     preset_name: str,
     config: Optional[Dict[str, Any]],
     dataset_name: Optional[str] = None,
+    runtime_inputs: Optional[ProductEvalRuntimeInputs] = None,
 ) -> ProductEvalPreset:
     preset = get_preset(preset_name)
     validate_config(config)
@@ -230,6 +271,7 @@ def validate_submit_request(
         raise RuntimeError(_format_missing_script_error(preset.script_path))
     if preset.requires_dataset_name and not requested_dataset:
         raise ProductEvalError(f"dataset is required for preset '{preset.name}'")
+    validate_runtime_inputs(preset, runtime_inputs)
     return preset
 
 
@@ -284,6 +326,7 @@ class ProductEvalJobManager:
         run_name: Optional[str],
         task_name: Optional[str],
         dataset_name: Optional[str],
+        runtime_inputs: Optional[ProductEvalRuntimeInputs],
         model: Optional[str],
         metadata: Dict[str, Any],
         config: Dict[str, Any],
@@ -296,7 +339,9 @@ class ProductEvalJobManager:
             preset_name=preset_name,
             config=config,
             dataset_name=requested_dataset,
+            runtime_inputs=runtime_inputs,
         )
+        validated_runtime_inputs = validate_runtime_inputs(preset, runtime_inputs)
         job = ProductEvalJob(
             job_id=str(uuid4()),
             preset=preset.name,
@@ -314,6 +359,7 @@ class ProductEvalJobManager:
             run_name,
             task_name,
             requested_dataset,
+            validated_runtime_inputs,
             model,
             dict(metadata or {}),
             validate_config(config),
@@ -334,6 +380,7 @@ class ProductEvalJobManager:
         run_name: Optional[str],
         task_name: Optional[str],
         dataset_name: Optional[str],
+        runtime_inputs: ProductEvalRuntimeInputs,
         model: Optional[str],
         metadata: Dict[str, Any],
         request_config: Dict[str, Any],
@@ -344,6 +391,15 @@ class ProductEvalJobManager:
             from qym import Evaluator, ProgressCallbackObserver
 
             module = _load_script(preset.script_path)
+            configure_runtime = getattr(module, "configure_runtime", None)
+            if callable(configure_runtime):
+                configure_runtime(
+                    INSIGHTOR_URL=runtime_inputs.insightor_url,
+                    REFRESH_TOKEN=runtime_inputs.refresh_token,
+                    AGENT_VERSION=runtime_inputs.agent_version,
+                    IMAGE_VERSION=runtime_inputs.image_version,
+                    KB_VERSION=runtime_inputs.kb_version,
+                )
             task = _get_function(module, preset.script_path, preset.task_name)
             metric = _get_function(module, preset.script_path, preset.metric_name)
             if dataset_name:
@@ -410,9 +466,9 @@ class ProductEvalJobManager:
                     version_name = "_".join(
                         part
                         for part in (
-                            os.getenv("AGENT_VERSION"),
-                            os.getenv("IMAGE_VERSION"),
-                            os.getenv("KB_VERSION"),
+                            runtime_inputs.agent_version,
+                            runtime_inputs.image_version,
+                            runtime_inputs.kb_version,
                         )
                         if part
                     )
@@ -447,9 +503,9 @@ class ProductEvalJobManager:
                     or "_".join(
                         part
                         for part in (
-                            os.getenv("AGENT_VERSION"),
-                            os.getenv("IMAGE_VERSION"),
-                            os.getenv("KB_VERSION"),
+                            runtime_inputs.agent_version,
+                            runtime_inputs.image_version,
+                            runtime_inputs.kb_version,
                         )
                         if part
                     )
