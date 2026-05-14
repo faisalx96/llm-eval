@@ -53,3 +53,21 @@ class PlatformSettings(BaseSettings):
     product_eval_max_retries: int = Field(default=0, ge=0, le=2)
     product_eval_max_parallel_runs: int = Field(default=1, ge=1, le=3)
     product_eval_metric_timeout: int = Field(default=300, ge=1)
+
+
+class ProductEvalSettings(BaseSettings):
+    """Product eval settings that are safe to load before DB config exists."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="QYM_PRODUCT_EVAL_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    max_workers: int = Field(default=3, ge=1)
+    max_concurrency: int = Field(default=10, ge=1, le=20)
+    timeout: int = Field(default=900, ge=1, le=900)
+    max_retries: int = Field(default=0, ge=0, le=2)
+    max_parallel_runs: int = Field(default=1, ge=1, le=3)
+    metric_timeout: int = Field(default=300, ge=1)

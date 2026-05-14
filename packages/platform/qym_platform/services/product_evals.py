@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
-from qym_platform.settings import PlatformSettings
+from qym_platform.settings import PlatformSettings, ProductEvalSettings
 
 
 logger = logging.getLogger(__name__)
@@ -187,14 +187,14 @@ def _format_missing_script_error(script_path: Path) -> str:
 
 
 def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
-    settings = PlatformSettings()
+    settings = ProductEvalSettings()
     config = {
-        "max_concurrency": settings.product_eval_max_concurrency,
-        "timeout": settings.product_eval_timeout,
-        "max_retries": settings.product_eval_max_retries,
-        "metric_timeout": settings.product_eval_metric_timeout,
+        "max_concurrency": settings.max_concurrency,
+        "timeout": settings.timeout,
+        "max_retries": settings.max_retries,
+        "metric_timeout": settings.metric_timeout,
     }
-    max_parallel_runs = settings.product_eval_max_parallel_runs
+    max_parallel_runs = settings.max_parallel_runs
     effective_concurrency = config["max_concurrency"] * max_parallel_runs
     if effective_concurrency > MAX_EFFECTIVE_CONCURRENCY:
         raise ProductEvalError(
@@ -372,7 +372,7 @@ def _analyze_completed_group_results(
 class ProductEvalJobManager:
     def __init__(self, *, max_workers: Optional[int] = None) -> None:
         if max_workers is None:
-            max_workers = PlatformSettings().product_eval_max_workers
+            max_workers = ProductEvalSettings().max_workers
         self._max_workers = max(1, int(max_workers))
         self._executor = ThreadPoolExecutor(
             max_workers=self._max_workers, thread_name_prefix="qym-product-eval"
