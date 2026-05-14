@@ -4,7 +4,7 @@ This API lets an external application trigger a predefined qym evaluation over H
 
 The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
 
-For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(..., max_parallel_runs=1)`. The platform compare view is responsible for showing Pass@3, Avg@3, consistency, reliability, and latency metrics across those runs.
+For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(...)`. By default those runs execute with `max_parallel_runs=1`; clients may request up to `max_parallel_runs=3`. When those runs finish, the API returns the grouped Pass@3, Avg@3, consistency, reliability, and latency metrics, and the platform compare view shows the same cross-run result.
 
 ## Authentication
 
@@ -55,6 +55,7 @@ Shared auth errors may still use the platform's normal FastAPI error shape.
 - `400 Bad Request`: Invalid request, such as unknown preset or unsupported config key.
 - `401 Unauthorized`: Missing or invalid bearer API key.
 - `403 Forbidden`: API key lacks scope or project access.
+- `429 Too Many Requests`: All product eval worker slots are busy. The API returns `Retry-After`.
 - `404 Not Found`: Job or run does not exist or is not visible to the caller.
 - `500 Internal Server Error`: Server-side preset setup problem.
 
@@ -86,10 +87,10 @@ Request body:
     "customer_id": "customer-123"
   },
   "config": {
-    "max_concurrency": 2,
+    "max_concurrency": 10,
     "timeout": 900,
     "max_retries": 1,
-    "metric_timeout": 60
+    "max_parallel_runs": 1
   }
 }
 ```
@@ -97,7 +98,7 @@ Request body:
 Fields:
 
 - `preset`: Required preset name. Use `test` for smoke tests or `insightor` for the real Insightor eval.
-- `dataset`: Langfuse dataset name. Required for `insightor`.
+- `dataset`: Langfuse dataset name. Optional for `insightor`; defaults to `playground_set_v2` when omitted.
 - `insightor_url`: Required for `insightor`. Passed to the in-process Insightor task and not returned in polling payloads.
 - `refresh_token`: Required for `insightor`. Treated as a secret input and not logged in product eval metadata or returned by this API.
 - `agent_version`, `image_version`, `kb_version`: Optional Insightor version labels used for run naming and task runtime config.
@@ -111,8 +112,18 @@ Allowed `config` keys:
 - `max_concurrency`
 - `timeout`
 - `max_retries`
-- `metric_timeout`
-- `max_metric_concurrency`
+- `max_parallel_runs`
+
+Insightor uses a fixed `metric_timeout` of `300` seconds. Clients cannot override `metric_timeout` or `max_metric_concurrency`.
+
+Insightor config bounds:
+
+- `max_concurrency`: defaults to `10`, maximum `20`
+- `timeout`: defaults to `900`, maximum `900`
+- `max_retries`: defaults to `0`, maximum `2`
+- `max_parallel_runs`: defaults to `1`, maximum `3`
+
+The effective concurrency budget must satisfy `max_concurrency * max_parallel_runs <= 20`.
 
 ## Insightor Runtime Inputs
 
@@ -120,9 +131,12 @@ The Docker image includes `/app/insightor_eval.py`. Insightor connection inputs 
 
 Required request fields for `insightor`:
 
-- `dataset`
 - `insightor_url`
 - `refresh_token`
+
+Optional request fields for `insightor`:
+
+- `dataset`: Langfuse dataset name. Defaults to `playground_set_v2` when omitted.
 
 Required server environment variables:
 
@@ -207,6 +221,8 @@ Response:
 ```
 
 For single-run presets, once `qym_run_id` is present, switch to polling `/v1/product-evals/{qym_run_id}`. For `insightor`, keep polling the returned job `poll_url` and use `qym_compare_url` to open the three-run compare view.
+
+When the Insightor job reaches `COMPLETED`, the job payload also includes `group_analysis` with final `pass_at_3`, `avg_at_3`, `consistency`, `reliability`, and `avg_latency_ms` values computed from the SDK grouped analysis result objects.
 
 Insightor job response:
 

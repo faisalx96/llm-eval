@@ -45,3 +45,6 @@ class PlatformSettings(BaseSettings):
 
     # Run lifecycle
     run_stale_timeout_seconds: int = Field(default=60, ge=5)
+
+    # Product eval API
+    product_eval_max_workers: int = Field(default=3, ge=1)

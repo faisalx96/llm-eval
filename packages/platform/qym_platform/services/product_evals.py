@@ -22,13 +22,34 @@ ALLOWED_CONFIG_KEYS = {
     "max_concurrency",
     "timeout",
     "max_retries",
-    "metric_timeout",
-    "max_metric_concurrency",
+    "max_parallel_runs",
+}
+
+CONFIG_BOUNDS = {
+    "max_concurrency": (1, 20),
+    "timeout": (1, 900),
+    "max_retries": (0, 2),
+    "max_parallel_runs": (1, 3),
+}
+
+MAX_EFFECTIVE_CONCURRENCY = 20
+
+INTEGER_CONFIG_KEYS = {
+    "max_concurrency",
+    "max_retries",
+    "max_parallel_runs",
 }
 
 
 class ProductEvalError(ValueError):
     """User-correctable product eval request error."""
+
+
+class ProductEvalQueueFull(RuntimeError):
+    """Raised when no product eval worker slot is available."""
+
+
+TERMINAL_JOB_STATUSES = {"COMPLETED", "FAILED"}
 
 
 @dataclass(frozen=True)
@@ -48,6 +69,7 @@ class ProductEvalPreset:
     metric_name: str
     dataset_env: Optional[str]
     model_env: Optional[str]
+    default_dataset_name: Optional[str] = None
     default_config: Dict[str, Any] = field(default_factory=dict)
     requires_dataset_name: bool = False
     run_count: int = 1
@@ -64,6 +86,7 @@ class ProductEvalJob:
     run_id: Optional[str] = None
     runs: List[Dict[str, Any]] = field(default_factory=list)
     expected_runs: int = 1
+    group_analysis: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
@@ -86,6 +109,11 @@ class ProductEvalJob:
                 self._run_ready.set()
             if error is not None:
                 self.error = error
+            self.updated_at = datetime.utcnow()
+
+    def set_group_analysis(self, group_analysis: Dict[str, Any]) -> None:
+        with self._lock:
+            self.group_analysis = dict(group_analysis)
             self.updated_at = datetime.utcnow()
 
     def record_run_matrix(self, runs: List[Dict[str, Any]]) -> None:
@@ -153,6 +181,9 @@ class ProductEvalJob:
                 "run_id": self.run_id,
                 "runs": [dict(row) for row in self.runs],
                 "expected_runs": self.expected_runs,
+                "group_analysis": (
+                    dict(self.group_analysis) if self.group_analysis else None
+                ),
                 "error": self.error,
                 "created_at": self.created_at.isoformat() + "Z",
                 "updated_at": self.updated_at.isoformat() + "Z",
@@ -184,11 +215,12 @@ def get_preset(name: str) -> ProductEvalPreset:
             metric_name="accuracy",
             dataset_env=None,
             model_env="MODEL",
+            default_dataset_name="playground_set_v2",
             default_config={
-                "max_concurrency": 15,
+                "max_concurrency": 10,
                 "timeout": 900,
+                "metric_timeout": 300,
             },
-            requires_dataset_name=True,
             run_count=3,
             max_parallel_runs=1,
         )
@@ -208,12 +240,45 @@ def get_preset(name: str) -> ProductEvalPreset:
     raise ProductEvalError(f"Unknown product eval preset: {name}")
 
 
-def validate_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def validate_config(
+    config: Optional[Dict[str, Any]],
+    *,
+    preset: Optional[ProductEvalPreset] = None,
+) -> Dict[str, Any]:
     clean = dict(config or {})
     disallowed = sorted(set(clean) - ALLOWED_CONFIG_KEYS)
     if disallowed:
         joined = ", ".join(disallowed)
         raise ProductEvalError(f"Unsupported config key(s): {joined}")
+    for key, value in list(clean.items()):
+        min_value, max_value = CONFIG_BOUNDS[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ProductEvalError(f"config.{key} must be a number")
+        if key in INTEGER_CONFIG_KEYS and int(value) != value:
+            raise ProductEvalError(f"config.{key} must be an integer")
+        if value < min_value or value > max_value:
+            raise ProductEvalError(
+                f"config.{key} must be between {min_value} and {max_value}"
+            )
+        if key in INTEGER_CONFIG_KEYS:
+            clean[key] = int(value)
+    if preset is not None:
+        effective_max_concurrency = int(
+            clean.get(
+                "max_concurrency",
+                preset.default_config.get("max_concurrency", 1),
+            )
+        )
+        effective_max_parallel_runs = int(
+            clean.get("max_parallel_runs", preset.max_parallel_runs or 1)
+        )
+        effective_concurrency = (
+            effective_max_concurrency * effective_max_parallel_runs
+        )
+        if effective_concurrency > MAX_EFFECTIVE_CONCURRENCY:
+            raise ProductEvalError(
+                "config.max_concurrency * config.max_parallel_runs must be less than or equal to 20"
+            )
     return clean
 
 
@@ -265,11 +330,15 @@ def validate_submit_request(
     runtime_inputs: Optional[ProductEvalRuntimeInputs] = None,
 ) -> ProductEvalPreset:
     preset = get_preset(preset_name)
-    validate_config(config)
+    validate_config(config, preset=preset)
     requested_dataset = validate_dataset_name(dataset_name)
     if not preset.script_path.exists():
         raise RuntimeError(_format_missing_script_error(preset.script_path))
-    if preset.requires_dataset_name and not requested_dataset:
+    if (
+        preset.requires_dataset_name
+        and not requested_dataset
+        and not preset.default_dataset_name
+    ):
         raise ProductEvalError(f"dataset is required for preset '{preset.name}'")
     validate_runtime_inputs(preset, runtime_inputs)
     return preset
@@ -310,13 +379,63 @@ def _safe_error(exc: BaseException) -> str:
     return message[:1000]
 
 
+def _compact_group_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    k = int(analysis.get("k") or 0)
+    return {
+        "metric": analysis.get("metric"),
+        "threshold": analysis.get("threshold"),
+        "k": k,
+        "total_items": analysis.get("total_items"),
+        "total_score_count": analysis.get("total_score_count"),
+        "failed_count": analysis.get("failed_count"),
+        f"pass_at_{k}": analysis.get("pass_at_k"),
+        f"avg_at_{k}": analysis.get("avg_at_k"),
+        "consistency": analysis.get("consistency"),
+        "reliability": analysis.get("reliability"),
+        "avg_latency_ms": analysis.get("avg_latency"),
+    }
+
+
+def _analyze_completed_group_results(
+    results: Any,
+    *,
+    metric_name: str,
+    threshold: float = 0.8,
+) -> Optional[Dict[str, Any]]:
+    if not results:
+        return None
+    try:
+        from qym.core.group_analysis import analyze_group_runs
+
+        analysis = analyze_group_runs(
+            list(results),
+            metric=metric_name,
+            threshold=threshold,
+            track_distribution=False,
+        )
+    except Exception as exc:
+        logger.warning("Product eval group analysis failed: %s", _safe_error(exc))
+        return None
+    return _compact_group_analysis(analysis)
+
+
 class ProductEvalJobManager:
-    def __init__(self, *, max_workers: int = 2) -> None:
+    def __init__(self, *, max_workers: Optional[int] = None) -> None:
+        if max_workers is None:
+            max_workers = PlatformSettings().product_eval_max_workers
+        self._max_workers = max(1, int(max_workers))
         self._executor = ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="qym-product-eval"
+            max_workers=self._max_workers, thread_name_prefix="qym-product-eval"
         )
         self._jobs: Dict[str, ProductEvalJob] = {}
         self._lock = threading.RLock()
+
+    def _inflight_job_count_locked(self) -> int:
+        return sum(
+            1
+            for job in self._jobs.values()
+            if job.to_dict()["status"] not in TERMINAL_JOB_STATUSES
+        )
 
     def submit(
         self,
@@ -341,6 +460,7 @@ class ProductEvalJobManager:
             dataset_name=requested_dataset,
             runtime_inputs=runtime_inputs,
         )
+        request_config = validate_config(config, preset=preset)
         validated_runtime_inputs = validate_runtime_inputs(preset, runtime_inputs)
         job = ProductEvalJob(
             job_id=str(uuid4()),
@@ -350,21 +470,30 @@ class ProductEvalJobManager:
             expected_runs=preset.run_count,
         )
         with self._lock:
+            if self._inflight_job_count_locked() >= self._max_workers:
+                raise ProductEvalQueueFull(
+                    "Too many product eval jobs are already running. Try again later."
+                )
             self._jobs[job.job_id] = job
-        future = self._executor.submit(
-            self._run_job,
-            job,
-            preset,
-            api_key,
-            run_name,
-            task_name,
+        try:
+            future = self._executor.submit(
+                self._run_job,
+                job,
+                preset,
+                api_key,
+                run_name,
+                task_name,
             requested_dataset,
             validated_runtime_inputs,
             model,
             dict(metadata or {}),
-            validate_config(config),
+            request_config,
             platform_url,
         )
+        except Exception:
+            with self._lock:
+                self._jobs.pop(job.job_id, None)
+            raise
         job._future = future
         return job
 
@@ -390,6 +519,14 @@ class ProductEvalJobManager:
         try:
             from qym import Evaluator, ProgressCallbackObserver
 
+            request_config = dict(request_config)
+            requested_max_parallel_runs = request_config.pop("max_parallel_runs", None)
+            resolved_max_parallel_runs = (
+                int(requested_max_parallel_runs)
+                if requested_max_parallel_runs is not None
+                else preset.max_parallel_runs
+            )
+
             module = _load_script(preset.script_path)
             configure_runtime = getattr(module, "configure_runtime", None)
             if callable(configure_runtime):
@@ -404,6 +541,8 @@ class ProductEvalJobManager:
             metric = _get_function(module, preset.script_path, preset.metric_name)
             if dataset_name:
                 dataset = dataset_name
+            elif preset.default_dataset_name:
+                dataset = preset.default_dataset_name
             elif preset.requires_dataset_name:
                 raise RuntimeError(f"dataset is required for preset '{preset.name}'")
             elif preset.dataset_env:
@@ -528,13 +667,19 @@ class ProductEvalJobManager:
                             "config": attempt_config,
                         }
                     )
-                Evaluator.run_parallel(
+                results = Evaluator.run_parallel(
                     runs=runs,
                     show_tui=False,
                     auto_save=False,
-                    max_parallel_runs=preset.max_parallel_runs,
+                    max_parallel_runs=resolved_max_parallel_runs,
                     observer=ProgressCallbackObserver(on_progress),
                 )
+                group_analysis = _analyze_completed_group_results(
+                    results,
+                    metric_name=preset.metric_name,
+                )
+                if group_analysis:
+                    job.set_group_analysis(group_analysis)
             else:
                 evaluator = Evaluator(
                     task=task,

@@ -21,6 +21,7 @@ from qym_platform.services.product_evals import (
     ProductEvalError,
     ProductEvalJob,
     ProductEvalJobManager,
+    ProductEvalQueueFull,
     ProductEvalRuntimeInputs,
 )
 from qym_platform.settings import PlatformSettings
@@ -61,7 +62,13 @@ def _ok(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": True, "data": data, "error": None}
 
 
-def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    *,
+    headers: Optional[Dict[str, str]] = None,
+) -> JSONResponse:
     return JSONResponse(
         {
             "ok": False,
@@ -72,6 +79,7 @@ def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
             },
         },
         status_code=status_code,
+        headers=headers,
     )
 
 
@@ -129,6 +137,8 @@ def _job_payload(job: ProductEvalJob, *, internal: bool = False) -> Dict[str, An
         "created_at": snapshot["created_at"],
         "updated_at": snapshot["updated_at"],
     }
+    if snapshot["status"] == "COMPLETED" and snapshot["group_analysis"]:
+        payload["group_analysis"] = snapshot["group_analysis"]
     if snapshot["error"]:
         payload["error"] = snapshot["error"]
     if internal:
@@ -360,6 +370,13 @@ def submit_product_eval(
         )
     except ProductEvalError as exc:
         return _error_response(400, "invalid_request", str(exc))
+    except ProductEvalQueueFull as exc:
+        return _error_response(
+            429,
+            "queue_full",
+            str(exc),
+            headers={"Retry-After": "30"},
+        )
     except RuntimeError as exc:
         return _error_response(500, "preset_error", str(exc))
 
