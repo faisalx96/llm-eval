@@ -2584,6 +2584,10 @@
   // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
   // Runs with the same task + base timestamp belong together.
   function extractRunTimestampGroup(run) {
+    const productEval = run.product_eval || {};
+    if (productEval && productEval.eval_id) {
+      return `${run.task_name}|||product_eval:${productEval.eval_id}`;
+    }
     const name = run.run_name || run.external_run_id || '';
     // Match YYMMDD-HHMM (optionally followed by -N counter)
     const m = name.match(/(\d{6}-\d{4})(?:-\d+)?$/);

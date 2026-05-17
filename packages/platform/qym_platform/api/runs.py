@@ -893,6 +893,7 @@ def legacy_list_runs(
             "owner": owner_info,
             "approval": approval_info,
             "trace_stats": r.run_metadata.get("trace_stats") if isinstance(r.run_metadata, dict) else None,
+            "product_eval": r.run_metadata.get("product_eval") if isinstance(r.run_metadata, dict) else None,
         }
 
         task = summary["task_name"]

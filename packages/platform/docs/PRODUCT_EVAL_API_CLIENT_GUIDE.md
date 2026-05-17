@@ -335,7 +335,7 @@ curl -X POST "$QYM_PLATFORM_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad
 
 The stop response uses the standard response envelope. `data.status` becomes `STOPPED`, and `data.stopped_qym_runs` tells you how many already-created Qym runs were marked stopped.
 
-Stopping is best-effort for the in-process worker: the API immediately stops the eval state and marks created Qym runs as `STOPPED`. If a Python task call is already blocking, it may finish that call before the worker thread exits, but late SDK events will not reopen explicitly stopped runs.
+Stopping is best-effort for the in-process worker: the API immediately stops the eval state and marks created Qym runs as `STOPPED`. Attempts that have not started yet will not be launched. If a Python task call is already blocking, it may finish that call before the worker thread exits, but late SDK events will not reopen explicitly stopped runs.
 
 ## Returned Fields
 

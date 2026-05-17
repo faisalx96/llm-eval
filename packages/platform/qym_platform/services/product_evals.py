@@ -108,21 +108,27 @@ class ProductEvalJob:
             current_by_sdk_id = {
                 row.get("sdk_run_id"): row for row in self.runs if row.get("sdk_run_id")
             }
-            next_rows: List[Dict[str, Any]] = []
+            current_by_attempt = {
+                row.get("attempt"): row for row in self.runs if row.get("attempt")
+            }
+            next_by_attempt = dict(current_by_attempt)
             for index, row in enumerate(runs, start=1):
                 sdk_run_id = str(row.get("run_id") or "")
-                existing = current_by_sdk_id.get(sdk_run_id, {})
-                next_rows.append(
-                    {
-                        "attempt": index,
-                        "sdk_run_id": sdk_run_id,
-                        "qym_run_id": existing.get("qym_run_id")
-                        or row.get("platform_run_id"),
-                        "status": existing.get("status") or "STARTING",
-                    }
+                attempt = int(row.get("product_eval_attempt") or index)
+                existing = current_by_sdk_id.get(sdk_run_id) or current_by_attempt.get(
+                    attempt, {}
                 )
-            self.runs = next_rows
-            self.expected_runs = max(self.expected_runs, len(next_rows))
+                next_by_attempt[attempt] = {
+                    "attempt": attempt,
+                    "sdk_run_id": sdk_run_id,
+                    "qym_run_id": existing.get("qym_run_id")
+                    or row.get("platform_run_id"),
+                    "status": existing.get("status") or "STARTING",
+                }
+            self.runs = [
+                dict(next_by_attempt[attempt]) for attempt in sorted(next_by_attempt)
+            ]
+            self.expected_runs = max(self.expected_runs, len(self.runs))
             self.updated_at = datetime.utcnow()
 
     def mark_run(
@@ -173,6 +179,20 @@ class ProductEvalJob:
             for row in self.runs:
                 if row.get("status") not in {"COMPLETED", "FAILED", "STOPPED"}:
                     row["status"] = "STOPPED"
+            existing_attempts = {
+                int(row["attempt"]) for row in self.runs if row.get("attempt")
+            }
+            for attempt in range(1, self.expected_runs + 1):
+                if attempt not in existing_attempts:
+                    self.runs.append(
+                        {
+                            "attempt": attempt,
+                            "sdk_run_id": None,
+                            "qym_run_id": None,
+                            "status": "STOPPED",
+                        }
+                    )
+            self.runs.sort(key=lambda row: int(row.get("attempt") or 0))
             self.updated_at = datetime.utcnow()
         return cancelled_before_start
 
@@ -624,10 +644,23 @@ class ProductEvalJobManager:
             if task_name:
                 evaluator_config["task_name"] = task_name
 
+            current_batch_start = 0
+
             def on_progress(snapshot: Any) -> None:
                 event = getattr(snapshot, "event", None)
                 if event == "run_matrix":
-                    job.record_run_matrix(getattr(snapshot, "run_matrix", None) or [])
+                    run_matrix = []
+                    for row in getattr(snapshot, "run_matrix", None) or []:
+                        next_row = dict(row)
+                        try:
+                            index = int(next_row.get("index") or 0)
+                        except Exception:
+                            index = 0
+                        next_row["product_eval_attempt"] = (
+                            current_batch_start + index + 1
+                        )
+                        run_matrix.append(next_row)
+                    job.record_run_matrix(run_matrix)
                     return
                 sdk_run_id = str(getattr(snapshot, "run_id", "") or "")
                 if not sdk_run_id:
@@ -678,19 +711,29 @@ class ProductEvalJobManager:
                             "config": attempt_config,
                         }
                     )
-                results = Evaluator.run_parallel(
-                    runs=runs,
-                    show_tui=False,
-                    auto_save=False,
-                    max_parallel_runs=resolved_max_parallel_runs,
-                    observer=ProgressCallbackObserver(on_progress),
-                )
-                group_analysis = _analyze_completed_group_results(
-                    results,
-                    metric_name=preset.metric_name,
-                )
-                if group_analysis:
-                    job.set_group_analysis(group_analysis)
+                results = []
+                batch_size = max(1, int(resolved_max_parallel_runs or 1))
+                for batch_start in range(0, len(runs), batch_size):
+                    if job.stop_requested():
+                        break
+                    current_batch_start = batch_start
+                    batch = runs[batch_start : batch_start + batch_size]
+                    results.extend(
+                        Evaluator.run_parallel(
+                            runs=batch,
+                            show_tui=False,
+                            auto_save=False,
+                            max_parallel_runs=len(batch),
+                            observer=ProgressCallbackObserver(on_progress),
+                        )
+                    )
+                if not job.stop_requested():
+                    group_analysis = _analyze_completed_group_results(
+                        results,
+                        metric_name=preset.metric_name,
+                    )
+                    if group_analysis:
+                        job.set_group_analysis(group_analysis)
             else:
                 evaluator = Evaluator(
                     task=stopped_task,

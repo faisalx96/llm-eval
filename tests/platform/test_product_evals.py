@@ -790,7 +790,10 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
         def run_parallel(**kwargs):
             captured.update(kwargs)
             observer = kwargs["observer"]
-            matrix = [{"run_id": f"sdk-run-{attempt}"} for attempt in range(1, 4)]
+            matrix = [
+                {"index": attempt - 1, "run_id": f"sdk-run-{attempt}"}
+                for attempt in range(1, 4)
+            ]
             observer.on_run_matrix(matrix_id="matrix-1", runs=matrix, total_runs=3)
             for attempt in range(1, 4):
                 observer.on_run_start(
@@ -876,6 +879,104 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert job.group_analysis["consistency"] == pytest.approx(2 / 3)
     assert job.group_analysis["reliability"] == pytest.approx(1 / 3)
     assert job.group_analysis["avg_latency_ms"] == pytest.approx(100.0)
+
+
+def test_insightor_stop_does_not_start_later_attempts(
+    monkeypatch, tmp_path
+) -> None:
+    script = tmp_path / "insightor_eval.py"
+    script.write_text(
+        "\n".join(
+            [
+                "RUNTIME = {}",
+                "def configure_runtime(**kwargs):",
+                "    RUNTIME.update(kwargs)",
+                "def insightor_api(value):",
+                "    return value",
+                "def accuracy(output, expected):",
+                "    return True",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "1")
+
+    import qym
+    from qym.core.results import EvaluationResult
+
+    calls: list[list[dict[str, object]]] = []
+    job = ProductEvalJob(
+        job_id="eval_stop_batches",
+        preset="insightor",
+        expected_runs=3,
+    )
+    preset = get_preset("insightor")
+
+    class FakeEvaluator:
+        @staticmethod
+        def run_parallel(**kwargs):
+            batch = list(kwargs["runs"])
+            calls.append(batch)
+            observer = kwargs["observer"]
+            attempt = len(calls)
+            sdk_run_id = f"sdk-run-{attempt}"
+            observer.on_run_matrix(
+                matrix_id=f"matrix-{attempt}",
+                runs=[{"index": 0, "run_id": sdk_run_id}],
+                total_runs=1,
+            )
+            observer.on_run_start(
+                run_id=sdk_run_id,
+                run_info={"platform_run_id": f"qym-run-{attempt}"},
+                total_items=1,
+                metrics=["accuracy"],
+            )
+            job.request_stop()
+            observer.on_run_complete(run_id=sdk_run_id, result_summary={})
+            result = EvaluationResult("dataset-1", f"attempt-{attempt}", ["accuracy"])
+            result.add_result(
+                "item-1",
+                {
+                    "scores": {"accuracy": 1.0},
+                    "latency_ms": 100.0,
+                    "retry_count": 0,
+                },
+            )
+            return [result]
+
+    monkeypatch.setattr(qym, "Evaluator", FakeEvaluator)
+
+    manager = ProductEvalJobManager(max_workers=1)
+    manager._run_job(
+        job,
+        preset,
+        "token",
+        "external-run",
+        None,
+        None,
+        ProductEvalRuntimeInputs(
+            insightor_url="https://insightor.example.com",
+            refresh_token="refresh-token-1",
+        ),
+        "model-1",
+        {},
+        "http://testserver",
+    )
+
+    assert len(calls) == 1
+    assert job.status == "STOPPED"
+    assert [row["status"] for row in job.runs] == [
+        "STOPPED",
+        "STOPPED",
+        "STOPPED",
+    ]
+    assert [row["qym_run_id"] for row in job.runs] == [
+        "qym-run-1",
+        None,
+        None,
+    ]
+    assert job.group_analysis is None
 
 
 def test_submit_requires_runs_write_scope(client, session_factory) -> None:
