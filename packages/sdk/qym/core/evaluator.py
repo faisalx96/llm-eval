@@ -517,6 +517,16 @@ class Evaluator:
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
 
+    def _should_stop_requested(self) -> bool:
+        callback = getattr(self.config, "should_stop", None)
+        if not callable(callback):
+            return False
+        try:
+            return bool(callback())
+        except Exception:
+            logger.warning("Evaluator should_stop callback failed", exc_info=True)
+            return False
+
     @staticmethod
     def build_run_identifiers(
         base_name: str, model_name: Optional[str], add_suffix: bool = False
@@ -1331,12 +1341,17 @@ class Evaluator:
                 return md
 
             async def _worker():
+                nonlocal interrupted
                 while True:
                     entry = await work_queue.get()
                     if entry is None:
                         work_queue.task_done()
                         break
                     idx, item_id, item = entry
+                    if self._should_stop_requested():
+                        interrupted = True
+                        work_queue.task_done()
+                        break
                     try:
                         eval_result = await self._evaluate_item(idx, item, tracker)
                     except Exception as e:

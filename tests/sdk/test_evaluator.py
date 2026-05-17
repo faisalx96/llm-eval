@@ -657,6 +657,126 @@ class TestEvaluator:
         assert completed[-1]["final_status"] == "STOPPED"
 
     @pytest.mark.asyncio
+    async def test_should_stop_before_first_item_emits_stopped_without_item_failures(
+        self, tmp_path, monkeypatch
+    ):
+        p = tmp_path / "qa.csv"
+        p.write_text("q,a\none,one\ntwo,two\nthree,three\n", encoding="utf-8")
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        class FakeHandle:
+            run_id = "run-stop-before"
+            live_url = "http://example/live/run-stop-before"
+
+        class FakePlatformClient:
+            def __init__(self, platform_url=None, api_key=None):
+                self.platform_url = platform_url
+                self.api_key = api_key
+
+            def create_run(self, **kwargs):
+                return FakeHandle()
+
+        class FakePlatformEventStream:
+            instances = []
+
+            def __init__(self, platform_url=None, api_key=None, run_id=None):
+                self.events = []
+                FakePlatformEventStream.instances.append(self)
+
+            def emit(self, event_type, payload, sync=False):
+                self.events.append((event_type, payload, sync))
+
+            def close(self):
+                return None
+
+        calls = 0
+
+        async def task(_input):
+            nonlocal calls
+            calls += 1
+            return "ok"
+
+        monkeypatch.setattr("qym.core.evaluator.PlatformClient", FakePlatformClient)
+        monkeypatch.setattr(
+            "qym.core.evaluator.PlatformEventStream", FakePlatformEventStream
+        )
+
+        evaluator = Evaluator(
+            task=task,
+            dataset=ds,
+            metrics=[],
+            config={
+                "run_name": "stop-before",
+                "max_concurrency": 2,
+                "otel_enabled": False,
+                "platform_api_key": "test-key",
+                "platform_url": "http://example",
+                "should_stop": lambda: True,
+            },
+        )
+
+        result = await evaluator.arun(show_tui=False, auto_save=False)
+
+        assert calls == 0
+        assert result.interrupted is True
+        assert result.results == {}
+        assert result.errors == {}
+        events = FakePlatformEventStream.instances[-1].events
+        assert not [event for event in events if event[0] == "item_failed"]
+        completed = [
+            payload
+            for event_type, payload, _sync in events
+            if event_type == "run_completed"
+        ]
+        assert completed[-1]["final_status"] == "STOPPED"
+
+    @pytest.mark.asyncio
+    async def test_should_stop_mid_run_leaves_pending_items_unfailed(
+        self, tmp_path, monkeypatch
+    ):
+        p = tmp_path / "qa.csv"
+        p.write_text(
+            "q,a\none,one\ntwo,two\nthree,three\nfour,four\nfive,five\n",
+            encoding="utf-8",
+        )
+        ds = CsvDataset(p, input_col="q", expected_col="a")
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        stop = False
+        calls = 0
+
+        async def task(value):
+            nonlocal stop, calls
+            calls += 1
+            stop = True
+            await asyncio.sleep(0)
+            return value
+
+        evaluator = Evaluator(
+            task=task,
+            dataset=ds,
+            metrics=[],
+            config={
+                "run_name": "stop-mid-run",
+                "max_concurrency": 1,
+                "otel_enabled": False,
+                "should_stop": lambda: stop,
+            },
+        )
+
+        result = await evaluator.arun(show_tui=False, auto_save=False)
+
+        assert calls == 1
+        assert result.interrupted is True
+        assert len(result.results) == 1
+        assert result.errors == {}
+
+    @pytest.mark.asyncio
     async def test_observer_run_start_includes_qym_url(self, tmp_path, monkeypatch):
         p = tmp_path / "qa.csv"
         p.write_text("q,a\nhello,hello\n", encoding="utf-8")

@@ -977,6 +977,11 @@ def test_insightor_stop_does_not_start_later_attempts(
         None,
     ]
     assert job.group_analysis is None
+    first_attempt = calls[0][0]
+    assert first_attempt["config"]["should_stop"] is job.stop_requested
+    assert first_attempt["config"]["should_stop"]() is True
+    assert first_attempt["task"]("value") == "value"
+    assert first_attempt["metrics"][0]("output", "expected") is True
 
 
 def test_submit_requires_runs_write_scope(client, session_factory) -> None:
@@ -1124,6 +1129,87 @@ def test_poll_returns_aggregate_run_progress_by_default(
     assert "product_eval" not in payload["metadata"]
     assert "config" not in payload
     assert "items" not in payload
+
+
+def test_poll_stopped_eval_reports_pending_without_failed_items(
+    client, session_factory
+) -> None:
+    eval_id = "eval_stopped_pending"
+    run_id = "00000000-0000-0000-0000-000000000311"
+    now = utc_now_naive()
+    with session_factory() as session:
+        _seed_api_key(
+            session, token="read-token", scopes=["runs:read"], user_id="owner-1"
+        )
+        run = Run(
+            id=run_id,
+            project_id="project-1",
+            created_by_user_id="owner-1",
+            owner_user_id="owner-1",
+            external_run_id="external-1",
+            task="insightor_api",
+            dataset="dataset-1",
+            model="model-1",
+            metrics=["accuracy"],
+            status=RunWorkflowStatus.STOPPED,
+            run_metadata={
+                "total_items": 100,
+                "product_eval": {
+                    "eval_id": eval_id,
+                    "preset": "insightor",
+                    "attempt": 1,
+                    "attempts": 3,
+                },
+            },
+            run_config={"run_name": "external-1"},
+            started_at=now,
+            ended_at=now,
+            last_event_at=now,
+        )
+        item = RunItem(
+            run_id=run_id,
+            item_id="item-1",
+            index=0,
+            input={"question": "q1"},
+            expected="select 1",
+            output={"sql": "select 1"},
+            item_metadata={},
+            latency_ms=120.0,
+        )
+        score = RunItemScore(
+            run_id=run_id,
+            item_id="item-1",
+            metric_name="accuracy",
+            score_numeric=1.0,
+            score_raw=True,
+            meta={},
+        )
+        event = RunEvent(
+            run_id=run_id,
+            event_id="00000000-0000-0000-0000-000000000312",
+            sequence=1,
+            type="item_completed",
+            sent_at=now,
+            payload={"item_id": "item-1"},
+        )
+        session.add_all([run, item, score, event])
+        session.commit()
+
+    response = client.get(
+        f"/v1/product-evals/{eval_id}", headers=_auth_headers("read-token")
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["status"] == "STOPPED"
+    assert payload["group_analysis"] is None
+    summary = payload["runs"][0]["summary"]
+    assert summary["total"] == 100
+    assert summary["completed"] == 1
+    assert summary["failed"] == 0
+    assert summary["in_progress"] == 0
+    assert summary["pending"] == 99
+    assert summary["metric_stats"]["accuracy"]["mean"] == 1.0
 
 
 def test_poll_by_eval_id_recovers_runs_from_db(client, session_factory) -> None:

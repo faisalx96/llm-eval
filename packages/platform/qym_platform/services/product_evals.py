@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import inspect
-from functools import wraps
 import os
 import sys
 import threading
@@ -540,37 +538,6 @@ class ProductEvalJobManager:
             task = _get_function(module, preset.script_path, preset.task_name)
             metric = _get_function(module, preset.script_path, preset.metric_name)
 
-            if inspect.iscoroutinefunction(task):
-                @wraps(task)
-                async def stopped_task(*args: Any, **kwargs: Any) -> Any:
-                    if job.stop_requested():
-                        raise RuntimeError("Product eval job stopped")
-                    return await task(*args, **kwargs)
-            else:
-                @wraps(task)
-                def stopped_task(*args: Any, **kwargs: Any) -> Any:
-                    if job.stop_requested():
-                        raise RuntimeError("Product eval job stopped")
-                    return task(*args, **kwargs)
-
-            stopped_score = {
-                "score": 0.0,
-                "label": "stopped",
-                "metadata": {"error": "Product eval job stopped"},
-            }
-            if inspect.iscoroutinefunction(metric):
-                @wraps(metric)
-                async def stopped_metric(*args: Any, **kwargs: Any) -> Any:
-                    if job.stop_requested():
-                        return stopped_score
-                    return await metric(*args, **kwargs)
-            else:
-                @wraps(metric)
-                def stopped_metric(*args: Any, **kwargs: Any) -> Any:
-                    if job.stop_requested():
-                        return stopped_score
-                    return metric(*args, **kwargs)
-
             if dataset_name:
                 dataset = dataset_name
             elif preset.default_dataset_name:
@@ -622,6 +589,7 @@ class ProductEvalJobManager:
                 "platform_api_key": api_key,
                 "platform_url": resolved_platform_url,
                 "live_mode": "platform",
+                "should_stop": job.stop_requested,
             }
             if run_name:
                 evaluator_config["run_name"] = run_name
@@ -704,9 +672,9 @@ class ProductEvalJobManager:
                     runs.append(
                         {
                             "name": base_name,
-                            "task": stopped_task,
+                            "task": task,
                             "dataset": dataset,
-                            "metrics": [stopped_metric],
+                            "metrics": [metric],
                             "model": resolved_model,
                             "config": attempt_config,
                         }
@@ -736,9 +704,9 @@ class ProductEvalJobManager:
                         job.set_group_analysis(group_analysis)
             else:
                 evaluator = Evaluator(
-                    task=stopped_task,
+                    task=task,
                     dataset=dataset,
-                    metrics=[stopped_metric],
+                    metrics=[metric],
                     model=resolved_model,
                     config=evaluator_config,
                     progress_callback=on_progress,

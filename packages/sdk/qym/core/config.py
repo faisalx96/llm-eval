@@ -21,6 +21,7 @@ class EvaluatorConfig(BaseModel):
     metric_timeout: Optional[float] = Field(default=60.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
+    should_stop: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
     git_branch: Optional[str] = None   # Override auto-detected git branch
     git_commit: Optional[str] = None   # Override auto-detected git commit hash
     model: Optional[str] = None
