@@ -921,6 +921,38 @@ html {
   flex-shrink: 0;
 }
 
+.owner-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+}
+
+.owner-filter-label .owner-avatar {
+  margin-right: 10px;
+}
+
+.owner-filter-text {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.multi-select-option > span {
+  min-width: 0;
+}
+
+.multi-select-btn .owner-filter-label {
+  width: calc(100% - 2px);
+}
+
+.multi-select-btn .owner-filter-text {
+  margin-left: 0;
+}
+
 /* Multi-select actions (unified for all multi-select dropdowns) */
 .ms-actions {
   display: flex;

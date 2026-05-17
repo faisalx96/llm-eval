@@ -250,7 +250,7 @@ def test_project_member_visibility_and_mutation_are_project_scoped(client, sessi
     assert owner_delete.status_code == 200
 
 
-def test_project_approval_rules_and_last_manager_guard(client, session_factory):
+def test_project_approval_rules_allow_manager_self_approval_and_last_manager_guard(client, session_factory):
     with session_factory() as session:
         seed = _seed_project_world(session)
 
@@ -266,7 +266,7 @@ def test_project_approval_rules_and_last_manager_guard(client, session_factory):
         headers=_headers("manager@example.com"),
         json={"comment": "self approve"},
     )
-    assert manager_self_approve.status_code == 403
+    assert manager_self_approve.status_code == 200
 
     admin_approve = client.post(
         "/v1/runs/run-submitted/approve",

@@ -139,7 +139,9 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
             job_id="eval_submit1",
             preset="insightor",
             project_id=kwargs.get("project_id"),
+            expected_runs=3,
         )
+        job.initialize_planned_runs()
         job.mark(status="RUNNING", run_id="run-1")
         return job
 
@@ -168,7 +170,12 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
     payload = envelope["data"]
     assert payload["eval_id"] == "eval_submit1"
     assert payload["qym_project_id"] == "project-1"
-    assert payload["runs"] == []
+    assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3]
+    assert [run["status"] for run in payload["runs"]] == [
+        "PENDING",
+        "PENDING",
+        "PENDING",
+    ]
     assert payload["qym_compare_url"] is None
     assert payload["group_analysis"] is None
     assert "qym_run_id" not in payload
@@ -202,7 +209,9 @@ def test_submit_product_eval_returns_eval_id_when_starting(
             job_id="eval_starting1",
             preset="test",
             project_id=kwargs.get("project_id"),
+            expected_runs=3,
         )
+        job.initialize_planned_runs()
         job.mark(status="RUNNING")
         return job
 
@@ -219,7 +228,12 @@ def test_submit_product_eval_returns_eval_id_when_starting(
     assert payload["eval_id"] == "eval_starting1"
     assert payload["status"] == "STARTING"
     assert payload["qym_project_id"] == "project-1"
-    assert payload["runs"] == []
+    assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3]
+    assert [run["status"] for run in payload["runs"]] == [
+        "PENDING",
+        "PENDING",
+        "PENDING",
+    ]
     assert payload["qym_compare_url"] is None
     assert payload["group_analysis"] is None
     assert "qym_run_id" not in payload
@@ -300,6 +314,66 @@ def test_eval_poll_returns_multi_run_compare_url(
         },
     ]
     assert payload["group_analysis"] is None
+
+
+def test_eval_poll_includes_pending_planned_attempts(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="read-token", scopes=["runs:read"])
+
+    job = ProductEvalJob(
+        job_id="eval_pending_attempts",
+        preset="test",
+        project_id="project-1",
+        expected_runs=3,
+    )
+    job.initialize_planned_runs()
+    job.record_run_matrix([{"run_id": "sdk-run-1", "product_eval_attempt": 1}])
+    job.mark_run(sdk_run_id="sdk-run-1", status="RUNNING", qym_run_id="qym-run-1")
+    job.mark(status="RUNNING", run_id="qym-run-1")
+
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda eval_id: job)
+
+    response = client.get(
+        "/v1/product-evals/eval_pending_attempts",
+        headers=_auth_headers("read-token"),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["runs"] == [
+        {
+            "attempt": 1,
+            "status": "RUNNING",
+            "qym_run_id": "qym-run-1",
+            "qym_run_url": "http://testserver/run/qym-run-1",
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
+        },
+        {
+            "attempt": 2,
+            "status": "PENDING",
+            "qym_run_id": None,
+            "qym_run_url": None,
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
+        },
+        {
+            "attempt": 3,
+            "status": "PENDING",
+            "qym_run_id": None,
+            "qym_run_url": None,
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
+        },
+    ]
 
 
 def test_eval_poll_returns_group_analysis_when_completed(
@@ -589,6 +663,23 @@ def test_submit_rejects_blank_dataset_name(client, session_factory) -> None:
     )
 
 
+def test_submit_rejects_test_preset_dataset_override(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
+
+    response = client.post(
+        "/v1/product-evals",
+        headers=_auth_headers("submit-token"),
+        json={"preset": "test", "dataset": "customer-dataset"},
+    )
+
+    assert response.status_code == 400
+    envelope = response.json()
+    assert envelope["ok"] is False
+    assert envelope["error"]["code"] == "invalid_request"
+    assert "dataset is not accepted for preset 'test'" in envelope["error"]["message"]
+
+
 def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
     script = tmp_path / "insightor_eval.py"
     script.write_text(
@@ -668,6 +759,14 @@ def test_test_preset_uses_self_contained_runner(monkeypatch) -> None:
     assert preset.name == "test"
     assert preset.script_path.name == "test_eval.py"
     assert "product_eval_presets" in preset.script_path.parts
+    assert preset.run_count == 3
+    assert preset.metric_name == "exact_match"
+    assert preset.default_config["max_concurrency"] == 10
+
+
+def test_test_preset_rejects_dataset_override() -> None:
+    with pytest.raises(ProductEvalError, match="dataset is not accepted"):
+        validate_submit_request(preset_name="test", dataset_name="customer-dataset")
 
 
 def test_job_manager_uses_configured_worker_count(monkeypatch) -> None:

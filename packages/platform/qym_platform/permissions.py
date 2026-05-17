@@ -55,8 +55,6 @@ def can_review_run(db: Session, principal: Principal, run: Run) -> bool:
 def can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
     if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
         return True
-    if run.owner_user_id == principal.user.id:
-        return False
     return is_project_manager(db, principal, run.project_id)
 
 

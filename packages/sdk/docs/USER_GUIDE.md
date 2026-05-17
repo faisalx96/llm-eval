@@ -1047,7 +1047,7 @@ qym run create \
 ### Other Run Commands
 
 ```bash
-qym run list           # List recent evaluation runs from the platform
+qym run list [--user USER] # List recent evaluation runs from the platform
 qym run get <run_id>   # Get detailed data for a specific run
 qym run tasks          # List distinct task names from the platform
 qym run failed <run_id> # Get only failed/error items from a run

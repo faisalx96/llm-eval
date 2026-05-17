@@ -320,6 +320,7 @@ def run_list(
     task: Optional[str] = typer.Option(None, "--task", help="Filter by task name"),
     model_filter: Optional[str] = typer.Option(None, "--model", help="Filter by model name"),
     status_filter: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
+    user_filter: Optional[str] = typer.Option(None, "--user", help="Filter by run owner user"),
 ) -> None:
     """List recent evaluation runs from the platform."""
     client = PlatformAPIClient()
@@ -346,6 +347,15 @@ def run_list(
             for run_summary in runs:
                 if status_filter and run_summary.get("status", "").lower() != status_filter.lower():
                     continue
+                if user_filter:
+                    owner = run_summary.get("owner") or {}
+                    owner_fields = [
+                        str(owner.get("id") or ""),
+                        str(owner.get("email") or ""),
+                        str(owner.get("display_name") or ""),
+                    ]
+                    if not any(user_filter.lower() in field.lower() for field in owner_fields):
+                        continue
                 flat_runs.append(run_summary)
 
     # Sort by timestamp descending, apply limit

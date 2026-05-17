@@ -125,6 +125,7 @@
     filterDatasets: new Set(),
     filterStatuses: new Set(),
     filterVersions: new Set(),
+    filterUsers: new Set(),
     knownVersions: new Set(),
     knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
@@ -515,6 +516,11 @@
     return beforeSlash.slice(0, lastDash + 1) + runId.slice(slashIdx + 1);
   }
 
+  function getRunDisplayName(run) {
+    if (!run) return '';
+    return run.run_name || run.external_run_id || stripProviderFromRunId(run.run_id || run.file_path || '');
+  }
+
   function isEmptyFilterValue(value) {
     return value === null || value === undefined || String(value).trim() === '';
   }
@@ -527,6 +533,7 @@
       datasets: [...state.filterDatasets].sort(),
       statuses: [...state.filterStatuses].sort(),
       versions: [...state.filterVersions].sort(),
+      users: [...state.filterUsers].sort(),
     });
   }
 
@@ -607,6 +614,29 @@
     if (selection.has('__none__')) return false;
     const normalized = isEmptyFilterValue(value) ? EMPTY_FILTER_VALUE : value;
     return selection.has(normalized);
+  }
+
+  function getRunOwnerKey(run) {
+    return run && run.owner && run.owner.id ? String(run.owner.id) : '';
+  }
+
+  function getOwnerForFilterValue(value) {
+    if (value === EMPTY_FILTER_VALUE) return null;
+    const run = state.flatRuns.find(r => getRunOwnerKey(r) === value);
+    return run && run.owner ? run.owner : null;
+  }
+
+  function getOwnerFilterLabel(value) {
+    if (value === EMPTY_FILTER_VALUE) return 'Empty / Missing';
+    const owner = getOwnerForFilterValue(value);
+    if (!owner) return value;
+    return owner.display_name || (owner.email ? owner.email.split('@')[0] : '') || owner.id || value;
+  }
+
+  function renderOwnerFilterLabel(value) {
+    if (value === EMPTY_FILTER_VALUE) return 'Empty / Missing';
+    const label = getOwnerFilterLabel(value);
+    return `<span class="owner-filter-label"><span class="owner-avatar">${escapeHtml(getInitials(label))}</span><span class="owner-filter-text">${escapeHtml(label)}</span></span>`;
   }
 
   function summarizeFilterSelection(selection, labelFn = null) {
@@ -1500,6 +1530,11 @@
     if (state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
       runs = runs.filter(r => matchesFilterSelection(state.filterVersions, getRunVersionKey(r)));
     } else if (state.filterVersions.has('__none__')) {
+      runs = [];
+    }
+    if (state.filterUsers.size > 0 && !state.filterUsers.has('__none__')) {
+      runs = runs.filter(r => matchesFilterSelection(state.filterUsers, getRunOwnerKey(r)));
+    } else if (state.filterUsers.has('__none__')) {
       runs = [];
     }
 
@@ -2804,7 +2839,7 @@
       const projectRole = (state.currentProject && state.currentProject.role) || '';
       const isOwner = !!(state.currentUser && run.owner && run.owner.id === state.currentUser.id);
       const isProjectManager = globalRole === 'ADMIN' || projectRole === 'MANAGER';
-      const canApprove = isProjectManager && !isOwner && status === 'SUBMITTED';
+      const canApprove = isProjectManager && status === 'SUBMITTED';
       const canSubmit = isOwner && (status === 'COMPLETED' || status === 'FAILED');
       const canDelete = globalRole === 'ADMIN' || isProjectManager || isOwner;
       const progressText = (status === 'RUNNING' && run.progress_total)
@@ -3224,7 +3259,8 @@
       || (state.filterModels.size > 0)
       || state.filterDatasets.size > 0
       || state.filterStatuses.size > 0
-      || state.filterVersions.size > 0;
+      || state.filterVersions.size > 0
+      || state.filterUsers.size > 0;
 
     let filterText = countText;
     if (hasFilters) {
@@ -3245,6 +3281,11 @@
       }
       if (state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
         parts.push(`version: ${summarizeFilterSelection(state.filterVersions)}`);
+      }
+      if (state.filterUsers.size > 0 && !state.filterUsers.has('__none__')) {
+        parts.push(`user: ${summarizeFilterSelection(state.filterUsers, getOwnerFilterLabel)}`);
+      } else if (state.filterUsers.has('__none__')) {
+        parts.push('user: none');
       }
       if (state.quickFilter === 'today') parts.push('today');
       if (state.quickFilter === 'week') parts.push('last 7d');
@@ -3485,6 +3526,7 @@
     if (state.filterStatuses.size > 0) n++;
     if (state.filterVersions.size > 0) n++;
     if (state.filterDatasets.size > 0) n++;
+    if (state.filterUsers.size > 0) n++;
     if (state.quickFilter !== 'all') n++;
     return n;
   }
@@ -3507,6 +3549,7 @@
     state.filterStatuses.clear();
     state.filterVersions.clear();
     state.filterDatasets.clear();
+    state.filterUsers.clear();
     state.quickFilter = 'all';
     $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
     populateFilterDropdowns();
@@ -4128,7 +4171,7 @@
     let runFlatIdx = 0;
     for (const [groupKey, groupRuns] of Object.entries(configGroups)) {
       if (hasMultipleGroups && groupKey !== '__ungrouped__') {
-        const groupLabel = groupRuns[0]?.run_name || `Config ${Object.keys(configGroups).indexOf(groupKey) + 1}`;
+        const groupLabel = getRunDisplayName(groupRuns[0]) || `Config ${Object.keys(configGroups).indexOf(groupKey) + 1}`;
         runListHtml += `<div style="padding:6px 8px;font-size:10px;color:var(--accent-primary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-default);">${escapeHtml(groupLabel)} (${groupRuns.length} runs)</div>`;
       }
       for (const run of groupRuns) {
@@ -4143,12 +4186,13 @@
         const selMType = mvs.metricIsNumeric ? 'numeric' : 'score';
         const scoreClass = score !== undefined ? window.QymMetrics.getMetricColorClass(score, selMType) : '';
         const scoreDisplay = score !== undefined ? window.QymMetrics.formatMetricValue(score, selMType) : '';
+        const runDisplayName = getRunDisplayName(run);
 
         runListHtml += `
           <label class="run-selection-item ${isSelected ? 'selected' : ''}">
             <input type="checkbox" data-file="${run.file_path}" ${isSelected ? 'checked' : ''} />
             <div class="run-info">
-              <div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</div>
+              <div class="run-name" title="${escapeHtml(runDisplayName)}">${escapeHtml(runDisplayName)}</div>
               <div class="run-date">${dt.full}</div>
             </div>
             ${score !== undefined ? `<span class="run-score ${scoreClass}">${scoreDisplay}</span>` : ''}
@@ -5247,6 +5291,9 @@
       if (skipFilter !== 'versions' && state.filterVersions.size > 0 && !state.filterVersions.has('__none__')) {
         runs = runs.filter(r => matchesFilterSelection(state.filterVersions, getRunVersionKey(r)));
       }
+      if (skipFilter !== 'users' && state.filterUsers.size > 0 && !state.filterUsers.has('__none__')) {
+        runs = runs.filter(r => matchesFilterSelection(state.filterUsers, getRunOwnerKey(r)));
+      }
       return runs;
     }
 
@@ -5254,11 +5301,17 @@
     const datasets = collectFilterValues(runsExcluding('datasets'), r => r.dataset_name);
     const models = collectFilterValues(runsExcluding('models'), r => getRunModelKey(r)).sort(compareModelVariantKeys);
     const statusValues = collectFilterValues(runsExcluding('statuses'), r => r.status);
+    const ownerValues = collectFilterValues(runsExcluding('users'), r => getRunOwnerKey(r));
+    const owners = ownerValues
+      .filter(v => v !== EMPTY_FILTER_VALUE)
+      .sort((a, b) => getOwnerFilterLabel(a).localeCompare(getOwnerFilterLabel(b)))
+      .concat(ownerValues.includes(EMPTY_FILTER_VALUE) ? [EMPTY_FILTER_VALUE] : []);
     const constrainingFiltersActive = state.quickFilter !== 'all'
       || state.filterTasks.size > 0
       || state.filterDatasets.size > 0
       || state.filterModels.size > 0
-      || state.filterStatuses.size > 0;
+      || state.filterStatuses.size > 0
+      || state.filterUsers.size > 0;
     const versionValues = collectFilterValues(runsExcluding('versions'), r => getRunVersionKey(r));
     const versions = (!constrainingFiltersActive && state.knownVersions.size > versionValues.length)
       ? Array.from(new Set([...versionValues, ...state.knownVersions])).sort()
@@ -5302,6 +5355,16 @@
       showSearch: false,
     });
 
+    // User multi-select
+    buildMultiSelect({
+      btnId: 'filter-user-btn', dropdownId: 'filter-user-dropdown',
+      stateSet: state.filterUsers, values: owners,
+      labelFn: getOwnerFilterLabel,
+      htmlLabelFn: (v) => renderOwnerFilterLabel(v),
+      defaultLabel: 'All Users',
+      showSearch: true, searchPlaceholder: 'Search users...',
+    });
+
     // Version multi-select
     buildMultiSelect({
       btnId: 'filter-version-btn', dropdownId: 'filter-version-dropdown',
@@ -5323,7 +5386,7 @@
   // ═══════════════════════════════════════════════════
 
   // Generic multi-select dropdown toggles
-  ['filter-task-btn', 'filter-dataset-btn', 'filter-model-btn', 'filter-version-btn', 'filter-status-btn', 'metric-visibility-btn', 'models-stat-visibility-btn'].forEach(id => {
+  ['filter-task-btn', 'filter-dataset-btn', 'filter-model-btn', 'filter-version-btn', 'filter-status-btn', 'filter-user-btn', 'metric-visibility-btn', 'models-stat-visibility-btn'].forEach(id => {
     el(id)?.addEventListener('click', (e) => {
       e.stopPropagation();
       const wrapper = e.target.closest('.multi-select-wrapper');
@@ -5660,6 +5723,7 @@
       filterStatuses: [...state.filterStatuses],
       filterVersions: [...state.filterVersions],
       filterDatasets: [...state.filterDatasets],
+      filterUsers: [...state.filterUsers],
       quickFilter: state.quickFilter,
       chartFirstColWidth: state.chartFirstColWidth,
     };
@@ -5701,6 +5765,7 @@
         if (parsed.filterStatuses) state.filterStatuses = new Set(parsed.filterStatuses);
         if (parsed.filterVersions) state.filterVersions = new Set(parsed.filterVersions);
         if (parsed.filterDatasets) state.filterDatasets = new Set(parsed.filterDatasets);
+        if (parsed.filterUsers) state.filterUsers = new Set(parsed.filterUsers);
         if (parsed.quickFilter) {
           state.quickFilter = parsed.quickFilter;
           $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));

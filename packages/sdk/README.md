@@ -206,7 +206,7 @@ qym run create --task-file agent.py --task-function chat \
   --resume-from qym_results/task/model/date/run-id.csv
 
 # Other commands
-qym run list             # List recent runs
+qym run list --user USER # List recent runs, optionally filtered by owner
 qym run tasks            # List distinct task names
 qym analyze run <id>     # Trigger AI root-cause analysis
 qym analyze summary <id> # Get analysis summary

@@ -101,6 +101,24 @@ class ProductEvalJob:
             self.group_analysis = dict(group_analysis)
             self.updated_at = datetime.utcnow()
 
+    def initialize_planned_runs(self) -> None:
+        with self._lock:
+            existing_attempts = {
+                int(row["attempt"]) for row in self.runs if row.get("attempt")
+            }
+            for attempt in range(1, self.expected_runs + 1):
+                if attempt not in existing_attempts:
+                    self.runs.append(
+                        {
+                            "attempt": attempt,
+                            "sdk_run_id": None,
+                            "qym_run_id": None,
+                            "status": "PENDING",
+                        }
+                    )
+            self.runs.sort(key=lambda row: int(row.get("attempt") or 0))
+            self.updated_at = datetime.utcnow()
+
     def record_run_matrix(self, runs: List[Dict[str, Any]]) -> None:
         with self._lock:
             current_by_sdk_id = {
@@ -263,6 +281,7 @@ def get_preset(name: str) -> ProductEvalPreset:
             max_parallel_runs=max_parallel_runs,
         )
     if name == "test":
+        settings = ProductEvalSettings()
         return ProductEvalPreset(
             name="test",
             script_path=_default_test_script(),
@@ -271,9 +290,11 @@ def get_preset(name: str) -> ProductEvalPreset:
             dataset_env=None,
             model_env=None,
             default_config={
-                "max_concurrency": 2,
+                "max_concurrency": 10,
                 "timeout": 30,
             },
+            run_count=3,
+            max_parallel_runs=settings.max_parallel_runs,
         )
     raise ProductEvalError(f"Unknown product eval preset: {name}")
 
@@ -326,6 +347,10 @@ def validate_submit_request(
 ) -> ProductEvalPreset:
     preset = get_preset(preset_name)
     requested_dataset = validate_dataset_name(dataset_name)
+    if preset.name == "test" and requested_dataset:
+        raise ProductEvalError(
+            "dataset is not accepted for preset 'test'; omit it to use the built-in test dataset"
+        )
     if not preset.script_path.exists():
         raise RuntimeError(_format_missing_script_error(preset.script_path))
     if (
@@ -460,6 +485,7 @@ class ProductEvalJobManager:
             project_id=project_id,
             expected_runs=preset.run_count,
         )
+        job.initialize_planned_runs()
         with self._lock:
             if self._inflight_job_count_locked() >= self._max_workers:
                 raise ProductEvalQueueFull(

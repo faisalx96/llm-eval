@@ -43,6 +43,12 @@
     .score-bar { display: inline-block; height: 6px; border-radius: 3px; min-width: 20px; vertical-align: middle; margin-right: 6px; }
     .trend-placeholder { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: var(--font-sm); margin-top: var(--space-lg); }
     .empty-state { padding: var(--space-xl); text-align: center; color: var(--text-dim); font-size: var(--font-sm); }
+    .live-card { margin-bottom: var(--space-lg); }
+    .live-status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-secondary); }
+    .live-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-secondary); box-shadow: 0 0 0 3px rgba(0,168,255,0.12); }
+    .live-progress { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+    .live-owner { color: var(--text-secondary); font-size: 12px; }
+    .row-meta { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -57,6 +63,21 @@
       <div class="stat-card"><div class="stat-card-label">Avg Success</div><div class="stat-card-value" id="ov-success">—</div><div class="stat-card-sub" id="ov-success-sub"></div></div>
       <div class="stat-card"><div class="stat-card-label">Models</div><div class="stat-card-value" id="ov-models">—</div><div class="stat-card-sub" id="ov-models-sub"></div></div>
       <div class="stat-card"><div class="stat-card-label">Items Evaluated</div><div class="stat-card-value" id="ov-items">—</div><div class="stat-card-sub" id="ov-items-sub"></div></div>
+    </div>
+
+    <div class="overview-card live-card">
+      <div class="overview-card-header">
+        <div><div class="overview-card-title">Live Runs</div><div class="card-subtitle">Runs currently executing in this project</div></div>
+        <a class="overview-card-link" id="live-runs-link" href="#">View all →</a>
+      </div>
+      <div class="overview-card-body">
+        <table class="recent-table">
+          <thead><tr><th>Run</th><th>Owner</th><th>Status</th><th>Progress</th><th>Updated</th></tr></thead>
+          <tbody id="live-runs-body">
+            <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="overview-grid">
@@ -152,6 +173,50 @@
         return firstMetric ? run.metric_averages[firstMetric] : null;
       }
 
+      function getRunName(run) {
+        return run.run_name || run.external_run_id || (run.run_id || '').slice(0, 8) || '—';
+      }
+
+      function progressLabel(run) {
+        if (run.progress_total) {
+          const pct = typeof run.progress_pct === 'number' ? ' · ' + Math.round(run.progress_pct * 100) + '%' : '';
+          return String(run.progress_completed || 0) + '/' + String(run.progress_total) + pct;
+        }
+        if (run.total_items) return String(run.progress_completed || 0) + '/' + String(run.total_items);
+        return run.progress_completed ? String(run.progress_completed) : '—';
+      }
+
+      async function loadLiveRuns(slug) {
+        const tbody = document.getElementById('live-runs-body');
+        if (!tbody) return;
+        try {
+          const liveUrl = slug ? `api/runs/live?limit=8&project_slug=${encodeURIComponent(slug)}` : 'api/runs/live?limit=8';
+          const res = await fetch(apiUrl(liveUrl));
+          if (!res.ok) throw new Error('Failed');
+          const data = await res.json();
+          const liveRuns = data.runs || [];
+          if (!liveRuns.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No live runs</td></tr>';
+            return;
+          }
+          tbody.innerHTML = liveRuns.map(run => {
+            const runUrl = slug ? projectUrl(slug, 'runs/' + run.run_id) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/run/' + run.run_id);
+            const owner = run.owner && (run.owner.display_name || (run.owner.email || '').split('@')[0]) || '—';
+            const status = run.status || 'RUNNING';
+            return '<tr>'
+              + '<td><a class="run-link" href="' + runUrl + '">' + esc(getRunName(run)) + '</a><div class="row-meta">' + esc(run.task_name || '') + '</div></td>'
+              + '<td><span class="live-owner">' + esc(owner) + '</span></td>'
+              + '<td><span class="live-status"><span class="live-status-dot"></span>' + esc(status) + '</span></td>'
+              + '<td><span class="live-progress">' + esc(progressLabel(run)) + '</span></td>'
+              + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(run.last_event_at || run.timestamp) + '</td>'
+              + '</tr>';
+          }).join('');
+        } catch (e) {
+          console.error('[Overview] Failed to load live runs:', e);
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load live runs</td></tr>';
+        }
+      }
+
       async function load() {
         // Wait for shell
         if (window.QymShell && !window.__QYM_USER__) {
@@ -171,8 +236,11 @@
 
         if (slug) {
           document.getElementById('view-all-runs').href = projectUrl(slug);
+          document.getElementById('live-runs-link').href = projectUrl(slug);
           document.getElementById('view-all-reviews').href = projectUrl(slug, 'reviews');
         }
+
+        await loadLiveRuns(slug);
 
         // Fetch recent runs
         try {
@@ -261,6 +329,11 @@
       load().catch(err => {
         document.querySelector('main').innerHTML = `<div class="empty-state">${esc(err.message || 'Failed to load')}</div>`;
       });
+      setInterval(() => {
+        const ctx = window.QymShell ? window.QymShell.getPageContext() : {};
+        const project = window.QymShell ? window.QymShell.getProject() : null;
+        loadLiveRuns(ctx.projectSlug || (project && project.slug) || '');
+      }, 10000);
     })();
   </script>
 </body>

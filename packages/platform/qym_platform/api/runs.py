@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -494,6 +494,64 @@ def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     }
 
 
+_LIVE_RUN_STATUSES = {RunWorkflowStatus.RUNNING, RunWorkflowStatus.PENDING}
+
+
+def _live_run_summary(
+    run: Run,
+    *,
+    project: Optional[Project],
+    owner: Optional[User],
+    item_agg: Dict[str, Any],
+) -> Dict[str, Any]:
+    expected_total = None
+    if isinstance(run.run_metadata, dict):
+        try:
+            if run.run_metadata.get("total_items") is not None:
+                expected_total = int(run.run_metadata["total_items"])
+        except Exception:
+            expected_total = None
+
+    completed_count = int(item_agg.get("completed") or 0)
+    run_name = ""
+    if isinstance(run.run_config, dict):
+        run_name = str(run.run_config.get("run_name") or "")
+    if not run_name:
+        run_name = run.external_run_id or ""
+
+    owner_info = None
+    if owner:
+        owner_info = {
+            "id": owner.id,
+            "email": owner.email,
+            "display_name": owner.display_name or owner.email.split("@")[0],
+        }
+
+    project_info = None
+    if project:
+        project_info = {"id": project.id, "slug": project.slug, "name": project.name}
+
+    return {
+        "run_id": run.id,
+        "run_name": run_name,
+        "external_run_id": run.external_run_id or "",
+        "task_name": run.task,
+        "dataset_name": run.dataset,
+        "model_name": _strip_model_provider(run.model or ""),
+        "status": run.status.value if hasattr(run.status, "value") else str(run.status or ""),
+        "timestamp": _iso(run.started_at or run.created_at),
+        "started_at": _iso(run.started_at) if run.started_at else None,
+        "last_event_at": _iso(run.last_event_at or run.updated_at or run.created_at),
+        "progress_completed": completed_count,
+        "progress_total": expected_total,
+        "progress_pct": (completed_count / expected_total) if expected_total else None,
+        "total_items": int(item_agg.get("total") or 0),
+        "error_count": int(item_agg.get("error_count") or 0),
+        "owner": owner_info,
+        "project": project_info,
+    }
+
+
 @router.get("/", response_model=None)
 def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
     redirect = _maybe_redirect_to_login(request, db)
@@ -647,6 +705,9 @@ def legacy_list_runs(
     limit: int = Query(default=100, le=500),
     offset: int = Query(default=0, ge=0),
     project_slug: Optional[str] = Query(default=None),
+    user: Optional[str] = Query(default=None, description="Filter by run owner user id, email, or display name"),
+    user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
+    owner_user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
@@ -687,6 +748,17 @@ def legacy_list_runs(
     hidden = {t.strip().lower() for t in settings.hidden_tasks.split(",") if t.strip()}
     if hidden:
         q = q.filter(~func.lower(Run.task).in_(hidden))
+
+    user_filter = (owner_user_id or user_id or user or "").strip()
+    if user_filter:
+        lowered_user_filter = user_filter.lower()
+        q = q.join(User, User.id == Run.owner_user_id).filter(
+            or_(
+                Run.owner_user_id == user_filter,
+                func.lower(User.email) == lowered_user_filter,
+                func.lower(User.display_name).like(f"%{lowered_user_filter}%"),
+            )
+        )
 
     # Total count before pagination
     total_count = q.count()
@@ -905,6 +977,114 @@ def legacy_list_runs(
         "last_updated": to_api_timestamp(utc_now_naive()),
         "total_count": total_count,
         "project": {"id": selected_project.id, "slug": selected_project.slug, "name": selected_project.name},
+    }
+
+
+@router.get("/api/runs/live")
+def list_live_runs(
+    limit: int = Query(default=25, ge=1, le=100),
+    project_slug: Optional[str] = Query(default=None),
+    all_projects: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    q = Run.active(db).filter(Run.status.in_(_LIVE_RUN_STATUSES)).order_by(Run.last_event_at.desc(), Run.created_at.desc())
+    selected_project = None
+
+    if all_projects:
+        if principal.auth_type != "none" and principal.user.role != UserRole.ADMIN:
+            raise HTTPException(status_code=403, detail="Admin only")
+        q = q.join(Project, Project.id == Run.project_id).filter(Project.is_active.is_(True))
+    elif project_slug:
+        selected_project = db.query(Project).filter(Project.slug == project_slug, Project.is_active.is_(True)).first()
+        if not selected_project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not has_project_access(db, principal, selected_project.id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        q = q.filter(Run.project_id == selected_project.id)
+    else:
+        if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
+            selected_project = db.query(Project).filter(Project.is_active.is_(True)).order_by(Project.name).first()
+        else:
+            selected_project = (
+                db.query(Project)
+                .join(ProjectMembership, ProjectMembership.project_id == Project.id)
+                .filter(ProjectMembership.user_id == principal.user.id, Project.is_active.is_(True))
+                .order_by(Project.name)
+                .first()
+            )
+        if selected_project:
+            q = q.filter(Run.project_id == selected_project.id)
+        else:
+            return {
+                "runs": [],
+                "total_count": 0,
+                "last_updated": to_api_timestamp(utc_now_naive()),
+                "project": None,
+            }
+
+    candidates: List[Run] = q.limit(500).all()
+    _reconcile_run_liveness(db, candidates)
+
+    total_count = q.count()
+    runs: List[Run] = q.limit(limit).all()
+    if not runs:
+        return {
+            "runs": [],
+            "total_count": total_count,
+            "last_updated": to_api_timestamp(utc_now_naive()),
+            "project": (
+                {"id": selected_project.id, "slug": selected_project.slug, "name": selected_project.name}
+                if selected_project
+                else None
+            ),
+        }
+
+    run_ids = [run.id for run in runs]
+    item_agg_rows = (
+        db.query(
+            RunItem.run_id,
+            func.count().label("total"),
+            func.count(case((RunItem.error.isnot(None), 1))).label("error_count"),
+            func.count(case(((RunItem.output.isnot(None)) | (RunItem.error.isnot(None)), 1))).label("completed"),
+        )
+        .filter(RunItem.run_id.in_(run_ids))
+        .group_by(RunItem.run_id)
+        .all()
+    )
+    item_agg = {
+        row.run_id: {
+            "total": row.total,
+            "error_count": row.error_count,
+            "completed": row.completed,
+        }
+        for row in item_agg_rows
+    }
+
+    project_ids = {run.project_id for run in runs}
+    owner_ids = {run.owner_user_id for run in runs}
+    projects = db.query(Project).filter(Project.id.in_(project_ids)).all() if project_ids else []
+    owners = db.query(User).filter(User.id.in_(owner_ids)).all() if owner_ids else []
+    project_map = {project.id: project for project in projects}
+    owner_map = {owner.id: owner for owner in owners}
+
+    return {
+        "runs": [
+            _live_run_summary(
+                run,
+                project=project_map.get(run.project_id),
+                owner=owner_map.get(run.owner_user_id),
+                item_agg=item_agg.get(run.id, {}),
+            )
+            for run in runs
+        ],
+        "total_count": total_count,
+        "last_updated": to_api_timestamp(utc_now_naive()),
+        "project": (
+            {"id": selected_project.id, "slug": selected_project.slug, "name": selected_project.name}
+            if selected_project
+            else None
+        ),
     }
 
 

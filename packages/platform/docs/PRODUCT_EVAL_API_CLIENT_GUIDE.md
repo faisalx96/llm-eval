@@ -1,8 +1,15 @@
-# Insightor Product Eval API Client Guide
+# Product Eval API Client Guide
 
-This guide is for external applications that need to run the Insightor Qym evaluation over HTTP. You do not need Python and you do not need the Qym SDK.
+This guide is for external applications that need to run Qym product evaluations over HTTP. You do not need Python and you do not need the Qym SDK.
 
-Each Insightor eval creates three Qym runs. The API gives you one stable `eval_id`; use that same ID to check status or stop the eval. Qym run IDs are returned only so you can open individual Qym run pages.
+The API gives you one stable `eval_id`; use that same ID to check status or stop the eval. Qym run IDs are returned only so you can open individual Qym run pages.
+
+Supported presets:
+
+| Preset | Purpose | Runs created |
+| --- | --- | --- |
+| `insightor` | Real Insightor evaluation. | Three Qym runs. |
+| `test` | Client integration smoke test. No Insightor credentials required. | Three Qym runs. |
 
 ## Table Of Contents
 
@@ -11,6 +18,7 @@ Each Insightor eval creates three Qym runs. The API gives you one stable `eval_i
 | [Base URL](#base-url) | Platform URL format. |
 | [Authentication](#authentication) | Bearer token and required scopes. |
 | [Start An Eval](#start-an-eval) | Submit endpoint, required inputs, optional inputs, and curl example. |
+| [Testing Preset](#testing-preset) | Self-contained smoke test preset for client integration. |
 | [Submit Response](#submit-response) | `202 Accepted`, `eval_id`, and capacity behavior. |
 | [Poll Eval Status](#poll-eval-status) | Status endpoint and running/completed/failed response examples. |
 | [Stop An Eval](#stop-an-eval) | Stop endpoint and stop behavior. |
@@ -42,9 +50,9 @@ Required scopes:
 
 | Action | Required scope |
 | --- | --- |
-| Start an Insightor eval | `runs:write` |
-| Poll an Insightor eval | `runs:read` |
-| Stop an Insightor eval | `runs:write` |
+| Start an eval | `runs:write` |
+| Poll an eval | `runs:read` |
+| Stop an eval | `runs:write` |
 
 ## Start An Eval
 
@@ -58,7 +66,12 @@ Required inputs:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `preset` | string | Must be `"insightor"`. |
+| `preset` | string | Use `"insightor"` for the real eval or `"test"` for the smoke-test preset. |
+
+Additional required inputs for `preset: "insightor"`:
+
+| Field | Type | Description |
+| --- | --- | --- |
 | `insightor_url` | string | Insightor base URL that Qym should call. |
 | `refresh_token` | string | Refresh token used by the eval to authenticate to Insightor. Treat this as a secret. |
 
@@ -101,6 +114,43 @@ curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
   }'
 ```
 
+## Testing Preset
+
+Use `preset: "test"` to verify your API key, request formatting, polling loop, stop behavior, and Qym UI links without calling Insightor.
+
+The test preset:
+
+| Property | Value |
+| --- | --- |
+| Required request fields | `preset` only |
+| Insightor credentials | Not required |
+| Dataset | Built-in test dataset; do not send `dataset` |
+| Items | 50 |
+| Item behavior | Each item sleeps for about 5 seconds, then returns a deterministic result |
+| Metric | `exact_match` |
+| Runs created | 3 |
+| Per-run concurrency | 10 items |
+| Compare URL | Returned after at least two test runs are created |
+| `group_analysis` | Returned after all three test runs complete, using the same pass@3-style shape as `insightor` |
+
+Example:
+
+```bash
+curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
+  -H "Authorization: Bearer $QYM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "preset": "test",
+    "run_name": "client-api-smoke-001",
+    "metadata": {
+      "source": "external-app",
+      "purpose": "connectivity-test"
+    }
+  }'
+```
+
+If you send `dataset` with `preset: "test"`, the API returns `400 Bad Request`. The test preset is intentionally self-contained.
+
 ## Submit Response
 
 The submit endpoint returns `202 Accepted` when the eval is accepted.
@@ -124,7 +174,7 @@ The submit endpoint returns `202 Accepted` when the eval is accepted.
 
 Save `data.eval_id`. You will use it for polling and stopping.
 
-The API does not queue requests when all Insightor eval worker slots are busy. If capacity is full, the submit request returns `429 Too Many Requests` and no eval is started. Retry after the number of seconds in the `Retry-After` response header.
+The API does not queue requests when all eval worker slots are busy. If capacity is full, the submit request returns `429 Too Many Requests` and no eval is started. Retry after the number of seconds in the `Retry-After` response header.
 
 ## Poll Eval Status
 
@@ -220,7 +270,7 @@ Recommended polling interval: every 2 to 5 seconds.
       },
       {
         "attempt": 3,
-        "status": "STARTING",
+        "status": "PENDING",
         "qym_run_id": null,
         "qym_run_url": null,
         "task": null,
@@ -240,7 +290,7 @@ Recommended polling interval: every 2 to 5 seconds.
 
 ### Completed Response
 
-The `runs` array below is shortened to one attempt for readability. A completed Insightor eval normally returns three completed attempt rows.
+The `runs` array below is shortened to one attempt for readability. Completed `insightor` and `test` evals normally return three completed attempt rows.
 
 ```json
 {
@@ -293,7 +343,7 @@ The `runs` array below is shortened to one attempt for readability. A completed 
 }
 ```
 
-When `status` is `COMPLETED`, use `data.group_analysis` for the final Insightor metrics and `data.qym_compare_url` as the main Qym UI result link.
+When an eval has `status: "COMPLETED"`, use `data.group_analysis` for the final grouped metrics and `data.qym_compare_url` as the main Qym UI result link. For `insightor`, the grouped metric is `accuracy`; for `test`, the grouped metric is `exact_match`.
 
 ### Failed Response
 
@@ -341,12 +391,12 @@ Stopping is best-effort for the in-process worker: the API immediately stops the
 
 | Field | Description |
 | --- | --- |
-| `eval_id` | Stable ID for this Insightor eval. Use it for polling and stopping. |
+| `eval_id` | Stable ID for this eval. Use it for polling and stopping. |
 | `status` | Eval status: `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
 | `qym_project_id` | Qym project ID associated with your API key. Usually only needed for support/debugging. |
-| `runs` | The Insightor attempts. Usually three rows. |
+| `runs` | Qym runs created for the eval. `insightor` and `test` usually have three rows. |
 | `runs[].attempt` | Attempt number, starting at `1`. |
-| `runs[].status` | Attempt status: `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
+| `runs[].status` | Attempt status: `PENDING`, `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. `PENDING` means the attempt is planned but has not started yet. |
 | `runs[].qym_run_id` | Qym run ID for that attempt, or `null` until created. |
 | `runs[].qym_run_url` | URL for that attempt's Qym run, or `null` until created. |
 | `runs[].task` | Qym task name for the attempt, or `null` until the Qym run exists. |
@@ -358,11 +408,11 @@ Stopping is best-effort for the in-process worker: the API immediately stops the
 | `runs[].summary.failed` | Number of errored items. |
 | `runs[].summary.in_progress` | Number of items currently in progress. |
 | `runs[].summary.pending` | Number of items not started yet. |
-| `runs[].summary.metrics` | Metrics tracked for the run. For Insightor this includes `accuracy`. |
+| `runs[].summary.metrics` | Metrics tracked for the run. For `insightor` this includes `accuracy`; for `test` this includes `exact_match`. |
 | `runs[].summary.metric_stats` | Per-metric count, mean, min, and max for numeric scores. |
 | `runs[].summary.latency_ms` | Count, mean, min, and max item latency in milliseconds. |
 | `qym_compare_url` | Qym compare URL for created attempts. On completion, this is the main UI result link. |
-| `group_analysis` | Final pass@3, avg@3, consistency, reliability, and average latency metrics. `null` until the eval completes. |
+| `group_analysis` | Final pass@3, avg@3, consistency, reliability, and average latency metrics. `null` until all three runs complete. |
 | `created_at` | UTC timestamp when the eval was accepted. |
 | `updated_at` | UTC timestamp when the eval last changed. |
 | `error` | Present only when `status` is `FAILED`. |
@@ -393,6 +443,19 @@ Unsupported `config`:
   "error": {
     "code": "invalid_request",
     "message": "config is not accepted on this endpoint. Product eval runtime settings are controlled by QYM_PRODUCT_EVAL_* environment variables."
+  }
+}
+```
+
+Dataset sent with the test preset:
+
+```json
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "invalid_request",
+    "message": "dataset is not accepted for preset 'test'; omit it to use the built-in test dataset"
   }
 }
 ```

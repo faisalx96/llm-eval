@@ -302,6 +302,152 @@ def test_runs_list_metric_average_excludes_in_flight_unscored_items(client, sess
     assert summary["metric_averages"]["judge"] == pytest.approx(0.5)
 
 
+def test_runs_list_can_filter_by_owner_user(client, session_factory) -> None:
+    with session_factory() as session:
+        owner_a = User(id="owner-a", email="owner-a@example.com", display_name="Owner A", role=UserRole.MEMBER)
+        owner_b = User(id="owner-b", email="owner-b@example.com", display_name="Owner B", role=UserRole.MEMBER)
+        admin = User(id="admin-filter", email="admin-filter@example.com", role=UserRole.ADMIN)
+        project = Project(id="project-filter", name="Project Filter", slug="project-filter", created_by_user_id=admin.id)
+        session.add_all([
+            owner_a,
+            owner_b,
+            admin,
+            project,
+            ProjectMembership(project_id=project.id, user_id=owner_a.id, role=ProjectRole.MEMBER),
+            ProjectMembership(project_id=project.id, user_id=owner_b.id, role=ProjectRole.MEMBER),
+            Run(
+                id="run-owner-a",
+                project_id=project.id,
+                created_by_user_id=owner_a.id,
+                owner_user_id=owner_a.id,
+                task="task-a",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.COMPLETED,
+                run_metadata={},
+                run_config={},
+            ),
+            Run(
+                id="run-owner-b",
+                project_id=project.id,
+                created_by_user_id=owner_b.id,
+                owner_user_id=owner_b.id,
+                task="task-b",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.COMPLETED,
+                run_metadata={},
+                run_config={},
+            ),
+        ])
+        session.commit()
+
+    by_email = client.get(
+        "/api/runs?project_slug=project-filter&user=owner-b@example.com",
+        headers=_ui_headers("admin-filter@example.com"),
+    )
+    assert by_email.status_code == 200
+    email_payload = by_email.json()
+    assert email_payload["total_count"] == 1
+    assert list(email_payload["tasks"].keys()) == ["task-b"]
+    assert email_payload["tasks"]["task-b"]["nomodel"][0]["owner"]["id"] == "owner-b"
+
+    by_id = client.get(
+        "/api/runs?project_slug=project-filter&owner_user_id=owner-a",
+        headers=_ui_headers("admin-filter@example.com"),
+    )
+    assert by_id.status_code == 200
+    id_payload = by_id.json()
+    assert id_payload["total_count"] == 1
+    assert list(id_payload["tasks"].keys()) == ["task-a"]
+    assert id_payload["tasks"]["task-a"]["nomodel"][0]["owner"]["email"] == "owner-a@example.com"
+
+
+def test_live_runs_endpoint_supports_project_and_admin_views(client, session_factory) -> None:
+    with session_factory() as session:
+        admin = User(id="admin-live", email="admin-live@example.com", role=UserRole.ADMIN)
+        owner_a = User(id="owner-live-a", email="owner-live-a@example.com", display_name="Owner A", role=UserRole.MEMBER)
+        owner_b = User(id="owner-live-b", email="owner-live-b@example.com", display_name="Owner B", role=UserRole.MEMBER)
+        project_a = Project(id="project-live-a", name="Live A", slug="live-a", created_by_user_id=admin.id)
+        project_b = Project(id="project-live-b", name="Live B", slug="live-b", created_by_user_id=admin.id)
+        now = utc_now_naive()
+        session.add_all([
+            admin,
+            owner_a,
+            owner_b,
+            project_a,
+            project_b,
+            ProjectMembership(project_id=project_a.id, user_id=owner_a.id, role=ProjectRole.MEMBER),
+            ProjectMembership(project_id=project_b.id, user_id=owner_b.id, role=ProjectRole.MEMBER),
+            Run(
+                id="run-live-a",
+                project_id=project_a.id,
+                created_by_user_id=owner_a.id,
+                owner_user_id=owner_a.id,
+                task="task-live",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.RUNNING,
+                run_metadata={"total_items": 2},
+                run_config={"run_name": "Project A Live"},
+                started_at=now,
+                last_event_at=now,
+            ),
+            Run(
+                id="run-live-b",
+                project_id=project_b.id,
+                created_by_user_id=owner_b.id,
+                owner_user_id=owner_b.id,
+                task="task-live",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.PENDING,
+                run_metadata={},
+                run_config={"run_name": "Project B Pending"},
+                started_at=now,
+                last_event_at=now,
+            ),
+            Run(
+                id="run-complete-a",
+                project_id=project_a.id,
+                created_by_user_id=owner_a.id,
+                owner_user_id=owner_a.id,
+                task="task-live",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.COMPLETED,
+                run_metadata={},
+                run_config={"run_name": "Complete"},
+                started_at=now,
+                last_event_at=now,
+            ),
+            RunItem(run_id="run-live-a", item_id="item-1", index=0, input={}, output="ok"),
+            RunItem(run_id="run-live-a", item_id="item-2", index=1, input={}),
+        ])
+        session.commit()
+
+    project_response = client.get("/api/runs/live?project_slug=live-a", headers=_ui_headers("owner-live-a@example.com"))
+    assert project_response.status_code == 200
+    project_payload = project_response.json()
+    assert project_payload["total_count"] == 1
+    assert [run["run_id"] for run in project_payload["runs"]] == ["run-live-a"]
+    assert project_payload["runs"][0]["progress_completed"] == 1
+    assert project_payload["runs"][0]["progress_total"] == 2
+    assert project_payload["runs"][0]["project"]["slug"] == "live-a"
+    assert project_payload["runs"][0]["owner"]["display_name"] == "Owner A"
+
+    denied_response = client.get("/api/runs/live?all_projects=true", headers=_ui_headers("owner-live-a@example.com"))
+    assert denied_response.status_code == 403
+
+    admin_response = client.get("/api/runs/live?all_projects=true", headers=_ui_headers("admin-live@example.com"))
+    assert admin_response.status_code == 200
+    admin_payload = admin_response.json()
+    assert admin_payload["total_count"] == 2
+    assert {run["run_id"] for run in admin_payload["runs"]} == {"run-live-a", "run-live-b"}
+    assert {run["project"]["slug"] for run in admin_payload["runs"]} == {"live-a", "live-b"}
+    assert {run["owner"]["display_name"] for run in admin_payload["runs"]} == {"Owner A", "Owner B"}
+
+
 def test_heartbeat_reopens_run_stopped_by_lease_timeout(client, session_factory) -> None:
     run_id = "00000000-0000-0000-0000-000000000103"
     token = "test-token"
