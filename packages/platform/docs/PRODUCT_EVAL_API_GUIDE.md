@@ -18,6 +18,7 @@ Required scopes:
 
 - Submit eval: `runs:write`
 - Poll job/run: `runs:read`
+- Stop eval: `runs:write`
 
 The API key must be bound to the same project where the run should be created.
 
@@ -51,6 +52,7 @@ Shared auth errors may still use the platform's normal FastAPI error shape.
 ## HTTP Status Codes
 
 - `200 OK`: Poll succeeded.
+- `200 OK`: Stop succeeded.
 - `202 Accepted`: Submit succeeded and the eval job was accepted.
 - `400 Bad Request`: Invalid request, such as unknown preset, unsupported field, or a client-sent `config`.
 - `401 Unauthorized`: Missing or invalid bearer API key.
@@ -427,8 +429,26 @@ curl "$QYM_PLATFORM_URL/v1/product-evals/<qym_run_id>" \
 2. Read `data.poll_url`.
 3. Poll that URL every 2-5 seconds.
 4. If polling a job and `data.qym_run_id` appears, switch to `data.poll_url`.
-5. Stop when `data.status` is terminal, usually `COMPLETED` or `FAILED`.
+5. Stop when `data.status` is terminal, usually `COMPLETED`, `FAILED`, or `STOPPED`.
 6. For routine progress, do not request `include_items=true`.
+
+## Stop An Eval
+
+Recommended stop path:
+
+```http
+POST /v1/product-evals/jobs/{job_id}/stop
+Authorization: Bearer <QYM_API_KEY>
+```
+
+For multi-run product evals such as Insightor, clients should stop by job because one product eval creates multiple Qym runs. The run-level stop endpoint exists for single-run product evals and operational fallback:
+
+```http
+POST /v1/product-evals/{run_id}/stop
+Authorization: Bearer <QYM_API_KEY>
+```
+
+Stopping requires `runs:write`. The API marks the product eval job as `STOPPED` and marks already-created Qym runs as `STOPPED`. In-flight Python work is cooperative/best-effort: a blocking task call may finish its current call, but late SDK events are ignored for explicitly stopped runs.
 
 ## Current Test Preset
 

@@ -183,6 +183,43 @@ def test_late_run_started_does_not_reopen_explicitly_stopped_run(client, session
         assert run.status_reason is None
 
 
+def test_late_run_completed_does_not_override_explicit_product_eval_stop(
+    client, session_factory
+) -> None:
+    run_id = "00000000-0000-0000-0000-000000000111"
+    token = "test-token"
+    with session_factory() as session:
+        run = _seed_run(session, token=token, run_id=run_id)
+        run.status = RunWorkflowStatus.STOPPED
+        run.status_reason = "product_eval_stopped"
+        session.commit()
+
+    _post_events(
+        client,
+        run_id,
+        token,
+        [
+            _event(
+                event_id="00000000-0000-0000-0000-000000000011",
+                sequence=2,
+                run_id=run_id,
+                type_="run_completed",
+                payload={
+                    "ended_at": "2026-04-10T00:00:05Z",
+                    "summary": {},
+                    "final_status": "COMPLETED",
+                },
+            )
+        ],
+    )
+
+    with session_factory() as session:
+        run = session.query(Run).filter(Run.id == run_id).first()
+        assert run is not None
+        assert run.status == RunWorkflowStatus.STOPPED
+        assert run.status_reason == "product_eval_stopped"
+
+
 def test_stale_running_run_is_reconciled_to_stopped_in_list_api(client, session_factory) -> None:
     run_id = "00000000-0000-0000-0000-000000000102"
     with session_factory() as session:
@@ -210,9 +247,9 @@ def test_runs_list_includes_median_latency(client, session_factory) -> None:
     with session_factory() as session:
         _seed_run(session, run_id=run_id)
         session.add_all([
-            RunItem(run_id=run_id, item_id="item-1", index=0, latency_ms=100.0, output="ok"),
-            RunItem(run_id=run_id, item_id="item-2", index=1, latency_ms=400.0, output="ok"),
-            RunItem(run_id=run_id, item_id="item-3", index=2, latency_ms=900.0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-1", index=0, input={}, latency_ms=100.0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-2", index=1, input={}, latency_ms=400.0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-3", index=2, input={}, latency_ms=900.0, output="ok"),
         ])
         session.commit()
 
@@ -230,9 +267,9 @@ def test_runs_list_includes_total_retries(client, session_factory) -> None:
     with session_factory() as session:
         _seed_run(session, run_id=run_id)
         session.add_all([
-            RunItem(run_id=run_id, item_id="item-1", index=0, retry_count=0, output="ok"),
-            RunItem(run_id=run_id, item_id="item-2", index=1, retry_count=2, output="ok"),
-            RunItem(run_id=run_id, item_id="item-3", index=2, retry_count=3, error="boom"),
+            RunItem(run_id=run_id, item_id="item-1", index=0, input={}, retry_count=0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-2", index=1, input={}, retry_count=2, output="ok"),
+            RunItem(run_id=run_id, item_id="item-3", index=2, input={}, retry_count=3, error="boom"),
         ])
         session.commit()
 
@@ -250,9 +287,9 @@ def test_runs_list_metric_average_excludes_in_flight_unscored_items(client, sess
         run = _seed_run(session, run_id=run_id)
         run.metrics = ["judge"]
         session.add_all([
-            RunItem(run_id=run_id, item_id="item-1", index=0, output="ok"),
+            RunItem(run_id=run_id, item_id="item-1", index=0, input={}, output="ok"),
             RunItem(run_id=run_id, item_id="item-2", index=1, input={"q": "still running"}),
-            RunItem(run_id=run_id, item_id="item-3", index=2, error="boom"),
+            RunItem(run_id=run_id, item_id="item-3", index=2, input={}, error="boom"),
             RunItemScore(run_id=run_id, item_id="item-1", metric_name="judge", score_numeric=1.0, score_raw=1.0),
         ])
         session.commit()

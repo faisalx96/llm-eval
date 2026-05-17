@@ -1,20 +1,34 @@
 # Insightor Product Eval API Client Guide
 
-This guide is for external applications that need to trigger the Insightor Qym evaluation over HTTP. You do not need Python and you do not need the Qym SDK.
+This guide is for external applications that need to run the Insightor Qym evaluation over HTTP. You do not need Python and you do not need the Qym SDK.
 
-The API starts an Insightor evaluation, creates Qym runs, and returns polling data plus Qym UI links. Insightor evaluations run as three attempts. Each attempt creates a normal Qym run, and the compare URL shows the cross-run metrics such as pass@3, avg@3, consistency, reliability, and average latency.
+Each Insightor eval creates three Qym runs. The API gives you one stable `eval_id`; use that same ID to check status or stop the eval. Qym run IDs are returned only so you can open individual Qym run pages.
+
+## Table Of Contents
+
+| Section | What it covers |
+| --- | --- |
+| [Base URL](#base-url) | Platform URL format. |
+| [Authentication](#authentication) | Bearer token and required scopes. |
+| [Start An Eval](#start-an-eval) | Submit endpoint, required inputs, optional inputs, and curl example. |
+| [Submit Response](#submit-response) | `202 Accepted`, `eval_id`, and capacity behavior. |
+| [Poll Eval Status](#poll-eval-status) | Status endpoint and running/completed/failed response examples. |
+| [Stop An Eval](#stop-an-eval) | Stop endpoint and stop behavior. |
+| [Returned Fields](#returned-fields) | Response field reference. |
+| [Error Responses](#error-responses) | Validation, capacity, and HTTP status errors. |
+| [Security Notes](#security-notes) | Secret handling and stored values. |
+| [Recommended Client Flow](#recommended-client-flow) | End-to-end client sequence. |
+| [Minimal JavaScript Example](#minimal-javascript-example) | Fetch-based implementation example. |
 
 ## Base URL
 
 Your Qym platform team will give you the platform base URL.
 
-Example:
-
 ```text
 https://qym.example.com
 ```
 
-All endpoint paths in this guide are relative to that base URL.
+All endpoint paths below are relative to that base URL.
 
 ## Authentication
 
@@ -29,11 +43,10 @@ Required scopes:
 | Action | Required scope |
 | --- | --- |
 | Start an Insightor eval | `runs:write` |
-| Poll Insightor eval progress | `runs:read` |
+| Poll an Insightor eval | `runs:read` |
+| Stop an Insightor eval | `runs:write` |
 
-The API key must belong to the Qym project where the eval runs should be created.
-
-## Start An Insightor Eval
+## Start An Eval
 
 ```http
 POST /v1/product-evals
@@ -41,29 +54,32 @@ Content-Type: application/json
 Authorization: Bearer <QYM_API_KEY>
 ```
 
-### Required Inputs
+Required inputs:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `preset` | string | Must be `"insightor"`. If omitted, the API defaults to `"insightor"`, but clients should send it explicitly. |
-| `insightor_url` | string | Insightor base URL that Qym should call during the eval. |
+| `preset` | string | Must be `"insightor"`. |
+| `insightor_url` | string | Insightor base URL that Qym should call. |
 | `refresh_token` | string | Refresh token used by the eval to authenticate to Insightor. Treat this as a secret. |
 
-### Optional Inputs
+Optional inputs:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `dataset` | string | Langfuse dataset name to evaluate. If omitted, defaults to `"playground_set_v2"`. Empty strings are invalid. |
-| `run_name` | string | Display name for the three Qym runs. If omitted, Qym derives a name from the version fields when possible. |
-| `model` | string | Optional model label or model override used by the Insightor preset. |
+| `dataset` | string | Langfuse dataset name. Defaults to `"playground_set_v2"` if omitted. |
+| `run_name` | string | Display name for the Qym runs. |
+| `task_name` | string | Optional task display label. |
+| `model` | string | Optional model label or model override. |
+| `metadata` | object | Optional caller metadata stored on Qym runs. Do not put secrets here. |
 | `agent_version` | string | Optional Insightor agent version label. |
 | `image_version` | string | Optional Insightor image version label. |
 | `kb_version` | string | Optional Insightor knowledge-base version label. |
-| `metadata` | object | Optional caller metadata stored on the Qym runs. Do not put secrets here. |
 
-Runtime limits such as concurrency, timeout, retries, and parallel attempts are controlled by the Qym platform deployment. Clients cannot override them in the request. If a request includes `config`, the API returns `400 Bad Request` and no eval is created.
+Runtime settings such as concurrency, timeout, retries, and parallel attempts are controlled by the Qym platform deployment. Clients cannot override them in the request. The recommended platform-managed defaults are `max_concurrency=10` and `max_parallel_runs=1`.
 
-### Submit Example
+If the request includes `config` or any unsupported field, the API returns `400 Bad Request` and no eval is created.
+
+Example:
 
 ```bash
 curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
@@ -85,68 +101,20 @@ curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
   }'
 ```
 
-If you want to use the default dataset, omit `dataset`. The default Insightor dataset is `playground_set_v2`.
-
 ## Submit Response
 
 The submit endpoint returns `202 Accepted` when the eval is accepted.
 
-The API does not queue requests when all Insightor eval worker slots are busy. If capacity is full, the submit request returns `429 Too Many Requests` and no eval is started. Retry after the number of seconds in the `Retry-After` response header.
-
-Always read and poll `data.poll_url`. It is a relative URL, so prepend the Qym platform base URL.
-
-Example response after the first Qym run has started:
-
 ```json
 {
   "ok": true,
   "data": {
-    "status": "RUNNING",
-    "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_runs": [
-      {
-        "attempt": 1,
-        "status": "RUNNING",
-        "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-        "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30"
-      },
-      {
-        "attempt": 2,
-        "status": "STARTING",
-        "qym_run_id": null,
-        "qym_run_url": null
-      },
-      {
-        "attempt": 3,
-        "status": "STARTING",
-        "qym_run_id": null,
-        "qym_run_url": null
-      }
-    ],
-    "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
-    "created_at": "2026-05-13T12:05:34.482720Z",
-    "updated_at": "2026-05-13T12:05:35.112119Z"
-  },
-  "error": null
-}
-```
-
-Sometimes the API accepts the request before the first Qym run exists. In that case, `qym_run_id`, `qym_run_url`, and `qym_runs` may be empty temporarily.
-
-```json
-{
-  "ok": true,
-  "data": {
+    "eval_id": "eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40",
     "status": "STARTING",
-    "qym_run_id": null,
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": null,
-    "qym_runs": [],
+    "runs": [],
     "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
+    "group_analysis": null,
     "created_at": "2026-05-13T12:05:34.482720Z",
     "updated_at": "2026-05-13T12:05:34.482720Z"
   },
@@ -154,58 +122,115 @@ Sometimes the API accepts the request before the first Qym run exists. In that c
 }
 ```
 
-Do not parse or store the opaque ID inside `poll_url` as a business identifier. Store the full `poll_url` value and use it for polling.
+Save `data.eval_id`. You will use it for polling and stopping.
 
-## Poll Insightor Progress
+The API does not queue requests when all Insightor eval worker slots are busy. If capacity is full, the submit request returns `429 Too Many Requests` and no eval is started. Retry after the number of seconds in the `Retry-After` response header.
 
-Poll the returned `data.poll_url`.
+## Poll Eval Status
 
 ```http
-GET /v1/product-evals/jobs/{opaque_id}
+GET /v1/product-evals/{eval_id}
 Authorization: Bearer <QYM_API_KEY>
 ```
 
 Example:
 
 ```bash
-curl "$QYM_PLATFORM_URL/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf" \
+curl "$QYM_PLATFORM_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40" \
   -H "Authorization: Bearer $QYM_API_KEY"
 ```
 
 Recommended polling interval: every 2 to 5 seconds.
 
-### Running Poll Response
+### Running Response
 
 ```json
 {
   "ok": true,
   "data": {
+    "eval_id": "eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40",
     "status": "RUNNING",
-    "qym_run_id": "run-attempt-1",
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/run-attempt-1",
-    "qym_runs": [
+    "runs": [
       {
         "attempt": 1,
         "status": "COMPLETED",
         "qym_run_id": "run-attempt-1",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-1"
+        "qym_run_url": "https://qym.example.com/run/run-attempt-1",
+        "task": "insightor_api",
+        "dataset": "customer-langfuse-dataset",
+        "model": "gpt-4.1",
+        "summary": {
+          "total": 100,
+          "completed": 100,
+          "failed": 0,
+          "in_progress": 0,
+          "pending": 0,
+          "metrics": ["accuracy"],
+          "metric_stats": {
+            "accuracy": {
+              "count": 100,
+              "mean": 0.84,
+              "min": 0.0,
+              "max": 1.0
+            }
+          },
+          "latency_ms": {
+            "count": 100,
+            "mean": 1234.5,
+            "min": 650.0,
+            "max": 4210.0
+          },
+          "started_at": "2026-05-13T12:05:35Z",
+          "ended_at": "2026-05-13T12:08:10Z"
+        }
       },
       {
         "attempt": 2,
         "status": "RUNNING",
         "qym_run_id": "run-attempt-2",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-2"
+        "qym_run_url": "https://qym.example.com/run/run-attempt-2",
+        "task": "insightor_api",
+        "dataset": "customer-langfuse-dataset",
+        "model": "gpt-4.1",
+        "summary": {
+          "total": 100,
+          "completed": 42,
+          "failed": 1,
+          "in_progress": 2,
+          "pending": 55,
+          "metrics": ["accuracy"],
+          "metric_stats": {
+            "accuracy": {
+              "count": 42,
+              "mean": 0.81,
+              "min": 0.0,
+              "max": 1.0
+            }
+          },
+          "latency_ms": {
+            "count": 43,
+            "mean": 1440.2,
+            "min": 700.0,
+            "max": 5100.0
+          },
+          "started_at": "2026-05-13T12:08:12Z",
+          "ended_at": null
+        }
       },
       {
         "attempt": 3,
         "status": "STARTING",
         "qym_run_id": null,
-        "qym_run_url": null
+        "qym_run_url": null,
+        "task": null,
+        "dataset": null,
+        "model": null,
+        "summary": null
       }
     ],
     "qym_compare_url": "https://qym.example.com/compare?runs=run-attempt-1&runs=run-attempt-2",
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
+    "group_analysis": null,
     "created_at": "2026-05-13T12:05:34.482720Z",
     "updated_at": "2026-05-13T12:09:15.112119Z"
   },
@@ -213,34 +238,38 @@ Recommended polling interval: every 2 to 5 seconds.
 }
 ```
 
-### Completed Poll Response
+### Completed Response
+
+The `runs` array below is shortened to one attempt for readability. A completed Insightor eval normally returns three completed attempt rows.
 
 ```json
 {
   "ok": true,
   "data": {
+    "eval_id": "eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40",
     "status": "COMPLETED",
-    "qym_run_id": "run-attempt-1",
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/run-attempt-1",
-    "qym_runs": [
+    "runs": [
       {
         "attempt": 1,
         "status": "COMPLETED",
         "qym_run_id": "run-attempt-1",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-1"
-      },
-      {
-        "attempt": 2,
-        "status": "COMPLETED",
-        "qym_run_id": "run-attempt-2",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-2"
-      },
-      {
-        "attempt": 3,
-        "status": "COMPLETED",
-        "qym_run_id": "run-attempt-3",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-3"
+        "qym_run_url": "https://qym.example.com/run/run-attempt-1",
+        "task": "insightor_api",
+        "dataset": "customer-langfuse-dataset",
+        "model": "gpt-4.1",
+        "summary": {
+          "total": 100,
+          "completed": 100,
+          "failed": 0,
+          "in_progress": 0,
+          "pending": 0,
+          "metrics": ["accuracy"],
+          "metric_stats": {},
+          "latency_ms": {},
+          "started_at": "2026-05-13T12:05:35Z",
+          "ended_at": "2026-05-13T12:08:10Z"
+        }
       }
     ],
     "qym_compare_url": "https://qym.example.com/compare?runs=run-attempt-1&runs=run-attempt-2&runs=run-attempt-3",
@@ -257,7 +286,6 @@ Recommended polling interval: every 2 to 5 seconds.
       "reliability": 0.88,
       "avg_latency_ms": 1234.5
     },
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
     "created_at": "2026-05-13T12:05:34.482720Z",
     "updated_at": "2026-05-13T12:16:48.112119Z"
   },
@@ -265,23 +293,22 @@ Recommended polling interval: every 2 to 5 seconds.
 }
 ```
 
-When `status` is `COMPLETED`, `group_analysis` contains the final Insightor summary metrics. Use `qym_compare_url` as the primary UI result link.
+When `status` is `COMPLETED`, use `data.group_analysis` for the final Insightor metrics and `data.qym_compare_url` as the main Qym UI result link.
 
-### Failed Poll Response
+### Failed Response
 
-If the eval fails, the poll request still returns `200 OK` because polling succeeded. The failure is represented in `data.status` and `data.error`.
+If the eval fails, polling still returns `200 OK` because the status request succeeded. The failure is represented in `data.status` and `data.error`.
 
 ```json
 {
   "ok": true,
   "data": {
+    "eval_id": "eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40",
     "status": "FAILED",
-    "qym_run_id": null,
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": null,
-    "qym_runs": [],
+    "runs": [],
     "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
+    "group_analysis": null,
     "created_at": "2026-05-13T12:05:34.482720Z",
     "updated_at": "2026-05-13T12:05:35.112119Z",
     "error": "RuntimeError: sanitized failure message"
@@ -290,196 +317,61 @@ If the eval fails, the poll request still returns `200 OK` because polling succe
 }
 ```
 
-Treat `FAILED` as terminal.
+Treat `COMPLETED`, `FAILED`, and `STOPPED` as terminal statuses.
+
+## Stop An Eval
+
+```http
+POST /v1/product-evals/{eval_id}/stop
+Authorization: Bearer <QYM_API_KEY>
+```
+
+Example:
+
+```bash
+curl -X POST "$QYM_PLATFORM_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40/stop" \
+  -H "Authorization: Bearer $QYM_API_KEY"
+```
+
+The stop response uses the standard response envelope. `data.status` becomes `STOPPED`, and `data.stopped_qym_runs` tells you how many already-created Qym runs were marked stopped.
+
+Stopping is best-effort for the in-process worker: the API immediately stops the eval state and marks created Qym runs as `STOPPED`. If a Python task call is already blocking, it may finish that call before the worker thread exits, but late SDK events will not reopen explicitly stopped runs.
 
 ## Returned Fields
 
 | Field | Description |
 | --- | --- |
-| `status` | Current Insightor eval status. Stop polling on `COMPLETED` or `FAILED`. |
-| `qym_run_id` | The first Qym platform run ID created for this Insightor eval. It may be `null` while starting. |
+| `eval_id` | Stable ID for this Insightor eval. Use it for polling and stopping. |
+| `status` | Eval status: `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
 | `qym_project_id` | Qym project ID associated with your API key. Usually only needed for support/debugging. |
-| `qym_run_url` | URL for the first Qym run. |
-| `qym_runs` | The three Insightor attempts and their Qym run IDs/URLs. |
-| `qym_runs[].attempt` | Attempt number, starting at `1`. |
-| `qym_runs[].status` | Status of that attempt. |
-| `qym_runs[].qym_run_id` | Qym run ID for that attempt, or `null` until created. |
-| `qym_runs[].qym_run_url` | URL for that attempt's Qym run, or `null` until created. |
-| `qym_compare_url` | Compare URL for created attempts. On completion, this is the main result URL for pass@3, avg@3, consistency, reliability, and average latency. |
-| `group_analysis` | Final grouped metrics. Present only after `status` is `COMPLETED`. |
-| `group_analysis.metric` | Metric used for the grouped summary. For Insightor this is `accuracy`. |
-| `group_analysis.threshold` | Score threshold used to count a passing attempt. |
-| `group_analysis.k` | Number of attempts included in the group. For Insightor this is `3`. |
-| `group_analysis.total_items` | Number of dataset items included in grouped analysis. |
-| `group_analysis.total_score_count` | Number of item scores included across all attempts. |
-| `group_analysis.failed_count` | Number of failed scored attempts included in grouped analysis. |
-| `group_analysis.pass_at_3` | Share of items where at least one of the three attempts passed. |
-| `group_analysis.avg_at_3` | Average score across all item attempts. |
-| `group_analysis.consistency` | Average pass/fail agreement across attempts. |
-| `group_analysis.reliability` | Average pass rate on items where at least one attempt passed. |
-| `group_analysis.avg_latency_ms` | Average item latency across attempts, in milliseconds. |
-| `poll_url` | Relative URL to poll next. Always use this value instead of constructing your own URL. |
-| `created_at` | UTC timestamp when the Insightor eval job was accepted. |
-| `updated_at` | UTC timestamp when the Insightor eval job last changed. |
+| `runs` | The Insightor attempts. Usually three rows. |
+| `runs[].attempt` | Attempt number, starting at `1`. |
+| `runs[].status` | Attempt status: `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
+| `runs[].qym_run_id` | Qym run ID for that attempt, or `null` until created. |
+| `runs[].qym_run_url` | URL for that attempt's Qym run, or `null` until created. |
+| `runs[].task` | Qym task name for the attempt, or `null` until the Qym run exists. |
+| `runs[].dataset` | Langfuse dataset name for the attempt, or `null` until the Qym run exists. |
+| `runs[].model` | Model label for the attempt, or `null` until the Qym run exists. |
+| `runs[].summary` | Aggregate progress and score summary for the attempt, or `null` until the Qym run exists. |
+| `runs[].summary.total` | Total dataset items expected for that attempt. |
+| `runs[].summary.completed` | Number of completed items. |
+| `runs[].summary.failed` | Number of errored items. |
+| `runs[].summary.in_progress` | Number of items currently in progress. |
+| `runs[].summary.pending` | Number of items not started yet. |
+| `runs[].summary.metrics` | Metrics tracked for the run. For Insightor this includes `accuracy`. |
+| `runs[].summary.metric_stats` | Per-metric count, mean, min, and max for numeric scores. |
+| `runs[].summary.latency_ms` | Count, mean, min, and max item latency in milliseconds. |
+| `qym_compare_url` | Qym compare URL for created attempts. On completion, this is the main UI result link. |
+| `group_analysis` | Final pass@3, avg@3, consistency, reliability, and average latency metrics. `null` until the eval completes. |
+| `created_at` | UTC timestamp when the eval was accepted. |
+| `updated_at` | UTC timestamp when the eval last changed. |
 | `error` | Present only when `status` is `FAILED`. |
-
-## Status Values
-
-Top-level `data.status` values:
-
-| Status | Meaning | Terminal |
-| --- | --- | --- |
-| `STARTING` | Request accepted, but no Qym run has been created yet. | No |
-| `RUNNING` | One or more Insightor attempts are active. | No |
-| `COMPLETED` | All Insightor attempts completed successfully. | Yes |
-| `FAILED` | The Insightor eval failed. See `data.error`. | Yes |
-
-Each row in `qym_runs` can have:
-
-| Status | Meaning |
-| --- | --- |
-| `STARTING` | This attempt has not created a Qym run yet. |
-| `RUNNING` | This attempt has an active Qym run. |
-| `COMPLETED` | This attempt completed. |
-
-## Optional Single-Run Aggregate Details
-
-The normal Insightor flow should poll the job URL and use `qym_compare_url`.
-
-If you need aggregate details for one specific Qym run, call:
-
-```http
-GET /v1/product-evals/{qym_run_id}
-Authorization: Bearer <QYM_API_KEY>
-```
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "qym_run_id": "run-attempt-1",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/run-attempt-1",
-    "external_run_id": "insightor-api-smoke-001",
-    "status": "RUNNING",
-    "task": "insightor_api",
-    "dataset": "customer-langfuse-dataset",
-    "model": "gpt-4.1",
-    "metrics": ["accuracy"],
-    "total": 100,
-    "completed": 42,
-    "failed": 1,
-    "in_progress": 2,
-    "pending": 55,
-    "metric_stats": {
-      "accuracy": {
-        "count": 42,
-        "mean": 0.81,
-        "min": 0.0,
-        "max": 1.0
-      }
-    },
-    "latency_ms": {
-      "count": 42,
-      "mean": 1842.5,
-      "min": 900.2,
-      "max": 5200.9
-    },
-    "started_at": "2026-05-13T12:05:35Z",
-    "ended_at": null,
-    "created_at": "2026-05-13T12:05:34Z",
-    "metadata": {
-      "source": "external-app",
-      "request_id": "req-123"
-    }
-  },
-  "error": null
-}
-```
-
-This endpoint is aggregate-only by default. For debugging only, add `?include_items=true` to include item rows. Do not use `include_items=true` for frequent production polling.
-
-## Recommended Client Flow
-
-1. Submit `POST /v1/product-evals` with `preset: "insightor"`.
-2. Confirm the HTTP status is `202`.
-3. Save `data.poll_url`.
-4. Poll `data.poll_url` every 2 to 5 seconds with the same bearer token.
-5. Stop when `data.status` is `COMPLETED` or `FAILED`.
-6. On `COMPLETED`, read `data.group_analysis` and use `data.qym_compare_url` as the main result URL.
-7. On `FAILED`, show or log `data.error`.
-
-## Minimal JavaScript Example
-
-```js
-async function startInsightorEval() {
-  const baseUrl = process.env.QYM_PLATFORM_URL;
-  const apiKey = process.env.QYM_API_KEY;
-
-  const submitRes = await fetch(`${baseUrl}/v1/product-evals`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      preset: "insightor",
-      dataset: "customer-langfuse-dataset",
-      insightor_url: "https://insightor.example.com",
-      refresh_token: process.env.INSIGHTOR_REFRESH_TOKEN,
-      agent_version: "agent-v1",
-      image_version: "image-v1",
-      kb_version: "kb-v1",
-      run_name: "insightor-api-smoke-001",
-      metadata: { source: "external-app" },
-    }),
-  });
-
-  const submitBody = await submitRes.json();
-  if (!submitRes.ok) {
-    throw new Error(submitBody.error?.message || "Failed to start Insightor eval");
-  }
-
-  let pollUrl = submitBody.data.poll_url;
-
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const pollRes = await fetch(`${baseUrl}${pollUrl}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    const pollBody = await pollRes.json();
-    if (!pollRes.ok) {
-      throw new Error(pollBody.error?.message || "Failed to poll Insightor eval");
-    }
-
-    const data = pollBody.data;
-    pollUrl = data.poll_url;
-
-    if (data.status === "COMPLETED") {
-      return {
-        qymCompareUrl: data.qym_compare_url,
-        groupAnalysis: data.group_analysis,
-        qymRuns: data.qym_runs,
-      };
-    }
-
-    if (data.status === "FAILED") {
-      throw new Error(data.error || "Insightor eval failed");
-    }
-  }
-}
-```
 
 ## Error Responses
 
-### Validation Error Responses
-
 Validation errors return `400 Bad Request`. No eval is created when validation fails.
 
-Missing required input example:
+Missing required input:
 
 ```json
 {
@@ -492,7 +384,7 @@ Missing required input example:
 }
 ```
 
-Unsupported `config` example:
+Unsupported `config`:
 
 ```json
 {
@@ -505,20 +397,7 @@ Unsupported `config` example:
 }
 ```
 
-### Common HTTP Statuses
-
-| Status | Meaning |
-| --- | --- |
-| `400 Bad Request` | Missing required input, unknown preset, empty `dataset`, unsupported field, or a request body containing `config`. |
-| `401 Unauthorized` | Missing or invalid bearer token. |
-| `403 Forbidden` | API key does not have the required scope or project access. |
-| `429 Too Many Requests` | All product eval worker slots are busy. Wait and retry after the `Retry-After` header. |
-| `404 Not Found` | Poll URL does not exist or is not visible to the caller. |
-| `500 Internal Server Error` | Server-side preset setup problem. |
-
-### Capacity Full Response
-
-When all Insightor eval worker slots are busy, the submit endpoint returns:
+Capacity full:
 
 ```http
 429 Too Many Requests
@@ -536,12 +415,89 @@ Retry-After: 30
 }
 ```
 
-No eval is created for a `429` response. The client should wait and submit again later.
+Common HTTP statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `400 Bad Request` | Missing required input, unknown preset, empty `dataset`, unsupported field, or a request body containing `config`. |
+| `401 Unauthorized` | Missing or invalid bearer token. |
+| `403 Forbidden` | API key does not have the required scope or project access. |
+| `404 Not Found` | `eval_id` does not exist or is not visible to the caller. |
+| `429 Too Many Requests` | All eval worker slots are busy. Wait and retry after the `Retry-After` header. |
+| `500 Internal Server Error` | Server-side preset setup problem. |
 
 ## Security Notes
 
 - Use HTTPS.
 - Treat `QYM_API_KEY` and `refresh_token` as secrets.
 - Do not send secrets in `metadata`.
-- `refresh_token` is not returned in Product Eval API responses.
+- `refresh_token` is not returned in API responses.
+- Store `eval_id` if you need to poll later.
 - Store `qym_compare_url` if you want users or operators to open the final Qym result later.
+
+## Recommended Client Flow
+
+1. Submit `POST /v1/product-evals`.
+2. Confirm the HTTP status is `202`.
+3. Save `data.eval_id`.
+4. Poll `GET /v1/product-evals/{eval_id}` every 30 to 60 seconds.
+5. Stop polling when `data.status` is `COMPLETED`, `FAILED`, or `STOPPED`.
+6. On `COMPLETED`, read `data.group_analysis` and open `data.qym_compare_url` for the Qym UI.
+7. On `FAILED`, show or log `data.error`.
+
+## Minimal JavaScript Example
+
+```js
+async function runInsightorEval() {
+  const baseUrl = process.env.QYM_PLATFORM_URL;
+  const apiKey = process.env.QYM_API_KEY;
+
+  const submitRes = await fetch(`${baseUrl}/v1/product-evals`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      preset: "insightor",
+      insightor_url: "https://insightor.example.com",
+      refresh_token: process.env.INSIGHTOR_REFRESH_TOKEN,
+      dataset: "customer-langfuse-dataset",
+      run_name: "insightor-api-smoke-001",
+      metadata: { source: "external-app" },
+    }),
+  });
+
+  const submitBody = await submitRes.json();
+  if (!submitRes.ok) {
+    throw new Error(submitBody.error?.message || "Failed to start Insightor eval");
+  }
+
+  const evalId = submitBody.data.eval_id;
+
+  while (true) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    const statusRes = await fetch(`${baseUrl}/v1/product-evals/${evalId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    const statusBody = await statusRes.json();
+    if (!statusRes.ok) {
+      throw new Error(statusBody.error?.message || "Failed to poll Insightor eval");
+    }
+
+    const data = statusBody.data;
+    if (data.status === "COMPLETED") {
+      return {
+        qymCompareUrl: data.qym_compare_url,
+        groupAnalysis: data.group_analysis,
+        runs: data.runs,
+      };
+    }
+
+    if (data.status === "FAILED" || data.status === "STOPPED") {
+      throw new Error(data.error || `Insightor eval ${data.status.toLowerCase()}`);
+    }
+  }
+}
+```

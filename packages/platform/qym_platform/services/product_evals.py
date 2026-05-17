@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
+from functools import wraps
 import os
 import sys
 import threading
@@ -29,7 +31,7 @@ class ProductEvalQueueFull(RuntimeError):
     """Raised when no product eval worker slot is available."""
 
 
-TERMINAL_JOB_STATUSES = {"COMPLETED", "FAILED"}
+TERMINAL_JOB_STATUSES = {"COMPLETED", "FAILED", "STOPPED"}
 
 
 @dataclass(frozen=True)
@@ -72,7 +74,12 @@ class ProductEvalJob:
     updated_at: datetime = field(default_factory=datetime.utcnow)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _run_ready: threading.Event = field(default_factory=threading.Event, repr=False)
+    _stop_requested: threading.Event = field(default_factory=threading.Event, repr=False)
     _future: Optional[Future] = field(default=None, repr=False)
+
+    @property
+    def eval_id(self) -> str:
+        return self.job_id
 
     def mark(
         self,
@@ -151,9 +158,28 @@ class ProductEvalJob:
     def wait_for_run(self, timeout: float) -> bool:
         return self._run_ready.wait(timeout=timeout)
 
+    def stop_requested(self) -> bool:
+        return self._stop_requested.is_set()
+
+    def request_stop(self) -> bool:
+        self._stop_requested.set()
+        cancelled_before_start = False
+        if self._future is not None:
+            cancelled_before_start = self._future.cancel()
+        with self._lock:
+            if self.status not in TERMINAL_JOB_STATUSES:
+                self.status = "STOPPED"
+                self.error = None
+            for row in self.runs:
+                if row.get("status") not in {"COMPLETED", "FAILED", "STOPPED"}:
+                    row["status"] = "STOPPED"
+            self.updated_at = datetime.utcnow()
+        return cancelled_before_start
+
     def to_dict(self) -> Dict[str, Any]:
         with self._lock:
             return {
+                "eval_id": self.eval_id,
                 "job_id": self.job_id,
                 "preset": self.preset,
                 "project_id": self.project_id,
@@ -410,7 +436,7 @@ class ProductEvalJobManager:
         )
         validated_runtime_inputs = validate_runtime_inputs(preset, runtime_inputs)
         job = ProductEvalJob(
-            job_id=str(uuid4()),
+            job_id=f"eval_{uuid4().hex}",
             preset=preset.name,
             owner_user_id=owner_user_id,
             project_id=project_id,
@@ -447,6 +473,17 @@ class ProductEvalJobManager:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def get_by_qym_run_id(self, run_id: str) -> Optional[ProductEvalJob]:
+        with self._lock:
+            for job in self._jobs.values():
+                snapshot = job.to_dict()
+                if snapshot.get("run_id") == run_id:
+                    return job
+                for row in snapshot["runs"]:
+                    if row.get("qym_run_id") == run_id:
+                        return job
+        return None
+
     def _run_job(
         self,
         job: ProductEvalJob,
@@ -462,6 +499,10 @@ class ProductEvalJobManager:
     ) -> None:
         job.mark(status="RUNNING")
         try:
+            if job.stop_requested():
+                job.mark(status="STOPPED")
+                return
+
             from qym import Evaluator, ProgressCallbackObserver
 
             resolved_max_parallel_runs = preset.max_parallel_runs
@@ -478,6 +519,38 @@ class ProductEvalJobManager:
                 )
             task = _get_function(module, preset.script_path, preset.task_name)
             metric = _get_function(module, preset.script_path, preset.metric_name)
+
+            if inspect.iscoroutinefunction(task):
+                @wraps(task)
+                async def stopped_task(*args: Any, **kwargs: Any) -> Any:
+                    if job.stop_requested():
+                        raise RuntimeError("Product eval job stopped")
+                    return await task(*args, **kwargs)
+            else:
+                @wraps(task)
+                def stopped_task(*args: Any, **kwargs: Any) -> Any:
+                    if job.stop_requested():
+                        raise RuntimeError("Product eval job stopped")
+                    return task(*args, **kwargs)
+
+            stopped_score = {
+                "score": 0.0,
+                "label": "stopped",
+                "metadata": {"error": "Product eval job stopped"},
+            }
+            if inspect.iscoroutinefunction(metric):
+                @wraps(metric)
+                async def stopped_metric(*args: Any, **kwargs: Any) -> Any:
+                    if job.stop_requested():
+                        return stopped_score
+                    return await metric(*args, **kwargs)
+            else:
+                @wraps(metric)
+                def stopped_metric(*args: Any, **kwargs: Any) -> Any:
+                    if job.stop_requested():
+                        return stopped_score
+                    return metric(*args, **kwargs)
+
             if dataset_name:
                 dataset = dataset_name
             elif preset.default_dataset_name:
@@ -504,8 +577,6 @@ class ProductEvalJobManager:
                 platform_url or os.getenv("QYM_PLATFORM_URL") or settings.base_url
             ).rstrip("/")
 
-            product_eval_id = str(uuid4())
-
             def build_run_metadata(attempt: int) -> Dict[str, Any]:
                 run_metadata = dict(metadata or {})
                 product_eval = run_metadata.get("product_eval")
@@ -515,8 +586,7 @@ class ProductEvalJobManager:
                 product_eval.update(
                     {
                         "preset": preset.name,
-                        "job_id": job.job_id,
-                        "product_eval_id": product_eval_id,
+                        "eval_id": job.eval_id,
                         "attempt": attempt,
                         "attempts": preset.run_count,
                     }
@@ -567,11 +637,14 @@ class ProductEvalJobManager:
                     platform_run_id = run_info.get("platform_run_id")
                     job.mark_run(
                         sdk_run_id=sdk_run_id,
-                        status="RUNNING",
+                        status="STOPPED" if job.stop_requested() else "RUNNING",
                         qym_run_id=str(platform_run_id) if platform_run_id else None,
                     )
                 elif event == "run_complete":
-                    job.mark_run(sdk_run_id=sdk_run_id, status="COMPLETED")
+                    job.mark_run(
+                        sdk_run_id=sdk_run_id,
+                        status="STOPPED" if job.stop_requested() else "COMPLETED",
+                    )
 
             if preset.run_count > 1:
                 base_name = (
@@ -598,9 +671,9 @@ class ProductEvalJobManager:
                     runs.append(
                         {
                             "name": base_name,
-                            "task": task,
+                            "task": stopped_task,
                             "dataset": dataset,
-                            "metrics": [metric],
+                            "metrics": [stopped_metric],
                             "model": resolved_model,
                             "config": attempt_config,
                         }
@@ -620,16 +693,20 @@ class ProductEvalJobManager:
                     job.set_group_analysis(group_analysis)
             else:
                 evaluator = Evaluator(
-                    task=task,
+                    task=stopped_task,
                     dataset=dataset,
-                    metrics=[metric],
+                    metrics=[stopped_metric],
                     model=resolved_model,
                     config=evaluator_config,
                     progress_callback=on_progress,
                 )
                 evaluator.run(show_tui=False, auto_save=False)
-            job.mark(status="COMPLETED")
+            job.mark(status="STOPPED" if job.stop_requested() else "COMPLETED")
         except Exception as exc:
             error = _safe_error(exc)
-            job.mark(status="FAILED", error=error)
-            logger.warning("Product eval job %s failed: %s", job.job_id, error)
+            if job.stop_requested():
+                job.mark(status="STOPPED", error=None)
+                logger.info("Product eval %s stopped", job.eval_id)
+            else:
+                job.mark(status="FAILED", error=error)
+                logger.warning("Product eval %s failed: %s", job.eval_id, error)

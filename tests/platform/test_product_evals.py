@@ -125,7 +125,7 @@ def _seed_api_key(
     session.commit()
 
 
-def test_submit_product_eval_starts_job_and_returns_run_id(
+def test_submit_product_eval_starts_job_and_returns_eval_id(
     client, session_factory, monkeypatch
 ) -> None:
     with session_factory() as session:
@@ -136,7 +136,7 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
     def fake_submit(**kwargs):
         captured.update(kwargs)
         job = ProductEvalJob(
-            job_id="job-1",
+            job_id="eval_submit1",
             preset="insightor",
             project_id=kwargs.get("project_id"),
         )
@@ -166,14 +166,17 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
     assert envelope["ok"] is True
     assert envelope["error"] is None
     payload = envelope["data"]
-    assert payload["qym_run_id"] == "run-1"
+    assert payload["eval_id"] == "eval_submit1"
     assert payload["qym_project_id"] == "project-1"
-    assert payload["qym_run_url"] == "http://testserver/run/run-1"
-    assert payload["qym_runs"] == []
+    assert payload["runs"] == []
     assert payload["qym_compare_url"] is None
-    assert payload["poll_url"] == "/v1/product-evals/run-1"
-    assert "run_id" not in payload
+    assert payload["group_analysis"] is None
+    assert "qym_run_id" not in payload
+    assert "qym_run_url" not in payload
+    assert "qym_runs" not in payload
+    assert "poll_url" not in payload
     assert "job_id" not in payload
+    assert "run_id" not in payload
     assert "project_id" not in payload
     assert "preset" not in payload
     assert captured["api_key"] == "submit-token"
@@ -188,7 +191,7 @@ def test_submit_product_eval_starts_job_and_returns_run_id(
     assert captured["metadata"] == {"source": "curl"}
 
 
-def test_submit_product_eval_hides_job_id_when_run_is_starting(
+def test_submit_product_eval_returns_eval_id_when_starting(
     client, session_factory, monkeypatch
 ) -> None:
     with session_factory() as session:
@@ -196,7 +199,7 @@ def test_submit_product_eval_hides_job_id_when_run_is_starting(
 
     def fake_submit(**kwargs):
         job = ProductEvalJob(
-            job_id="job-1",
+            job_id="eval_starting1",
             preset="test",
             project_id=kwargs.get("project_id"),
         )
@@ -213,26 +216,29 @@ def test_submit_product_eval_hides_job_id_when_run_is_starting(
 
     assert response.status_code == 202
     payload = response.json()["data"]
+    assert payload["eval_id"] == "eval_starting1"
     assert payload["status"] == "STARTING"
-    assert payload["qym_run_id"] is None
     assert payload["qym_project_id"] == "project-1"
-    assert payload["qym_run_url"] is None
-    assert payload["qym_runs"] == []
+    assert payload["runs"] == []
     assert payload["qym_compare_url"] is None
-    assert payload["poll_url"] == "/v1/product-evals/jobs/job-1"
+    assert payload["group_analysis"] is None
+    assert "qym_run_id" not in payload
+    assert "qym_run_url" not in payload
+    assert "qym_runs" not in payload
+    assert "poll_url" not in payload
     assert "run_id" not in payload
     assert "job_id" not in payload
     assert "project_id" not in payload
 
 
-def test_job_poll_returns_multi_run_compare_url(
+def test_eval_poll_returns_multi_run_compare_url(
     client, session_factory, monkeypatch
 ) -> None:
     with session_factory() as session:
         _seed_api_key(session, token="read-token", scopes=["runs:read"])
 
     job = ProductEvalJob(
-        job_id="job-1",
+        job_id="eval_poll1",
         preset="insightor",
         project_id="project-1",
         expected_runs=3,
@@ -248,52 +254,62 @@ def test_job_poll_returns_multi_run_compare_url(
     job.mark_run(sdk_run_id="sdk-run-2", status="RUNNING", qym_run_id="qym-run-2")
     job.mark(status="RUNNING")
 
-    monkeypatch.setattr(product_evals.job_manager, "get", lambda job_id: job)
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda eval_id: job)
 
     response = client.get(
-        "/v1/product-evals/jobs/job-1",
+        "/v1/product-evals/eval_poll1",
         headers=_auth_headers("read-token"),
     )
 
     assert response.status_code == 200
     payload = response.json()["data"]
-    assert payload["qym_run_id"] == "qym-run-1"
-    assert payload["qym_run_url"] == "http://testserver/run/qym-run-1"
+    assert payload["eval_id"] == "eval_poll1"
     assert payload["qym_compare_url"] == (
         "http://testserver/compare?runs=qym-run-1&runs=qym-run-2"
     )
-    assert payload["poll_url"] == "/v1/product-evals/jobs/job-1"
-    assert payload["qym_runs"] == [
+    assert payload["runs"] == [
         {
             "attempt": 1,
             "status": "COMPLETED",
             "qym_run_id": "qym-run-1",
             "qym_run_url": "http://testserver/run/qym-run-1",
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
         },
         {
             "attempt": 2,
             "status": "RUNNING",
             "qym_run_id": "qym-run-2",
             "qym_run_url": "http://testserver/run/qym-run-2",
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
         },
         {
             "attempt": 3,
             "status": "STARTING",
             "qym_run_id": None,
             "qym_run_url": None,
+            "task": None,
+            "dataset": None,
+            "model": None,
+            "summary": None,
         },
     ]
-    assert "group_analysis" not in payload
+    assert payload["group_analysis"] is None
 
 
-def test_job_poll_returns_group_analysis_when_completed(
+def test_eval_poll_returns_group_analysis_when_completed(
     client, session_factory, monkeypatch
 ) -> None:
     with session_factory() as session:
         _seed_api_key(session, token="read-token", scopes=["runs:read"])
 
     job = ProductEvalJob(
-        job_id="job-1",
+        job_id="eval_completed1",
         preset="insightor",
         project_id="project-1",
         expected_runs=3,
@@ -328,10 +344,10 @@ def test_job_poll_returns_group_analysis_when_completed(
     )
     job.mark(status="COMPLETED")
 
-    monkeypatch.setattr(product_evals.job_manager, "get", lambda job_id: job)
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda eval_id: job)
 
     response = client.get(
-        "/v1/product-evals/jobs/job-1",
+        "/v1/product-evals/eval_completed1",
         headers=_auth_headers("read-token"),
     )
 
@@ -343,6 +359,152 @@ def test_job_poll_returns_group_analysis_when_completed(
     assert payload["group_analysis"]["consistency"] == 2 / 3
     assert payload["group_analysis"]["reliability"] == 1 / 3
     assert payload["group_analysis"]["avg_latency_ms"] == 100.0
+
+
+def test_stop_product_eval_marks_job_and_runs_stopped(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="write-token", scopes=["runs:write"])
+        now = utc_now_naive()
+        for run_id in ("qym-run-1", "qym-run-2"):
+            session.add(
+                Run(
+                    id=run_id,
+                    project_id="project-1",
+                    created_by_user_id="user-1",
+                    owner_user_id="user-1",
+                    task="insightor_api",
+                    dataset="dataset-1",
+                    model="model-1",
+                    metrics=["accuracy"],
+                    status=RunWorkflowStatus.RUNNING,
+                    started_at=now,
+                    last_event_at=now,
+                )
+            )
+        session.commit()
+
+    job = ProductEvalJob(
+        job_id="eval_stop1",
+        preset="insightor",
+        owner_user_id="user-1",
+        project_id="project-1",
+        expected_runs=3,
+    )
+    job.record_run_matrix(
+        [
+            {"run_id": "sdk-run-1"},
+            {"run_id": "sdk-run-2"},
+            {"run_id": "sdk-run-3"},
+        ]
+    )
+    job.mark_run(sdk_run_id="sdk-run-1", status="RUNNING", qym_run_id="qym-run-1")
+    job.mark_run(sdk_run_id="sdk-run-2", status="RUNNING", qym_run_id="qym-run-2")
+    job.mark(status="RUNNING", run_id="qym-run-1")
+
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda eval_id: job)
+
+    response = client.post(
+        "/v1/product-evals/eval_stop1/stop",
+        headers=_auth_headers("write-token"),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["status"] == "STOPPED"
+    assert payload["stopped_qym_runs"] == 2
+    assert [row["status"] for row in payload["runs"]] == [
+        "STOPPED",
+        "STOPPED",
+        "STOPPED",
+    ]
+
+    with session_factory() as session:
+        runs = session.query(Run).order_by(Run.id.asc()).all()
+        assert [run.status for run in runs] == [
+            RunWorkflowStatus.STOPPED,
+            RunWorkflowStatus.STOPPED,
+        ]
+        assert [run.status_reason for run in runs] == [
+            "product_eval_stopped",
+            "product_eval_stopped",
+        ]
+
+
+def test_stop_product_eval_job_requires_runs_write_scope(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="read-token", scopes=["runs:read"])
+
+    job = ProductEvalJob(
+        job_id="eval_stop_scope1",
+        preset="test",
+        owner_user_id="user-1",
+        project_id="project-1",
+    )
+    monkeypatch.setattr(product_evals.job_manager, "get", lambda eval_id: job)
+
+    response = client.post(
+        "/v1/product-evals/eval_stop_scope1/stop",
+        headers=_auth_headers("read-token"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_stop_product_eval_run_marks_run_and_job_stopped(
+    client, session_factory, monkeypatch
+) -> None:
+    run_id = "00000000-0000-0000-0000-000000000501"
+    with session_factory() as session:
+        _seed_api_key(session, token="write-token", scopes=["runs:write"])
+        now = utc_now_naive()
+        session.add(
+            Run(
+                id=run_id,
+                project_id="project-1",
+                created_by_user_id="user-1",
+                owner_user_id="user-1",
+                task="test_task",
+                dataset="dataset-1",
+                model="model-1",
+                metrics=["exact_match"],
+                status=RunWorkflowStatus.RUNNING,
+                started_at=now,
+                last_event_at=now,
+            )
+        )
+        session.commit()
+
+    job = ProductEvalJob(
+        job_id="job-1",
+        preset="test",
+        owner_user_id="user-1",
+        project_id="project-1",
+        expected_runs=1,
+    )
+    job.mark_run(sdk_run_id="sdk-run-1", status="RUNNING", qym_run_id=run_id)
+    job.mark(status="RUNNING", run_id=run_id)
+
+    monkeypatch.setattr(product_evals.job_manager, "get_by_qym_run_id", lambda _: job)
+
+    response = client.post(
+        f"/v1/product-evals/{run_id}/stop",
+        headers=_auth_headers("write-token"),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["status"] == "STOPPED"
+    assert payload["stopped_qym_runs"] == 1
+
+    with session_factory() as session:
+        run = session.query(Run).filter(Run.id == run_id).first()
+        assert run is not None
+        assert run.status == RunWorkflowStatus.STOPPED
+        assert run.status_reason == "product_eval_stopped"
 
 
 def test_submit_rejects_invalid_preset(client, session_factory) -> None:
@@ -683,7 +845,7 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert [run["config"]["max_retries"] for run in runs] == [1] * 3
     assert "max_parallel_runs" not in runs[0]["config"]
     assert [run["config"]["metric_timeout"] for run in runs] == [300] * 3
-    runtime = runs[0]["task"].__globals__["RUNTIME"]
+    runtime = runs[0]["task"].__wrapped__.__globals__["RUNTIME"]
     assert runtime["INSIGHTOR_URL"] == "https://insightor.example.com"
     assert runtime["REFRESH_TOKEN"] == "refresh-token-1"
     assert runtime["AGENT_VERSION"] == "agent-v1"
@@ -695,6 +857,12 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert [
         run["config"]["run_metadata"]["product_eval"]["attempts"] for run in runs
     ] == [3, 3, 3]
+    assert job.eval_id.startswith("eval_")
+    assert [
+        run["config"]["run_metadata"]["product_eval"]["eval_id"] for run in runs
+    ] == [job.eval_id, job.eval_id, job.eval_id]
+    assert "job_id" not in runs[0]["config"]["run_metadata"]["product_eval"]
+    assert "product_eval_id" not in runs[0]["config"]["run_metadata"]["product_eval"]
     assert job.status == "COMPLETED"
     assert job.run_id == "qym-run-1"
     assert [row["qym_run_id"] for row in job.runs] == [
@@ -732,6 +900,22 @@ def test_poll_requires_runs_read_scope(client, session_factory) -> None:
     )
 
     assert response.status_code == 403
+
+
+def test_poll_unknown_eval_id_returns_standard_404(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="read-token", scopes=["runs:read"])
+
+    response = client.get(
+        "/v1/product-evals/eval_missing1", headers=_auth_headers("read-token")
+    )
+
+    assert response.status_code == 404
+    envelope = response.json()
+    assert envelope["ok"] is False
+    assert envelope["data"] is None
+    assert envelope["error"]["code"] == "not_found"
+    assert envelope["error"]["message"] == "Eval not found"
 
 
 def test_poll_returns_aggregate_run_progress_by_default(
@@ -839,6 +1023,89 @@ def test_poll_returns_aggregate_run_progress_by_default(
     assert "product_eval" not in payload["metadata"]
     assert "config" not in payload
     assert "items" not in payload
+
+
+def test_poll_by_eval_id_recovers_runs_from_db(client, session_factory) -> None:
+    eval_id = "eval_db1"
+    now = utc_now_naive()
+    with session_factory() as session:
+        _seed_api_key(
+            session, token="read-token", scopes=["runs:read"], user_id="owner-1"
+        )
+        runs = []
+        for attempt in (1, 2, 3):
+            run_id = f"00000000-0000-0000-0000-00000000060{attempt}"
+            runs.append(
+                Run(
+                    id=run_id,
+                    project_id="project-1",
+                    created_by_user_id="owner-1",
+                    owner_user_id="owner-1",
+                    task="insightor_api",
+                    dataset="dataset-1",
+                    model="model-1",
+                    metrics=["accuracy"],
+                    status=RunWorkflowStatus.COMPLETED,
+                    run_metadata={
+                        "total_items": 1,
+                        "product_eval": {
+                            "preset": "insightor",
+                            "eval_id": eval_id,
+                            "attempt": attempt,
+                            "attempts": 3,
+                        },
+                    },
+                    started_at=now,
+                    ended_at=now,
+                    last_event_at=now,
+                )
+            )
+            session.add(
+                RunItem(
+                    run_id=run_id,
+                    item_id=f"item-{attempt}",
+                    index=0,
+                    input={"question": f"q{attempt}"},
+                    output="ok",
+                    latency_ms=100.0 * attempt,
+                )
+            )
+            session.add(
+                RunItemScore(
+                    run_id=run_id,
+                    item_id=f"item-{attempt}",
+                    metric_name="accuracy",
+                    score_numeric=1.0,
+                    score_raw=True,
+                )
+            )
+        session.add_all(runs)
+        session.commit()
+
+    response = client.get(
+        f"/v1/product-evals/{eval_id}", headers=_auth_headers("read-token")
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["eval_id"] == eval_id
+    assert payload["status"] == "COMPLETED"
+    assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3]
+    assert payload["runs"][0]["task"] == "insightor_api"
+    assert payload["runs"][0]["dataset"] == "dataset-1"
+    assert payload["runs"][0]["model"] == "model-1"
+    assert payload["runs"][0]["summary"]["total"] == 1
+    assert payload["runs"][0]["summary"]["completed"] == 1
+    assert "metadata" not in payload["runs"][0]["summary"]
+    assert payload["group_analysis"]["pass_at_3"] == 1.0
+    assert payload["group_analysis"]["avg_at_3"] == 1.0
+    assert payload["group_analysis"]["avg_latency_ms"] == 200.0
+    assert payload["qym_compare_url"] == (
+        "http://testserver/compare?"
+        "runs=00000000-0000-0000-0000-000000000601&"
+        "runs=00000000-0000-0000-0000-000000000602&"
+        "runs=00000000-0000-0000-0000-000000000603"
+    )
 
 
 def test_poll_can_include_item_rows_when_requested(client, session_factory) -> None:

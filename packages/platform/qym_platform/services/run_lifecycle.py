@@ -39,6 +39,12 @@ def mark_run_running(run: Run) -> None:
 
 
 def mark_run_terminal(run: Run, status: RunWorkflowStatus, *, ended_at: datetime | None) -> None:
+    if (
+        run.status == RunWorkflowStatus.STOPPED
+        and run.status_reason != RUN_STATUS_REASON_LEASE_TIMEOUT
+        and status != RunWorkflowStatus.STOPPED
+    ):
+        return
     run.status = status
     run.status_reason = None
     normalized = ensure_utc(ended_at) or utc_now()
