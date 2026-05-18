@@ -40,6 +40,27 @@ def test_live_runs_sections_are_present_on_overview_and_admin() -> None:
 
     assert "Live Runs" in overview
     assert "api/runs/live?limit=8" in overview
+    assert "<th>Run</th><th>User</th><th>Items</th><th>Date</th>" in overview
+    assert "<th>Run</th><th>User</th><th>Score</th><th>Date</th>" not in overview
+    assert "<th>Run</th><th>User</th><th>Model</th><th>Score</th><th>Date</th>" not in overview
+    assert "const reviewLimit = 12;" in overview
     assert "Live Runs" in admin
+    assert 'class="admin-tabs"' in admin
+    assert 'data-admin-tab="runs"' in admin
+    assert 'data-admin-tab="live"' not in admin
+    assert 'data-admin-tab="by-project"' not in admin
+    assert 'border-bottom: 2px solid transparent' in admin
+    assert 'border-bottom-color: var(--accent-primary)' in admin
+    assert 'data-admin-panel="runs"' in admin
+    assert 'data-admin-panel="users"' in admin
     assert "api/runs/live?all_projects=true&limit=100" in admin
-    assert "<th>Project</th><th>User</th><th>Run</th>" in admin
+    assert "<th>Project</th><th>Run</th><th>Owner</th>" in admin
+    assert "<th>Project</th><th>Run</th><th>Owner</th><th>Status</th><th>Items</th><th>Created</th>" in admin
+    assert "<th>Project</th><th>Run</th><th>Owner</th><th>Status</th><th>Score</th><th>Created</th>" not in admin
+    assert "Most Recent Eval Runs" in admin
+    assert "Recent Eval Runs by Project" not in admin
+    assert "recentRunsPageSize: 6" in admin
+    assert "include_projects=false" in admin
+    assert "global_offset=${offset}" in admin
+    assert 'id="recent-runs-prev"' in admin
+    assert 'id="recent-runs-next"' in admin

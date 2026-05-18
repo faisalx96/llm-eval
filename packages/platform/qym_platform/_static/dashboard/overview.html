@@ -88,7 +88,7 @@
         </div>
         <div class="overview-card-body">
           <table class="recent-table" id="recent-runs-table">
-            <thead><tr><th>Run</th><th>Model</th><th>Score</th><th>Date</th></tr></thead>
+            <thead><tr><th>Run</th><th>User</th><th>Items</th><th>Date</th></tr></thead>
             <tbody id="recent-runs-body">
               <tr><td colspan="4" class="empty-state">Loading...</td></tr>
             </tbody>
@@ -179,8 +179,7 @@
 
       function progressLabel(run) {
         if (run.progress_total) {
-          const pct = typeof run.progress_pct === 'number' ? ' · ' + Math.round(run.progress_pct * 100) + '%' : '';
-          return String(run.progress_completed || 0) + '/' + String(run.progress_total) + pct;
+          return String(run.progress_completed || 0) + '/' + String(run.progress_total);
         }
         if (run.total_items) return String(run.progress_completed || 0) + '/' + String(run.total_items);
         return run.progress_completed ? String(run.progress_completed) : '—';
@@ -274,15 +273,12 @@
           } else {
             tbody.innerHTML = runs.slice(0, 5).map(r => {
               const name = r.run_name || r.external_run_id || (r.run_id || '').slice(0, 8) || '—';
-              const model = r.model_name || '—';
-              const scoreValue = getPrimaryMetricScore(r);
-              const score = scoreValue != null ? (scoreValue * 100).toFixed(0) + '%' : '—';
-              const scoreColor = scoreValue != null && scoreValue >= 0.75 ? 'var(--success)' : 'var(--warning)';
+              const owner = r.owner && (r.owner.display_name || (r.owner.email || '').split('@')[0]) || '—';
               const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/run/' + r.run_id);
               return '<tr>'
                 + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
-                + '<td style="font-family:var(--font-mono);font-size:11px">' + renderModelLabel(model, hasReasoningTraceStats(r.trace_stats)) + '</td>'
-                + '<td><span class="score-bar" style="width:' + (score !== '—' ? score : '0%') + ';background:' + scoreColor + '"></span>' + esc(score) + '</td>'
+                + '<td><span class="live-owner">' + esc(owner) + '</span></td>'
+                + '<td><span class="live-progress">' + esc(progressLabel(r)) + '</span></td>'
                 + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.timestamp) + '</td>'
                 + '</tr>';
             }).join('');
@@ -302,7 +298,8 @@
 
         // Fetch pending reviews count
         try {
-          const corrUrl = slug ? `api/corrections?limit=3&status=pending&project_slug=${encodeURIComponent(slug)}` : 'api/corrections?limit=3&status=pending';
+          const reviewLimit = 12;
+          const corrUrl = slug ? `api/corrections?limit=${reviewLimit}&status=pending&project_slug=${encodeURIComponent(slug)}` : `api/corrections?limit=${reviewLimit}&status=pending`;
           const res = await fetch(apiUrl(corrUrl));
           if (res.ok) {
             const data = await res.json();
@@ -318,7 +315,7 @@
                   + '<span class="review-badge">Pending</span>'
                   + '</div>';
               }).join('')
-              + (total > 3 ? '<div class="review-item" style="justify-content:center;color:var(--text-dim);font-size:12px;">+ ' + (total - 3) + ' more pending</div>' : '');
+              + (total > reviewLimit ? '<div class="review-item" style="justify-content:center;color:var(--text-dim);font-size:12px;">+ ' + (total - reviewLimit) + ' more pending</div>' : '');
             }
           }
         } catch (e) {

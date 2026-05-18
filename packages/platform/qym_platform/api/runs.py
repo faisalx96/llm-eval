@@ -552,6 +552,48 @@ def _live_run_summary(
     }
 
 
+def _summarize_runs_for_admin(db: Session, runs: List[Run]) -> List[Dict[str, Any]]:
+    if not runs:
+        return []
+
+    run_ids = [run.id for run in runs]
+    item_agg_rows = (
+        db.query(
+            RunItem.run_id,
+            func.count().label("total"),
+            func.count(case((RunItem.error.isnot(None), 1))).label("error_count"),
+            func.count(case(((RunItem.output.isnot(None)) | (RunItem.error.isnot(None)), 1))).label("completed"),
+        )
+        .filter(RunItem.run_id.in_(run_ids))
+        .group_by(RunItem.run_id)
+        .all()
+    )
+    item_agg = {
+        row.run_id: {
+            "total": row.total,
+            "error_count": row.error_count,
+            "completed": row.completed,
+        }
+        for row in item_agg_rows
+    }
+    project_ids = {run.project_id for run in runs}
+    owner_ids = {run.owner_user_id for run in runs}
+    projects = db.query(Project).filter(Project.id.in_(project_ids)).all() if project_ids else []
+    owners = db.query(User).filter(User.id.in_(owner_ids)).all() if owner_ids else []
+    project_map = {project.id: project for project in projects}
+    owner_map = {owner.id: owner for owner in owners}
+
+    return [
+        _live_run_summary(
+            run,
+            project=project_map.get(run.project_id),
+            owner=owner_map.get(run.owner_user_id),
+            item_agg=item_agg.get(run.id, {}),
+        )
+        for run in runs
+    ]
+
+
 @router.get("/", response_model=None)
 def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
     redirect = _maybe_redirect_to_login(request, db)
@@ -1040,44 +1082,8 @@ def list_live_runs(
             ),
         }
 
-    run_ids = [run.id for run in runs]
-    item_agg_rows = (
-        db.query(
-            RunItem.run_id,
-            func.count().label("total"),
-            func.count(case((RunItem.error.isnot(None), 1))).label("error_count"),
-            func.count(case(((RunItem.output.isnot(None)) | (RunItem.error.isnot(None)), 1))).label("completed"),
-        )
-        .filter(RunItem.run_id.in_(run_ids))
-        .group_by(RunItem.run_id)
-        .all()
-    )
-    item_agg = {
-        row.run_id: {
-            "total": row.total,
-            "error_count": row.error_count,
-            "completed": row.completed,
-        }
-        for row in item_agg_rows
-    }
-
-    project_ids = {run.project_id for run in runs}
-    owner_ids = {run.owner_user_id for run in runs}
-    projects = db.query(Project).filter(Project.id.in_(project_ids)).all() if project_ids else []
-    owners = db.query(User).filter(User.id.in_(owner_ids)).all() if owner_ids else []
-    project_map = {project.id: project for project in projects}
-    owner_map = {owner.id: owner for owner in owners}
-
     return {
-        "runs": [
-            _live_run_summary(
-                run,
-                project=project_map.get(run.project_id),
-                owner=owner_map.get(run.owner_user_id),
-                item_agg=item_agg.get(run.id, {}),
-            )
-            for run in runs
-        ],
+        "runs": _summarize_runs_for_admin(db, runs),
         "total_count": total_count,
         "last_updated": to_api_timestamp(utc_now_naive()),
         "project": (
@@ -1085,6 +1091,59 @@ def list_live_runs(
             if selected_project
             else None
         ),
+    }
+
+
+@router.get("/api/runs/recent")
+def list_recent_runs(
+    global_limit: int = Query(default=20, ge=1, le=100),
+    global_offset: int = Query(default=0, ge=0),
+    per_project_limit: int = Query(default=5, ge=1, le=25),
+    include_projects: bool = Query(default=True),
+    all_projects: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    if not all_projects:
+        raise HTTPException(status_code=400, detail="all_projects=true is required")
+    if principal.auth_type != "none" and principal.user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    base_q = (
+        Run.active(db)
+        .join(Project, Project.id == Run.project_id)
+        .filter(Project.is_active.is_(True))
+    )
+    total_count = base_q.count()
+    global_runs = base_q.order_by(Run.created_at.desc()).offset(global_offset).limit(global_limit).all()
+
+    project_sections: List[Dict[str, Any]] = []
+    if include_projects:
+        projects = db.query(Project).filter(Project.is_active.is_(True)).order_by(Project.name.asc()).all()
+        for project in projects:
+            project_runs = (
+                Run.active(db)
+                .filter(Run.project_id == project.id)
+                .order_by(Run.created_at.desc())
+                .limit(per_project_limit)
+                .all()
+            )
+            if not project_runs:
+                continue
+            project_sections.append(
+                {
+                    "project": {"id": project.id, "slug": project.slug, "name": project.name},
+                    "runs": _summarize_runs_for_admin(db, project_runs),
+                }
+            )
+
+    return {
+        "runs": _summarize_runs_for_admin(db, global_runs),
+        "projects": project_sections,
+        "total_count": total_count,
+        "global_limit": global_limit,
+        "global_offset": global_offset,
+        "last_updated": to_api_timestamp(utc_now_naive()),
     }
 
 

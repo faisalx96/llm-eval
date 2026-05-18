@@ -20,6 +20,18 @@
     .stat-card-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: var(--space-sm); }
     .stat-card-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); color: var(--text-primary); }
 
+    .admin-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-lg); }
+    .admin-tab-btn {
+      padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); color: var(--text-muted);
+      cursor: pointer; border: none; border-bottom: 2px solid transparent;
+      transition: all 0.12s ease; font-family: var(--font-sans); background: none; margin-bottom: -1px;
+      white-space: nowrap;
+    }
+    .admin-tab-btn:hover { color: var(--text-secondary); }
+    .admin-tab-btn.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); font-weight: 500; }
+    .admin-tab-panel { display: none; }
+    .admin-tab-panel.active { display: block; }
+
     .card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px; overflow: hidden; margin-bottom: var(--space-lg); }
     .card-header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
     .card-title { font-size: var(--font-md); font-weight: 600; }
@@ -47,6 +59,8 @@
     .run-link:hover { text-decoration: underline; }
     .row-meta { color: var(--text-muted); font-size: var(--font-xs); margin-top: 2px; font-family: var(--font-mono); }
     .row-actions { display: flex; gap: var(--space-xs); justify-content: flex-end; }
+    .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border-subtle); }
+    .pagination-label { color: var(--text-muted); font-size: var(--font-xs); font-family: var(--font-mono); margin-right: var(--space-sm); }
 
     .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
     .role-badge.admin { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
@@ -56,6 +70,14 @@
     .live-status { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-secondary); }
     .live-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-secondary); box-shadow: 0 0 0 3px rgba(0,168,255,0.12); }
     .live-progress { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+    .status-pill { display: inline-flex; align-items: center; padding: 2px 7px; border: 1px solid var(--border-default); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-muted); }
+    .status-pill.status-RUNNING, .status-pill.status-PENDING { color: var(--accent-secondary); border-color: rgba(0,168,255,0.35); }
+    .status-pill.status-COMPLETED, .status-pill.status-APPROVED { color: var(--success); border-color: rgba(16,185,129,0.35); }
+    .status-pill.status-FAILED, .status-pill.status-REJECTED, .status-pill.status-STOPPED { color: var(--error); border-color: rgba(239,68,68,0.35); }
+    .project-recent-section { border-top: 1px solid var(--border-subtle); }
+    .project-recent-section:first-child { border-top: 0; }
+    .project-recent-title { padding: var(--space-md) var(--space-lg) var(--space-sm); font-size: 12px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; }
+    .project-recent-title span:last-child { color: var(--text-muted); font-weight: 500; font-family: var(--font-mono); font-size: 11px; }
 
     .edit-user-body { display: flex; flex-direction: column; gap: var(--space-md); }
     .edit-user-body .form-group { display: flex; flex-direction: column; gap: 6px; }
@@ -85,50 +107,81 @@
       <div class="stat-card"><div class="stat-card-label">Total Runs</div><div class="stat-card-value" id="stat-runs">—</div></div>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div><div class="card-title">Live Runs</div><div class="card-subtitle" id="live-runs-count-label">Running across all qym projects</div></div>
-      </div>
-      <div class="card-body">
-        <table class="data-table">
-          <thead><tr><th>Project</th><th>Run</th><th>Owner</th><th>Status</th><th>Progress</th><th>Updated</th></tr></thead>
-          <tbody id="live-runs-tbody">
-            <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+      <button class="admin-tab-btn active" type="button" role="tab" aria-selected="true" data-admin-tab="runs">Runs</button>
+      <button class="admin-tab-btn" type="button" role="tab" aria-selected="false" data-admin-tab="projects">Projects</button>
+      <button class="admin-tab-btn" type="button" role="tab" aria-selected="false" data-admin-tab="users">Users</button>
     </div>
 
-    <div class="card">
-      <div class="card-header">
-        <div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div>
-        <button class="btn btn-primary" id="admin-new-project-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">+ New Project</button>
+    <section class="admin-tab-panel active" data-admin-panel="runs">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Live Runs</div><div class="card-subtitle" id="live-runs-count-label">Running across all qym projects</div></div>
+        </div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead><tr><th>Project</th><th>Run</th><th>Owner</th><th>Status</th><th>Progress</th><th>Updated</th></tr></thead>
+            <tbody id="live-runs-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="message" id="project-message"></div>
-      <div class="card-body">
-        <table class="data-table">
-          <thead><tr><th>Project</th><th>Slug</th><th>Status</th><th>Members</th><th style="text-align:right">Actions</th></tr></thead>
-          <tbody id="projects-tbody"></tbody>
-        </table>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-header"><div><div class="card-title">Users</div><div class="card-subtitle" id="user-count-label">All platform users</div></div></div>
-      <div class="add-bar">
-        <input class="form-input" id="new-user-email" placeholder="name@example.com" />
-        <input class="form-input" id="new-user-name" placeholder="Display name" />
-        <select class="form-select" id="new-user-role"><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></select>
-        <button class="btn btn-primary" id="create-user-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create User</button>
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Most Recent Eval Runs</div><div class="card-subtitle" id="recent-runs-count-label">Latest runs across all qym projects</div></div>
+        </div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead><tr><th>Project</th><th>Run</th><th>Owner</th><th>Status</th><th>Items</th><th>Created</th></tr></thead>
+            <tbody id="recent-runs-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-bar">
+          <span class="pagination-label" id="recent-runs-page-label">—</span>
+          <button class="btn btn-secondary" id="recent-runs-prev" type="button" style="padding:4px 10px;font-size:var(--font-xs)">Previous</button>
+          <button class="btn btn-secondary" id="recent-runs-next" type="button" style="padding:4px 10px;font-size:var(--font-xs)">Next</button>
+        </div>
       </div>
-      <div class="message" id="user-message"></div>
-      <div class="card-body">
-        <table class="data-table">
-          <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
-          <tbody id="users-tbody"></tbody>
-        </table>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="projects">
+      <div class="card">
+        <div class="card-header">
+          <div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div>
+          <button class="btn btn-primary" id="admin-new-project-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">+ New Project</button>
+        </div>
+        <div class="message" id="project-message"></div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead><tr><th>Project</th><th>Slug</th><th>Status</th><th>Members</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="projects-tbody"></tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </section>
+
+    <section class="admin-tab-panel" data-admin-panel="users">
+      <div class="card">
+        <div class="card-header"><div><div class="card-title">Users</div><div class="card-subtitle" id="user-count-label">All platform users</div></div></div>
+        <div class="add-bar">
+          <input class="form-input" id="new-user-email" placeholder="name@example.com" />
+          <input class="form-input" id="new-user-name" placeholder="Display name" />
+          <select class="form-select" id="new-user-role"><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></select>
+          <button class="btn btn-primary" id="create-user-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create User</button>
+        </div>
+        <div class="message" id="user-message"></div>
+        <div class="card-body">
+          <table class="data-table">
+            <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div class="modal" id="edit-user-modal" style="display:none">
@@ -182,7 +235,7 @@
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
-      let state = { users: [], projects: [], liveRuns: [], me: null, editingUserId: null };
+      let state = { users: [], projects: [], liveRuns: [], recentRuns: [], recentRunsPage: 0, recentRunsPageSize: 6, recentRunsTotal: 0, me: null, editingUserId: null };
 
       async function fetchJson(path, options) {
         const res = await fetch(apiUrl(path), options);
@@ -211,7 +264,7 @@
 
         renderProjects();
         renderUsers();
-        await loadLiveRuns();
+        await Promise.all([loadLiveRuns(), loadRecentRuns()]);
       }
 
       function relativeTime(dateStr) {
@@ -230,11 +283,63 @@
 
       function progressLabel(run) {
         if (run.progress_total) {
-          const pct = typeof run.progress_pct === 'number' ? ' · ' + Math.round(run.progress_pct * 100) + '%' : '';
-          return String(run.progress_completed || 0) + '/' + String(run.progress_total) + pct;
+          return String(run.progress_completed || 0) + '/' + String(run.progress_total);
         }
         if (run.total_items) return String(run.progress_completed || 0) + '/' + String(run.total_items);
         return run.progress_completed ? String(run.progress_completed) : '—';
+      }
+
+      function statusPill(status) {
+        const value = String(status || '—').toUpperCase();
+        return `<span class="status-pill status-${escapeHtml(value)}">${escapeHtml(value)}</span>`;
+      }
+
+      function runUrl(run) {
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        const project = run.project || {};
+        return project.slug
+          ? `${root}/projects/${encodeURIComponent(project.slug)}/runs/${encodeURIComponent(run.run_id)}`
+          : `${root}/run/${encodeURIComponent(run.run_id)}`;
+      }
+
+      function ownerLabel(run) {
+        const owner = run.owner || {};
+        return owner.display_name || (owner.email || '').split('@')[0] || owner.id || '—';
+      }
+
+      function projectLabel(run) {
+        const project = run.project || {};
+        return project.name || project.slug || project.id || '—';
+      }
+
+      function setAdminTab(tab) {
+        const hasTab = !!document.querySelector(`[data-admin-tab="${tab}"]`);
+        const selected = hasTab ? tab : 'runs';
+        document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+          const isActive = btn.dataset.adminTab === selected;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-admin-panel]').forEach(panel => {
+          panel.classList.toggle('active', panel.dataset.adminPanel === selected);
+        });
+        try { window.sessionStorage.setItem('qym:admin-tab', selected); } catch (err) {}
+      }
+
+      function renderRunRows(runs, includeProject) {
+        return (runs || []).map(run => {
+          const itemLabel = run.total_items
+            ? `${run.progress_completed || 0}/${run.total_items}`
+            : (run.progress_completed ? String(run.progress_completed) : '—');
+          return `<tr>
+            ${includeProject ? `<td style="font-weight:500;color:var(--text-primary)">${escapeHtml(projectLabel(run))}</td>` : ''}
+            <td><a class="run-link" href="${runUrl(run)}">${escapeHtml(runName(run))}</a><div class="row-meta">${escapeHtml(run.task_name || '')}</div></td>
+            <td>${escapeHtml(ownerLabel(run))}</td>
+            <td>${statusPill(run.status)}</td>
+            <td><span class="row-meta">${escapeHtml(itemLabel)}</span></td>
+            <td><span class="row-meta">${escapeHtml(relativeTime(run.timestamp || run.last_event_at))}</span></td>
+          </tr>`;
+        }).join('');
       }
 
       async function loadLiveRuns() {
@@ -261,21 +366,53 @@
         const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
         tbody.innerHTML = state.liveRuns.map(run => {
           const project = run.project || {};
-          const owner = run.owner || {};
-          const projectLabel = project.name || project.slug || project.id || '—';
-          const ownerLabel = owner.display_name || (owner.email || '').split('@')[0] || owner.id || '—';
           const runUrl = project.slug
             ? `${root}/projects/${encodeURIComponent(project.slug)}/runs/${encodeURIComponent(run.run_id)}`
             : `${root}/run/${encodeURIComponent(run.run_id)}`;
           return `<tr>
-            <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(projectLabel)}</td>
+            <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(projectLabel(run))}</td>
             <td><a class="run-link" href="${runUrl}">${escapeHtml(runName(run))}</a><div class="row-meta">${escapeHtml(run.task_name || '')}</div></td>
-            <td>${escapeHtml(ownerLabel)}</td>
+            <td>${escapeHtml(ownerLabel(run))}</td>
             <td><span class="live-status"><span class="live-status-dot"></span>${escapeHtml(run.status || 'RUNNING')}</span></td>
             <td><span class="live-progress">${escapeHtml(progressLabel(run))}</span></td>
             <td><span class="row-meta">${escapeHtml(relativeTime(run.last_event_at || run.timestamp))}</span></td>
           </tr>`;
         }).join('');
+      }
+
+      async function loadRecentRuns() {
+        const tbody = document.getElementById('recent-runs-tbody');
+        if (!tbody) return;
+        try {
+          const offset = state.recentRunsPage * state.recentRunsPageSize;
+          const data = await fetchJson(`api/runs/recent?all_projects=true&include_projects=false&global_limit=${state.recentRunsPageSize}&global_offset=${offset}`);
+          state.recentRuns = data && data.runs ? data.runs : [];
+          state.recentRunsTotal = data && data.total_count ? data.total_count : 0;
+          renderRecentRuns(data && data.total_count);
+        } catch (err) {
+          tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--error)">Failed to load recent runs</td></tr>`;
+        }
+      }
+
+      function renderRecentRuns(totalCount) {
+        const label = document.getElementById('recent-runs-count-label');
+        if (label) label.textContent = `${totalCount == null ? state.recentRuns.length : totalCount} total eval runs`;
+        const pageLabel = document.getElementById('recent-runs-page-label');
+        const prevBtn = document.getElementById('recent-runs-prev');
+        const nextBtn = document.getElementById('recent-runs-next');
+        const total = totalCount == null ? state.recentRunsTotal : totalCount;
+        const start = total && state.recentRuns.length ? state.recentRunsPage * state.recentRunsPageSize + 1 : 0;
+        const end = total && state.recentRuns.length ? start + state.recentRuns.length - 1 : 0;
+        if (pageLabel) pageLabel.textContent = total ? `${start}-${end} of ${total}` : '0 of 0';
+        if (prevBtn) prevBtn.disabled = state.recentRunsPage === 0;
+        if (nextBtn) nextBtn.disabled = end >= total;
+        const tbody = document.getElementById('recent-runs-tbody');
+        if (!tbody) return;
+        if (!state.recentRuns.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No recent eval runs</td></tr>';
+          return;
+        }
+        tbody.innerHTML = renderRunRows(state.recentRuns, true);
       }
 
       function renderProjects() {
@@ -412,6 +549,25 @@
           window.QymShell.openCreateProjectDialog();
         }
       });
+
+      document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+        btn.addEventListener('click', () => setAdminTab(btn.dataset.adminTab));
+      });
+      document.getElementById('recent-runs-prev').addEventListener('click', async () => {
+        if (state.recentRunsPage === 0) return;
+        state.recentRunsPage -= 1;
+        await loadRecentRuns();
+      });
+      document.getElementById('recent-runs-next').addEventListener('click', async () => {
+        if ((state.recentRunsPage + 1) * state.recentRunsPageSize >= state.recentRunsTotal) return;
+        state.recentRunsPage += 1;
+        await loadRecentRuns();
+      });
+      try {
+        setAdminTab(window.sessionStorage.getItem('qym:admin-tab') || 'runs');
+      } catch (err) {
+        setAdminTab('runs');
+      }
 
       document.getElementById('edit-user-close').addEventListener('click', closeEditUserModal);
       document.getElementById('edit-user-cancel').addEventListener('click', closeEditUserModal);

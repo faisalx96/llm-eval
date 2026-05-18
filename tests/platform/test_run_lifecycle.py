@@ -25,7 +25,20 @@ if "openai" not in sys.modules:
 from qym_platform.app import create_app
 from qym_platform.datetime_utils import utc_now_naive
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunItem, RunItemScore, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import (
+    ApiKey,
+    CorrectionStatus,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    ReviewCorrection,
+    Run,
+    RunItem,
+    RunItemScore,
+    RunWorkflowStatus,
+    User,
+    UserRole,
+)
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
 
@@ -239,7 +252,37 @@ def test_stale_running_run_is_reconciled_to_stopped_in_list_api(client, session_
         run = session.query(Run).filter(Run.id == run_id).first()
         assert run is not None
         assert run.status == RunWorkflowStatus.STOPPED
-        assert run.status_reason == "lease_timeout"
+    assert run.status_reason == "lease_timeout"
+
+
+def test_corrections_list_limit_is_applied(client, session_factory) -> None:
+    run_id = "00000000-0000-0000-0000-000000000103"
+    with session_factory() as session:
+        run = _seed_run(session, run_id=run_id)
+        session.add_all([
+            ReviewCorrection(
+                run_id=run.id,
+                item_id=f"item-{index}",
+                task=run.task,
+                input_snapshot={"prompt": f"hello {index}"},
+                expected_snapshot={"answer": "world"},
+                output_snapshot={"answer": "nope"},
+                scores_snapshot={"judge": 0.2},
+                ai_root_cause="Wrong Format",
+                human_root_cause="Wrong Format",
+                status=CorrectionStatus.PENDING,
+                is_active=True,
+            )
+            for index in range(16)
+        ])
+        session.commit()
+
+    response = client.get("/api/corrections?status=pending&limit=12", headers=_ui_headers("admin@example.com"))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["corrections"]) == 12
+    assert payload["total"] == 16
 
 
 def test_runs_list_includes_median_latency(client, session_factory) -> None:
@@ -446,6 +489,96 @@ def test_live_runs_endpoint_supports_project_and_admin_views(client, session_fac
     assert {run["run_id"] for run in admin_payload["runs"]} == {"run-live-a", "run-live-b"}
     assert {run["project"]["slug"] for run in admin_payload["runs"]} == {"live-a", "live-b"}
     assert {run["owner"]["display_name"] for run in admin_payload["runs"]} == {"Owner A", "Owner B"}
+
+
+def test_recent_runs_endpoint_returns_global_and_per_project_admin_views(client, session_factory) -> None:
+    with session_factory() as session:
+        admin = User(id="admin-recent", email="admin-recent@example.com", role=UserRole.ADMIN)
+        owner_a = User(id="owner-recent-a", email="owner-recent-a@example.com", display_name="Owner A", role=UserRole.MEMBER)
+        owner_b = User(id="owner-recent-b", email="owner-recent-b@example.com", display_name="Owner B", role=UserRole.MEMBER)
+        project_a = Project(id="project-recent-a", name="Recent A", slug="recent-a", created_by_user_id=admin.id)
+        project_b = Project(id="project-recent-b", name="Recent B", slug="recent-b", created_by_user_id=admin.id)
+        base_time = utc_now_naive()
+        session.add_all([admin, owner_a, owner_b, project_a, project_b])
+        session.add_all([
+            ProjectMembership(project_id=project_a.id, user_id=owner_a.id, role=ProjectRole.MEMBER),
+            ProjectMembership(project_id=project_b.id, user_id=owner_b.id, role=ProjectRole.MEMBER),
+            Run(
+                id="run-recent-a-old",
+                project_id=project_a.id,
+                created_by_user_id=owner_a.id,
+                owner_user_id=owner_a.id,
+                task="task-old",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.COMPLETED,
+                run_metadata={},
+                run_config={"run_name": "A Old"},
+                created_at=base_time - timedelta(minutes=30),
+            ),
+            Run(
+                id="run-recent-a-new",
+                project_id=project_a.id,
+                created_by_user_id=owner_a.id,
+                owner_user_id=owner_a.id,
+                task="task-new",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.FAILED,
+                run_metadata={},
+                run_config={"run_name": "A New"},
+                created_at=base_time - timedelta(minutes=5),
+            ),
+            Run(
+                id="run-recent-b-new",
+                project_id=project_b.id,
+                created_by_user_id=owner_b.id,
+                owner_user_id=owner_b.id,
+                task="task-b",
+                dataset="dataset",
+                metrics=[],
+                status=RunWorkflowStatus.RUNNING,
+                run_metadata={"total_items": 1},
+                run_config={"run_name": "B New"},
+                created_at=base_time - timedelta(minutes=1),
+            ),
+            RunItem(run_id="run-recent-b-new", item_id="item-1", index=0, input={}, output="ok"),
+        ])
+        session.commit()
+
+    denied = client.get("/api/runs/recent?all_projects=true", headers=_ui_headers("owner-recent-a@example.com"))
+    assert denied.status_code == 403
+
+    response = client.get(
+        "/api/runs/recent?all_projects=true&global_limit=2&per_project_limit=1",
+        headers=_ui_headers("admin-recent@example.com"),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_count"] == 3
+    assert payload["global_limit"] == 2
+    assert payload["global_offset"] == 0
+    assert [run["run_id"] for run in payload["runs"]] == ["run-recent-b-new", "run-recent-a-new"]
+    assert payload["runs"][0]["project"]["slug"] == "recent-b"
+    assert payload["runs"][0]["owner"]["display_name"] == "Owner B"
+    assert payload["runs"][0]["progress_completed"] == 1
+    assert payload["runs"][0]["progress_total"] == 1
+
+    project_runs = {section["project"]["slug"]: section["runs"] for section in payload["projects"]}
+    assert [run["run_id"] for run in project_runs["recent-a"]] == ["run-recent-a-new"]
+    assert [run["run_id"] for run in project_runs["recent-b"]] == ["run-recent-b-new"]
+
+    page_response = client.get(
+        "/api/runs/recent?all_projects=true&include_projects=false&global_limit=1&global_offset=1",
+        headers=_ui_headers("admin-recent@example.com"),
+    )
+    assert page_response.status_code == 200
+    page_payload = page_response.json()
+    assert page_payload["total_count"] == 3
+    assert page_payload["global_limit"] == 1
+    assert page_payload["global_offset"] == 1
+    assert [run["run_id"] for run in page_payload["runs"]] == ["run-recent-a-new"]
+    assert page_payload["projects"] == []
 
 
 def test_heartbeat_reopens_run_stopped_by_lease_timeout(client, session_factory) -> None:

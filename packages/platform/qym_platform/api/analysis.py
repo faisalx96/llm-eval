@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, or_, tuple_
+from sqlalchemy import String, and_, cast, func, or_, tuple_
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -1229,11 +1229,12 @@ def list_corrections(
     conf_max: int = Query(100, ge=0, le=100),
     status: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None),
+    limit: Optional[int] = Query(None, ge=1, le=500),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """List all corrections with optional filtering."""
-    run_name_expr = func.coalesce(Run.run_config.op("->>")("run_name"), "")
+    run_name_expr = func.coalesce(cast(Run.run_config.op("->>")("run_name"), String), "")
     ai_root_cause_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause, ""))
     ai_root_cause_detail_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_detail, ""))
     ai_root_cause_note_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_note, ""))
@@ -1381,8 +1382,12 @@ def list_corrections(
             if str(value or "").strip()
         }
 
-    query = apply_filter_set(active_query).order_by(ReviewCorrection.created_at.desc())
+    filtered_query = apply_filter_set(active_query)
+    filtered_total = filtered_query.with_entities(func.count(ReviewCorrection.id)).scalar() or 0
 
+    query = filtered_query.order_by(ReviewCorrection.created_at.desc())
+    if limit is not None:
+        query = query.limit(limit)
     corrections = query.all()
 
     # Compute stats excluding status filter so stat cards show the breakdown
@@ -1443,6 +1448,7 @@ def list_corrections(
 
     return {
         "corrections": _serialize_corrections_with_history(db, corrections),
+        "total": filtered_total,
         "stats": stats,
         "tasks": tasks,
         "datasets": datasets,
