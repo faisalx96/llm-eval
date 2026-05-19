@@ -7,6 +7,7 @@ import typer
 from ._exit_codes import ExitCode
 from ._output import is_json_mode, output, output_error, err_console
 from ._platform_api import PlatformAPIClient, PlatformAPIError
+from ..platform.tls import ca_bundle_path, ssl_verify_enabled
 from ..utils.env import get_langfuse_host_env, get_platform_url_env
 
 config_app = typer.Typer(help="Platform configuration and connectivity.")
@@ -19,10 +20,14 @@ def config_show() -> None:
     api_key = os.getenv("QYM_API_KEY")
     langfuse_host = get_langfuse_host_env()
     langfuse_public = os.getenv("LANGFUSE_PUBLIC_KEY")
+    platform_ssl_verify = ssl_verify_enabled()
+    platform_ca_bundle = ca_bundle_path()
 
     data = {
         "platform_url": platform_url,
         "api_key_set": bool(api_key),
+        "platform_ssl_verify": platform_ssl_verify,
+        "platform_ca_bundle": platform_ca_bundle or "(not set)",
         "langfuse_host": langfuse_host or "(not set)",
         "langfuse_public_key_set": bool(langfuse_public),
     }
@@ -32,6 +37,8 @@ def config_show() -> None:
     else:
         err_console.print(f"[bold]Platform URL:[/bold]       {data['platform_url']}")
         err_console.print(f"[bold]API Key:[/bold]            {'set' if data['api_key_set'] else '[red]not set[/red]'}")
+        err_console.print(f"[bold]TLS Verify:[/bold]         {data['platform_ssl_verify']}")
+        err_console.print(f"[bold]CA Bundle:[/bold]          {data['platform_ca_bundle']}")
         err_console.print(f"[bold]Langfuse Host:[/bold]      {data['langfuse_host']}")
         err_console.print(f"[bold]Langfuse Key:[/bold]       {'set' if data['langfuse_public_key_set'] else '[red]not set[/red]'}")
 

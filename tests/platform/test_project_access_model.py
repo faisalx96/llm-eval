@@ -29,6 +29,7 @@ from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
     Approval,
+    ApprovalDecision,
     Project,
     ProjectMembership,
     ProjectRole,
@@ -82,7 +83,7 @@ def client(session_factory):
 
 
 def _headers(email: str) -> dict[str, str]:
-    return {"X-User-Email": email}
+    return {"X-User-Email": email, "Origin": "http://localhost:8000"}
 
 
 def _bearer(token: str) -> dict[str, str]:
@@ -172,6 +173,18 @@ def _seed_project_world(session: Session) -> dict[str, str]:
         run_config={"run_name": "Delete Me"},
         status=RunWorkflowStatus.COMPLETED,
     )
+    rejected_run = Run(
+        id="run-rejected",
+        project_id=project_one.id,
+        created_by_user_id=member.id,
+        owner_user_id=member.id,
+        task="task-a",
+        dataset="dataset-a",
+        metrics=["judge"],
+        run_metadata={},
+        run_config={"run_name": "Rejected Run"},
+        status=RunWorkflowStatus.REJECTED,
+    )
 
     session.add_all(
         [
@@ -179,6 +192,7 @@ def _seed_project_world(session: Session) -> dict[str, str]:
             submitted_run,
             manager_owned_run,
             deletable_run,
+            rejected_run,
             RunItem(
                 run_id=editable_run.id,
                 item_id="item-1",
@@ -198,6 +212,13 @@ def _seed_project_world(session: Session) -> dict[str, str]:
             ),
             Approval(run_id=submitted_run.id, submitted_by_user_id=member.id),
             Approval(run_id=manager_owned_run.id, submitted_by_user_id=manager.id),
+            Approval(
+                run_id=rejected_run.id,
+                submitted_by_user_id=member.id,
+                decision_by_user_id=manager.id,
+                decision=ApprovalDecision.REJECTED,
+                comment="needs changes",
+            ),
         ]
     )
 
@@ -287,6 +308,115 @@ def test_project_approval_rules_allow_manager_self_approval_and_last_manager_gua
         headers=_headers("manager@example.com"),
     )
     assert remove_last_manager.status_code == 400
+
+
+def test_project_manager_or_admin_can_clear_review_decision_to_completed(client, session_factory):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    approve_response = client.post(
+        "/v1/runs/run-submitted/approve",
+        headers=_headers("admin@example.com"),
+        json={"comment": "approved"},
+    )
+    assert approve_response.status_code == 200
+
+    member_unapprove = client.post(
+        "/v1/runs/run-submitted/unapprove",
+        headers=_headers("member@example.com"),
+        json={},
+    )
+    assert member_unapprove.status_code == 403
+
+    manager_unapprove = client.post(
+        "/v1/runs/run-submitted/unapprove",
+        headers=_headers("manager@example.com"),
+        json={},
+    )
+    assert manager_unapprove.status_code == 200
+    assert manager_unapprove.json()["status"] == "COMPLETED"
+
+    with session_factory() as session:
+        run = session.get(Run, "run-submitted")
+        approval = session.query(Approval).filter(Approval.run_id == "run-submitted").one()
+        assert run.status == RunWorkflowStatus.COMPLETED
+        assert approval.decision is None
+        assert approval.decision_by_user_id is None
+        assert approval.decision_at is None
+        assert approval.comment == ""
+
+    member_unreject = client.post(
+        "/v1/runs/run-rejected/unreject",
+        headers=_headers("member@example.com"),
+        json={},
+    )
+    assert member_unreject.status_code == 403
+
+    manager_unreject = client.post(
+        "/v1/runs/run-rejected/unreject",
+        headers=_headers("manager@example.com"),
+        json={},
+    )
+    assert manager_unreject.status_code == 200
+    assert manager_unreject.json()["status"] == "COMPLETED"
+
+    with session_factory() as session:
+        run = session.get(Run, "run-rejected")
+        approval = session.query(Approval).filter(Approval.run_id == "run-rejected").one()
+        assert run.status == RunWorkflowStatus.COMPLETED
+        assert approval.decision is None
+        assert approval.decision_by_user_id is None
+        assert approval.decision_at is None
+        assert approval.comment == ""
+
+
+def test_project_runs_can_be_filtered_to_approved_status(client, session_factory):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    approve_response = client.post(
+        "/v1/runs/run-submitted/approve",
+        headers=_headers("admin@example.com"),
+        json={"comment": "approved"},
+    )
+    assert approve_response.status_code == 200
+
+    response = client.get(
+        "/api/runs?project_slug=project-one&status=APPROVED",
+        headers=_headers("member@example.com"),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    runs = [
+        run
+        for models in payload["tasks"].values()
+        for run_list in models.values()
+        for run in run_list
+    ]
+    assert payload["total_count"] == 1
+    assert [run["run_id"] for run in runs] == ["run-submitted"]
+    assert runs[0]["status"] == "APPROVED"
+
+
+def test_rejected_run_can_be_resubmitted_and_clears_previous_decision(client, session_factory):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    response = client.post(
+        "/v1/runs/run-rejected/submit",
+        headers=_headers("member@example.com"),
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "SUBMITTED"
+
+    with session_factory() as session:
+        run = session.get(Run, "run-rejected")
+        approval = session.query(Approval).filter(Approval.run_id == "run-rejected").one()
+        assert run.status == RunWorkflowStatus.SUBMITTED
+        assert approval.decision is None
+        assert approval.decision_by_user_id is None
+        assert approval.decision_at is None
+        assert approval.comment == ""
 
 
 def test_project_scoped_api_key_creates_project_bound_run(client, session_factory):

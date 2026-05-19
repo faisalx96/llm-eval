@@ -747,6 +747,7 @@ def legacy_list_runs(
     limit: int = Query(default=100, le=500),
     offset: int = Query(default=0, ge=0),
     project_slug: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None, description="Filter by run workflow status; comma-separated values allowed"),
     user: Optional[str] = Query(default=None, description="Filter by run owner user id, email, or display name"),
     user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
     owner_user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
@@ -790,6 +791,19 @@ def legacy_list_runs(
     hidden = {t.strip().lower() for t in settings.hidden_tasks.split(",") if t.strip()}
     if hidden:
         q = q.filter(~func.lower(Run.task).in_(hidden))
+
+    if status:
+        statuses: list[RunWorkflowStatus] = []
+        for raw_status in status.split(","):
+            normalized = raw_status.strip().upper()
+            if not normalized:
+                continue
+            try:
+                statuses.append(RunWorkflowStatus(normalized))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid run status: {raw_status}") from None
+        if statuses:
+            q = q.filter(Run.status.in_(statuses))
 
     user_filter = (owner_user_id or user_id or user or "").strip()
     if user_filter:
@@ -1935,14 +1949,22 @@ def submit_run(
         raise HTTPException(status_code=404, detail="Run not found")
     if run.owner_user_id != principal.user.id:
         raise HTTPException(status_code=403, detail="Only owner can submit")
-    # Allow submitting completed/failed runs for the approval workflow.
-    if run.status in {RunWorkflowStatus.APPROVED, RunWorkflowStatus.REJECTED, RunWorkflowStatus.SUBMITTED}:
+    # Allow completed/failed runs and rejected runs that need another review pass.
+    submittable_statuses = {RunWorkflowStatus.COMPLETED, RunWorkflowStatus.FAILED, RunWorkflowStatus.REJECTED}
+    if run.status not in submittable_statuses:
         raise HTTPException(status_code=400, detail=f"Run not submittable from status={run.status}")
     run.status = RunWorkflowStatus.SUBMITTED
     approval = db.query(Approval).filter(Approval.run_id == run.id).first()
     if not approval:
         approval = Approval(run_id=run.id, submitted_by_user_id=principal.user.id)
         db.add(approval)
+    else:
+        approval.submitted_by_user_id = principal.user.id
+        approval.submitted_at = utc_now_naive()
+        approval.decision = None
+        approval.decision_by_user_id = None
+        approval.decision_at = None
+        approval.comment = ""
     db.commit()
     return {"ok": True, "status": run.status}
 
@@ -1999,6 +2021,56 @@ def reject_run(
     approval.decision_at = utc_now_naive()
     approval.comment = str(body.get("comment") or "")
     run.status = RunWorkflowStatus.REJECTED
+    db.commit()
+    return {"ok": True, "status": run.status}
+
+
+@router.post("/v1/runs/{run_id}/unapprove")
+def unapprove_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != RunWorkflowStatus.APPROVED:
+        raise HTTPException(status_code=400, detail="Run not approved")
+    if not _can_approve_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Only a project manager or admin can unapprove")
+    approval = db.query(Approval).filter(Approval.run_id == run.id).first()
+    if not approval:
+        raise HTTPException(status_code=400, detail="Missing approval record")
+    approval.decision = None
+    approval.decision_by_user_id = None
+    approval.decision_at = None
+    approval.comment = ""
+    run.status = RunWorkflowStatus.COMPLETED
+    db.commit()
+    return {"ok": True, "status": run.status}
+
+
+@router.post("/v1/runs/{run_id}/unreject")
+def unreject_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != RunWorkflowStatus.REJECTED:
+        raise HTTPException(status_code=400, detail="Run not rejected")
+    if not _can_approve_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Only a project manager or admin can unreject")
+    approval = db.query(Approval).filter(Approval.run_id == run.id).first()
+    if not approval:
+        raise HTTPException(status_code=400, detail="Missing approval record")
+    approval.decision = None
+    approval.decision_by_user_id = None
+    approval.decision_at = None
+    approval.comment = ""
+    run.status = RunWorkflowStatus.COMPLETED
     db.commit()
     return {"ok": True, "status": run.status}
 

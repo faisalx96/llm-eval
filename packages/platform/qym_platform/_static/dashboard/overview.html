@@ -49,6 +49,7 @@
     .live-progress { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
     .live-owner { color: var(--text-secondary); font-size: 12px; }
     .row-meta { color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+    .overview-status { font-size: 10px; padding: 2px 6px; }
   </style>
 </head>
 <body>
@@ -88,8 +89,22 @@
         </div>
         <div class="overview-card-body">
           <table class="recent-table" id="recent-runs-table">
-            <thead><tr><th>Run</th><th>User</th><th>Items</th><th>Date</th></tr></thead>
+            <thead><tr><th>Run</th><th>User</th><th>Status</th><th>Items</th><th>Date</th></tr></thead>
             <tbody id="recent-runs-body">
+              <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="overview-card">
+        <div class="overview-card-header">
+          <span class="overview-card-title">Approved Runs</span>
+          <a class="overview-card-link" id="view-approved-runs" href="#">View all →</a>
+        </div>
+        <div class="overview-card-body">
+          <table class="recent-table" id="approved-runs-table">
+            <thead><tr><th>Run</th><th>User</th><th>Items</th><th>Date</th></tr></thead>
+            <tbody id="approved-runs-body">
               <tr><td colspan="4" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
@@ -185,6 +200,33 @@
         return run.progress_completed ? String(run.progress_completed) : '—';
       }
 
+      function statusBadge(status) {
+        const clean = String(status || '').toUpperCase();
+        if (!clean) return '—';
+        return '<span class="status-badge overview-status status-' + esc(clean) + '">' + esc(clean) + '</span>';
+      }
+
+      function renderRunRows(runs, slug, options) {
+        const opts = options || {};
+        const includeStatus = !!opts.includeStatus;
+        const emptyColspan = includeStatus ? 5 : 4;
+        if (!runs.length) {
+          return '<tr><td colspan="' + emptyColspan + '" class="empty-state">' + esc(opts.emptyText || 'No runs yet') + '</td></tr>';
+        }
+        return runs.map(r => {
+          const name = r.run_name || r.external_run_id || (r.run_id || '').slice(0, 8) || '—';
+          const owner = r.owner && (r.owner.display_name || (r.owner.email || '').split('@')[0]) || '—';
+          const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/run/' + r.run_id);
+          return '<tr>'
+            + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
+            + '<td><span class="live-owner">' + esc(owner) + '</span></td>'
+            + (includeStatus ? '<td>' + statusBadge(r.status) + '</td>' : '')
+            + '<td><span class="live-progress">' + esc(progressLabel(r)) + '</span></td>'
+            + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.timestamp) + '</td>'
+            + '</tr>';
+        }).join('');
+      }
+
       async function loadLiveRuns(slug) {
         const tbody = document.getElementById('live-runs-body');
         if (!tbody) return;
@@ -237,6 +279,7 @@
           document.getElementById('view-all-runs').href = projectUrl(slug);
           document.getElementById('live-runs-link').href = projectUrl(slug);
           document.getElementById('view-all-reviews').href = projectUrl(slug, 'reviews');
+          document.getElementById('view-approved-runs').href = projectUrl(slug);
         }
 
         await loadLiveRuns(slug);
@@ -268,21 +311,20 @@
 
           // Recent runs table
           const tbody = document.getElementById('recent-runs-body');
-          if (!runs.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No runs yet</td></tr>';
-          } else {
-            tbody.innerHTML = runs.slice(0, 5).map(r => {
-              const name = r.run_name || r.external_run_id || (r.run_id || '').slice(0, 8) || '—';
-              const owner = r.owner && (r.owner.display_name || (r.owner.email || '').split('@')[0]) || '—';
-              const runUrl = slug ? projectUrl(slug, 'runs/' + r.run_id) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/run/' + r.run_id);
-              return '<tr>'
-                + '<td><a class="run-link" href="' + runUrl + '">' + esc(name) + '</a></td>'
-                + '<td><span class="live-owner">' + esc(owner) + '</span></td>'
-                + '<td><span class="live-progress">' + esc(progressLabel(r)) + '</span></td>'
-                + '<td style="color:var(--text-muted);font-size:11px">' + relativeTime(r.timestamp) + '</td>'
-                + '</tr>';
-            }).join('');
-          }
+          tbody.innerHTML = renderRunRows(runs.slice(0, 5), slug, { includeStatus: true, emptyText: 'No runs yet' });
+
+          // Approved runs table
+          const approvedUrl = slug
+            ? `api/runs?limit=5&offset=0&project_slug=${encodeURIComponent(slug)}&status=APPROVED`
+            : 'api/runs?limit=5&offset=0&status=APPROVED';
+          const approvedRes = await fetch(apiUrl(approvedUrl));
+          if (!approvedRes.ok) throw new Error('Failed');
+          const approvedData = await approvedRes.json();
+          const approvedRuns = flattenRunsPayload(approvedData);
+          const approvedTotal = approvedData.total_count != null ? approvedData.total_count : approvedRuns.length;
+          const approvedBody = document.getElementById('approved-runs-body');
+          approvedBody.innerHTML = renderRunRows(approvedRuns.slice(0, 5), slug, { emptyText: 'No approved runs yet' });
+          document.getElementById('ov-runs-sub').textContent = approvedTotal ? approvedTotal + ' approved' : '';
 
           // Update topbar stats
           if (window.QymShell) {
@@ -293,7 +335,8 @@
           }
         } catch (e) {
           console.error('[Overview] Failed to load runs:', e);
-          document.getElementById('recent-runs-body').innerHTML = '<tr><td colspan="4" class="empty-state">Failed to load</td></tr>';
+          document.getElementById('recent-runs-body').innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load</td></tr>';
+          document.getElementById('approved-runs-body').innerHTML = '<tr><td colspan="4" class="empty-state">Failed to load</td></tr>';
         }
 
         // Fetch pending reviews count

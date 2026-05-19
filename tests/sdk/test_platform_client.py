@@ -1,10 +1,13 @@
 import json
+import ssl
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib import request as urlrequest
 
 from qym.platform import client as client_module
+from qym.platform import tls as tls_module
 
 
 @dataclass
@@ -110,6 +113,51 @@ def test_platform_client_create_run_uses_bounded_timeout(monkeypatch):
 
     assert handle.run_id == "run-123"
     assert calls[0][3] == client_module.PlatformClient.CREATE_RUN_TIMEOUT
+
+
+def test_platform_tls_uses_custom_ca_bundle(monkeypatch):
+    contexts = []
+
+    def fake_create_default_context(*, cafile=None):
+        contexts.append(cafile)
+        return "custom-context"
+
+    monkeypatch.setenv("QYM_PLATFORM_CA_BUNDLE", "/etc/qym/internal-ca.pem")
+    monkeypatch.delenv("QYM_CA_BUNDLE", raising=False)
+    monkeypatch.setattr(ssl, "create_default_context", fake_create_default_context)
+
+    assert tls_module.ssl_context() == "custom-context"
+    assert contexts == ["/etc/qym/internal-ca.pem"]
+
+
+def test_platform_tls_can_disable_verification_for_local_dev(monkeypatch):
+    context = object()
+
+    monkeypatch.setenv("QYM_PLATFORM_SSL_VERIFY", "false")
+    monkeypatch.setattr(ssl, "_create_unverified_context", lambda: context)
+
+    assert tls_module.ssl_context() is context
+
+
+def test_platform_tls_urlopen_applies_context(monkeypatch):
+    opened = []
+    req = urlrequest.Request("https://platform.example/healthz")
+    sentinel_response = object()
+
+    monkeypatch.setenv("QYM_PLATFORM_SSL_VERIFY", "false")
+
+    def fake_urlopen(request, *, timeout, context=None):
+        opened.append((request, timeout, context))
+        return sentinel_response
+
+    monkeypatch.setattr(urlrequest, "urlopen", fake_urlopen)
+
+    result = tls_module.urlopen(req, timeout=3)
+
+    assert result is sentinel_response
+    assert opened[0][0] is req
+    assert opened[0][1] == 3
+    assert isinstance(opened[0][2], ssl.SSLContext)
 
 
 def test_platform_event_stream_sends_late_events_during_shutdown(monkeypatch):

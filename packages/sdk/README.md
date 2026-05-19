@@ -70,6 +70,14 @@ QYM_PLATFORM_URL=https://your-qym-platform.example.com
 
 **To get your API key:** Use the API key flow provided by your qym platform deployment. Set `QYM_API_KEY` and `QYM_PLATFORM_URL` to enable automatic streaming of evaluation runs.
 
+For an internal/self-signed platform certificate, point the SDK at the issuing CA:
+
+```bash
+QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem
+```
+
+For local development only, certificate verification can be disabled with `QYM_PLATFORM_SSL_VERIFY=false`.
+
 > **Using CSV datasets?** Langfuse credentials are optional. Without them, evaluations still run but without tracing.
 
 ### 3. Run Evaluation
@@ -243,6 +251,8 @@ qym dashboard   # Opens the platform in your browser
 - **Team workflows** — role-based visibility, approval workflows, and org-level access controls
 
 **Setup:** Set `QYM_PLATFORM_URL` to your deployment, create an API key there, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
+
+If `qym config check` or live run streaming fails with an SSL certificate verification error, configure `QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem` on the machine running the SDK/CLI. Use `QYM_PLATFORM_SSL_VERIFY=false` only for local/dev troubleshooting.
 
 **Upload a previous run:**
 

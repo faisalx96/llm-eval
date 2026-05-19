@@ -13,6 +13,7 @@ from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
 
 from ..platform.defaults import DEFAULT_PLATFORM_URL
+from ..platform.tls import urlopen
 from ..utils.env import get_platform_url_env
 from ._exit_codes import ExitCode
 
@@ -59,7 +60,7 @@ class PlatformAPIClient:
         url = f"{self.platform_url}{path}"
         req = urlrequest.Request(url, headers=self._headers(), method="GET")
         try:
-            with urlrequest.urlopen(req, timeout=timeout) as resp:
+            with urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
             return json.loads(body)
         except HTTPError as exc:
@@ -87,7 +88,7 @@ class PlatformAPIClient:
         headers = {**self._headers(), "Content-Type": "application/json"}
         req = urlrequest.Request(url, data=data, headers=headers, method="POST")
         try:
-            with urlrequest.urlopen(req, timeout=timeout) as resp:
+            with urlopen(req, timeout=timeout) as resp:
                 resp_body = resp.read().decode("utf-8")
             return json.loads(resp_body) if resp_body.strip() else {}
         except HTTPError as exc:

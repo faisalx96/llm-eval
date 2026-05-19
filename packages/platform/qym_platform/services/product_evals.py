@@ -616,6 +616,7 @@ class ProductEvalJobManager:
                 "platform_url": resolved_platform_url,
                 "live_mode": "platform",
                 "should_stop": job.stop_requested,
+                "checkpoint_enabled": False,
             }
             if run_name:
                 evaluator_config["run_name"] = run_name

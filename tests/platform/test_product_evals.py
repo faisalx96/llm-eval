@@ -947,6 +947,7 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert [run["config"]["max_retries"] for run in runs] == [1] * 3
     assert "max_parallel_runs" not in runs[0]["config"]
     assert [run["config"]["metric_timeout"] for run in runs] == [300] * 3
+    assert [run["config"]["checkpoint_enabled"] for run in runs] == [False] * 3
     runtime = runs[0]["task"].__wrapped__.__globals__["RUNTIME"]
     assert runtime["INSIGHTOR_URL"] == "https://insightor.example.com"
     assert runtime["REFRESH_TOKEN"] == "refresh-token-1"
@@ -1079,6 +1080,7 @@ def test_insightor_stop_does_not_start_later_attempts(
     first_attempt = calls[0][0]
     assert first_attempt["config"]["should_stop"] is job.stop_requested
     assert first_attempt["config"]["should_stop"]() is True
+    assert first_attempt["config"]["checkpoint_enabled"] is False
     assert first_attempt["task"]("value") == "value"
     assert first_attempt["metrics"][0]("output", "expected") is True
 

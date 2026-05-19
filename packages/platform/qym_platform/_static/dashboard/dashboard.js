@@ -2840,7 +2840,9 @@
       const isOwner = !!(state.currentUser && run.owner && run.owner.id === state.currentUser.id);
       const isProjectManager = globalRole === 'ADMIN' || projectRole === 'MANAGER';
       const canApprove = isProjectManager && status === 'SUBMITTED';
-      const canSubmit = isOwner && (status === 'COMPLETED' || status === 'FAILED');
+      const canUnapprove = isProjectManager && status === 'APPROVED';
+      const canUnreject = isProjectManager && status === 'REJECTED';
+      const canSubmit = isOwner && (status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED');
       const canDelete = globalRole === 'ADMIN' || isProjectManager || isOwner;
       const progressText = (status === 'RUNNING' && run.progress_total)
         ? `${run.progress_completed || 0}/${run.progress_total}`
@@ -2921,9 +2923,9 @@
             <span class="duration-value">${durationText}</span>
           </td>
           <td class="col-actions">
-            ${canApprove ? `
+            ${(canApprove || canUnapprove || canUnreject) ? `
               <div class="actions-dropdown" onclick="event.stopPropagation()">
-                <button class="actions-trigger workflow-trigger" title="Review">
+                <button class="actions-trigger workflow-trigger" title="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review'}">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
@@ -2932,7 +2934,7 @@
                   </svg>
                 </button>
                 <div class="actions-menu">
-                  <a href="#" class="actions-item approve-run approve">
+                  ${canApprove ? `<a href="#" class="actions-item approve-run approve">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
@@ -2944,7 +2946,21 @@
                       <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                     <span>Reject</span>
-                  </a>
+                  </a>` : ''}
+                  ${canUnapprove ? `<a href="#" class="actions-item unapprove-run reject">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74"></path>
+                      <path d="M3 3v6h6"></path>
+                    </svg>
+                    <span>Unapprove</span>
+                  </a>` : ''}
+                  ${canUnreject ? `<a href="#" class="actions-item unreject-run approve">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74"></path>
+                      <path d="M3 3v6h6"></path>
+                    </svg>
+                    <span>Unreject</span>
+                  </a>` : ''}
                 </div>
               </div>
             ` : ''}
@@ -3041,6 +3057,22 @@
         e.stopPropagation();
         closeDropdown();
         showWorkflowModal('reject', run.run_id, run.task_name);
+      });
+
+      const unapproveBtn = tr.querySelector('.unapprove-run');
+      if (unapproveBtn) unapproveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDropdown();
+        showWorkflowModal('unapprove', run.run_id, run.task_name);
+      });
+
+      const unrejectBtn = tr.querySelector('.unreject-run');
+      if (unrejectBtn) unrejectBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDropdown();
+        showWorkflowModal('unreject', run.run_id, run.task_name);
       });
 
       const deleteBtn = tr.querySelector('.delete-run');
@@ -3368,14 +3400,14 @@
     // Show Submit button only if:
     // 1. User is not a manager (managers approve/reject, not submit)
     // 2. At least 1 run is selected
-    // 3. ALL selected runs are submittable (COMPLETED or FAILED status)
+    // 3. ALL selected runs are submittable (COMPLETED, FAILED, or REJECTED status)
     const publishBtn = el('publish-selected');
     if (publishBtn) {
       const role = (state.currentUser && state.currentUser.role) || '';
       const isManager = role === 'MANAGER';
       const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
         const status = r.status || '';
-        return status === 'COMPLETED' || status === 'FAILED';
+        return status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED';
       });
       publishBtn.style.display = (!isManager && allSubmittable && !isCohortMode) ? 'inline-block' : 'none';
       publishBtn.textContent = 'Submit';
@@ -4551,17 +4583,25 @@
     const confirmBtn = el('confirm-workflow-btn');
 
     const isApprove = action === 'approve';
-    titleEl.textContent = isApprove ? 'Approve Run' : 'Reject Run';
-    descEl.textContent = isApprove
-      ? 'Approve this run to make it visible to leadership.'
-      : 'Reject this run and send it back for review.';
+    const isUnapprove = action === 'unapprove';
+    const isUnreject = action === 'unreject';
+    titleEl.textContent = isUnapprove
+      ? 'Unapprove Run'
+      : (isUnreject ? 'Unreject Run' : (isApprove ? 'Approve Run' : 'Reject Run'));
+    descEl.textContent = isUnapprove
+      ? 'Clear this approval and return the run to completed.'
+      : (isUnreject
+        ? 'Clear this rejection and return the run to completed.'
+      : (isApprove
+        ? 'Approve this run to make it visible to leadership.'
+        : 'Reject this run and send it back for review.'));
     runNameEl.textContent = `${taskName} (${runId.substring(0, 8)}...)`;
     commentEl.value = '';
     modal.style.display = 'flex';
 
     // Update button style
     confirmBtn.className = isApprove ? 'btn btn-primary' : 'btn btn-danger';
-    confirmBtn.textContent = isApprove ? 'Approve' : 'Reject';
+    confirmBtn.textContent = isUnapprove ? 'Unapprove' : (isUnreject ? 'Unreject' : (isApprove ? 'Approve' : 'Reject'));
 
     // Remove old listener and add new one
     const newConfirmBtn = confirmBtn.cloneNode(true);
@@ -4569,10 +4609,10 @@
 
     newConfirmBtn.addEventListener('click', async () => {
       newConfirmBtn.disabled = true;
-      newConfirmBtn.textContent = isApprove ? 'Approving...' : 'Rejecting...';
+      newConfirmBtn.textContent = isUnapprove ? 'Unapproving...' : (isUnreject ? 'Unrejecting...' : (isApprove ? 'Approving...' : 'Rejecting...'));
 
       try {
-        const endpoint = isApprove ? 'approve' : 'reject';
+        const endpoint = isUnapprove ? 'unapprove' : (isUnreject ? 'unreject' : (isApprove ? 'approve' : 'reject'));
         const response = await fetch(apiUrl(`v1/runs/${encodeURIComponent(runId)}/${endpoint}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4582,15 +4622,20 @@
         if (response.ok) {
           modal.style.display = 'none';
           await fetchRuns({ refreshAllPages: true });
+          showToast(
+            'success',
+            isUnapprove ? 'Unapproved' : (isUnreject ? 'Unrejected' : (isApprove ? 'Approved' : 'Rejected')),
+            (isUnapprove || isUnreject) ? 'Run returned to completed' : (isApprove ? 'Run approved' : 'Run rejected'),
+          );
         } else {
           const data = await response.json();
-          alert(`Failed to ${action}: ` + (data.detail || 'Unknown error'));
+          showToast('error', `${isUnapprove ? 'Unapprove' : (isUnreject ? 'Unreject' : (isApprove ? 'Approve' : 'Reject'))} Failed`, data.detail || 'Unknown error');
         }
       } catch (err) {
-        alert(`Failed to ${action}: ` + err.message);
+        showToast('error', `${isUnapprove ? 'Unapprove' : (isUnreject ? 'Unreject' : (isApprove ? 'Approve' : 'Reject'))} Failed`, err.message || 'Unknown error');
       } finally {
         newConfirmBtn.disabled = false;
-        newConfirmBtn.textContent = isApprove ? 'Approve' : 'Reject';
+        newConfirmBtn.textContent = isUnapprove ? 'Unapprove' : (isUnreject ? 'Unreject' : (isApprove ? 'Approve' : 'Reject'));
       }
     });
 
@@ -5609,7 +5654,13 @@
   // ═══════════════════════════════════════════════════
 
   function showToast(type, title, message, duration = 5000) {
-    const container = el('toast-container');
+    let container = el('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
 
@@ -5653,7 +5704,7 @@
     const selectedRuns = state.flatRuns.filter(r => state.selectedRuns.has(r.file_path));
 
     // Pre-validate: check which runs can be submitted
-    const submittableStatuses = ['COMPLETED', 'FAILED'];
+    const submittableStatuses = ['COMPLETED', 'FAILED', 'REJECTED'];
     const submittable = [];
     const notSubmittable = [];
 

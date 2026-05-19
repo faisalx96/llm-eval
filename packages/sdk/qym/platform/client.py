@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import request
 
+from .tls import urlopen
+
 # Enable debug logging with QYM_PLATFORM_DEBUG=1 or QYM_PLATFORM_DEBUG=/path/to/file.log
 _DEBUG = os.environ.get("QYM_PLATFORM_DEBUG", "")
 _DEBUG_FILE = None
@@ -84,7 +86,7 @@ def _post_json(url: str, payload: Dict[str, Any], api_key: str, *, timeout: floa
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=timeout) as resp:
+    with urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8")
         return json.loads(body) if body else {}
 
@@ -100,7 +102,7 @@ def _post_ndjson(url: str, ndjson: str, api_key: str, *, timeout: float = 30) ->
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=timeout) as resp:
+    with urlopen(req, timeout=timeout) as resp:
         resp.read()
 
 

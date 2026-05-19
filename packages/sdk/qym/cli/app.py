@@ -18,6 +18,7 @@ from .run import run_app
 from .metric import metric_app
 from .analyze import analyze_app
 from .config_cmd import config_app
+from ..platform.tls import urlopen
 from ..utils.env import get_platform_url_env, load_cwd_dotenv
 
 load_cwd_dotenv()
@@ -115,7 +116,7 @@ def submit(
     )
 
     try:
-        with urlrequest.urlopen(req, timeout=60) as resp:
+        with urlopen(req, timeout=60) as resp:
             resp_body = resp.read().decode("utf-8")
         data = json.loads(resp_body)
     except Exception as exc:

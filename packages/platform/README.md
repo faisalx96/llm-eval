@@ -103,6 +103,8 @@ Set these on the platform service:
 | `QYM_AUTH_GITHUB_CLIENT_ID` / `QYM_AUTH_GITHUB_CLIENT_SECRET` | Enable GitHub login in native OIDC mode. |
 | `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Fernet key used to encrypt stored user LLM API keys. |
 
+If product evals or SDK runs inside the platform container submit back to an HTTPS platform URL with an internal/self-signed certificate, set `QYM_PLATFORM_CA_BUNDLE=/path/in/container/internal-ca.pem`. Use `QYM_PLATFORM_SSL_VERIFY=false` only for local development troubleshooting.
+
 ### Migrations
 
 The container entrypoint runs migrations automatically:

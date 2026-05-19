@@ -68,6 +68,8 @@ QYM_PLATFORM_URL=https://your-qym-platform.example.com
 
 When `QYM_API_KEY` is set, your evaluation runs are automatically streamed to the platform in real time — no code changes needed. You can watch runs live on the dashboard, browse history, and compare results across models.
 
+If your deployment uses an internal or self-signed HTTPS certificate, also set `QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem` on the machine running qym. For local development only, `QYM_PLATFORM_SSL_VERIFY=false` disables certificate verification.
+
 ### Step 4: Verify setup
 
 ```python
