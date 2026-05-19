@@ -761,6 +761,47 @@ def test_build_analysis_prompt_projects_nested_output_mapping() -> None:
     assert '"tokens": 42' not in user_content
 
 
+def test_build_analysis_prompt_projects_few_shot_output_mapping() -> None:
+    item = RunItem(
+        run_id="run-1",
+        item_id="item-1",
+        index=0,
+        input={"question": "q"},
+        expected={"answer": "expected"},
+        output={
+            "answer": "actual",
+            "debug": {"trace": "target-noise"},
+        },
+    )
+    correction = ReviewCorrection(
+        run_id="run-1",
+        item_id="item-2",
+        task="insightor_api",
+        input_snapshot={"question": "example q"},
+        expected_snapshot={"answer": "example expected"},
+        output_snapshot={
+            "answer": "example actual",
+            "debug": {"trace": "example-noise"},
+        },
+        human_root_cause="Wrong Format",
+        status=CorrectionStatus.APPROVED,
+        is_active=True,
+    )
+
+    messages = build_analysis_prompt(
+        item,
+        {},
+        [correction],
+        config={"field_mapping": {"output": ["output.answer"]}},
+    )
+
+    user_content = next(message["content"] for message in messages if message["role"] == "user")
+    assert '"answer": "actual"' in user_content
+    assert '"answer": "example actual"' in user_content
+    assert "target-noise" not in user_content
+    assert "example-noise" not in user_content
+
+
 def test_build_analysis_prompt_projects_python_literal_output_string() -> None:
     item = RunItem(
         run_id="run-1",

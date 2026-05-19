@@ -237,6 +237,58 @@ def _resolve_source_selection(
     return projected or None
 
 
+def _resolve_correction_source(correction: ReviewCorrection, source: Any) -> Any:
+    """Resolve a mapped source path from a correction snapshot."""
+    if isinstance(source, list):
+        return _resolve_correction_source_selection(correction, source)
+    if not isinstance(source, str):
+        return None
+
+    snapshot_attrs = {
+        "input": "input_snapshot",
+        "expected": "expected_snapshot",
+        "output": "output_snapshot",
+    }
+    parts = source.split(".")
+    snapshot_attr = snapshot_attrs.get(parts[0])
+    if snapshot_attr is None:
+        return None
+
+    raw = getattr(correction, snapshot_attr, None)
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped and stripped[0] in ("{", "["):
+            try:
+                raw = json.loads(stripped)
+            except json.JSONDecodeError:
+                try:
+                    parsed = ast.literal_eval(stripped)
+                    if isinstance(parsed, (dict, list)):
+                        raw = parsed
+                except (SyntaxError, ValueError):
+                    pass
+
+    if len(parts) == 1:
+        return raw
+    return _resolve_nested_path(raw, parts[1:])
+
+
+def _resolve_correction_source_selection(
+    correction: ReviewCorrection,
+    sources: list[Any],
+) -> Any:
+    """Resolve multiple mapped source paths from correction snapshots."""
+    projected: dict[str, Any] = {}
+    for source in sources:
+        if not isinstance(source, str):
+            continue
+        val = _resolve_correction_source(correction, source)
+        if val is None:
+            continue
+        _assign_projection(projected, _source_selection_parts(source), val)
+    return projected or None
+
+
 def _source_selection_parts(source: str) -> list[str]:
     """Return projection path parts while preserving encoded metric names."""
     if source.startswith("metric_metadata:"):
@@ -362,8 +414,13 @@ def _format_item_context(
     return "\n\n".join(parts)
 
 
-def _format_correction_example(correction: ReviewCorrection) -> str:
+def _format_correction_example(
+    correction: ReviewCorrection,
+    include_fields: dict[str, bool] | None = None,
+    field_mapping: dict[str, Any] | None = None,
+) -> str:
     """Format a correction bank entry as a few-shot example."""
+    fields = include_fields or DEFAULT_INCLUDE_FIELDS
     parts: list[str] = []
 
     def _dump(val: Any) -> str:
@@ -371,13 +428,22 @@ def _format_correction_example(correction: ReviewCorrection) -> str:
             return json.dumps(val, indent=2, ensure_ascii=False)
         return str(val or "")
 
-    if correction.input_snapshot is not None:
-        parts.append(f"INPUT:\n{_dump(correction.input_snapshot)}")
-    if correction.expected_snapshot is not None:
-        parts.append(f"EXPECTED OUTPUT:\n{_dump(correction.expected_snapshot)}")
-    if correction.output_snapshot is not None:
-        parts.append(f"ACTUAL OUTPUT:\n{_dump(correction.output_snapshot)}")
-    if correction.scores_snapshot:
+    def _append_context(label: str, key: str, snapshot_attr: str) -> None:
+        if field_mapping and key in field_mapping:
+            val = _resolve_correction_source(correction, field_mapping[key])
+            if val is not None:
+                parts.append(f"{label}:\n{_dump(val)}")
+            return
+        if not fields.get(key, True):
+            return
+        val = getattr(correction, snapshot_attr, None)
+        if val is not None:
+            parts.append(f"{label}:\n{_dump(val)}")
+
+    _append_context("INPUT", "input", "input_snapshot")
+    _append_context("EXPECTED OUTPUT", "expected", "expected_snapshot")
+    _append_context("ACTUAL OUTPUT", "output", "output_snapshot")
+    if fields.get("scores", True) and correction.scores_snapshot:
         score_lines = [f"  {k}: {v}" for k, v in correction.scores_snapshot.items()]
         parts.append("METRIC SCORES:\n" + "\n".join(score_lines))
 
@@ -492,7 +558,14 @@ def build_analysis_prompt(
         examples_section = (
             "\n\nHere are approved examples of how items should be classified. "
             "Follow the same patterns and reasoning:\n\n"
-            + "\n\n".join(_format_correction_example(c) for c in active_corrections)
+            + "\n\n".join(
+                _format_correction_example(
+                    c,
+                    include_fields=include_fields,
+                    field_mapping=field_mapping,
+                )
+                for c in active_corrections
+            )
             + "\n\nApply the classification patterns from these examples to the item below."
         )
 
