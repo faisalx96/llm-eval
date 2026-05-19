@@ -28,6 +28,9 @@ class RunStartedPayload(BaseModel):
     dataset: str
     model: Optional[str] = None
     metrics: list[str] = Field(default_factory=list)
+    dataset_id: Optional[str] = None
+    dataset_version_id: Optional[str] = None
+    dataset_alias: Optional[str] = None
     # Optional hint to enable progress % in list views.
     total_items: Optional[int] = Field(default=None, ge=0)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -41,6 +44,7 @@ class ItemStartedPayload(BaseModel):
     input: Any
     expected: Any = None
     item_metadata: Dict[str, Any] = Field(default_factory=dict)
+    dataset_item_pk: Optional[int] = None
 
 
 class MetricScoredPayload(BaseModel):

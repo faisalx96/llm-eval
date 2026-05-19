@@ -1,5 +1,5 @@
 """
-قيِّم (qym): Simple, automated LLM evaluation framework built on Langfuse.
+قيِّم (qym): Simple, automated LLM evaluation framework.
 
 Evaluate any LLM task with just 3 lines of code:
     evaluator = Evaluator(task, dataset, metrics)
@@ -28,7 +28,7 @@ from .core.observers import (
 )
 from .core.results import EvaluationResult
 from .core.config import RunSpec
-from .core.dataset import CsvDataset
+from .core.dataset import CsvDataset, InMemoryDataset, JsonlDataset, QymDataset
 from .metrics import builtin_metrics, list_available_metrics
 
 __all__ = [
@@ -41,6 +41,9 @@ __all__ = [
     "ProgressSnapshot",
     "RunSpec",
     "CsvDataset",
+    "InMemoryDataset",
+    "JsonlDataset",
+    "QymDataset",
     "analyze_group_runs",
     "builtin_metrics",
     "compare_group_runs",

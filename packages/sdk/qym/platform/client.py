@@ -371,6 +371,9 @@ class PlatformClient:
         metrics: list[str],
         run_metadata: Dict[str, Any],
         run_config: Dict[str, Any],
+        dataset_id: Optional[str] = None,
+        dataset_version_id: Optional[str] = None,
+        dataset_alias: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> PlatformRunHandle:
         payload = {
@@ -381,6 +384,9 @@ class PlatformClient:
             "metrics": metrics,
             "run_metadata": run_metadata,
             "run_config": run_config,
+            "dataset_id": dataset_id,
+            "dataset_version_id": dataset_version_id,
+            "dataset_alias": dataset_alias,
         }
         data = _post_json(
             f"{self.platform_url}/v1/runs",
@@ -393,3 +399,97 @@ class PlatformClient:
         if not run_id or not live_url:
             raise RuntimeError(f"Platform did not return run_id/live_url: {data}")
         return PlatformRunHandle(run_id=run_id, live_url=live_url)
+
+    def get_dataset_items(
+        self,
+        *,
+        dataset: str,
+        version: Optional[str] = None,
+        alias: Optional[str] = None,
+        project_slug: Optional[str] = None,
+        limit: int = 1000,
+    ) -> Dict[str, Any]:
+        import urllib.parse
+
+        ref = urllib.parse.quote(dataset, safe="")
+        version_ref = urllib.parse.quote(version or alias or "production", safe="")
+        params = {"limit": str(limit)}
+        if project_slug:
+            params["project_slug"] = project_slug
+        url = (
+            f"{self.platform_url}/v1/datasets/{ref}/versions/{version_ref}/items?"
+            + urllib.parse.urlencode(params)
+        )
+        req = request.Request(url, headers={"Authorization": f"Bearer {self.api_key}"})
+        with request.urlopen(req, timeout=self.CREATE_RUN_TIMEOUT) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {}
+
+    def upload_dataset(
+        self,
+        *,
+        path: str,
+        name: str,
+        version: str,
+        publish: bool = False,
+        set_alias: Optional[str] = None,
+        input_col: str = "input",
+        expected_col: str = "expected_output",
+        id_col: Optional[str] = None,
+        metadata_cols: Optional[str] = None,
+        labels: Optional[str] = None,
+        project_slug: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        import mimetypes
+        import urllib.request
+        from pathlib import Path
+
+        file_path = Path(path)
+        boundary = "----qym-dataset-" + uuid.uuid4().hex
+        fields = {
+            "name": name,
+            "version": version,
+            "publish": "true" if publish else "false",
+            "input_col": input_col,
+            "expected_col": expected_col,
+            "metadata_cols": metadata_cols or "",
+            "labels": labels or "",
+        }
+        if project_slug:
+            fields["project_slug"] = project_slug
+        if id_col:
+            fields["id_col"] = id_col
+        if set_alias:
+            fields["set_alias"] = set_alias
+        lines: list[bytes] = []
+        for key, value in fields.items():
+            lines.extend([
+                f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="{key}"'.encode(),
+                b"",
+                str(value).encode("utf-8"),
+            ])
+        raw = file_path.read_bytes()
+        ctype = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        lines.extend([
+            f"--{boundary}".encode(),
+            f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"'.encode(),
+            f"Content-Type: {ctype}".encode(),
+            b"",
+            raw,
+            f"--{boundary}--".encode(),
+            b"",
+        ])
+        body = b"\r\n".join(lines)
+        req = urllib.request.Request(
+            f"{self.platform_url}/v1/datasets:upload",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            payload = resp.read().decode("utf-8")
+            return json.loads(payload) if payload else {}

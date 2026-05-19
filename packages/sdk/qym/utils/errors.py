@@ -18,7 +18,7 @@ class LangfuseConnectionError(QymError):
 
 
 class DatasetNotFoundError(QymError):
-    """Raised when dataset is not found in Langfuse."""
+    """Raised when a dataset cannot be resolved locally or from qym platform."""
     pass
 
 

@@ -47,6 +47,12 @@ class RunWorkflowStatus(str, enum.Enum):
     PENDING = "PENDING"
 
 
+class DatasetVersionStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
 class ApprovalDecision(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
@@ -158,6 +164,8 @@ class Run(Base):
 
     task: Mapped[str] = mapped_column(String(200), index=True)
     dataset: Mapped[str] = mapped_column(String(200), index=True)
+    dataset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("datasets.id"), nullable=True, index=True)
+    dataset_version_id: Mapped[Optional[str]] = mapped_column(ForeignKey("dataset_versions.id"), nullable=True, index=True)
     model: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     metrics: Mapped[list[str]] = mapped_column(JSON, default=list)
     run_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -204,6 +212,7 @@ class RunItem(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    dataset_item_pk: Mapped[Optional[int]] = mapped_column(ForeignKey("dataset_items.id"), nullable=True, index=True)
     item_id: Mapped[str] = mapped_column(String(200))
     index: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -222,6 +231,126 @@ class RunItem(Base):
         UniqueConstraint("run_id", "item_id", name="uq_run_item"),
         Index("ix_run_item_run_index", "run_id", "index"),
     )
+
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None, index=True)
+
+    versions: Mapped[list["DatasetVersion"]] = relationship("DatasetVersion", lazy="noload")
+    aliases: Mapped[list["DatasetAlias"]] = relationship("DatasetAlias", lazy="noload")
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "slug", name="uq_dataset_project_slug"),
+        Index("ix_datasets_project_deleted", "project_id", "deleted_at"),
+    )
+
+
+class DatasetVersion(Base):
+    __tablename__ = "dataset_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+    version: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[DatasetVersionStatus] = mapped_column(
+        Enum(DatasetVersionStatus, values_callable=lambda e: [x.value for x in e]),
+        default=DatasetVersionStatus.DRAFT,
+        index=True,
+    )
+    source_type: Mapped[str] = mapped_column(String(50), default="api")
+    source_uri: Mapped[str] = mapped_column(Text, default="")
+    parent_version_id: Mapped[Optional[str]] = mapped_column(ForeignKey("dataset_versions.id"), nullable=True, index=True)
+    base_version_id: Mapped[Optional[str]] = mapped_column(ForeignKey("dataset_versions.id"), nullable=True, index=True)
+    schema: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    labels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    published_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    items: Mapped[list["DatasetItem"]] = relationship("DatasetItem", lazy="noload")
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "version", name="uq_dataset_version"),
+        Index("ix_dataset_versions_dataset_status", "dataset_id", "status"),
+    )
+
+
+class DatasetAlias(Base):
+    __tablename__ = "dataset_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
+    alias: Mapped[str] = mapped_column(String(100), nullable=False)
+    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"), index=True)
+    updated_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("dataset_id", "alias", name="uq_dataset_alias"),)
+
+
+class DatasetItem(Base):
+    __tablename__ = "dataset_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"), index=True)
+    item_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    index: Mapped[int] = mapped_column(Integer, default=0)
+    input: Mapped[Any] = mapped_column(JSON)
+    expected_output: Mapped[Any] = mapped_column(JSON, nullable=True)
+    item_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    labels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("dataset_version_id", "item_id", name="uq_dataset_item_id"),
+        Index("ix_dataset_item_version_fingerprint", "dataset_version_id", "fingerprint"),
+    )
+
+
+class DatasetItemRevision(Base):
+    __tablename__ = "dataset_item_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_item_id: Mapped[Optional[int]] = mapped_column(ForeignKey("dataset_items.id"), nullable=True, index=True)
+    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"), index=True)
+    revision_number: Mapped[int] = mapped_column(Integer)
+    change_type: Mapped[str] = mapped_column(String(30))
+    before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    actor_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_dataset_item_revisions_version_item", "dataset_version_id", "dataset_item_id"),
+    )
+
+
+class DatasetVersionChange(Base):
+    __tablename__ = "dataset_version_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dataset_version_id: Mapped[str] = mapped_column(ForeignKey("dataset_versions.id"), index=True)
+    parent_version_id: Mapped[Optional[str]] = mapped_column(ForeignKey("dataset_versions.id"), nullable=True, index=True)
+    change_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class RunItemAttempt(Base):

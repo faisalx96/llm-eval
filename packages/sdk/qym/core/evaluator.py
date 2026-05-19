@@ -70,7 +70,7 @@ def _compute_run_config_id(config: Dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-from ..utils.errors import LangfuseConnectionError, DatasetNotFoundError
+from ..utils.errors import DatasetNotFoundError
 
 # UIServer has been removed - platform streaming is now required
 # from ..server.app import UIServer  # DEPRECATED
@@ -79,7 +79,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 from ..platform.defaults import DEFAULT_PLATFORM_URL
-from ..utils.env import get_langfuse_host_env
 
 
 def _utc_now_str() -> str:
@@ -361,9 +360,7 @@ def _detect_git_info(
 
 
 class Evaluator:
-    """
-    Simple evaluator for LLM tasks using Langfuse datasets.
-    """
+    """Simple evaluator for LLM tasks."""
 
     # One-shot probe: track async metric functions already checked for blocking.
     _metric_blocking_probed: Set[int] = set()
@@ -385,12 +382,12 @@ class Evaluator:
 
         Args:
             task: Callable or framework object to evaluate.
-            dataset: Langfuse dataset name or dataset object.
+            dataset: qym platform dataset name, local dataset path, or dataset object.
             metrics: Metric names or callables.
             config: Optional evaluator configuration.
             observer: Optional lifecycle observer for advanced integrations.
             model: Optional model override or list of models.
-            langfuse_client: Optional injected Langfuse client.
+            langfuse_client: Deprecated and ignored.
             progress_callback: Optional callback receiving ProgressSnapshot updates.
         """
 
@@ -417,35 +414,28 @@ class Evaluator:
         # Load only the caller's cwd .env before any config/env auto-detection.
         load_cwd_dotenv()
 
-        # Initialize OpenLLMetry auto-instrumentation FIRST so TracerProvider exists
-        # before Langfuse (which will attach its processor to the same provider).
+        # Initialize OpenLLMetry auto-instrumentation before running user code.
         from .otel import create_otel_manager
 
         self._otel = create_otel_manager(self.config)
 
-        # Initialize Langfuse client ONLY when credentials exist (or user provided a client).
-        # This ensures CSV/local datasets work without requiring Langfuse setup.
         self.client: Optional[Any] = None
         self.langfuse_enabled: bool = False
         if langfuse_client is not None:
-            self.client = langfuse_client
-            self.langfuse_enabled = True
-        elif self._langfuse_credentials_available():
-            self.client = self._init_langfuse()
-            self.langfuse_enabled = True
+            logger.warning("langfuse_client is deprecated and ignored; qym uses platform/OpenTelemetry tracing.")
 
         # Load and validate dataset
         if isinstance(dataset, str):
-            self.dataset_name = dataset
-            if not self.client:
-                raise LangfuseConnectionError(
-                    "Langfuse dataset name provided but Langfuse credentials are missing. "
-                    "Set LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY or pass langfuse_client, "
-                    "or use a CSV dataset object / --dataset-csv."
-                )
-            from .dataset import LangfuseDataset
+            from .dataset import resolve_dataset
 
-            self.dataset = LangfuseDataset(self.client, dataset)
+            self.dataset = resolve_dataset(
+                dataset,
+                version=self.config.dataset_version,
+                alias=self.config.dataset_alias,
+                platform_url=self.config.platform_url,
+                api_key=self.config.platform_api_key,
+            )
+            self.dataset_name = getattr(self.dataset, "name", dataset)
         else:
             self.dataset = dataset
             self.dataset_name = getattr(
@@ -510,9 +500,10 @@ class Evaluator:
             observers.append(ProgressCallbackObserver(progress_callback))
         self.observer = CompositeEvaluationObserver(observers)
 
-        # Langfuse IDs for URL building (populated during run)
-        self._langfuse_dataset_id: Optional[str] = getattr(self.dataset, "id", None)
-        self._langfuse_run_id: Optional[str] = None
+        self._platform_dataset_id: Optional[str] = getattr(self.dataset, "id", None)
+        self._platform_dataset_version_id: Optional[str] = getattr(
+            self.dataset, "dataset_version_id", None
+        )
 
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
@@ -536,7 +527,7 @@ class Evaluator:
         Ensures unique run IDs even when the same model is used multiple times
         by appending a counter when duplicates are detected.
 
-        - run_id: Used for Langfuse logging, must be unique
+        - run_id: Used for persisted run identity, must be unique
         - display_name: Used for TUI, keeps original naming convention
         """
         # Matches YYMMDD-HHMM pattern
@@ -576,26 +567,13 @@ class Evaluator:
         return run_id, display
 
     def _extract_trace_meta(self, trace: Any) -> Dict[str, Any]:
-        """Extract trace_id and build Langfuse URL.
-
-        In Langfuse SDK v3, LangfuseSpan exposes .trace_id directly.
-        Falls back to .id for NullTrace or legacy objects.
-        """
+        """Extract trace_id from a trace-like object."""
         meta: Dict[str, Any] = {"trace_id": None, "trace_url": None}
         try:
             tid = getattr(trace, "trace_id", None) or getattr(trace, "id", None)
             meta["trace_id"] = str(tid) if tid else None
         except Exception:
             pass
-        if (
-            meta["trace_id"]
-            and getattr(self, "langfuse_host", None)
-            and getattr(self, "langfuse_project_id", None)
-        ):
-            host = self.langfuse_host.rstrip("/")
-            meta[
-                "trace_url"
-            ] = f"{host}/project/{self.langfuse_project_id}/traces/{meta['trace_id']}"
         return meta
 
     def _build_run_info(
@@ -634,12 +612,9 @@ class Evaluator:
             "git_branch": git_info["git_branch"],
             "cli_invocation": self.config.cli_invocation,
             "metric_names": list(self.metrics.keys()),
-            "langfuse_host": getattr(self, "langfuse_host", None),
-            "langfuse_project_id": getattr(self, "langfuse_project_id", None),
             "trace": {
                 "destinations": {
                     "phoenix": bool(getattr(self._otel, "phoenix_enabled", False)),
-                    "langfuse": bool(self.langfuse_enabled),
                     "platform": False,
                 },
                 "instrumentors": list(
@@ -662,97 +637,6 @@ class Evaluator:
 
         return run_block
 
-    def _init_langfuse(self) -> Any:
-        """Initialize Langfuse client with error handling."""
-        load_cwd_dotenv()
-
-        # Get credentials from config or environment
-        public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
-        secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
-        host = self.config.langfuse_host or get_langfuse_host_env()
-
-        # Validate required credentials
-        if not public_key:
-            raise LangfuseConnectionError(
-                "Missing Langfuse public key. Please:\n"
-                "1. Set LANGFUSE_PUBLIC_KEY environment variable, or\n"
-                "2. Add 'langfuse_public_key' to evaluator config, or\n"
-                "3. Create a .env file with LANGFUSE_PUBLIC_KEY=your_key"
-            )
-
-        if not secret_key:
-            raise LangfuseConnectionError(
-                "Missing Langfuse secret key. Please:\n"
-                "1. Set LANGFUSE_SECRET_KEY environment variable, or\n"
-                "2. Add 'langfuse_secret_key' to evaluator config, or\n"
-                "3. Create a .env file with LANGFUSE_SECRET_KEY=your_key"
-            )
-
-        try:
-            from langfuse import Langfuse
-
-            # Pass traceloop's TracerProvider so Langfuse adds its span processor
-            # to the same provider — all spans (auto-instrumented + manual) flow
-            # through one provider to both Langfuse and QymSpanProcessor.
-            init_kwargs = dict(
-                public_key=public_key,
-                secret_key=secret_key,
-                host=host,
-                timeout=self.config.timeout,
-            )
-            if self._otel.enabled:
-                from opentelemetry import trace as otel_trace
-
-                provider = otel_trace.get_tracer_provider()
-                init_kwargs["tracer_provider"] = provider
-            client = Langfuse(**init_kwargs)
-            # Expose host for frontend links (default to cloud)
-            try:
-                self.langfuse_host = host or "https://cloud.langfuse.com"
-            except Exception:
-                self.langfuse_host = "https://cloud.langfuse.com"
-            # Get project ID for deep-links (auto-detect from API if not provided)
-            try:
-                self.langfuse_project_id = self.config.langfuse_project_id or os.getenv(
-                    "LANGFUSE_PROJECT_ID"
-                )
-                # Auto-detect from Langfuse client if not provided
-                if not self.langfuse_project_id:
-                    # Try private method first (cached, no extra API call)
-                    if hasattr(client, "_get_project_id"):
-                        self.langfuse_project_id = client._get_project_id()
-                    # Fallback to public API
-                    if not self.langfuse_project_id and hasattr(client, "api"):
-                        result = client.api.projects.get()
-                        if result.data:
-                            self.langfuse_project_id = result.data[0].id
-            except Exception:
-                self.langfuse_project_id = None
-            return client
-        except Exception as e:
-            if "401" in str(e) or "unauthorized" in str(e).lower():
-                raise LangfuseConnectionError(
-                    "Invalid Langfuse credentials. Please check your:\n"
-                    "- LANGFUSE_PUBLIC_KEY\n"
-                    "- LANGFUSE_SECRET_KEY\n"
-                    "- LANGFUSE_HOST (if using custom instance)"
-                )
-            raise LangfuseConnectionError(f"Failed to connect to Langfuse: {e}")
-
-    def _is_langfuse_dataset(self) -> bool:
-        """Check if current dataset is a LangfuseDataset without top-level import."""
-        return type(self.dataset).__name__ == "LangfuseDataset"
-
-    def _langfuse_credentials_available(self) -> bool:
-        """Return True if Langfuse credentials appear to be available from config/env.
-
-        This is intentionally a lightweight check that does not validate credentials.
-        """
-        load_cwd_dotenv()
-        public_key = self.config.langfuse_public_key or os.getenv("LANGFUSE_PUBLIC_KEY")
-        secret_key = self.config.langfuse_secret_key or os.getenv("LANGFUSE_SECRET_KEY")
-        return bool(public_key and secret_key)
-
     def _prepare_metrics(
         self, metrics: List[Union[str, Callable]]
     ) -> Dict[str, Callable]:
@@ -769,22 +653,6 @@ class Evaluator:
                     f"Metric must be string or callable, got {type(metric)}"
                 )
         return prepared
-
-    def _build_langfuse_url(self) -> Optional[str]:
-        """Build Langfuse dataset run URL using dataset ID and run ID."""
-        try:
-            host = getattr(self, "langfuse_host", None)
-            project_id = getattr(self, "langfuse_project_id", None)
-            dataset_id = self._langfuse_dataset_id
-            run_id = self._langfuse_run_id
-
-            if not host or not project_id or not dataset_id or not run_id:
-                return None
-
-            # Langfuse dataset run URL format uses IDs, not names
-            return f"{host.rstrip('/')}/project/{project_id}/datasets/{dataset_id}/runs/{run_id}"
-        except Exception:
-            return None
 
     def _attach_observer(self, observer: Optional[EvaluationObserver]) -> None:
         """Attach an additional observer (e.g., dashboards)."""
@@ -1012,8 +880,12 @@ class Evaluator:
             console.print("[yellow]Warning: Dataset is empty[/yellow]")
             return result
         self.run_metadata["total_items"] = len(items)
-        if self._langfuse_dataset_id:
-            self.run_metadata["langfuse_dataset_id"] = self._langfuse_dataset_id
+        self._platform_dataset_id = getattr(self.dataset, "id", None)
+        self._platform_dataset_version_id = getattr(self.dataset, "dataset_version_id", None)
+        if self._platform_dataset_id:
+            self.run_metadata["dataset_id"] = self._platform_dataset_id
+        if self._platform_dataset_version_id:
+            self.run_metadata["dataset_version_id"] = self._platform_dataset_version_id
 
         run_info = self._build_run_info(result)
 
@@ -1089,6 +961,9 @@ class Evaluator:
                             "git_branch": git_info["git_branch"],
                             "git_commit": git_info["git_commit"],
                         },
+                        dataset_id=self._platform_dataset_id,
+                        dataset_version_id=self._platform_dataset_version_id,
+                        dataset_alias=getattr(self.dataset, "alias", None),
                         timeout=getattr(self.config, "platform_timeout", 5.0),
                     )
                 except Exception as exc:
@@ -1130,6 +1005,9 @@ class Evaluator:
                                 "external_run_id": self.run_name,
                                 "task": self._task_name,
                                 "dataset": str(self.dataset_name),
+                                "dataset_id": self._platform_dataset_id,
+                                "dataset_version_id": self._platform_dataset_version_id,
+                                "dataset_alias": getattr(self.dataset, "alias", None),
                                 "model": self.model_name,
                                 "metrics": list(self.metrics.keys()),
                                 "total_items": int(self.total_items),
@@ -1331,13 +1209,10 @@ class Evaluator:
 
             def _checkpoint_run_metadata() -> Dict[str, Any]:
                 md = dict(self.run_metadata or {})
-                if self._langfuse_dataset_id:
-                    md["langfuse_dataset_id"] = self._langfuse_dataset_id
-                if self._langfuse_run_id:
-                    md["langfuse_run_id"] = self._langfuse_run_id
-                langfuse_url = self._build_langfuse_url()
-                if langfuse_url:
-                    md["langfuse_url"] = langfuse_url
+                if self._platform_dataset_id:
+                    md["dataset_id"] = self._platform_dataset_id
+                if self._platform_dataset_version_id:
+                    md["dataset_version_id"] = self._platform_dataset_version_id
                 return md
 
             async def _worker():
@@ -1524,16 +1399,10 @@ class Evaluator:
         # Mark evaluation as finished
         result.finish()
 
-        # Build Langfuse URL now that we have the run_id from API responses
-        langfuse_url = self._build_langfuse_url()
-        if langfuse_url:
-            result.langfuse_url = langfuse_url
-            result.run_metadata["langfuse_url"] = langfuse_url
-            # Also store the IDs separately for future URL rebuilding
-            if self._langfuse_dataset_id:
-                result.run_metadata["langfuse_dataset_id"] = self._langfuse_dataset_id
-            if self._langfuse_run_id:
-                result.run_metadata["langfuse_run_id"] = self._langfuse_run_id
+        if self._platform_dataset_id:
+            result.run_metadata["dataset_id"] = self._platform_dataset_id
+        if self._platform_dataset_version_id:
+            result.run_metadata["dataset_version_id"] = self._platform_dataset_version_id
 
         self._notify_observer(
             "on_run_complete",
@@ -1548,13 +1417,6 @@ class Evaluator:
         # Store UI URL if available
         if html_url:
             result.html_url = html_url
-
-        # Flush Langfuse spans
-        if self.client:
-            try:
-                self.client.flush()
-            except Exception:
-                pass
 
         # Flush and shut down OTEL
         try:
@@ -1751,7 +1613,7 @@ class Evaluator:
         return result
 
     def _get_score_type(self, score: Any) -> str:
-        """Determine Langfuse score data type."""
+        """Determine score data type."""
         if isinstance(score, bool):
             return "BOOLEAN"
         elif isinstance(score, (int, float)):
@@ -1857,13 +1719,6 @@ class Evaluator:
         _ctx = spans.eval_span.get_span_context()
         if _ctx.is_valid:
             spans.trace_id = format(_ctx.trace_id, "032x")
-            if getattr(self, "langfuse_host", None) and getattr(
-                self, "langfuse_project_id", None
-            ):
-                host = self.langfuse_host.rstrip("/")
-                spans.trace_url = (
-                    f"{host}/project/{self.langfuse_project_id}/traces/{spans.trace_id}"
-                )
 
         # Task function span (child of eval, parent of LLM calls)
         task_name = getattr(self.task_adapter.task, "__name__", "task")
@@ -1895,6 +1750,7 @@ class Evaluator:
                         "input": item.input,
                         "expected": getattr(item, "expected_output", None),
                         "item_metadata": getattr(item, "metadata", {}) or {},
+                        "dataset_item_pk": getattr(item, "dataset_item_pk", None),
                     },
                 )
         except Exception:
@@ -2197,21 +2053,6 @@ class Evaluator:
             # Add score as OTEL event on eval span (provider-agnostic)
             spans.add_score_event(m_name, main_val, result.label, result.explanation)
 
-            # Langfuse: push score to Langfuse API (for UI score badges + dataset linkage)
-            if self.client and spans.trace_id:
-                try:
-                    comment = result.explanation or (
-                        str(score) if not isinstance(main_val, (int, float)) else None
-                    )
-                    self.client.create_score(
-                        trace_id=spans.trace_id,
-                        name=m_name,
-                        value=main_val if isinstance(main_val, (int, float)) else 0,
-                        comment=comment,
-                    )
-                except Exception:
-                    pass
-
             # Platform: metric scored
             try:
                 ps = getattr(self, "_platform_stream", None)
@@ -2252,60 +2093,6 @@ class Evaluator:
                 metadata=_metric_observer_metadata(),
             )
             return m_name, score
-
-    async def _link_dataset_item(
-        self, index: int, item: Any, spans: ItemSpans, error: Optional[str] = None
-    ):
-        """Link trace to Langfuse dataset run item (Langfuse datasets only)."""
-        dataset_item_id = getattr(item, "id", None)
-        trace_id = spans.trace_id
-        if not (
-            self._is_langfuse_dataset() and self.client and dataset_item_id and trace_id
-        ):
-            return
-        try:
-            from langfuse.api.resources.dataset_run_items.types import (
-                CreateDatasetRunItemRequest,
-            )
-
-            metadata = {**self.run_metadata}
-            if error:
-                metadata["error"] = error
-            response = await self.client.async_api.dataset_run_items.create(
-                request=CreateDatasetRunItemRequest(
-                    runName=self.run_name,
-                    runDescription=None,
-                    metadata=metadata,
-                    datasetItemId=dataset_item_id,
-                    traceId=trace_id,
-                )
-            )
-            if self._langfuse_run_id is None and response:
-                run_id = (
-                    getattr(response, "run_id", None)
-                    or getattr(response, "runId", None)
-                    or getattr(response, "dataset_run_id", None)
-                    or getattr(response, "datasetRunId", None)
-                )
-                if not run_id and hasattr(response, "run"):
-                    run_id = getattr(response.run, "id", None)
-                self._langfuse_run_id = run_id
-                if self._langfuse_run_id and self._platform_stream:
-                    langfuse_url = self._build_langfuse_url()
-                    if langfuse_url:
-                        try:
-                            self._platform_stream.emit(
-                                "metadata_update",
-                                {
-                                    "langfuse_url": langfuse_url,
-                                    "langfuse_dataset_id": self._langfuse_dataset_id,
-                                    "langfuse_run_id": self._langfuse_run_id,
-                                },
-                            )
-                        except Exception:
-                            pass
-        except Exception as e:
-            logger.debug(f"Failed to link dataset run item: {e}")
 
     def _update_tracker(
         self,
@@ -2455,11 +2242,7 @@ class Evaluator:
         attempt: Optional[TaskAttemptResult] = None,
         retry_count: int = 0,
     ):
-        """Handle item evaluation error: emit failure, then clean up.
-
-        Platform event is emitted FIRST — before span cleanup, dataset
-        linking, or anything else that could crash.
-        """
+        """Handle item evaluation error: emit failure, then clean up."""
         error_str = attempt.error if attempt and attempt.error else str(error)
         item_id = getattr(item, "id", None) or f"item_{index}"
         trace_id = attempt.spans.trace_id if attempt else spans.trace_id
@@ -2504,11 +2287,6 @@ class Evaluator:
         # 3. Clean up spans (nice-to-have, can crash)
         try:
             spans.end_all(error=error)
-        except Exception:
-            pass
-        # 4. Link dataset item (nice-to-have)
-        try:
-            await self._link_dataset_item(index, item, spans, error=error_str)
         except Exception:
             pass
 
@@ -2564,11 +2342,6 @@ class Evaluator:
             success_attempt.task_started_at_ms,
             item_started_at_ms,
         )
-        # Dataset linking (async Langfuse HTTP call, best-effort)
-        try:
-            await self._link_dataset_item(index, item, active_spans)
-        except Exception:
-            pass
         # Per-attempt finished event
         self._emit_item_attempt_finished(
             index, item, success_attempt, is_last_attempt=True
@@ -2647,8 +2420,8 @@ class Evaluator:
             except Exception:
                 pass
 
-            # Now the durable emit phase (platform stream + tracker + Langfuse
-            # dataset linking) runs under asyncio.shield so it completes
+            # Now the durable emit phase (platform stream + tracker) runs under
+            # asyncio.shield so it completes
             # atomically even if the caller is cancelled mid-flight.
             await asyncio.shield(
                 self._finalize_item(

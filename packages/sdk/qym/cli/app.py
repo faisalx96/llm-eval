@@ -18,6 +18,7 @@ from .run import run_app
 from .metric import metric_app
 from .analyze import analyze_app
 from .config_cmd import config_app
+from .dataset import dataset_app
 from ..platform.tls import urlopen
 from ..utils.env import get_platform_url_env, load_cwd_dotenv
 
@@ -33,6 +34,7 @@ app.add_typer(run_app, name="run")
 app.add_typer(metric_app, name="metric")
 app.add_typer(analyze_app, name="analyze")
 app.add_typer(config_app, name="config")
+app.add_typer(dataset_app, name="dataset")
 
 
 @app.callback()
@@ -134,7 +136,7 @@ def submit(
 # ── Backward compatibility argv rewriting ───────────────────
 
 
-_NOUNS = {"run", "metric", "analyze", "config", "dashboard", "submit"}
+_NOUNS = {"run", "metric", "analyze", "config", "dataset", "dashboard", "submit"}
 
 
 def _rewrite_legacy_argv(argv: list[str]) -> list[str]:

@@ -2,14 +2,11 @@
 Optional OpenTelemetry auto-instrumentation for LLM calls.
 
 Uses OpenInference instrumentors (the same library Phoenix uses) so traces
-render properly in both Phoenix and Langfuse. Langfuse explicitly maps
-OpenInference attributes (input.value, output.value, llm.*, etc.) to its
-own data model.
+render properly in qym platform and optional OTLP/Phoenix destinations.
 
 Architecture:
   - One shared TracerProvider
   - OpenInference instrumentors register on it
-  - LangfuseSpanProcessor exports to Langfuse (added later by _init_langfuse)
   - Optional OTLP exporter for Phoenix dual export
   - QymSpanProcessor captures spans for local DB storage
 
@@ -1256,8 +1253,8 @@ def create_otel_manager(config) -> Any:
     Sets up a real TracerProvider, registers available instrumentors,
     and optionally adds a Phoenix OTLP exporter for dual tracing.
 
-    Langfuse adds its own LangfuseSpanProcessor to the same provider
-    later (in _init_langfuse), so all spans reach both destinations.
+    qym's span processor streams completed spans to the platform when a
+    platform event stream is active.
     """
     global _initialized, _registered_instrumentors, _phoenix_enabled, _phoenix_endpoint
 
@@ -1297,9 +1294,8 @@ def create_otel_manager(config) -> Any:
                     "No OpenInference instrumentors found — auto-instrumentation inactive"
                 )
 
-            # Optional: Phoenix OTLP export for dual tracing.
-            # Auto-enable if an endpoint is configured, matching the
-            # "auto-detect when creds/config exist" pattern used for Langfuse.
+            # Optional: Phoenix OTLP export for dual tracing. Auto-enable if an
+            # endpoint is configured.
             load_cwd_dotenv()
 
             phoenix_endpoint = (

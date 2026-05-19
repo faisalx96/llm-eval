@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..utils.env import get_langfuse_host_env, load_cwd_dotenv
+from ..utils.env import load_cwd_dotenv
 
 load_cwd_dotenv()
 
@@ -23,73 +23,6 @@ except Exception:
 from ..core.run_discovery import RunDiscovery
 
 DEFAULT_RESULTS_DIR = "qym_results"
-
-
-# Cache for auto-detected Langfuse project ID
-_langfuse_project_id_cache: Optional[str] = None
-
-
-def get_langfuse_project_id() -> str:
-    """Get Langfuse project ID (from env or auto-detect from API)."""
-    global _langfuse_project_id_cache
-
-    # Check env var first
-    project_id = os.environ.get("LANGFUSE_PROJECT_ID", "")
-    if project_id:
-        return project_id
-
-    # Return cached value if available
-    if _langfuse_project_id_cache is not None:
-        return _langfuse_project_id_cache
-
-    # Try to auto-detect from Langfuse API
-    try:
-        from langfuse import Langfuse
-        client = Langfuse()
-
-        # Try private method first (cached, no extra API call)
-        if hasattr(client, '_get_project_id'):
-            _langfuse_project_id_cache = client._get_project_id() or ""
-        # Fallback to public API
-        elif hasattr(client, 'api') and hasattr(client.api, 'projects'):
-            result = client.api.projects.get()
-            if result.data:
-                _langfuse_project_id_cache = result.data[0].id
-            else:
-                _langfuse_project_id_cache = ""
-        else:
-            _langfuse_project_id_cache = ""
-    except Exception:
-        _langfuse_project_id_cache = ""
-
-    return _langfuse_project_id_cache
-
-
-def rebuild_langfuse_urls(
-    payload: Dict[str, Any], langfuse_host: str, langfuse_project_id: str
-) -> None:
-    """Populate run-level langfuse_url fields from dataset/run IDs."""
-    if not langfuse_host or not langfuse_project_id:
-        return
-    tasks = payload.get("tasks", {})
-    if not isinstance(tasks, dict):
-        return
-    host = langfuse_host.rstrip("/")
-    for models in tasks.values():
-        if not isinstance(models, dict):
-            continue
-        for runs in models.values():
-            if not isinstance(runs, list):
-                continue
-            for run in runs:
-                if not isinstance(run, dict):
-                    continue
-                dataset_id = run.get("langfuse_dataset_id")
-                run_id = run.get("langfuse_run_id")
-                if dataset_id and run_id:
-                    run["langfuse_url"] = (
-                        f"{host}/project/{langfuse_project_id}/datasets/{dataset_id}/runs/{run_id}"
-                    )
 
 
 class DashboardServer:
@@ -220,15 +153,6 @@ class DashboardServer:
                 if path == "/api/runs":
                     index = server.discovery.scan()
                     data = index.to_dict()
-                    # Rebuild Langfuse URLs dynamically if we have the IDs
-                    langfuse_host = get_langfuse_host_env()
-                    langfuse_project_id = get_langfuse_project_id()
-                    if langfuse_host and langfuse_project_id:
-                        for run in data.get("runs", []):
-                            dataset_id = run.get("langfuse_dataset_id")
-                            run_id = run.get("langfuse_run_id")
-                            if dataset_id and run_id:
-                                run["langfuse_url"] = f"{langfuse_host}/project/{langfuse_project_id}/datasets/{dataset_id}/runs/{run_id}"
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(
                         json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -293,15 +217,10 @@ class DashboardServer:
                         for data in runs_data
                         if str(data.get("run", {}).get("compare_alignment_status") or "") != "aligned"
                     ]
-                    # Include Langfuse config for trace URLs
-                    langfuse_host = get_langfuse_host_env()
-                    langfuse_project_id = get_langfuse_project_id()
                     self._set_headers(HTTPStatus.OK)
                     self.wfile.write(
                         json.dumps({
                             "runs": runs_data,
-                            "langfuse_host": langfuse_host,
-                            "langfuse_project_id": langfuse_project_id,
                             "compare_alignment_status": "unalignable" if unalignable_runs else "aligned",
                             "unalignable_runs": unalignable_runs,
                         }, ensure_ascii=False).encode("utf-8")

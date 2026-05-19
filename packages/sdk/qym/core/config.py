@@ -29,11 +29,9 @@ class EvaluatorConfig(BaseModel):
     models: Optional[List[str]] = None
     force_model_override: bool = False  # Replace hardcoded OpenAI chat completion model at the SDK boundary
     
-    # Langfuse credentials (optional overrides)
-    langfuse_public_key: Optional[str] = None
-    langfuse_secret_key: Optional[str] = None
-    langfuse_host: Optional[str] = None
-    langfuse_project_id: Optional[str] = None
+    # Platform dataset selection
+    dataset_version: Optional[str] = None
+    dataset_alias: Optional[str] = None
     
     # UI settings
     ui_port: int = 0
@@ -52,7 +50,7 @@ class EvaluatorConfig(BaseModel):
     # OpenTelemetry auto-instrumentation (optional)
     otel_enabled: bool = True  # auto-enable if instrumentors installed; no-op if not
 
-    # Phoenix tracing (optional, for dual export alongside Langfuse)
+    # Phoenix tracing (optional OTLP export)
     phoenix_enabled: bool = False
     phoenix_endpoint: Optional[str] = None  # e.g. "http://localhost:6006/v1/traces"
 

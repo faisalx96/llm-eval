@@ -346,7 +346,6 @@ class RunDashboard:
 
         destination_values: Dict[str, List[bool]] = {
             "phoenix": [],
-            "langfuse": [],
             "platform": [],
         }
         for state in self.states.values():
@@ -359,8 +358,6 @@ class RunDashboard:
         destinations = Text()
         destinations.append("Trace: ", style="bold white")
         self._append_destination_status(destinations, "Phoenix", destination_values["phoenix"])
-        destinations.append("  •  ", style="dim")
-        self._append_destination_status(destinations, "Langfuse", destination_values["langfuse"])
         destinations.append("  •  ", style="dim")
         self._append_destination_status(destinations, "Platform", destination_values["platform"])
 

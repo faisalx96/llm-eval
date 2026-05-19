@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Datasets</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js"></script>
+  <style>
+    .datasets-page { min-height: 100%; display: flex; flex-direction: column; }
+    .datasets-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border-subtle); background:var(--bg-surface); position:sticky; top:0; z-index:20; }
+    .datasets-title { display:flex; align-items:baseline; gap:10px; min-width:0; }
+    .datasets-title h1 { margin:0; font-size:18px; font-weight:650; }
+    .datasets-title span { color:var(--text-muted); font-size:12px; font-family:var(--font-mono); }
+    .datasets-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .ds-btn { border:1px solid var(--border-default); background:var(--bg-elevated); color:var(--text-secondary); border-radius:6px; padding:7px 10px; font-size:12px; font-weight:600; cursor:pointer; }
+    .ds-btn:hover { color:var(--text-primary); background:var(--bg-hover); }
+    .ds-btn.primary { background:rgba(0,212,170,.12); border-color:rgba(0,212,170,.35); color:var(--accent-primary); }
+    .ds-btn.danger { color:var(--error); border-color:rgba(239,68,68,.35); }
+    .ds-input, .ds-select, .ds-textarea { background:var(--bg-elevated); border:1px solid var(--border-default); color:var(--text-primary); border-radius:6px; padding:8px 10px; font-size:13px; font-family:var(--font-sans); }
+    .ds-textarea { width:100%; min-height:120px; font-family:var(--font-mono); font-size:12px; resize:vertical; }
+    .datasets-content { padding:18px; overflow:auto; }
+    .datasets-grid { display:grid; gap:12px; }
+    .ds-panel { background:var(--bg-surface); border:1px solid var(--border-default); border-radius:8px; overflow:hidden; }
+    .ds-panel-header { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border-subtle); gap:10px; }
+    .ds-panel-title { font-size:13px; font-weight:700; color:var(--text-primary); }
+    .ds-subtle { color:var(--text-muted); font-size:12px; }
+    .ds-table { width:100%; border-collapse:collapse; }
+    .ds-table th { text-align:left; padding:9px 12px; font-size:11px; color:var(--text-dim); background:var(--bg-elevated); border-bottom:1px solid var(--border-subtle); text-transform:uppercase; letter-spacing:.04em; }
+    .ds-table td { padding:10px 12px; font-size:13px; color:var(--text-secondary); border-bottom:1px solid var(--border-subtle); vertical-align:top; }
+    .ds-table tr:hover td { background:var(--bg-hover); }
+    .ds-link { color:var(--accent-primary); text-decoration:none; cursor:pointer; }
+    .ds-chip { display:inline-flex; align-items:center; border:1px solid var(--border-subtle); background:var(--bg-elevated); border-radius:999px; padding:2px 7px; font-size:11px; color:var(--text-secondary); margin:1px 3px 1px 0; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ds-chip.prod { color:var(--accent-primary); border-color:rgba(0,212,170,.35); background:rgba(0,212,170,.08); }
+    .ds-chip.draft { color:var(--warning); border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.08); }
+    .ds-tabs { display:flex; gap:4px; padding:0 18px; border-bottom:1px solid var(--border-subtle); background:var(--bg-surface); }
+    .ds-tab { border:0; background:transparent; color:var(--text-muted); padding:11px 12px; font-size:12px; font-weight:650; cursor:pointer; border-bottom:2px solid transparent; }
+    .ds-tab.active { color:var(--accent-primary); border-bottom-color:var(--accent-primary); }
+    .ds-json-preview { max-width:420px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:var(--font-mono); font-size:12px; color:var(--text-muted); }
+    .ds-split { display:grid; grid-template-columns:320px 1fr; gap:14px; align-items:start; }
+    .ds-kv { display:grid; grid-template-columns:120px 1fr; gap:8px; padding:12px 14px; font-size:13px; }
+    .ds-kv div:nth-child(odd) { color:var(--text-muted); }
+    .ds-kv div:nth-child(even) { color:var(--text-primary); min-width:0; }
+    .ds-modal { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:900; padding:20px; }
+    .ds-modal.open { display:flex; }
+    .ds-modal-card { width:min(760px, 100%); max-height:90vh; overflow:auto; background:var(--bg-surface); border:1px solid var(--border-default); border-radius:8px; box-shadow:0 20px 80px rgba(0,0,0,.55); }
+    .ds-form { display:grid; gap:10px; padding:14px; }
+    .ds-field { display:grid; gap:5px; }
+    .ds-field label { color:var(--text-muted); font-size:12px; font-weight:650; }
+    .ds-error { color:var(--error); font-size:12px; min-height:16px; }
+    .ds-empty { padding:26px; color:var(--text-muted); text-align:center; font-size:13px; }
+    @media (max-width: 900px) { .ds-split { grid-template-columns:1fr; } .datasets-toolbar { align-items:flex-start; flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <main class="datasets-page">
+    <div class="datasets-toolbar">
+      <div class="datasets-title">
+        <h1 id="ds-title">Datasets</h1>
+        <span id="ds-subtitle">Loading</span>
+      </div>
+      <div class="datasets-actions" id="ds-actions">
+        <input class="ds-input" id="ds-search" placeholder="Search datasets" style="display:none;">
+        <button class="ds-btn" id="ds-refresh">Refresh</button>
+        <button class="ds-btn primary" id="ds-upload-open">Upload</button>
+      </div>
+    </div>
+    <div class="ds-tabs" id="ds-tabs" style="display:none;">
+      <button class="ds-tab active" data-tab="items">Items</button>
+      <button class="ds-tab" data-tab="versions">Versions</button>
+      <button class="ds-tab" data-tab="runs">Runs</button>
+      <button class="ds-tab" data-tab="lineage">Lineage</button>
+    </div>
+    <div class="datasets-content" id="ds-content">
+      <div class="ds-empty">Loading...</div>
+    </div>
+  </main>
+
+  <div class="ds-modal" id="upload-modal">
+    <div class="ds-modal-card">
+      <div class="ds-panel-header"><div class="ds-panel-title">Upload Dataset</div><button class="ds-btn" data-close="upload-modal">Close</button></div>
+      <form class="ds-form" id="upload-form">
+        <div class="ds-field"><label>Name</label><input class="ds-input" name="name" required></div>
+        <div class="ds-field"><label>Version</label><input class="ds-input" name="version" value="v1" required></div>
+        <div class="ds-field"><label>Labels</label><input class="ds-input" name="labels" placeholder="regression,arabic"></div>
+        <div class="ds-field"><label>File</label><input class="ds-input" type="file" name="file" accept=".csv,.jsonl" required></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+          <div class="ds-field"><label>Input column</label><input class="ds-input" name="input_col" value="input"></div>
+          <div class="ds-field"><label>Expected column</label><input class="ds-input" name="expected_col" value="expected_output"></div>
+          <div class="ds-field"><label>ID column</label><input class="ds-input" name="id_col"></div>
+        </div>
+        <div class="ds-field"><label>Metadata columns</label><input class="ds-input" name="metadata_cols"></div>
+        <label class="ds-subtle"><input type="checkbox" name="publish"> Publish immediately</label>
+        <label class="ds-subtle"><input type="checkbox" name="production"> Set production after publish</label>
+        <div class="ds-error" id="upload-error"></div>
+        <div class="datasets-actions"><button class="ds-btn primary" type="submit">Upload</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="ds-modal" id="item-modal">
+    <div class="ds-modal-card">
+      <div class="ds-panel-header"><div class="ds-panel-title" id="item-modal-title">Item</div><button class="ds-btn" data-close="item-modal">Close</button></div>
+      <div class="ds-form">
+        <div class="ds-field"><label>Item ID</label><input class="ds-input" id="item-id"></div>
+        <div class="ds-field"><label>Input JSON</label><textarea class="ds-textarea" id="item-input"></textarea></div>
+        <div class="ds-field"><label>Expected JSON</label><textarea class="ds-textarea" id="item-expected"></textarea></div>
+        <div class="ds-field"><label>Metadata JSON</label><textarea class="ds-textarea" id="item-metadata"></textarea></div>
+        <div class="ds-field"><label>Labels</label><input class="ds-input" id="item-labels"></div>
+        <div class="ds-error" id="item-error"></div>
+        <div class="datasets-actions">
+          <button class="ds-btn primary" id="item-save">Save</button>
+        </div>
+        <div class="ds-panel">
+          <div class="ds-panel-header"><div class="ds-panel-title">Runs Using This Item</div></div>
+          <div id="item-runs"><div class="ds-empty">No runs loaded.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+      const state = { projectSlug:'', datasetRef:'', datasets:[], dataset:null, versions:[], version:null, items:[], tab:'items', selectedItem:null };
+      function rootPath() {
+        const m = window.location.pathname.match(/^(.*?\/)projects\//);
+        return m ? m[1] : '/';
+      }
+      function api(path) { return window.location.origin + rootPath() + path.replace(/^\/+/, ''); }
+      function esc(v) { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+      function shortJson(v) { try { return JSON.stringify(v); } catch { return String(v); } }
+      function qs() { return 'project_slug=' + encodeURIComponent(state.projectSlug || ''); }
+      async function fetchJson(path, opts) {
+        const res = await fetch(api(path), opts || {});
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        return data;
+      }
+      function parsePath() {
+        const m = window.location.pathname.match(/\/projects\/([^/]+)(?:\/datasets\/?([^/]+)?)?/);
+        state.projectSlug = m ? decodeURIComponent(m[1]) : '';
+        state.datasetRef = m && m[2] ? decodeURIComponent(m[2]) : '';
+      }
+      function projectUrl(suffix) { return api('projects/' + encodeURIComponent(state.projectSlug) + (suffix || '')); }
+      function openModal(id) { document.getElementById(id).classList.add('open'); }
+      function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+      function versionBadge(v) {
+        if (!v) return '<span class="ds-chip">none</span>';
+        const cls = (v.aliases || []).includes('production') ? 'prod' : (v.status === 'draft' ? 'draft' : '');
+        return '<span class="ds-chip ' + cls + '">' + esc(v.version) + (v.aliases?.length ? ' · ' + esc(v.aliases.join(',')) : '') + '</span>';
+      }
+      async function loadCatalog() {
+        const data = await fetchJson('v1/datasets?' + qs());
+        state.datasets = data.datasets || [];
+        renderCatalog();
+      }
+      async function loadDetail() {
+        const [detail, versions] = await Promise.all([
+          fetchJson('v1/datasets/' + encodeURIComponent(state.datasetRef) + '?' + qs()),
+          fetchJson('v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions?' + qs()),
+        ]);
+        state.dataset = detail.dataset;
+        state.versions = versions.versions || [];
+        state.version = state.dataset.production_version || state.versions[0] || null;
+        await loadTabData();
+      }
+      async function loadTabData() {
+        if (!state.dataset || !state.version) { renderDetail(); return; }
+        if (state.tab === 'items') {
+          const data = await fetchJson('v1/datasets/' + encodeURIComponent(state.dataset.slug) + '/versions/' + encodeURIComponent(state.version.version) + '/items?limit=500&' + qs());
+          state.items = data.items || [];
+        }
+        renderDetail();
+      }
+      function renderCatalog() {
+        document.getElementById('ds-title').textContent = 'Datasets';
+        document.getElementById('ds-subtitle').textContent = state.datasets.length + ' datasets';
+        document.getElementById('ds-tabs').style.display = 'none';
+        document.getElementById('ds-search').style.display = '';
+        const rows = state.datasets.map(ds => `
+          <tr data-open="${esc(ds.slug)}">
+            <td><a class="ds-link" href="${projectUrl('/datasets/' + encodeURIComponent(ds.slug))}">${esc(ds.name)}</a><div class="ds-subtle">${esc(ds.slug)}</div></td>
+            <td>${versionBadge(ds.production_version)}</td>
+            <td>${versionBadge(ds.latest_version)}</td>
+            <td>${esc(ds.latest_version?.item_count ?? 0)}</td>
+            <td>${(ds.tags || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</td>
+            <td>${esc(ds.run_count || 0)}</td>
+          </tr>`).join('');
+        document.getElementById('ds-content').innerHTML = `
+          <div class="ds-panel">
+            <table class="ds-table"><thead><tr><th>Name</th><th>Production</th><th>Latest</th><th>Items</th><th>Labels</th><th>Runs</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="6"><div class="ds-empty">No datasets.</div></td></tr>'}</tbody></table>
+          </div>`;
+      }
+      function renderDetail() {
+        const ds = state.dataset;
+        document.getElementById('ds-search').style.display = 'none';
+        document.getElementById('ds-tabs').style.display = '';
+        document.getElementById('ds-title').textContent = ds ? ds.name : 'Dataset';
+        document.getElementById('ds-subtitle').textContent = ds ? `${ds.slug} · production ${ds.production_version?.version || 'unset'}` : '';
+        document.querySelectorAll('.ds-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
+        const versionOptions = state.versions.map(v => `<option value="${esc(v.version)}" ${state.version && state.version.version === v.version ? 'selected' : ''}>${esc(v.version)} (${esc(v.status)})</option>`).join('');
+        const header = `
+          <div class="ds-panel" style="margin-bottom:14px;">
+            <div class="ds-panel-header">
+              <div>${versionBadge(state.dataset?.production_version)} ${versionBadge(state.version)}</div>
+              <div class="datasets-actions">
+                <select class="ds-select" id="version-select">${versionOptions}</select>
+                <button class="ds-btn" id="create-draft">Create Draft</button>
+                <button class="ds-btn" id="publish-version">Publish</button>
+                <button class="ds-btn primary" id="set-production">Set Production</button>
+                <button class="ds-btn" id="compare-production">Compare Production</button>
+                <a class="ds-btn" href="${api('v1/datasets/' + encodeURIComponent(ds.slug) + '/versions/' + encodeURIComponent(state.version?.version || 'production') + ':download?' + qs())}">Download</a>
+              </div>
+            </div>
+            <div class="ds-kv"><div>Description</div><div>${esc(ds.description || '')}</div><div>Labels</div><div>${(ds.tags || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</div></div>
+          </div>`;
+        let body = '';
+        if (state.tab === 'items') body = renderItems();
+        else if (state.tab === 'versions') body = renderVersions();
+        else if (state.tab === 'runs') body = renderRuns();
+        else body = renderLineage();
+        document.getElementById('ds-content').innerHTML = header + body;
+        bindDetailActions();
+      }
+      function renderItems() {
+        const editable = state.version && state.version.status === 'draft';
+        const rows = state.items.map(item => `
+          <tr data-item="${esc(item.item_id)}">
+            <td><a class="ds-link" data-edit-item="${esc(item.item_id)}">${esc(item.item_id)}</a><div class="ds-subtle">${esc(item.fingerprint)}</div></td>
+            <td><div class="ds-json-preview">${esc(shortJson(item.input))}</div></td>
+            <td><div class="ds-json-preview">${esc(shortJson(item.expected_output))}</div></td>
+            <td>${(item.labels || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</td>
+            <td>${esc(item.run_count || 0)}</td>
+            <td>${editable ? '<button class="ds-btn" data-edit-item="' + esc(item.item_id) + '">Edit</button>' : '<span class="ds-subtle">published</span>'}</td>
+          </tr>`).join('');
+        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Item</th><th>Input</th><th>Expected</th><th>Labels</th><th>Runs</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="ds-empty">No items.</div></td></tr>'}</tbody></table></div>`;
+      }
+      function renderVersions() {
+        const rows = state.versions.map(v => `<tr><td>${versionBadge(v)}</td><td>${esc(v.item_count)}</td><td>${(v.labels || []).map(l => '<span class="ds-chip">' + esc(l) + '</span>').join('')}</td><td>${esc(v.content_hash || '')}</td><td>${esc(v.run_count || 0)}</td><td>${esc(v.parent_version_id || '')}</td></tr>`).join('');
+        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Version</th><th>Items</th><th>Labels</th><th>Hash</th><th>Runs</th><th>Parent</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      function renderRuns() {
+        return `<div class="ds-panel"><div class="ds-empty">Open an item to view runs using that item.</div></div>`;
+      }
+      function renderLineage() {
+        const rows = state.versions.map(v => `<tr><td>${esc(v.version)}</td><td>${esc(v.status)}</td><td>${esc(v.parent_version_id || '')}</td><td>${esc(v.created_at || '')}</td></tr>`).join('');
+        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Version</th><th>Status</th><th>Parent</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
+      function bindDetailActions() {
+        const sel = document.getElementById('version-select');
+        if (sel) sel.onchange = async () => { state.version = state.versions.find(v => v.version === sel.value) || state.version; await loadTabData(); };
+        document.getElementById('create-draft').onclick = async () => {
+          const version = prompt('Draft version name', 'v' + (state.versions.length + 1));
+          if (!version) return;
+          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions?${qs()}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({version, from_version: state.version.version}) });
+          await loadDetail();
+        };
+        document.getElementById('publish-version').onclick = async () => { await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}:publish?${qs()}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); await loadDetail(); };
+        document.getElementById('set-production').onclick = async () => { await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/aliases/production?${qs()}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({version: state.version.version})}); await loadDetail(); };
+        document.getElementById('compare-production').onclick = async () => {
+          if (!state.dataset.production_version) return alert('Production is not set.');
+          const data = await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}:compare?base=${encodeURIComponent(state.dataset.production_version.version)}&${qs()}`);
+          alert(`Added ${data.summary.added}, removed ${data.summary.removed}, changed ${data.summary.changed}, unchanged ${data.summary.unchanged}`);
+        };
+        document.querySelectorAll('[data-edit-item]').forEach(btn => btn.onclick = () => openItem(btn.dataset.editItem));
+      }
+      async function openItem(itemId) {
+        const item = state.items.find(i => i.item_id === itemId);
+        state.selectedItem = item;
+        document.getElementById('item-modal-title').textContent = itemId;
+        document.getElementById('item-id').value = item.item_id;
+        document.getElementById('item-input').value = JSON.stringify(item.input, null, 2);
+        document.getElementById('item-expected').value = JSON.stringify(item.expected_output, null, 2);
+        document.getElementById('item-metadata').value = JSON.stringify(item.metadata || {}, null, 2);
+        document.getElementById('item-labels').value = (item.labels || []).join(',');
+        document.getElementById('item-error').textContent = '';
+        openModal('item-modal');
+        const runs = await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items/${encodeURIComponent(item.item_id)}/runs?${qs()}`).catch(e => ({runs:[], error:e.message}));
+        document.getElementById('item-runs').innerHTML = `<table class="ds-table"><tbody>${(runs.runs || []).map(r => `<tr><td><a class="ds-link" href="${projectUrl('/runs/' + encodeURIComponent(r.run_id))}">${esc(r.external_run_id || r.run_id)}</a><div class="ds-subtle">${esc(r.task)} · ${esc(r.model || '')}</div></td><td>${esc(r.status)}</td><td>${esc(r.created_at || '')}</td></tr>`).join('') || '<tr><td><div class="ds-empty">No runs.</div></td></tr>'}</tbody></table>`;
+      }
+      document.getElementById('item-save').onclick = async () => {
+        try {
+          const body = {
+            item_id: document.getElementById('item-id').value,
+            input: JSON.parse(document.getElementById('item-input').value),
+            expected_output: JSON.parse(document.getElementById('item-expected').value),
+            metadata: JSON.parse(document.getElementById('item-metadata').value),
+            labels: document.getElementById('item-labels').value.split(',').map(s => s.trim()).filter(Boolean),
+          };
+          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items/${encodeURIComponent(state.selectedItem.item_id)}?${qs()}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+          closeModal('item-modal');
+          await loadTabData();
+        } catch (e) { document.getElementById('item-error').textContent = e.message; }
+      };
+      document.getElementById('upload-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.currentTarget);
+        form.set('project_slug', state.projectSlug);
+        if (form.get('production') && form.get('publish')) form.set('set_alias', 'production');
+        form.delete('production');
+        try {
+          await fetch(api('v1/datasets:upload'), { method:'POST', body:form }).then(async res => { if (!res.ok) throw new Error((await res.json()).detail || res.statusText); return res.json(); });
+          closeModal('upload-modal');
+          await (state.datasetRef ? loadDetail() : loadCatalog());
+        } catch (err) { document.getElementById('upload-error').textContent = err.message; }
+      };
+      document.getElementById('ds-upload-open').onclick = () => openModal('upload-modal');
+      document.getElementById('ds-refresh').onclick = () => state.datasetRef ? loadDetail() : loadCatalog();
+      document.querySelectorAll('[data-close]').forEach(btn => btn.onclick = () => closeModal(btn.dataset.close));
+      document.getElementById('ds-tabs').onclick = async (e) => { const b = e.target.closest('.ds-tab'); if (!b) return; state.tab = b.dataset.tab; await loadTabData(); };
+      parsePath();
+      if (state.datasetRef) loadDetail().catch(e => document.getElementById('ds-content').innerHTML = '<div class="ds-empty">' + esc(e.message) + '</div>');
+      else loadCatalog().catch(e => document.getElementById('ds-content').innerHTML = '<div class="ds-empty">' + esc(e.message) + '</div>');
+    })();
+  </script>
+</body>
+</html>

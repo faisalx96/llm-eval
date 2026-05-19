@@ -16,6 +16,7 @@ from qym_platform.api.runs import router as runs_router
 from qym_platform.api.ingest import router as ingest_router
 from qym_platform.api.analysis import router as analysis_router
 from qym_platform.api.product_evals import router as product_evals_router
+from qym_platform.api.datasets import router as datasets_router
 from qym_platform.docs_site import docs_available, docs_file_response
 
 
@@ -96,6 +97,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(projects_router)
     app.include_router(analysis_router)  # before runs_router (its {run_id:path} is a catch-all)
     app.include_router(product_evals_router)
+    app.include_router(datasets_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
 

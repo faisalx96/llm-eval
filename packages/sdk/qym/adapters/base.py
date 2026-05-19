@@ -256,7 +256,7 @@ class LangChainAdapter(TaskAdapter):
         return "async" if hasattr(self.task, "ainvoke") else "sync-threadpool"
     
     async def arun(self, input_data: Any, trace: Any, *, model_name: Optional[str] = None) -> Any:
-        """Run LangChain component with Langfuse callback."""
+        """Run LangChain component with tracing."""
         # Update trace with input
         trace.update(input=input_data)
         
@@ -349,7 +349,7 @@ def auto_detect_task(task: Any, client: Optional[Any]) -> TaskAdapter:
     
     Args:
         task: The task to evaluate
-        client: Langfuse client
+        client: optional tracing/client context
         
     Returns:
         Appropriate TaskAdapter instance

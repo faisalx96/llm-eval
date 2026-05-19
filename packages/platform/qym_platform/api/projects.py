@@ -214,7 +214,7 @@ class UpdateMembershipRequest(BaseModel):
 
 class CreateProjectKeyRequest(BaseModel):
     name: str = Field(default="default")
-    scopes: list[str] = Field(default_factory=lambda: ["runs:write", "runs:read"])
+    scopes: list[str] = Field(default_factory=lambda: ["runs:write", "runs:read", "datasets:read", "datasets:write"])
 
 
 @router.get("/v1/projects")

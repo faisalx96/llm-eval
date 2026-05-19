@@ -31,6 +31,7 @@
     const patterns = [
       /\/projects\/[^/]+\/runs\/[^/]+$/,
       /\/projects\/[^/]+\/reviews$/,
+      /\/projects\/[^/]+\/datasets(?:\/[^/]+)?$/,
       /\/projects\/[^/]+\/settings$/,
       /\/projects\/[^/]+\/overview$/,
       /\/projects\/[^/]+\/charts$/,
@@ -74,6 +75,8 @@
       if (rest === '' || rest === 'runs') page = 'runs';
       else if (rest === 'charts') page = 'charts';
       else if (rest === 'models') page = 'models';
+      else if (rest === 'datasets') page = 'datasets';
+      else if (rest.startsWith('datasets/')) { page = 'datasets'; subId = rest.slice(9); }
       else if (rest === 'overview') page = 'overview';
       else if (rest === 'reviews') page = 'reviews';
       else if (rest === 'settings') page = 'settings';
@@ -140,7 +143,7 @@
     if (relative === null) return false;
     if (relative === '') return true;
     return [
-      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|reviews|settings))?$/,
+      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|datasets(?:\/[^/]+)?|reviews|settings))?$/,
       /^projects\/[^/]+\/runs\/[^/]+$/,
       /^run\/[^/]+$/,
       /^reviews$/,
@@ -283,6 +286,7 @@
     charts: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
     runs: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
     models: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+    datasets: '<path d="M21 5c0 1.7-4 3-9 3S3 6.7 3 5s4-3 9-3 9 1.3 9 3Z"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/>',
     reviews: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     traces: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
     docs: '<path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>',
@@ -336,6 +340,7 @@
       buildNavItem('Dashboard', 'overview', 'dashboard', { href: projectSlug ? projectUrl(projectSlug, 'overview') : '#' }),
       buildNavItem('Charts', 'charts', 'charts', { href: projectSlug ? projectUrl(projectSlug, 'charts') : '#' }),
       buildNavItem('Runs', 'runs', 'runs', { href: projectSlug ? projectUrl(projectSlug) : '#' }),
+      buildNavItem('Datasets', 'datasets', 'datasets', { href: projectSlug ? projectUrl(projectSlug, 'datasets') : '#' }),
       buildNavItem('Models', 'models', 'models', { href: projectSlug ? projectUrl(projectSlug, 'models') : '#' }),
       buildNavItem('Reviews', 'reviews', 'reviews', { href: projectSlug ? projectUrl(projectSlug, 'reviews') : '#' }),
       buildNavItem('Project Settings', 'settings', 'settings', { href: projectSlug ? projectUrl(projectSlug, 'settings') : '#' }),
@@ -419,6 +424,7 @@
     runs: 'Runs',
     'run-detail': 'Run Detail',
     models: 'Models',
+    datasets: 'Datasets',
     reviews: 'Reviews',
     traces: 'Traces',
     settings: 'Project Settings',
@@ -1070,6 +1076,7 @@
       'charts': projectUrl(slug, 'charts'),
       'runs': projectUrl(slug),
       'models': projectUrl(slug, 'models'),
+      'datasets': projectUrl(slug, 'datasets'),
       'reviews': projectUrl(slug, 'reviews'),
       'traces': '#',
       'settings': projectUrl(slug, 'settings'),

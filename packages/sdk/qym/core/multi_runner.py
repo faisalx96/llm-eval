@@ -212,66 +212,55 @@ class MultiModelRunner:
         save_format: str = "csv",
         max_parallel_runs: Optional[int] = None,
     ) -> List[EvaluationResult]:
-        # 1. Pre-load unique datasets to avoid redundant downloads
-        from .dataset import LangfuseDataset
-        from langfuse import Langfuse
-        import os
+        # 1. Pre-load unique qym platform/local datasets to avoid redundant downloads.
+        from .dataset import resolve_dataset
 
-        # Identify unique dataset names that haven't been loaded yet
+        # Identify unique dataset specs that haven't been loaded yet.
         unique_dataset_names = set()
         for spec in self.specs:
             if isinstance(spec.dataset, str):
-                unique_dataset_names.add(spec.dataset)
+                unique_dataset_names.add(
+                    (
+                        spec.dataset,
+                        spec.config.dataset_version,
+                        spec.config.dataset_alias,
+                        spec.config.platform_url,
+                        spec.config.platform_api_key,
+                    )
+                )
 
-        dataset_cache: Dict[str, LangfuseDataset] = {}
+        dataset_cache: Dict[tuple, Any] = {}
 
         if unique_dataset_names:
-            # Initialize a temporary client for downloading
-            # We use the config from the first spec that has credentials, or env vars
-            # This is a best-effort to find credentials
-            first_config = self.specs[0].config
-            public_key = first_config.langfuse_public_key or os.getenv(
-                "LANGFUSE_PUBLIC_KEY"
+            self.console.print(
+                f"[dim]Pre-loading {len(unique_dataset_names)} unique datasets...[/dim]"
             )
-            secret_key = first_config.langfuse_secret_key or os.getenv(
-                "LANGFUSE_SECRET_KEY"
-            )
-            from ..utils.env import get_langfuse_host_env
-
-            host = first_config.langfuse_host or get_langfuse_host_env(
-                "https://cloud.langfuse.com"
-            )
-
-            # Use the timeout from the first config as a reasonable default
-            timeout = first_config.timeout
-
-            if public_key and secret_key:
+            for key in unique_dataset_names:
+                name, version, alias, platform_url, api_key = key
                 try:
-                    client = Langfuse(
-                        public_key=public_key,
-                        secret_key=secret_key,
-                        host=host,
-                        timeout=timeout,
+                    dataset_cache[key] = resolve_dataset(
+                        name,
+                        version=version,
+                        alias=alias,
+                        platform_url=platform_url,
+                        api_key=api_key,
                     )
-
-                    self.console.print(
-                        f"[dim]Pre-loading {len(unique_dataset_names)} unique datasets...[/dim]"
-                    )
-                    for name in unique_dataset_names:
-                        try:
-                            dataset_cache[name] = LangfuseDataset(client, name)
-                        except Exception as e:
-                            self.console.print(
-                                f"[yellow]Warning: Failed to pre-load dataset '{name}': {e}[/yellow]"
-                            )
                 except Exception as e:
                     self.console.print(
-                        f"[yellow]Warning: Failed to initialize Langfuse client for pre-loading: {e}[/yellow]"
+                        f"[yellow]Warning: Failed to pre-load dataset '{name}': {e}[/yellow]"
                     )
 
         for spec in self.specs:
-            if isinstance(spec.dataset, str) and spec.dataset in dataset_cache:
-                spec.dataset = dataset_cache[spec.dataset]
+            if isinstance(spec.dataset, str):
+                key = (
+                    spec.dataset,
+                    spec.config.dataset_version,
+                    spec.config.dataset_alias,
+                    spec.config.platform_url,
+                    spec.config.platform_api_key,
+                )
+                if key in dataset_cache:
+                    spec.dataset = dataset_cache[key]
 
         run_matrix = self._build_run_matrix()
         self._notify_observer(
@@ -284,9 +273,6 @@ class MultiModelRunner:
         dashboard_configs: List[Dict[str, Any]] = []
         for spec in self.specs:
             # Inject pre-loaded dataset if available
-            if isinstance(spec.dataset, str) and spec.dataset in dataset_cache:
-                spec.dataset = dataset_cache[spec.dataset]
-
             model_name = spec.config.model or spec.config.run_metadata.get("model")
             display_text = spec.display_name or spec.name
 

@@ -173,6 +173,10 @@ def _platform_static_models() -> Path:
     return _platform_static_dir() / "dashboard" / "models.html"
 
 
+def _platform_static_datasets() -> Path:
+    return _platform_static_dir() / "dashboard" / "datasets.html"
+
+
 def _project_path_prefix(request: Request, project_slug: str) -> str:
     path = request.url.path
     marker = f"/projects/{project_slug}"
@@ -698,6 +702,28 @@ def project_models(project_slug: str, request: Request, db: Session = Depends(ge
     idx = _platform_static_models()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Models UI not found")
+    return _dashboard_html_response(idx, request)
+
+
+@router.get("/projects/{project_slug}/datasets", response_model=None)
+def project_datasets(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
+    idx = _platform_static_datasets()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Datasets UI not found")
+    return _dashboard_html_response(idx, request)
+
+
+@router.get("/projects/{project_slug}/datasets/{dataset_ref:path}", response_model=None)
+def project_dataset_detail(project_slug: str, dataset_ref: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
+    idx = _platform_static_datasets()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Datasets UI not found")
     return _dashboard_html_response(idx, request)
 
 

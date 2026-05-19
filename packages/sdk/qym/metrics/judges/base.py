@@ -411,8 +411,8 @@ def create_pairwise_judge(
 
 
 def _fetch_langfuse_prompt(prompt_name: str) -> str:
-    """Fetch a prompt template from Langfuse prompt management."""
-    from langfuse import Langfuse
-    client = Langfuse()
-    prompt_obj = client.get_prompt(prompt_name)
-    return prompt_obj.prompt
+    """Langfuse prompt fetching has been removed from qym runtime dependencies."""
+    raise RuntimeError(
+        "Langfuse prompt fetching is no longer available in qym. "
+        f"Inline the prompt template or load '{prompt_name}' before creating the judge."
+    )

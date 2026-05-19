@@ -39,6 +39,10 @@ from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
 from qym_platform.db.models import (
     Project,
     Run,
+    Dataset,
+    DatasetAlias,
+    DatasetItem,
+    DatasetVersion,
     RunEvent,
     RunItem,
     RunItemScore,
@@ -673,6 +677,9 @@ class CreateRunRequest(BaseModel):
     dataset: str
     model: Optional[str] = None
     metrics: list[str] = Field(default_factory=list)
+    dataset_id: Optional[str] = None
+    dataset_version_id: Optional[str] = None
+    dataset_alias: Optional[str] = None
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     run_config: Dict[str, Any] = Field(default_factory=dict)
 
@@ -710,6 +717,25 @@ def create_run(
     require_api_key_scope(principal, "runs:write")
     if not principal.project_id:
         raise HTTPException(status_code=403, detail="API key is not bound to a project")
+    dataset_id = req.dataset_id
+    dataset_version_id = req.dataset_version_id
+    if not dataset_version_id and (dataset_id or req.dataset_alias):
+        dq = db.query(Dataset).filter(Dataset.project_id == principal.project_id, Dataset.deleted_at.is_(None))
+        dataset_obj = None
+        if dataset_id:
+            dataset_obj = dq.filter(Dataset.id == dataset_id).first()
+        else:
+            dataset_obj = dq.filter((Dataset.slug == req.dataset) | (Dataset.name == req.dataset)).first()
+        if dataset_obj:
+            alias_name = req.dataset_alias or "production"
+            alias = (
+                db.query(DatasetAlias)
+                .filter(DatasetAlias.dataset_id == dataset_obj.id, DatasetAlias.alias == alias_name)
+                .first()
+            )
+            if alias:
+                dataset_id = dataset_obj.id
+                dataset_version_id = alias.dataset_version_id
     run = Run(
         project_id=principal.project_id,
         external_run_id=req.external_run_id,
@@ -717,6 +743,8 @@ def create_run(
         owner_user_id=principal.user.id,
         task=req.task,
         dataset=req.dataset,
+        dataset_id=dataset_id,
+        dataset_version_id=dataset_version_id,
         model=req.model,
         metrics=req.metrics,
         run_metadata=req.run_metadata,
@@ -884,6 +912,10 @@ async def ingest_events(
             run.external_run_id = payload.external_run_id
             run.task = payload.task
             run.dataset = payload.dataset
+            if payload.dataset_id:
+                run.dataset_id = payload.dataset_id
+            if payload.dataset_version_id:
+                run.dataset_version_id = payload.dataset_version_id
             run.model = payload.model
             run.metrics = payload.metrics
             md = _sanitize_for_json(dict(payload.run_metadata or {}))
@@ -902,10 +934,23 @@ async def ingest_events(
         elif isinstance(payload, ItemStartedPayload):
             mark_run_running(run)
             item = _get_item(payload.item_id)
+            dataset_item_pk = payload.dataset_item_pk
+            if dataset_item_pk is None and run.dataset_version_id:
+                dataset_item = (
+                    db.query(DatasetItem)
+                    .filter(
+                        DatasetItem.dataset_version_id == run.dataset_version_id,
+                        DatasetItem.item_id == payload.item_id,
+                    )
+                    .first()
+                )
+                if dataset_item:
+                    dataset_item_pk = dataset_item.id
             if not item:
                 item = _remember_item(
                     RunItem(
                         run_id=run_id,
+                        dataset_item_pk=dataset_item_pk,
                         item_id=payload.item_id,
                         index=payload.index,
                         input=_sanitize_for_json(payload.input),
@@ -915,6 +960,7 @@ async def ingest_events(
                 )
                 db.add(item)
             else:
+                item.dataset_item_pk = dataset_item_pk
                 item.index = payload.index
                 item.input = _sanitize_for_json(payload.input)
                 item.expected = _sanitize_for_json(payload.expected)

@@ -28,7 +28,10 @@ run_app = typer.Typer(help="Manage evaluation runs.")
 def run_create(
     task_file: Optional[str] = typer.Option(None, "--task-file", help="Python file containing the task function"),
     task_function: Optional[str] = typer.Option(None, "--task-function", help="Name of the function to evaluate"),
-    dataset: Optional[str] = typer.Option(None, "--dataset", help="Langfuse dataset name"),
+    dataset: Optional[str] = typer.Option(None, "--dataset", help="qym platform dataset name or local dataset path"),
+    dataset_version: Optional[str] = typer.Option(None, "--dataset-version", help="qym platform dataset version"),
+    dataset_alias: Optional[str] = typer.Option(None, "--dataset-alias", help="qym platform dataset alias"),
+    dataset_file: Optional[str] = typer.Option(None, "--dataset-file", help="Path to a local CSV or JSONL dataset file"),
     dataset_csv: Optional[str] = typer.Option(None, "--dataset-csv", help="Path to a local CSV dataset file"),
     metrics: Optional[str] = typer.Option(None, "--metrics", help="Comma-separated metric names"),
     csv_input_col: str = typer.Option("input", "--csv-input-col", help="CSV column for input"),
@@ -55,7 +58,7 @@ def run_create(
     """Execute an LLM evaluation run."""
     from ..core.evaluator import Evaluator, _graceful_interrupt_signals
     from ..core.multi_runner import MultiModelRunner
-    from ..core.dataset import CsvDataset
+    from ..core.dataset import CsvDataset, JsonlDataset
     from ..core.checkpoint import load_checkpoint_state
     from ..utils.text import arabic_display
 
@@ -129,16 +132,17 @@ def run_create(
         missing_flags.append("--task-file")
     if not task_function:
         missing_flags.append("--task-function")
-    if not dataset and not dataset_csv:
-        missing_flags.append("--dataset or --dataset-csv")
+    if not dataset and not dataset_csv and not dataset_file:
+        missing_flags.append("--dataset or --dataset-file")
     if not metrics:
         missing_flags.append("--metrics")
     if missing_flags:
         output_error("usage_error", f"Missing required arguments: {', '.join(missing_flags)}")
         raise typer.Exit(code=ExitCode.USAGE_ERROR)
 
-    if bool(dataset) == bool(dataset_csv):
-        output_error("usage_error", "Provide exactly one of --dataset (Langfuse) or --dataset-csv (CSV).")
+    local_dataset_file = dataset_file or dataset_csv
+    if bool(dataset) == bool(local_dataset_file):
+        output_error("usage_error", "Provide exactly one of --dataset or --dataset-file/--dataset-csv.")
         raise typer.Exit(code=ExitCode.USAGE_ERROR)
 
     try:
@@ -187,23 +191,30 @@ def run_create(
             pkey = platform_api_key or os.getenv("QYM_API_KEY")
             if purl and pkey:
                 config["live_mode"] = "auto"
+        if dataset_version:
+            config["dataset_version"] = dataset_version
+        if dataset_alias:
+            config["dataset_alias"] = dataset_alias
 
         # Build dataset
         dataset_obj: Any = dataset
-        if dataset_csv:
+        if local_dataset_file:
             md_cols: List[str] = []
             if csv_metadata_cols:
                 md_cols = [c.strip() for c in csv_metadata_cols.split(",") if c.strip()]
             expected_col = csv_expected_col if csv_expected_col is not None else "expected_output"
             if expected_col.strip() == "":
                 expected_col = None
-            dataset_obj = CsvDataset(
-                dataset_csv,
-                input_col=csv_input_col,
-                expected_col=expected_col,
-                id_col=csv_id_col if csv_id_col else None,
-                metadata_cols=md_cols,
-            )
+            if str(local_dataset_file).lower().endswith(".jsonl"):
+                dataset_obj = JsonlDataset(local_dataset_file)
+            else:
+                dataset_obj = CsvDataset(
+                    local_dataset_file,
+                    input_col=csv_input_col,
+                    expected_col=expected_col,
+                    id_col=csv_id_col if csv_id_col else None,
+                    metadata_cols=md_cols,
+                )
 
         dataset_label = getattr(dataset_obj, "name", None) or str(dataset_obj)
         status(f"Setting up evaluation for dataset '{dataset_label}'")
