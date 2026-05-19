@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "0020_native_datasets"
@@ -17,11 +18,30 @@ branch_labels = None
 depends_on = None
 
 
-dataset_status = sa.Enum("draft", "published", "archived", name="datasetversionstatus")
+DATASET_STATUS_VALUES = ("draft", "published", "archived")
+
+
+def _dataset_status_type(bind: sa.engine.Connection) -> sa.Enum:
+    if bind.dialect.name != "postgresql":
+        return sa.Enum(*DATASET_STATUS_VALUES, name="datasetversionstatus")
+
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            CREATE TYPE datasetversionstatus AS ENUM ('draft', 'published', 'archived');
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END
+        $$;
+        """
+    )
+    return postgresql.ENUM(*DATASET_STATUS_VALUES, name="datasetversionstatus", create_type=False)
 
 
 def upgrade() -> None:
-    dataset_status.create(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    dataset_status = _dataset_status_type(bind)
 
     op.create_table(
         "datasets",
@@ -184,4 +204,8 @@ def downgrade() -> None:
     op.drop_table("dataset_aliases")
     op.drop_table("dataset_versions")
     op.drop_table("datasets")
-    dataset_status.drop(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS datasetversionstatus")
+    else:
+        sa.Enum(*DATASET_STATUS_VALUES, name="datasetversionstatus").drop(bind, checkfirst=True)
