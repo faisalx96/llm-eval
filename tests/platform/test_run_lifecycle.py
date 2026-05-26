@@ -555,18 +555,15 @@ def test_recent_runs_endpoint_returns_global_and_per_project_admin_views(client,
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total_count"] == 3
+    assert payload["total_count"] == 2
     assert payload["global_limit"] == 2
     assert payload["global_offset"] == 0
-    assert [run["run_id"] for run in payload["runs"]] == ["run-recent-b-new", "run-recent-a-new"]
-    assert payload["runs"][0]["project"]["slug"] == "recent-b"
-    assert payload["runs"][0]["owner"]["display_name"] == "Owner B"
-    assert payload["runs"][0]["progress_completed"] == 1
-    assert payload["runs"][0]["progress_total"] == 1
+    assert [run["run_id"] for run in payload["runs"]] == ["run-recent-a-new", "run-recent-a-old"]
+    assert {run["run_id"] for run in payload["runs"]}.isdisjoint({"run-recent-b-new"})
 
     project_runs = {section["project"]["slug"]: section["runs"] for section in payload["projects"]}
     assert [run["run_id"] for run in project_runs["recent-a"]] == ["run-recent-a-new"]
-    assert [run["run_id"] for run in project_runs["recent-b"]] == ["run-recent-b-new"]
+    assert "recent-b" not in project_runs
 
     page_response = client.get(
         "/api/runs/recent?all_projects=true&include_projects=false&global_limit=1&global_offset=1",
@@ -574,11 +571,20 @@ def test_recent_runs_endpoint_returns_global_and_per_project_admin_views(client,
     )
     assert page_response.status_code == 200
     page_payload = page_response.json()
-    assert page_payload["total_count"] == 3
+    assert page_payload["total_count"] == 2
     assert page_payload["global_limit"] == 1
     assert page_payload["global_offset"] == 1
-    assert [run["run_id"] for run in page_payload["runs"]] == ["run-recent-a-new"]
+    assert [run["run_id"] for run in page_payload["runs"]] == ["run-recent-a-old"]
     assert page_payload["projects"] == []
+
+    project_response = client.get(
+        "/api/runs?project_slug=recent-b&exclude_live=true",
+        headers=_ui_headers("owner-recent-b@example.com"),
+    )
+    assert project_response.status_code == 200
+    project_payload = project_response.json()
+    assert project_payload["total_count"] == 0
+    assert project_payload["tasks"] == {}
 
 
 def test_heartbeat_reopens_run_stopped_by_lease_timeout(client, session_factory) -> None:

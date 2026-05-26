@@ -642,21 +642,6 @@ def create_version(
     return {"version": _version_payload(db, version)}
 
 
-@router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}")
-def get_version(
-    dataset_ref: str,
-    version_ref: str,
-    project_slug: Optional[str] = Query(default=None),
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(dataset_principal),
-) -> Dict[str, Any]:
-    _require_scope(principal, "datasets:read")
-    project = _project_for_request(db, principal, project_slug)
-    dataset = _get_dataset(db, project, dataset_ref)
-    version = _resolve_version(db, dataset, version_ref)
-    return {"dataset": _dataset_payload(db, dataset), "version": _version_payload(db, version)}
-
-
 @router.post("/v1/datasets/{dataset_ref}/versions/{version_ref}:publish")
 def publish_version(
     dataset_ref: str,
@@ -809,6 +794,62 @@ def list_items(
         "total": total,
         "next_offset": offset + limit if offset + limit < total else None,
     }
+
+
+@router.post("/v1/datasets/{dataset_ref}/versions/{version_ref}/items")
+def create_item(
+    dataset_ref: str,
+    version_ref: str,
+    req: UpsertItemRequest,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:write")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    _require_draft(version)
+    input_value = _json_safe(req.input)
+    expected = _json_safe(req.expected_output)
+    metadata = _json_safe(req.metadata or {})
+    max_index = (
+        db.query(func.max(DatasetItem.index))
+        .filter(DatasetItem.dataset_version_id == version.id)
+        .scalar()
+    )
+    next_index = int(max_index) + 1 if max_index is not None else 0
+    item_id = (req.item_id or "").strip() or f"item-{next_index + 1}"
+    item = DatasetItem(
+        dataset_version_id=version.id,
+        item_id=item_id,
+        index=next_index,
+        input=input_value,
+        expected_output=expected,
+        item_metadata=metadata,
+        labels=_labels(req.labels),
+        fingerprint=build_identity_fingerprint(input_value=input_value, expected_value=expected, metadata=metadata),
+        created_at=utc_now_naive(),
+        updated_at=utc_now_naive(),
+    )
+    db.add(item)
+    version.item_count = int(version.item_count or 0) + 1
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Dataset item ID already exists in this version") from exc
+    _record_item_revision(
+        db,
+        version,
+        item,
+        change_type="created",
+        before={},
+        after=_item_payload(item),
+        actor_user_id=principal.user.id,
+    )
+    db.commit()
+    return {"item": _item_payload(item)}
 
 
 @router.patch("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}")
@@ -1088,6 +1129,21 @@ def download_version(
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}")
+def get_version(
+    dataset_ref: str,
+    version_ref: str,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:read")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    return {"dataset": _dataset_payload(db, dataset), "version": _version_payload(db, version)}
 
 
 @router.get("/api/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/revisions")

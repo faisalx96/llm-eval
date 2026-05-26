@@ -1215,11 +1215,11 @@
 
     .comparison-overview-heading {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
+      align-items: flex-start;
+      justify-content: flex-start;
+      flex-direction: column;
+      gap: var(--space-sm);
       margin-bottom: var(--space-md);
-      flex-wrap: wrap;
     }
 
     .comparison-overview-heading .section-title {
@@ -1227,7 +1227,7 @@
     }
 
     .comparison-overview-heading .metric-tabs-row {
-      justify-content: flex-end;
+      justify-content: flex-start;
       margin-bottom: 0;
     }
 
@@ -1997,7 +1997,7 @@
       display: flex;
       flex-wrap: wrap;
       align-items: flex-end;
-      gap: var(--space-sm);
+      gap: 10px;
       padding: var(--space-sm) var(--space-md);
     }
 
@@ -2005,7 +2005,9 @@
       display: flex;
       flex-direction: column;
       gap: 3px;
-      min-width: 0;
+      flex: 1 1 150px;
+      min-width: 120px;
+      max-width: 260px;
     }
 
     .fp-label {
@@ -2020,8 +2022,11 @@
     }
 
     .fp-group .filter-select {
-      min-width: unset;
-      max-width: 180px;
+      width: 100%;
+      min-width: 0;
+      max-width: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     #run-winner-filter {
@@ -2030,9 +2035,21 @@
     }
 
     .fp-group.fp-winner-group {
-      flex: 0 1 240px;
-      min-width: 180px;
-      max-width: 260px;
+      flex: 1.4 1 220px;
+      min-width: 200px;
+      max-width: 320px;
+    }
+
+    .fp-pass-rate-group {
+      flex: 0 1 150px;
+      min-width: 130px;
+      max-width: 180px;
+    }
+
+    .fp-filter-row > .fp-group:first-child {
+      flex: 1.2 1 180px;
+      min-width: 170px;
+      max-width: 300px;
     }
 
     .fp-pass-rate-row {
@@ -2069,7 +2086,18 @@
     }
 
     .fp-cat-group {
+      flex: 1 1 170px;
+      min-width: 150px;
+      max-width: 260px;
+    }
+
+    .fp-cat-group .multi-select-btn {
+      width: 100%;
       min-width: 0;
+      max-width: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .fp-cat-group .multi-select-btn.has-selection {
@@ -2111,6 +2139,8 @@
     .fp-gear-wrapper {
       display: flex;
       align-items: flex-end;
+      flex: 0 0 auto;
+      max-width: 140px;
     }
 
     /* Gear button for metadata fields — overrides .metadata-fields-btn */
@@ -2126,6 +2156,10 @@
       cursor: pointer;
       transition: all 0.15s;
       line-height: 1;
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .fp-gear-btn.metadata-fields-btn:hover {
@@ -2143,7 +2177,8 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      flex-shrink: 0;
+      flex: 0 0 auto;
+      min-width: max-content;
       margin-left: auto;
     }
 
@@ -2174,51 +2209,19 @@
       }
     }
 
-    @media (min-width: 1500px) {
-      .fp-filter-row {
-        display: grid;
-        grid-template-columns: 210px 170px 240px 190px 120px 180px 140px auto auto auto;
-        align-items: end;
-        column-gap: var(--space-sm);
-        row-gap: var(--space-sm);
-      }
+    @media (max-width: 760px) {
       .fp-group,
-      .fp-gear-wrapper,
-      .fp-actions {
-        min-width: 0;
+      .fp-group.fp-winner-group,
+      .fp-pass-rate-group,
+      .fp-cat-group {
+        flex-basis: 100%;
+        max-width: none;
       }
-      .fp-group .filter-select,
-      .fp-group .multi-select-btn {
+
+      .fp-actions {
         width: 100%;
-        max-width: none;
-      }
-      .fp-group.fp-winner-group {
-        flex: initial;
-        min-width: 0;
-        max-width: none;
-      }
-      .fp-pass-rate-group {
-        min-width: 0;
-      }
-      .fp-pass-rate-row {
-        min-width: 0;
-      }
-      .fp-pass-rate-row .filter-select {
-        width: 72px;
-        flex: 0 0 72px;
-      }
-      .fp-pass-rate-input {
-        width: 48px;
-        flex: 0 0 48px;
-      }
-      .fp-pass-rate-suffix {
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .fp-actions {
+        justify-content: flex-start;
         margin-left: 0;
-        justify-self: end;
-        align-self: end;
       }
     }
 
@@ -2598,8 +2601,11 @@
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
-      max-height: 150px;
+      max-height: 300px;
       overflow-y: auto;
+    }
+    .item-run-output .output-text:has(.formatted-table-grid) {
+      max-height: 640px;
     }
     .compare-run-caption {
       display: flex;
@@ -6740,6 +6746,7 @@
         };
 
         const itemIdList = Array.isArray(itemIdListOverride) ? itemIdListOverride : (state.compareItemIds || []);
+        const itemIdSet = new Set(itemIdList);
 
         // Create a map from item_id to array index for itemWinners tracking
         state.itemIdToIndex = {};
@@ -6765,6 +6772,8 @@
           let timeoutErrors = 0, runtimeErrors = 0, otherErrors = 0;
 
           for (const row of rows) {
+            const itemId = getRowCompareId(row);
+            if (!itemIdSet.has(itemId)) continue;
             // Score for the selected metric (use centralized error handling)
             if (metricIdx >= 0) {
               const { score } = window.QymMetrics.getRowScore(row, metricIdx);
@@ -6912,6 +6921,8 @@
           })();
           if (mIdx < 0) continue;
           for (const row of rows) {
+            const itemId = getRowCompareId(row);
+            if (!itemIdSet.has(itemId)) continue;
             const { score } = window.QymMetrics.getRowScore(row, mIdx);
             if (score !== null) {
               if (score < allScoresMin) allScoresMin = score;
@@ -6926,8 +6937,8 @@
         stats.allScoresTotal = allScoresTotal;
         stats.allScoresCount = allScoresCount;
 
-        stats.overallAvgScore = validScoresAll.length > 0
-          ? validScoresAll.reduce((a, b) => a + b, 0) / validScoresAll.length
+        stats.overallAvgScore = allScoresCount > 0
+          ? allScoresTotal / allScoresCount
           : 0;
         stats.overallAvgLatency = validLatenciesAll.length > 0
           ? validLatenciesAll.reduce((a, b) => a + b, 0) / validLatenciesAll.length
@@ -7451,7 +7462,7 @@
         return 'score-1';
       }
 
-      function renderComparisonStats() {
+      function renderComparisonStats(filteredItemsOverride = null) {
         const container = el('stats-grid');
         if (!container || !state.comparisonStats || !state.selectedOverviewMetric) return;
         if (!canRenderItemComparison()) {
@@ -7459,7 +7470,15 @@
           return;
         }
 
-        const stats = state.comparisonStats[state.selectedOverviewMetric];
+        const filteredItems = Array.isArray(filteredItemsOverride) ? filteredItemsOverride : getFilteredItems();
+        const filteredItemIds = filteredItems.map(item => item.itemId);
+        if (filteredItemIds.length === 0) {
+          container.innerHTML = '<div class="compare-empty" style="display:flex;grid-column:1/-1;">No items match the current filters.</div>';
+          return;
+        }
+        const previousItemIdToIndex = state.itemIdToIndex;
+        const stats = calculateComparisonStatsForMetric(state.selectedOverviewMetric, filteredItemIds);
+        state.itemIdToIndex = previousItemIdToIndex;
         if (!stats) return;
         const runNames = state.runs.map((r, i) => r.run?.run_name || `Run ${i + 1}`);
         const K = state.runs.length;
@@ -9279,6 +9298,7 @@
         if (warningEl) warningEl.style.display = 'none';
         if (filterPanel) filterPanel.style.display = '';
         const items = getFilteredItems();
+        renderComparisonStats(items);
 
         // Update filter count & clear button
         filterCountEl.innerHTML = `Showing <span class="count-num">${items.length}</span> items`;
@@ -9502,7 +9522,10 @@
               const h = el.scrollHeight || el.offsetHeight || 0;
               if (h > max) max = h;
             });
-            outputs.forEach(el => { el.style.minHeight = `${max}px`; });
+            outputs.forEach(el => {
+              const cap = el.querySelector('.formatted-table-grid') ? 640 : 300;
+              el.style.minHeight = `${Math.min(max, cap)}px`;
+            });
           });
         } catch {}
       }
@@ -11241,6 +11264,7 @@
       }
 
       // ── AI Evaluator Playground (compare view) ──────────────
+      if (!IS_COMPARE_EXPORT && typeof QymPlayground !== 'undefined') {
       QymPlayground.init({
           apiUrl: apiUrl,
           getRunId: function () {
@@ -11302,6 +11326,36 @@
           showToast: showToast,
           escapeHtml: escapeHtml,
       });
+      }
+
+      function escapeInlineScriptContent(content) {
+        return String(content || '').replace(/<\/script/gi, '<\\/script');
+      }
+
+      async function fetchStaticTextForExport(assetPath) {
+        const assetUrl = new URL(assetPath, window.location.href);
+        const resp = await fetch(assetUrl.href, { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error('Failed to load export asset: ' + assetPath);
+        return await resp.text();
+      }
+
+      async function inlineCompareExportAssets(html) {
+        const stylesheetTags = Array.from(html.matchAll(/<link\s+rel="stylesheet"\s+href="((?:\.\/|\/)static\/(?:dashboard|shell)\.css(?:\?[^"]*)?)"\s*>/g));
+        for (const match of stylesheetTags) {
+          const css = await fetchStaticTextForExport(match[1]);
+          html = html.replace(match[0], () => '<style>\n' + css + '\n</style>');
+        }
+
+        const scriptTags = Array.from(html.matchAll(/<script\s+src="((?:\.\/|\/)static\/(?:metrics|trace_viewer)\.js(?:\?[^"]*)?)"><\/script>/g));
+        for (const match of scriptTags) {
+          const js = await fetchStaticTextForExport(match[1]);
+          html = html.replace(match[0], () => '<script>\n' + escapeInlineScriptContent(js) + '\n</' + 'script>');
+        }
+
+        html = html.replace(/\s*<script\s+src="(?:\.\/|\/)static\/(?:auth|shell|playground)\.js(?:\?[^"]*)?"><\/script>\s*/g, '\n');
+        html = html.replace(/\s*<link\s+rel="icon"\s+type="image\/png"\s+href="(?:\.\/|\/)static\/qym_icon\.png(?:\?[^"]*)?">\s*/g, '\n');
+        return html;
+      }
 
       // ── Share button (export comparison as self-contained HTML) ──
       var shareBtn = el('export-share-btn');
@@ -11323,6 +11377,7 @@
             // Fetch the current page HTML
             const resp = await fetch(window.location.href);
             let html = await resp.text();
+            html = await inlineCompareExportAssets(html);
 
             // Inject export data and mode flag before closing </head>
             const exportScript = '<script>window.__QYM_COMPARE_EXPORT__ = true; window.__QYM_COMPARE_DATA__ = ' +

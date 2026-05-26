@@ -4539,8 +4539,8 @@
       }
 
 
-      function computeScoreDistribution(metric) {
-        const rows = state.snapshot.rows || [];
+      function computeScoreDistribution(metric, rowsOverride = null) {
+        const rows = Array.isArray(rowsOverride) ? rowsOverride : (state.snapshot.rows || []);
         const mIdx = state.allMetrics.indexOf(metric);
         if (mIdx < 0) return [];
         const buckets = new Array(11).fill(0); // 0%, 10%, 20%, ..., 100%
@@ -4632,14 +4632,15 @@
         return fmt(minMs) + '-' + fmt(maxMs);
       }
 
-      function renderOverview() {
+      function renderOverview(filteredItemsOverride = null) {
         const section = el('overview-section');
         if (!section || !state.snapshot) { if (section) section.innerHTML = ''; return; }
-        const rows = state.snapshot.rows || [];
-        const stats = state.snapshot.stats || {};
-        const total = stats.total || rows.length;
-        const completed = stats.completed || 0;
-        const failed = stats.failed || 0;
+        const rows = Array.isArray(filteredItemsOverride)
+          ? filteredItemsOverride.map(item => item.row).filter(Boolean)
+          : (state.snapshot.rows || []);
+        const total = rows.length;
+        const completed = rows.filter(r => r.status === 'completed' || r.output != null || r.output_full != null || r.error).length;
+        const failed = rows.filter(r => window.QymMetrics.isErrorRow(r)).length;
         const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
         const summaryItem = (kind, label, valueHtml, iconHtml) =>
           '<div class="overview-summary-pill ' + kind + '">' +
@@ -4746,7 +4747,7 @@
 
           } else {
             // ── Score (0-1 continuous): histogram ──
-            const buckets = computeScoreDistribution(metric);
+            const buckets = computeScoreDistribution(metric, rows);
             const totalWithScores = buckets.reduce((a,b) => a+b, 0);
             if (totalWithScores === 0) continue;
 
@@ -5974,6 +5975,7 @@
         const mIdx = metric ? state.allMetrics.indexOf(metric) : -1;
         const isBoolean = metric ? state.metricIsBoolean[metric] : false;
         const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
+        renderOverview(items);
 
         filterCountEl.innerHTML = 'Showing <span class="count-num">' + items.length + '</span> items';
         updateClearButton();

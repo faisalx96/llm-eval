@@ -113,6 +113,20 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
     assert draft.status_code == 200
     assert draft.json()["version"]["status"] == "draft"
 
+    created_item = client.post(
+        "/v1/datasets/qa/versions/v2/items",
+        headers=_bearer(),
+        json={
+            "item_id": "manual-case",
+            "input": {"question": "manual"},
+            "expected_output": {"answer": "case"},
+            "metadata": {"topic": "manual"},
+            "labels": ["manual"],
+        },
+    )
+    assert created_item.status_code == 200
+    assert created_item.json()["item"]["item_id"] == "manual-case"
+
     edited = client.patch(
         f"/v1/datasets/qa/versions/v2/items/{item['item_id']}",
         headers=_bearer(),
@@ -134,6 +148,7 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
     compare = client.get("/v1/datasets/qa/versions/v2:compare?base=v1", headers=_bearer())
     assert compare.status_code == 200
     assert compare.json()["summary"]["changed"] == 1
+    assert compare.json()["summary"]["added"] == 1
 
     with SessionLocal() as session:
         version_id = published.json()["version"]["id"]

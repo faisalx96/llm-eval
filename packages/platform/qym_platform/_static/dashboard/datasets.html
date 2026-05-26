@@ -50,8 +50,29 @@
     .ds-form { display:grid; gap:10px; padding:14px; }
     .ds-field { display:grid; gap:5px; }
     .ds-field label { color:var(--text-muted); font-size:12px; font-weight:650; }
+    .ds-mode-tabs { display:flex; gap:6px; padding:12px 14px 0; }
+    .ds-mode-btn { flex:1; border:1px solid var(--border-default); background:var(--bg-elevated); color:var(--text-secondary); border-radius:6px; padding:9px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+    .ds-mode-btn.active { border-color:rgba(0,212,170,.45); background:rgba(0,212,170,.1); color:var(--accent-primary); }
+    .ds-help { color:var(--text-muted); font-size:12px; line-height:1.45; }
     .ds-error { color:var(--error); font-size:12px; min-height:16px; }
     .ds-empty { padding:26px; color:var(--text-muted); text-align:center; font-size:13px; }
+    .ds-file-picker { display:flex; align-items:center; gap:10px; border:1px solid var(--border-default); background:var(--bg-elevated); border-radius:8px; padding:10px; min-width:0; }
+    .ds-file-picker input[type="file"] { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+    .ds-file-name { color:var(--text-muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .ds-mapping { display:grid; grid-template-columns:260px 1fr; gap:14px; padding:14px; border-top:1px solid var(--border-subtle); }
+    .ds-column-bank, .ds-map-fields { display:grid; gap:8px; align-content:start; min-width:0; }
+    .ds-column-list { display:grid; gap:6px; max-height:260px; overflow:auto; padding-right:2px; }
+    .ds-column-chip { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; min-width:0; border:1px solid var(--border-default); background:var(--bg-elevated); border-radius:6px; padding:7px 9px; color:var(--text-secondary); font-size:12px; cursor:grab; }
+    .ds-column-chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ds-column-chip:hover { color:var(--text-primary); border-color:var(--border-strong); background:var(--bg-hover); }
+    .ds-column-chip.dragging { opacity:.45; }
+    .ds-map-field { border:1px dashed var(--border-default); background:var(--bg-elevated); border-radius:8px; padding:10px; min-height:62px; display:grid; gap:6px; }
+    .ds-map-field.over { border-color:var(--accent-primary); background:rgba(0,212,170,.07); }
+    .ds-map-label { display:flex; align-items:center; justify-content:space-between; color:var(--text-muted); font-size:12px; font-weight:700; }
+    .ds-map-value { display:flex; flex-wrap:wrap; gap:6px; min-height:24px; }
+    .ds-map-empty { color:var(--text-dim); font-size:12px; }
+    .ds-preview { max-height:220px; overflow:auto; border:1px solid var(--border-subtle); border-radius:8px; }
+    .ds-preview .ds-table th, .ds-preview .ds-table td { padding:7px 9px; font-size:12px; }
     @media (max-width: 900px) { .ds-split { grid-template-columns:1fr; } .datasets-toolbar { align-items:flex-start; flex-direction:column; } }
   </style>
 </head>
@@ -64,8 +85,7 @@
       </div>
       <div class="datasets-actions" id="ds-actions">
         <input class="ds-input" id="ds-search" placeholder="Search datasets" style="display:none;">
-        <button class="ds-btn" id="ds-refresh">Refresh</button>
-        <button class="ds-btn primary" id="ds-upload-open">Upload</button>
+        <button class="ds-btn primary" id="ds-new-open">New Dataset</button>
       </div>
     </div>
     <div class="ds-tabs" id="ds-tabs" style="display:none;">
@@ -79,22 +99,43 @@
     </div>
   </main>
 
-  <div class="ds-modal" id="upload-modal">
+  <div class="ds-modal" id="dataset-modal">
     <div class="ds-modal-card">
-      <div class="ds-panel-header"><div class="ds-panel-title">Upload Dataset</div><button class="ds-btn" data-close="upload-modal">Close</button></div>
-      <form class="ds-form" id="upload-form">
+      <div class="ds-panel-header"><div class="ds-panel-title">New Dataset</div><button class="ds-btn" data-close="dataset-modal">Close</button></div>
+      <div class="ds-mode-tabs">
+        <button class="ds-mode-btn active" type="button" data-new-mode="blank">Blank draft</button>
+        <button class="ds-mode-btn" type="button" data-new-mode="upload">Upload file</button>
+      </div>
+      <form class="ds-form" id="create-form">
+        <div class="ds-field"><label>Name</label><input class="ds-input" name="name" placeholder="Customer Support Regression" required></div>
+        <div class="ds-field"><label>Description</label><textarea class="ds-textarea" name="description" style="min-height:72px;font-family:var(--font-sans);"></textarea></div>
+        <label class="ds-subtle"><input type="checkbox" name="create_draft" checked> Create an empty v1 draft so I can add items now</label>
+        <div class="ds-error" id="create-error"></div>
+        <div class="datasets-actions"><button class="ds-btn primary" type="submit">Create</button></div>
+      </form>
+
+      <form class="ds-form" id="upload-form" style="display:none;">
         <div class="ds-field"><label>Name</label><input class="ds-input" name="name" required></div>
-        <div class="ds-field"><label>Version</label><input class="ds-input" name="version" value="v1" required></div>
-        <div class="ds-field"><label>Labels</label><input class="ds-input" name="labels" placeholder="regression,arabic"></div>
-        <div class="ds-field"><label>File</label><input class="ds-input" type="file" name="file" accept=".csv,.jsonl" required></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-          <div class="ds-field"><label>Input column</label><input class="ds-input" name="input_col" value="input"></div>
-          <div class="ds-field"><label>Expected column</label><input class="ds-input" name="expected_col" value="expected_output"></div>
-          <div class="ds-field"><label>ID column</label><input class="ds-input" name="id_col"></div>
+        <input type="hidden" name="version" value="v1">
+        <div class="ds-field">
+          <label>File</label>
+          <div class="ds-file-picker">
+            <button class="ds-btn" type="button" id="upload-file-button">Select CSV/JSONL</button>
+            <span class="ds-file-name" id="upload-file-name">No file selected</span>
+            <input type="file" name="file" id="upload-file-input" accept=".csv,.jsonl" required>
+          </div>
         </div>
-        <div class="ds-field"><label>Metadata columns</label><input class="ds-input" name="metadata_cols"></div>
-        <label class="ds-subtle"><input type="checkbox" name="publish"> Publish immediately</label>
-        <label class="ds-subtle"><input type="checkbox" name="production"> Set production after publish</label>
+        <div class="ds-help" id="upload-map-help">Choose a CSV file to map columns into qym fields. JSONL uses input, expected_output, metadata, and item_id keys directly.</div>
+        <div class="ds-mapping" id="upload-mapping" style="display:none;">
+          <div class="ds-column-bank">
+            <div class="ds-panel-title">Columns</div>
+            <div id="upload-columns"></div>
+          </div>
+          <div class="ds-map-fields" id="upload-map-fields"></div>
+        </div>
+        <div class="ds-preview" id="upload-preview" style="display:none;"></div>
+        <input type="hidden" name="publish" value="true">
+        <input type="hidden" name="set_alias" value="production">
         <div class="ds-error" id="upload-error"></div>
         <div class="datasets-actions"><button class="ds-btn primary" type="submit">Upload</button></div>
       </form>
@@ -105,13 +146,12 @@
     <div class="ds-modal-card">
       <div class="ds-panel-header"><div class="ds-panel-title" id="item-modal-title">Item</div><button class="ds-btn" data-close="item-modal">Close</button></div>
       <div class="ds-form">
-        <div class="ds-field"><label>Item ID</label><input class="ds-input" id="item-id"></div>
-        <div class="ds-field"><label>Input JSON</label><textarea class="ds-textarea" id="item-input"></textarea></div>
-        <div class="ds-field"><label>Expected JSON</label><textarea class="ds-textarea" id="item-expected"></textarea></div>
-        <div class="ds-field"><label>Metadata JSON</label><textarea class="ds-textarea" id="item-metadata"></textarea></div>
-        <div class="ds-field"><label>Labels</label><input class="ds-input" id="item-labels"></div>
+        <div class="ds-field"><label>Input</label><textarea class="ds-textarea" id="item-input" placeholder="Plain text or JSON object/array"></textarea></div>
+        <div class="ds-field"><label>Expected output</label><textarea class="ds-textarea" id="item-expected" placeholder="Plain text, JSON, or leave blank"></textarea></div>
+        <div class="ds-field"><label>Metadata</label><textarea class="ds-textarea" id="item-metadata" placeholder='Optional JSON object, for example {"topic":"billing"}'></textarea></div>
         <div class="ds-error" id="item-error"></div>
         <div class="datasets-actions">
+          <button class="ds-btn danger" id="item-delete">Delete</button>
           <button class="ds-btn primary" id="item-save">Save</button>
         </div>
         <div class="ds-panel">
@@ -125,7 +165,22 @@
   <script>
     (() => {
       'use strict';
-      const state = { projectSlug:'', datasetRef:'', datasets:[], dataset:null, versions:[], version:null, items:[], tab:'items', selectedItem:null };
+      const state = {
+        projectSlug:'',
+        datasetRef:'',
+        datasets:[],
+        dataset:null,
+        versions:[],
+        version:null,
+        items:[],
+        itemsTotal:0,
+        itemsLimit:50,
+        itemsOffset:0,
+        itemsNextOffset:null,
+        tab:'items',
+        selectedItem:null,
+        uploadMapping:{ columns:[], rows:[], input_col:'input', expected_col:'expected_output', metadata_cols:[] },
+      };
       function rootPath() {
         const m = window.location.pathname.match(/^(.*?\/)projects\//);
         return m ? m[1] : '/';
@@ -148,10 +203,183 @@
       function projectUrl(suffix) { return api('projects/' + encodeURIComponent(state.projectSlug) + (suffix || '')); }
       function openModal(id) { document.getElementById(id).classList.add('open'); }
       function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+      function resetUploadMapping() {
+        state.uploadMapping = { columns:[], rows:[], input_col:'input', expected_col:'expected_output', metadata_cols:[] };
+        document.getElementById('upload-mapping').style.display = 'none';
+        document.getElementById('upload-preview').style.display = 'none';
+        document.getElementById('upload-map-help').textContent = 'Choose a CSV file to map columns into qym fields. JSONL uses input, expected_output, metadata, and item_id keys directly.';
+      }
+      function setNewDatasetMode(mode) {
+        const isUpload = mode === 'upload';
+        document.getElementById('create-form').style.display = isUpload ? 'none' : '';
+        document.getElementById('upload-form').style.display = isUpload ? '' : 'none';
+        document.querySelectorAll('[data-new-mode]').forEach(btn => btn.classList.toggle('active', btn.dataset.newMode === mode));
+      }
+      function openNewDatasetModal(mode) {
+        document.getElementById('create-form').reset();
+        document.getElementById('upload-form').reset();
+        document.getElementById('upload-file-name').textContent = 'No file selected';
+        document.getElementById('create-error').textContent = '';
+        document.getElementById('upload-error').textContent = '';
+        resetUploadMapping();
+        setNewDatasetMode(mode || 'blank');
+        openModal('dataset-modal');
+      }
+      async function platformConfirm(options) {
+        if (window.QymShell && window.QymShell.openConfirmDialog) {
+          const result = await window.QymShell.openConfirmDialog(options);
+          return !!(result && result.confirmed);
+        }
+        return false;
+      }
+      function updateBreadcrumbs() {
+        if (!window.QymShell || !window.QymShell.setBreadcrumbs) return;
+        const project = window.QymShell.getProject ? window.QymShell.getProject() : null;
+        const crumbs = [];
+        if (project) crumbs.push({ label: project.name, projectSwitcher: true });
+        if (state.dataset) {
+          crumbs.push({ label: 'Datasets', href: projectUrl('/datasets') });
+          crumbs.push({ label: state.dataset.name, current: true });
+        } else {
+          crumbs.push({ label: 'Datasets', current: true });
+        }
+        window.QymShell.setBreadcrumbs(crumbs);
+      }
       function versionBadge(v) {
-        if (!v) return '<span class="ds-chip">none</span>';
+        if (!v) return '';
         const cls = (v.aliases || []).includes('production') ? 'prod' : (v.status === 'draft' ? 'draft' : '');
-        return '<span class="ds-chip ' + cls + '">' + esc(v.version) + (v.aliases?.length ? ' · ' + esc(v.aliases.join(',')) : '') + '</span>';
+        const aliases = (v.aliases || []).map(alias => alias === 'production' ? 'prod' : alias);
+        return '<span class="ds-chip ' + cls + '">' + esc(v.version) + (aliases.length ? ' · ' + esc(aliases.join(',')) : '') + '</span>';
+      }
+      function parseCsvLine(line) {
+        const out = [];
+        let cur = '';
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"' && quoted && line[i + 1] === '"') { cur += '"'; i++; continue; }
+          if (ch === '"') { quoted = !quoted; continue; }
+          if (ch === ',' && !quoted) { out.push(cur); cur = ''; continue; }
+          cur += ch;
+        }
+        out.push(cur);
+        return out;
+      }
+      function parseCsvPreview(text) {
+        const lines = text.split(/\r?\n/).filter(line => line.trim().length);
+        if (!lines.length) return { columns:[], rows:[] };
+        const columns = parseCsvLine(lines[0]).map(c => c.trim()).filter(Boolean);
+        const rows = lines.slice(1, 6).map(line => {
+          const values = parseCsvLine(line);
+          const row = {};
+          columns.forEach((col, idx) => row[col] = values[idx] || '');
+          return row;
+        });
+        return { columns, rows };
+      }
+      function parseItemValue(label, raw, opts) {
+        opts = opts || {};
+        const text = String(raw || '').trim();
+        if (!text) {
+          if (opts.allowBlank) return null;
+          throw new Error(label + ' is required.');
+        }
+        const first = text[0];
+        const looksJson = first === '{' || first === '[' || first === '"' || text === 'null' || text === 'true' || text === 'false' || /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(text);
+        if (!looksJson) return text;
+        try {
+          return JSON.parse(text);
+        } catch (err) {
+          throw new Error(label + ' looks like JSON but is malformed: ' + err.message);
+        }
+      }
+      function parseMetadataValue(raw) {
+        const text = String(raw || '').trim();
+        if (!text) return {};
+        if (text[0] !== '{') throw new Error('Metadata must be a JSON object like {"topic":"billing"}, or left blank.');
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (err) {
+          throw new Error('Metadata JSON is malformed: ' + err.message);
+        }
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+          throw new Error('Metadata must be a JSON object, not an array or single value.');
+        }
+        return parsed;
+      }
+      function formatItemValue(value, blankForNull) {
+        if (value == null && blankForNull) return '';
+        if (value != null && typeof value === 'object') return JSON.stringify(value, null, 2);
+        return String(value == null ? '' : value);
+      }
+      function autoMapColumns(columns) {
+        const lower = Object.fromEntries(columns.map(c => [c.toLowerCase(), c]));
+        state.uploadMapping.input_col = lower.input || lower.prompt || lower.question || columns[0] || '';
+        state.uploadMapping.expected_col = lower.expected_output || lower.expected || lower.answer || lower.reference || '';
+        state.uploadMapping.metadata_cols = [];
+      }
+      function removeMappedColumn(field, column) {
+        if (field === 'metadata_cols') {
+          state.uploadMapping[field] = state.uploadMapping[field].filter(c => c !== column);
+        } else if (state.uploadMapping[field] === column) {
+          state.uploadMapping[field] = '';
+        }
+        renderUploadMapping();
+      }
+      function setMappedColumn(field, column) {
+        ['input_col', 'expected_col'].forEach(key => {
+          if (key !== field && state.uploadMapping[key] === column) state.uploadMapping[key] = '';
+        });
+        ['metadata_cols'].forEach(key => {
+          if (key !== field) state.uploadMapping[key] = state.uploadMapping[key].filter(c => c !== column);
+        });
+        if (field === 'metadata_cols') {
+          if (!state.uploadMapping[field].includes(column)) state.uploadMapping[field].push(column);
+        } else {
+          state.uploadMapping[field] = column;
+        }
+        renderUploadMapping();
+      }
+      function mapValueHTML(field) {
+        const val = state.uploadMapping[field];
+        const values = Array.isArray(val) ? val : (val ? [val] : []);
+        if (!values.length) return '<span class="ds-map-empty">Drop a column here</span>';
+        return values.map(col => `<span class="ds-chip">${esc(col)} <button type="button" class="ds-btn" style="padding:1px 5px;margin-left:4px;" data-unmap-field="${esc(field)}" data-unmap-col="${esc(col)}">x</button></span>`).join('');
+      }
+      function renderUploadMapping() {
+        const mapping = state.uploadMapping;
+        const mapped = new Set([mapping.input_col, mapping.expected_col, ...mapping.metadata_cols].filter(Boolean));
+        const availableColumns = mapping.columns.filter(col => !mapped.has(col));
+        const columns = availableColumns.map(col => `<div class="ds-column-chip" draggable="true" data-column="${esc(col)}"><span>${esc(col)}</span></div>`).join('');
+        document.getElementById('upload-columns').innerHTML = columns ? '<div class="ds-column-list">' + columns + '</div>' : '<div class="ds-empty">All columns are mapped.</div>';
+        const fields = [
+          ['input_col', 'Input', 'Required'],
+          ['expected_col', 'Expected output', 'Optional'],
+          ['metadata_cols', 'Metadata', 'Multiple'],
+        ];
+        document.getElementById('upload-map-fields').innerHTML = fields.map(([field, label, hint]) => `
+          <div class="ds-map-field" data-map-field="${field}">
+            <div class="ds-map-label"><span>${label}</span><span>${hint}</span></div>
+            <div class="ds-map-value">${mapValueHTML(field)}</div>
+          </div>`).join('');
+        const previewRows = mapping.rows.map(row => `<tr>${mapping.columns.map(col => `<td>${esc(row[col])}</td>`).join('')}</tr>`).join('');
+        document.getElementById('upload-preview').innerHTML = `<table class="ds-table"><thead><tr>${mapping.columns.map(col => `<th>${esc(col)}</th>`).join('')}</tr></thead><tbody>${previewRows}</tbody></table>`;
+        document.querySelectorAll('.ds-column-chip').forEach(chip => {
+          chip.ondragstart = event => { event.dataTransfer.setData('text/plain', chip.dataset.column); chip.classList.add('dragging'); };
+          chip.ondragend = () => chip.classList.remove('dragging');
+        });
+        document.querySelectorAll('.ds-map-field').forEach(field => {
+          field.ondragover = event => { event.preventDefault(); field.classList.add('over'); };
+          field.ondragleave = () => field.classList.remove('over');
+          field.ondrop = event => {
+            event.preventDefault();
+            field.classList.remove('over');
+            const column = event.dataTransfer.getData('text/plain');
+            if (column) setMappedColumn(field.dataset.mapField, column);
+          };
+        });
+        document.querySelectorAll('[data-unmap-field]').forEach(btn => btn.onclick = () => removeMappedColumn(btn.dataset.unmapField, btn.dataset.unmapCol));
       }
       async function loadCatalog() {
         const data = await fetchJson('v1/datasets?' + qs());
@@ -171,37 +399,74 @@
       async function loadTabData() {
         if (!state.dataset || !state.version) { renderDetail(); return; }
         if (state.tab === 'items') {
-          const data = await fetchJson('v1/datasets/' + encodeURIComponent(state.dataset.slug) + '/versions/' + encodeURIComponent(state.version.version) + '/items?limit=500&' + qs());
+          const params = qs() + '&limit=' + encodeURIComponent(state.itemsLimit) + '&offset=' + encodeURIComponent(state.itemsOffset);
+          const data = await fetchJson('v1/datasets/' + encodeURIComponent(state.dataset.slug) + '/versions/' + encodeURIComponent(state.version.version) + '/items?' + params);
           state.items = data.items || [];
+          state.itemsTotal = Number(data.total || 0);
+          state.itemsNextOffset = data.next_offset == null ? null : Number(data.next_offset);
         }
         renderDetail();
       }
+      async function deleteDataset(dataset) {
+        if (!dataset) return;
+        const name = dataset.name || 'this dataset';
+        const confirmed = await platformConfirm({
+          title: 'Delete Dataset',
+          description: [
+            `Delete "${name}"?`,
+            'This removes the dataset from the catalog. Existing runs remain available.',
+          ],
+          note: 'Type DELETE to confirm.',
+          requireText: 'DELETE',
+          inputLabel: 'Confirmation',
+          inputPlaceholder: 'DELETE',
+          confirmLabel: 'Delete Dataset',
+          confirmClass: 'shell-btn-danger',
+          mismatchMessage: 'Type DELETE to delete this dataset.',
+        });
+        if (!confirmed) return;
+        await fetchJson(`v1/datasets/${encodeURIComponent(dataset.slug)}?${qs()}`, { method:'DELETE' });
+        if (state.dataset && state.dataset.slug === dataset.slug) {
+          window.location.href = projectUrl('/datasets');
+          return;
+        }
+        await loadCatalog();
+      }
       function renderCatalog() {
+        updateBreadcrumbs();
         document.getElementById('ds-title').textContent = 'Datasets';
         document.getElementById('ds-subtitle').textContent = state.datasets.length + ' datasets';
         document.getElementById('ds-tabs').style.display = 'none';
         document.getElementById('ds-search').style.display = '';
         const rows = state.datasets.map(ds => `
           <tr data-open="${esc(ds.slug)}">
-            <td><a class="ds-link" href="${projectUrl('/datasets/' + encodeURIComponent(ds.slug))}">${esc(ds.name)}</a><div class="ds-subtle">${esc(ds.slug)}</div></td>
-            <td>${versionBadge(ds.production_version)}</td>
+            <td><a class="ds-link" href="${projectUrl('/datasets/' + encodeURIComponent(ds.slug))}">${esc(ds.name)}</a><div class="ds-subtle">${esc(ds.description || '')}</div></td>
             <td>${versionBadge(ds.latest_version)}</td>
             <td>${esc(ds.latest_version?.item_count ?? 0)}</td>
-            <td>${(ds.tags || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</td>
             <td>${esc(ds.run_count || 0)}</td>
+            <td><button class="ds-btn danger" data-delete-dataset="${esc(ds.slug)}">Delete</button></td>
           </tr>`).join('');
         document.getElementById('ds-content').innerHTML = `
           <div class="ds-panel">
-            <table class="ds-table"><thead><tr><th>Name</th><th>Production</th><th>Latest</th><th>Items</th><th>Labels</th><th>Runs</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6"><div class="ds-empty">No datasets.</div></td></tr>'}</tbody></table>
+            <table class="ds-table"><thead><tr><th>Name</th><th>Version</th><th>Items</th><th>Runs</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5"><div class="ds-empty">No datasets.</div></td></tr>'}</tbody></table>
           </div>`;
+        document.querySelectorAll('[data-delete-dataset]').forEach(btn => {
+          btn.onclick = async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const dataset = state.datasets.find(ds => ds.slug === btn.dataset.deleteDataset);
+            try { await deleteDataset(dataset); } catch (err) { alert(err.message); }
+          };
+        });
       }
       function renderDetail() {
         const ds = state.dataset;
+        updateBreadcrumbs();
         document.getElementById('ds-search').style.display = 'none';
         document.getElementById('ds-tabs').style.display = '';
         document.getElementById('ds-title').textContent = ds ? ds.name : 'Dataset';
-        document.getElementById('ds-subtitle').textContent = ds ? `${ds.slug} · production ${ds.production_version?.version || 'unset'}` : '';
+        document.getElementById('ds-subtitle').textContent = ds ? `${state.versions.length} versions` : '';
         document.querySelectorAll('.ds-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
         const versionOptions = state.versions.map(v => `<option value="${esc(v.version)}" ${state.version && state.version.version === v.version ? 'selected' : ''}>${esc(v.version)} (${esc(v.status)})</option>`).join('');
         const header = `
@@ -211,13 +476,15 @@
               <div class="datasets-actions">
                 <select class="ds-select" id="version-select">${versionOptions}</select>
                 <button class="ds-btn" id="create-draft">Create Draft</button>
+                <button class="ds-btn primary" id="add-item">Add Item</button>
                 <button class="ds-btn" id="publish-version">Publish</button>
                 <button class="ds-btn primary" id="set-production">Set Production</button>
                 <button class="ds-btn" id="compare-production">Compare Production</button>
                 <a class="ds-btn" href="${api('v1/datasets/' + encodeURIComponent(ds.slug) + '/versions/' + encodeURIComponent(state.version?.version || 'production') + ':download?' + qs())}">Download</a>
+                <button class="ds-btn danger" id="delete-dataset">Delete Dataset</button>
               </div>
             </div>
-            <div class="ds-kv"><div>Description</div><div>${esc(ds.description || '')}</div><div>Labels</div><div>${(ds.tags || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</div></div>
+            <div class="ds-kv"><div>Description</div><div>${esc(ds.description || '')}</div></div>
           </div>`;
         let body = '';
         if (state.tab === 'items') body = renderItems();
@@ -229,20 +496,38 @@
       }
       function renderItems() {
         const editable = state.version && state.version.status === 'draft';
+        const start = state.itemsTotal ? state.itemsOffset + 1 : 0;
+        const end = Math.min(state.itemsOffset + state.items.length, state.itemsTotal);
+        const canPrev = state.itemsOffset > 0;
+        const canNext = state.itemsNextOffset != null;
         const rows = state.items.map(item => `
           <tr data-item="${esc(item.item_id)}">
             <td><a class="ds-link" data-edit-item="${esc(item.item_id)}">${esc(item.item_id)}</a><div class="ds-subtle">${esc(item.fingerprint)}</div></td>
             <td><div class="ds-json-preview">${esc(shortJson(item.input))}</div></td>
             <td><div class="ds-json-preview">${esc(shortJson(item.expected_output))}</div></td>
-            <td>${(item.labels || []).map(t => '<span class="ds-chip">' + esc(t) + '</span>').join('')}</td>
             <td>${esc(item.run_count || 0)}</td>
             <td>${editable ? '<button class="ds-btn" data-edit-item="' + esc(item.item_id) + '">Edit</button>' : '<span class="ds-subtle">published</span>'}</td>
           </tr>`).join('');
-        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Item</th><th>Input</th><th>Expected</th><th>Labels</th><th>Runs</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="ds-empty">No items.</div></td></tr>'}</tbody></table></div>`;
+        const empty = editable
+          ? '<tr><td colspan="5"><div class="ds-empty">No items in this draft. Use Add Item to create the first one.</div></td></tr>'
+          : '<tr><td colspan="5"><div class="ds-empty">No items.</div></td></tr>';
+        return `<div class="ds-panel">
+          <div class="ds-panel-header">
+            <div class="ds-subtle">Showing ${esc(start)}-${esc(end)} of ${esc(state.itemsTotal)}</div>
+            <div class="datasets-actions">
+              <select class="ds-select" id="items-page-size">
+                ${[25,50,100,250].map(n => `<option value="${n}" ${state.itemsLimit === n ? 'selected' : ''}>${n} / page</option>`).join('')}
+              </select>
+              <button class="ds-btn" id="items-prev" ${canPrev ? '' : 'disabled'}>Previous</button>
+              <button class="ds-btn" id="items-next" ${canNext ? '' : 'disabled'}>Next</button>
+            </div>
+          </div>
+          <table class="ds-table"><thead><tr><th>Item</th><th>Input</th><th>Expected</th><th>Runs</th><th></th></tr></thead><tbody>${rows || empty}</tbody></table>
+        </div>`;
       }
       function renderVersions() {
-        const rows = state.versions.map(v => `<tr><td>${versionBadge(v)}</td><td>${esc(v.item_count)}</td><td>${(v.labels || []).map(l => '<span class="ds-chip">' + esc(l) + '</span>').join('')}</td><td>${esc(v.content_hash || '')}</td><td>${esc(v.run_count || 0)}</td><td>${esc(v.parent_version_id || '')}</td></tr>`).join('');
-        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Version</th><th>Items</th><th>Labels</th><th>Hash</th><th>Runs</th><th>Parent</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        const rows = state.versions.map(v => `<tr><td>${versionBadge(v)}</td><td>${esc(v.item_count)}</td><td>${esc(v.content_hash || '')}</td><td>${esc(v.run_count || 0)}</td><td>${esc(v.parent_version_id || '')}</td></tr>`).join('');
+        return `<div class="ds-panel"><table class="ds-table"><thead><tr><th>Version</th><th>Items</th><th>Hash</th><th>Runs</th><th>Parent</th></tr></thead><tbody>${rows}</tbody></table></div>`;
       }
       function renderRuns() {
         return `<div class="ds-panel"><div class="ds-empty">Open an item to view runs using that item.</div></div>`;
@@ -253,13 +538,37 @@
       }
       function bindDetailActions() {
         const sel = document.getElementById('version-select');
-        if (sel) sel.onchange = async () => { state.version = state.versions.find(v => v.version === sel.value) || state.version; await loadTabData(); };
+        if (sel) sel.onchange = async () => {
+          state.version = state.versions.find(v => v.version === sel.value) || state.version;
+          state.itemsOffset = 0;
+          await loadTabData();
+        };
+        const pageSize = document.getElementById('items-page-size');
+        if (pageSize) pageSize.onchange = async () => {
+          state.itemsLimit = Number(pageSize.value) || 50;
+          state.itemsOffset = 0;
+          await loadTabData();
+        };
+        const prev = document.getElementById('items-prev');
+        if (prev) prev.onclick = async () => {
+          state.itemsOffset = Math.max(0, state.itemsOffset - state.itemsLimit);
+          await loadTabData();
+        };
+        const next = document.getElementById('items-next');
+        if (next) next.onclick = async () => {
+          if (state.itemsNextOffset == null) return;
+          state.itemsOffset = state.itemsNextOffset;
+          await loadTabData();
+        };
         document.getElementById('create-draft').onclick = async () => {
-          const version = prompt('Draft version name', 'v' + (state.versions.length + 1));
-          if (!version) return;
-          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions?${qs()}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({version, from_version: state.version.version}) });
+          const version = prompt('Draft version name', '');
+          const body = { from_version: state.version ? state.version.version : undefined };
+          if (version) body.version = version;
+          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions?${qs()}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
           await loadDetail();
         };
+        document.getElementById('add-item').onclick = () => openNewItem();
+        document.getElementById('add-item').disabled = !(state.version && state.version.status === 'draft');
         document.getElementById('publish-version').onclick = async () => { await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}:publish?${qs()}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); await loadDetail(); };
         document.getElementById('set-production').onclick = async () => { await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/aliases/production?${qs()}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({version: state.version.version})}); await loadDetail(); };
         document.getElementById('compare-production').onclick = async () => {
@@ -267,18 +576,32 @@
           const data = await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}:compare?base=${encodeURIComponent(state.dataset.production_version.version)}&${qs()}`);
           alert(`Added ${data.summary.added}, removed ${data.summary.removed}, changed ${data.summary.changed}, unchanged ${data.summary.unchanged}`);
         };
+        document.getElementById('delete-dataset').onclick = async () => {
+          try { await deleteDataset(state.dataset); } catch (err) { alert(err.message); }
+        };
         document.querySelectorAll('[data-edit-item]').forEach(btn => btn.onclick = () => openItem(btn.dataset.editItem));
+      }
+      function openNewItem() {
+        if (!state.version || state.version.status !== 'draft') return alert('Create or select a draft version before adding items.');
+        state.selectedItem = null;
+        document.getElementById('item-modal-title').textContent = 'New Item';
+        document.getElementById('item-input').value = '';
+        document.getElementById('item-expected').value = '';
+        document.getElementById('item-metadata').value = '{}';
+        document.getElementById('item-error').textContent = '';
+        document.getElementById('item-delete').style.display = 'none';
+        document.getElementById('item-runs').innerHTML = '<div class="ds-empty">Runs will appear after this item is used in evaluations.</div>';
+        openModal('item-modal');
       }
       async function openItem(itemId) {
         const item = state.items.find(i => i.item_id === itemId);
         state.selectedItem = item;
         document.getElementById('item-modal-title').textContent = itemId;
-        document.getElementById('item-id').value = item.item_id;
-        document.getElementById('item-input').value = JSON.stringify(item.input, null, 2);
-        document.getElementById('item-expected').value = JSON.stringify(item.expected_output, null, 2);
+        document.getElementById('item-input').value = formatItemValue(item.input, false);
+        document.getElementById('item-expected').value = formatItemValue(item.expected_output, true);
         document.getElementById('item-metadata').value = JSON.stringify(item.metadata || {}, null, 2);
-        document.getElementById('item-labels').value = (item.labels || []).join(',');
         document.getElementById('item-error').textContent = '';
+        document.getElementById('item-delete').style.display = state.version && state.version.status === 'draft' ? '' : 'none';
         openModal('item-modal');
         const runs = await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items/${encodeURIComponent(item.item_id)}/runs?${qs()}`).catch(e => ({runs:[], error:e.message}));
         document.getElementById('item-runs').innerHTML = `<table class="ds-table"><tbody>${(runs.runs || []).map(r => `<tr><td><a class="ds-link" href="${projectUrl('/runs/' + encodeURIComponent(r.run_id))}">${esc(r.external_run_id || r.run_id)}</a><div class="ds-subtle">${esc(r.task)} · ${esc(r.model || '')}</div></td><td>${esc(r.status)}</td><td>${esc(r.created_at || '')}</td></tr>`).join('') || '<tr><td><div class="ds-empty">No runs.</div></td></tr>'}</tbody></table>`;
@@ -286,33 +609,111 @@
       document.getElementById('item-save').onclick = async () => {
         try {
           const body = {
-            item_id: document.getElementById('item-id').value,
-            input: JSON.parse(document.getElementById('item-input').value),
-            expected_output: JSON.parse(document.getElementById('item-expected').value),
-            metadata: JSON.parse(document.getElementById('item-metadata').value),
-            labels: document.getElementById('item-labels').value.split(',').map(s => s.trim()).filter(Boolean),
+            input: parseItemValue('Input', document.getElementById('item-input').value),
+            expected_output: parseItemValue('Expected output', document.getElementById('item-expected').value, {allowBlank:true}),
+            metadata: parseMetadataValue(document.getElementById('item-metadata').value),
           };
-          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items/${encodeURIComponent(state.selectedItem.item_id)}?${qs()}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+          const basePath = `v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items`;
+          if (state.selectedItem) {
+            await fetchJson(`${basePath}/${encodeURIComponent(state.selectedItem.item_id)}?${qs()}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+          } else {
+            await fetchJson(`${basePath}?${qs()}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+          }
           closeModal('item-modal');
           await loadTabData();
         } catch (e) { document.getElementById('item-error').textContent = e.message; }
+      };
+      document.getElementById('item-delete').onclick = async () => {
+        if (!state.selectedItem) return;
+        const confirmed = await platformConfirm({
+          title: 'Delete Item',
+          description: 'Delete this item from the draft?',
+          note: 'This only changes the current draft version.',
+          confirmLabel: 'Delete Item',
+          confirmClass: 'shell-btn-danger',
+        });
+        if (!confirmed) return;
+        try {
+          await fetchJson(`v1/datasets/${encodeURIComponent(state.dataset.slug)}/versions/${encodeURIComponent(state.version.version)}/items/${encodeURIComponent(state.selectedItem.item_id)}?${qs()}`, { method:'DELETE' });
+          closeModal('item-modal');
+          await loadTabData();
+        } catch (e) { document.getElementById('item-error').textContent = e.message; }
+      };
+      document.getElementById('create-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.currentTarget);
+        const body = {
+          project_slug: state.projectSlug,
+          name: form.get('name'),
+          description: form.get('description') || '',
+        };
+        try {
+          const created = await fetchJson('v1/datasets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+          if (form.get('create_draft')) {
+            await fetchJson(`v1/datasets/${encodeURIComponent(created.dataset.slug)}/versions?${qs()}`, {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({ version:'v1', description:'Initial draft' }),
+            });
+          }
+          closeModal('dataset-modal');
+          window.location.href = projectUrl('/datasets/' + encodeURIComponent(created.dataset.slug));
+        } catch (err) { document.getElementById('create-error').textContent = err.message; }
+      };
+      document.querySelector('#upload-form input[name="file"]').onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        document.getElementById('upload-file-name').textContent = file ? file.name : 'No file selected';
+        document.getElementById('upload-error').textContent = '';
+        document.getElementById('upload-mapping').style.display = 'none';
+        document.getElementById('upload-preview').style.display = 'none';
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+          document.getElementById('upload-map-help').textContent = 'JSONL upload uses input, expected_output, metadata, and item_id keys directly.';
+          return;
+        }
+        const text = await file.text();
+        const preview = parseCsvPreview(text);
+        state.uploadMapping.columns = preview.columns;
+        state.uploadMapping.rows = preview.rows;
+        autoMapColumns(preview.columns);
+        document.getElementById('upload-map-help').textContent = 'Drag columns into the qym fields. Metadata accepts multiple columns.';
+        document.getElementById('upload-mapping').style.display = '';
+        document.getElementById('upload-preview').style.display = '';
+        renderUploadMapping();
       };
       document.getElementById('upload-form').onsubmit = async (e) => {
         e.preventDefault();
         const form = new FormData(e.currentTarget);
         form.set('project_slug', state.projectSlug);
-        if (form.get('production') && form.get('publish')) form.set('set_alias', 'production');
-        form.delete('production');
+        const file = form.get('file');
+        if (file && file.name && file.name.toLowerCase().endsWith('.csv')) {
+          if (!state.uploadMapping.input_col) {
+            document.getElementById('upload-error').textContent = 'Map an input column before uploading.';
+            return;
+          }
+          form.set('input_col', state.uploadMapping.input_col);
+          form.set('expected_col', state.uploadMapping.expected_col || '');
+          form.set('id_col', '');
+          form.set('metadata_cols', state.uploadMapping.metadata_cols.join(','));
+          form.set('label_cols', '');
+        }
         try {
           await fetch(api('v1/datasets:upload'), { method:'POST', body:form }).then(async res => { if (!res.ok) throw new Error((await res.json()).detail || res.statusText); return res.json(); });
-          closeModal('upload-modal');
+          closeModal('dataset-modal');
           await (state.datasetRef ? loadDetail() : loadCatalog());
         } catch (err) { document.getElementById('upload-error').textContent = err.message; }
       };
-      document.getElementById('ds-upload-open').onclick = () => openModal('upload-modal');
-      document.getElementById('ds-refresh').onclick = () => state.datasetRef ? loadDetail() : loadCatalog();
+      document.getElementById('ds-new-open').onclick = () => openNewDatasetModal('blank');
+      document.getElementById('upload-file-button').onclick = () => document.getElementById('upload-file-input').click();
+      document.querySelectorAll('[data-new-mode]').forEach(btn => btn.onclick = () => setNewDatasetMode(btn.dataset.newMode));
       document.querySelectorAll('[data-close]').forEach(btn => btn.onclick = () => closeModal(btn.dataset.close));
-      document.getElementById('ds-tabs').onclick = async (e) => { const b = e.target.closest('.ds-tab'); if (!b) return; state.tab = b.dataset.tab; await loadTabData(); };
+      document.getElementById('ds-tabs').onclick = async (e) => {
+        const b = e.target.closest('.ds-tab');
+        if (!b) return;
+        state.tab = b.dataset.tab;
+        if (state.tab === 'items') state.itemsOffset = 0;
+        await loadTabData();
+      };
       parsePath();
       if (state.datasetRef) loadDetail().catch(e => document.getElementById('ds-content').innerHTML = '<div class="ds-empty">' + esc(e.message) + '</div>');
       else loadCatalog().catch(e => document.getElementById('ds-content').innerHTML = '<div class="ds-empty">' + esc(e.message) + '</div>');

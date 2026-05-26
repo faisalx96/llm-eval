@@ -286,7 +286,9 @@
 
         // Fetch recent runs
         try {
-          const runsUrl = slug ? `api/runs?limit=5&offset=0&project_slug=${encodeURIComponent(slug)}` : 'api/runs?limit=5&offset=0';
+          const runsUrl = slug
+            ? `api/runs?limit=5&offset=0&exclude_live=true&project_slug=${encodeURIComponent(slug)}`
+            : 'api/runs?limit=5&offset=0&exclude_live=true';
           const res = await fetch(apiUrl(runsUrl));
           if (!res.ok) throw new Error('Failed');
           const data = await res.json();

@@ -774,6 +774,7 @@ def legacy_list_runs(
     offset: int = Query(default=0, ge=0),
     project_slug: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None, description="Filter by run workflow status; comma-separated values allowed"),
+    exclude_live: bool = Query(default=False, description="Exclude live run statuses from the result set"),
     user: Optional[str] = Query(default=None, description="Filter by run owner user id, email, or display name"),
     user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
     owner_user_id: Optional[str] = Query(default=None, description="Filter by run owner user id"),
@@ -830,6 +831,8 @@ def legacy_list_runs(
                 raise HTTPException(status_code=400, detail=f"Invalid run status: {raw_status}") from None
         if statuses:
             q = q.filter(Run.status.in_(statuses))
+    if exclude_live:
+        q = q.filter(~Run.status.in_(_LIVE_RUN_STATUSES))
 
     user_filter = (owner_user_id or user_id or user or "").strip()
     if user_filter:
@@ -1152,7 +1155,7 @@ def list_recent_runs(
     base_q = (
         Run.active(db)
         .join(Project, Project.id == Run.project_id)
-        .filter(Project.is_active.is_(True))
+        .filter(Project.is_active.is_(True), ~Run.status.in_(_LIVE_RUN_STATUSES))
     )
     total_count = base_q.count()
     global_runs = base_q.order_by(Run.created_at.desc()).offset(global_offset).limit(global_limit).all()
@@ -1163,7 +1166,7 @@ def list_recent_runs(
         for project in projects:
             project_runs = (
                 Run.active(db)
-                .filter(Run.project_id == project.id)
+                .filter(Run.project_id == project.id, ~Run.status.in_(_LIVE_RUN_STATUSES))
                 .order_by(Run.created_at.desc())
                 .limit(per_project_limit)
                 .all()
@@ -1583,34 +1586,52 @@ def export_run_html(
     # Read source files
     run_html = (dashboard_dir / "run.html").read_text(encoding="utf-8")
     css_content = (dashboard_dir / "dashboard.css").read_text(encoding="utf-8")
+    shell_css_content = (dashboard_dir / "shell.css").read_text(encoding="utf-8")
     metrics_js = (dashboard_dir / "metrics.js").read_text(encoding="utf-8")
 
     # Inline dashboard.css
-    run_html = run_html.replace(
-        '<link rel="stylesheet" href="/static/dashboard.css">',
-        f"<style>\n{css_content}\n</style>",
+    run_html = re.sub(
+        r'\s*<link\s+rel="stylesheet"\s+href="/static/dashboard\.css(?:\?[^"]*)?">\s*',
+        lambda _match: f"<style>\n{css_content}\n</style>",
+        run_html,
+        count=1,
+    )
+    run_html = re.sub(
+        r'\s*<link\s+rel="stylesheet"\s+href="/static/shell\.css(?:\?[^"]*)?">\s*',
+        lambda _match: f"<style>\n{shell_css_content}\n</style>",
+        run_html,
+        count=1,
     )
 
     # Inline metrics.js
-    run_html = run_html.replace(
-        '<script src="/static/metrics.js"></script>',
-        f"<script>\n{metrics_js}\n</script>",
+    run_html = re.sub(
+        r'\s*<script\s+src="/static/metrics\.js(?:\?[^"]*)?"></script>\s*',
+        lambda _match: f"<script>\n{metrics_js}\n</script>",
+        run_html,
+        count=1,
     )
 
     trace_viewer_path = dashboard_dir / "trace_viewer.js"
     if trace_viewer_path.exists():
         trace_viewer_js = trace_viewer_path.read_text(encoding="utf-8")
-        run_html = run_html.replace(
-            '<script src="/static/trace_viewer.js"></script>',
-            f"<script>\n{trace_viewer_js}\n</script>",
+        run_html = re.sub(
+            r'\s*<script\s+src="/static/trace_viewer\.js(?:\?[^"]*)?"></script>\s*',
+            lambda _match: f"<script>\n{trace_viewer_js}\n</script>",
+            run_html,
+            count=1,
         )
 
-    # Remove playground.js (not needed in export)
-    run_html = run_html.replace('<script src="/static/playground.js"></script>', "")
+    # Remove browser/session-only scripts that are not needed in standalone export.
+    run_html = re.sub(r'\s*<script\s+src="/static/auth\.js(?:\?[^"]*)?"></script>\s*', "\n", run_html)
+    run_html = re.sub(r'\s*<script\s+src="/static/shell\.js(?:\?[^"]*)?"></script>\s*', "\n", run_html)
+    run_html = re.sub(r'\s*<script\s+src="/static/playground\.js(?:\?[^"]*)?"></script>\s*', "\n", run_html)
 
     # Remove favicon (would be a broken link)
-    run_html = run_html.replace(
-        '<link rel="icon" type="image/png" href="/static/qym_icon.png">', ""
+    run_html = re.sub(
+        r'\s*<link\s+rel="icon"\s+type="image/png"\s+href="/static/qym_icon\.png(?:\?[^"]*)?">\s*',
+        "\n",
+        run_html,
+        count=1,
     )
 
     # Serialize data — escape </script> sequences in JSON to prevent premature tag closing
