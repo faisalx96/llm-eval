@@ -7740,7 +7740,7 @@
 
           const metaHtml = [
             metaItem('Task', taskName),
-            metaItem('Dataset', info.dataset_name || '—'),
+            metaItem('Dataset', info.dataset_name || '—', { html: escapeHtml(info.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(info.dataset_version) + QymShell.datasetAliasTags(info.dataset_aliases) : '') }),
             metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(info.trace_stats)) }),
             metaItem('Owner', ownerLabel),
             metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),

@@ -4378,7 +4378,7 @@
 
         const metaHtml = [
           metaItem('Task', taskName),
-          metaItem('Dataset', run.dataset_name || '—'),
+          metaItem('Dataset', run.dataset_name || '—', { html: escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
           metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(run.trace_stats)), nowrap: true }),
           metaItem('Owner', ownerLabel === '—' ? '' : ownerLabel),
           metaItem('Project', projectName === '—' ? '' : projectName),

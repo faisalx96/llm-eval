@@ -67,7 +67,6 @@ class User(Base):
     title: Mapped[str] = mapped_column(String(200), default="")
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.MEMBER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    llm_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -151,6 +150,33 @@ class ApiKey(Base):
     user: Mapped["User"] = relationship(back_populates="api_keys")
 
     __table_args__ = (Index("ix_api_key_prefix_active", "prefix", "revoked_at"),)
+
+
+class ProjectLlmConnection(Base):
+    """A named LLM provider configuration owned by a project.
+
+    Powers the AI-assisted root-cause analysis: a project can have several named
+    connections and the analysis request picks which one to use (else the default).
+    """
+
+    __tablename__ = "project_llm_connections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    llm_base_url: Mapped[str] = mapped_column(String(500), default="")
+    llm_model: Mapped[str] = mapped_column(String(200), default="")
+    llm_api_key_encrypted: Mapped[str] = mapped_column(Text, default="")
+    llm_api_key_last4: Mapped[str] = mapped_column(String(8), default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_project_llm_connection_name"),
+        Index("ix_project_llm_connections_project_default", "project_id", "is_default"),
+    )
 
 
 class Run(Base):

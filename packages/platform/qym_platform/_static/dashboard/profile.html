@@ -135,6 +135,39 @@
       color: var(--accent-primary);
       font-size: var(--font-sm);
     }
+    .bootstrap-panel {
+      display: none;
+      border-color: rgba(0, 212, 170, 0.24);
+      background: rgba(0, 212, 170, 0.06);
+    }
+    .bootstrap-copy {
+      margin: 0 0 var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .bootstrap-form {
+      display: flex;
+      align-items: stretch;
+      gap: var(--space-sm);
+      max-width: 560px;
+    }
+    .bootstrap-form .form-input {
+      font-family: var(--font-mono);
+    }
+    .bootstrap-message {
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .bootstrap-message.error {
+      color: var(--error);
+    }
+    @media (max-width: 640px) {
+      .bootstrap-form {
+        flex-direction: column;
+      }
+    }
   </style>
 </head>
 <body>
@@ -153,34 +186,21 @@
       <div class="grid" id="account-grid"></div>
     </section>
 
+    <section class="panel bootstrap-panel" id="bootstrap-panel">
+      <h2>Grant Admin Access</h2>
+      <p class="bootstrap-copy">Enter the admin bootstrap token to promote your account. This is only available before the first active admin exists.</p>
+      <div class="bootstrap-form">
+        <input class="form-input" id="bootstrap-token-input" type="password" placeholder="Bootstrap token" autocomplete="one-time-code">
+        <button class="btn btn-primary" id="bootstrap-submit-btn" type="button">Promote</button>
+      </div>
+      <div class="bootstrap-message" id="bootstrap-message" role="status" aria-live="polite"></div>
+    </section>
+
     <section class="panel">
       <h2>Projects</h2>
       <div class="project-list" id="projects-list"></div>
     </section>
 
-    <section class="panel">
-      <h2>Review LLM</h2>
-      <div class="form-grid">
-        <div class="field">
-          <label for="llm-base-url">Base URL</label>
-          <input class="form-input" id="llm-base-url" placeholder="https://api.openai.com/v1">
-        </div>
-        <div class="field">
-          <label for="llm-model">Model</label>
-          <input class="form-input" id="llm-model" placeholder="gpt-4o-mini">
-        </div>
-        <div class="field">
-          <label for="llm-api-key">API Key</label>
-          <input class="form-input" id="llm-api-key" type="password" placeholder="sk-...">
-        </div>
-      </div>
-      <div class="inline-note" id="llm-note"></div>
-      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="save-llm-btn" type="button">Save</button>
-        <button class="btn btn-secondary" id="test-llm-btn" type="button">Test</button>
-      </div>
-      <div class="message" id="llm-message"></div>
-    </section>
   </main>
 
   <script>
@@ -208,23 +228,19 @@
       }
 
       async function loadProfile() {
-        const [meRes, cfgRes] = await Promise.all([
-          fetch(apiUrl('v1/me')),
-          fetch(apiUrl('v1/me/llm-config')),
-        ]);
+        const meRes = await fetch(apiUrl('v1/me'));
         if (window.QymAuth && window.QymAuth.handle401(meRes)) return;
         if (!meRes.ok) throw new Error('Failed to load profile');
-        if (!cfgRes.ok) throw new Error('Failed to load review LLM config');
 
         const me = await meRes.json();
-        const cfg = await cfgRes.json();
-        renderProfile(me, cfg);
+        renderProfile(me);
       }
 
-      function renderProfile(me, cfg) {
+      function renderProfile(me) {
         const defaultProject = me.default_project;
         var openBtn = document.getElementById('open-default-project');
         if (openBtn) openBtn.href = defaultProject ? projectUrl(defaultProject.slug) : ((window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '') + '/');
+        renderBootstrapPanel(me);
 
         document.getElementById('account-grid').innerHTML = [
           ['Display Name', me.display_name || '—'],
@@ -252,47 +268,66 @@
             </div>
           </div>
         `).join('') : '<div class="inline-note">You do not belong to any active projects yet.</div>';
-
-        document.getElementById('llm-base-url').value = cfg.llm_base_url || 'https://api.openai.com/v1';
-        document.getElementById('llm-model').value = cfg.llm_model || 'gpt-4o-mini';
-        document.getElementById('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
-        document.getElementById('llm-note').textContent = cfg.llm_api_key_set
-          ? `Stored key: ${cfg.llm_api_key_hint || 'configured'}`
-          : 'No review LLM key stored yet.';
       }
 
-      async function saveConfig(testOnly) {
-        const message = document.getElementById('llm-message');
-        const apiKey = document.getElementById('llm-api-key').value.trim();
-        const payload = {
-          llm_base_url: document.getElementById('llm-base-url').value.trim() || 'https://api.openai.com/v1',
-          llm_model: document.getElementById('llm-model').value.trim() || 'gpt-4o-mini',
-          llm_api_key: apiKey || '__KEEP__',
-        };
+      function renderBootstrapPanel(me) {
+        const panel = document.getElementById('bootstrap-panel');
+        const input = document.getElementById('bootstrap-token-input');
+        const message = document.getElementById('bootstrap-message');
+        if (!panel || !input || !message) return;
+        const canBootstrap = Boolean(me && me.can_bootstrap_admin && me.role !== 'ADMIN');
+        panel.style.display = canBootstrap ? 'block' : 'none';
+        if (!canBootstrap) {
+          input.value = '';
+          setBootstrapMessage('');
+        }
+      }
 
-        const path = testOnly ? 'v1/me/llm-config/test' : 'v1/me/llm-config';
-        const method = testOnly ? 'POST' : 'PUT';
-        message.textContent = testOnly ? 'Testing…' : 'Saving…';
+      function setBootstrapMessage(text, isError) {
+        const message = document.getElementById('bootstrap-message');
+        if (!message) return;
+        message.textContent = text || '';
+        message.classList.toggle('error', Boolean(isError));
+      }
 
-        const res = await fetch(apiUrl(path), {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          message.textContent = data.detail || 'Request failed';
+      async function bootstrapAdmin() {
+        const input = document.getElementById('bootstrap-token-input');
+        const button = document.getElementById('bootstrap-submit-btn');
+        const token = input.value.trim();
+        if (!token) {
+          setBootstrapMessage('Token is required.', true);
+          input.focus();
           return;
         }
-        message.textContent = testOnly ? `Connected: ${data.model || payload.llm_model}` : 'Saved';
-        if (!testOnly) {
-          document.getElementById('llm-api-key').value = '';
-          await loadProfile();
+
+        button.disabled = true;
+        setBootstrapMessage('Promoting…');
+        try {
+          const res = await fetch(apiUrl('v1/auth/bootstrap-admin'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bootstrap_token: token }),
+          });
+          if (window.QymAuth && window.QymAuth.handle401(res)) return;
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setBootstrapMessage(data.detail || 'Admin bootstrap failed.', true);
+            return;
+          }
+          setBootstrapMessage('Admin access granted. Refreshing…');
+          window.location.reload();
+        } catch (error) {
+          setBootstrapMessage('Admin bootstrap failed.', true);
+        } finally {
+          button.disabled = false;
         }
       }
 
-      document.getElementById('save-llm-btn').addEventListener('click', () => saveConfig(false));
-      document.getElementById('test-llm-btn').addEventListener('click', () => saveConfig(true));
+      document.getElementById('bootstrap-submit-btn').addEventListener('click', bootstrapAdmin);
+      document.getElementById('bootstrap-token-input').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') bootstrapAdmin();
+      });
       loadProfile().catch((error) => {
         document.getElementById('account-grid').innerHTML = `<div class="inline-note">${escapeHtml(error.message)}</div>`;
       });

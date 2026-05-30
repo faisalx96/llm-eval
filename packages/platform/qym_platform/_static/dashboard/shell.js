@@ -1485,8 +1485,28 @@
   // PUBLIC API
   // ══════════════════════════════════════════════════
 
+  // The resolved version label, meant to sit INSIDE the dataset-name block — a divider +
+  // muted mono style makes it visually distinct from the name. Empty for ad-hoc/CSV runs.
+  function datasetVersionInline(version) {
+    return version ? '<span class="ds-version" title="Dataset version">' + esc(version) + '</span>' : '';
+  }
+  // Trailing alias tags for a dataset reference (production shown as "prod"), placed AFTER
+  // the name block. Empty when there are no aliases.
+  function datasetAliasTags(aliases) {
+    var list = Array.isArray(aliases) ? aliases : [];
+    var html = '';
+    list.forEach(function (a) {
+      var label = a === 'production' ? 'prod' : a;
+      var cls = 'ds-alias' + (a === 'production' ? ' production' : '');
+      html += '<span class="' + cls + '" title="' + esc(a) + '">' + esc(label) + '</span>';
+    });
+    return html;
+  }
+
   window.QymShell = {
     init: init,
+    datasetVersionInline: datasetVersionInline,
+    datasetAliasTags: datasetAliasTags,
     getUser: function () { return _user; },
     getProject: function () { return _currentProject; },
     getPageContext: function () { return _routeCtx; },

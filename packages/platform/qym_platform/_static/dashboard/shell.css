@@ -616,6 +616,18 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .shell-drawer-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* Dataset version + alias are compact segments INSIDE the name block, each set off by a
+   thin divider so they read as one unit (e.g. "ragbench-100 | v1 | prod") without adding a
+   detached floating tag. Production is tinted; kept small + quiet. */
+.ds-version, .ds-alias {
+  margin-left: 6px; padding-left: 6px;
+  border-left: 1px solid var(--border-strong);
+  font-size: 10px; line-height: 1.4; color: var(--text-dim); vertical-align: baseline;
+}
+.ds-version { font-family: var(--font-mono); }
+.ds-alias { font-weight: 600; letter-spacing: 0.02em; }
+.ds-alias.production { color: var(--accent-primary); }
+
 .shell-drawer-header-action {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 28px; height: 28px; padding: 0 6px;

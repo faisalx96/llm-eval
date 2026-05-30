@@ -27,6 +27,15 @@ def test_user_filter_is_available_and_clickable_on_dashboard_views() -> None:
         assert 'id="filter-user-dropdown"' in html
 
 
+def test_profile_admin_bootstrap_panel_uses_me_flag() -> None:
+    source = (DASHBOARD_DIR / "profile.html").read_text(encoding="utf-8")
+
+    assert 'id="bootstrap-panel"' in source
+    assert 'id="bootstrap-token-input"' in source
+    assert "me.can_bootstrap_admin" in source
+    assert "apiUrl('v1/auth/bootstrap-admin')" in source
+
+
 def test_models_run_selection_uses_run_display_names() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
 

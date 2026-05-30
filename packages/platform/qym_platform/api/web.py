@@ -3,21 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.api.projects import serialize_project_payloads
 from qym_platform.db.models import Project, ProjectMembership, User, UserRole
 from qym_platform.deps import get_db
-from qym_platform.openai_compat import create_chat_completion_compat
-from qym_platform.secrets import (
-    build_llm_config_storage,
-    encryption_available,
-    llm_config_api_key_hint,
-    llm_config_has_api_key,
-    resolve_llm_api_key,
-)
 from qym_platform.settings import PlatformSettings
 
 
@@ -89,97 +81,6 @@ def list_users(
         }
         for user in users
     ]
-
-
-class LLMConfigRequest(BaseModel):
-    llm_base_url: str = Field(default="https://api.openai.com/v1")
-    llm_api_key: str = Field(default="")
-    llm_model: str = Field(default="gpt-4o-mini")
-
-
-@router.get("/v1/me/llm-config")
-def get_llm_config(
-    principal: Principal = Depends(require_ui_principal),
-) -> Dict[str, Any]:
-    settings = PlatformSettings()
-    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    return {
-        "llm_base_url": cfg.get("llm_base_url", "https://api.openai.com/v1"),
-        "llm_model": cfg.get("llm_model", "gpt-4o-mini"),
-        "llm_api_key_set": llm_config_has_api_key(cfg),
-        "llm_api_key_hint": llm_config_api_key_hint(cfg),
-        "llm_config_storage_ready": encryption_available(settings),
-    }
-
-
-@router.put("/v1/me/llm-config")
-def update_llm_config(
-    req: LLMConfigRequest,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
-) -> Dict[str, Any]:
-    settings = PlatformSettings()
-    user = db.query(User).filter(User.id == principal.user.id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    existing = user.llm_config if isinstance(user.llm_config, dict) else {}
-    api_key = req.llm_api_key.strip()
-    if api_key == "__KEEP__":
-        try:
-            api_key = resolve_llm_api_key(existing, settings)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-
-    if api_key:
-        if not encryption_available(settings):
-            raise HTTPException(status_code=400, detail="LLM config encryption is not configured")
-        user.llm_config = build_llm_config_storage(
-            base_url=req.llm_base_url,
-            model=req.llm_model,
-            api_key=api_key,
-            settings=settings,
-        )
-    else:
-        user.llm_config = {
-            "llm_base_url": req.llm_base_url.strip().rstrip("/"),
-            "llm_api_key_last4": "",
-            "llm_model": req.llm_model.strip(),
-        }
-    db.commit()
-    return {"ok": True}
-
-
-@router.post("/v1/me/llm-config/test")
-async def test_llm_config(
-    principal: Principal = Depends(require_ui_principal),
-) -> Dict[str, Any]:
-    settings = PlatformSettings()
-    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    try:
-        api_key = resolve_llm_api_key(cfg, settings)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if not api_key:
-        raise HTTPException(status_code=400, detail="No API key configured")
-
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        base_url=cfg.get("llm_base_url", "https://api.openai.com/v1"),
-        api_key=api_key,
-    )
-    model = cfg.get("llm_model", "gpt-4o-mini")
-    try:
-        resp = await create_chat_completion_compat(
-            client,
-            model=model,
-            messages=[{"role": "user", "content": "Reply with: ok"}],
-            max_tokens=4,
-        )
-        return {"ok": True, "model": model, "response": resp.choices[0].message.content}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"LLM connection failed: {e}")
 
 
 class CreateUserRequest(BaseModel):

@@ -3558,12 +3558,15 @@ body.chart-col-resize-active {
 
 .btn {
   padding: var(--space-sm) var(--space-md);
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: var(--font-sm);
+  font-weight: 500;
+  font-family: var(--font-sans);
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s;
 }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
   background: var(--bg-elevated);
@@ -3574,6 +3577,7 @@ body.chart-col-resize-active {
 .btn-secondary:hover {
   background: var(--bg-hover);
   border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .btn-danger {
@@ -3582,7 +3586,7 @@ body.chart-col-resize-active {
 }
 
 .btn-danger:hover {
-  background: #ff4444;
+  background: #dc2626;
 }
 
 .shortcut-group h4 {
@@ -4884,6 +4888,64 @@ body.chart-col-resize-active {
 }
 .pg-footer-runall:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+/* LLM connection picker (footer) */
+.pg-connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto; /* anchor left; Test / Run All stay right */
+  height: 42px;
+  padding: 0 10px 0 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pg-connection:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.pg-connection:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.15);
+}
+.pg-connection-icon {
+  color: var(--accent-primary);
+  font-size: 12px;
+  line-height: 1;
+}
+.pg-connection-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  user-select: none;
+}
+.pg-connection-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  height: 100%;
+  max-width: 260px;
+  padding: 0 20px 0 2px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237a7a90' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 13px;
+}
+.pg-connection-select option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 /* Sections */

@@ -16,10 +16,20 @@ from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
-from qym_platform.db.models import CorrectionStatus, Project, ReviewCorrection, RootCauseRevision, Run, RunItem, RunItemScore, User
+from qym_platform.db.models import (
+    CorrectionStatus,
+    Project,
+    ProjectLlmConnection,
+    ReviewCorrection,
+    RootCauseRevision,
+    Run,
+    RunItem,
+    RunItemScore,
+    User,
+)
 from qym_platform.deps import get_db
 from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
-from qym_platform.secrets import llm_config_has_api_key, resolve_llm_api_key
+from qym_platform.secrets import resolve_llm_api_key
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
     ROOT_CAUSE_CATEGORIES,
@@ -73,6 +83,7 @@ class AnalyzeRequest(BaseModel):
     item_ids: Optional[List[str]] = None
     concurrency: int = Field(default=20, ge=1, le=20)
     config: Optional[PlaygroundConfig] = None
+    connection_id: Optional[str] = None  # which project LLM connection to use; default if omitted
 
 
 class PreviewRequest(BaseModel):
@@ -81,6 +92,7 @@ class PreviewRequest(BaseModel):
     item_id: str
     metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
+    connection_id: Optional[str] = None
 
 
 class TestRequest(BaseModel):
@@ -89,21 +101,55 @@ class TestRequest(BaseModel):
     item_ids: List[str] = Field(..., min_length=1, max_length=3)
     metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
+    connection_id: Optional[str] = None
 
 
-def _get_llm_config(principal: Principal) -> dict[str, Any]:
-    """Extract and validate LLM config from the current user."""
-    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-    if not llm_config_has_api_key(cfg):
+def _resolve_connection(
+    db: Session, project_id: str, connection_id: Optional[str]
+) -> ProjectLlmConnection:
+    """Pick the LLM connection for an analysis: explicit id, else the project default."""
+    base = db.query(ProjectLlmConnection).filter(ProjectLlmConnection.project_id == project_id)
+    if connection_id:
+        conn = base.filter(ProjectLlmConnection.id == connection_id).first()
+        if not conn:
+            raise HTTPException(status_code=404, detail="LLM connection not found")
+        return conn
+    conn = base.filter(ProjectLlmConnection.is_default.is_(True)).first()
+    if conn:
+        return conn
+    # No default flagged but connections exist (shouldn't normally happen) — use the first.
+    conn = base.order_by(ProjectLlmConnection.created_at).first()
+    if not conn:
         raise HTTPException(
             status_code=400,
-            detail="LLM not configured. Please set up your LLM provider in your Profile page.",
+            detail="No LLM connection configured for this project. Add one in Project Settings → LLM Connections.",
+        )
+    return conn
+
+
+def _get_llm_config(
+    db: Session, project_id: str, connection_id: Optional[str] = None
+) -> dict[str, Any]:
+    """Resolve and validate the project LLM connection to use for analysis."""
+    conn = _resolve_connection(db, project_id, connection_id)
+    if not conn.llm_api_key_encrypted:
+        raise HTTPException(
+            status_code=400,
+            detail=f"LLM connection '{conn.name}' has no API key. Update it in Project Settings → LLM Connections.",
         )
     try:
-        api_key = resolve_llm_api_key(cfg, PlatformSettings())
+        api_key = resolve_llm_api_key(
+            {"llm_api_key_encrypted": conn.llm_api_key_encrypted}, PlatformSettings()
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {**cfg, "llm_api_key": api_key}
+    return {
+        "llm_base_url": conn.llm_base_url or "https://api.openai.com/v1",
+        "llm_model": conn.llm_model or "gpt-4o-mini",
+        "llm_api_key": api_key,
+        "connection_id": conn.id,
+        "connection_name": conn.name,
+    }
 
 
 def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any] | None:
@@ -412,7 +458,7 @@ async def analyze_run_items(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
-    llm_config = _get_llm_config(principal)
+    llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
 
@@ -493,7 +539,7 @@ async def analyze_run_items_stream(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
-    llm_config = _get_llm_config(principal)
+    llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
     metric, filtered_items = _filter_analysis_items(run, request, all_items, scores_by_item)
@@ -680,7 +726,7 @@ async def analyze_test(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
-    llm_config = _get_llm_config(principal)
+    llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     items = (
         db.query(RunItem)
@@ -814,13 +860,30 @@ def get_analysis_config(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Return analysis configuration for the frontend."""
-    cfg = principal.user.llm_config if isinstance(principal.user.llm_config, dict) else {}
-
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    connections = (
+        db.query(ProjectLlmConnection)
+        .filter(ProjectLlmConnection.project_id == run.project_id)
+        .order_by(ProjectLlmConnection.is_default.desc(), ProjectLlmConnection.created_at)
+        .all()
+    )
+    connection_payloads = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "llm_model": c.llm_model,
+            "is_default": c.is_default,
+            "llm_api_key_set": bool(c.llm_api_key_encrypted),
+        }
+        for c in connections
+    ]
+    usable = [c for c in connections if c.llm_api_key_encrypted]
+    default_conn = next((c for c in usable if c.is_default), usable[0] if usable else None)
 
     items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
     total = len(items)
@@ -849,8 +912,10 @@ def get_analysis_config(
     all_categories, category_details_map = _collect_task_root_cause_catalog(db, run, items)
 
     return {
-        "llm_configured": llm_config_has_api_key(cfg),
-        "model": cfg.get("llm_model") if llm_config_has_api_key(cfg) else None,
+        "llm_configured": default_conn is not None,
+        "model": default_conn.llm_model if default_conn else None,
+        "llm_connections": connection_payloads,
+        "default_connection_id": default_conn.id if default_conn else None,
         "total_items": total,
         "items_with_root_cause": with_rc,
         "items_ai_assigned": ai_assigned,

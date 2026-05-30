@@ -280,6 +280,66 @@ def test_recreate_dataset_after_soft_delete_reuses_slug(client_and_session, tmp_
     assert upload.status_code == 200, upload.text
 
 
+def test_run_payload_includes_dataset_version_and_aliases(client_and_session):
+    client, SessionLocal = client_and_session
+    from qym_platform.api.runs import _dataset_version_fields, _dataset_version_info_map
+
+    created = client.post("/v1/datasets", headers=_bearer(), json={"name": "Ver", "slug": "ver"})
+    assert created.status_code == 200
+    dataset_id = created.json()["dataset"]["id"]
+    assert client.post("/v1/datasets/ver/versions", headers=_bearer(), json={"version": "v1"}).status_code == 200
+    assert client.post(
+        "/v1/datasets/ver/versions/v1/items",
+        headers=_bearer(),
+        json={"item_id": "x", "input": "a", "expected_output": "b"},
+    ).status_code == 200
+    pub = client.post("/v1/datasets/ver/versions/v1:publish", headers=_bearer(), json={})
+    assert pub.status_code == 200
+    version_id = pub.json()["version"]["id"]
+    assert client.post("/v1/datasets/ver/aliases/production", headers=_bearer(), json={"version": "v1"}).status_code == 200
+
+    with SessionLocal() as session:
+        session.add(
+            Run(
+                id="run-ver",
+                project_id="project-1",
+                created_by_user_id="user-1",
+                owner_user_id="user-1",
+                task="t",
+                dataset="Ver",
+                dataset_id=dataset_id,
+                dataset_version_id=version_id,
+                metrics=[],
+                run_metadata={},
+                run_config={},
+            )
+        )
+        session.commit()
+
+    with SessionLocal() as session:
+        run = session.query(Run).filter(Run.id == "run-ver").first()
+        fields = _dataset_version_fields(run, _dataset_version_info_map(session, [run]))
+        assert fields["dataset_version"] == "v1"
+        assert "production" in fields["dataset_aliases"]
+
+    # A run with no dataset_version_id yields empty fields, not an error.
+    with SessionLocal() as session:
+        bare = Run(
+            id="run-bare",
+            project_id="project-1",
+            created_by_user_id="user-1",
+            owner_user_id="user-1",
+            task="t",
+            dataset="Ver",
+            metrics=[],
+            run_metadata={},
+            run_config={},
+        )
+        fields = _dataset_version_fields(bare, _dataset_version_info_map(session, [bare]))
+        assert fields["dataset_version"] is None
+        assert fields["dataset_aliases"] == []
+
+
 def test_dataset_runs_endpoint(client_and_session):
     client, SessionLocal = client_and_session
 

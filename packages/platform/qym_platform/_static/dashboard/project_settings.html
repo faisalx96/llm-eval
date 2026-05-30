@@ -36,9 +36,17 @@
     .card-footer { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border-subtle); }
 
     .add-bar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--border-subtle); }
-    .add-bar .form-select, .add-bar .form-input { font-family: var(--font-sans); font-size: var(--font-base); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); color: var(--text-primary); }
-    .add-bar .form-select { width: 160px; flex: none; }
+    .add-bar .form-select, .add-bar .form-input { font-family: var(--font-sans); font-size: var(--font-base); background-color: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); color: var(--text-primary); }
+    .add-bar .form-select { width: 160px; flex: none; padding-right: 30px; }
     .add-bar .form-input { flex: 1; min-width: 0; }
+    /* Native selects get the same appearance reset + custom chevron as .filter-select
+       so dropdowns match across the platform instead of showing the OS default arrow. */
+    .form-select {
+      appearance: none; -webkit-appearance: none; -moz-appearance: none; cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239898a8' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    .form-select:focus { border-color: var(--accent-primary); outline: none; }
 
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th { text-align: left; padding: var(--space-sm) var(--space-lg); font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); }
@@ -48,11 +56,12 @@
     .data-table tbody tr:last-child td { border-bottom: none; }
     .data-table .row-meta { color: var(--text-muted); font-size: var(--font-xs); margin-top: 2px; }
     .data-table .row-actions { display: flex; gap: var(--space-xs); }
-    .data-table .form-select { font-size: var(--font-xs); padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); }
+    .data-table .form-select { font-size: var(--font-xs); padding: 4px 8px; padding-right: 24px; background-position: right 7px center; background-color: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 4px; color: var(--text-primary); }
 
     .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
     .role-badge.manager { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
     .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
+    .role-badge.default { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
 
     .token-box { background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.24); border-radius: 8px; padding: var(--space-md) var(--space-lg); font-family: var(--font-mono); font-size: var(--font-sm); color: var(--accent-primary); word-break: break-all; display: none; margin-bottom: var(--space-md); }
 
@@ -80,7 +89,12 @@
     .danger-desc { font-size: var(--font-xs); color: var(--text-muted); margin-top: 2px; }
 
     .note { color: var(--text-muted); font-size: var(--font-sm); margin-top: var(--space-sm); }
-    .llm-message { margin-top: var(--space-sm); color: var(--accent-primary); font-size: var(--font-sm); }
+    .llm-message { margin-top: var(--space-sm); color: var(--accent-primary); font-size: var(--font-sm); min-height: 16px; }
+    .mini-spinner {
+      display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px;
+      border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
   </style>
 </head>
 <body>
@@ -163,9 +177,18 @@
     <!-- LLM Connections -->
     <div class="settings-panel" id="panel-llm">
       <div class="card">
-        <div class="card-header"><div><div class="card-title">LLM Connections</div><div class="card-subtitle">Configure LLM providers for AI-assisted reviews and root cause analysis</div></div></div>
-        <div class="card-body">
+        <div class="card-header"><div><div class="card-title">LLM Connections</div><div class="card-subtitle">Providers for AI-assisted root cause analysis</div></div></div>
+        <div class="card-body flush">
+          <table class="data-table">
+            <thead><tr><th>Connection</th><th>Model</th><th>Endpoint</th><th>Key</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="llm-connections-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card-body" style="border-top:1px solid var(--border-subtle);">
+          <div class="form-label" id="llm-form-title" style="margin-bottom:12px;">Add a connection</div>
+          <input type="hidden" id="llm-edit-id" value="" />
           <div class="form-grid">
+            <div class="form-group full-width"><label class="form-label">Name</label><input class="form-input" id="llm-name" type="text" placeholder="e.g. GPT-4o prod" /></div>
             <div class="form-group full-width"><label class="form-label">Base URL</label><input class="form-input" id="llm-base-url" type="text" placeholder="https://api.openai.com/v1" /></div>
             <div class="form-group"><label class="form-label">Model</label><input class="form-input" id="llm-model" type="text" placeholder="gpt-4o" /></div>
             <div class="form-group"><label class="form-label">API Key</label><input class="form-input" id="llm-api-key" type="password" placeholder="sk-..." /></div>
@@ -174,8 +197,9 @@
           <div class="llm-message" id="llm-message"></div>
         </div>
         <div class="card-footer">
-          <button class="btn btn-secondary" id="test-llm-btn" type="button">Test Connection</button>
-          <button class="btn btn-primary" id="save-llm-btn" type="button">Save</button>
+          <button class="btn btn-secondary" id="cancel-llm-btn" type="button" style="display:none;">Cancel</button>
+          <button class="btn btn-secondary" id="test-llm-btn" type="button" style="display:none;">Test</button>
+          <button class="btn btn-primary" id="save-llm-btn" type="button">Add connection</button>
         </div>
       </div>
     </div>
@@ -267,18 +291,50 @@
         state.members = ((await fetchJson(`v1/projects/${project.id}/members`)) || {}).members || [];
         state.apiKeys = ((await fetchJson(`v1/projects/${project.id}/api-keys`)) || {}).api_keys || [];
 
-        // Load LLM config
-        try {
-          const cfg = await fetchJson('v1/me/llm-config');
-          if (cfg) {
-            document.getElementById('llm-base-url').value = cfg.llm_base_url || 'https://api.openai.com/v1';
-            document.getElementById('llm-model').value = cfg.llm_model || '';
-            document.getElementById('llm-api-key').placeholder = cfg.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
-            document.getElementById('llm-note').textContent = cfg.llm_api_key_set ? `Stored key: ${cfg.llm_api_key_hint || 'configured'}` : '';
-          }
-        } catch (_) {}
-
+        await loadConnections();
         render();
+      }
+
+      async function loadConnections() {
+        try {
+          state.connections = ((await fetchJson(`v1/projects/${state.project.id}/llm-connections`)) || {}).connections || [];
+        } catch (_) { state.connections = []; }
+        renderConnections();
+      }
+
+      function renderConnections() {
+        const tbody = document.getElementById('llm-connections-tbody');
+        if (!tbody) return;
+        const conns = state.connections || [];
+        if (!conns.length) {
+          tbody.innerHTML = '<tr><td colspan="5"><div class="note" style="margin:0">No connections yet.</div></td></tr>';
+          return;
+        }
+        const act = 'padding:4px 10px;font-size:var(--font-xs)';
+        tbody.innerHTML = conns.map((c) => {
+          const id = escapeHtml(c.id);
+          const key = c.llm_api_key_set
+            ? `<span style="font-family:var(--font-mono);color:var(--text-secondary)">${escapeHtml(c.llm_api_key_hint || 'set')}</span>`
+            : '<span style="color:var(--warning)">Not set</span>';
+          return `
+          <tr>
+            <td>
+              <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(c.name)}</span>
+              ${c.is_default ? '<span class="role-badge default" style="margin-left:10px">default</span>' : ''}
+            </td>
+            <td><span style="font-family:var(--font-mono);color:var(--text-secondary)">${escapeHtml(c.llm_model || '—')}</span></td>
+            <td><span style="font-family:var(--font-mono);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${escapeHtml(c.llm_base_url || '')}">${escapeHtml(c.llm_base_url || '—')}</span></td>
+            <td>${key}</td>
+            <td style="text-align:right">
+              <div class="row-actions" style="justify-content:flex-end">
+                ${c.is_default ? '' : `<button class="btn btn-secondary" style="${act}" data-conn-default="${id}" type="button">Set default</button>`}
+                <button class="btn btn-secondary" style="${act}" data-conn-test="${id}" type="button">Test</button>
+                <button class="btn btn-secondary" style="${act}" data-conn-edit="${id}" type="button">Edit</button>
+                <button class="btn btn-danger" style="${act}" data-conn-delete="${id}" type="button">Delete</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('');
       }
 
       // ── Render ──
@@ -392,20 +448,139 @@
         showKeyModal(data.token);
       });
 
-      // LLM config
-      async function saveLlmConfig(testOnly) {
-        const msg = document.getElementById('llm-message');
-        const apiKey = document.getElementById('llm-api-key').value.trim();
-        const payload = { llm_base_url: document.getElementById('llm-base-url').value.trim() || 'https://api.openai.com/v1', llm_model: document.getElementById('llm-model').value.trim() || 'gpt-4o', llm_api_key: apiKey || '__KEEP__' };
-        msg.textContent = testOnly ? 'Testing…' : 'Saving…';
-        const res = await fetch(apiUrl(testOnly ? 'v1/me/llm-config/test' : 'v1/me/llm-config'), { method: testOnly ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) { msg.textContent = data.detail || 'Failed'; return; }
-        msg.textContent = testOnly ? `Connected: ${data.model || payload.llm_model}` : 'Saved';
-        if (!testOnly) { document.getElementById('llm-api-key').value = ''; }
+      // ── LLM connections (project-scoped) ──
+      const llmEls = {
+        editId: () => document.getElementById('llm-edit-id'),
+        name: () => document.getElementById('llm-name'),
+        baseUrl: () => document.getElementById('llm-base-url'),
+        model: () => document.getElementById('llm-model'),
+        apiKey: () => document.getElementById('llm-api-key'),
+        note: () => document.getElementById('llm-note'),
+        msg: () => document.getElementById('llm-message'),
+        title: () => document.getElementById('llm-form-title'),
+        saveBtn: () => document.getElementById('save-llm-btn'),
+        testBtn: () => document.getElementById('test-llm-btn'),
+        cancelBtn: () => document.getElementById('cancel-llm-btn'),
+      };
+
+      function resetLlmForm() {
+        llmEls.editId().value = '';
+        llmEls.name().value = '';
+        llmEls.baseUrl().value = '';
+        llmEls.model().value = '';
+        llmEls.apiKey().value = '';
+        llmEls.apiKey().placeholder = 'sk-...';
+        llmEls.note().textContent = '';
+        llmEls.msg().textContent = '';
+        llmEls.title().textContent = 'Add a connection';
+        llmEls.saveBtn().textContent = 'Add connection';
+        llmEls.testBtn().style.display = 'none';
+        llmEls.cancelBtn().style.display = 'none';
       }
-      document.getElementById('save-llm-btn').addEventListener('click', () => saveLlmConfig(false));
-      document.getElementById('test-llm-btn').addEventListener('click', () => saveLlmConfig(true));
+
+      function beginEditConnection(id) {
+        const c = (state.connections || []).find(x => x.id === id);
+        if (!c) return;
+        llmEls.editId().value = c.id;
+        llmEls.name().value = c.name || '';
+        llmEls.baseUrl().value = c.llm_base_url || '';
+        llmEls.model().value = c.llm_model || '';
+        llmEls.apiKey().value = '';
+        llmEls.apiKey().placeholder = c.llm_api_key_set ? 'Leave blank to keep current key' : 'sk-...';
+        llmEls.note().textContent = c.llm_api_key_set ? `Stored key: ${c.llm_api_key_hint || 'configured'}` : '';
+        llmEls.msg().textContent = '';
+        llmEls.title().textContent = `Edit “${c.name}”`;
+        llmEls.saveBtn().textContent = 'Save changes';
+        llmEls.testBtn().style.display = '';
+        llmEls.cancelBtn().style.display = '';
+        document.getElementById('llm-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      async function saveConnection() {
+        const id = llmEls.editId().value;
+        const isEdit = !!id;
+        const apiKey = llmEls.apiKey().value.trim();
+        const payload = {
+          name: llmEls.name().value.trim(),
+          llm_base_url: llmEls.baseUrl().value.trim() || 'https://api.openai.com/v1',
+          llm_model: llmEls.model().value.trim() || 'gpt-4o-mini',
+          llm_api_key: apiKey || (isEdit ? '__KEEP__' : ''),
+        };
+        if (!payload.name) { llmEls.msg().textContent = 'Name is required'; return; }
+        llmEls.msg().textContent = 'Saving…';
+        const url = isEdit
+          ? `v1/projects/${state.project.id}/llm-connections/${id}`
+          : `v1/projects/${state.project.id}/llm-connections`;
+        const res = await fetch(apiUrl(url), {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { llmEls.msg().textContent = data.detail || 'Failed'; return; }
+        resetLlmForm();
+        await loadConnections();
+      }
+
+      function toast(message, type) {
+        if (window.QymShell && window.QymShell.toast) window.QymShell.toast(message, type);
+      }
+
+      async function testConnection(id, btn) {
+        const conn = (state.connections || []).find(x => x.id === id);
+        const name = conn ? conn.name : 'connection';
+        if (btn) {
+          // Lock the current width so swapping in the spinner doesn't reflow the row/columns.
+          btn._orig = btn.innerHTML;
+          btn._w = btn.style.width;
+          btn.style.width = btn.offsetWidth + 'px';
+          btn.disabled = true;
+          btn.innerHTML = '<span class="mini-spinner" style="margin:0"></span>';
+        }
+        try {
+          const res = await fetch(apiUrl(`v1/projects/${state.project.id}/llm-connections/${id}/test`), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) toast(`“${name}” connected${data.model ? ' · ' + data.model : ''}`, 'success');
+          else toast(`“${name}” failed: ${data.detail || 'could not reach the provider'}`, 'error');
+        } catch (e) {
+          toast(`“${name}” failed: ${e.message || 'request error'}`, 'error');
+        } finally {
+          if (btn) { btn.disabled = false; btn.innerHTML = btn._orig; btn.style.width = btn._w || ''; }
+        }
+      }
+
+      async function setDefaultConnection(id) {
+        await fetch(apiUrl(`v1/projects/${state.project.id}/llm-connections/${id}/set-default`), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        });
+        await loadConnections();
+      }
+
+      async function deleteConnection(id) {
+        const c = (state.connections || []).find(x => x.id === id);
+        const ok = window.QymShell && window.QymShell.openConfirmDialog
+          ? (await window.QymShell.openConfirmDialog({ title: 'Delete connection?', description: `Remove “${c ? c.name : 'this connection'}”?`, confirmLabel: 'Delete', danger: true })).confirmed
+          : window.confirm('Delete this connection?');
+        if (!ok) return;
+        await fetch(apiUrl(`v1/projects/${state.project.id}/llm-connections/${id}`), { method: 'DELETE' });
+        if (llmEls.editId().value === id) resetLlmForm();
+        await loadConnections();
+      }
+
+      document.getElementById('save-llm-btn').addEventListener('click', saveConnection);
+      document.getElementById('test-llm-btn').addEventListener('click', (e) => {
+        const id = llmEls.editId().value; if (id) testConnection(id, e.currentTarget);
+      });
+      document.getElementById('cancel-llm-btn').addEventListener('click', resetLlmForm);
+      document.getElementById('llm-connections-tbody').addEventListener('click', (e) => {
+        const t = e.target.closest('button'); if (!t) return;
+        if (t.dataset.connEdit) beginEditConnection(t.dataset.connEdit);
+        else if (t.dataset.connTest) testConnection(t.dataset.connTest, t);
+        else if (t.dataset.connDefault) setDefaultConnection(t.dataset.connDefault);
+        else if (t.dataset.connDelete) deleteConnection(t.dataset.connDelete);
+      });
 
       function handleProjectRemovalSuccess(result) {
         if (window.QymShell && window.QymShell.removeProject) {

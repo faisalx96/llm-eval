@@ -7,14 +7,31 @@ from typing import Any, Dict, Iterable, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
-from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, User, UserRole
+from qym_platform.db.models import (
+    ApiKey,
+    Project,
+    ProjectLlmConnection,
+    ProjectMembership,
+    ProjectRole,
+    Run,
+    User,
+    UserRole,
+)
 from qym_platform.deps import get_db
+from qym_platform.openai_compat import create_chat_completion_compat
 from qym_platform.permissions import can_manage_project_members, get_project_membership, has_project_access
+from qym_platform.secrets import (
+    build_llm_config_storage,
+    encryption_available,
+    resolve_llm_api_key,
+)
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.settings import PlatformSettings
 
 
 router = APIRouter()
@@ -225,6 +242,211 @@ class CreateProjectKeyRequest(BaseModel):
             "datasets:delete",
         ]
     )
+
+
+class LlmConnectionRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    llm_base_url: str = Field(default="https://api.openai.com/v1")
+    llm_model: str = Field(default="gpt-4o-mini")
+    # New key, or the sentinel "__KEEP__" on edit to preserve the stored key, or "" to clear.
+    llm_api_key: str = Field(default="")
+
+
+def _serialize_connection(conn: ProjectLlmConnection) -> Dict[str, Any]:
+    return {
+        "id": conn.id,
+        "project_id": conn.project_id,
+        "name": conn.name,
+        "llm_base_url": conn.llm_base_url,
+        "llm_model": conn.llm_model,
+        "llm_api_key_set": bool(conn.llm_api_key_encrypted),
+        "llm_api_key_hint": ("••••" + conn.llm_api_key_last4) if conn.llm_api_key_last4 else "",
+        "is_default": conn.is_default,
+        "created_at": to_api_timestamp(conn.created_at),
+        "updated_at": to_api_timestamp(conn.updated_at),
+    }
+
+
+def _get_connection(db: Session, project_id: str, connection_id: str) -> ProjectLlmConnection:
+    conn = (
+        db.query(ProjectLlmConnection)
+        .filter(ProjectLlmConnection.id == connection_id, ProjectLlmConnection.project_id == project_id)
+        .first()
+    )
+    if not conn:
+        raise HTTPException(status_code=404, detail="LLM connection not found")
+    return conn
+
+
+def _apply_connection_key(
+    conn: ProjectLlmConnection,
+    req: LlmConnectionRequest,
+    *,
+    is_new: bool,
+    settings: PlatformSettings,
+) -> None:
+    """Set base_url/model/name and resolve the API key (new / keep / clear)."""
+    conn.name = req.name.strip()
+    conn.llm_base_url = req.llm_base_url.strip().rstrip("/")
+    conn.llm_model = req.llm_model.strip()
+
+    api_key = req.llm_api_key.strip()
+    if api_key == "__KEEP__":
+        return  # leave the stored encrypted key untouched
+    if not api_key:
+        if is_new:
+            raise HTTPException(status_code=400, detail="An API key is required")
+        conn.llm_api_key_encrypted = ""
+        conn.llm_api_key_last4 = ""
+        return
+    if not encryption_available(settings):
+        raise HTTPException(status_code=400, detail="LLM config encryption is not configured")
+    stored = build_llm_config_storage(
+        base_url=conn.llm_base_url, model=conn.llm_model, api_key=api_key, settings=settings
+    )
+    conn.llm_api_key_encrypted = stored["llm_api_key_encrypted"]
+    conn.llm_api_key_last4 = stored["llm_api_key_last4"]
+
+
+@router.get("/v1/projects/{project_id}/llm-connections")
+def list_llm_connections(
+    project_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    conns = (
+        db.query(ProjectLlmConnection)
+        .filter(ProjectLlmConnection.project_id == project_id)
+        .order_by(ProjectLlmConnection.is_default.desc(), ProjectLlmConnection.created_at)
+        .all()
+    )
+    return {"connections": [_serialize_connection(c) for c in conns]}
+
+
+@router.post("/v1/projects/{project_id}/llm-connections")
+def create_llm_connection(
+    project_id: str,
+    req: LlmConnectionRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    settings = PlatformSettings()
+    existing = db.query(ProjectLlmConnection).filter(ProjectLlmConnection.project_id == project_id).count()
+    conn = ProjectLlmConnection(project_id=project_id, created_by_user_id=principal.user.id)
+    _apply_connection_key(conn, req, is_new=True, settings=settings)
+    conn.is_default = existing == 0  # first connection becomes the default
+    db.add(conn)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="A connection with that name already exists")
+    db.refresh(conn)
+    return _serialize_connection(conn)
+
+
+@router.put("/v1/projects/{project_id}/llm-connections/{connection_id}")
+def update_llm_connection(
+    project_id: str,
+    connection_id: str,
+    req: LlmConnectionRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    settings = PlatformSettings()
+    conn = _get_connection(db, project_id, connection_id)
+    _apply_connection_key(conn, req, is_new=False, settings=settings)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="A connection with that name already exists")
+    db.refresh(conn)
+    return _serialize_connection(conn)
+
+
+@router.delete("/v1/projects/{project_id}/llm-connections/{connection_id}")
+def delete_llm_connection(
+    project_id: str,
+    connection_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    conn = _get_connection(db, project_id, connection_id)
+    was_default = conn.is_default
+    db.delete(conn)
+    db.flush()
+    if was_default:
+        # Promote the oldest remaining connection so the project still has a default.
+        nxt = (
+            db.query(ProjectLlmConnection)
+            .filter(ProjectLlmConnection.project_id == project_id)
+            .order_by(ProjectLlmConnection.created_at)
+            .first()
+        )
+        if nxt:
+            nxt.is_default = True
+    db.commit()
+    return {"ok": True, "id": connection_id}
+
+
+@router.post("/v1/projects/{project_id}/llm-connections/{connection_id}/set-default")
+def set_default_llm_connection(
+    project_id: str,
+    connection_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    conn = _get_connection(db, project_id, connection_id)
+    db.query(ProjectLlmConnection).filter(
+        ProjectLlmConnection.project_id == project_id
+    ).update({ProjectLlmConnection.is_default: False})
+    conn.is_default = True
+    db.commit()
+    db.refresh(conn)
+    return _serialize_connection(conn)
+
+
+@router.post("/v1/projects/{project_id}/llm-connections/{connection_id}/test")
+async def test_llm_connection(
+    project_id: str,
+    connection_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_project_access(db, principal, project_id)
+    settings = PlatformSettings()
+    conn = _get_connection(db, project_id, connection_id)
+    cfg = {
+        "llm_api_key_encrypted": conn.llm_api_key_encrypted,
+        "llm_api_key_last4": conn.llm_api_key_last4,
+    }
+    try:
+        api_key = resolve_llm_api_key(cfg, settings)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No API key configured for this connection")
+
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(base_url=conn.llm_base_url or "https://api.openai.com/v1", api_key=api_key)
+    model = conn.llm_model or "gpt-4o-mini"
+    try:
+        resp = await create_chat_completion_compat(
+            client,
+            model=model,
+            messages=[{"role": "user", "content": "Reply with: ok"}],
+            max_tokens=4,
+        )
+        return {"ok": True, "model": model, "response": resp.choices[0].message.content}
+    except Exception as e:  # noqa: BLE001 - surface provider error to the user
+        raise HTTPException(status_code=400, detail=f"LLM connection failed: {e}")
 
 
 @router.get("/v1/projects")

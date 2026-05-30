@@ -24,8 +24,11 @@ for src in (PLATFORM_SRC, SDK_SRC):
 
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
-from qym_platform.db.models import User, UserRole
+from qym_platform.db.models import Project, ProjectLlmConnection, User, UserRole
 from qym_platform.deps import get_db
+
+PROJECT_ID = "proj-1"
+CONNECTIONS_URL = f"/v1/projects/{PROJECT_ID}/llm-connections"
 
 
 @pytest.fixture()
@@ -66,49 +69,58 @@ def client(session_factory):
 
 
 def _headers(email: str) -> dict[str, str]:
-    return {"X-User-Email": email}
+    # Origin matches the default base_url so the same-origin write guard allows POST/PUT/DELETE.
+    return {"X-User-Email": email, "Origin": "http://localhost:8000"}
 
 
-def _seed_user(session_factory, *, llm_config: dict | None = None) -> None:
+def _seed_admin_and_project(session_factory) -> None:
+    """Admins have access to every project, so no membership rows are needed."""
     with session_factory() as session:
         session.add(
-            User(
-                id="user-1",
-                email="user@example.com",
-                role=UserRole.EMPLOYEE,
-                llm_config=llm_config or {},
-            )
+            User(id="user-1", email="user@example.com", role=UserRole.ADMIN)
+        )
+        session.add(
+            Project(id=PROJECT_ID, name="Proj", slug="proj", created_by_user_id="user-1")
         )
         session.commit()
 
 
-def test_llm_config_is_encrypted_and_masked(client, session_factory, monkeypatch) -> None:
-    _seed_user(session_factory)
+def test_connection_key_is_encrypted_and_masked(client, session_factory, monkeypatch) -> None:
+    _seed_admin_and_project(session_factory)
 
-    update_response = client.put(
-        "/v1/me/llm-config",
+    create = client.post(
+        CONNECTIONS_URL,
         headers=_headers("user@example.com"),
         json={
+            "name": "OpenAI prod",
             "llm_base_url": "https://api.openai.com/v1",
             "llm_api_key": "sk-secret-1234",
             "llm_model": "gpt-4o-mini",
         },
     )
-    assert update_response.status_code == 200
+    assert create.status_code == 200
+    created = create.json()
+    connection_id = created["id"]
+    # First connection becomes the default; the raw key is never echoed back.
+    assert created["is_default"] is True
+    assert created["llm_api_key_set"] is True
+    assert created["llm_api_key_hint"] == "••••1234"
+    assert "llm_api_key" not in created
+    assert "llm_api_key_encrypted" not in created
 
     with session_factory() as session:
-        user = session.query(User).filter(User.email == "user@example.com").first()
-        assert user is not None
-        assert "llm_api_key" not in user.llm_config
-        assert user.llm_config["llm_api_key_encrypted"]
-        assert user.llm_config["llm_api_key_last4"] == "1234"
+        conn = session.query(ProjectLlmConnection).filter_by(id=connection_id).first()
+        assert conn is not None
+        assert conn.llm_api_key_encrypted
+        assert conn.llm_api_key_last4 == "1234"
 
-    get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
-    assert get_response.status_code == 200
-    assert get_response.json()["llm_config_storage_ready"] is True
-    assert get_response.json()["llm_api_key_set"] is True
-    assert get_response.json()["llm_api_key_hint"] == "••••1234"
+    listing = client.get(CONNECTIONS_URL, headers=_headers("user@example.com"))
+    assert listing.status_code == 200
+    conns = listing.json()["connections"]
+    assert len(conns) == 1
+    assert conns[0]["llm_api_key_hint"] == "••••1234"
 
+    # ── Test connection: decrypts the real key and falls back max_tokens → max_completion_tokens
     captured: dict[str, object] = {"calls": []}
 
     class FakeAsyncOpenAI:
@@ -133,84 +145,52 @@ def test_llm_config_is_encrypted_and_masked(client, session_factory, monkeypatch
             )
 
     monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(AsyncOpenAI=FakeAsyncOpenAI))
-    test_response = client.post("/v1/me/llm-config/test", headers=_headers("user@example.com"))
+    test_response = client.post(
+        f"{CONNECTIONS_URL}/{connection_id}/test", headers=_headers("user@example.com")
+    )
     assert test_response.status_code == 200
     assert captured["api_key"] == "sk-secret-1234"
     calls = captured["calls"]
-    assert isinstance(calls, list)
     assert len(calls) == 2
     assert calls[0]["max_tokens"] == 4
     assert calls[1]["max_completion_tokens"] == 4
     assert "max_tokens" not in calls[1]
 
 
-def test_legacy_plaintext_llm_config_is_readable_and_rewritten_on_update(client, session_factory) -> None:
-    _seed_user(
-        session_factory,
-        llm_config={
-            "llm_base_url": "https://api.openai.com/v1",
-            "llm_api_key": "legacy-secret-9999",
-            "llm_model": "gpt-4o-mini",
-        },
-    )
-
-    get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
-    assert get_response.status_code == 200
-    assert get_response.json()["llm_config_storage_ready"] is True
-    assert get_response.json()["llm_api_key_set"] is True
-    assert get_response.json()["llm_api_key_hint"] == "••••9999"
-
-    update_response = client.put(
-        "/v1/me/llm-config",
+def test_update_with_keep_preserves_key(client, session_factory) -> None:
+    _seed_admin_and_project(session_factory)
+    create = client.post(
+        CONNECTIONS_URL,
         headers=_headers("user@example.com"),
-        json={
-            "llm_base_url": "https://api.openai.com/v1",
-            "llm_api_key": "__KEEP__",
-            "llm_model": "gpt-4o-mini",
-        },
+        json={"name": "c1", "llm_api_key": "sk-secret-9999", "llm_model": "gpt-4o-mini"},
     )
-    assert update_response.status_code == 200
+    connection_id = create.json()["id"]
+
+    update = client.put(
+        f"{CONNECTIONS_URL}/{connection_id}",
+        headers=_headers("user@example.com"),
+        json={"name": "c1 renamed", "llm_api_key": "__KEEP__", "llm_model": "gpt-4o"},
+    )
+    assert update.status_code == 200
+    assert update.json()["name"] == "c1 renamed"
 
     with session_factory() as session:
-        user = session.query(User).filter(User.email == "user@example.com").first()
-        assert user is not None
-        assert "llm_api_key" not in user.llm_config
-        assert user.llm_config["llm_api_key_encrypted"]
-        assert user.llm_config["llm_api_key_last4"] == "9999"
+        conn = session.query(ProjectLlmConnection).filter_by(id=connection_id).first()
+        assert conn.llm_model == "gpt-4o"
+        assert conn.llm_api_key_last4 == "9999"  # key preserved across the rename
 
 
-def test_llm_config_reports_missing_encryption_key(monkeypatch, session_factory) -> None:
-    monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
-    monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
-    monkeypatch.delenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", raising=False)
-    _seed_user(session_factory)
+def test_create_reports_missing_encryption_key(client, session_factory, monkeypatch) -> None:
+    # The repo .env supplies an encryption key, so simulate "not configured" at the guard.
+    import qym_platform.api.projects as projects_api
 
-    app = create_app()
+    monkeypatch.setattr(projects_api, "encryption_available", lambda *a, **k: False)
+    _seed_admin_and_project(session_factory)
 
-    def override_get_db():
-        db = session_factory()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        with TestClient(app) as client:
-            get_response = client.get("/v1/me/llm-config", headers=_headers("user@example.com"))
-            assert get_response.status_code == 200
-            assert get_response.json()["llm_config_storage_ready"] is False
-
-            update_response = client.put(
-                "/v1/me/llm-config",
-                headers=_headers("user@example.com"),
-                json={
-                    "llm_base_url": "https://api.openai.com/v1",
-                    "llm_api_key": "sk-secret-1234",
-                    "llm_model": "gpt-4o-mini",
-                },
-            )
-            assert update_response.status_code == 400
-            assert update_response.json()["detail"] == "LLM config encryption is not configured"
-    finally:
-        app.dependency_overrides.clear()
+    resp = client.post(
+        CONNECTIONS_URL,
+        headers=_headers("user@example.com"),
+        json={"name": "c1", "llm_api_key": "sk-secret-1234", "llm_model": "gpt-4o-mini"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "LLM config encryption is not configured"

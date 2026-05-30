@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import defaultdict
 from html import escape
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     AuditLog,
+    DatasetAlias,
+    DatasetVersion,
     Project,
     ProjectMembership,
     ReviewCorrection,
@@ -381,6 +384,45 @@ def _build_item_trace_payload(item: RunItem, attempts: List[Dict[str, Any]]) -> 
     }
 
 
+def _dataset_version_info_map(db: Session, runs: List[Run]) -> Dict[str, Dict[str, Any]]:
+    """Resolve the dataset version label and aliases for a batch of runs.
+
+    Keyed by ``dataset_version_id``; returns ``{"dataset_version": "v4",
+    "dataset_aliases": ["production"]}``. Aliases reflect what currently points at that
+    version, so a run shows ``production`` when its version is the live production one.
+    Runs with no ``dataset_version_id`` simply aren't in the map.
+    """
+    version_ids = {run.dataset_version_id for run in runs if run.dataset_version_id}
+    if not version_ids:
+        return {}
+    versions = {
+        v.id: v
+        for v in db.query(DatasetVersion).filter(DatasetVersion.id.in_(version_ids)).all()
+    }
+    aliases_by_version: Dict[str, List[str]] = defaultdict(list)
+    for alias in (
+        db.query(DatasetAlias).filter(DatasetAlias.dataset_version_id.in_(version_ids)).all()
+    ):
+        aliases_by_version[alias.dataset_version_id].append(alias.alias)
+    info: Dict[str, Dict[str, Any]] = {}
+    for vid in version_ids:
+        v = versions.get(vid)
+        info[vid] = {
+            "dataset_version": v.version if v else None,
+            "dataset_aliases": sorted(aliases_by_version.get(vid, [])),
+        }
+    return info
+
+
+def _dataset_version_fields(run: Run, info_map: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Per-run dataset version/alias fields for inclusion in a run payload."""
+    entry = info_map.get(run.dataset_version_id) if run.dataset_version_id else None
+    return {
+        "dataset_version": entry["dataset_version"] if entry else None,
+        "dataset_aliases": entry["dataset_aliases"] if entry else [],
+    }
+
+
 def _compute_run_summary(db: Session, run: Run) -> Dict[str, Any]:
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
     total_items = len(items)
@@ -507,6 +549,7 @@ def _live_run_summary(
     project: Optional[Project],
     owner: Optional[User],
     item_agg: Dict[str, Any],
+    dataset_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     expected_total = None
     if isinstance(run.run_metadata, dict):
@@ -541,6 +584,8 @@ def _live_run_summary(
         "external_run_id": run.external_run_id or "",
         "task_name": run.task,
         "dataset_name": run.dataset,
+        "dataset_version": (dataset_fields or {}).get("dataset_version"),
+        "dataset_aliases": (dataset_fields or {}).get("dataset_aliases", []),
         "model_name": _strip_model_provider(run.model or ""),
         "status": run.status.value if hasattr(run.status, "value") else str(run.status or ""),
         "timestamp": _iso(run.started_at or run.created_at),
@@ -586,6 +631,7 @@ def _summarize_runs_for_admin(db: Session, runs: List[Run]) -> List[Dict[str, An
     owners = db.query(User).filter(User.id.in_(owner_ids)).all() if owner_ids else []
     project_map = {project.id: project for project in projects}
     owner_map = {owner.id: owner for owner in owners}
+    dataset_info = _dataset_version_info_map(db, runs)
 
     return [
         _live_run_summary(
@@ -593,6 +639,7 @@ def _summarize_runs_for_admin(db: Session, runs: List[Run]) -> List[Dict[str, An
             project=project_map.get(run.project_id),
             owner=owner_map.get(run.owner_user_id),
             item_agg=item_agg.get(run.id, {}),
+            dataset_fields=_dataset_version_fields(run, dataset_info),
         )
         for run in runs
     ]
@@ -942,6 +989,7 @@ def legacy_list_runs(
     user_map = {u.id: u for u in users}
 
     # --- Build summaries from pre-fetched data ---
+    dataset_info = _dataset_version_info_map(db, runs)
     tasks: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     for r in runs:
         agg = item_agg.get(
@@ -1025,6 +1073,8 @@ def legacy_list_runs(
             "task_name": r.task,
             "model_name": _strip_model_provider(r.model or ""),
             "dataset_name": r.dataset,
+            "dataset_version": _dataset_version_fields(r, dataset_info)["dataset_version"],
+            "dataset_aliases": _dataset_version_fields(r, dataset_info)["dataset_aliases"],
             "timestamp": _iso(started_at),
             "file_path": r.id,
             "metrics": metrics,
@@ -1214,6 +1264,7 @@ def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]
 
     run_ids = [run.id for run in runs]
     metrics_by_run = {run.id: list(run.metrics or []) for run in runs}
+    dataset_info = _dataset_version_info_map(db, runs)
     runs_data: dict[str, dict[str, Any]] = {}
     stats_by_run: dict[str, dict[str, Any]] = {}
 
@@ -1221,6 +1272,7 @@ def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]
         metrics = metrics_by_run[run.id]
         stats = {"total": 0, "completed": 0, "in_progress": 0, "pending": 0, "failed": 0}
         stats_by_run[run.id] = stats
+        _dsv = _dataset_version_fields(run, dataset_info)
         runs_data[run.id] = {
             "run": {
                 "run_id": run.id,
@@ -1229,6 +1281,8 @@ def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]
                 "metric_names": metrics,
                 "task_name": run.task,
                 "dataset_name": run.dataset,
+                "dataset_version": _dsv["dataset_version"],
+                "dataset_aliases": _dsv["dataset_aliases"],
                 "model_name": _strip_model_provider(run.model or ""),
             },
             "snapshot": {
@@ -1537,12 +1591,16 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     if not run_name:
         run_name = run.external_run_id or run.id
 
+    _dsv = _dataset_version_fields(run, _dataset_version_info_map(db, [run]))
+
     return finalize_compare_alignment({
         "run": {
             "run_id": run.id,
             "file_path": run.id,
             "task_name": run.task,
             "dataset_name": run.dataset,
+            "dataset_version": _dsv["dataset_version"],
+            "dataset_aliases": _dsv["dataset_aliases"],
             "model_name": _strip_model_provider(run.model or ""),
             "run_name": run_name,
             "external_run_id": run.external_run_id or "",
@@ -1687,6 +1745,7 @@ def list_deleted_runs(
         for u in db.query(User).filter(User.id.in_(deleter_ids)).all():
             deleters[u.id] = u.display_name or u.email
 
+    dataset_info = _dataset_version_info_map(db, deleted_runs)
     result = []
     for r in deleted_runs:
         run_name = ""
@@ -1694,11 +1753,14 @@ def list_deleted_runs(
             run_name = r.run_config.get("run_name", "")
         if not run_name:
             run_name = r.external_run_id or ""
+        _dsv = _dataset_version_fields(r, dataset_info)
         result.append({
             "id": r.id,
             "run_name": run_name,
             "task": r.task,
             "dataset": r.dataset,
+            "dataset_version": _dsv["dataset_version"],
+            "dataset_aliases": _dsv["dataset_aliases"],
             "model": r.model,
             "trace_stats": r.run_metadata.get("trace_stats") if isinstance(r.run_metadata, dict) else None,
             "status": r.status.value if r.status else None,

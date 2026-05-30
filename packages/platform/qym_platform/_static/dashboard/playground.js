@@ -9,6 +9,7 @@ window.QymPlayground = (function () {
   var _opts = {};
   var _overlay = null;
   var _config = null;
+  var _connectionId = null;
   var _corrections = [];
   var _testResults = [];
   var _running = false;
@@ -43,6 +44,8 @@ window.QymPlayground = (function () {
       fetch(base('api/runs/' + runId + '/corrections')).then(function (r) { if (!r.ok) throw new Error('Corrections: HTTP ' + r.status); return r.json(); }),
     ]).then(function (results) {
       _config = results[0];
+      var _conns = (_config && _config.llm_connections) || [];
+      _connectionId = (_config && _config.default_connection_id) || (_conns[0] && _conns[0].id) || null;
       _corrections = (results[1] && results[1].corrections) || [];
       _testResults = [];
       _matchedPage = 0;
@@ -576,7 +579,7 @@ window.QymPlayground = (function () {
     if (_config && !_config.llm_configured) {
       var banner = document.createElement('div');
       banner.className = 'playground-banner playground-banner-warn';
-      banner.textContent = 'LLM not configured \u2014 set up in Profile to enable Test and Run';
+      banner.textContent = 'No LLM connection for this project \u2014 add one in Project Settings \u2192 LLM Connections to enable Test and Run';
       modal.appendChild(banner);
     }
 
@@ -590,10 +593,27 @@ window.QymPlayground = (function () {
     var footer = document.createElement('div');
     footer.className = 'playground-footer';
     var llmOk = _config && _config.llm_configured;
+    var conns = (_config && _config.llm_connections) || [];
+    var connSelect = '';
+    if (conns.length) {
+      connSelect = '<div class="pg-connection" title="LLM connection used for analysis">' +
+        '<span class="pg-connection-icon">◈</span>' +
+        '<span class="pg-connection-label">LLM</span>' +
+        '<select id="pg-connection" class="pg-connection-select">' +
+        conns.map(function (c) {
+          return '<option value="' + _esc(c.id) + '"' + (c.id === _connectionId ? ' selected' : '') +
+            (c.llm_api_key_set ? '' : ' disabled') + '>' + _esc(c.name) + (c.llm_model ? ' (' + _esc(c.llm_model) + ')' : '') + '</option>';
+        }).join('') +
+        '</select>' +
+        '</div>';
+    }
     footer.innerHTML =
+      connSelect +
       '<button class="pg-footer-btn pg-footer-test" id="pg-test-btn" ' + (!llmOk ? 'disabled' : '') + '>Test Selected</button>' +
       '<button class="pg-footer-btn pg-footer-runall" id="pg-runall-btn" ' + (!llmOk ? 'disabled' : '') + '>Run All (' + _getMatchedItems().length + ' items)</button>';
     modal.appendChild(footer);
+    var connEl = footer.querySelector('#pg-connection');
+    if (connEl) connEl.addEventListener('change', function () { _connectionId = connEl.value || null; });
 
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1425,7 +1445,7 @@ window.QymPlayground = (function () {
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg }),
+        body: JSON.stringify({ item_id: itemId, metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg, connection_id: _connectionId }),
       })
       .then(function (r) {
         if (!r.ok) {
@@ -1504,7 +1524,7 @@ window.QymPlayground = (function () {
     fetch(base('api/runs/' + runId + '/analyze-test'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg }),
+      body: JSON.stringify({ item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg, connection_id: _connectionId }),
     })
     .then(function (r) {
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Test failed'); });
@@ -1651,6 +1671,7 @@ window.QymPlayground = (function () {
       allow_human_overwrite: humanOverwriteEl ? humanOverwriteEl.checked : false,
       threshold: _opts.getThreshold ? _opts.getThreshold() : 0.8,
       config: cfg,
+      connection_id: _connectionId,
     };
 
     var btn = document.getElementById('pg-runall-btn');

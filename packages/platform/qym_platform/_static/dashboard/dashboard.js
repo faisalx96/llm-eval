@@ -64,6 +64,30 @@
     return commit || branch || '';
   }
 
+  // Dataset filter identity: each dataset VERSION is its own entry. The key encodes
+  // name + dataset version so e.g. "ragbench-100 v1" and "ragbench-100 v4" filter
+  // independently. Runs with no platform dataset version fall back to just the name.
+  const DATASET_KEY_SEP = '␟';
+  function getRunDatasetKey(run) {
+    if (!run) return '';
+    const name = String(run.dataset_name || '');
+    const version = String(run.dataset_version || '').trim();
+    return version ? name + DATASET_KEY_SEP + version : name;
+  }
+  function splitDatasetKey(key) {
+    const s = String(key == null ? '' : key);
+    const i = s.indexOf(DATASET_KEY_SEP);
+    return i === -1 ? { name: s, version: '' } : { name: s.slice(0, i), version: s.slice(i + 1) };
+  }
+  function getDatasetFilterLabel(key) {
+    const p = splitDatasetKey(key);
+    return p.version ? `${p.name} ${p.version}` : p.name;
+  }
+  function renderDatasetFilterLabel(key) {
+    const p = splitDatasetKey(key);
+    return escapeHtml(p.name) + (p.version && window.QymShell ? QymShell.datasetVersionInline(p.version) : '');
+  }
+
   function getProjectStorageKey() {
     return 'qym:last-project-slug';
   }
@@ -1518,7 +1542,7 @@
       }
     }
     if (state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
-      runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, r.dataset_name));
+      runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, getRunDatasetKey(r)));
     } else if (state.filterDatasets.has('__none__')) {
       runs = [];
     }
@@ -2885,7 +2909,7 @@
             </span>
           </td>
           <td class="col-dataset">
-            <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}</span>
+            <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
           <td class="col-version">
             ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
@@ -3301,7 +3325,7 @@
         parts.push(`task: ${summarizeFilterSelection(state.filterTasks)}`);
       }
       if (state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
-        parts.push(`dataset: ${summarizeFilterSelection(state.filterDatasets)}`);
+        parts.push(`dataset: ${summarizeFilterSelection(state.filterDatasets, getDatasetFilterLabel)}`);
       }
       if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
         parts.push(`model: ${summarizeFilterSelection(state.filterModels, stripModelProvider)}`);
@@ -3613,7 +3637,7 @@
 
     if (!selectedTask || !selectedDataset) {
       const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
-      const uniqueDatasets = new Set(state.filteredRuns.map(r => r.dataset_name));
+      const uniqueDatasets = new Set(state.filteredRuns.map(r => getRunDatasetKey(r)));
       if (!selectedTask && uniqueTasks.size === 1) selectedTask = [...uniqueTasks][0];
       if (!selectedDataset && uniqueDatasets.size === 1) selectedDataset = [...uniqueDatasets][0];
     }
@@ -3632,7 +3656,7 @@
     // Get runs matching task+dataset (and model filter if active)
     const matchingRuns = state.flatRuns.filter(r => {
       if (!matchesFilterSelection(new Set([selectedTask]), r.task_name)) return false;
-      if (!matchesFilterSelection(new Set([selectedDataset]), r.dataset_name)) return false;
+      if (!matchesFilterSelection(new Set([selectedDataset]), getRunDatasetKey(r))) return false;
       // #14: Apply global model filter to Models View
       if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
         if (!matchesFilterSelection(state.filterModels, getRunModelKey(r))) return false;
@@ -3773,14 +3797,14 @@
 
     if (!currentTask || !currentDataset) {
       const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
-      const uniqueDatasets = new Set(state.filteredRuns.map(r => r.dataset_name));
+      const uniqueDatasets = new Set(state.filteredRuns.map(r => getRunDatasetKey(r)));
       if (!currentTask && uniqueTasks.size === 1) currentTask = [...uniqueTasks][0];
       if (!currentDataset && uniqueDatasets.size === 1) currentDataset = [...uniqueDatasets][0];
     }
 
     // Get metrics for selected task+dataset
     const runsForCombo = currentTask && currentDataset
-      ? state.flatRuns.filter(r => r.task_name === currentTask && r.dataset_name === currentDataset)
+      ? state.flatRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)
       : [];
     const metricsSet = new Set();
     for (const run of runsForCombo) {
@@ -5325,7 +5349,7 @@
         runs = runs.filter(r => matchesFilterSelection(state.filterTasks, r.task_name));
       }
       if (skipFilter !== 'datasets' && state.filterDatasets.size > 0 && !state.filterDatasets.has('__none__')) {
-        runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, r.dataset_name));
+        runs = runs.filter(r => matchesFilterSelection(state.filterDatasets, getRunDatasetKey(r)));
       }
       if (skipFilter !== 'models' && state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
         runs = runs.filter(r => matchesFilterSelection(state.filterModels, getRunModelKey(r)));
@@ -5343,7 +5367,7 @@
     }
 
     const tasks = collectFilterValues(runsExcluding('tasks'), r => r.task_name);
-    const datasets = collectFilterValues(runsExcluding('datasets'), r => r.dataset_name);
+    const datasets = collectFilterValues(runsExcluding('datasets'), r => getRunDatasetKey(r));
     const models = collectFilterValues(runsExcluding('models'), r => getRunModelKey(r)).sort(compareModelVariantKeys);
     const statusValues = collectFilterValues(runsExcluding('statuses'), r => r.status);
     const ownerValues = collectFilterValues(runsExcluding('users'), r => getRunOwnerKey(r));
@@ -5373,11 +5397,12 @@
       onchange: () => { state.modelsViewState.selectedMetric = ''; state.modelsViewState.modelRunSelections = {}; },
     });
 
-    // Dataset multi-select
+    // Dataset multi-select — each dataset version is its own entry.
     buildMultiSelect({
       btnId: 'filter-dataset-btn', dropdownId: 'filter-dataset-dropdown',
       stateSet: state.filterDatasets, values: datasets,
-      labelFn: null, defaultLabel: 'All Datasets',
+      labelFn: getDatasetFilterLabel, htmlLabelFn: (k) => renderDatasetFilterLabel(k),
+      defaultLabel: 'All Datasets',
       showSearch: true, searchPlaceholder: 'Search datasets...',
       onchange: () => { state.modelsViewState.selectedMetric = ''; state.modelsViewState.modelRunSelections = {}; },
     });
