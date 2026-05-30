@@ -21,7 +21,17 @@ for src in (ROOT / "packages" / "platform", ROOT / "packages" / "sdk"):
 
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, Project, ProjectMembership, ProjectRole, Run, RunItem, User, UserRole
+from qym_platform.db.models import (
+    ApiKey,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+    Run,
+    RunItem,
+    RunItemScore,
+    User,
+    UserRole,
+)
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
 
@@ -174,3 +184,243 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
     runs = client.get(f"/v1/datasets/qa/versions/v2/items/{item['item_id']}/runs", headers=_bearer())
     assert runs.status_code == 200
     assert runs.json()["runs"][0]["run_id"] == "run-1"
+
+
+def test_csv_upload_multi_column_input_combines_into_json(client_and_session, tmp_path):
+    client, _ = client_and_session
+    csv_path = tmp_path / "multi.csv"
+    csv_path.write_text(
+        "first,last,answer\nAda,Lovelace,mathematician\nGrace,Hopper,admiral\n",
+        encoding="utf-8",
+    )
+
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "Multi",
+                "version": "v1",
+                "publish": "true",
+                "input_cols": "first,last",
+                "expected_cols": "answer",
+            },
+            files={"file": ("multi.csv", fh, "text/csv")},
+        )
+    assert upload.status_code == 200, upload.text
+
+    items = client.get("/v1/datasets/multi/versions/v1/items?sort=index_asc", headers=_bearer())
+    assert items.status_code == 200
+    rows = items.json()["items"]
+    # Multiple input columns -> JSON object keyed by column name.
+    assert rows[0]["input"] == {"first": "Ada", "last": "Lovelace"}
+    # Single expected column -> scalar value.
+    assert rows[0]["expected_output"] == "mathematician"
+
+
+def test_csv_upload_single_column_input_stays_scalar(client_and_session, tmp_path):
+    client, _ = client_and_session
+    csv_path = tmp_path / "single.csv"
+    csv_path.write_text("question,answer\nhi,hello\n", encoding="utf-8")
+
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "Single",
+                "version": "v1",
+                "publish": "true",
+                "input_cols": "question",
+                # No expected_cols -> genuinely no expected output.
+            },
+            files={"file": ("single.csv", fh, "text/csv")},
+        )
+    assert upload.status_code == 200, upload.text
+
+    items = client.get("/v1/datasets/single/versions/v1/items", headers=_bearer())
+    row = items.json()["items"][0]
+    assert row["input"] == "hi"
+    assert row["expected_output"] is None
+
+
+def test_dataset_runs_endpoint(client_and_session):
+    client, SessionLocal = client_and_session
+
+    created = client.post(
+        "/v1/datasets",
+        headers=_bearer(),
+        json={"name": "Runs DS", "slug": "runs-ds"},
+    )
+    assert created.status_code == 200
+    dataset_id = created.json()["dataset"]["id"]
+
+    draft = client.post("/v1/datasets/runs-ds/versions", headers=_bearer(), json={"version": "v1"})
+    assert draft.status_code == 200
+    item = client.post(
+        "/v1/datasets/runs-ds/versions/v1/items",
+        headers=_bearer(),
+        json={"item_id": "case-1", "input": "q", "expected_output": "a"},
+    )
+    assert item.status_code == 200
+    published = client.post("/v1/datasets/runs-ds/versions/v1:publish", headers=_bearer(), json={})
+    assert published.status_code == 200
+    version_id = published.json()["version"]["id"]
+
+    # Two runs: one against v1, one not tied to any version of this dataset.
+    with SessionLocal() as session:
+        run = Run(
+            id="run-a",
+            project_id="project-1",
+            created_by_user_id="user-1",
+            owner_user_id="user-1",
+            task="task",
+            dataset="Runs DS",
+            dataset_id=dataset_id,
+            dataset_version_id=version_id,
+            model="gpt-test",
+            metrics=[],
+            run_metadata={},
+            run_config={},
+        )
+        session.add(run)
+        session.flush()
+        session.add(RunItem(run_id=run.id, item_id="case-1", index=0, input="q", expected="a", item_metadata={}))
+        session.add(RunItem(run_id=run.id, item_id="case-2", index=1, input="q2", expected="a2", item_metadata={}))
+        session.add(RunItemScore(run_id=run.id, item_id="case-1", metric_name="accuracy", score_numeric=1.0))
+        session.add(RunItemScore(run_id=run.id, item_id="case-2", metric_name="accuracy", score_numeric=0.0))
+        session.commit()
+
+    resp = client.get("/v1/datasets/runs-ds/runs", headers=_bearer())
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    assert payload["total"] == 1
+    row = payload["runs"][0]
+    assert row["id"] == "run-a"
+    assert row["version_label"] == "v1"
+    assert row["model"] == "gpt-test"
+    assert row["items_count"] == 2
+    assert row["eval_score"] == 0.5
+
+    # Version filter that matches the run.
+    filtered = client.get("/v1/datasets/runs-ds/runs?version=v1", headers=_bearer())
+    assert filtered.status_code == 200
+    assert filtered.json()["total"] == 1
+
+    # Version filter that does not exist returns 404 from version resolution.
+    missing = client.get("/v1/datasets/runs-ds/runs?version=v9", headers=_bearer())
+    assert missing.status_code == 404
+
+
+def test_items_search_sort_label_and_bulk_endpoint_and_compare_diffs(client_and_session):
+    client, _ = client_and_session
+
+    created = client.post(
+        "/v1/datasets",
+        headers=_bearer(),
+        json={"name": "Search Test", "slug": "search-test"},
+    )
+    assert created.status_code == 200
+    draft = client.post(
+        "/v1/datasets/search-test/versions",
+        headers=_bearer(),
+        json={"version": "v1"},
+    )
+    assert draft.status_code == 200
+
+    for idx, payload in enumerate(
+        [
+            {"item_id": "alpha-1", "input": "billing question", "expected_output": "refund process", "labels": ["billing"]},
+            {"item_id": "beta-1", "input": "shipping question", "expected_output": "tracking", "labels": ["logistics"]},
+            {"item_id": "gamma-1", "input": "billing followup", "expected_output": "credit", "labels": ["billing", "vip"]},
+        ]
+    ):
+        res = client.post(
+            "/v1/datasets/search-test/versions/v1/items",
+            headers=_bearer(),
+            json=payload,
+        )
+        assert res.status_code == 200, res.text
+
+    search = client.get(
+        "/v1/datasets/search-test/versions/v1/items?search=billing",
+        headers=_bearer(),
+    )
+    assert search.status_code == 200
+    found_ids = sorted([item["item_id"] for item in search.json()["items"]])
+    assert found_ids == ["alpha-1", "gamma-1"]
+    assert search.json()["total"] == 2
+
+    by_label = client.get(
+        "/v1/datasets/search-test/versions/v1/items?label=vip",
+        headers=_bearer(),
+    )
+    assert by_label.status_code == 200
+    vip = [item["item_id"] for item in by_label.json()["items"]]
+    assert vip == ["gamma-1"]
+
+    sorted_desc = client.get(
+        "/v1/datasets/search-test/versions/v1/items?sort=index_desc",
+        headers=_bearer(),
+    )
+    assert sorted_desc.status_code == 200
+    indices = [item["index"] for item in sorted_desc.json()["items"]]
+    assert indices == sorted(indices, reverse=True)
+
+    bulk = client.post(
+        "/v1/datasets/search-test/versions/v1/items:bulk",
+        headers=_bearer(),
+        json={
+            "upserts": [
+                {"item_id": "alpha-1", "input": "billing question (refined)", "expected_output": "refund"},
+                {"input": "brand-new", "expected_output": "new"},
+            ],
+            "deletes": ["beta-1"],
+        },
+    )
+    assert bulk.status_code == 200, bulk.text
+    body = bulk.json()
+    assert body["summary"]["updated"] == 1
+    assert body["summary"]["created"] == 1
+    assert body["summary"]["deleted"] == 1
+
+    after_bulk = client.get(
+        "/v1/datasets/search-test/versions/v1/items",
+        headers=_bearer(),
+    )
+    assert after_bulk.status_code == 200
+    ids = sorted(it["item_id"] for it in after_bulk.json()["items"])
+    assert "beta-1" not in ids
+    assert any(it.startswith("item-") or it == "alpha-1" or it == "gamma-1" for it in ids)
+
+    publish_v1 = client.post(
+        "/v1/datasets/search-test/versions/v1:publish",
+        headers=_bearer(),
+        json={"set_alias": "production"},
+    )
+    assert publish_v1.status_code == 200
+
+    draft_v2 = client.post(
+        "/v1/datasets/search-test/versions",
+        headers=_bearer(),
+        json={"version": "v2", "from_alias": "production"},
+    )
+    assert draft_v2.status_code == 200
+
+    edit = client.patch(
+        "/v1/datasets/search-test/versions/v2/items/alpha-1",
+        headers=_bearer(),
+        json={"input": "completely new input", "expected_output": "different"},
+    )
+    assert edit.status_code == 200
+
+    compare = client.get(
+        "/v1/datasets/search-test/versions/v2:compare?base=v1&include_diffs=1",
+        headers=_bearer(),
+    )
+    assert compare.status_code == 200
+    payload = compare.json()
+    assert "field_diffs" in payload
+    assert any(d["item_id"] == "alpha-1" for d in payload["field_diffs"])
+    assert "added_items" in payload
+    assert "removed_items" in payload

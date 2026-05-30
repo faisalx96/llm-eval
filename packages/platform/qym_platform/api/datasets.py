@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ from qym_platform.db.models import (
     Project,
     Run,
     RunItem,
+    RunItemScore,
     User,
 )
 from qym_platform.deps import get_db
@@ -343,22 +344,30 @@ def _parse_cell(raw: Any) -> Any:
     return text
 
 
+def _combine_columns(row: Dict[str, Any], cols: list[str]) -> Any:
+    """One column -> the raw (parsed) cell value; multiple columns -> a JSON object
+    keyed by column name. Returns None when no columns are given."""
+    if not cols:
+        return None
+    if len(cols) == 1:
+        return _parse_cell(row.get(cols[0], ""))
+    return {col: _parse_cell(row.get(col, "")) for col in cols}
+
+
 def _items_from_csv(
     raw: bytes,
     *,
-    input_col: str,
-    expected_col: Optional[str],
+    input_cols: list[str],
+    expected_cols: list[str],
     id_col: Optional[str],
     metadata_cols: list[str],
     label_cols: list[str],
 ) -> list[Dict[str, Any]]:
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
     fields = list(reader.fieldnames or [])
-    if input_col not in fields:
-        raise HTTPException(status_code=400, detail=f"Missing input column: {input_col}")
-    if expected_col and expected_col not in fields:
-        raise HTTPException(status_code=400, detail=f"Missing expected column: {expected_col}")
-    for col in [c for c in metadata_cols + label_cols if c and c not in fields]:
+    if not input_cols:
+        raise HTTPException(status_code=400, detail="At least one input column is required")
+    for col in [c for c in input_cols + expected_cols + metadata_cols + label_cols if c and c not in fields]:
         raise HTTPException(status_code=400, detail=f"Missing column: {col}")
     items: list[Dict[str, Any]] = []
     for row in reader:
@@ -369,8 +378,8 @@ def _items_from_csv(
         items.append(
             {
                 "item_id": str(row.get(id_col, "")).strip() if id_col else "",
-                "input": _parse_cell(row.get(input_col, "")),
-                "expected_output": _parse_cell(row.get(expected_col, "")) if expected_col else None,
+                "input": _combine_columns(row, input_cols),
+                "expected_output": _combine_columns(row, expected_cols) if expected_cols else None,
                 "metadata": metadata,
                 "labels": sorted(set(labels)),
             }
@@ -472,6 +481,20 @@ class UpsertItemRequest(BaseModel):
     expected_output: Any = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     labels: list[str] = Field(default_factory=list)
+
+
+class BulkUpsertEntry(BaseModel):
+    item_id: Optional[str] = None
+    op: Optional[str] = None
+    input: Any = None
+    expected_output: Any = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    labels: list[str] = Field(default_factory=list)
+
+
+class BulkItemsRequest(BaseModel):
+    upserts: list[BulkUpsertEntry] = Field(default_factory=list)
+    deletes: list[str] = Field(default_factory=list)
 
 
 @router.get("/v1/datasets")
@@ -588,6 +611,75 @@ def list_versions(
         .all()
     )
     return {"dataset": _dataset_payload(db, dataset), "versions": [_version_payload(db, version) for version in versions]}
+
+
+@router.get("/v1/datasets/{dataset_ref}/runs")
+def list_dataset_runs(
+    dataset_ref: str,
+    project_slug: Optional[str] = Query(default=None),
+    version: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:read")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+
+    query = db.query(Run).filter(Run.deleted_at.is_(None), Run.dataset_id == dataset.id)
+    if version:
+        target = _resolve_version(db, dataset, version)
+        query = query.filter(Run.dataset_version_id == target.id)
+
+    total = query.count()
+    runs = (
+        query.order_by(Run.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+    # Map version ids -> labels for the runs on this page.
+    version_labels = {
+        v.id: v.version
+        for v in db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset.id).all()
+    }
+    run_ids = [run.id for run in runs]
+    items_counts: Dict[str, int] = {}
+    eval_scores: Dict[str, float] = {}
+    if run_ids:
+        items_counts = dict(
+            db.query(RunItem.run_id, func.count(RunItem.id))
+            .filter(RunItem.run_id.in_(run_ids))
+            .group_by(RunItem.run_id)
+            .all()
+        )
+        eval_scores = dict(
+            db.query(RunItemScore.run_id, func.avg(RunItemScore.score_numeric))
+            .filter(RunItemScore.run_id.in_(run_ids), RunItemScore.score_numeric.isnot(None))
+            .group_by(RunItemScore.run_id)
+            .all()
+        )
+
+    return {
+        "runs": [
+            {
+                "id": run.id,
+                "external_run_id": run.external_run_id,
+                "status": run.status.value if hasattr(run.status, "value") else str(run.status),
+                "task": run.task,
+                "model": run.model,
+                "started_at": to_api_timestamp(run.started_at),
+                "completed_at": to_api_timestamp(run.ended_at),
+                "eval_score": (round(float(eval_scores[run.id]), 4) if eval_scores.get(run.id) is not None else None),
+                "version_label": version_labels.get(run.dataset_version_id),
+                "items_count": int(items_counts.get(run.id, 0)),
+            }
+            for run in runs
+        ],
+        "total": total,
+    }
 
 
 @router.post("/v1/datasets/{dataset_ref}/versions")
@@ -765,6 +857,9 @@ def list_items(
     project_slug: Optional[str] = Query(default=None),
     limit: int = Query(default=100, le=1000),
     offset: int = Query(default=0, ge=0),
+    search: Optional[str] = Query(default=None),
+    sort: str = Query(default="index_asc"),
+    label: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     principal: Principal = Depends(dataset_principal),
 ) -> Dict[str, Any]:
@@ -778,21 +873,38 @@ def list_items(
         .group_by(RunItem.dataset_item_pk)
         .all()
     )
-    total = db.query(DatasetItem.id).filter(DatasetItem.dataset_version_id == version.id).count()
-    items = (
-        db.query(DatasetItem)
-        .filter(DatasetItem.dataset_version_id == version.id)
-        .order_by(DatasetItem.index, DatasetItem.item_id)
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+
+    query = db.query(DatasetItem).filter(DatasetItem.dataset_version_id == version.id)
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(DatasetItem.item_id).like(needle),
+                func.lower(cast(DatasetItem.input, String)).like(needle),
+                func.lower(cast(DatasetItem.expected_output, String)).like(needle),
+            )
+        )
+    if label:
+        query = query.filter(cast(DatasetItem.labels, String).like(f"%{label}%"))
+
+    sort_key = (sort or "index_asc").lower()
+    if sort_key == "index_desc":
+        query = query.order_by(DatasetItem.index.desc(), DatasetItem.item_id)
+    elif sort_key == "updated_desc":
+        query = query.order_by(DatasetItem.updated_at.desc(), DatasetItem.item_id)
+    elif sort_key == "item_id":
+        query = query.order_by(DatasetItem.item_id)
+    else:
+        query = query.order_by(DatasetItem.index, DatasetItem.item_id)
+
+    total = query.with_entities(func.count(DatasetItem.id)).order_by(None).scalar() or 0
+    items = query.offset(offset).limit(limit).all()
     return {
         "dataset": _dataset_payload(db, dataset),
         "version": _version_payload(db, version),
         "items": [_item_payload(item, run_count=run_counts.get(item.id, 0)) for item in items],
-        "total": total,
-        "next_offset": offset + limit if offset + limit < total else None,
+        "total": int(total),
+        "next_offset": offset + limit if offset + limit < int(total) else None,
     }
 
 
@@ -850,6 +962,30 @@ def create_item(
     )
     db.commit()
     return {"item": _item_payload(item)}
+
+
+@router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}")
+def get_item(
+    dataset_ref: str,
+    version_ref: str,
+    item_id: str,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:read")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    item = (
+        db.query(DatasetItem)
+        .filter(DatasetItem.dataset_version_id == version.id, DatasetItem.item_id == item_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    run_count = db.query(RunItem.id).filter(RunItem.dataset_item_pk == item.id).count()
+    return {"item": _item_payload(item, run_count=run_count)}
 
 
 @router.patch("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}")
@@ -919,6 +1055,115 @@ def delete_item(
     return {"ok": True}
 
 
+@router.post("/v1/datasets/{dataset_ref}/versions/{version_ref}/items:bulk")
+def bulk_items(
+    dataset_ref: str,
+    version_ref: str,
+    req: BulkItemsRequest,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:write")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    _require_draft(version)
+
+    created: list[Dict[str, Any]] = []
+    updated: list[Dict[str, Any]] = []
+    deleted: list[str] = []
+
+    for raw_id in req.deletes or []:
+        target_id = (raw_id or "").strip()
+        if not target_id:
+            continue
+        item = (
+            db.query(DatasetItem)
+            .filter(DatasetItem.dataset_version_id == version.id, DatasetItem.item_id == target_id)
+            .first()
+        )
+        if not item:
+            continue
+        before = _item_payload(item)
+        _record_item_revision(
+            db, version, item, change_type="deleted", before=before, after={}, actor_user_id=principal.user.id,
+        )
+        db.delete(item)
+        version.item_count = max(0, int(version.item_count or 0) - 1)
+        deleted.append(target_id)
+
+    db.flush()
+
+    max_index = (
+        db.query(func.max(DatasetItem.index))
+        .filter(DatasetItem.dataset_version_id == version.id)
+        .scalar()
+    )
+    next_index = int(max_index) + 1 if max_index is not None else 0
+
+    for entry in req.upserts or []:
+        input_value = _json_safe(entry.input)
+        expected = _json_safe(entry.expected_output)
+        metadata = _json_safe(entry.metadata or {})
+        labels = _labels(entry.labels)
+        fingerprint = build_identity_fingerprint(input_value=input_value, expected_value=expected, metadata=metadata)
+        existing = None
+        if entry.item_id:
+            existing = (
+                db.query(DatasetItem)
+                .filter(DatasetItem.dataset_version_id == version.id, DatasetItem.item_id == entry.item_id.strip())
+                .first()
+            )
+        op = (entry.op or "").lower()
+        if existing and op != "create":
+            before = _item_payload(existing)
+            existing.input = input_value
+            existing.expected_output = expected
+            existing.item_metadata = metadata
+            existing.labels = labels
+            existing.fingerprint = fingerprint
+            existing.updated_at = utc_now_naive()
+            _record_item_revision(
+                db, version, existing, change_type="updated", before=before, after=_item_payload(existing), actor_user_id=principal.user.id,
+            )
+            updated.append(_item_payload(existing))
+        else:
+            item_id = (entry.item_id or "").strip() or f"item-{next_index + 1}"
+            new_item = DatasetItem(
+                dataset_version_id=version.id,
+                item_id=item_id,
+                index=next_index,
+                input=input_value,
+                expected_output=expected,
+                item_metadata=metadata,
+                labels=labels,
+                fingerprint=fingerprint,
+                created_at=utc_now_naive(),
+                updated_at=utc_now_naive(),
+            )
+            db.add(new_item)
+            version.item_count = int(version.item_count or 0) + 1
+            try:
+                db.flush()
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(status_code=409, detail=f"Dataset item ID already exists: {item_id}") from exc
+            _record_item_revision(
+                db, version, new_item, change_type="created", before={}, after=_item_payload(new_item), actor_user_id=principal.user.id,
+            )
+            created.append(_item_payload(new_item))
+            next_index += 1
+
+    db.commit()
+    return {
+        "summary": {"created": len(created), "updated": len(updated), "deleted": len(deleted)},
+        "created": created,
+        "updated": updated,
+        "deleted": deleted,
+    }
+
+
 @router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/runs")
 def item_runs(
     dataset_ref: str,
@@ -980,6 +1225,7 @@ def compare_versions(
     version_ref: str,
     base: str = Query(...),
     project_slug: Optional[str] = Query(default=None),
+    include_diffs: int = Query(default=0),
     db: Session = Depends(get_db),
     principal: Principal = Depends(dataset_principal),
 ) -> Dict[str, Any]:
@@ -994,6 +1240,8 @@ def compare_versions(
     removed = sorted(set(base_items) - set(target_items))
     changed = []
     unchanged = []
+    field_diffs: list[Dict[str, Any]] = []
+    want_diffs = bool(include_diffs)
     for item_id_key in sorted(set(base_items) & set(target_items)):
         b = base_items[item_id_key]
         t = target_items[item_id_key]
@@ -1010,7 +1258,26 @@ def compare_versions(
             if (b.labels or []) != (t.labels or []):
                 fields.append("labels")
             changed.append({"item_id": item_id_key, "fields": fields})
-    return {
+            if want_diffs:
+                field_diffs.append(
+                    {
+                        "item_id": item_id_key,
+                        "fields": fields,
+                        "before": {
+                            "input": b.input,
+                            "expected_output": b.expected_output,
+                            "metadata": b.item_metadata or {},
+                            "labels": b.labels or [],
+                        },
+                        "after": {
+                            "input": t.input,
+                            "expected_output": t.expected_output,
+                            "metadata": t.item_metadata or {},
+                            "labels": t.labels or [],
+                        },
+                    }
+                )
+    response: Dict[str, Any] = {
         "base": _version_payload(db, base_version),
         "target": _version_payload(db, target),
         "summary": {"added": len(added), "removed": len(removed), "changed": len(changed), "unchanged": len(unchanged)},
@@ -1019,6 +1286,11 @@ def compare_versions(
         "changed": changed,
         "unchanged": unchanged,
     }
+    if want_diffs:
+        response["added_items"] = [_item_payload(target_items[i]) for i in added]
+        response["removed_items"] = [_item_payload(base_items[i]) for i in removed]
+        response["field_diffs"] = field_diffs
+    return response
 
 
 @router.post("/v1/datasets:upload")
@@ -1033,6 +1305,8 @@ async def upload_dataset(
     set_alias: Optional[str] = Form(default=None),
     input_col: str = Form(default="input"),
     expected_col: str = Form(default="expected_output"),
+    input_cols: str = Form(default=""),
+    expected_cols: str = Form(default=""),
     id_col: Optional[str] = Form(default=None),
     metadata_cols: str = Form(default=""),
     label_cols: str = Form(default=""),
@@ -1052,6 +1326,15 @@ async def upload_dataset(
         dataset = Dataset(id=str(uuid4()), project_id=project.id, name=name, slug=slug, tags=_labels(tags), created_by_user_id=principal.user.id, created_at=utc_now_naive(), updated_at=utc_now_naive())
         db.add(dataset)
         db.flush()
+    # New-style callers (the dashboard) send the multi-column params input_cols/expected_cols,
+    # where an empty expected_cols genuinely means "no expected output". Legacy callers (the SDK)
+    # send the single-column input_col/expected_col, which carry the historical defaults.
+    if input_cols:
+        input_columns = _labels(input_cols)
+        expected_columns = _labels(expected_cols)
+    else:
+        input_columns = [input_col] if input_col else []
+        expected_columns = [expected_col] if expected_col else []
     raw = await file.read()
     filename = file.filename or ""
     if filename.lower().endswith(".jsonl"):
@@ -1061,8 +1344,8 @@ async def upload_dataset(
         source_type = "csv"
         items = _items_from_csv(
             raw,
-            input_col=input_col,
-            expected_col=expected_col if expected_col else None,
+            input_cols=input_columns,
+            expected_cols=expected_columns,
             id_col=id_col,
             metadata_cols=_labels(metadata_cols),
             label_cols=_labels(label_cols),
@@ -1076,7 +1359,7 @@ async def upload_dataset(
         source_type=source_type,
         source_uri=filename,
         labels=_labels(labels),
-        schema={"input_col": input_col, "expected_col": expected_col, "id_col": id_col, "metadata_cols": _labels(metadata_cols), "label_cols": _labels(label_cols)},
+        schema={"input_cols": input_columns, "expected_cols": expected_columns, "id_col": id_col, "metadata_cols": _labels(metadata_cols), "label_cols": _labels(label_cols)},
         created_by_user_id=principal.user.id,
         created_at=utc_now_naive(),
         updated_at=utc_now_naive(),

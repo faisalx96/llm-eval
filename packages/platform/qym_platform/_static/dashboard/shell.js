@@ -31,7 +31,7 @@
     const patterns = [
       /\/projects\/[^/]+\/runs\/[^/]+$/,
       /\/projects\/[^/]+\/reviews$/,
-      /\/projects\/[^/]+\/datasets(?:\/[^/]+)?$/,
+      /\/projects\/[^/]+\/datasets(?:\/[^/]+(?:\/compare)?)?$/,
       /\/projects\/[^/]+\/settings$/,
       /\/projects\/[^/]+\/overview$/,
       /\/projects\/[^/]+\/charts$/,
@@ -76,7 +76,15 @@
       else if (rest === 'charts') page = 'charts';
       else if (rest === 'models') page = 'models';
       else if (rest === 'datasets') page = 'datasets';
-      else if (rest.startsWith('datasets/')) { page = 'datasets'; subId = rest.slice(9); }
+      else if (rest.startsWith('datasets/')) {
+        page = 'datasets';
+        var remainder = rest.slice(9);
+        if (remainder.endsWith('/compare')) {
+          subId = remainder.slice(0, -'/compare'.length);
+        } else {
+          subId = remainder;
+        }
+      }
       else if (rest === 'overview') page = 'overview';
       else if (rest === 'reviews') page = 'reviews';
       else if (rest === 'settings') page = 'settings';
@@ -143,7 +151,7 @@
     if (relative === null) return false;
     if (relative === '') return true;
     return [
-      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|datasets(?:\/[^/]+)?|reviews|settings))?$/,
+      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|datasets(?:\/[^/]+(?:\/compare)?)?|reviews|settings))?$/,
       /^projects\/[^/]+\/runs\/[^/]+$/,
       /^run\/[^/]+$/,
       /^reviews$/,
@@ -832,6 +840,231 @@
     });
   }
 
+  // ══════════════════════════════════════════════════
+  // FORM DIALOG (generalized openConfirmDialog with fields)
+  // ══════════════════════════════════════════════════
+
+  function openFormDialog(options) {
+    options = options || {};
+    var fields = Array.isArray(options.fields) ? options.fields : [];
+
+    var existing = document.getElementById('shell-form-dialog');
+    if (existing) existing.remove();
+
+    return new Promise(function (resolve) {
+      var dialog = document.createElement('div');
+      dialog.id = 'shell-form-dialog';
+      dialog.className = 'shell-modal-backdrop';
+
+      var fieldsHtml = fields.map(function (f, idx) {
+        var id = 'shell-form-field-' + idx;
+        var labelHtml = f.label ? '<label class="shell-form-label" for="' + id + '">' + esc(f.label) + '</label>' : '';
+        var helpHtml = f.help ? '<div class="shell-modal-note" style="margin-top:4px;">' + esc(f.help) + '</div>' : '';
+        var inputHtml = '';
+        if (f.type === 'textarea') {
+          inputHtml = '<textarea class="shell-form-input" id="' + id + '" data-field="' + esc(f.name) + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || '') + '">' + esc(f.value || '') + '</textarea>';
+        } else if (f.type === 'select') {
+          var opts = (f.options || []).map(function (o) {
+            var ov = typeof o === 'object' ? o.value : o;
+            var ol = typeof o === 'object' ? o.label : o;
+            return '<option value="' + esc(ov) + '"' + (String(ov) === String(f.value) ? ' selected' : '') + '>' + esc(ol) + '</option>';
+          }).join('');
+          inputHtml = '<select class="shell-form-input" id="' + id + '" data-field="' + esc(f.name) + '">' + opts + '</select>';
+        } else if (f.type === 'checkbox') {
+          inputHtml = '<label style="display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:var(--font-sm);cursor:pointer;">'
+            + '<input type="checkbox" id="' + id + '" data-field="' + esc(f.name) + '"' + (f.value ? ' checked' : '') + ' style="width:14px;height:14px;accent-color:var(--accent-primary);"/>'
+            + esc(f.checkboxLabel || f.label || '') + '</label>';
+          labelHtml = '';
+        } else {
+          inputHtml = '<input class="shell-form-input" type="' + (f.type || 'text') + '" id="' + id + '" data-field="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '" value="' + esc(f.value || '') + '" autocomplete="off" />';
+        }
+        return '<div class="shell-form-group">' + labelHtml + inputHtml + helpHtml + '</div>';
+      }).join('');
+
+      var descHtml = '';
+      if (options.description) {
+        var lines = Array.isArray(options.description) ? options.description : [options.description];
+        descHtml = lines.filter(Boolean).map(function (l) { return '<p class="shell-modal-description">' + esc(l) + '</p>'; }).join('');
+      }
+
+      dialog.innerHTML = ''
+        + '<div class="shell-modal" role="dialog" aria-modal="true" style="width:' + (options.width || 480) + 'px;">'
+        +   '<div class="shell-modal-header">'
+        +     '<div class="shell-modal-title">' + esc(options.title || 'Form') + '</div>'
+        +     '<button class="shell-modal-close" type="button" aria-label="Close">&times;</button>'
+        +   '</div>'
+        +   '<div class="shell-modal-body">'
+        +     descHtml
+        +     fieldsHtml
+        +     '<div class="shell-form-error" id="shell-form-error"></div>'
+        +   '</div>'
+        +   '<div class="shell-modal-footer">'
+        +     '<button class="shell-btn shell-btn-secondary" id="shell-form-cancel" type="button">' + esc(options.cancelLabel || 'Cancel') + '</button>'
+        +     '<button class="shell-btn ' + (options.confirmClass || 'shell-btn-primary') + '" id="shell-form-submit" type="button">' + esc(options.confirmLabel || 'Save') + '</button>'
+        +   '</div>'
+        + '</div>';
+      document.body.appendChild(dialog);
+
+      var closeBtn = dialog.querySelector('.shell-modal-close');
+      var cancelBtn = document.getElementById('shell-form-cancel');
+      var submitBtn = document.getElementById('shell-form-submit');
+      var errorEl = document.getElementById('shell-form-error');
+
+      function readValues() {
+        var values = {};
+        fields.forEach(function (f, idx) {
+          var el = document.getElementById('shell-form-field-' + idx);
+          if (!el) return;
+          if (f.type === 'checkbox') values[f.name] = !!el.checked;
+          else values[f.name] = el.value;
+        });
+        return values;
+      }
+
+      function cleanup() { document.removeEventListener('keydown', onKey); }
+      function close(result) { cleanup(); dialog.remove(); resolve(result); }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); close({ confirmed: false, values: null }); return; }
+        if (e.key === 'Enter' && !(e.target && e.target.tagName === 'TEXTAREA')) { e.preventDefault(); submit(); }
+      }
+      function submit() {
+        var values = readValues();
+        for (var i = 0; i < fields.length; i++) {
+          var f = fields[i];
+          var v = values[f.name];
+          if (f.required && (v == null || String(v).trim() === '')) {
+            errorEl.textContent = (f.label || f.name) + ' is required.';
+            var el = document.getElementById('shell-form-field-' + i);
+            if (el) el.focus();
+            return;
+          }
+          if (typeof f.validate === 'function') {
+            var msg = f.validate(v, values);
+            if (msg) { errorEl.textContent = msg; var ef = document.getElementById('shell-form-field-' + i); if (ef) ef.focus(); return; }
+          }
+        }
+        errorEl.textContent = '';
+        close({ confirmed: true, values: values });
+      }
+
+      if (closeBtn) closeBtn.addEventListener('click', function () { close({ confirmed: false, values: null }); });
+      if (cancelBtn) cancelBtn.addEventListener('click', function () { close({ confirmed: false, values: null }); });
+      if (submitBtn) submitBtn.addEventListener('click', submit);
+      dialog.addEventListener('click', function (e) { if (e.target === dialog) close({ confirmed: false, values: null }); });
+      document.addEventListener('keydown', onKey);
+
+      setTimeout(function () {
+        var firstInput = dialog.querySelector('input,textarea,select');
+        if (firstInput) firstInput.focus();
+      }, 50);
+    });
+  }
+
+  // ══════════════════════════════════════════════════
+  // DRAWER (right-side panel)
+  // ══════════════════════════════════════════════════
+
+  function openDrawer(options) {
+    options = options || {};
+    var width = options.width || 480;
+    var existing = document.getElementById('shell-drawer');
+    if (existing) existing.remove();
+
+    var drawer = document.createElement('div');
+    drawer.id = 'shell-drawer';
+    drawer.className = 'shell-drawer-backdrop';
+    drawer.innerHTML = ''
+      + '<div class="shell-drawer" role="dialog" aria-modal="true" style="width:' + width + 'px;">'
+      +   '<div class="shell-drawer-header">'
+      +     '<div class="shell-drawer-title-wrap">'
+      +       '<div class="shell-drawer-title" id="shell-drawer-title">' + esc(options.title || '') + '</div>'
+      +       (options.subtitle ? '<div class="shell-drawer-subtitle" id="shell-drawer-subtitle">' + esc(options.subtitle) + '</div>' : '<div class="shell-drawer-subtitle" id="shell-drawer-subtitle"></div>')
+      +     '</div>'
+      +     '<div class="shell-drawer-actions" id="shell-drawer-actions"></div>'
+      +     '<button class="shell-modal-close shell-drawer-close" type="button" aria-label="Close">&times;</button>'
+      +   '</div>'
+      +   '<div class="shell-drawer-body" id="shell-drawer-body"></div>'
+      +   '<div class="shell-drawer-footer" id="shell-drawer-footer" style="display:none;"></div>'
+      + '</div>';
+    document.body.appendChild(drawer);
+
+    var body = document.getElementById('shell-drawer-body');
+    var footer = document.getElementById('shell-drawer-footer');
+    var actions = document.getElementById('shell-drawer-actions');
+    var closeBtn = drawer.querySelector('.shell-drawer-close');
+
+    function setTitle(t) { var el = document.getElementById('shell-drawer-title'); if (el) el.textContent = t || ''; }
+    function setSubtitle(t) { var el = document.getElementById('shell-drawer-subtitle'); if (el) el.textContent = t || ''; }
+    function setBody(content) {
+      if (!body) return;
+      if (typeof content === 'string') body.innerHTML = content;
+      else if (content instanceof Node) { body.innerHTML = ''; body.appendChild(content); }
+    }
+    function setFooter(content) {
+      if (!footer) return;
+      if (content == null) { footer.style.display = 'none'; footer.innerHTML = ''; return; }
+      footer.style.display = '';
+      if (typeof content === 'string') footer.innerHTML = content;
+      else if (content instanceof Node) { footer.innerHTML = ''; footer.appendChild(content); }
+    }
+    function setActions(content) {
+      if (!actions) return;
+      if (Array.isArray(content)) { renderHeaderActions(content); return; }
+      if (typeof content === 'string') actions.innerHTML = content;
+      else if (content instanceof Node) { actions.innerHTML = ''; actions.appendChild(content); }
+    }
+    function renderHeaderActions(list) {
+      if (!actions) return;
+      actions.innerHTML = '';
+      (list || []).forEach(function (a) {
+        if (!a) return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'shell-drawer-header-action';
+        btn.innerHTML = esc(a.icon || a.label || '');
+        var tip = a.tooltip || a.title;
+        if (tip) { btn.title = tip; btn.setAttribute('aria-label', tip); }
+        if (typeof a.onClick === 'function') {
+          btn.addEventListener('click', function (e) { e.preventDefault(); a.onClick(api, e); });
+        }
+        actions.appendChild(btn);
+      });
+    }
+
+    // Render any header actions supplied up-front.
+    if (options.headerActions) renderHeaderActions(options.headerActions);
+
+    var api = {
+      el: drawer,
+      body: body,
+      footer: footer,
+      actions: actions,
+      setTitle: setTitle,
+      setSubtitle: setSubtitle,
+      setBody: setBody,
+      setFooter: setFooter,
+      setActions: setActions,
+      close: function () { cleanup(); drawer.remove(); document.dispatchEvent(new CustomEvent('qym:drawer-close')); if (typeof options.onClose === 'function') options.onClose(); },
+    };
+
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); api.close(); return; }
+      if (typeof options.onKey === 'function') options.onKey(e, api);
+    }
+    function cleanup() { document.removeEventListener('keydown', onKey); }
+
+    if (closeBtn) closeBtn.addEventListener('click', api.close);
+    drawer.addEventListener('click', function (e) {
+      if (e.target === drawer && options.dismissOnBackdrop !== false) api.close();
+    });
+    document.addEventListener('keydown', onKey);
+
+    if (typeof options.render === 'function') options.render(api);
+    document.dispatchEvent(new CustomEvent('qym:drawer-open'));
+
+    return api;
+  }
+
   function bindEvents() {
     // Collapse toggle
     var collapseBtn = document.getElementById('shell-collapse-btn');
@@ -1265,6 +1498,8 @@
     removeProject: removeProject,
     projectExists: projectExists,
     renderProjectNotFound: renderProjectNotFound,
+    openFormDialog: openFormDialog,
+    openDrawer: openDrawer,
   };
 
   // Auto-init on DOMContentLoaded
