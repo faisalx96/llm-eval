@@ -1329,6 +1329,11 @@
     });
 
     window.addEventListener('popstate', function () {
+      var event = new CustomEvent('qym:popstate', {
+        cancelable: true,
+        detail: { url: window.location.pathname + window.location.search },
+      });
+      if (!document.dispatchEvent(event)) return;
       navigateTo(window.location.pathname + window.location.search, { historyMode: 'none' });
     });
   }

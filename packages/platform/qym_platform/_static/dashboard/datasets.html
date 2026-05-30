@@ -457,6 +457,7 @@
       project: null,
       datasets: [],        // catalog
       dataset: null,       // detail
+      detailCacheKey: null,
       versions: [],
       activeVersion: null,
       itemsList: { items: [], total: 0 },
@@ -474,7 +475,7 @@
     // ============================================================
     function apiUrl(path){ return Shell.apiUrl ? Shell.apiUrl(path) : path; }
     function authHeaders(extra){
-      const h = (window.qymAuth && window.qymAuth.getHeaders) ? window.qymAuth.getHeaders() : {};
+      const h = (window.QymAuth && window.QymAuth.getHeaders) ? window.QymAuth.getHeaders() : {};
       return Object.assign({}, h || {}, extra || {});
     }
     async function apiFetch(path, opts){
@@ -603,6 +604,13 @@
     function debounce(fn, ms){ let t; return function(){ clearTimeout(t); const a = arguments, s = this; t = setTimeout(() => fn.apply(s, a), ms); }; }
     function copyToClipboard(s){ try { navigator.clipboard.writeText(s); Shell.toast('Copied', 'success'); } catch(_) { Shell.toast('Copy failed', 'error'); } }
     function pluralize(n, single, plural){ return n + ' ' + (n === 1 ? single : (plural || (single + 's'))); }
+    function navigateToApp(url){
+      if (Shell && typeof Shell.navigateTo === 'function') Shell.navigateTo(url);
+      else window.location.href = url;
+    }
+    function runDetailUrl(runId){
+      return apiUrl('/projects/' + encodeURIComponent(state.slug) + '/runs/' + encodeURIComponent(runId));
+    }
 
     // ============================================================
     // URL ROUTING
@@ -663,25 +671,62 @@
       const qs = params.toString();
       return path + (qs ? '?' + qs : '');
     }
+    function applyRouteState(p){
+      state.mode = p.mode;
+      state.slug = p.slug;
+      state.datasetRef = p.ref;
+      state.tab = p.tab;
+      state.versionLabel = p.v;
+      state.itemId = p.item;
+      state.baseVersion = p.base;
+      state.headVersion = p.head;
+      state.q = p.q;
+      state.page = p.page || 0;
+      state.search = p.search || '';
+      state.sort = p.sort || 'index_asc';
+      state.label = p.label || '';
+    }
+    function isSameDetailRoute(p){
+      return p && p.mode === 'detail'
+        && state.mode === 'detail'
+        && p.slug === state.slug
+        && p.ref === state.datasetRef
+        && !!document.getElementById('dsx-tab-content');
+    }
     function navigate(overrides, opts){
       opts = opts || {};
       const url = buildUrl(overrides);
       if (opts.replace) history.replaceState({}, '', url);
       else history.pushState({}, '', url);
+      const p = parsePath();
       // silent: push/replace URL but don't rebuild the page (caller updates the affected DOM region).
       if (opts.silent) {
         // Keep state in sync with the new URL so subsequent buildUrl() calls are correct.
-        const p = parsePath();
-        state.tab = p.tab; state.versionLabel = p.v; state.itemId = p.item;
-        state.page = p.page || 0; state.search = p.search || ''; state.sort = p.sort || 'index_asc';
-        state.label = p.label || ''; state.q = p.q;
-        state.baseVersion = p.base; state.headVersion = p.head;
+        applyRouteState(p);
+        return;
+      }
+      if (isSameDetailRoute(p)) {
+        switchDetailTabFromRoute(p, { forceReload: !!opts.forceReload });
         return;
       }
       route();
     }
 
-    window.addEventListener('popstate', () => route());
+    let dsxDisposed = false;
+    function handleShellPopstate(e){
+      if (dsxDisposed) return;
+      const p = parsePath();
+      if (!isSameDetailRoute(p)) return;
+      e.preventDefault();
+      switchDetailTabFromRoute(p, { historyMode: 'none' });
+    }
+    function cleanupDatasetPageEvents(){
+      dsxDisposed = true;
+      document.removeEventListener('qym:popstate', handleShellPopstate);
+      document.removeEventListener('qym:before-navigate', cleanupDatasetPageEvents);
+    }
+    document.addEventListener('qym:popstate', handleShellPopstate);
+    document.addEventListener('qym:before-navigate', cleanupDatasetPageEvents);
 
     // ============================================================
     // ROUTER
@@ -705,19 +750,7 @@
         document.getElementById('dsx-root').innerHTML = '<div class="dsx-empty"><h3>Unknown route</h3></div>';
         return;
       }
-      state.mode = p.mode;
-      state.slug = p.slug;
-      state.datasetRef = p.ref;
-      state.tab = p.tab;
-      state.versionLabel = p.v;
-      state.itemId = p.item;
-      state.baseVersion = p.base;
-      state.headVersion = p.head;
-      state.q = p.q;
-      state.page = p.page || 0;
-      state.search = p.search || '';
-      state.sort = p.sort || 'index_asc';
-      state.label = p.label || '';
+      applyRouteState(p);
 
       // Ensure project info is loaded for breadcrumbs/topbar
       if (!state.project) {
@@ -732,6 +765,67 @@
     }
 
     // Placeholder render functions filled in later stages
+    async function ensureDatasetDetailLoaded(opts){
+      opts = opts || {};
+      const cacheKey = state.slug + '::' + state.datasetRef;
+      if (!opts.force && state.detailCacheKey === cacheKey && state.dataset && Array.isArray(state.versions)) {
+        state.activeVersion = resolveActiveVersion();
+        return true;
+      }
+      try {
+        const r = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug));
+        state.dataset = r.dataset || r;
+      } catch(e){
+        state.detailCacheKey = null;
+        Shell.toast(e.message || 'Failed to load dataset', 'error');
+        return false;
+      }
+      try {
+        const vresp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions?project_slug=' + encodeURIComponent(state.slug));
+        state.versions = vresp.versions || [];
+      } catch(_) {
+        state.versions = [];
+      }
+      state.detailCacheKey = cacheKey;
+      state.activeVersion = resolveActiveVersion();
+      return true;
+    }
+
+    function normalizeActiveVersionUrl(){
+      if (state.activeVersion && !state.versionLabel) {
+        state.versionLabel = state.activeVersion.version;
+        history.replaceState({ qym: true }, '', buildUrl({ v: state.activeVersion.version }));
+      }
+    }
+
+    async function switchDetailTabFromRoute(p, opts){
+      opts = opts || {};
+      const prevVersion = state.activeVersion && state.activeVersion.version;
+      applyRouteState(p);
+      if (opts.forceReload) {
+        const ok = await ensureDatasetDetailLoaded({ force: true });
+        if (!ok) return;
+      } else {
+        state.activeVersion = resolveActiveVersion();
+      }
+      normalizeActiveVersionUrl();
+      const nextVersion = state.activeVersion && state.activeVersion.version;
+      refreshDetailChrome({ tabOnly: !opts.forceReload && prevVersion === nextVersion });
+      const host = document.getElementById('dsx-tab-content');
+      if (host) renderTabContent(host);
+      if (state.itemId && state.tab === 'items') openItemDrawer(state.itemId);
+    }
+
+    async function refreshDetailView(opts){
+      opts = opts || {};
+      const ok = await ensureDatasetDetailLoaded({ force: !!opts.force });
+      if (!ok) return;
+      normalizeActiveVersionUrl();
+      refreshDetailChrome();
+      const host = document.getElementById('dsx-tab-content');
+      if (host) renderTabContent(host);
+    }
+
     async function renderCatalog(){
       const root = document.getElementById('dsx-root');
       root.innerHTML = '';
@@ -744,21 +838,12 @@
     async function renderDetail(){
       const root = document.getElementById('dsx-root');
       root.innerHTML = '';
-      try {
-        const r = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug));
-        state.dataset = r.dataset || r;
-      } catch(e){ Shell.toast(e.message || 'Failed to load dataset', 'error'); root.innerHTML = '<div class="dsx-empty"><h3>Dataset not found</h3></div>'; return; }
-      try {
-        const vresp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions?project_slug=' + encodeURIComponent(state.slug));
-        state.versions = vresp.versions || [];
-      } catch(_) { state.versions = []; }
-      // Resolve active version
-      state.activeVersion = resolveActiveVersion();
-      if (state.activeVersion && !state.versionLabel) {
-        // Normalize URL to include version
-        history.replaceState({}, '', buildUrl({ v: state.activeVersion.version }));
-        state.versionLabel = state.activeVersion.version;
+      const ok = await ensureDatasetDetailLoaded();
+      if (!ok) {
+        root.innerHTML = '<div class="dsx-empty"><h3>Dataset not found</h3></div>';
+        return;
       }
+      normalizeActiveVersionUrl();
       Shell.setBreadcrumbs([
         { label: state.project.name || state.slug, href: '/projects/' + state.slug },
         { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
@@ -1393,7 +1478,7 @@
             const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(ref) + '/versions/' + encodeURIComponent(ver) + '/items:bulk?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body: { upserts: upserts } });
             Shell.toast(pluralize(resp.summary.created + resp.summary.updated, 'item') + ' added', 'success');
             close();
-            route();
+            refreshDetailView({ force: true });
           }
         } catch(e) {
           Shell.toast(e.message || 'Upload failed', 'error');
@@ -1420,6 +1505,75 @@
       return root;
     }
 
+    function fillHeroMeta(meta){
+      meta.innerHTML = '';
+      meta.appendChild(el('span', null, pluralize(state.dataset.item_count || (state.activeVersion && state.activeVersion.item_count) || 0, 'item')));
+      meta.appendChild(el('span', { className: 'dot' }));
+      meta.appendChild(el('span', null, pluralize((state.versions || []).length, 'version')));
+      meta.appendChild(el('span', { className: 'dot' }));
+      meta.appendChild(el('span', null, pluralize(state.dataset.run_count || 0, 'run')));
+      if (state.dataset.updated_at) {
+        meta.appendChild(el('span', { className: 'dot' }));
+        meta.appendChild(el('span', null, 'updated ' + relTime(state.dataset.updated_at)));
+      }
+    }
+
+    function fillHeroActions(right){
+      right.innerHTML = '';
+      right.appendChild(versionSelectorPill());
+      const v = state.activeVersion;
+      const isDraft = v && v.status === 'draft';
+      const isProd = v && (v.aliases || []).includes('production');
+
+      if (isDraft) {
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => openNewItemFlow() }, '+ Add item'));
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: publishCurrentVersion }, 'Publish'));
+      } else if (v && v.status === 'published' && !isProd) {
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: setAsProductionFlow }, 'Set as production'));
+      }
+      right.appendChild(overflowMenuButton());
+    }
+
+    function overflowMenuButton(){
+      const btn = el('button', { className: 'shell-btn shell-btn-secondary', title: 'More actions' }, '⋯');
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const v = state.activeVersion;
+        const menu = [];
+        if (v) {
+          menu.push({ label: 'Compare…', onClick: openCompareFlow });
+          menu.push({ label: '↓ Download JSONL', onClick: () => window.open(apiUrl('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + ':download?project_slug=' + encodeURIComponent(state.slug)), '_blank', 'noopener') });
+          menu.push({ label: '+ Create draft from current', onClick: () => createDraftFromVersionFlow(v.version) });
+        } else {
+          menu.push({ label: '+ Create first draft', onClick: () => createDraftFromVersionFlow() });
+        }
+        openContextMenu(btn, menu);
+      });
+      return btn;
+    }
+
+    function refreshDetailChrome(opts){
+      opts = opts || {};
+      if (!opts.tabOnly) {
+        const meta = document.getElementById('dsx-hero-meta');
+        if (meta && state.dataset) fillHeroMeta(meta);
+        const actions = document.getElementById('dsx-hero-actions');
+        if (actions) fillHeroActions(actions);
+        const tabs = document.getElementById('dsx-detail-tabs');
+        if (tabs) {
+          const nextTabs = buildTabs();
+          tabs.replaceWith(nextTabs);
+        }
+      }
+      updateActiveTabs();
+    }
+
+    function updateActiveTabs(){
+      document.querySelectorAll('#dsx-detail-tabs .dsx-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tabKey === state.tab);
+      });
+    }
+
     function buildHero(){
       const hero = el('div', { className: 'dsx-hero' });
       const top = el('div', { className: 'dsx-hero-top' });
@@ -1442,15 +1596,8 @@
       }
 
       const meta = el('div', { className: 'dsx-hero-meta' });
-      meta.appendChild(el('span', null, pluralize(state.dataset.item_count || (state.activeVersion && state.activeVersion.item_count) || 0, 'item')));
-      meta.appendChild(el('span', { className: 'dot' }));
-      meta.appendChild(el('span', null, pluralize((state.versions || []).length, 'version')));
-      meta.appendChild(el('span', { className: 'dot' }));
-      meta.appendChild(el('span', null, pluralize(state.dataset.run_count || 0, 'run')));
-      if (state.dataset.updated_at) {
-        meta.appendChild(el('span', { className: 'dot' }));
-        meta.appendChild(el('span', null, 'updated ' + relTime(state.dataset.updated_at)));
-      }
+      meta.id = 'dsx-hero-meta';
+      fillHeroMeta(meta);
       idCol.appendChild(meta);
 
       top.appendChild(idCol);
@@ -1459,41 +1606,12 @@
       // Everything else lives in the ⋯ menu (version actions) or the Versions/Settings tabs,
       // so the hero stays to pill + at most one or two buttons.
       const right = el('div', { className: 'dsx-hero-actions' });
-      right.appendChild(versionSelectorPill());
-      const v = state.activeVersion;
-      const isDraft = v && v.status === 'draft';
-      const isProd = v && (v.aliases || []).includes('production');
-
-      if (isDraft) {
-        // A draft's two real jobs: build it (Add item) and finalize it (Publish).
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => openNewItemFlow() }, '+ Add item'));
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: publishCurrentVersion }, 'Publish'));
-      } else if (v && v.status === 'published' && !isProd) {
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: setAsProductionFlow }, 'Set as production'));
-      }
-      right.appendChild(overflowMenu());
+      right.id = 'dsx-hero-actions';
+      fillHeroActions(right);
       top.appendChild(right);
 
       hero.appendChild(top);
       return hero;
-
-      function overflowMenu(){
-        const btn = el('button', { className: 'shell-btn shell-btn-secondary', title: 'More actions' }, '⋯');
-        btn.addEventListener('click', e => {
-          e.stopPropagation();
-          const v = state.activeVersion;
-          const menu = [];
-          if (v) {
-            menu.push({ label: 'Compare…', onClick: openCompareFlow });
-            menu.push({ label: '↓ Download JSONL', onClick: () => window.open(apiUrl('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + ':download?project_slug=' + encodeURIComponent(state.slug)), '_blank', 'noopener') });
-            menu.push({ label: '+ Create draft from current', onClick: () => createDraftFromVersionFlow(v.version) });
-          } else {
-            menu.push({ label: '+ Create first draft', onClick: () => createDraftFromVersionFlow() });
-          }
-          openContextMenu(btn, menu);
-        });
-        return btn;
-      }
     }
 
     function versionSelectorPill(){
@@ -1550,6 +1668,7 @@
 
     function buildTabs(){
       const tabs = el('div', { className: 'dsx-tabs' });
+      tabs.id = 'dsx-detail-tabs';
       const v = state.activeVersion;
       const itemCount = v ? (v.item_count || 0) : 0;
       const tabSpec = [
@@ -1560,7 +1679,7 @@
         { key: 'settings', label: 'Settings' },
       ];
       tabSpec.forEach(t => {
-        const btn = el('button', { className: 'dsx-tab' + (state.tab === t.key ? ' active' : '') });
+        const btn = el('button', { className: 'dsx-tab' + (state.tab === t.key ? ' active' : ''), dataset: { tabKey: t.key } });
         btn.appendChild(document.createTextNode(t.label));
         if (t.count != null) btn.appendChild(el('span', { className: 'count' }, '· ' + t.count));
         btn.addEventListener('click', () => navigate({ tab: t.key, item: null }));
@@ -1748,7 +1867,7 @@
           await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items:bulk?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body: { deletes: itemIds } });
           Shell.toast(pluralize(ids.length, 'item') + ' deleted', 'success');
           state.selection = new Set();
-          loadItems();
+          refreshDetailView({ force: true });
         } catch(e) { Shell.toast(e.message || 'Delete failed', 'error'); }
       }
 
@@ -1893,7 +2012,7 @@
           items.push({ label: 'Delete', danger: true, onClick: async () => {
             const ok = await Shell.openConfirmDialog({ title: 'Delete item?', description: 'This will remove "' + item.item_id + '" from this draft.', confirmLabel: 'Delete', danger: true });
             if (!ok || !ok.confirmed) return;
-            try { await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'DELETE' }); Shell.toast('Item deleted', 'success'); loadItems(); }
+            try { await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'DELETE' }); Shell.toast('Item deleted', 'success'); refreshDetailView({ force: true }); }
             catch(e) { Shell.toast(e.message || 'Delete failed', 'error'); }
           } });
         }
@@ -2117,7 +2236,7 @@
           await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'DELETE' });
           Shell.toast('Item deleted', 'success');
           drawer.close();
-          renderTabContent(document.getElementById('dsx-tab-content'));
+          refreshDetailView({ force: true });
         } catch(e) { Shell.toast(e.message || 'Delete failed', 'error'); }
       }
 
@@ -2130,7 +2249,7 @@
           if (runs.length === 0) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No runs yet'), el('p', null, 'This item has not been used in any run.')])); return; }
           const list = el('div', { className: 'dsx-runs-list' });
           runs.forEach(r => {
-            const row = el('div', { className: 'dsx-run-row', onclick: () => { window.location.href = '/projects/' + state.slug + '/runs/' + encodeURIComponent(r.run_id); } });
+            const row = el('div', { className: 'dsx-run-row', onclick: () => navigateToApp(runDetailUrl(r.run_id)) });
             row.appendChild(el('div', null, [el('div', { className: 'id' }, r.run_id), el('div', { className: 'meta' }, [el('span', { className: 'dsx-pill ' + (r.status === 'completed' ? 'success' : r.status === 'failed' ? 'remove' : 'info') }, r.status || '—'), el('span', null, r.task || ''), el('span', null, relTime(r.started_at || r.created_at))])]));
             list.appendChild(row);
           });
@@ -2332,7 +2451,7 @@
           thead.appendChild(trh); table.appendChild(thead);
           const tbody = el('tbody');
           runs.forEach(r => {
-            const tr = el('tr', { onclick: () => { window.location.href = '/projects/' + state.slug + '/runs/' + encodeURIComponent(r.id); } });
+            const tr = el('tr', { onclick: () => navigateToApp(runDetailUrl(r.id)) });
             tr.appendChild(el('td', { className: 'col-id' }, r.external_run_id || r.id));
             tr.appendChild(el('td', null, r.version_label || '—'));
             tr.appendChild(el('td', null, r.task || '—'));
@@ -2472,7 +2591,7 @@
       const saveBtn = el('button', { className: 'shell-btn shell-btn-primary', style: { alignSelf: 'flex-start' }, onclick: async () => {
         try {
           const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: { name: nameIn.value, description: descIn.value, tags: tags } });
-          state.dataset = upd.dataset || upd; Shell.toast('Settings saved', 'success'); route();
+          state.dataset = upd.dataset || upd; Shell.toast('Settings saved', 'success'); refreshDetailView({ force: true });
         } catch(e) { Shell.toast(e.message || 'Save failed', 'error'); }
       } }, 'Save changes');
       card.appendChild(saveBtn);
@@ -2496,7 +2615,7 @@
         fields: [{ type: 'text', name: 'name', label: 'Name', required: true, value: state.dataset.name }],
       });
       if (!res.confirmed) return;
-      try { const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: { name: res.values.name } }); state.dataset = upd.dataset || upd; Shell.toast('Renamed', 'success'); route(); }
+      try { const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: { name: res.values.name } }); state.dataset = upd.dataset || upd; Shell.toast('Renamed', 'success'); refreshDetailView({ force: true }); }
       catch(e) { Shell.toast(e.message || 'Rename failed', 'error'); }
     }
     async function editDescriptionFlow(){
@@ -2505,7 +2624,7 @@
         fields: [{ type: 'textarea', name: 'description', label: 'Description', value: state.dataset.description, placeholder: 'What is this dataset for?' }],
       });
       if (!res.confirmed) return;
-      try { const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: { description: res.values.description } }); state.dataset = upd.dataset || upd; Shell.toast('Description updated', 'success'); route(); }
+      try { const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: { description: res.values.description } }); state.dataset = upd.dataset || upd; Shell.toast('Description updated', 'success'); refreshDetailView({ force: true }); }
       catch(e) { Shell.toast(e.message || 'Failed', 'error'); }
     }
     async function deleteDatasetFlow(){
@@ -2540,7 +2659,7 @@
         if (res.values.from) body.from_version = res.values.from;
         const created = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
         Shell.toast('Draft "' + created.version.version + '" created', 'success');
-        navigate({ v: created.version.version, tab: 'items', item: null });
+        navigate({ v: created.version.version, tab: 'items', item: null }, { forceReload: true });
       } catch(e) { Shell.toast(e.message || 'Create failed', 'error'); }
     }
     function suggestNextVersion(){
@@ -2566,7 +2685,7 @@
         const body = res.values.set_prod ? { set_alias: 'production' } : {};
         await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(version) + ':publish?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
         Shell.toast('Published ' + version, 'success');
-        route();
+        refreshDetailView({ force: true });
       } catch(e) { Shell.toast(e.message || 'Publish failed', 'error'); }
     }
     async function setAsProductionFlow(){
@@ -2574,7 +2693,7 @@
       setProduction(state.activeVersion.version);
     }
     async function setProduction(version){
-      try { await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/aliases/production?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body: { version: version } }); Shell.toast('"production" → ' + version, 'success'); route(); }
+      try { await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/aliases/production?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body: { version: version } }); Shell.toast('"production" → ' + version, 'success'); refreshDetailView({ force: true }); }
       catch(e) { Shell.toast(e.message || 'Failed', 'error'); }
     }
     function openCompareFlow(){
@@ -2608,7 +2727,7 @@
       try {
         const created = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
         Shell.toast('Item added', 'success');
-        renderTabContent(document.getElementById('dsx-tab-content'));
+        refreshDetailView({ force: true });
       } catch(e) { Shell.toast(e.message || 'Failed', 'error'); }
     }
     function tryParseJSON(s){
@@ -2818,13 +2937,13 @@
     const openItemDrawer = openItemDrawerImpl;
 
     // Expose for debugging / other scripts
-    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, route, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemDrawer: (id) => openItemDrawer(id) };
+    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, route, switchDetailTabFromRoute, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemDrawer: (id) => openItemDrawer(id) };
 
     // ============================================================
     // BOOT
     // ============================================================
-    if (window.qymAuth && typeof window.qymAuth.requireAuth === 'function') {
-      window.qymAuth.requireAuth().then(() => route()).catch(() => {});
+    if (window.QymAuth && typeof window.QymAuth.requireAuth === 'function') {
+      window.QymAuth.requireAuth().then(() => route()).catch(() => {});
     } else {
       document.addEventListener('DOMContentLoaded', route);
       if (document.readyState !== 'loading') route();
