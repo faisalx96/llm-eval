@@ -214,7 +214,17 @@ class UpdateMembershipRequest(BaseModel):
 
 class CreateProjectKeyRequest(BaseModel):
     name: str = Field(default="default")
-    scopes: list[str] = Field(default_factory=lambda: ["runs:write", "runs:read", "datasets:read", "datasets:write"])
+    # Scopes are no longer enforced (any valid key has full project access), but we still
+    # record a full scope set so keys behave correctly if enforcement is ever reinstated.
+    scopes: list[str] = Field(
+        default_factory=lambda: [
+            "runs:write",
+            "runs:read",
+            "datasets:read",
+            "datasets:write",
+            "datasets:delete",
+        ]
+    )
 
 
 @router.get("/v1/projects")

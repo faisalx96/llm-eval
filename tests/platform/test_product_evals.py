@@ -506,9 +506,10 @@ def test_stop_product_eval_marks_job_and_runs_stopped(
         ]
 
 
-def test_stop_product_eval_job_requires_runs_write_scope(
+def test_stop_product_eval_job_allows_any_valid_key(
     client, session_factory, monkeypatch
 ) -> None:
+    # Scopes are no longer enforced: a key without runs:write is no longer blocked.
     with session_factory() as session:
         _seed_api_key(session, token="read-token", scopes=["runs:read"])
 
@@ -525,7 +526,7 @@ def test_stop_product_eval_job_requires_runs_write_scope(
         headers=_auth_headers("read-token"),
     )
 
-    assert response.status_code == 403
+    assert response.status_code != 403
 
 
 def test_stop_product_eval_run_marks_run_and_job_stopped(
@@ -1085,7 +1086,8 @@ def test_insightor_stop_does_not_start_later_attempts(
     assert first_attempt["metrics"][0]("output", "expected") is True
 
 
-def test_submit_requires_runs_write_scope(client, session_factory) -> None:
+def test_submit_allows_any_valid_key(client, session_factory) -> None:
+    # Scopes are no longer enforced: a key without runs:write is not blocked on scope.
     with session_factory() as session:
         _seed_api_key(session, token="read-token", scopes=["runs:read"])
 
@@ -1095,10 +1097,11 @@ def test_submit_requires_runs_write_scope(client, session_factory) -> None:
         json={"preset": "insightor"},
     )
 
-    assert response.status_code == 403
+    assert response.status_code != 403
 
 
-def test_poll_requires_runs_read_scope(client, session_factory) -> None:
+def test_poll_allows_any_valid_key(client, session_factory) -> None:
+    # Scopes are no longer enforced: a key without runs:read is not blocked on scope.
     with session_factory() as session:
         _seed_api_key(session, token="write-token", scopes=["runs:write"])
 
@@ -1106,7 +1109,7 @@ def test_poll_requires_runs_read_scope(client, session_factory) -> None:
         "/v1/product-evals/run-1", headers=_auth_headers("write-token")
     )
 
-    assert response.status_code == 403
+    assert response.status_code != 403
 
 
 def test_poll_unknown_eval_id_returns_standard_404(client, session_factory) -> None:

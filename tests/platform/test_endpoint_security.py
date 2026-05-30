@@ -249,37 +249,19 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
     assert denied_bulk.status_code == 403
 
 
-def test_api_key_scope_enforcement_and_legacy_compatibility(client, session_factory, monkeypatch) -> None:
+def test_api_key_scopes_are_not_enforced(client, session_factory) -> None:
+    # Scope enforcement is intentionally disabled: any valid, non-revoked key has full
+    # access to its project regardless of the scopes recorded on the key. Authentication
+    # and project membership still gate access; per-key scopes are no longer checked.
     with session_factory() as session:
         _seed_api_key(session, token="write-token", scopes=["runs:write"])
         _seed_api_key(session, token="read-token", scopes=["runs:read"])
         _seed_api_key(session, token="legacy-token", scopes=[])
 
-    write_response = client.post(
-        "/v1/runs",
-        headers=_auth_headers("write-token"),
-        json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
-    )
-    assert write_response.status_code == 200
-
-    read_response = client.post(
-        "/v1/runs",
-        headers=_auth_headers("read-token"),
-        json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
-    )
-    assert read_response.status_code == 403
-
-    legacy_allowed = client.post(
-        "/v1/runs",
-        headers=_auth_headers("legacy-token"),
-        json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
-    )
-    assert legacy_allowed.status_code == 200
-
-    monkeypatch.setenv("QYM_ALLOW_LEGACY_EMPTY_API_KEY_SCOPES", "false")
-    legacy_denied = client.post(
-        "/v1/runs",
-        headers=_auth_headers("legacy-token"),
-        json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
-    )
-    assert legacy_denied.status_code == 403
+    for token in ("write-token", "read-token", "legacy-token"):
+        response = client.post(
+            "/v1/runs",
+            headers=_auth_headers(token),
+            json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
+        )
+        assert response.status_code == 200, (token, response.text)

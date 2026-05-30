@@ -108,15 +108,12 @@ def require_api_key_principal(
 
 
 def require_api_key_scope(principal: Principal, required_scope: str) -> None:
-    if principal.auth_type != "api_key":
-        return
-    if required_scope in principal.scopes:
-        return
-
-    settings = PlatformSettings()
-    if settings.allow_legacy_empty_api_key_scopes and not principal.scopes:
-        return
-    raise HTTPException(status_code=403, detail=f"API key missing required scope: {required_scope}")
+    # Scope enforcement is intentionally disabled: any valid API key is granted full
+    # access to its project. Authentication (a valid, non-revoked key) and project
+    # membership still gate access; per-key scopes are no longer checked. The
+    # `required_scope` argument is kept so call sites don't need to change, and so
+    # enforcement can be reinstated here later without touching every endpoint.
+    return
 
 
 def require_ui_principal(

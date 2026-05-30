@@ -56,6 +56,17 @@
 
     .token-box { background: rgba(0,212,170,0.08); border: 1px solid rgba(0,212,170,0.24); border-radius: 8px; padding: var(--space-md) var(--space-lg); font-family: var(--font-mono); font-size: var(--font-sm); color: var(--accent-primary); word-break: break-all; display: none; margin-bottom: var(--space-md); }
 
+    /* New-key modal */
+    .key-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    .key-modal-backdrop.open { display: flex; }
+    .key-modal { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 12px; width: min(560px, 92vw); padding: var(--space-lg) var(--space-xl); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .key-modal h3 { margin: 0 0 6px 0; font-size: 18px; color: var(--text-primary); }
+    .key-modal p { margin: 0 0 var(--space-md) 0; color: var(--text-muted); font-size: var(--font-sm); }
+    .key-modal .token-row { display: flex; gap: 8px; align-items: stretch; }
+    .key-modal .token-field { flex: 1; font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); background: var(--bg-base); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 12px; word-break: break-all; }
+    .key-modal .warn { margin-top: var(--space-md); color: var(--warning); font-size: var(--font-xs); }
+    .key-modal .footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: var(--space-lg); }
+
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     .form-group.full-width { grid-column: 1 / -1; }
@@ -132,19 +143,17 @@
 
     <!-- API Keys -->
     <div class="settings-panel" id="panel-apikeys">
-      <div class="token-box" id="new-token-box"></div>
       <div class="card">
         <div class="card-header">
           <div><div class="card-title">API Keys</div><div class="card-subtitle">Project-scoped keys for programmatic access</div></div>
         </div>
         <div class="add-bar">
           <input class="form-input" id="key-name" placeholder="Key name" />
-          <input class="form-input" id="key-scopes" value="runs:write,runs:read" placeholder="Scopes" style="font-family:var(--font-mono);font-size:12px;" />
           <button class="btn btn-primary" id="create-key-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm);">Create Key</button>
         </div>
         <div class="card-body flush">
           <table class="data-table">
-            <thead><tr><th>Name</th><th>Prefix</th><th>Creator</th><th>Scopes</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Prefix</th><th>Creator</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
             <tbody id="keys-tbody"></tbody>
           </table>
         </div>
@@ -332,7 +341,6 @@
             <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(k.name || 'default')}</td>
             <td><span style="font-family:var(--font-mono);font-size:var(--font-xs);color:var(--text-muted)">${escapeHtml(k.prefix || '')}</span></td>
             <td>${escapeHtml(k.creator?.display_name || k.creator?.email || '—')}</td>
-            <td><span style="font-family:var(--font-mono);font-size:var(--font-xs)">${escapeHtml((k.scopes||[]).join(', '))}</span></td>
             <td>${k.revoked_at ? `<span style="color:var(--error)">Revoked</span>` : '<span style="color:var(--success)">Active</span>'}</td>
             <td style="text-align:right">${!k.revoked_at && canRevokeKey(k) ? `<button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-xs)" data-key-revoke="${escapeHtml(k.id)}">Revoke</button>` : ''}</td>
           </tr>`).join('');
@@ -354,13 +362,34 @@
         await load();
       });
 
+      // ── New-key modal ──
+      function showKeyModal(token) {
+        document.getElementById('key-modal-token').textContent = token;
+        document.getElementById('key-modal-backdrop').classList.add('open');
+      }
+      function closeKeyModal() {
+        document.getElementById('key-modal-backdrop').classList.remove('open');
+        document.getElementById('key-modal-token').textContent = '';
+      }
+      document.getElementById('key-modal-copy').addEventListener('click', async () => {
+        const token = document.getElementById('key-modal-token').textContent;
+        const btn = document.getElementById('key-modal-copy');
+        try {
+          await navigator.clipboard.writeText(token);
+          const prev = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = prev; }, 1500);
+          if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Key copied', 'success');
+        } catch (_) {
+          if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Copy failed — select and copy manually', 'error');
+        }
+      });
+      document.getElementById('key-modal-done').addEventListener('click', closeKeyModal);
+      document.getElementById('key-modal-backdrop').addEventListener('click', e => { if (e.target.id === 'key-modal-backdrop') closeKeyModal(); });
+
       document.getElementById('create-key-btn').addEventListener('click', async () => {
-        const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('key-name').value.trim() || 'default', scopes: document.getElementById('key-scopes').value.split(',').map(v => v.trim()).filter(Boolean) }) });
-        const box = document.getElementById('new-token-box');
-        box.style.display = 'block';
-        box.textContent = `Save this token now. It will not be shown again:\n${data.token}`;
+        const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('key-name').value.trim() || 'default' }) });
         document.getElementById('key-name').value = '';
         await load();
+        showKeyModal(data.token);
       });
 
       // LLM config
@@ -456,5 +485,21 @@
       });
     })();
   </script>
+
+  <!-- New API key modal -->
+  <div class="key-modal-backdrop" id="key-modal-backdrop">
+    <div class="key-modal" role="dialog" aria-modal="true" aria-labelledby="key-modal-title">
+      <h3 id="key-modal-title">API key created</h3>
+      <p>Copy your key now — it won't be shown again.</p>
+      <div class="token-row">
+        <div class="token-field" id="key-modal-token"></div>
+        <button class="btn btn-primary" id="key-modal-copy" type="button" style="padding:8px 14px;font-size:var(--font-sm);white-space:nowrap;">Copy</button>
+      </div>
+      <div class="warn">Store it in a secret manager or your <code>.env</code> as <code>QYM_API_KEY</code>.</div>
+      <div class="footer">
+        <button class="btn btn-secondary" id="key-modal-done" type="button" style="padding:8px 16px;font-size:var(--font-sm);">Done</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

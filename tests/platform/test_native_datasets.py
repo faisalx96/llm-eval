@@ -202,12 +202,18 @@ def test_csv_upload_multi_column_input_combines_into_json(client_and_session, tm
                 "name": "Multi",
                 "version": "v1",
                 "publish": "true",
+                "description": "people and their roles",
                 "input_cols": "first,last",
                 "expected_cols": "answer",
             },
             files={"file": ("multi.csv", fh, "text/csv")},
         )
     assert upload.status_code == 200, upload.text
+
+    # The description from the upload form must land on the dataset (not only the version).
+    detail = client.get("/v1/datasets/multi", headers=_bearer())
+    assert detail.status_code == 200
+    assert detail.json()["dataset"]["description"] == "people and their roles"
 
     items = client.get("/v1/datasets/multi/versions/v1/items?sort=index_asc", headers=_bearer())
     assert items.status_code == 200
@@ -242,6 +248,36 @@ def test_csv_upload_single_column_input_stays_scalar(client_and_session, tmp_pat
     row = items.json()["items"][0]
     assert row["input"] == "hi"
     assert row["expected_output"] is None
+
+
+def test_recreate_dataset_after_soft_delete_reuses_slug(client_and_session, tmp_path):
+    client, _ = client_and_session
+
+    # Create a dataset, then soft-delete it.
+    created = client.post("/v1/datasets", headers=_bearer(), json={"name": "Recycle", "slug": "recycle"})
+    assert created.status_code == 200
+    deleted = client.delete("/v1/datasets/recycle", headers=_bearer())
+    assert deleted.status_code == 200
+
+    # Re-creating with the same slug must succeed (slug freed from the soft-deleted row).
+    again = client.post("/v1/datasets", headers=_bearer(), json={"name": "Recycle", "slug": "recycle"})
+    assert again.status_code == 200, again.text
+    assert again.json()["dataset"]["slug"] == "recycle"
+    assert again.json()["dataset"]["id"] != created.json()["dataset"]["id"]
+
+    # Same via the upload path.
+    up = client.delete("/v1/datasets/recycle", headers=_bearer())
+    assert up.status_code == 200
+    csv_path = tmp_path / "r.csv"
+    csv_path.write_text("question,answer\nhi,hello\n", encoding="utf-8")
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={"name": "Recycle", "version": "v1", "input_cols": "question", "expected_cols": "answer"},
+            files={"file": ("r.csv", fh, "text/csv")},
+        )
+    assert upload.status_code == 200, upload.text
 
 
 def test_dataset_runs_endpoint(client_and_session):

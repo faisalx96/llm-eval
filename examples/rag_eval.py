@@ -2,18 +2,22 @@
 Run RAGBench Evaluation.
 
 This script runs the evaluation using:
-- Dataset: ragbench-100 (uploaded to Langfuse)
+- Dataset: "ragbench" — a native qym platform dataset in the "insightor" project
 - Task: RAG QA using OpenAI
 - Metrics:
   1. Correctness (F1 Score): Is the answer correct?
   2. Faithfulness (HHEM): Is the answer grounded in context?
 
-Usage:
-    # First, upload the dataset
-    python upload_dataset.py
+Each dataset item's `input` is a JSON object with `question` and `context` keys,
+which qym unpacks into the matching task parameters below.
 
-    # Then run the evaluation
-    python run_eval.py
+Requirements:
+    Set QYM_PLATFORM_URL and QYM_API_KEY (in .env) so the SDK can load the
+    dataset from the qym platform. The dataset's project is determined by the
+    API key — use a key that belongs to the "insightor" project.
+
+Usage:
+    python rag_eval.py
 """
 import os
 from dotenv import load_dotenv
@@ -129,6 +133,8 @@ Respond with ONLY a JSON object: {{"score": <float 0-1>, "reason": "<brief expla
 def main():
     evaluator = Evaluator(
         task=rag_qa_task,
+        # Native qym dataset "ragbench-100"; resolved from the qym platform via QYM_API_KEY,
+        # so use an API key that belongs to the "insightor" project.
         dataset="ragbench-100",
         metrics=["correctness", "faithfulness", llm_judge],
         model=["qwen/qwen3-coder-next"], #["z-ai/glm-5", "anthropic/claude-opus-4.6", "qwen/qwen3.5-397b-a17b", "google/gemini-3.1-pro-preview", "anthropic/claude-sonnet-4.6"],

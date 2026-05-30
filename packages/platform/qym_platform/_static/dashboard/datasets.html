@@ -170,6 +170,8 @@
     .dsx-table tbody tr.selected td { background: rgba(0,212,170,0.06); }
     .dsx-table tbody tr.editing td { background: rgba(99,102,241,0.05); }
     .dsx-table .col-check { width: 32px; padding-right: 0; }
+    /* Match the platform's tinted checkboxes instead of the default white ones. */
+    .dsx-table input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer; vertical-align: middle; }
     .dsx-table .col-idx { width: 48px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12px; }
     .dsx-table .col-id { width: 180px; font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
     .dsx-table .col-id .copy { opacity: 0; margin-left: 4px; cursor: pointer; font-size: 10px; color: var(--text-dim); }
@@ -236,12 +238,52 @@
     .dsx-jsoneditor:focus { outline: 0; border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(0,212,170,0.12); }
     .dsx-jsoneditor.invalid { border-color: var(--error); box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
     .dsx-jsoneditor[readonly] { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; }
+    /* JSON syntax-highlighted view (read-only) + code-editor overlay (editable) — trace-viewer palette */
+    .dsx-json-view {
+      margin: 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+      background: var(--bg-void, #0b0b11); border: 1px solid var(--border-subtle); border-radius: 8px;
+      padding: 12px 14px; white-space: pre-wrap; word-break: break-word; color: var(--text-secondary);
+      max-height: 55vh; overflow: auto; tab-size: 2;
+    }
+    .dsx-json-view.expanded { max-height: none; }
+    .dsx-json-view.empty { color: var(--text-dim); font-style: italic; }
+    .dsx-code { position: relative; border: 1px solid var(--border-default); border-radius: 8px; background: var(--bg-void, #0b0b11); overflow: hidden; }
+    .dsx-code.invalid { border-color: var(--error); }
+    .dsx-code:focus-within { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(0,212,170,0.12); }
+    .dsx-code-hl, .dsx-code-input {
+      margin: 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+      padding: 12px 14px; white-space: pre-wrap; word-break: break-word; box-sizing: border-box;
+      tab-size: 2; border: 0;
+    }
+    .dsx-code-hl { position: absolute; inset: 0; pointer-events: none; overflow: hidden; color: var(--text-secondary); background: transparent; }
+    .dsx-code-input {
+      position: relative; display: block; width: 100%; background: transparent; color: transparent;
+      caret-color: var(--text-primary); resize: none; outline: 0; overflow: auto;
+      min-height: 92px; max-height: 55vh;
+    }
+    .dsx-code.expanded .dsx-code-input { max-height: none; }
+    .dsx-code-input::selection { background: rgba(0,168,255,0.28); }
+    .dsx-jtok-key { color: #00a8ff; }
+    .dsx-jtok-str { color: #00d4aa; }
+    .dsx-jtok-num { color: #a855f7; }
+    .dsx-jtok-bool { color: #00a8ff; }
+    .dsx-jtok-null { color: #50505e; }
 
     .dsx-history-entry { padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-elevated); display: flex; flex-direction: column; gap: 6px; }
     .dsx-history-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
     .dsx-history-head .actor { color: var(--text-primary); font-weight: 600; }
     .dsx-history-head .when { color: var(--text-dim); }
     .dsx-history-fields { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+    .dsx-history-head .rev { color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
+    .dsx-history-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
+    .dsx-hist-diff { display: flex; flex-direction: column; gap: 8px; }
+    .dsx-hist-diff-field { display: flex; flex-direction: column; gap: 3px; }
+    .dsx-hist-diff-field .name { color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em; }
+    .dsx-hist-diff-pane { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 5px; padding: 6px 8px; white-space: pre-wrap; word-break: break-word; line-height: 1.45; font-family: var(--font-mono); font-size: 11px; max-height: 180px; overflow: auto; }
+    .dsx-hist-diff-pane.before { border-left: 3px solid var(--error); }
+    .dsx-hist-diff-pane.after { border-left: 3px solid var(--success, #22c55e); }
+    .dsx-hist-diff-pane .label { display: block; color: var(--text-dim); font-size: 9px; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .dsx-history-unchanged { color: var(--text-dim); font-size: 11px; font-style: italic; }
 
     .dsx-runs-list { display: flex; flex-direction: column; gap: 6px; }
     .dsx-run-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-elevated); cursor: pointer; transition: border-color .12s ease; }
@@ -545,6 +587,18 @@
       if (v == null) return '';
       if (typeof v === 'string') return v;
       try { return JSON.stringify(v, null, 2); } catch(_) { return String(v); }
+    }
+    // Syntax-highlight raw JSON text (operates char-for-char on the given text so it can
+    // back an editable overlay). Non-JSON prose just renders with few/no tokens. Trace palette.
+    function highlightJSONHtml(text){
+      const s = (text == null ? '' : String(text)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return s.replace(/("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, (m) => {
+        let cls = 'num';
+        if (m[0] === '"') cls = /:\s*$/.test(m) ? 'key' : 'str';
+        else if (m === 'true' || m === 'false') cls = 'bool';
+        else if (m === 'null') cls = 'null';
+        return '<span class="dsx-jtok-' + cls + '">' + m + '</span>';
+      });
     }
     function debounce(fn, ms){ let t; return function(){ clearTimeout(t); const a = arguments, s = this; t = setTimeout(() => fn.apply(s, a), ms); }; }
     function copyToClipboard(s){ try { navigator.clipboard.writeText(s); Shell.toast('Copied', 'success'); } catch(_) { Shell.toast('Copy failed', 'error'); } }
@@ -1879,7 +1933,7 @@
       const drawer = Shell.openDrawer({
         title: 'Item ' + item.item_id,
         subtitle: v.version + ' · index ' + item.index + ' · updated ' + relTime(item.updated_at),
-        width: 520,
+        width: 600,
         headerActions: [
           { label: '←', title: 'Previous', onClick: () => navigateItem(-1) },
           { label: '→', title: 'Next', onClick: () => navigateItem(1) },
@@ -1933,33 +1987,74 @@
         }
       }
 
+      function fieldStatusDot(text, ok){
+        const dot = el('div', { style: { textAlign: 'right', fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' } });
+        dot.innerHTML = '<span class="dsx-json-dot' + (ok ? '' : ' invalid') + '"></span> ' + text;
+        return dot;
+      }
       function buildJSONField(label, key){
         const wrap = el('div');
         const lbl = el('div', { className: 'field-label' });
         lbl.appendChild(el('span', null, label));
         const actions = el('div', { className: 'actions' });
+        lbl.appendChild(actions);
+        wrap.appendChild(lbl);
+
+        const raw = fullPreview(item[key]);
+        let expanded = false;
+        const expandBtn = el('button', { title: 'Expand / collapse' }, '⤢ Expand');
+
+        if (!isDraft) {
+          // Read-only: colorized, full-height view (no cramped textarea).
+          const view = el('pre', { className: 'dsx-json-view' + (raw === '' ? ' empty' : '') });
+          if (raw === '') view.textContent = '(empty)';
+          else view.innerHTML = highlightJSONHtml(raw);
+          const copyBtn = el('button', { title: 'Copy' }, '⧉ Copy');
+          copyBtn.addEventListener('click', () => copyToClipboard(raw));
+          expandBtn.addEventListener('click', () => { expanded = !expanded; view.classList.toggle('expanded', expanded); expandBtn.textContent = expanded ? '⤡ Collapse' : '⤢ Expand'; });
+          actions.appendChild(expandBtn); actions.appendChild(copyBtn);
+          wrap.appendChild(view);
+          const res = coerceCellValue(raw, key === 'metadata' ? 'metadata' : key, false);
+          const kind = res.ok ? (typeof res.value === 'string' ? 'string' : (res.value === null ? 'empty' : 'valid JSON')) : (res.error || 'invalid');
+          wrap.appendChild(fieldStatusDot(kind, res.ok));
+          return wrap;
+        }
+
+        // Editable: syntax-highlight overlay behind a transparent, auto-growing textarea.
+        const code = el('div', { className: 'dsx-code' });
+        const hl = el('pre', { className: 'dsx-code-hl' });
+        const ed = el('textarea', { className: 'dsx-code-input', spellcheck: 'false' });
+        ed.value = raw;
+        code.appendChild(hl); code.appendChild(ed);
+        const dot = el('div', { style: { textAlign: 'right', fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' } });
+
+        function autoGrow(){
+          ed.style.height = 'auto';
+          const cap = expanded ? Infinity : Math.round(window.innerHeight * 0.55);
+          ed.style.height = Math.max(92, Math.min(ed.scrollHeight, cap)) + 'px';
+        }
+        function sync(){ hl.innerHTML = highlightJSONHtml(ed.value) + '\n'; hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; }
+        function validate(){
+          const res = coerceCellValue(ed.value, key === 'metadata' ? 'metadata' : key, false);
+          if (!res.ok) { code.classList.add('invalid'); dot.innerHTML = '<span class="dsx-json-dot invalid"></span> ' + (res.error || 'invalid'); return; }
+          code.classList.remove('invalid');
+          const kind = typeof res.value === 'string' ? 'string' : (res.value === null ? 'empty' : 'valid JSON');
+          dot.innerHTML = '<span class="dsx-json-dot"></span> ' + kind;
+        }
+
         const copyBtn = el('button', { title: 'Copy' }, '⧉ Copy');
         copyBtn.addEventListener('click', () => copyToClipboard(ed.value));
         const formatBtn = el('button', { title: 'Format JSON' }, '{} Format');
-        formatBtn.addEventListener('click', () => { try { ed.value = JSON.stringify(JSON.parse(ed.value), null, 2); } catch(_) { Shell.toast('Not valid JSON', 'error'); } });
-        actions.appendChild(formatBtn); actions.appendChild(copyBtn);
-        lbl.appendChild(actions);
-        const ed = el('textarea', { className: 'dsx-jsoneditor' });
-        ed.value = fullPreview(item[key]);
-        if (!isDraft) ed.setAttribute('readonly', 'readonly');
-        const dot = el('div', { style: { textAlign: 'right', fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' } });
-        dot.innerHTML = '<span class="dsx-json-dot"></span> valid';
-        function validate(){
-          const res = coerceCellValue(ed.value, key === 'metadata' ? 'metadata' : key, false);
-          const d = dot.querySelector('.dsx-json-dot');
-          if (!res.ok) { ed.classList.add('invalid'); d.classList.add('invalid'); dot.innerHTML = '<span class="dsx-json-dot invalid"></span> ' + (res.error || 'invalid'); return; }
-          ed.classList.remove('invalid'); d.classList.remove('invalid');
-          const kindLabel = typeof res.value === 'string' ? 'string' : (res.value === null ? 'empty' : 'valid JSON');
-          dot.innerHTML = '<span class="dsx-json-dot"></span> ' + kindLabel;
-        }
-        ed.addEventListener('input', validate);
-        validate();
-        wrap.appendChild(lbl); wrap.appendChild(ed); wrap.appendChild(dot);
+        formatBtn.addEventListener('click', () => { try { ed.value = JSON.stringify(JSON.parse(ed.value), null, 2); sync(); autoGrow(); validate(); } catch(_) { Shell.toast('Not valid JSON', 'error'); } });
+        expandBtn.addEventListener('click', () => { expanded = !expanded; code.classList.toggle('expanded', expanded); expandBtn.textContent = expanded ? '⤡ Collapse' : '⤢ Expand'; autoGrow(); });
+        actions.appendChild(formatBtn); actions.appendChild(expandBtn); actions.appendChild(copyBtn);
+
+        ed.addEventListener('input', () => { sync(); autoGrow(); validate(); });
+        ed.addEventListener('scroll', () => { hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; });
+        sync(); validate();
+        requestAnimationFrame(autoGrow);
+
+        wrap.appendChild(code); wrap.appendChild(dot);
         ed.dataset.field = key;
         wrap._editor = ed;
         return wrap;
@@ -2043,6 +2138,43 @@
         } catch(e) { body.innerHTML = '<div class="dsx-empty"><p>'+escapeHtml(e.message || 'Failed to load runs')+'</p></div>'; }
       }
 
+      // Build a stacked before→after diff for the fields that changed between two snapshots.
+      const HISTORY_DIFF_FIELDS = [['input', 'input'], ['expected_output', 'expected'], ['metadata', 'metadata'], ['labels', 'labels']];
+      function historyDiffBody(before, after){
+        before = before || {}; after = after || {};
+        const wrap = el('div', { className: 'dsx-hist-diff' });
+        let changed = 0;
+        HISTORY_DIFF_FIELDS.forEach(([key, label]) => {
+          const b = before[key], a = after[key];
+          const beforeStr = b == null ? '' : (typeof b === 'string' ? b : prettyJSON(b));
+          const afterStr = a == null ? '' : (typeof a === 'string' ? a : prettyJSON(a));
+          if (beforeStr === afterStr) return;
+          changed++;
+          const field = el('div', { className: 'dsx-hist-diff-field' });
+          field.appendChild(el('div', { className: 'name' }, label));
+          if (beforeStr !== '') field.appendChild(el('div', { className: 'dsx-hist-diff-pane before', html: '<span class="label">before</span>' + highlightDiff(beforeStr, afterStr, 'before') }));
+          if (afterStr !== '') field.appendChild(el('div', { className: 'dsx-hist-diff-pane after', html: '<span class="label">after</span>' + highlightDiff(beforeStr, afterStr, 'after') }));
+          wrap.appendChild(field);
+        });
+        if (!changed) wrap.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'No field changes recorded.'));
+        return wrap;
+      }
+
+      async function revertToRevision(r, body){
+        const snap = (r.after && Object.keys(r.after).length) ? r.after : (r.before || {});
+        const ok = await Shell.openConfirmDialog({ title: 'Revert item?', description: 'Restore this item to revision #' + r.revision_number + ' (' + r.change_type + '). This creates a new revision.', confirmLabel: 'Revert' });
+        if (!ok || !ok.confirmed) return;
+        try {
+          const reqBody = { item_id: item.item_id, input: snap.input, expected_output: snap.expected_output, metadata: snap.metadata || {}, labels: snap.labels || [] };
+          const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body: reqBody });
+          Object.assign(item, upd.item);
+          Shell.toast('Reverted to revision #' + r.revision_number, 'success');
+          drawer.setSubtitle(v.version + ' · index ' + item.index + ' · updated ' + relTime(item.updated_at));
+          if (typeof state.refreshItemRow === 'function') state.refreshItemRow(item);
+          renderHistory(body);
+        } catch(e) { Shell.toast(e.message || 'Revert failed', 'error'); }
+      }
+
       async function renderHistory(body){
         body.innerHTML = '<div class="dsx-skel-row"><div class="dsx-skeleton" style="width:80%"></div></div>';
         try {
@@ -2050,13 +2182,26 @@
           body.innerHTML = '';
           const revs = resp.revisions || [];
           if (revs.length === 0) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No revisions recorded.')])); return; }
-          revs.forEach(r => {
+          revs.forEach((r, idx) => {
             const entry = el('div', { className: 'dsx-history-entry' });
             const head = el('div', { className: 'dsx-history-head' });
-            head.appendChild(el('span', null, [el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type), document.createTextNode(' '), el('span', { className: 'actor' }, r.actor_email || r.actor_user_id || 'system')]));
+            const actor = r.actor_name || r.actor_email || r.actor_user_id || 'system';
+            head.appendChild(el('span', null, [
+              el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+              document.createTextNode(' '),
+              el('span', { className: 'rev' }, '#' + r.revision_number),
+              document.createTextNode(' '),
+              el('span', { className: 'actor', title: r.actor_email || r.actor_user_id || '' }, actor),
+            ]));
             head.appendChild(el('span', { className: 'when' }, relTime(r.created_at)));
             entry.appendChild(head);
-            if (r.changed_fields && r.changed_fields.length) entry.appendChild(el('div', { className: 'dsx-history-fields' }, 'fields: ' + r.changed_fields.join(', ')));
+            entry.appendChild(historyDiffBody(r.before, r.after));
+            // The newest revision (idx 0) is the current state, so reverting to it is a no-op.
+            if (isDraft && idx > 0) {
+              const actions = el('div', { className: 'dsx-history-actions' });
+              actions.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', style: { padding: '4px 10px', fontSize: '11px' }, onclick: () => revertToRevision(r, body) }, '↩ Revert to this'));
+              entry.appendChild(actions);
+            }
             body.appendChild(entry);
           });
         } catch(e) { body.innerHTML = '<div class="dsx-empty"><p>'+escapeHtml(e.message || 'Failed to load history')+'</p></div>'; }

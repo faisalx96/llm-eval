@@ -154,6 +154,29 @@ def _get_dataset(db: Session, project: Project, ref: str) -> Dataset:
     return dataset
 
 
+def _free_slug_from_deleted(db: Session, project: Project, slug: str) -> None:
+    """Release a slug held by soft-deleted datasets so it can be reused.
+
+    Deleting a dataset is a soft delete (``deleted_at`` is set, the row stays), but the
+    ``uq_dataset_project_slug`` unique index covers deleted rows too. Without this, once a
+    dataset is deleted its name can never be reused. We rename any soft-deleted collider's
+    slug to a tombstone, freeing the original slug while preserving the old row's data.
+    """
+    stale = (
+        db.query(Dataset)
+        .filter(
+            Dataset.project_id == project.id,
+            Dataset.slug == slug,
+            Dataset.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    for ds in stale:
+        ds.slug = f"{slug}__deleted_{uuid4().hex[:8]}"
+    if stale:
+        db.flush()
+
+
 def _resolve_version(db: Session, dataset: Dataset, ref: Optional[str]) -> DatasetVersion:
     clean = (ref or "production").strip() or "production"
     version = (
@@ -522,11 +545,13 @@ def create_dataset(
 ) -> Dict[str, Any]:
     _require_scope(principal, "datasets:write")
     project = _project_for_request(db, principal, req.project_slug)
+    slug = _slugify(req.slug or req.name)
+    _free_slug_from_deleted(db, project, slug)
     dataset = Dataset(
         id=str(uuid4()),
         project_id=project.id,
         name=req.name.strip(),
-        slug=_slugify(req.slug or req.name),
+        slug=slug,
         description=req.description,
         tags=_labels(req.tags),
         created_by_user_id=principal.user.id,
@@ -1323,7 +1348,8 @@ async def upload_dataset(
         .first()
     )
     if not dataset:
-        dataset = Dataset(id=str(uuid4()), project_id=project.id, name=name, slug=slug, tags=_labels(tags), created_by_user_id=principal.user.id, created_at=utc_now_naive(), updated_at=utc_now_naive())
+        _free_slug_from_deleted(db, project, slug)
+        dataset = Dataset(id=str(uuid4()), project_id=project.id, name=name, slug=slug, description=description, tags=_labels(tags), created_by_user_id=principal.user.id, created_at=utc_now_naive(), updated_at=utc_now_naive())
         db.add(dataset)
         db.flush()
     # New-style callers (the dashboard) send the multi-column params input_cols/expected_cols,
@@ -1451,6 +1477,11 @@ def item_revisions(
         .order_by(DatasetItemRevision.revision_number.desc())
         .all()
     )
+    actor_ids = {row.actor_user_id for row in rows if row.actor_user_id}
+    actors: Dict[str, Dict[str, Any]] = {}
+    if actor_ids:
+        for user in db.query(User.id, User.email, User.display_name).filter(User.id.in_(actor_ids)).all():
+            actors[user.id] = {"email": user.email, "name": user.display_name}
     return {
         "revisions": [
             {
@@ -1460,6 +1491,8 @@ def item_revisions(
                 "before": row.before,
                 "after": row.after,
                 "actor_user_id": row.actor_user_id,
+                "actor_email": actors.get(row.actor_user_id, {}).get("email"),
+                "actor_name": actors.get(row.actor_user_id, {}).get("name"),
                 "created_at": to_api_timestamp(row.created_at),
             }
             for row in rows
