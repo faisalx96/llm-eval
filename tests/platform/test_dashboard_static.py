@@ -135,3 +135,47 @@ def test_compare_output_height_alignment_preserves_scroll_caps() -> None:
     assert "const cap = el.querySelector('.formatted-table-grid') ? 640 : 300;" in source
     assert "el.style.minHeight = `${Math.min(max, cap)}px`;" in source
     assert "el.style.minHeight = `${max}px`;" not in source
+
+
+def test_datasets_detail_actions_are_version_state_driven() -> None:
+    source = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+    draft_block = source.split("if (isDraft) {", 1)[1].split("} else if", 1)[0]
+
+    assert "--dsx-action-h: 36px;" in source
+    assert ".dsx-hero-actions .shell-btn,\n    .dsx-version-pill" in source
+    assert "height: var(--dsx-action-h); min-height: var(--dsx-action-h);" in source
+    assert "'+ Add item'" in draft_block
+    assert "openUploadWizard({ mode: 'add-to-draft'" in draft_block
+    assert "'Publish'" in draft_block
+    assert "'+ Create draft'" not in draft_block
+    assert "versionIsProduction(v)" in source
+    assert "title: 'Publish draft ' + version + '?'" in source
+    assert "details: [" in source
+    assert "'Snapshot draft ' + version" in source
+    assert "'Published versions stay stable for comparisons and prior runs.'" in source
+    assert "'Move the production alias to ' + version" in source
+    assert "confirmLabel: 'Publish draft'" in source
+
+
+def test_datasets_version_popover_uses_fast_switcher() -> None:
+    source = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+
+    assert "placeholder: 'Search versions...'" in source
+    assert "function renderVersionList(query)" in source
+    assert "versionSearchText(v).includes(q)" in source
+    assert "appendVersionSection" not in source
+    assert "dsx-version-popover-header" not in source
+    assert "versionPopoverRow(v, closePopover)" in source
+    assert "Changes vs production" not in source
+    assert "compareSummaryCache" not in source
+
+
+def test_shell_form_dialog_supports_structured_details() -> None:
+    source = (DASHBOARD_DIR / "shell.js").read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "shell.css").read_text(encoding="utf-8")
+
+    assert "options.details" in source
+    assert "shell-modal-detail-list" in source
+    assert "shell-form-checkbox" in source
+    assert ".shell-modal-detail-item" in styles
+    assert ".shell-form-checkbox-help" in styles

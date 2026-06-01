@@ -871,10 +871,15 @@
           }).join('');
           inputHtml = '<select class="shell-form-input" id="' + id + '" data-field="' + esc(f.name) + '">' + opts + '</select>';
         } else if (f.type === 'checkbox') {
-          inputHtml = '<label style="display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:var(--font-sm);cursor:pointer;">'
-            + '<input type="checkbox" id="' + id + '" data-field="' + esc(f.name) + '"' + (f.value ? ' checked' : '') + ' style="width:14px;height:14px;accent-color:var(--accent-primary);"/>'
-            + esc(f.checkboxLabel || f.label || '') + '</label>';
+          inputHtml = '<label class="shell-form-checkbox">'
+            + '<input type="checkbox" id="' + id + '" data-field="' + esc(f.name) + '"' + (f.value ? ' checked' : '') + '/>'
+            + '<span class="shell-form-checkbox-copy">'
+            +   '<span class="shell-form-checkbox-label">' + esc(f.checkboxLabel || f.label || '') + '</span>'
+            +   (f.help ? ' <span class="shell-form-checkbox-help">' + esc(f.help) + '</span>' : '')
+            + '</span>'
+            + '</label>';
           labelHtml = '';
+          helpHtml = '';
         } else {
           inputHtml = '<input class="shell-form-input" type="' + (f.type || 'text') + '" id="' + id + '" data-field="' + esc(f.name) + '" placeholder="' + esc(f.placeholder || '') + '" value="' + esc(f.value || '') + '" autocomplete="off" />';
         }
@@ -886,6 +891,20 @@
         var lines = Array.isArray(options.description) ? options.description : [options.description];
         descHtml = lines.filter(Boolean).map(function (l) { return '<p class="shell-modal-description">' + esc(l) + '</p>'; }).join('');
       }
+      var detailsHtml = '';
+      if (Array.isArray(options.details) && options.details.length) {
+        detailsHtml = '<div class="shell-modal-detail-list">'
+          + options.details.map(function (item) {
+            return '<div class="shell-modal-detail-item">'
+              + '<span class="shell-modal-detail-icon" aria-hidden="true">' + esc(item.icon || '✓') + '</span>'
+              + '<span class="shell-modal-detail-copy">'
+              +   '<span class="shell-modal-detail-title">' + esc(item.title || '') + '</span>'
+              +   (item.body ? ' <span class="shell-modal-detail-body">' + esc(item.body) + '</span>' : '')
+              + '</span>'
+              + '</div>';
+          }).join('')
+          + '</div>';
+      }
 
       dialog.innerHTML = ''
         + '<div class="shell-modal" role="dialog" aria-modal="true" style="width:' + (options.width || 480) + 'px;">'
@@ -895,6 +914,7 @@
         +   '</div>'
         +   '<div class="shell-modal-body">'
         +     descHtml
+        +     detailsHtml
         +     fieldsHtml
         +     '<div class="shell-form-error" id="shell-form-error"></div>'
         +   '</div>'

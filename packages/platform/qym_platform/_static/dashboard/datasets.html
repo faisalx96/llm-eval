@@ -39,49 +39,86 @@
     .dsx-hero-add-desc:hover { color: var(--accent-primary); border-color: rgba(0,212,170,0.45); background: rgba(0,212,170,0.05); }
     .dsx-hero-meta { display: flex; align-items: center; gap: var(--space-md); font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-top: 2px; }
     .dsx-hero-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
-    .dsx-hero-actions { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; justify-content: flex-end; }
-    /* Every button in the action row is the same height as the version pill so they line up. */
-    .dsx-hero-actions .shell-btn { height: 32px; display: inline-flex; align-items: center; }
-    /* VERSION SELECTOR — same control language as the platform's .multi-select-btn / .filter-select
-       (bg-surface, border-default, the shared triangle chevron) so it reads as the same family of
-       dropdown used everywhere else; it just additionally hosts the status/alias pills. */
+    .dsx-hero-actions {
+      --dsx-action-h: 36px;
+      --dsx-action-radius: 8px;
+      --dsx-action-pad-x: 14px;
+      --dsx-action-bg: var(--bg-elevated);
+      --dsx-action-border: var(--border-default);
+      --dsx-action-text: var(--text-primary);
+      display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; justify-content: flex-end;
+    }
+    .dsx-hero-actions .shell-btn,
+    .dsx-version-pill {
+      height: var(--dsx-action-h); min-height: var(--dsx-action-h); box-sizing: border-box;
+      border-radius: var(--dsx-action-radius); border: 1px solid var(--dsx-action-border);
+      font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: 0;
+      background: var(--dsx-action-bg); color: var(--dsx-action-text);
+    }
+    .dsx-hero-actions .shell-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 0 var(--dsx-action-pad-x);
+    }
+    .dsx-hero-actions .shell-btn-primary {
+      background: var(--accent-primary); border-color: var(--accent-primary);
+      color: #07120f; box-shadow: none; font-weight: 650;
+    }
+    .dsx-hero-actions .shell-btn-primary:hover:not(:disabled) {
+      background: #00e6b8; border-color: #00e6b8; color: #07120f;
+    }
+    .dsx-hero-actions .shell-btn-secondary {
+      background: var(--dsx-action-bg); border-color: var(--dsx-action-border);
+      color: var(--text-secondary);
+    }
+    .dsx-hero-actions .shell-btn-secondary:hover {
+      background: var(--bg-hover); border-color: var(--border-strong); color: var(--text-primary);
+    }
+    .dsx-hero-actions .actions-trigger {
+      width: var(--dsx-action-h); height: var(--dsx-action-h); box-sizing: border-box;
+      border: 1px solid var(--dsx-action-border); background: var(--dsx-action-bg);
+      color: var(--text-muted); border-radius: var(--dsx-action-radius);
+    }
+    .dsx-hero-actions .actions-trigger:hover {
+      border-color: var(--border-strong); background: var(--bg-hover); color: var(--text-primary);
+    }
+    /* VERSION SELECTOR — same control language as the platform's .multi-select-btn / .filter-select,
+       with a compact state label so the trigger stays calm in the hero action row. */
     .dsx-version-wrap { position: relative; display: inline-block; }
     .dsx-version-pill {
-      display: inline-flex; align-items: center; gap: 6px; min-height: 32px; box-sizing: border-box;
-      background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 6px;
-      padding: 4px 28px 4px 10px; font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 0 34px 0 var(--dsx-action-pad-x); cursor: pointer;
       appearance: none; -webkit-appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239898a8' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 9px center;
+      background-repeat: no-repeat; background-position: right 12px center;
       transition: border-color .15s ease, background-color .15s ease;
     }
     .dsx-version-pill:hover { border-color: var(--border-strong); background-color: var(--bg-hover); }
     .dsx-version-pill:focus-visible { outline: none; border-color: var(--accent-primary); }
     .dsx-version-pill.open { border-color: var(--accent-primary); }
-    .dsx-version-pill .label { font-family: var(--font-mono); font-size: var(--font-sm); color: var(--text-primary); }
+    .dsx-version-pill .label { font-family: var(--font-mono); font-size: 13px; font-weight: 650; color: var(--text-primary); }
+    .dsx-version-pill .dsx-pill {
+      height: 20px; box-sizing: border-box; display: inline-flex; align-items: center;
+      font-size: 12px; line-height: 1; padding: 0 8px; border-radius: 999px; font-weight: 600;
+    }
     .dsx-version-popover {
-      position: absolute; top: calc(100% + 6px); right: 0; min-width: 360px; max-width: 480px;
-      background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 10px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.55); z-index: 50; overflow: hidden; max-height: 480px; display: flex; flex-direction: column;
+      position: absolute; top: calc(100% + 6px); right: 0; min-width: 280px; width: min(310px, calc(100vw - 24px));
+      background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 8px;
+      box-shadow: 0 12px 34px rgba(0,0,0,0.50); z-index: 50; overflow: hidden; max-height: 320px; display: flex; flex-direction: column;
     }
-    .dsx-version-popover-header {
-      padding: 10px 12px; border-bottom: 1px solid var(--border-subtle);
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      background: var(--bg-elevated);
-    }
-    .dsx-version-popover-header span { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650; }
+    .dsx-version-search { padding: 6px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-elevated); }
+    .dsx-version-search .dsx-search-wrap { min-width: 0; }
     .dsx-version-list { overflow: auto; flex: 1; }
     .dsx-version-row {
-      display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
-      padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); cursor: pointer; transition: background .12s ease;
+      display: grid; grid-template-columns: 14px auto auto minmax(68px, 1fr); align-items: center; gap: 7px;
+      padding: 7px 10px; cursor: pointer; transition: background .12s ease; border-bottom: 1px solid var(--border-subtle);
     }
     .dsx-version-row:last-child { border-bottom: 0; }
     .dsx-version-row:hover { background: var(--bg-hover); }
     .dsx-version-row.active { background: rgba(0,212,170,0.07); }
-    .dsx-version-row .vlabel { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); }
-    .dsx-version-row .vmeta { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
-    .dsx-version-row .vchips { display: flex; gap: 4px; flex-wrap: wrap; }
-    .dsx-version-row .vcount { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .dsx-version-row .vcheck { color: var(--accent-primary); font-size: 11px; text-align: center; }
+    .dsx-version-row .vlabel { font-family: var(--font-mono); font-size: 13px; font-weight: 650; color: var(--text-primary); }
+    .dsx-version-row .vmeta { font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+    .dsx-version-empty { padding: 14px 10px; color: var(--text-muted); font-size: 12px; text-align: center; }
 
     /* PILLS */
     /* One uniform tag for every status/alias label — only the color varies between variants,
@@ -97,7 +134,7 @@
     .dsx-pill.remove { color: var(--error); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
 
     /* TABS */
-    .dsx-tabs { display: flex; gap: 2px; padding: 0 var(--space-xl); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 15; }
+    .dsx-tabs { display: flex; gap: 2px; padding: 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 15; }
     .dsx-tab { border: 0; background: transparent; color: var(--text-muted); padding: 12px 14px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: color .12s ease, border-color .12s ease; }
     .dsx-tab:hover { color: var(--text-primary); }
     .dsx-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
@@ -119,6 +156,24 @@
     .dsx-toolbar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-xl); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
     .dsx-toolbar .grow { flex: 1; min-width: 200px; }
     .dsx-search-input { width: 100%; }
+    .dsx-search-wrap {
+      display: flex; align-items: center; box-sizing: border-box; min-width: 240px;
+      background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 3px;
+      padding: 0 var(--space-sm); transition: border-color .15s;
+    }
+    .dsx-search-wrap:focus-within { border-color: var(--accent-primary); }
+    .dsx-search-wrap .dsx-search-icon {
+      color: var(--text-muted); font-size: var(--font-sm); flex-shrink: 0; margin-right: 6px; line-height: 1;
+    }
+    .dsx-search-wrap input {
+      flex: 1; min-width: 0; background: transparent; border: none; color: var(--text-primary);
+      font-size: var(--font-sm); font-family: var(--font-mono); padding: var(--space-xs) 0; outline: none;
+    }
+    .dsx-search-wrap input::placeholder { color: var(--text-muted); }
+    .dsx-page .filter-select {
+      background-color: var(--bg-surface); border-radius: 3px; color: var(--text-secondary);
+      font-size: var(--font-sm);
+    }
     .dsx-grid { display: grid; gap: var(--space-md); grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); padding: var(--space-lg) var(--space-xl); }
     .dsx-card {
       background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 10px;
@@ -156,20 +211,10 @@
     .dsx-skel-row > .dsx-skeleton { height: 14px; }
 
     /* TABLE */
-    .dsx-items-toolbar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-xl); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); flex-wrap: wrap; }
+    .dsx-items-toolbar { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-md) var(--space-xl) var(--space-md) var(--space-md); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); flex-wrap: wrap; }
     .dsx-items-toolbar .left { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 260px; flex-wrap: wrap; }
     .dsx-items-toolbar .right { display: flex; gap: 8px; align-items: center; }
-    /* Search field that matches the platform .filter-select control (same height/typography/border)
-       so it sits flush with the Sort / page-size dropdowns in this toolbar. */
-    .dsx-itemsearch {
-      min-width: 240px; padding: var(--space-xs) var(--space-sm);
-      background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 3px;
-      color: var(--text-primary); font-size: var(--font-sm); font-family: var(--font-sans);
-      outline: none; transition: border-color .15s ease;
-    }
-    .dsx-itemsearch::placeholder { color: var(--text-dim); }
-    .dsx-itemsearch:hover { border-color: var(--border-strong); }
-    .dsx-itemsearch:focus { border-color: var(--accent-primary); }
+    .dsx-itemsearch { width: 100%; }
     .dsx-bulk-bar { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(0,212,170,0.10); border: 1px solid rgba(0,212,170,0.35); border-radius: 8px; color: var(--accent-primary); font-size: 12px; font-weight: 600; }
     .dsx-bulk-bar .sep { width: 1px; height: 14px; background: rgba(0,212,170,0.35); }
     .dsx-bulk-bar button { background: transparent; border: 0; color: var(--accent-primary); font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
@@ -214,11 +259,13 @@
       background: var(--bg-void); border-radius: 1px;
     }
     .dsx-table .col-idx { width: 48px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12px; }
-    .dsx-table .col-id { width: 180px; font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+    .dsx-table .col-id { width: 180px; }
+    .dsx-table tbody .col-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
     .dsx-table .col-id .copy { opacity: 0; margin-left: 4px; cursor: pointer; font-size: 10px; color: var(--text-dim); }
     .dsx-table tbody tr:hover .col-id .copy { opacity: 1; }
     .dsx-table .col-runs { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
-    .dsx-table .col-updated { width: 110px; color: var(--text-muted); font-size: 12px; }
+    .dsx-table .col-updated { width: 110px; }
+    .dsx-table tbody .col-updated { color: var(--text-muted); font-size: 12px; }
     .dsx-table .col-actions { width: 44px; text-align: right; }
     .dsx-preview {
       max-width: 360px; max-height: 60px; overflow: hidden;
@@ -437,7 +484,7 @@
     @media (max-width: 900px) {
       .dsx-mapping { grid-template-columns: 1fr; }
       .dsx-hero, .dsx-content, .dsx-toolbar, .dsx-items-toolbar { padding-left: var(--space-md); padding-right: var(--space-md); }
-      .dsx-tabs { padding: 0 var(--space-md); }
+      .dsx-tabs { padding: 0; }
       .dsx-grid { padding: var(--space-md); }
       .dsx-diff-field { grid-template-columns: 1fr; }
     }
@@ -540,8 +587,14 @@
       return e;
     }
     function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function dsxSearchControl(input){
+      const wrap = el('div', { className: 'dsx-search-wrap' });
+      wrap.appendChild(el('span', { className: 'dsx-search-icon', 'aria-hidden': 'true' }, '⌕'));
+      wrap.appendChild(input);
+      return wrap;
+    }
     // Inline icons (currentColor) so buttons inherit theme colors and stay crisp at any zoom.
-    const ICON_DOTS = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="13" cy="8" r="1.4"/></svg>';
+    const ICON_DOTS = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="13" r="1.4"/></svg>';
     function relTime(iso){
       if (!iso) return '—';
       const d = new Date(iso); if (isNaN(d.getTime())) return '—';
@@ -940,7 +993,7 @@
       [['updated_desc', 'Last updated'], ['name_asc', 'Name A→Z'], ['items_desc', 'Items (most)'], ['runs_desc', 'Runs (most)']].forEach(([v, l]) => {
         const opt = el('option', { value: v }, l); if (v === (state._catalogSort || 'updated_desc')) opt.selected = true; sortSel.appendChild(opt);
       });
-      toolbar.appendChild(el('div', { className: 'grow' }, search));
+      toolbar.appendChild(el('div', { className: 'grow' }, dsxSearchControl(search)));
       toolbar.appendChild(sortSel);
       container.appendChild(toolbar);
 
@@ -1554,6 +1607,35 @@
       }
     }
 
+    function versionIsDraft(v){ return v && v.status === 'draft'; }
+    function getProductionVersion(){
+      const versions = state.versions || [];
+      const byAlias = versions.find(v => (v.aliases || []).includes('production'));
+      if (byAlias) return byAlias;
+      const prod = state.dataset && state.dataset.production_version;
+      if (!prod) return null;
+      return versions.find(v => v.id === prod.id || v.version === prod.version) || prod;
+    }
+    function versionIsProduction(v){
+      if (!v) return false;
+      if ((v.aliases || []).includes('production')) return true;
+      const prod = getProductionVersion();
+      return !!prod && (v.id === prod.id || v.version === prod.version);
+    }
+    function versionStateLabel(v){
+      if (!v) return 'No versions';
+      if (versionIsDraft(v)) return 'Draft';
+      return versionIsProduction(v) ? 'Production' : 'Published';
+    }
+    function versionStatePillClass(v){
+      if (versionIsDraft(v)) return 'warning';
+      if (versionIsProduction(v)) return 'success';
+      return 'neutral';
+    }
+    function sortedVersionsDesc(versions){
+      return (versions || []).slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
     function fillHeroActions(right){
       right.innerHTML = '';
       right.appendChild(versionSelectorPill());
@@ -1563,18 +1645,19 @@
         right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow() }, '+ Create first draft'));
         return;
       }
-      const isDraft = v.status === 'draft';
-      const isProd = (v.aliases || []).includes('production');
+      const isDraft = versionIsDraft(v);
+      const isProd = versionIsProduction(v);
 
       if (isDraft) {
-        // Publish is the standout CTA for a draft; adding items is the supporting action.
         right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => openNewItemFlow() }, '+ Add item'));
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => openUploadWizard({ mode: 'add-to-draft', ref: state.datasetRef, versionLabel: v.version }) }, 'Import'));
         right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: publishCurrentVersion }, 'Publish'));
       } else if (v.status === 'published' && !isProd) {
         right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: setAsProductionFlow }, 'Set as production'));
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => createDraftFromVersionFlow(v.version) }, '+ Create draft'));
+      } else {
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow(v.version) }, '+ Create draft'));
       }
-      // Create draft is a first-class action (was previously buried in the ⋯ menu).
-      right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => createDraftFromVersionFlow(v.version) }, '+ Create draft'));
       right.appendChild(overflowMenuButton());
     }
 
@@ -1643,9 +1726,8 @@
 
       top.appendChild(idCol);
 
-      // Right: version selector + a single contextual primary action.
-      // Everything else lives in the ⋯ menu (version actions) or the Versions/Settings tabs,
-      // so the hero stays to pill + at most one or two buttons.
+      // Right: version selector plus state-driven actions. Drafts expose editing and
+      // publishing; published versions expose promotion or draft creation.
       const right = el('div', { className: 'dsx-hero-actions' });
       right.id = 'dsx-hero-actions';
       fillHeroActions(right);
@@ -1663,9 +1745,7 @@
         pill.appendChild(el('span', { className: 'label', style: { color: 'var(--text-muted)' } }, 'no versions'));
       } else {
         pill.appendChild(el('span', { className: 'label' }, v.version));
-        const statusPill = el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'success') }, v.status);
-        pill.appendChild(statusPill);
-        (v.aliases || []).forEach(a => pill.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
+        pill.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
       }
       pill.addEventListener('click', e => { e.stopPropagation(); toggleVersionPopover(wrap, pill); });
       wrap.appendChild(pill);
@@ -1674,35 +1754,60 @@
 
     function toggleVersionPopover(wrap, pillEl){
       const existing = wrap.querySelector('.dsx-version-popover');
-      if (existing) { existing.remove(); pillEl.classList.remove('open'); document.removeEventListener('click', closeOnOutside, true); return; }
+      if (existing) {
+        const existingClose = existing._closeOnOutside;
+        existing.remove();
+        pillEl.classList.remove('open');
+        if (existingClose) document.removeEventListener('click', existingClose, true);
+        return;
+      }
       pillEl.classList.add('open');
       const pop = el('div', { className: 'dsx-version-popover' });
-      const head = el('div', { className: 'dsx-version-popover-header' });
-      head.appendChild(el('span', null, 'Switch version'));
-      pop.appendChild(head);
+      const searchWrap = el('div', { className: 'dsx-version-search' });
+      const searchInput = el('input', { type: 'search', placeholder: 'Search versions...', 'aria-label': 'Search versions' });
+      searchWrap.appendChild(dsxSearchControl(searchInput));
+      pop.appendChild(searchWrap);
       const list = el('div', { className: 'dsx-version-list' });
-      const sortedVersions = state.versions.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-      sortedVersions.forEach(v => {
-        const row = el('div', { className: 'dsx-version-row' + (state.activeVersion && state.activeVersion.id === v.id ? ' active' : '') });
-        row.addEventListener('click', () => { pop.remove(); navigate({ v: v.version, item: null }); });
-        const left = el('div');
-        left.appendChild(el('div', { className: 'vlabel' }, v.version));
-        const meta = el('div', { className: 'vmeta' });
-        meta.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'success') }, v.status));
-        if (v.published_at) meta.appendChild(el('span', null, 'published ' + relTime(v.published_at)));
-        else meta.appendChild(el('span', null, 'created ' + relTime(v.created_at)));
-        left.appendChild(meta);
-        const chips = el('div', { className: 'vchips' });
-        (v.aliases || []).forEach(a => chips.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
-        row.appendChild(left);
-        row.appendChild(chips);
-        row.appendChild(el('div', { className: 'vcount' }, pluralize(v.item_count || 0, 'item')));
-        list.appendChild(row);
-      });
+      const sortedVersions = sortedVersionsDesc(state.versions);
+
+      function closePopover(){
+        pop.remove();
+        pillEl.classList.remove('open');
+        document.removeEventListener('click', closeOnOutside, true);
+      }
+      function versionSearchText(v){
+        return [v.version, versionStateLabel(v), v.status, (v.aliases || []).join(' ')].join(' ').toLowerCase();
+      }
+      function renderVersionList(query){
+        const q = (query || '').trim().toLowerCase();
+        list.innerHTML = '';
+        const versions = q ? sortedVersions.filter(v => versionSearchText(v).includes(q)) : sortedVersions;
+        if (!versions.length) {
+          list.appendChild(el('div', { className: 'dsx-version-empty' }, 'No matching versions'));
+          return;
+        }
+        versions.forEach(v => list.appendChild(versionPopoverRow(v, closePopover)));
+      }
+      renderVersionList('');
       pop.appendChild(list);
       wrap.appendChild(pop);
-      function closeOnOutside(e){ if (!pop.contains(e.target) && !pillEl.contains(e.target)) { pop.remove(); pillEl.classList.remove('open'); document.removeEventListener('click', closeOnOutside, true); } }
+      searchInput.addEventListener('click', e => e.stopPropagation());
+      searchInput.addEventListener('input', () => renderVersionList(searchInput.value));
+      setTimeout(() => searchInput.focus(), 0);
+      function closeOnOutside(e){ if (!pop.contains(e.target) && !pillEl.contains(e.target)) closePopover(); }
+      pop._closeOnOutside = closeOnOutside;
       setTimeout(() => document.addEventListener('click', closeOnOutside, true), 0);
+    }
+
+    function versionPopoverRow(v, onSelect){
+      const row = el('div', { className: 'dsx-version-row' + (state.activeVersion && state.activeVersion.id === v.id ? ' active' : '') });
+      row.addEventListener('click', () => { if (onSelect) onSelect(); navigate({ v: v.version, item: null }); });
+      row.appendChild(el('div', { className: 'vcheck', 'aria-hidden': 'true' }, state.activeVersion && state.activeVersion.id === v.id ? '✓' : ''));
+      row.appendChild(el('span', { className: 'vlabel' }, v.version));
+      row.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
+      const when = relTime(v.published_at || v.created_at);
+      row.appendChild(el('div', { className: 'vmeta' }, pluralize(v.item_count || 0, 'item') + ' · ' + when));
+      return row;
     }
 
     function buildTabs(){
@@ -1754,7 +1859,7 @@
       const toolbar = el('div', { className: 'dsx-items-toolbar' });
       const left = el('div', { className: 'left' });
       const searchInput = el('input', { className: 'dsx-itemsearch', type: 'text', placeholder: 'Search items...', value: state.search });
-      left.appendChild(searchInput);
+      left.appendChild(dsxSearchControl(searchInput));
       const sortSel = el('select', { className: 'filter-select' });
       [['index_asc', 'Index ↑'], ['index_desc', 'Index ↓'], ['updated_desc', 'Updated ↓'], ['item_id', 'ID'] ].forEach(([val, lbl]) => {
         const opt = el('option', { value: val }, lbl); if (val === state.sort) opt.selected = true; sortSel.appendChild(opt);
@@ -2667,11 +2772,15 @@
     }
     async function publishVersion(version){
       const res = await Shell.openFormDialog({
-        title: 'Publish version ' + version + '?',
-        description: 'Once published, the contents are immutable. To make further changes, create a new draft.',
-        confirmLabel: 'Publish',
+        title: 'Publish draft ' + version + '?',
+        description: 'Review what will change before this draft becomes a published dataset version.',
+        details: [
+          { title: 'Snapshot draft ' + version, body: 'The current items are locked as a read-only version.' },
+          { title: 'Future edits use a new draft', body: 'Published versions stay stable for comparisons and prior runs.' },
+        ],
+        confirmLabel: 'Publish draft',
         fields: [
-          { type: 'checkbox', name: 'set_prod', label: 'Set as production', value: true },
+          { type: 'checkbox', name: 'set_prod', label: 'Set as production', help: 'Move the production alias to ' + version + ' after publishing.', value: true },
         ],
       });
       if (!res.confirmed) return;
