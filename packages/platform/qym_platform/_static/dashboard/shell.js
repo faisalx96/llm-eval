@@ -964,6 +964,24 @@
           }
         }
         errorEl.textContent = '';
+
+        // When an async onSubmit handler is provided, keep the dialog open while it runs
+        // and surface any error inline (instead of closing and losing the user's input).
+        if (typeof options.onSubmit === 'function') {
+          var prevLabel = submitBtn ? submitBtn.textContent : '';
+          if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = options.submittingLabel || 'Saving…'; }
+          if (cancelBtn) cancelBtn.disabled = true;
+          Promise.resolve()
+            .then(function () { return options.onSubmit(values); })
+            .then(function () { close({ confirmed: true, values: values }); })
+            .catch(function (err) {
+              errorEl.textContent = (err && err.message) ? err.message : String(err || 'Something went wrong.');
+              if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = prevLabel; }
+              if (cancelBtn) cancelBtn.disabled = false;
+            });
+          return;
+        }
+
         close({ confirmed: true, values: values });
       }
 

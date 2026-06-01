@@ -31,7 +31,7 @@ def test_in_memory_dataset() -> None:
 
 
 def test_named_dataset_without_platform_config_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("QYM_PLATFORM_URL", raising=False)
+    monkeypatch.delenv("QYM_BASE_URL", raising=False)
     monkeypatch.delenv("QYM_API_KEY", raising=False)
 
     with pytest.raises(DatasetNotFoundError):

@@ -95,7 +95,7 @@ If the request includes `config` or any unsupported field, the API returns `400 
 Example:
 
 ```bash
-curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
+curl -X POST "$QYM_BASE_URL/v1/product-evals" \
   -H "Authorization: Bearer $QYM_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -136,7 +136,7 @@ The test preset:
 Example:
 
 ```bash
-curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
+curl -X POST "$QYM_BASE_URL/v1/product-evals" \
   -H "Authorization: Bearer $QYM_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -186,7 +186,7 @@ Authorization: Bearer <QYM_API_KEY>
 Example:
 
 ```bash
-curl "$QYM_PLATFORM_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40" \
+curl "$QYM_BASE_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40" \
   -H "Authorization: Bearer $QYM_API_KEY"
 ```
 
@@ -379,7 +379,7 @@ Authorization: Bearer <QYM_API_KEY>
 Example:
 
 ```bash
-curl -X POST "$QYM_PLATFORM_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40/stop" \
+curl -X POST "$QYM_BASE_URL/v1/product-evals/eval_3b8df7a5e0f74cf8988ab4b3ad2d7f40/stop" \
   -H "Authorization: Bearer $QYM_API_KEY"
 ```
 
@@ -512,7 +512,7 @@ Common HTTP statuses:
 
 ```js
 async function runInsightorEval() {
-  const baseUrl = process.env.QYM_PLATFORM_URL;
+  const baseUrl = process.env.QYM_BASE_URL;
   const apiKey = process.env.QYM_API_KEY;
 
   const submitRes = await fetch(`${baseUrl}/v1/product-evals`, {

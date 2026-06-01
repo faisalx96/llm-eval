@@ -12,7 +12,7 @@ Each dataset item's `input` is a JSON object with `question` and `context` keys,
 which qym unpacks into the matching task parameters below.
 
 Requirements:
-    Set QYM_PLATFORM_URL and QYM_API_KEY (in .env) so the SDK can load the
+    Set QYM_BASE_URL and QYM_API_KEY (in .env) so the SDK can load the
     dataset from the qym platform. The dataset's project is determined by the
     API key — use a key that belongs to the "insightor" project.
 

@@ -5,8 +5,7 @@ from ..utils.env import get_platform_url_env
 #
 # Platform URL policy:
 # - End users should not have to pass the platform URL every time.
-# - Prefer QYM_PLATFORM_URL for SDK usage.
-# - Accept QYM_BASE_URL as a compatibility alias.
+# - Resolve from QYM_BASE_URL.
 # - For local dev, fall back to localhost.
 #
 

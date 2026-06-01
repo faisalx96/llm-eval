@@ -587,7 +587,7 @@ class ProductEvalJobManager:
             resolved_model = model or env_model or getattr(module, "MODEL", None)
             settings = PlatformSettings()
             resolved_platform_url = (
-                platform_url or os.getenv("QYM_PLATFORM_URL") or settings.base_url
+                platform_url or settings.base_url
             ).rstrip("/")
 
             def build_run_metadata(attempt: int) -> Dict[str, Any]:

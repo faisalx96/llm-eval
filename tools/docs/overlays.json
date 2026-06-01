@@ -5,7 +5,7 @@
       "when_to_use": "Use this when you want a fast handoff from CLI execution to the platform UI.",
       "pitfalls": [
         "Set --no-open in headless sessions or remote shells.",
-        "If QYM_PLATFORM_URL is unset, the command falls back to http://localhost:8000."
+        "If QYM_BASE_URL is unset, the command falls back to http://localhost:8000."
       ],
       "examples": [
         "qym dashboard",

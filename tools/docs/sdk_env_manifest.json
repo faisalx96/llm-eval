@@ -1,11 +1,11 @@
 {
   "variables": [
     {
-      "name": "QYM_PLATFORM_URL",
-      "aliases": ["QYM_BASE_URL"],
+      "name": "QYM_BASE_URL",
+      "aliases": [],
       "required": false,
       "category": "Platform connectivity",
-      "description": "Base URL for the deployed qym platform used by the SDK and CLI.",
+      "description": "Base URL for the deployed qym platform used by the SDK, CLI, and platform server.",
       "example": "https://qym.internal.example"
     },
     {

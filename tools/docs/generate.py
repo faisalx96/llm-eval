@@ -352,7 +352,7 @@ def _error_rows(operation: dict[str, Any]) -> list[list[str]]:
 
 
 def _request_example(method: str, path: str, operation: dict[str, Any], components: dict[str, Any], auth_note: str) -> str:
-    lines = [f'curl -X {method.upper()} "$QYM_PLATFORM_URL{path}"']
+    lines = [f'curl -X {method.upper()} "$QYM_BASE_URL{path}"']
     if "public" not in auth_note.lower():
         lines.append('  -H "Authorization: Bearer $QYM_API_KEY"')
     request_body = operation.get("requestBody", {})

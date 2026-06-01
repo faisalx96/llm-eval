@@ -528,7 +528,7 @@ class TestEnvVarPrefix:
 
     def test_platform_defaults_uses_qym_prefix(self):
         text = (SDK_ROOT / "qym" / "platform" / "defaults.py").read_text()
-        assert "QYM_PLATFORM_URL" in text
+        assert "QYM_BASE_URL" in text
         assert "LLM_EVAL_PLATFORM_URL" not in text
 
     def test_platform_client_uses_qym_prefix(self):

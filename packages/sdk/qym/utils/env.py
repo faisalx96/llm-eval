@@ -26,16 +26,8 @@ def load_cwd_dotenv(*, override: bool = False) -> Optional[str]:
 
 
 def get_platform_url_env(default: str = "http://localhost:8000") -> str:
-    """Return the SDK platform URL, preferring QYM_PLATFORM_URL.
-
-    QYM_BASE_URL is accepted as a compatibility alias because some deployed
-    environments already set it for the platform service itself.
-    """
-    return (
-        os.getenv("QYM_PLATFORM_URL")
-        or os.getenv("QYM_BASE_URL")
-        or default
-    ).rstrip("/")
+    """Return the platform URL from QYM_BASE_URL."""
+    return (os.getenv("QYM_BASE_URL") or default).rstrip("/")
 
 
 def get_langfuse_host_env(default: str = "") -> str:

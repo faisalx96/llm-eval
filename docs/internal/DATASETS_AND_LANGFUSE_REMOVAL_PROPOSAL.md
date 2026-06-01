@@ -203,7 +203,7 @@ Evaluator(dataset="qa-v1")
 Resolution order:
 
 1. if the string is an existing local path, load by extension (`.csv`, `.jsonl`, `.json`)
-2. otherwise resolve as a qym platform dataset name/slug when `QYM_PLATFORM_URL` and `QYM_API_KEY` are configured
+2. otherwise resolve as a qym platform dataset name/slug when `QYM_BASE_URL` and `QYM_API_KEY` are configured
 3. otherwise raise a qym-native dataset error explaining how to use `CsvDataset`, `--dataset-file`, or platform config
 
 This preserves the ergonomic API while removing Langfuse as the implicit backend.

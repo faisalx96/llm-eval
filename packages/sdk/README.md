@@ -65,10 +65,10 @@ LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
 
 # qym Platform (optional — syncs runs to a central dashboard)
 QYM_API_KEY=your-api-key
-QYM_PLATFORM_URL=https://your-qym-platform.example.com
+QYM_BASE_URL=https://your-qym-platform.example.com
 ```
 
-**To get your API key:** Use the API key flow provided by your qym platform deployment. Set `QYM_API_KEY` and `QYM_PLATFORM_URL` to enable automatic streaming of evaluation runs.
+**To get your API key:** Use the API key flow provided by your qym platform deployment. Set `QYM_API_KEY` and `QYM_BASE_URL` to enable automatic streaming of evaluation runs.
 
 For an internal/self-signed platform certificate, point the SDK at the issuing CA:
 
@@ -234,7 +234,7 @@ Track multiple parallel evaluations with real-time progress, latency histograms,
 
 ### Platform Dashboard
 
-The **qym platform** stores runs centrally. When `QYM_API_KEY` and `QYM_PLATFORM_URL` are set, runs stream automatically with no code changes needed.
+The **qym platform** stores runs centrally. When `QYM_API_KEY` and `QYM_BASE_URL` are set, runs stream automatically with no code changes needed.
 
 ```bash
 qym dashboard   # Opens the platform in your browser
@@ -250,7 +250,7 @@ qym dashboard   # Opens the platform in your browser
 - **Corrections review** — dedicated approval queue with bulk moderation and revision history
 - **Team workflows** — role-based visibility, approval workflows, and org-level access controls
 
-**Setup:** Set `QYM_PLATFORM_URL` to your deployment, create an API key there, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
+**Setup:** Set `QYM_BASE_URL` to your deployment, create an API key there, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
 
 If `qym config check` or live run streaming fails with an SSL certificate verification error, configure `QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem` on the machine running the SDK/CLI. Use `QYM_PLATFORM_SSL_VERIFY=false` only for local/dev troubleshooting.
 

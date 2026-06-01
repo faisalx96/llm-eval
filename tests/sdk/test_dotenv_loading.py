@@ -74,8 +74,7 @@ def test_langfuse_base_url_alias_is_used_for_host(tmp_path, monkeypatch):
     assert get_langfuse_host_env() == "https://lf.example.com"
 
 
-def test_qym_base_url_alias_is_used_for_platform_url(monkeypatch):
-    monkeypatch.delenv("QYM_PLATFORM_URL", raising=False)
+def test_qym_base_url_is_used_for_platform_url(monkeypatch):
     monkeypatch.setenv("QYM_BASE_URL", "https://platform.example.com")
     assert get_platform_url_env() == "https://platform.example.com"
 

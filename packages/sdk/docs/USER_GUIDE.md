@@ -63,7 +63,7 @@ Add the key to your `.env` file:
 
 ```bash
 QYM_API_KEY=your-api-key
-QYM_PLATFORM_URL=https://your-qym-platform.example.com
+QYM_BASE_URL=https://your-qym-platform.example.com
 ```
 
 When `QYM_API_KEY` is set, your evaluation runs are automatically streamed to the platform in real time — no code changes needed. You can watch runs live on the dashboard, browse history, and compare results across models.
@@ -1233,7 +1233,7 @@ results = evaluator.run(
 
 ### Platform Dashboard
 
-The platform dashboard at your configured `QYM_PLATFORM_URL` provides the full evaluation management experience. Open it with:
+The platform dashboard at your configured `QYM_BASE_URL` provides the full evaluation management experience. Open it with:
 
 ```bash
 qym dashboard

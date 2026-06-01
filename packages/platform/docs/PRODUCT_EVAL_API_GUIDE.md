@@ -398,7 +398,7 @@ Do not use `include_items=true` for high-frequency production polling.
 Submit Insightor:
 
 ```bash
-curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
+curl -X POST "$QYM_BASE_URL/v1/product-evals" \
   -H "Authorization: Bearer $QYM_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -419,7 +419,7 @@ curl -X POST "$QYM_PLATFORM_URL/v1/product-evals" \
 Poll the returned `data.poll_url`:
 
 ```bash
-curl "$QYM_PLATFORM_URL/v1/product-evals/<qym_run_id>" \
+curl "$QYM_BASE_URL/v1/product-evals/<qym_run_id>" \
   -H "Authorization: Bearer $QYM_API_KEY"
 ```
 

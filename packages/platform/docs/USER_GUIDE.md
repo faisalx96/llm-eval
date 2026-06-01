@@ -396,7 +396,7 @@ qym run create --task-file my_task.py --task-function my_func \
 
 Results stream to the platform in real time. The SDK auto-detects git branch and commit for version tracking.
 
-If your own application also needs live progress, use the SDK's `progress_callback` in the Python wrapper that launches the run. This is separate from platform ingestion: the platform still receives streamed events through `QYM_PLATFORM_URL` and `QYM_API_KEY`, while your callback can update an internal job record, queue, websocket, or notebook cell.
+If your own application also needs live progress, use the SDK's `progress_callback` in the Python wrapper that launches the run. This is separate from platform ingestion: the platform still receives streamed events through `QYM_BASE_URL` and `QYM_API_KEY`, while your callback can update an internal job record, queue, websocket, or notebook cell.
 
 If the SDK cannot submit runs because your platform uses an internal or self-signed HTTPS certificate, set `QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem` wherever the SDK/CLI runs. For local development only, `QYM_PLATFORM_SSL_VERIFY=false` disables certificate verification.
 

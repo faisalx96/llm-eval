@@ -78,7 +78,7 @@ class PlatformAPIClient:
             raise PlatformAPIError(
                 status_code=0,
                 detail=f"Cannot connect to {self.platform_url}: {exc.reason}",
-                suggestion="Check QYM_PLATFORM_URL and ensure the platform is running.",
+                suggestion="Check QYM_BASE_URL and ensure the platform is running.",
             ) from exc
 
     def _post(self, path: str, body: dict | None = None, timeout: int = 60) -> Any:
@@ -106,7 +106,7 @@ class PlatformAPIClient:
             raise PlatformAPIError(
                 status_code=0,
                 detail=f"Cannot connect to {self.platform_url}: {exc.reason}",
-                suggestion="Check QYM_PLATFORM_URL and ensure the platform is running.",
+                suggestion="Check QYM_BASE_URL and ensure the platform is running.",
             ) from exc
 
     @staticmethod

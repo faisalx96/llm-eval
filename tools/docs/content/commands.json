@@ -8,7 +8,7 @@
     ],
     "failure_modes": [
       "Use `--no-open` in remote shells or CI runners where launching a browser is not possible.",
-      "If `QYM_PLATFORM_URL` is unset, the command falls back to the local platform default."
+      "If `QYM_BASE_URL` is unset, the command falls back to the local platform default."
     ],
     "next_steps": [
       "Use `qym run list --json` when you want scriptable run discovery instead of opening the UI."

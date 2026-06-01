@@ -69,7 +69,7 @@ The generated [CLI Reference](/cli/reference) is the exhaustive command tree. Th
 | `--model` | Optional | Single model or comma-separated models. |
 | `--task-name` | Optional | Stable task identity. |
 | `--config` | Optional | JSON string merged into `EvaluatorConfig`. |
-| `--platform-url` | Optional | Overrides `QYM_PLATFORM_URL`. |
+| `--platform-url` | Optional | Overrides `QYM_BASE_URL`. |
 | `--platform-api-key` | Optional | Overrides `QYM_API_KEY`. |
 | `--resume-from`, `--run-file` | Optional | Resume from checkpoint or run file. |
 | `--quiet`, `-q` | Optional | Only print final summary. |
@@ -137,7 +137,7 @@ qym run create \
 ### Platform streaming
 
 ```bash
-export QYM_PLATFORM_URL=http://localhost:8000
+export QYM_BASE_URL=http://localhost:8000
 export QYM_API_KEY=<platform-api-key>
 
 qym run create \
@@ -172,8 +172,7 @@ qym run create \
 
 | Env var | CLI use |
 |---------|---------|
-| `QYM_PLATFORM_URL` | Platform commands and streaming. |
-| `QYM_BASE_URL` | Compatibility alias for platform URL resolution. |
+| `QYM_BASE_URL` | Platform commands and streaming. |
 | `QYM_API_KEY` | Platform authentication. |
 | `LANGFUSE_PUBLIC_KEY` | Langfuse dataset loading. |
 | `LANGFUSE_SECRET_KEY` | Langfuse dataset loading. |

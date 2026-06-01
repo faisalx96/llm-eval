@@ -53,7 +53,7 @@ from qym.core.dataset import CsvDataset
 Use platform credentials when SDK runs should appear in the shared qym app while they execute.
 
 ```bash
-export QYM_PLATFORM_URL=https://qym.example.com
+export QYM_BASE_URL=https://qym.example.com
 export QYM_API_KEY=<platform-api-key>
 ```
 
@@ -95,7 +95,7 @@ Enable it in SDK config with `phoenix_enabled=True` or the equivalent config dic
 |---------|-------|
 | `ModuleNotFoundError: qym` | Confirm the environment running Python is the one where qym was installed. |
 | Notebook cannot import qym | Install qym into the kernel environment, not only your shell environment. |
-| Platform runs do not appear | Check `QYM_PLATFORM_URL`, `QYM_API_KEY`, and platform access. |
+| Platform runs do not appear | Check `QYM_BASE_URL`, `QYM_API_KEY`, and platform access. |
 | Langfuse dataset fails to load | Check Langfuse keys, host, and dataset name. |
 | Judge metric fails before scoring | Check `QYM_JUDGE_MODEL` and judge API key. |
 

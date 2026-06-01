@@ -303,7 +303,7 @@ class QymDataset:
         self.name = dataset_name
         self.version = version
         self.alias = alias or (None if version else "production")
-        self.platform_url = (platform_url or os.getenv("QYM_PLATFORM_URL") or "").rstrip("/")
+        self.platform_url = (platform_url or os.getenv("QYM_BASE_URL") or "").rstrip("/")
         self.api_key = api_key or os.getenv("QYM_API_KEY")
         self.project_slug = project_slug
         self.id: Optional[str] = None
@@ -313,7 +313,7 @@ class QymDataset:
         if not self.platform_url or not self.api_key:
             raise DatasetNotFoundError(
                 f"Dataset '{dataset_name}' is not a local file and qym platform credentials are missing. "
-                "Set QYM_PLATFORM_URL and QYM_API_KEY, or pass CsvDataset/JsonlDataset."
+                "Set QYM_BASE_URL and QYM_API_KEY, or pass CsvDataset/JsonlDataset."
             )
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:

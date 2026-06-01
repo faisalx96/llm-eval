@@ -102,8 +102,7 @@ result = Evaluator(
 
 | Env var | Used by | Required when | Notes |
 |---------|---------|---------------|-------|
-| `QYM_PLATFORM_URL` | SDK, CLI | Streaming or platform commands | Preferred SDK platform base URL. |
-| `QYM_BASE_URL` | SDK compatibility alias, platform server | Platform server or legacy SDK config | SDK prefers `QYM_PLATFORM_URL`; platform uses `QYM_BASE_URL`. |
+| `QYM_BASE_URL` | SDK, CLI, platform server | Streaming, platform commands, or running the platform | Platform base URL. Used by the SDK/CLI to reach the platform and by the platform server for its own public URL. |
 | `QYM_API_KEY` | SDK, CLI | Authenticated platform ingestion or platform commands | Use CI/secret storage. |
 | `QYM_PLATFORM_DEBUG` | SDK platform client | Debugging streaming | Set to `1` or a file path. |
 
@@ -171,7 +170,7 @@ config = {
     "checkpoint_enabled": True,
     "checkpoint_flush_each_item": True,
     "output_dir": "qym_results/nightly",
-    "platform_url": os.environ["QYM_PLATFORM_URL"],
+    "platform_url": os.environ["QYM_BASE_URL"],
     "platform_api_key": os.environ["QYM_API_KEY"],
     "run_metadata": {
         "source": "nightly",

@@ -1046,7 +1046,7 @@ Platform streaming is separate from local progress callbacks.
 Set platform credentials when the run should appear in the shared qym dashboard:
 
 ```bash
-export QYM_PLATFORM_URL=https://qym.example.com
+export QYM_BASE_URL=https://qym.example.com
 export QYM_API_KEY=<platform-api-key>
 ```
 
@@ -1219,7 +1219,7 @@ qym stores stripped display names for platform display while preserving provider
 Preferred service pattern:
 
 ```python
-"platform_url": os.environ["QYM_PLATFORM_URL"],
+"platform_url": os.environ["QYM_BASE_URL"],
 "platform_api_key": os.environ["QYM_API_KEY"],
 ```
 
@@ -1306,7 +1306,7 @@ def launch_eval(job):
             "metric_timeout": 90,
             "max_retries": 2,
             "output_dir": "qym_results/jobs",
-            "platform_url": os.environ.get("QYM_PLATFORM_URL"),
+            "platform_url": os.environ.get("QYM_BASE_URL"),
             "platform_api_key": os.environ.get("QYM_API_KEY"),
             "run_metadata": {
                 "job_id": job.id,

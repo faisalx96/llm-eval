@@ -40,9 +40,9 @@
     .dsx-hero-meta { display: flex; align-items: center; gap: var(--space-md); font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-top: 2px; }
     .dsx-hero-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
     .dsx-hero-actions {
-      --dsx-action-h: 36px;
-      --dsx-action-radius: 8px;
-      --dsx-action-pad-x: 14px;
+      --dsx-action-h: 30px;
+      --dsx-action-radius: 7px;
+      --dsx-action-pad-x: 11px;
       --dsx-action-bg: var(--bg-elevated);
       --dsx-action-border: var(--border-default);
       --dsx-action-text: var(--text-primary);
@@ -52,7 +52,7 @@
     .dsx-version-pill {
       height: var(--dsx-action-h); min-height: var(--dsx-action-h); box-sizing: border-box;
       border-radius: var(--dsx-action-radius); border: 1px solid var(--dsx-action-border);
-      font-size: 13px; font-weight: 600; line-height: 1; letter-spacing: 0;
+      font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: 0;
       background: var(--dsx-action-bg); color: var(--dsx-action-text);
     }
     .dsx-hero-actions .shell-btn {
@@ -86,19 +86,19 @@
     .dsx-version-wrap { position: relative; display: inline-block; }
     .dsx-version-pill {
       display: inline-flex; align-items: center; gap: 8px;
-      padding: 0 34px 0 var(--dsx-action-pad-x); cursor: pointer;
+      padding: 0 30px 0 var(--dsx-action-pad-x); cursor: pointer;
       appearance: none; -webkit-appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239898a8' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 12px center;
+      background-repeat: no-repeat; background-position: right 10px center;
       transition: border-color .15s ease, background-color .15s ease;
     }
     .dsx-version-pill:hover { border-color: var(--border-strong); background-color: var(--bg-hover); }
     .dsx-version-pill:focus-visible { outline: none; border-color: var(--accent-primary); }
     .dsx-version-pill.open { border-color: var(--accent-primary); }
-    .dsx-version-pill .label { font-family: var(--font-mono); font-size: 13px; font-weight: 650; color: var(--text-primary); }
+    .dsx-version-pill .label { font-family: var(--font-mono); font-size: 12px; font-weight: 650; color: var(--text-primary); }
     .dsx-version-pill .dsx-pill {
-      height: 20px; box-sizing: border-box; display: inline-flex; align-items: center;
-      font-size: 12px; line-height: 1; padding: 0 8px; border-radius: 999px; font-weight: 600;
+      height: 18px; box-sizing: border-box; display: inline-flex; align-items: center;
+      font-size: 11px; line-height: 1; padding: 0 7px; border-radius: 999px; font-weight: 600;
     }
     .dsx-version-popover {
       position: absolute; top: calc(100% + 6px); right: 0; min-width: 280px; width: min(310px, calc(100vw - 24px));
@@ -306,6 +306,10 @@
     .dsx-pager-controls { display: flex; gap: 6px; align-items: center; }
 
     /* DRAWER body styles (drawer chrome lives in shell.css) */
+    /* The item drawer owns its own internal padding (tab bar + section), so strip the shared
+       scroll-container padding. Otherwise the sticky tab bar can only pin to the content-box top,
+       leaving a strip of the container's top padding above it where scrolled content bleeds through. */
+    .shell-drawer-body.dsx-item-drawer-body { padding: 0; }
     .dsx-drawer-tabs { display: flex; gap: 0; padding: 0 var(--space-md); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 5; }
     .dsx-drawer-tab { border: 0; background: transparent; color: var(--text-muted); padding: 10px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; }
     .dsx-drawer-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
@@ -1258,7 +1262,7 @@
         fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
         fileField.appendChild(drop);
 
-        const fmtNote = el('div', { className: 'shell-form-help', id: 'dsx-wiz-fmt' });
+        const fmtNote = el('div', { className: 'shell-form-help', id: 'dsx-wiz-fmt', style: { marginTop: '8px', padding: '2px 0' } });
         fmtNote.innerHTML = 'Detected format: <strong>' + (wstate.format ? wstate.format.toUpperCase() : '—') + '</strong>';
         fileField.appendChild(fmtNote);
         wrap.appendChild(fileField);
@@ -2216,6 +2220,7 @@
       state.drawerApi = drawer;
 
       function render(host){
+        host.classList.add('dsx-item-drawer-body');
         host.innerHTML = '';
         const tabs = el('div', { className: 'dsx-drawer-tabs' });
         ['details', 'runs', 'history'].forEach(t => {
@@ -2488,21 +2493,19 @@
     async function renderRunsTab(host){
       const wrap = el('div', { style: { padding: 'var(--space-lg) var(--space-xl)' } });
       const headRow = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', margin: '0 0 12px 0' } });
-      headRow.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: 0 } }, 'Runs against this dataset'));
+      const titleWrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } });
+      titleWrap.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: 0 } }, 'Runs against this dataset'));
 
-      // Version filter: defaults to the currently active version, with an "All versions" option.
+      // The runs list tracks the version chosen in the hero version selector — switching versions
+      // there re-renders this tab, so the runs always reflect the currently selected version.
       const activeLabel = state.activeVersion ? state.activeVersion.version : null;
-      const filter = { version: state._runsVersionFilter !== undefined ? state._runsVersionFilter : activeLabel };
-      const filterWrap = el('div', { style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' } });
-      const mkPill = (label, value) => {
-        const active = filter.version === value;
-        const pill = el('button', { className: 'dsx-pill ' + (active ? 'success' : 'neutral'), style: { cursor: 'pointer', borderStyle: 'solid' } }, label);
-        pill.addEventListener('click', () => { state._runsVersionFilter = value; filter.version = value; load(); });
-        return pill;
-      };
-      filterWrap.appendChild(mkPill('All versions', null));
-      state.versions.forEach(v => filterWrap.appendChild(mkPill(v.version, v.version)));
-      headRow.appendChild(filterWrap);
+      if (state.activeVersion) {
+        const verPill = el('span', { className: 'dsx-pill ' + versionStatePillClass(state.activeVersion) });
+        verPill.appendChild(el('span', { className: 'label', style: { fontFamily: 'var(--font-mono)', fontWeight: 650 } }, activeLabel));
+        verPill.appendChild(document.createTextNode(' · ' + versionStateLabel(state.activeVersion)));
+        titleWrap.appendChild(verPill);
+      }
+      headRow.appendChild(titleWrap);
       wrap.appendChild(headRow);
 
       const listHost = el('div');
@@ -2510,18 +2513,13 @@
       host.appendChild(wrap);
 
       async function load(){
-        // Refresh the filter pill active states.
-        filterWrap.querySelectorAll('.dsx-pill').forEach((pill, i) => {
-          const value = i === 0 ? null : (state.versions[i - 1] && state.versions[i - 1].version);
-          pill.className = 'dsx-pill ' + (filter.version === value ? 'success' : 'neutral');
-        });
         listHost.innerHTML = '';
         const loading = el('div', { className: 'dsx-skel-row' }); loading.appendChild(el('div', { className: 'dsx-skeleton', style: { width: '80%' } })); listHost.appendChild(loading);
         try {
           const params = new URLSearchParams();
           params.set('project_slug', state.slug);
           params.set('limit', 100);
-          if (filter.version) params.set('version', filter.version);
+          if (activeLabel) params.set('version', activeLabel);
           const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/runs?' + params.toString());
           listHost.innerHTML = '';
           const runs = resp.runs || [];
@@ -2529,8 +2527,8 @@
             const empty = el('div', { className: 'dsx-empty' }, [
               el('div', { className: 'icon' }, '▷'),
               el('h3', null, 'No runs yet'),
-              el('p', null, filter.version
-                ? ('No runs reference ' + filter.version + ' yet.')
+              el('p', null, activeLabel
+                ? ('No runs reference ' + activeLabel + ' yet.')
                 : 'When you run an evaluation that references this dataset, it will appear here.'),
             ]);
             const acts = el('div', { className: 'dsx-empty-actions' });
@@ -2814,24 +2812,31 @@
         title: 'Add item',
         description: 'Item ID auto-generates if blank. Input and Expected accept plain text or JSON.',
         confirmLabel: 'Add',
+        submittingLabel: 'Adding…',
         fields: [
           { type: 'text', name: 'item_id', label: 'Item ID', placeholder: '(auto)' },
           { type: 'textarea', name: 'input', label: 'Input', required: true },
           { type: 'textarea', name: 'expected_output', label: 'Expected output' },
-          { type: 'textarea', name: 'metadata', label: 'Metadata (JSON)', placeholder: '{}' },
+          { type: 'textarea', name: 'metadata', label: 'Metadata (JSON)', placeholder: '{}',
+            validate: m => { if (m && String(m).trim()) { try { JSON.parse(m); } catch(_) { return 'Metadata must be valid JSON.'; } } } },
         ],
+        // Run validation and the API call while the dialog stays open, so a server-side
+        // error keeps the user's input intact instead of closing and showing a toast.
+        onSubmit: async (values) => {
+          const body = {};
+          if (values.item_id) body.item_id = values.item_id;
+          body.input = tryParseJSON(values.input);
+          if (values.expected_output) body.expected_output = tryParseJSON(values.expected_output);
+          if (values.metadata) {
+            try { body.metadata = JSON.parse(values.metadata); }
+            catch(_) { throw new Error('Metadata must be valid JSON.'); }
+          }
+          await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
+        },
       });
       if (!res.confirmed) return;
-      const body = {};
-      if (res.values.item_id) body.item_id = res.values.item_id;
-      body.input = tryParseJSON(res.values.input);
-      if (res.values.expected_output) body.expected_output = tryParseJSON(res.values.expected_output);
-      if (res.values.metadata) { try { body.metadata = JSON.parse(res.values.metadata); } catch(_) { Shell.toast('Metadata must be valid JSON', 'error'); return; } }
-      try {
-        const created = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
-        Shell.toast('Item added', 'success');
-        refreshDetailView({ force: true });
-      } catch(e) { Shell.toast(e.message || 'Failed', 'error'); }
+      Shell.toast('Item added', 'success');
+      refreshDetailView({ force: true });
     }
     function tryParseJSON(s){
       if (s == null) return null;

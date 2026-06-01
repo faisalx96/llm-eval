@@ -204,7 +204,7 @@ This ingests local CSV or JSON results into the platform database. Raw artifacts
 
 ## SDK Progress Hooks
 
-The platform receives live run events when SDK clients set `QYM_PLATFORM_URL` and `QYM_API_KEY`. If a wrapper around the SDK also needs local progress, use the SDK's `progress_callback`; it does not replace platform streaming.
+The platform receives live run events when SDK clients set `QYM_BASE_URL` and `QYM_API_KEY`. If a wrapper around the SDK also needs local progress, use the SDK's `progress_callback`; it does not replace platform streaming.
 
 ```python
 from qym import Evaluator, ProgressSnapshot
