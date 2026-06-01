@@ -40,15 +40,16 @@
     .dsx-hero-meta { display: flex; align-items: center; gap: var(--space-md); font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-top: 2px; }
     .dsx-hero-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
     .dsx-hero-actions { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; justify-content: flex-end; }
-    /* Keep every control in the action row the same height as the version pill so they align. */
+    /* Every button in the action row is the same height as the version pill so they line up. */
+    .dsx-hero-actions .shell-btn { height: 32px; display: inline-flex; align-items: center; }
     /* VERSION SELECTOR — same control language as the platform's .multi-select-btn / .filter-select
        (bg-surface, border-default, the shared triangle chevron) so it reads as the same family of
        dropdown used everywhere else; it just additionally hosts the status/alias pills. */
     .dsx-version-wrap { position: relative; display: inline-block; }
     .dsx-version-pill {
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex; align-items: center; gap: 6px; min-height: 32px; box-sizing: border-box;
       background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 6px;
-      padding: 7px 28px 7px 10px; font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); cursor: pointer;
+      padding: 4px 28px 4px 10px; font-size: var(--font-sm); font-weight: 600; color: var(--text-primary); cursor: pointer;
       appearance: none; -webkit-appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239898a8' d='M3 4.5L6 8l3-3.5H3z'/%3E%3C/svg%3E");
       background-repeat: no-repeat; background-position: right 9px center;
@@ -78,17 +79,19 @@
     .dsx-version-row:hover { background: var(--bg-hover); }
     .dsx-version-row.active { background: rgba(0,212,170,0.07); }
     .dsx-version-row .vlabel { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); }
-    .dsx-version-row .vmeta { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+    .dsx-version-row .vmeta { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
     .dsx-version-row .vchips { display: flex; gap: 4px; flex-wrap: wrap; }
     .dsx-version-row .vcount { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
     /* PILLS */
-    .dsx-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.6; border: 1px solid transparent; }
+    /* One uniform tag for every status/alias label — only the color varies between variants,
+       so "draft", "published" and "production" all read as the same component (same font, size, shape). */
+    .dsx-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 650; line-height: 1.45; letter-spacing: 0.02em; white-space: nowrap; border: 1px solid transparent; }
     .dsx-pill.success { color: var(--accent-primary); border-color: rgba(0,212,170,0.35); background: rgba(0,212,170,0.10); }
     .dsx-pill.warning { color: var(--warning); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
     .dsx-pill.info { color: var(--accent-secondary); border-color: rgba(99,102,241,0.40); background: rgba(99,102,241,0.10); }
     .dsx-pill.neutral { color: var(--text-muted); border-color: var(--border-default); background: var(--bg-elevated); }
-    .dsx-pill.alias { color: var(--text-primary); border-color: var(--border-strong); background: var(--bg-elevated); font-family: var(--font-mono); }
+    .dsx-pill.alias { color: var(--text-secondary); border-color: var(--border-strong); background: var(--bg-elevated); }
     .dsx-pill.alias.prod { color: var(--accent-primary); border-color: rgba(0,212,170,0.40); background: rgba(0,212,170,0.08); }
     .dsx-pill.add { color: var(--success, #22c55e); border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10); }
     .dsx-pill.remove { color: var(--error); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
@@ -325,17 +328,6 @@
     .dsx-run-row:hover { border-color: var(--border-strong); }
     .dsx-run-row .id { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
     .dsx-run-row .meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; }
-
-    /* VERSIONS TIMELINE */
-    .dsx-timeline { display: flex; flex-direction: column; gap: 10px; padding: 0 0 var(--space-lg) 0; }
-    .dsx-vcard { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 10px; padding: var(--space-md); display: flex; flex-direction: column; gap: 8px; }
-    .dsx-vcard:hover { border-color: var(--border-strong); }
-    .dsx-vcard.active { border-color: var(--accent-primary); box-shadow: 0 0 0 1px rgba(0,212,170,0.20); }
-    .dsx-vcard-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-    .dsx-vcard-head .left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .dsx-vcard-head .vname { font-family: var(--font-mono); font-size: 14px; font-weight: 650; color: var(--text-primary); }
-    .dsx-vcard-meta { font-size: 12px; color: var(--text-muted); }
-    .dsx-vcard-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
     /* LINEAGE */
     .dsx-lineage { padding: var(--space-md); display: flex; flex-direction: column; gap: 4px; font-family: var(--font-mono); font-size: 13px; }
@@ -655,7 +647,9 @@
         mode: !ref ? 'catalog' : (compare ? 'compare' : 'detail'),
         slug: slug,
         ref: ref,
-        tab: params.get('tab') || 'items',
+        // The Versions tab was folded into the hero (actions) + Lineage (overview);
+        // route stale ?tab=versions links to Lineage so old bookmarks don't dead-end.
+        tab: (params.get('tab') === 'versions' ? 'lineage' : (params.get('tab') || 'items')),
         v: params.get('v') || null,
         item: params.get('item') || null,
         base: params.get('base') || null,
@@ -1544,21 +1538,43 @@
         meta.appendChild(el('span', { className: 'dot' }));
         meta.appendChild(el('span', null, 'updated ' + relTime(state.dataset.updated_at)));
       }
+      // Lineage, in context: where the active version came from. The full tree lives on the Lineage tab.
+      const av = state.activeVersion;
+      if (av) {
+        const parent = av.parent_version_id && (state.versions || []).find(x => x.id === av.parent_version_id);
+        if (parent) {
+          meta.appendChild(el('span', { className: 'dot' }));
+          const link = el('span', { style: { cursor: 'pointer', color: 'var(--accent-secondary)' }, title: 'View lineage', onclick: () => navigate({ tab: 'lineage' }) }, 'forked from ' + parent.version);
+          meta.appendChild(link);
+        }
+        if (av.source_type) {
+          meta.appendChild(el('span', { className: 'dot' }));
+          meta.appendChild(el('span', null, 'source: ' + av.source_type));
+        }
+      }
     }
 
     function fillHeroActions(right){
       right.innerHTML = '';
       right.appendChild(versionSelectorPill());
       const v = state.activeVersion;
-      const isDraft = v && v.status === 'draft';
-      const isProd = v && (v.aliases || []).includes('production');
+      if (!v) {
+        // No versions yet: the only meaningful action is creating the first draft.
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow() }, '+ Create first draft'));
+        return;
+      }
+      const isDraft = v.status === 'draft';
+      const isProd = (v.aliases || []).includes('production');
 
       if (isDraft) {
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => openNewItemFlow() }, '+ Add item'));
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: publishCurrentVersion }, 'Publish'));
-      } else if (v && v.status === 'published' && !isProd) {
-        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: setAsProductionFlow }, 'Set as production'));
+        // Publish is the standout CTA for a draft; adding items is the supporting action.
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => openNewItemFlow() }, '+ Add item'));
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: publishCurrentVersion }, 'Publish'));
+      } else if (v.status === 'published' && !isProd) {
+        right.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: setAsProductionFlow }, 'Set as production'));
       }
+      // Create draft is a first-class action (was previously buried in the ⋯ menu).
+      right.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', onclick: () => createDraftFromVersionFlow(v.version) }, '+ Create draft'));
       right.appendChild(overflowMenuButton());
     }
 
@@ -1571,9 +1587,6 @@
         if (v) {
           menu.push({ label: 'Compare…', onClick: openCompareFlow });
           menu.push({ label: '↓ Download JSONL', onClick: () => window.open(apiUrl('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + ':download?project_slug=' + encodeURIComponent(state.slug)), '_blank', 'noopener') });
-          menu.push({ label: '+ Create draft from current', onClick: () => createDraftFromVersionFlow(v.version) });
-        } else {
-          menu.push({ label: '+ Create first draft', onClick: () => createDraftFromVersionFlow() });
         }
         openContextMenu(btn, menu);
       });
@@ -1666,8 +1679,6 @@
       const pop = el('div', { className: 'dsx-version-popover' });
       const head = el('div', { className: 'dsx-version-popover-header' });
       head.appendChild(el('span', null, 'Switch version'));
-      const manageBtn = el('button', { className: 'shell-btn shell-btn-secondary', style: { padding: '4px 8px', fontSize: '11px' }, onclick: () => { pop.remove(); navigate({ tab: 'versions' }); } }, 'Manage →');
-      head.appendChild(manageBtn);
       pop.appendChild(head);
       const list = el('div', { className: 'dsx-version-list' });
       const sortedVersions = state.versions.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -1697,19 +1708,16 @@
     function buildTabs(){
       const tabs = el('div', { className: 'dsx-tabs' });
       tabs.id = 'dsx-detail-tabs';
-      const v = state.activeVersion;
-      const itemCount = v ? (v.item_count || 0) : 0;
+      // Counts intentionally omitted — the hero meta row already shows items / versions / runs.
       const tabSpec = [
-        { key: 'items', label: 'Items', count: itemCount },
-        { key: 'versions', label: 'Versions', count: state.versions.length },
-        { key: 'runs', label: 'Runs', count: state.dataset.run_count || null },
+        { key: 'items', label: 'Items' },
+        { key: 'runs', label: 'Runs' },
         { key: 'lineage', label: 'Lineage' },
         { key: 'settings', label: 'Settings' },
       ];
       tabSpec.forEach(t => {
         const btn = el('button', { className: 'dsx-tab' + (state.tab === t.key ? ' active' : ''), dataset: { tabKey: t.key } });
         btn.appendChild(document.createTextNode(t.label));
-        if (t.count != null) btn.appendChild(el('span', { className: 'count' }, '· ' + t.count));
         btn.addEventListener('click', () => navigate({ tab: t.key, item: null }));
         tabs.appendChild(btn);
       });
@@ -1719,7 +1727,6 @@
     function renderTabContent(host){
       host.innerHTML = '';
       if (state.tab === 'items') return renderItemsTab(host);
-      if (state.tab === 'versions') return renderVersionsTab(host);
       if (state.tab === 'runs') return renderRunsTab(host);
       if (state.tab === 'lineage') return renderLineageTab(host);
       if (state.tab === 'settings') return renderSettingsTab(host);
@@ -1733,9 +1740,9 @@
       if (!v) {
         const e = el('div', { className: 'dsx-empty' });
         e.appendChild(el('h3', null, 'No versions yet'));
-        e.appendChild(el('p', null, 'Versions are created and managed on the Versions tab.'));
+        e.appendChild(el('p', null, 'Create a first draft to start adding items.'));
         const acts = el('div', { className: 'dsx-empty-actions' });
-        acts.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => navigate({ tab: 'versions' }) }, 'Go to Versions →'));
+        acts.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow() }, '+ Create first draft'));
         e.appendChild(acts);
         host.appendChild(e);
         return;
@@ -1952,7 +1959,9 @@
         else { try { preview.innerHTML = tokenize(val); } catch(_) { preview.textContent = fullPreview(val); } }
         td.appendChild(preview);
         if (isDraft) {
-          td.style.cursor = 'text';
+          // Row is clickable (opens the drawer), so keep the pointer cursor it inherits from <tr>.
+          // Double-click still enters inline edit — it just isn't advertised with a text caret.
+          td.title = 'Click to open · double-click to edit';
           td.addEventListener('dblclick', e => { e.stopPropagation(); enterEditMode(td, item, field); });
         }
         return td;
@@ -2369,57 +2378,6 @@
     }
 
     // -------------------------------------------------------------
-    // VERSIONS TAB
-    // -------------------------------------------------------------
-    function renderVersionsTab(host){
-      const wrap = el('div', { style: { padding: 'var(--space-lg) var(--space-xl)' } });
-      const headerRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' } });
-      headerRow.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: 0 } }, 'Version history'));
-      headerRow.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow() }, '+ Create draft'));
-      wrap.appendChild(headerRow);
-
-      if (state.versions.length === 0) {
-        wrap.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No versions yet')]));
-      } else {
-        const timeline = el('div', { className: 'dsx-timeline' });
-        state.versions.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).forEach(v => {
-          // The whole card opens that version's items (consistent with the Lineage tab),
-          // so there's no separate "View items" button. Action buttons stopPropagation.
-          const card = el('div', { className: 'dsx-vcard' + (state.activeVersion && state.activeVersion.id === v.id ? ' active' : ''), style: { cursor: 'pointer' }, onclick: () => navigate({ tab: 'items', v: v.version }) });
-          const head = el('div', { className: 'dsx-vcard-head' });
-          const left = el('div', { className: 'left' });
-          left.appendChild(el('span', { className: 'vname' }, v.version));
-          left.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'success') }, v.status));
-          (v.aliases || []).forEach(a => left.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
-          head.appendChild(left);
-
-          const acts = el('div', { className: 'dsx-vcard-actions' });
-          const act = (label, cls, fn) => el('button', { className: 'shell-btn ' + cls, onclick: e => { e.stopPropagation(); fn(); } }, label);
-          if (v.status === 'draft') acts.appendChild(act('Publish', 'shell-btn-primary', () => publishVersion(v.version)));
-          if (v.status === 'published' && !(v.aliases || []).includes('production')) acts.appendChild(act('Set as production', 'shell-btn-secondary', () => setProduction(v.version)));
-          acts.appendChild(act('Create draft', 'shell-btn-secondary', () => createDraftFromVersionFlow(v.version)));
-          acts.appendChild(el('a', { className: 'shell-btn shell-btn-secondary', href: apiUrl('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + ':download?project_slug=' + encodeURIComponent(state.slug)), target: '_blank', rel: 'noopener', title: 'Download JSONL', onclick: e => e.stopPropagation() }, '↓ Download'));
-          head.appendChild(acts);
-          card.appendChild(head);
-
-          const meta = el('div', { className: 'dsx-vcard-meta' });
-          const parts = [pluralize(v.item_count || 0, 'item'), 'source: ' + (v.source_type || 'api')];
-          if (v.parent_version_id) {
-            const parent = state.versions.find(x => x.id === v.parent_version_id);
-            if (parent) parts.push('from ' + parent.version);
-          }
-          if (v.published_at) parts.push('published ' + relTime(v.published_at));
-          else parts.push('created ' + relTime(v.created_at));
-          meta.textContent = parts.join(' · ');
-          card.appendChild(meta);
-          timeline.appendChild(card);
-        });
-        wrap.appendChild(timeline);
-      }
-      host.appendChild(wrap);
-    }
-
-    // -------------------------------------------------------------
     // RUNS TAB
     // -------------------------------------------------------------
     async function renderRunsTab(host){
@@ -2539,8 +2497,13 @@
 
     async function renderLineageTab(host){
       const wrap = el('div', { style: { padding: 'var(--space-lg) var(--space-xl)' } });
-      wrap.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: '0 0 4px 0' } }, 'Lineage'));
-      wrap.appendChild(el('p', { className: 'shell-form-help', style: { margin: '0 0 12px 0' } }, 'How each version descends from its parent, and what changed along the way.'));
+      const headerRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' } });
+      const titleCol = el('div');
+      titleCol.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: '0 0 4px 0' } }, 'Version history'));
+      titleCol.appendChild(el('p', { className: 'shell-form-help', style: { margin: 0 } }, 'How each version descends from its parent, and what changed along the way. Click a version to open it.'));
+      headerRow.appendChild(titleCol);
+      headerRow.appendChild(el('button', { className: 'shell-btn shell-btn-primary', style: { flex: 'none' }, onclick: () => createDraftFromVersionFlow() }, '+ Create draft'));
+      wrap.appendChild(headerRow);
       host.appendChild(wrap);
       const skel = el('div', { className: 'dsx-skel-row' }); skel.appendChild(el('div', { className: 'dsx-skeleton', style: { width: '70%' } })); wrap.appendChild(skel);
       try {
