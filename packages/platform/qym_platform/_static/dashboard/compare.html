@@ -2354,6 +2354,11 @@
 
     /* Status bar */
     .fp-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
       padding: var(--space-xs) var(--space-md);
       border-top: 1px solid var(--border-subtle);
     }
@@ -2362,6 +2367,9 @@
       font-size: var(--font-xs);
       color: var(--text-muted);
       font-family: var(--font-mono);
+      width: 172px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     .fp-status .filter-count .count-num {
@@ -2717,20 +2725,29 @@
 
     /* Pagination */
     .pagination {
-      display: flex;
+      display: inline-flex;
+      align-items: center;
       justify-content: center;
-      gap: var(--space-sm);
-      margin-top: var(--space-lg);
+      gap: 0;
+      height: 28px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: 7px;
+      background: var(--bg-elevated);
+      margin-left: auto;
     }
 
     .pagination button {
-      padding: var(--space-xs) var(--space-md);
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 4px;
+      height: 28px;
+      padding: 0 12px;
+      background: transparent;
+      border: 0;
+      border-right: 1px solid var(--border-subtle);
+      border-radius: 0;
       color: var(--text-secondary);
       cursor: pointer;
     }
+    .pagination button:last-child { border-right: 0; border-left: 1px solid var(--border-subtle); }
 
     .pagination button:hover:not(:disabled) {
       background: var(--bg-hover);
@@ -2744,8 +2761,15 @@
     .pagination .page-info {
       display: flex;
       align-items: center;
+      justify-content: center;
+      height: 28px;
+      width: 112px;
+      padding: 0 12px;
+      font-family: var(--font-mono);
       font-size: var(--font-sm);
-      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.015);
     }
 
     /* Empty/loading states */
@@ -4364,11 +4388,11 @@
             </div>
             <div class="fp-status">
               <span class="filter-count" id="filter-count"></span>
+              <div class="pagination" id="pagination"></div>
             </div>
           </div>
 
           <div class="items-grid" id="items-grid"></div>
-          <div class="pagination" id="pagination"></div>
         </div>
       </div>
 
@@ -9323,14 +9347,15 @@
         container.innerHTML = pageItems.map(({ itemId, rowData }) => renderItemComparisonCard(itemId, rowData)).join('');
 
         // Pagination controls
-        paginationEl.innerHTML = `
-          <button id="prev-page" ${state.page <= 1 ? 'disabled' : ''}>← Prev</button>
+        const paginationHtml = `
+          <button data-page-action="prev" ${state.page <= 1 ? 'disabled' : ''}>← Prev</button>
           <span class="page-info">Page ${state.page} of ${totalPages}</span>
-          <button id="next-page" ${state.page >= totalPages ? 'disabled' : ''}>Next →</button>
+          <button data-page-action="next" ${state.page >= totalPages ? 'disabled' : ''}>Next →</button>
         `;
+        paginationEl.innerHTML = paginationHtml;
 
-        el('prev-page').onclick = () => { state.page--; renderItems(true); };
-        el('next-page').onclick = () => { state.page++; renderItems(true); };
+        paginationEl.querySelector('[data-page-action="prev"]')?.addEventListener('click', () => { state.page--; renderItems(true); });
+        paginationEl.querySelector('[data-page-action="next"]')?.addEventListener('click', () => { state.page++; renderItems(true); });
 
         // Scroll to top of items grid if requested
         if (scrollToTop) {

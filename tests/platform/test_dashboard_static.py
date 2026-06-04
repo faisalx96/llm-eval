@@ -44,6 +44,53 @@ def test_models_run_selection_uses_run_display_names() -> None:
     assert '<div class="run-name" title="${run.run_id}">${stripProviderFromRunId(run.run_id)}</div>' not in source
 
 
+def test_models_view_uses_globally_filtered_runs() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    models_block = source.split("async function renderModelsView()", 1)[1].split("function populateModelsViewDropdowns()", 1)[0]
+    dropdown_block = source.split("function populateModelsViewDropdowns()", 1)[1].split("// Cache for fetched Models run data", 1)[0]
+
+    assert "const matchingRuns = state.filteredRuns.filter" in models_block
+    assert "const matchingRuns = state.flatRuns.filter" not in models_block
+    assert "state.filterModels.size > 0 && !state.filterModels.has('__none__')" not in models_block
+    assert "? state.filteredRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)" in dropdown_block
+    assert "? state.flatRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)" not in dropdown_block
+
+
+def test_charts_grouped_view_uses_presets_for_version_model_splits() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    charts_block = source.split("function renderChartsView()", 1)[1].split("// Wire up dataset tab clicks", 1)[0]
+
+    assert "version-model" in charts_block
+    assert "model-version" in charts_block
+    assert "Version \\u2192 Model" in charts_block
+    assert "Model \\u2192 Version" in charts_block
+    assert "Grouped by version, comparing models inside each version" in charts_block
+    assert "firstColLabel = groupMode === 'version-model' ? 'Version / Model' : 'Model / Version';" in charts_block
+    assert "const primaryGrouping = groupMode === 'version-model' ? 'version' : 'model';" in charts_block
+    assert "const secondaryGrouping = groupMode === 'version-model' ? 'model' : 'version';" in charts_block
+    assert "chart-table-group-header-nested" in charts_block
+    assert "chart-row-mode-control" in charts_block
+    assert "chart-group-axis-control" in charts_block
+    assert "chart-then-axis-control" in charts_block
+    assert "chart-row-mode-control" in css
+    assert "chart-group-axis-control" in css
+    assert "chart-then-axis-control" in css
+    assert '<button class="chart-segment-btn ${groupMode === \'run\' ? \'active\' : \'\'}" data-mode="run">Runs</button>' in charts_block
+    assert '<button class="chart-segment-btn ${isGrouped ? \'active\' : \'\'}" data-mode="${isGrouped ? groupMode : \'model\'}">Grouped</button>' in charts_block
+    assert '<span class="chart-control-label">Group</span>' in charts_block
+    assert '<span class="chart-control-label">Then</span>' in charts_block
+    assert "const thenModelDisabled = !isGrouped || primaryGroup === 'model';" in charts_block
+    assert "const thenVersionDisabled = !isGrouped || primaryGroup === 'version' || !hasVersions;" in charts_block
+    assert ".chart-table-group-header-nested" in css
+    assert ".chart-table-group-body-nested::before" in css
+    assert ".chart-table-group-header-nested::before" in css
+    assert ".chart-table-group-body-leaf .chart-table-row::before" in css
+    assert "padding-left: 18px;" in css
+    assert "padding-left: 28px;" in css
+    assert "padding-left: 68px;" not in css
+
+
 def test_live_runs_sections_are_present_on_overview_and_admin() -> None:
     overview = (DASHBOARD_DIR / "overview.html").read_text(encoding="utf-8")
     admin = (DASHBOARD_DIR / "admin.html").read_text(encoding="utf-8")
@@ -141,9 +188,12 @@ def test_datasets_detail_actions_are_version_state_driven() -> None:
     source = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
     draft_block = source.split("if (isDraft) {", 1)[1].split("} else if", 1)[0]
 
-    assert "--dsx-action-h: 36px;" in source
+    assert "--dsx-action-h: 30px;" in source
     assert ".dsx-hero-actions .shell-btn,\n    .dsx-version-pill" in source
     assert "height: var(--dsx-action-h); min-height: var(--dsx-action-h);" in source
+    assert "width: var(--dsx-action-h); height: var(--dsx-action-h); box-sizing: border-box;" in source
+    assert ".dsx-pill.published { color: var(--accent-secondary); border-color: rgba(0,168,255,0.35);" in source
+    assert "if (versionIsProduction(v)) return 'success';\n      return 'published';" in source
     assert "'+ Add item'" in draft_block
     assert "openUploadWizard({ mode: 'add-to-draft'" in draft_block
     assert "'Publish'" in draft_block
@@ -155,6 +205,132 @@ def test_datasets_detail_actions_are_version_state_driven() -> None:
     assert "'Published versions stay stable for comparisons and prior runs.'" in source
     assert "'Move the production alias to ' + version" in source
     assert "confirmLabel: 'Publish draft'" in source
+
+
+def test_datasets_runs_tab_is_flush_without_redundant_heading() -> None:
+    source = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+    runs_tab_block = source.split("async function renderRunsTab(host){", 1)[1].split("    // -------------------------------------------------------------\n    // LINEAGE TAB", 1)[0]
+
+    assert "Runs against this dataset" not in source
+    assert "const listHost = el('div');" in runs_tab_block
+    assert "className: 'dsx-table-wrap flush'" in runs_tab_block
+    assert ".dsx-table-wrap.flush { border-top: 0; }" in source
+    assert "const status = String(r.status || '—').toUpperCase();" in runs_tab_block
+    assert "className: 'status-badge status-' + status" in runs_tab_block
+    assert "className: 'dsx-pill ' + (r.status === 'completed'" not in runs_tab_block
+
+
+def test_datasets_version_switching_preserves_lineage_tab() -> None:
+    source = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+    version_row_block = source.split("function versionPopoverRow(v, onSelect){", 1)[1].split("function buildTabs(){", 1)[0]
+    lineage_block = source.split("async function renderLineageTab(host){", 1)[1].split("    // -------------------------------------------------------------\n    // SETTINGS TAB", 1)[0]
+
+    assert "navigate({ tab: state.tab, v: v.version, item: null });" in version_row_block
+    assert "navigate({ tab: 'lineage', v: v.version, item: null })" in lineage_block
+    assert "navigate({ tab: 'items', v: v.version })" not in lineage_block
+    assert "const childrenByParent = {};" in lineage_block
+    assert "className: 'dsx-lineage-children'" in lineage_block
+    assert "' has-children'" in lineage_block
+    assert "const childNode = renderNode(child);" in lineage_block
+    assert "dsx-lineage-parent-label" not in source
+    assert "dsx-lineage-branch-label" not in source
+    assert ".dsx-lineage-changes { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px 44px; padding-left: 0; }" in source
+    assert ".dsx-lineage-tree-node.has-children > .dsx-lineage-changes::before" in source
+    assert "'forked from ' + parentVersion.version" not in lineage_block
+    assert "style: { marginLeft: (depth * 18) + 'px' }" not in lineage_block
+
+
+def test_item_pagination_controls_are_single_bottom_bars() -> None:
+    datasets = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+    dashboard_js = DASHBOARD_JS.read_text(encoding="utf-8")
+    dashboard_css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    datasets_items_block = datasets.split("async function renderItemsTab(host){", 1)[1].split("    // -------------------------------------------------------------\n    // ITEM DRAWER", 1)[0]
+    assert "id: 'dsx-pager-top'" not in datasets_items_block
+    assert "pagerTop" not in datasets_items_block
+    assert "className: 'dsx-pager', id: 'dsx-pager'" in datasets_items_block
+    assert "className: 'dsx-table-wrap paged', id: 'dsx-table-wrap'" in datasets_items_block
+    assert "position: fixed; left: 0; right: 0; bottom: 0;" in datasets
+    assert "min-height: 36px;" in datasets
+    datasets_pagination_css = datasets.split("    /* PAGINATION */", 1)[1].split("    /* DRAWER", 1)[0]
+    assert "justify-content: center;" in datasets_pagination_css
+    assert "gap: 14px;" in datasets_pagination_css
+    assert ".dsx-pager-info" in datasets_pagination_css
+    assert ".dsx-pager-page" in datasets_pagination_css
+    assert ".dsx-pager-controls { display: inline-flex; gap: 0;" in datasets_pagination_css
+    assert "border-radius: 7px;" in datasets_pagination_css
+    assert ".dsx-pager-info { width: 252px; text-align: right; }" in datasets_pagination_css
+    assert "width: 112px;" in datasets_pagination_css
+    assert "border-radius: 8px;" not in datasets_pagination_css
+    assert "'Previous'" in datasets_items_block
+    assert "'Next'" in datasets_items_block
+    assert "className: 'dsx-pager-page'" in datasets_items_block
+    assert "'Page ' + (total === 0 ? 0 : state.page + 1) + ' of ' + totalPages" in datasets_items_block
+    assert "'← Prev'" not in datasets_items_block
+    assert "'Next →'" not in datasets_items_block
+    assert "' items'" in datasets_items_block
+    assert "box-shadow: 0 10px 30px rgba(0,0,0,0.28)" not in datasets
+
+    assert 'id="pagination-top"' not in run
+    assert "paginationEls" not in run
+    assert 'class="pagination" id="pagination"' in run
+    run_filter_panel = run.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
+    assert '<div class="pagination" id="pagination"></div>' in run_filter_panel
+    run_pagination_css = run.split("    /* Pagination */", 1)[1].split("    .pagination button", 1)[0]
+    assert "position: sticky;" not in run_pagination_css
+    assert "position: fixed;" not in run_pagination_css
+    assert "display: inline-flex;" in run_pagination_css
+    assert "gap: 0;" in run_pagination_css
+    assert "border-radius: 7px;" in run_pagination_css
+    assert "width: 112px;" in run
+    run_status_css = run.split("    .fp-status .filter-count {", 1)[1].split("    .fp-status .filter-count .count-num", 1)[0]
+    assert "width: 172px;" in run_status_css
+    assert "font-variant-numeric: tabular-nums;" in run_status_css
+    assert "margin-left: auto;" in run_pagination_css
+    assert "min-height: 36px;" not in run_pagination_css
+    assert "border-radius: 8px;" not in run_pagination_css
+    assert "box-shadow: 0 10px 30px rgba(0,0,0,0.28)" not in run
+
+    assert 'id="pagination-top"' not in compare
+    assert "paginationEls" not in compare
+    assert 'class="pagination" id="pagination"' in compare
+    compare_filter_panel = compare.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
+    assert '<div class="pagination" id="pagination"></div>' in compare_filter_panel
+    compare_pagination_css = compare.split("    /* Pagination */", 1)[1].split("    .pagination button", 1)[0]
+    assert "position: sticky;" not in compare_pagination_css
+    assert "position: fixed;" not in compare_pagination_css
+    assert "display: inline-flex;" in compare_pagination_css
+    assert "gap: 0;" in compare_pagination_css
+    assert "border-radius: 7px;" in compare_pagination_css
+    assert "width: 112px;" in compare
+    compare_status_css = compare.split("    .fp-status .filter-count {", 1)[1].split("    .fp-status .filter-count .count-num", 1)[0]
+    assert "width: 172px;" in compare_status_css
+    assert "font-variant-numeric: tabular-nums;" in compare_status_css
+    assert "margin-left: auto;" in compare_pagination_css
+    assert "min-height: 36px;" not in compare_pagination_css
+    assert "border-radius: 8px;" not in compare_pagination_css
+    assert "box-shadow: 0 10px 30px rgba(0,0,0,0.28)" not in compare
+
+    assert 'id="table-pagination-top"' not in index
+    assert 'class="table-pagination" id="table-pagination"' in index
+    footer_block = index.split('<footer class="status-bar">', 1)[1].split('</footer>', 1)[0]
+    assert 'class="status-center"' in footer_block
+    assert 'id="table-pagination"' in footer_block
+    assert 'data-table-page="prev"' in index
+    assert "document.querySelectorAll('[data-table-page=\"prev\"]')" in dashboard_js
+    table_pagination_css = dashboard_css.split(".table-pagination {", 1)[1].split(".table-pagination-info", 1)[0]
+    assert "position: fixed;" not in table_pagination_css
+    assert "border-top: 1px solid var(--border-subtle);" not in table_pagination_css
+    assert ".table-pagination-info {\n  width: 252px;\n  text-align: right;\n}" in dashboard_css
+    assert "width: 112px;" in dashboard_css
+    assert ".status-center" in dashboard_css
+    assert "grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);" in dashboard_css
+    assert "tablePagination.style.display = state.currentView === 'table' ? 'flex' : 'none';" in dashboard_js
+    assert "min-height: 36px;" in dashboard_css
+    assert "box-shadow: 0 10px 30px rgba(0,0,0,0.28)" not in dashboard_css
 
 
 def test_datasets_version_popover_uses_fast_switcher() -> None:

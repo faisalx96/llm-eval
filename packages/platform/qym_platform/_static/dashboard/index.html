@@ -118,14 +118,6 @@
           <tbody id="runs-tbody"></tbody>
         </table>
       </div>
-      <div class="table-pagination" id="table-pagination">
-        <div class="table-pagination-info" id="table-pagination-info">Showing 0-0 of 0 runs</div>
-        <div class="table-pagination-controls">
-          <button class="table-page-btn" id="table-page-prev" type="button">Previous</button>
-          <span class="table-pagination-page" id="table-pagination-page">Page 1 of 1</span>
-          <button class="table-page-btn" id="table-page-next" type="button">Next</button>
-        </div>
-      </div>
     </div>
   </main>
 
@@ -135,6 +127,16 @@
       <span id="status-filter">0 runs</span>
       <span class="sep">·</span>
       <span id="status-selected">0 selected</span>
+    </div>
+    <div class="status-center">
+      <div class="table-pagination" id="table-pagination">
+        <div class="table-pagination-info" id="table-pagination-info">Showing 0-0 of 0 runs</div>
+        <div class="table-pagination-controls">
+          <button class="table-page-btn" id="table-page-prev" data-table-page="prev" type="button">Previous</button>
+          <span class="table-pagination-page" id="table-pagination-page">Page 1 of 1</span>
+          <button class="table-page-btn" id="table-page-next" data-table-page="next" type="button">Next</button>
+        </div>
+      </div>
     </div>
     <div class="status-right">
       <span>Last Updated: <span id="last-updated" style="font-family:var(--font-mono)">—</span></span>

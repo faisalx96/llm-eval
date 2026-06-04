@@ -597,18 +597,18 @@
   }
 
   function renderTablePagination(meta) {
-    const infoEl = el('table-pagination-info');
-    const pageEl = el('table-pagination-page');
-    const prevBtn = el('table-page-prev');
-    const nextBtn = el('table-page-next');
-    if (!infoEl || !pageEl || !prevBtn || !nextBtn) return;
+    const infoEls = Array.from(document.querySelectorAll('.table-pagination-info'));
+    const pageEls = Array.from(document.querySelectorAll('.table-pagination-page'));
+    const prevBtns = Array.from(document.querySelectorAll('[data-table-page="prev"]'));
+    const nextBtns = Array.from(document.querySelectorAll('[data-table-page="next"]'));
+    if (!infoEls.length || !pageEls.length || !prevBtns.length || !nextBtns.length) return;
 
     const { totalRuns, pageCount, start, end } = meta;
     const startLabel = totalRuns === 0 ? 0 : start + 1;
-    infoEl.textContent = `Showing ${startLabel}-${end} of ${totalRuns} runs`;
-    pageEl.textContent = `Page ${pageCount === 0 ? 0 : state.tablePage} of ${pageCount}`;
-    prevBtn.disabled = state.tablePage <= 1;
-    nextBtn.disabled = state.tablePage >= pageCount;
+    infoEls.forEach(infoEl => { infoEl.textContent = `Showing ${startLabel}-${end} of ${totalRuns} runs`; });
+    pageEls.forEach(pageEl => { pageEl.textContent = `Page ${pageCount === 0 ? 0 : state.tablePage} of ${pageCount}`; });
+    prevBtns.forEach(prevBtn => { prevBtn.disabled = state.tablePage <= 1; });
+    nextBtns.forEach(nextBtn => { nextBtn.disabled = state.tablePage >= pageCount; });
   }
 
   function getFilterOptionLabel(value, labelFn = null) {
@@ -1906,9 +1906,9 @@
       }
       const sortState = state.chartSortState[cardId];
 
-      // Grouping mode: run (default) / version / model
+      // Grouping mode: run (default) / version / model / version-model / model-version
       if (!state.chartGroupMode) state.chartGroupMode = {};
-      const groupMode = state.chartGroupMode[cardId] || 'run';
+      let groupMode = state.chartGroupMode[cardId] || 'run';
 
       function getChartSortDirection(key) {
         return key === 'model' ? 'asc' : 'desc';
@@ -1994,7 +1994,13 @@
       const avgLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
       const medianLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.median_latency || 0)), 0);
 
-      const firstColSortKey = groupMode === 'version' ? null : 'model';
+      const hasVersions = allRuns.some(r => r.git_commit);
+      if (!hasVersions && (groupMode === 'version' || groupMode === 'version-model' || groupMode === 'model-version')) {
+        groupMode = 'run';
+        state.chartGroupMode[cardId] = groupMode;
+      }
+
+      const firstColSortKey = (groupMode === 'version' || groupMode === 'version-model') ? null : 'model';
       const availableSortKeys = [
         ...(firstColSortKey ? [firstColSortKey] : []),
         ...displayColumns.map(column => (
@@ -2190,8 +2196,47 @@
         };
       }
 
+      function safeChartGroupId(value) {
+        return String(value || 'empty').replace(/[^a-zA-Z0-9_-]/g, '_');
+      }
+
+      function getRunVersionGroup(run) {
+        if (run.git_commit) {
+          return {
+            key: run.git_commit,
+            label: run.git_branch ? `${run.git_branch}/${run.git_commit}` : run.git_commit,
+          };
+        }
+        return { key: '__no_version__', label: 'No version' };
+      }
+
+      function groupRunsBy(runs, grouping) {
+        const groups = {};
+        for (const run of runs) {
+          const groupInfo = grouping === 'version'
+            ? getRunVersionGroup(run)
+            : {
+                key: run.model,
+                label: renderModelLabelForModelName(run.model),
+                sortModel: stripModelProvider(parseModelVariantKey(run.model).rawModelName || run.model),
+                model: run.model,
+              };
+          if (!groups[groupInfo.key]) groups[groupInfo.key] = { ...groupInfo, runs: [] };
+          groups[groupInfo.key].runs.push(run);
+        }
+        return Object.values(groups);
+      }
+
+      function sortGroupsByState(groups) {
+        groups.sort((a, b) => compareChartSortValues(
+          getGroupSortValue(a, sortState.key),
+          getGroupSortValue(b, sortState.key),
+          sortState.dir
+        ));
+      }
+
       // --- Helper: render a group header row ---
-      function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null) {
+      function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null, level = 1) {
         const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
         const dataCells = displayColumns.map(column => {
           if (column === AVG_LATENCY_COLUMN_KEY) {
@@ -2206,7 +2251,7 @@
           return renderMetricValueCell(column, agg.metricAverages[column], groupModelIdx, true);
         }).join('');
         return `
-          <div class="chart-table-group-header" data-group-id="${groupId}">
+          <div class="chart-table-group-header ${level > 1 ? 'chart-table-group-header-nested' : ''}" data-group-id="${groupId}">
             <span class="chart-group-first-col">
               <span class="chart-group-toggle">${isCollapsed ? '\u25b6' : '\u25bc'}</span>
               <span class="chart-group-label">${label}</span>
@@ -2228,82 +2273,33 @@
         rowsHtml = allRuns.map(renderRunRow).join('');
       } else if (groupMode === 'version') {
         firstColLabel = 'Version';
-        // Group runs by git_commit
-        const groups = {};
-        const ungrouped = [];
-        for (const r of allRuns) {
-          if (r.git_commit) {
-            const key = r.git_commit;
-            if (!groups[key]) groups[key] = { label: r.git_branch ? `${r.git_branch}/${r.git_commit}` : r.git_commit, runs: [] };
-            groups[key].runs.push(r);
-          } else {
-            ungrouped.push(r);
-          }
-        }
-        // Sort groups by aggregate metric
-        const sortedGroups = Object.entries(groups).map(([key, g]) => {
+        const sortedGroups = groupRunsBy(allRuns, 'version').map((g) => {
           const agg = computeGroupAgg(g.runs);
-          // Sort runs within group
           g.runs.sort(sortByState);
-          return { key, label: g.label, runs: g.runs, agg };
+          return { ...g, agg };
         });
-        sortedGroups.sort((a, b) => {
-          return compareChartSortValues(
-            getGroupSortValue(a, sortState.key),
-            getGroupSortValue(b, sortState.key),
-            sortState.dir
-          );
-        });
+        sortGroupsByState(sortedGroups);
 
         for (const g of sortedGroups) {
-          const groupId = `vg_${cardId}_${g.key}`;
+          const groupId = `vg_${cardId}_${safeChartGroupId(g.key)}`;
           const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
           if (!isCollapsed) hasExpandedGroups = true;
-          rowsHtml += renderGroupHeader(g.label, g.runs.length, g.agg, groupId);
+          rowsHtml += renderGroupHeader(escapeHtml(g.label), g.runs.length, g.agg, groupId);
           rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${groupId}">`;
           rowsHtml += g.runs.map(renderRunRow).join('');
           rowsHtml += `</div>`;
         }
-        if (ungrouped.length > 0) {
-          ungrouped.sort(sortByState);
-          const ungroupedAgg = computeGroupAgg(ungrouped);
-          const gid = `vg_${cardId}_ungrouped`;
-          const isCollapsed = isChartGroupCollapsed(cardId, groupMode, gid);
-          if (!isCollapsed) hasExpandedGroups = true;
-          rowsHtml += renderGroupHeader('No version', ungrouped.length, ungroupedAgg, gid);
-          rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${gid}">`;
-          rowsHtml += ungrouped.map(renderRunRow).join('');
-          rowsHtml += `</div>`;
-        }
       } else if (groupMode === 'model') {
         firstColLabel = 'Model';
-        // Group runs by model
-        const groups = {};
-        for (const r of allRuns) {
-          if (!groups[r.model]) groups[r.model] = [];
-          groups[r.model].push(r);
-        }
-        const sortedGroups = Object.entries(groups).map(([model, runs]) => {
-          const agg = computeGroupAgg(runs);
-          runs.sort(sortByState);
-          return {
-            model,
-            label: renderModelLabelForModelName(model),
-            sortModel: stripModelProvider(parseModelVariantKey(model).rawModelName || model),
-            runs,
-            agg,
-          };
+        const sortedGroups = groupRunsBy(allRuns, 'model').map((g) => {
+          const agg = computeGroupAgg(g.runs);
+          g.runs.sort(sortByState);
+          return { ...g, agg };
         });
-        sortedGroups.sort((a, b) => {
-          return compareChartSortValues(
-            getGroupSortValue(a, sortState.key),
-            getGroupSortValue(b, sortState.key),
-            sortState.dir
-          );
-        });
+        sortGroupsByState(sortedGroups);
 
         for (const g of sortedGroups) {
-          const groupId = `mg_${cardId}_${g.model.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const groupId = `mg_${cardId}_${safeChartGroupId(g.model)}`;
           const modelIdx = state.allModels.indexOf(g.model) % CHART_COLORS.length;
           const colorDot = `<span class="model-color-dot" style="background:${CHART_COLORS[modelIdx]}"></span>`;
           const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
@@ -2313,23 +2309,104 @@
           rowsHtml += g.runs.map(renderRunRow).join('');
           rowsHtml += `</div>`;
         }
-      }
+      } else if (groupMode === 'version-model' || groupMode === 'model-version') {
+        const primaryGrouping = groupMode === 'version-model' ? 'version' : 'model';
+        const secondaryGrouping = groupMode === 'version-model' ? 'model' : 'version';
+        firstColLabel = groupMode === 'version-model' ? 'Version / Model' : 'Model / Version';
+        const sortedPrimaryGroups = groupRunsBy(allRuns, primaryGrouping).map((g) => {
+          const agg = computeGroupAgg(g.runs);
+          return { ...g, agg };
+        });
+        sortGroupsByState(sortedPrimaryGroups);
 
-      // Check if version grouping should be available (any runs have git_commit)
-      const hasVersions = allRuns.some(r => r.git_commit);
+        for (const primary of sortedPrimaryGroups) {
+          const primaryId = `${primaryGrouping === 'version' ? 'vg' : 'mg'}_${cardId}_${safeChartGroupId(primary.key)}`;
+          const primaryModelIdx = primaryGrouping === 'model'
+            ? state.allModels.indexOf(primary.model) % CHART_COLORS.length
+            : null;
+          const primaryColorDot = primaryGrouping === 'model'
+            ? `<span class="model-color-dot" style="background:${CHART_COLORS[primaryModelIdx]}"></span>`
+            : '';
+          const primaryLabel = primaryGrouping === 'version'
+            ? escapeHtml(primary.label)
+            : `${primaryColorDot}${primary.label}`;
+          const primaryCollapsed = isChartGroupCollapsed(cardId, groupMode, primaryId);
+          if (!primaryCollapsed) hasExpandedGroups = true;
+          rowsHtml += renderGroupHeader(primaryLabel, primary.runs.length, primary.agg, primaryId, primaryModelIdx);
+          rowsHtml += `<div class="chart-table-group-body chart-table-group-body-nested${primaryCollapsed ? ' collapsed' : ''}" data-group-id="${primaryId}">`;
+
+          const sortedSecondaryGroups = groupRunsBy(primary.runs, secondaryGrouping).map((g) => {
+            const agg = computeGroupAgg(g.runs);
+            g.runs.sort(sortByState);
+            return { ...g, agg };
+          });
+          sortGroupsByState(sortedSecondaryGroups);
+
+          for (const secondary of sortedSecondaryGroups) {
+            const secondaryId = `${primaryId}_${secondaryGrouping === 'version' ? 'vg' : 'mg'}_${safeChartGroupId(secondary.key)}`;
+            const secondaryModelIdx = secondaryGrouping === 'model'
+              ? state.allModels.indexOf(secondary.model) % CHART_COLORS.length
+              : primaryModelIdx;
+            const secondaryColorDot = secondaryGrouping === 'model'
+              ? `<span class="model-color-dot" style="background:${CHART_COLORS[secondaryModelIdx]}"></span>`
+              : '';
+            const secondaryLabel = secondaryGrouping === 'version'
+              ? escapeHtml(secondary.label)
+              : `${secondaryColorDot}${secondary.label}`;
+            const secondaryCollapsed = isChartGroupCollapsed(cardId, groupMode, secondaryId);
+            if (!secondaryCollapsed) hasExpandedGroups = true;
+            rowsHtml += renderGroupHeader(secondaryLabel, secondary.runs.length, secondary.agg, secondaryId, secondaryModelIdx, 2);
+            rowsHtml += `<div class="chart-table-group-body chart-table-group-body-leaf${secondaryCollapsed ? ' collapsed' : ''}" data-group-id="${secondaryId}">`;
+            rowsHtml += secondary.runs.map(renderRunRow).join('');
+            rowsHtml += `</div>`;
+          }
+
+          rowsHtml += `</div>`;
+        }
+      }
 
       const isGrouped = groupMode !== 'run';
       const expandCollapseBtn = isGrouped
         ? `<button class="chart-expand-collapse-btn" data-card="${cardId}">${hasExpandedGroups ? 'Collapse all' : 'Expand all'}</button>`
         : '';
+      const groupedSummary = {
+        version: 'Grouped by version',
+        model: 'Grouped by model',
+        'version-model': 'Grouped by version, comparing models inside each version',
+        'model-version': 'Grouped by model, split by version',
+      }[groupMode] || '';
+      const primaryGroup = groupMode === 'version' || groupMode === 'version-model' ? 'version' : 'model';
+      const secondaryGroup = groupMode === 'version-model' ? 'model' : (groupMode === 'model-version' ? 'version' : '');
+      const thenModelDisabled = !isGrouped || primaryGroup === 'model';
+      const thenVersionDisabled = !isGrouped || primaryGroup === 'version' || !hasVersions;
+      const groupVersionDisabled = !hasVersions;
+      const thenModelTitle = primaryGroup === 'model' ? 'Already grouped by model' : '';
+      const thenVersionTitle = !hasVersions ? 'No version data available' : (primaryGroup === 'version' ? 'Already grouped by version' : '');
+      const thenModelAttrs = thenModelDisabled ? `disabled title="${thenModelTitle}"` : '';
+      const thenVersionAttrs = thenVersionDisabled ? `disabled title="${thenVersionTitle}"` : '';
 
       const controlsHtml = `
         <div class="chart-table-toolbar">
-          <span class="chart-segment-control" data-card="${cardId}">
-            <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Run</button>
-            <button class="chart-segment-btn ${groupMode === 'version' ? 'active' : ''}" data-mode="version" ${!hasVersions ? 'disabled title="No version data available"' : ''}>Version</button>
-            <button class="chart-segment-btn ${groupMode === 'model' ? 'active' : ''}" data-mode="model">Model</button>
-          </span>
+          <div class="chart-group-controls">
+            <span class="chart-control-label">Rows</span>
+            <span class="chart-segment-control chart-row-mode-control" data-card="${cardId}">
+              <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Runs</button>
+              <button class="chart-segment-btn ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}">Grouped</button>
+            </span>
+            ${isGrouped ? `
+              <span class="chart-control-label">Group</span>
+              <span class="chart-segment-control chart-group-axis-control" data-card="${cardId}">
+                <button class="chart-segment-btn ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model">Model</button>
+                <button class="chart-segment-btn ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
+              </span>
+              <span class="chart-control-label">Then</span>
+              <span class="chart-segment-control chart-then-axis-control" data-card="${cardId}">
+                <button class="chart-segment-btn ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" ${thenModelAttrs}>Model</button>
+                <button class="chart-segment-btn ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" ${thenVersionAttrs}>Version</button>
+              </span>
+              <span class="chart-group-summary">${groupedSummary}</span>
+            ` : ''}
+          </div>
           ${expandCollapseBtn}
         </div>
       `;
@@ -3542,6 +3619,8 @@
     if (gridView) gridView.style.display = 'none';
     if (timelineView) timelineView.style.display = 'none';
     if (modelsView) modelsView.style.display = state.currentView === 'models' ? 'block' : 'none';
+    const tablePagination = el('table-pagination');
+    if (tablePagination) tablePagination.style.display = state.currentView === 'table' ? 'flex' : 'none';
 
     // Recompute chart data based on filtered runs
     state.chartData = computeChartData(state.filteredRuns);
@@ -3632,8 +3711,8 @@
     // If the filter explicitly selects one, use it; otherwise infer from
     // the currently visible (filtered) runs — when all filters narrow to a
     // single task/dataset the view should render automatically.
-    let selectedTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
-    let selectedDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+    let selectedTask = state.filterTasks.size === 1 && !state.filterTasks.has('__none__') ? [...state.filterTasks][0] : '';
+    let selectedDataset = state.filterDatasets.size === 1 && !state.filterDatasets.has('__none__') ? [...state.filterDatasets][0] : '';
 
     if (!selectedTask || !selectedDataset) {
       const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
@@ -3653,15 +3732,11 @@
 
     if (modelsEmpty) modelsEmpty.style.display = 'none';
 
-    // Get runs matching task+dataset (and model filter if active)
-    const matchingRuns = state.flatRuns.filter(r => {
+    // Start from the globally filtered run set so version, model, status, user,
+    // and quick-date filters all constrain the Models view consistently.
+    const matchingRuns = state.filteredRuns.filter(r => {
       if (!matchesFilterSelection(new Set([selectedTask]), r.task_name)) return false;
       if (!matchesFilterSelection(new Set([selectedDataset]), getRunDatasetKey(r))) return false;
-      // #14: Apply global model filter to Models View
-      if (state.filterModels.size > 0 && !state.filterModels.has('__none__')) {
-        if (!matchesFilterSelection(state.filterModels, getRunModelKey(r))) return false;
-      }
-      if (state.filterModels.has('__none__')) return false;
       return true;
     });
 
@@ -3792,8 +3867,8 @@
     if (!metricSelect) return;
 
     // Use global filters for task and dataset, with inference fallback
-    let currentTask = state.filterTasks.size === 1 ? [...state.filterTasks][0] : '';
-    let currentDataset = state.filterDatasets.size === 1 ? [...state.filterDatasets][0] : '';
+    let currentTask = state.filterTasks.size === 1 && !state.filterTasks.has('__none__') ? [...state.filterTasks][0] : '';
+    let currentDataset = state.filterDatasets.size === 1 && !state.filterDatasets.has('__none__') ? [...state.filterDatasets][0] : '';
 
     if (!currentTask || !currentDataset) {
       const uniqueTasks = new Set(state.filteredRuns.map(r => r.task_name));
@@ -3804,7 +3879,7 @@
 
     // Get metrics for selected task+dataset
     const runsForCombo = currentTask && currentDataset
-      ? state.flatRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)
+      ? state.filteredRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)
       : [];
     const metricsSet = new Set();
     for (const run of runsForCombo) {
@@ -5554,14 +5629,14 @@
 
   // Select all checkbox
   el('select-all')?.addEventListener('change', selectAll);
-  el('table-page-prev')?.addEventListener('click', () => {
+  document.querySelectorAll('[data-table-page="prev"]').forEach(btn => btn.addEventListener('click', () => {
     setTablePage(state.tablePage - 1, { syncFocus: true });
     render();
-  });
-  el('table-page-next')?.addEventListener('click', () => {
+  }));
+  document.querySelectorAll('[data-table-page="next"]').forEach(btn => btn.addEventListener('click', () => {
     setTablePage(state.tablePage + 1, { syncFocus: true });
     render();
-  });
+  }));
 
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);

@@ -126,12 +126,14 @@
     .dsx-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 650; line-height: 1.45; letter-spacing: 0.02em; white-space: nowrap; border: 1px solid transparent; }
     .dsx-pill.success { color: var(--accent-primary); border-color: rgba(0,212,170,0.35); background: rgba(0,212,170,0.10); }
     .dsx-pill.warning { color: var(--warning); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
+    .dsx-pill.published { color: var(--accent-secondary); border-color: rgba(0,168,255,0.35); background: rgba(0,168,255,0.10); }
     .dsx-pill.info { color: var(--accent-secondary); border-color: rgba(99,102,241,0.40); background: rgba(99,102,241,0.10); }
     .dsx-pill.neutral { color: var(--text-muted); border-color: var(--border-default); background: var(--bg-elevated); }
     .dsx-pill.alias { color: var(--text-secondary); border-color: var(--border-strong); background: var(--bg-elevated); }
     .dsx-pill.alias.prod { color: var(--accent-primary); border-color: rgba(0,212,170,0.40); background: rgba(0,212,170,0.08); }
     .dsx-pill.add { color: var(--success, #22c55e); border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10); }
     .dsx-pill.remove { color: var(--error); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
+    .dsx-table .status-badge { text-transform: uppercase; }
 
     /* TABS */
     .dsx-tabs { display: flex; gap: 2px; padding: 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 15; }
@@ -222,6 +224,8 @@
     .dsx-bulk-bar button.danger { color: var(--error); }
 
     .dsx-table-wrap { background: var(--bg-surface); border-top: 1px solid var(--border-subtle); }
+    .dsx-table-wrap.paged { padding-bottom: 48px; }
+    .dsx-table-wrap.flush { border-top: 0; }
     .dsx-table { width: 100%; border-collapse: collapse; }
     .dsx-table thead th {
       text-align: left; padding: 8px 12px; font-size: 11px; color: var(--text-dim);
@@ -302,8 +306,15 @@
     .dsx-addrow:hover { color: var(--accent-primary); border-color: rgba(0,212,170,0.45); background: rgba(0,212,170,0.05); }
 
     /* PAGINATION */
-    .dsx-pager { display: flex; align-items: center; justify-content: space-between; padding: var(--space-sm) var(--space-xl); border-top: 1px solid var(--border-subtle); background: var(--bg-surface); font-size: 12px; color: var(--text-muted); }
-    .dsx-pager-controls { display: flex; gap: 6px; align-items: center; }
+    .dsx-pager { display: flex; align-items: center; justify-content: center; gap: 14px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; min-height: 36px; padding: 6px var(--space-xl); border-top: 1px solid var(--border-subtle); background: var(--bg-surface); color: var(--text-muted); }
+    .sidebar ~ .main-area .dsx-pager { left: var(--sidebar-w); }
+    .sidebar.collapsed ~ .main-area .dsx-pager { left: var(--sidebar-collapsed-w); }
+    .dsx-pager-info, .dsx-pager-page { font-size: var(--font-sm); color: var(--text-muted); font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .dsx-pager-info { width: 252px; text-align: right; }
+    .dsx-pager-controls { display: inline-flex; gap: 0; align-items: center; height: 28px; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: 7px; background: var(--bg-elevated); }
+    .dsx-pager-controls .table-page-btn { border: 0; border-right: 1px solid var(--border-subtle); background: transparent; height: 28px; padding: 0 12px; border-radius: 0; }
+    .dsx-pager-controls .table-page-btn:last-child { border-right: 0; border-left: 1px solid var(--border-subtle); }
+    .dsx-pager-page { display: inline-flex; align-items: center; justify-content: center; height: 28px; width: 112px; padding: 0 12px; color: var(--text-secondary); background: rgba(255,255,255,0.015); }
 
     /* DRAWER body styles (drawer chrome lives in shell.css) */
     /* The item drawer owns its own internal padding (tab bar + section), so strip the shared
@@ -381,14 +392,19 @@
     .dsx-run-row .meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; }
 
     /* LINEAGE */
-    .dsx-lineage { padding: var(--space-md); display: flex; flex-direction: column; gap: 4px; font-family: var(--font-mono); font-size: 13px; }
+    .dsx-lineage { padding: var(--space-md); display: flex; flex-direction: column; gap: 10px; font-family: var(--font-mono); font-size: 13px; }
     .dsx-lineage-node { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-surface); cursor: pointer; }
     .dsx-lineage-node:hover { border-color: var(--border-strong); }
     .dsx-lineage-node.active { border-color: var(--accent-primary); }
-    .dsx-lineage-indent { color: var(--border-strong); }
-    .dsx-lineage-tree-node { display: flex; flex-direction: column; gap: 4px; }
+    .dsx-lineage-tree-node { position: relative; display: flex; flex-direction: column; gap: 4px; }
+    .dsx-lineage-children { position: relative; display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0 18px; padding-left: 28px; }
+    .dsx-lineage-children::before { content: ""; position: absolute; left: 0; top: -12px; bottom: 24px; border-left: 2px solid rgba(152,152,168,0.48); }
+    .dsx-lineage-children > .dsx-lineage-tree-node::before { content: ""; position: absolute; left: -28px; top: 18px; width: 26px; border-top: 2px solid rgba(152,152,168,0.48); }
+    .dsx-lineage-children > .dsx-lineage-tree-node:last-child::after { content: ""; position: absolute; left: -28px; top: 20px; bottom: 0; border-left: 2px solid var(--bg-base); }
     .dsx-lineage-when { margin-left: auto; color: var(--text-dim); font-size: 11px; padding-left: 8px; }
-    .dsx-lineage-changes { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px 18px; padding-left: 10px; border-left: 1px dashed var(--border-subtle); }
+    .dsx-lineage-changes { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px 44px; padding-left: 0; }
+    .dsx-lineage-tree-node.has-children > .dsx-lineage-changes { position: relative; }
+    .dsx-lineage-tree-node.has-children > .dsx-lineage-changes::before { content: ""; position: absolute; left: -26px; top: -4px; bottom: 0; border-left: 2px solid rgba(152,152,168,0.48); }
     .dsx-lineage-change { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 12px; color: var(--text-secondary); }
     .dsx-lineage-change .glyph { color: var(--text-dim); width: 14px; text-align: center; flex: 0 0 auto; }
     .dsx-lineage-change .ctype { font-weight: 600; color: var(--text-primary); }
@@ -1634,7 +1650,7 @@
     function versionStatePillClass(v){
       if (versionIsDraft(v)) return 'warning';
       if (versionIsProduction(v)) return 'success';
-      return 'neutral';
+      return 'published';
     }
     function sortedVersionsDesc(versions){
       return (versions || []).slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -1805,7 +1821,7 @@
 
     function versionPopoverRow(v, onSelect){
       const row = el('div', { className: 'dsx-version-row' + (state.activeVersion && state.activeVersion.id === v.id ? ' active' : '') });
-      row.addEventListener('click', () => { if (onSelect) onSelect(); navigate({ v: v.version, item: null }); });
+      row.addEventListener('click', () => { if (onSelect) onSelect(); navigate({ tab: state.tab, v: v.version, item: null }); });
       row.appendChild(el('div', { className: 'vcheck', 'aria-hidden': 'true' }, state.activeVersion && state.activeVersion.id === v.id ? '✓' : ''));
       row.appendChild(el('span', { className: 'vlabel' }, v.version));
       row.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
@@ -1887,7 +1903,7 @@
       toolbar.appendChild(right);
       host.appendChild(toolbar);
 
-      const tableWrap = el('div', { className: 'dsx-table-wrap', id: 'dsx-table-wrap' });
+      const tableWrap = el('div', { className: 'dsx-table-wrap paged', id: 'dsx-table-wrap' });
       host.appendChild(tableWrap);
 
       const pager = el('div', { className: 'dsx-pager', id: 'dsx-pager' });
@@ -2173,13 +2189,15 @@
         const total = state.itemsList.total;
         const start = total === 0 ? 0 : (state.page * state.pageSize + 1);
         const end = Math.min(total, (state.page + 1) * state.pageSize);
-        pager.appendChild(el('div', null, total ? ('Showing ' + start + '–' + end + ' of ' + total) : ''));
+        const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
+        pager.appendChild(el('div', { className: 'dsx-pager-info' }, total ? ('Showing ' + start + '-' + end + ' of ' + total + ' items') : 'Showing 0-0 of 0 items'));
         const controls = el('div', { className: 'dsx-pager-controls' });
-        const prev = el('button', { className: 'table-page-btn', onclick: () => { if (state.page > 0) { state.page--; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, '← Prev');
+        const prev = el('button', { className: 'table-page-btn', onclick: () => { if (state.page > 0) { state.page--; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, 'Previous');
         prev.disabled = state.page === 0;
-        const next = el('button', { className: 'table-page-btn', onclick: () => { if ((state.page + 1) * state.pageSize < total) { state.page++; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, 'Next →');
+        const pageInfo = el('span', { className: 'dsx-pager-page' }, 'Page ' + (total === 0 ? 0 : state.page + 1) + ' of ' + totalPages);
+        const next = el('button', { className: 'table-page-btn', onclick: () => { if ((state.page + 1) * state.pageSize < total) { state.page++; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, 'Next');
         next.disabled = (state.page + 1) * state.pageSize >= total;
-        controls.appendChild(prev); controls.appendChild(next);
+        controls.appendChild(prev); controls.appendChild(pageInfo); controls.appendChild(next);
         pager.appendChild(controls);
       }
     }
@@ -2491,26 +2509,12 @@
     // RUNS TAB
     // -------------------------------------------------------------
     async function renderRunsTab(host){
-      const wrap = el('div', { style: { padding: 'var(--space-lg) var(--space-xl)' } });
-      const headRow = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', margin: '0 0 12px 0' } });
-      const titleWrap = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } });
-      titleWrap.appendChild(el('h2', { style: { fontSize: '16px', fontWeight: 650, margin: 0 } }, 'Runs against this dataset'));
-
       // The runs list tracks the version chosen in the hero version selector — switching versions
       // there re-renders this tab, so the runs always reflect the currently selected version.
       const activeLabel = state.activeVersion ? state.activeVersion.version : null;
-      if (state.activeVersion) {
-        const verPill = el('span', { className: 'dsx-pill ' + versionStatePillClass(state.activeVersion) });
-        verPill.appendChild(el('span', { className: 'label', style: { fontFamily: 'var(--font-mono)', fontWeight: 650 } }, activeLabel));
-        verPill.appendChild(document.createTextNode(' · ' + versionStateLabel(state.activeVersion)));
-        titleWrap.appendChild(verPill);
-      }
-      headRow.appendChild(titleWrap);
-      wrap.appendChild(headRow);
 
       const listHost = el('div');
-      wrap.appendChild(listHost);
-      host.appendChild(wrap);
+      host.appendChild(listHost);
 
       async function load(){
         listHost.innerHTML = '';
@@ -2537,18 +2541,20 @@
             listHost.appendChild(empty);
             return;
           }
+          const tableWrap = el('div', { className: 'dsx-table-wrap flush' });
           const table = el('table', { className: 'dsx-table' });
           const thead = el('thead'); const trh = el('tr');
           ['Run', 'Version', 'Task', 'Model', 'Status', 'Score', 'Items', 'Started', ''].forEach(h => trh.appendChild(el('th', null, h)));
           thead.appendChild(trh); table.appendChild(thead);
           const tbody = el('tbody');
           runs.forEach(r => {
+            const status = String(r.status || '—').toUpperCase();
             const tr = el('tr', { onclick: () => navigateToApp(runDetailUrl(r.id)) });
             tr.appendChild(el('td', { className: 'col-id' }, r.external_run_id || r.id));
             tr.appendChild(el('td', null, r.version_label || '—'));
             tr.appendChild(el('td', null, r.task || '—'));
             tr.appendChild(el('td', null, r.model || '—'));
-            tr.appendChild(el('td', null, [el('span', { className: 'dsx-pill ' + (r.status === 'completed' ? 'success' : r.status === 'failed' ? 'remove' : 'info') }, r.status || '—')]));
+            tr.appendChild(el('td', null, [el('span', { className: 'status-badge status-' + status, title: status }, status)]));
             tr.appendChild(el('td', null, r.eval_score != null ? String(r.eval_score) : '—'));
             tr.appendChild(el('td', null, String(r.items_count || 0)));
             tr.appendChild(el('td', { className: 'col-updated' }, relTime(r.started_at || r.completed_at)));
@@ -2556,7 +2562,8 @@
             tbody.appendChild(tr);
           });
           table.appendChild(tbody);
-          listHost.appendChild(table);
+          tableWrap.appendChild(table);
+          listHost.appendChild(tableWrap);
         } catch(e) { listHost.innerHTML = ''; listHost.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, e.message || 'Failed to load runs')])); }
       }
       load();
@@ -2624,18 +2631,25 @@
 
         const lineage = el('div', { className: 'dsx-lineage' });
         const seen = new Set();
-        function renderNode(v, depth){
-          if (seen.has(v.id)) return; // guard against cycles / multiple roots
+        const childrenByParent = {};
+        versions.forEach(v => {
+          if (v.parent_version_id && byId[v.parent_version_id]) {
+            (childrenByParent[v.parent_version_id] = childrenByParent[v.parent_version_id] || []).push(v);
+          }
+        });
+        Object.keys(childrenByParent).forEach(k => childrenByParent[k].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)));
+        function renderNode(v){
+          if (seen.has(v.id)) return null; // guard against cycles / multiple roots
           seen.add(v.id);
-          const node = el('div', { className: 'dsx-lineage-tree-node', style: { marginLeft: (depth * 18) + 'px' } });
+          const children = childrenByParent[v.id] || [];
+          const node = el('div', { className: 'dsx-lineage-tree-node' + (children.length ? ' has-children' : '') });
           const row = el('div', { className: 'dsx-lineage-node' + (state.activeVersion && state.activeVersion.id === v.id ? ' active' : '') });
-          if (depth > 0) row.appendChild(el('span', { className: 'dsx-lineage-indent' }, '└'));
           row.appendChild(el('span', { style: { fontWeight: 650 } }, v.version));
-          row.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'success') }, v.status));
+          row.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'published') }, v.status));
           (v.aliases || []).forEach(a => row.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
           row.appendChild(el('span', { style: { color: 'var(--text-dim)' } }, '· ' + pluralize(v.item_count || 0, 'item')));
           row.appendChild(el('span', { className: 'dsx-lineage-when' }, relTime(v.published_at || v.created_at)));
-          row.addEventListener('click', () => navigate({ tab: 'items', v: v.version }));
+          row.addEventListener('click', () => navigate({ tab: 'lineage', v: v.version, item: null }));
           node.appendChild(row);
 
           const log = changesByVersion[v.id] || [];
@@ -2644,14 +2658,29 @@
             log.forEach(c => logWrap.appendChild(renderChangeEntry(c, byId)));
             node.appendChild(logWrap);
           }
-          lineage.appendChild(node);
 
-          versions.filter(c => c.parent_version_id === v.id).forEach(child => renderNode(child, depth + 1));
+          if (children.length) {
+            const childWrap = el('div', { className: 'dsx-lineage-children' });
+            children.forEach(child => {
+              const childNode = renderNode(child);
+              if (childNode) childWrap.appendChild(childNode);
+            });
+            if (childWrap.childNodes.length) node.appendChild(childWrap);
+          }
+          return node;
         }
         const roots = versions.filter(v => !v.parent_version_id || !byId[v.parent_version_id]);
-        roots.forEach(r => renderNode(r, 0));
+        roots.forEach(r => {
+          const node = renderNode(r);
+          if (node) lineage.appendChild(node);
+        });
         // Render any versions not reached via the tree (orphans / cycles) flat.
-        versions.forEach(v => { if (!seen.has(v.id)) renderNode(v, 0); });
+        versions.forEach(v => {
+          if (!seen.has(v.id)) {
+            const node = renderNode(v);
+            if (node) lineage.appendChild(node);
+          }
+        });
         wrap.appendChild(lineage);
       } catch(e) { if (wrap.contains(skel)) wrap.removeChild(skel); wrap.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, e.message || 'Failed to load lineage')])); }
     }
