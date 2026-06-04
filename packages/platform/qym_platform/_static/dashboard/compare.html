@@ -5084,11 +5084,31 @@
           .replace(/\b\w/g, match => match.toUpperCase());
       }
 
+      const SWEEP_INTERNAL_METADATA_KEYS = new Set([
+        'root_cause',
+        'root_cause_detail',
+        'root_cause_note',
+        'root_cause_source',
+        'root_cause_confidence',
+        'solution',
+        'solution_note',
+        'solution_source',
+        'task_started_at_ms',
+        'retry_count',
+        'analysis_error',
+        'trace_stats',
+      ]);
+
+      function isUserDefinedSweepMetadataKey(key) {
+        return !!key && !SWEEP_INTERNAL_METADATA_KEYS.has(String(key));
+      }
+
       function getSweepMetadataKeys(items) {
         const keySet = new Set();
         (items || []).forEach((item) => {
           const metadata = item?.metadata || {};
           Object.keys(metadata).forEach((key) => {
+            if (!isUserDefinedSweepMetadataKey(key)) return;
             const values = getMetadataCategoryValues(metadata, key);
             if (values.length) keySet.add(key);
           });
@@ -5466,7 +5486,7 @@
         if (state.sweepMetadataKey && state.sweepMetadataKey !== 'all' && metadataKeys.includes(state.sweepMetadataKey)) {
           return state.sweepMetadataKey;
         }
-        const preferred = ['domain', 'complexity', 'root_cause'];
+        const preferred = ['domain', 'complexity'];
         for (const key of preferred) {
           if (metadataKeys.includes(key)) return key;
         }

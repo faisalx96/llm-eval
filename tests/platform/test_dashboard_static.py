@@ -173,6 +173,17 @@ def test_compare_filter_bar_does_not_use_rigid_wide_grid() -> None:
     assert "min-width: max-content;" in source
 
 
+def test_compare_cohort_metadata_breakdown_uses_user_defined_item_metadata() -> None:
+    source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    assert "const SWEEP_INTERNAL_METADATA_KEYS = new Set([" in source
+    assert "'root_cause'," in source
+    assert "'trace_stats'," in source
+    assert "if (!isUserDefinedSweepMetadataKey(key)) return;" in source
+    assert "const preferred = ['domain', 'complexity'];" in source
+    assert "const preferred = ['domain', 'complexity', 'root_cause'];" not in source
+
+
 def test_compare_output_height_alignment_preserves_scroll_caps() -> None:
     source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
 
