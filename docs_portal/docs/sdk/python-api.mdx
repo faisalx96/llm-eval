@@ -36,6 +36,7 @@ The task function is the code being evaluated. It receives the dataset item's in
 - Accept the input shape your dataset produces.
 - Return a value your metrics know how to score.
 - Optionally accept `model_name`, `model`, or `trace_id` if you need them.
+- To pass hidden task details to metrics, return `{"output": value, "metadata": {...}}`.
 
 Common signatures:
 
@@ -56,6 +57,20 @@ If the dataset input is a dictionary, qym can match keys to function parameters:
 def task(question, context):
     return call_llm(f"Context: {context}\nQuestion: {question}")
 ```
+
+When a task returns a dictionary, qym reserves that shape for a task-output envelope. The dict must contain exactly `output` and `metadata`, and `metadata` must be a dict:
+
+```python
+def rag_task(question):
+    docs = retrieve(question)
+    answer = call_llm(question, context=docs)
+    return {
+        "output": answer,
+        "metadata": {"retrieved_context": docs},
+    }
+```
+
+Only the envelope's `output` field is shown as the task output. Custom metrics receive the full envelope as their `output` argument, so they can read task metadata from `output["metadata"]`.
 
 ### Evaluator Inputs
 

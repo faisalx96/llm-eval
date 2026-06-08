@@ -6,6 +6,12 @@ import re
 import string
 
 
+def _visible_output(output: Any) -> Any:
+    if isinstance(output, dict) and set(output.keys()) == {"output", "metadata"}:
+        return output.get("output")
+    return output
+
+
 def exact_match(output: Any, expected: Any) -> Dict[str, Any]:
     """
     Check if output exactly matches expected.
@@ -13,6 +19,7 @@ def exact_match(output: Any, expected: Any) -> Dict[str, Any]:
     Returns:
         1.0 if exact match, 0.0 otherwise
     """
+    output = _visible_output(output)
     if output is None or expected is None:
         return {"score": 0.0, "metadata": {}}
 
@@ -30,6 +37,7 @@ def contains_expected(output: Any, expected: Any) -> float:
     Returns:
         1.0 if output contains expected, 0.0 otherwise
     """
+    output = _visible_output(output)
     if output is None or expected is None:
         return 0.0
     
@@ -51,6 +59,7 @@ def fuzzy_match(output: Any, expected: Any, threshold: float = 0.8) -> float:
     Returns:
         Similarity score between 0.0 and 1.0
     """
+    output = _visible_output(output)
     if output is None or expected is None:
         return 0.0
     
@@ -82,6 +91,7 @@ def token_count(output: Any) -> int:
     Returns:
         Estimated token count
     """
+    output = _visible_output(output)
     if output is None:
         return 0
 
@@ -170,6 +180,7 @@ def correctness(output: Any, expected: Any) -> Dict[str, Any]:
     Returns:
         Dict with score (0.0-1.0) and metadata
     """
+    output = _visible_output(output)
     if output is None:
         output = ""
     if expected is None:
@@ -213,6 +224,7 @@ def faithfulness(output: Any, expected: Any, input_data: Dict[str, Any]) -> Dict
     Returns:
         Dict with score (0.0-1.0) and metadata
     """
+    output = _visible_output(output)
     if output is None or str(output).strip() == "":
         return {
             "score": 0.0,

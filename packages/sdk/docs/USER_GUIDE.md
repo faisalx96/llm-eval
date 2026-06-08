@@ -219,24 +219,36 @@ async def my_task(question, model_name="gpt-4"):
     return response.choices[0].message.content
 ```
 
-### Task Returning Non-String (For Custom Metrics)
+### Task Returning Metadata for Metrics
 
-Your task can return any type if you use custom metrics:
+Your task can return a plain value, or it can return a structured qym task output with two fields:
+
+- `output`: the visible task output shown in the platform and scored by normal metrics
+- `metadata`: hidden task details stored under `item_metadata.task_metadata` and available to custom metrics through `output["metadata"]`
+
+If your task returns a dict, qym treats it as this envelope and requires exactly `output` and `metadata`.
 
 ```python
 def my_task(question):
-    """Return a structured response for custom metrics."""
-    result = call_llm(question)
+    docs = retrieve_context(question)
+    answer = call_llm(question, context=docs)
     return {
-        "answer": result,
-        "tokens_used": 150,
-        "latency_ms": 230,
+        "output": answer,
+        "metadata": {
+            "retrieved_context": docs,
+            "retriever": "hybrid-v2",
+        },
     }
 
-# Custom metric that understands the dict
-def token_efficiency(output, expected):
-    return 1.0 if output["tokens_used"] < 200 else 0.5
+# Custom metric that uses task metadata
+def faithfulness(output, expected):
+    return judge_faithfulness(
+        answer=output["output"],
+        context=output["metadata"]["retrieved_context"],
+    )
 ```
+
+Malformed dict returns raise an item error. For example, `{"answer": "Paris"}` is invalid because qym cannot tell which field is the visible output.
 
 ### ⚠️ Common Task Mistakes
 
@@ -491,6 +503,10 @@ def my_metric(output, expected):
 def my_metric(output, expected, input_data):
     # Can use the original input for evaluation
     return 1.0 if input_data["category"] in output else 0.0
+
+# Task-metadata metric: reads metadata from the task-output envelope
+def my_metric(output, expected):
+    return 1.0 if output["metadata"]["retrieved_context"] else 0.0
 ```
 
 #### Parameter Names (Important!)
@@ -502,6 +518,7 @@ The parameter **names matter** for keyword argument matching. Use these exact na
 | 1st | `output` | What your task returned |
 | 2nd | `expected` | The `expected_output` from dataset (or `None`) |
 | 3rd | `input_data` | The original `input` from dataset |
+| named | `item_metadata` | Metadata from the dataset item |
 
 ```python
 # ✅ CORRECT: Using standard parameter names
@@ -555,35 +572,39 @@ def detailed_metric(output, expected):
 
 The metadata appears in your CSV results and Langfuse traces for debugging.
 
-#### Using Custom Metrics with Any Task Output
+#### Using Task Metadata in Custom Metrics
 
-When using **only custom metrics**, your task can return **any type** (not just strings):
+When a task needs to expose supporting data to metrics without showing that data as the platform output, return the qym task-output envelope:
 
 ```python
-# Task returns a dict
 def my_task(question):
+    sources = retrieve(question)
     return {
-        "answer": "Paris",
-        "confidence": 0.95,
-        "sources": ["wikipedia"]
+        "output": "Paris",
+        "metadata": {
+            "confidence": 0.95,
+            "sources": sources,
+        },
     }
 
-# Custom metric handles the dict
+# Custom metric receives the full task-output envelope
 def confidence_metric(output, expected):
-    # output is the dict returned by the task
-    return output["confidence"]  # Returns 0.95
+    return output["metadata"]["confidence"]  # Returns 0.95
 
-def answer_match(output, expected):
-    return 1.0 if output["answer"] == expected else 0.0
+def source_count(output, expected):
+    return {
+        "score": 1.0,
+        "metadata": {"sources": len(output["metadata"]["sources"])},
+    }
 
 evaluator = Evaluator(
     task=my_task,
     dataset="my-dataset",
-    metrics=[confidence_metric, answer_match],  # Works with dict output!
+    metrics=[confidence_metric, source_count],
 )
 ```
 
-> ⚠️ **Note**: Built-in metrics like `exact_match` expect string outputs. If your task returns non-strings, use custom metrics.
+> ⚠️ **Note**: Dict task returns must use `{"output": ..., "metadata": {...}}`. qym stores only the envelope's `output` field as the visible platform output. Custom metrics receive the full envelope as `output`.
 
 #### Async Metrics
 
@@ -1304,8 +1325,8 @@ qym_results/
 |--------|-------------|
 | `item_id` | Unique identifier for the dataset item |
 | `input` | The input sent to your task |
-| `item_metadata` | Metadata from the dataset item (JSON) |
-| `output` | What your task returned |
+| `item_metadata` | Metadata from the dataset item plus `task_metadata` when the task returned metadata |
+| `output` | The visible task output, or the `output` field from a task-output envelope |
 | `expected_output` | The expected answer from dataset |
 | `{metric}_score` | Score for each metric (e.g., `exact_match_score`) |
 | `time` | Latency in seconds |

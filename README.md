@@ -97,6 +97,22 @@ results = Evaluator(
 ).run()
 ```
 
+Tasks can also return hidden metadata for custom metrics:
+
+```python
+def rag_task(question):
+    docs = retrieve(question)
+    return {
+        "output": call_your_llm(question, docs),
+        "metadata": {"retrieved_context": docs},
+    }
+
+def faithfulness(output, expected):
+    return judge(output["output"], output["metadata"]["retrieved_context"])
+```
+
+When a task returns a dict, qym requires exactly `output` and `metadata`; malformed dict outputs are reported as item errors.
+
 ### Use the platform
 
 - **Hosted**: use your team's hosted qym platform URL and API key, if you have one

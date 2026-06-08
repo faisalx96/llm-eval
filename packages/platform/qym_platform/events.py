@@ -83,6 +83,8 @@ class ItemCompletedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None  # Item index for fallback when item_started was missed
     output: Any
+    item_metadata: Dict[str, Any] = Field(default_factory=dict)
+    task_metadata: Dict[str, Any] = Field(default_factory=dict)
     latency_ms: float = Field(ge=0)
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None

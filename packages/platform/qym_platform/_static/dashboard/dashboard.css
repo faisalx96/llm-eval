@@ -1862,6 +1862,12 @@ main {
   gap: var(--space-sm);
 }
 
+.chart-table-grouped .chart-col-header,
+.chart-table-grouped .chart-col-header-latency,
+.chart-table-grouped .chart-metric-cell {
+  min-width: 280px;
+}
+
 .chart-mini-bar-track {
   flex: 1;
   height: 18px;
@@ -2132,16 +2138,22 @@ body.chart-col-resize-active {
 
 /* Group header rows in chart tables — must match .chart-table-row column layout */
 .chart-table-group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: 6px 0;
+  display: block;
+  padding: 0;
   background: var(--bg-secondary, rgba(128, 128, 128, 0.06));
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
   font-size: var(--font-sm);
   transition: background 0.1s ease;
+  min-width: max-content;
+}
+
+.chart-table-group-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: 6px 0;
 }
 
 .chart-table-group-header:hover {
@@ -2174,10 +2186,10 @@ body.chart-col-resize-active {
   width: var(--chart-first-col-width);
   min-width: var(--chart-first-col-width);
   flex-shrink: 0;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 6px;
   align-items: center;
-  gap: 6px;
-  overflow: hidden;
 }
 
 .chart-table-group-header-nested .chart-group-first-col {
@@ -2193,6 +2205,18 @@ body.chart-col-resize-active {
   color: var(--text-muted);
 }
 
+.chart-group-copy {
+  min-width: 0;
+  display: block;
+}
+
+.chart-group-title-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .chart-group-label {
   font-family: var(--font-mono);
   font-weight: 600;
@@ -2203,6 +2227,16 @@ body.chart-col-resize-active {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.chart-group-label .model-label,
+.chart-group-label .model-label-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chart-group-count {
@@ -2212,6 +2246,19 @@ body.chart-col-resize-active {
   padding: 1px 5px;
   border-radius: 3px;
   flex-shrink: 0;
+}
+
+.chart-group-stat-header,
+.chart-group-stat-cell {
+  min-width: 280px;
+}
+
+.chart-group-stat-cell-empty {
+  pointer-events: none;
+}
+
+.chart-group-stat-cell.is-loading {
+  opacity: 0.7;
 }
 
 .chart-group-score {

@@ -268,7 +268,10 @@ class TaskAttemptResult:
     task_started_at_ms: Optional[int]
     latency_s: float
     output: Any = None
+    metric_output: Any = None
+    task_metadata: Dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    retryable: bool = True
 
     @property
     def success(self) -> bool:
@@ -285,6 +288,55 @@ class TaskAttemptResult:
 
 class TaskExecutionTimeoutError(Exception):
     """Raised when the task itself surfaces a timeout before qym's wrapper does."""
+
+
+class InvalidTaskOutputError(Exception):
+    """Raised when a dict task output does not match qym's task envelope."""
+
+
+def _normalize_task_output(raw_output: Any) -> Tuple[Any, Dict[str, Any], Any]:
+    """Return ``(visible_output, task_metadata, metric_output)`` from a task return value.
+
+    Plain non-dict values are treated as visible outputs. Dict task returns are
+    reserved for qym's explicit task-output envelope:
+    ``{"output": ..., "metadata": {...}}``.
+    """
+    if not isinstance(raw_output, dict):
+        return raw_output, {}, raw_output
+
+    expected_keys = {"output", "metadata"}
+    actual_keys = set(raw_output.keys())
+    if actual_keys != expected_keys:
+        missing = sorted(expected_keys - actual_keys)
+        extra = sorted(actual_keys - expected_keys)
+        details = []
+        if missing:
+            details.append(f"missing keys: {', '.join(missing)}")
+        if extra:
+            details.append(f"unexpected keys: {', '.join(extra)}")
+        suffix = f" ({'; '.join(details)})" if details else ""
+        raise InvalidTaskOutputError(
+            "Task returned a dict. Dict task outputs must use qym's envelope "
+            '{"output": <visible output>, "metadata": <dict>}'
+            f"{suffix}."
+        )
+
+    metadata = raw_output.get("metadata")
+    if not isinstance(metadata, dict):
+        raise InvalidTaskOutputError(
+            "Task output envelope field 'metadata' must be a dict."
+        )
+    return raw_output.get("output"), metadata, raw_output
+
+
+def _item_metadata_with_task_metadata(
+    item_metadata: Any, task_metadata: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Merge dataset item metadata with task-return metadata for storage/UI."""
+    merged = dict(item_metadata) if isinstance(item_metadata, dict) else {}
+    if task_metadata:
+        merged["task_metadata"] = dict(task_metadata)
+    return merged
 
 
 class NullTrace:
@@ -1124,6 +1176,8 @@ class Evaluator:
                             time_seconds=row_result.get("time"),
                         )
                     else:
+                        if isinstance(row_result.get("item_metadata"), dict):
+                            result.add_metadata(item_id, row_result["item_metadata"])
                         result.add_result(item_id, row_result)
 
             checkpoint_writer = CheckpointWriter(
@@ -1300,6 +1354,8 @@ class Evaluator:
                             metric_meta={},
                         )
                     else:
+                        if isinstance(eval_result.get("item_metadata"), dict):
+                            result.add_metadata(item_id, eval_result["item_metadata"])
                         result.add_result(item_id, eval_result)
                         scores = eval_result.get("scores", {})
                         metric_meta: Dict[str, Dict[str, Any]] = {}
@@ -1323,7 +1379,10 @@ class Evaluator:
                             trace_id=eval_result.get("trace_id") or "",
                             item_id=item_id,
                             item_input=item.input,
-                            item_metadata=getattr(item, "metadata", {}),
+                            item_metadata=eval_result.get(
+                                "item_metadata",
+                                getattr(item, "metadata", {}),
+                            ),
                             output=eval_result.get("output"),
                             expected_output=eval_result.get("expected"),
                             time_seconds=float(eval_result.get("time", 0.0) or 0.0),
@@ -1581,35 +1640,76 @@ class Evaluator:
 
         return results
 
+    def _resolve_metric_arguments(
+        self,
+        metric: Callable,
+        output: Any,
+        expected: Any,
+        input_data: Any = None,
+        task_metadata: Optional[Dict[str, Any]] = None,
+        item_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Tuple[Any, ...], Dict[str, Any]]:
+        """Resolve metric arguments with backward-compatible positional rules."""
+        sig = inspect.signature(metric)
+        params = list(sig.parameters.values())
+        has_var_kwargs = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params
+        )
+        named_values = {
+            "output": output,
+            "expected": expected,
+            "input_data": input_data,
+            "metadata": item_metadata or {},
+            "item_metadata": item_metadata or {},
+        }
+
+        concrete_params = [
+            p
+            for p in params
+            if p.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        ]
+
+        can_use_keywords = has_var_kwargs or all(
+            p.kind != inspect.Parameter.POSITIONAL_ONLY
+            and p.name in named_values
+            for p in concrete_params
+        )
+        if can_use_keywords:
+            kwargs = (
+                dict(named_values)
+                if has_var_kwargs
+                else {p.name: named_values[p.name] for p in concrete_params}
+            )
+            return (), kwargs
+
+        positional = [
+            output,
+            expected,
+            input_data,
+            item_metadata or {},
+        ]
+        return tuple(positional[: len(concrete_params)]), {}
+
     async def _compute_metric(
-        self, metric: Callable, output: Any, expected: Any, input_data: Any = None
+        self,
+        metric: Callable,
+        output: Any,
+        expected: Any,
+        input_data: Any = None,
+        task_metadata: Optional[Dict[str, Any]] = None,
+        item_metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Compute a metric, handling both sync and async functions."""
-        import inspect
-
-        # Determine metric signature
-        sig = inspect.signature(metric)
-        params = list(sig.parameters.keys())
-
-        # Prepare arguments based on metric signature
-        if len(params) == 1:
-            args = (output,)
-        elif len(params) == 2:
-            args = (output, expected)
-        elif len(params) == 3:
-            # For metrics that need input_data
-            args = (output, expected, input_data)
-        else:
-            # Try with keyword arguments for flexibility
-            kwargs = {"output": output, "expected": expected, "input_data": input_data}
-            filtered_kwargs = {k: v for k, v in kwargs.items() if k in params}
-            args = tuple(filtered_kwargs.values())
+        args, kwargs = self._resolve_metric_arguments(
+            metric, output, expected, input_data, task_metadata, item_metadata
+        )
 
         # Call metric (async or sync)
         if inspect.iscoroutinefunction(metric):
-            result = await metric(*args)
+            result = await metric(*args, **kwargs)
         else:
-            result = metric(*args)
+            result = metric(*args, **kwargs)
         return result
 
     def _get_score_type(self, score: Any) -> str:
@@ -1810,6 +1910,7 @@ class Evaluator:
         )
         attempt_start_time = time.monotonic()
         forced_model_token = None
+        retryable = True
         try:
             if self.config.force_model_override and self.model_name_full:
                 forced_model_token = self._otel.bind_forced_model(self.model_name_full)
@@ -1828,15 +1929,18 @@ class Evaluator:
 
             coro = _task_call()
             if self.timeout is not None:
-                output = await asyncio.wait_for(coro, timeout=self.timeout)
+                raw_output = await asyncio.wait_for(coro, timeout=self.timeout)
             else:
-                output = await coro
+                raw_output = await coro
+            output, task_metadata, metric_output = _normalize_task_output(raw_output)
             return TaskAttemptResult(
                 attempt_number=attempt_number,
                 spans=spans,
                 task_started_at_ms=task_started_at_ms,
                 latency_s=time.monotonic() - attempt_start_time,
                 output=output,
+                metric_output=metric_output,
+                task_metadata=task_metadata,
             )
         except asyncio.TimeoutError:
             error = f"Task timed out after {self.timeout}s (attempt {attempt_number}/{1 + self.max_retries})"
@@ -1844,9 +1948,14 @@ class Evaluator:
         except TaskExecutionTimeoutError as e:
             error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
             logger.warning(f"Item {index}: {error}")
+        except InvalidTaskOutputError as e:
+            error = f"{type(e).__name__}: {e}"
+            logger.warning(f"Item {index}: {error}")
+            retryable = False
         except Exception as e:
             error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
             logger.warning(f"Item {index}: {error}")
+            retryable = True
         finally:
             self._otel.reset_forced_model(forced_model_token)
 
@@ -1861,6 +1970,7 @@ class Evaluator:
             task_started_at_ms=task_started_at_ms,
             latency_s=time.monotonic() - attempt_start_time,
             error=error,
+            retryable=retryable,
         )
 
     async def _execute_task(
@@ -1874,6 +1984,8 @@ class Evaluator:
             attempts.append(attempt)
             if attempt.success:
                 return attempt, attempts, attempt_number - 1
+            if not attempt.retryable:
+                return None, attempts, attempt_number - 1
 
             is_terminal_attempt = attempt_number == 1 + self.max_retries
             if not is_terminal_attempt:
@@ -1887,7 +1999,12 @@ class Evaluator:
         return None, attempts, len(attempts) - 1
 
     async def _compute_metrics(
-        self, index: int, item: Any, output: Any, spans: ItemSpans
+        self,
+        index: int,
+        item: Any,
+        output: Any,
+        spans: ItemSpans,
+        task_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Compute all metrics concurrently. Returns {metric_name: score_dict}."""
         expected_output = getattr(item, "expected_output", None)
@@ -1912,6 +2029,7 @@ class Evaluator:
                     index,
                     item,
                     spans,
+                    task_metadata or {},
                 )
 
         results = await asyncio.gather(
@@ -1928,6 +2046,7 @@ class Evaluator:
         index: int,
         item: Any,
         spans: ItemSpans,
+        task_metadata: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Any]:
         """Run a single metric, emit score event, and notify platform.
 
@@ -1962,7 +2081,12 @@ class Evaluator:
 
                 if not should_probe:
                     return await self._compute_metric(
-                        m_func, output, expected, item.input
+                        m_func,
+                        output,
+                        expected,
+                        item.input,
+                        task_metadata,
+                        getattr(item, "metadata", {}) or {},
                     )
 
                 Evaluator._metric_blocking_probed.add(func_id)
@@ -1979,7 +2103,12 @@ class Evaluator:
                 _t0 = time.monotonic()
                 try:
                     return await self._compute_metric(
-                        m_func, output, expected, item.input
+                        m_func,
+                        output,
+                        expected,
+                        item.input,
+                        task_metadata,
+                        getattr(item, "metadata", {}) or {},
                     )
                 finally:
                     _hb_stop = True
@@ -2010,6 +2139,8 @@ class Evaluator:
                     output,
                     expected,
                     item.input,
+                    task_metadata,
+                    getattr(item, "metadata", {}) or {},
                 )
 
         try:
@@ -2169,6 +2300,7 @@ class Evaluator:
         index: int,
         item: Any,
         output: Any,
+        task_metadata: Dict[str, Any],
         scores: Dict[str, Any],
         task_time: float,
         item_time: float,
@@ -2194,6 +2326,10 @@ class Evaluator:
                         "item_id": str(item_id),
                         "index": int(index),
                         "output": output,
+                        "item_metadata": _item_metadata_with_task_metadata(
+                            getattr(item, "metadata", {}) or {}, task_metadata
+                        ),
+                        "task_metadata": task_metadata,
                         "latency_ms": float(task_time * 1000.0),
                         "total_latency_ms": float(item_time * 1000.0),
                         "trace_id": spans.trace_id,
@@ -2212,6 +2348,10 @@ class Evaluator:
             item_index=index,
             result={
                 "output": output,
+                "task_metadata": task_metadata,
+                "item_metadata": _item_metadata_with_task_metadata(
+                    getattr(item, "metadata", {}) or {}, task_metadata
+                ),
                 "scores": scores,
                 "task_time": task_time,
                 "task_time_ms": float(task_time * 1000.0),
@@ -2334,6 +2474,7 @@ class Evaluator:
             index,
             item,
             success_attempt.output,
+            success_attempt.task_metadata,
             scores,
             success_attempt.latency_s,
             max(time.monotonic() - item_started_monotonic, 0.0),
@@ -2397,7 +2538,11 @@ class Evaluator:
             except Exception:
                 pass
             scores = await self._compute_metrics(
-                index, item, success_attempt.output, active_spans
+                index,
+                item,
+                success_attempt.metric_output,
+                active_spans,
+                success_attempt.task_metadata,
             )
 
             # Mark the item as finished IMMEDIATELY after metrics compute. Once we
@@ -2440,6 +2585,11 @@ class Evaluator:
             return {
                 "input": item.input,
                 "output": success_attempt.output,
+                "task_metadata": success_attempt.task_metadata,
+                "item_metadata": _item_metadata_with_task_metadata(
+                    getattr(item, "metadata", {}) or {},
+                    success_attempt.task_metadata,
+                ),
                 "expected": getattr(item, "expected_output", None),
                 "scores": {k: v for k, v in scores.items() if v is not None},
                 "trace_id": active_spans.trace_id,
@@ -2503,21 +2653,25 @@ class Evaluator:
                     pass
 
     def _compute_metric_sync(
-        self, metric_func: Callable, output: Any, expected: Any, input_data: Any
+        self,
+        metric_func: Callable,
+        output: Any,
+        expected: Any,
+        input_data: Any,
+        task_metadata: Optional[Dict[str, Any]] = None,
+        item_metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Synchronous version of metric computation for thread pool execution."""
         try:
-            sig = inspect.signature(metric_func)
-            params = list(sig.parameters.keys())
-
-            if len(params) >= 3:
-                return metric_func(output, expected, input_data)
-            elif len(params) == 2:
-                return metric_func(output, expected)
-            elif len(params) == 1:
-                return metric_func(output)
-            else:
-                return metric_func()
+            args, kwargs = self._resolve_metric_arguments(
+                metric_func,
+                output,
+                expected,
+                input_data,
+                task_metadata,
+                item_metadata,
+            )
+            return metric_func(*args, **kwargs)
         except Exception as e:
             error_tb = traceback.format_exc()
             logger.error(

@@ -63,8 +63,6 @@ def test_charts_grouped_view_uses_presets_for_version_model_splits() -> None:
 
     assert "version-model" in charts_block
     assert "model-version" in charts_block
-    assert "Version \\u2192 Model" in charts_block
-    assert "Model \\u2192 Version" in charts_block
     assert "Grouped by version, comparing models inside each version" in charts_block
     assert "firstColLabel = groupMode === 'version-model' ? 'Version / Model' : 'Model / Version';" in charts_block
     assert "const primaryGrouping = groupMode === 'version-model' ? 'version' : 'model';" in charts_block
@@ -89,6 +87,61 @@ def test_charts_grouped_view_uses_presets_for_version_model_splits() -> None:
     assert "padding-left: 18px;" in css
     assert "padding-left: 28px;" in css
     assert "padding-left: 68px;" not in css
+    assert "chartGroupMetricStats" in source
+    assert "function renderChartGroupStatCells(runs, modelIdx = null)" in charts_block
+    assert "function renderEmptyGroupStatCells()" in charts_block
+    assert "function renderGroupStatBar(value, label, title, modelIdx)" in charts_block
+    assert "scheduleChartGroupMetricStats(runs, groupMetricName, threshold, isBoolean)" in charts_block
+    assert "calculateModelStatsFromItems(detailedRuns, metricName, threshold, isBoolean)" in charts_block
+    assert "const GROUP_DISPLAY_COLUMNS = [" in source
+    assert "Grouped Run Columns" in source
+    assert "...GROUP_DISPLAY_COLUMNS.map(col => col.key)" in source
+    assert "function shouldShowGroupedRunColumnOptions()" in source
+    assert "state.currentView !== 'charts'" in source
+    assert "if (mode === 'run') return false;" in source
+    assert "return !Object.values(expansion.expanded || {}).some(isExpanded => isExpanded === true);" in source
+    assert "const groupColumns = shouldShowGroupedRunColumnOptions() ? GROUP_DISPLAY_COLUMNS : [];" in source
+    assert "populateMetricVisibility(getAvailableMetricsForRuns(metricSourceRuns), metricSourceRuns);" in charts_block
+    assert "const visibleGroupStatColumns = isGrouped" in charts_block
+    assert "state.visibleMetrics === null || state.visibleMetrics.has(col.key)" in charts_block
+    assert "const showGroupStatColumns = isGrouped && visibleGroupStatColumns.length > 0 && !hasExpandedGroupState;" in charts_block
+    assert "const groupStatHeaderCells = visibleGroupStatColumns.map" in charts_block
+    assert "GROUP_PASS_AT_K_COLUMN_KEY" in charts_block
+    assert "GROUP_CONSISTENCY_COLUMN_KEY" in charts_block
+    assert "GROUP_RELIABILITY_COLUMN_KEY" in charts_block
+    assert "function isGroupStatSortKey(key)" in charts_block
+    assert "chart-col-header chart-group-stat-header sortable-col" in charts_block
+    assert "data-sort=\"${key}\"" in charts_block
+    assert "chart-table ${isGrouped ? 'chart-table-grouped' : ''}" in charts_block
+    assert "${showGroupStatColumns ? groupStatHeaderCells : ''}\n                ${headerCells}" in charts_block
+    assert "${groupStatCells}\n              ${dataCells}" in charts_block
+    assert "${renderEmptyGroupStatCells()}\n            ${dataCells}" not in charts_block
+    assert "if (!showGroupStatColumns || visibleGroupStatColumns.length === 0) return '';" in charts_block
+    assert "if (!showGroupStatColumns) return '';" in charts_block
+    assert "const firstColDisplayLabel = isGrouped && hasExpandedGroups ? `${firstColLabel} / Run` : firstColLabel;" in charts_block
+    assert "setChartGroupCollapsed(card, mode, groupId, !isCollapsed);" in charts_block
+    assert "render();" in charts_block
+    assert '<div class="chart-table-group-main">' in charts_block
+    assert '${dataCells}' in charts_block
+    assert '<span class="chart-group-copy">' in charts_block
+    assert '<span class="chart-group-title-line">' in charts_block
+    assert "Pass@K" in source
+    assert "Consistency" in source
+    assert "Reliability" in source
+    assert "Pass@${K} ${formatPercent(stats.passAtK)}" in charts_block
+    assert "renderMiniBarCell({" in charts_block
+    assert "cellClass: 'chart-metric-cell chart-group-stat-cell'" in charts_block
+    assert "renderGroupStatBar(stats.passAtK, formatPercent(stats.passAtK)" in charts_block
+    assert "renderGroupStatBar(stats.consistency, consistencyText" in charts_block
+    assert "renderGroupStatBar(stats.reliability, reliabilityText" in charts_block
+    assert "Pass^" not in charts_block
+    assert ".chart-table-group-main" in css
+    assert ".chart-group-copy" in css
+    assert ".chart-group-title-line" in css
+    assert ".chart-group-stat-header" in css
+    assert ".chart-group-stat-cell" in css
+    assert ".chart-group-stat-cell-empty" in css
+    assert ".chart-table-grouped .chart-col-header" in css
 
 
 def test_live_runs_sections_are_present_on_overview_and_admin() -> None:

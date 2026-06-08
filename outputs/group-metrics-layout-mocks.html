@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qym Group Metrics Layout Mocks</title>
+  <link rel="stylesheet" href="../packages/platform/qym_platform/_static/dashboard/dashboard.css">
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: var(--bg-void);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+    }
+
+    .mock-page {
+      padding: 18px;
+    }
+
+    .mock-frame {
+      max-width: 1920px;
+      margin: 0 auto 28px;
+    }
+
+    .mock-titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: 10px;
+    }
+
+    .mock-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mock-note {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .mock-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .mock-card[data-mode="runs"] .mock-group-only,
+    .mock-card[data-expanded="false"] .mock-expanded-only,
+    .mock-card[data-expanded="true"] .mock-collapsed-only,
+    .mock-card[data-show-pass="false"] .mock-pass-col,
+    .mock-card[data-show-consistency="false"] .mock-consistency-col,
+    .mock-card[data-show-reliability="false"] .mock-reliability-col {
+      display: none;
+    }
+
+    .mock-card[data-mode="runs"] .mock-run-hidden {
+      display: flex;
+    }
+
+    .mock-card[data-mode="grouped"] .mock-run-hidden {
+      display: none;
+    }
+
+    .mock-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
+      flex-wrap: wrap;
+    }
+
+    .mock-column-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .mock-column-toggle input {
+      accent-color: var(--accent-primary);
+    }
+
+    .mock-scroll {
+      overflow-x: auto;
+    }
+
+    .mock-table {
+      min-width: 1660px;
+      padding: 0 10px 10px;
+    }
+
+    .mock-table .chart-table-header {
+      padding-top: 10px;
+    }
+
+    .mock-group-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: 6px 0;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      min-width: max-content;
+    }
+
+    .mock-run-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-xs) 0;
+      border-radius: 4px;
+      min-width: max-content;
+    }
+
+    .mock-run-row:hover,
+    .mock-group-row:hover {
+      background: var(--bg-hover);
+    }
+
+    .mock-cell {
+      flex: 1;
+      min-width: 280px;
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .mock-two-tier-child {
+      margin-left: 28px;
+      padding: 8px 0 10px;
+      border-left: 1px solid var(--border-default);
+    }
+
+    .mock-child-table {
+      margin-left: 12px;
+      min-width: 960px;
+    }
+
+    .mock-child-table .chart-table-header {
+      padding: 0 0 6px;
+      border-bottom: none;
+    }
+
+    .mock-child-table .chart-col-header-run,
+    .mock-child-table .chart-bar-label {
+      width: 260px;
+      min-width: 260px;
+    }
+
+    .mock-child-table .chart-col-header,
+    .mock-child-table .mock-cell {
+      min-width: 260px;
+    }
+
+    .mock-summary-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .mock-summary-inline strong {
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    .mock-card[data-show-pass="false"] .mock-summary-pass,
+    .mock-card[data-show-consistency="false"] .mock-summary-consistency,
+    .mock-card[data-show-reliability="false"] .mock-summary-reliability {
+      display: none;
+    }
+
+    .mock-adaptive .chart-bar-label {
+      width: 560px;
+      min-width: 560px;
+    }
+
+    .mock-adaptive .chart-col-header-run {
+      width: 560px;
+      min-width: 560px;
+    }
+  </style>
+</head>
+<body>
+  <main class="mock-page">
+    <section class="mock-frame">
+      <div class="mock-titlebar">
+        <div class="mock-title">Option 1 · Two-tier table</div>
+        <div class="mock-note">Parent rows own group metrics. Child rows get a run-only nested table.</div>
+      </div>
+      <div class="mock-card" id="mock-option-1" data-mode="grouped" data-expanded="true" data-show-pass="true" data-show-consistency="true" data-show-reliability="true">
+        <div class="mock-toolbar">
+          <span class="chart-control-label">Rows</span>
+          <span class="chart-segment-control chart-row-mode-control">
+            <button class="chart-segment-btn" data-mock-mode="runs">Runs</button>
+            <button class="chart-segment-btn active" data-mock-mode="grouped">Grouped</button>
+          </span>
+          <span class="chart-control-label">Group</span>
+          <span class="chart-segment-control chart-group-axis-control">
+            <button class="chart-segment-btn active">Model</button>
+            <button class="chart-segment-btn">Version</button>
+          </span>
+          <button class="chart-expand-collapse-btn" data-mock-expand>Collapse all</button>
+          <span class="chart-control-label">Columns</span>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="pass">Pass@K</label>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="consistency">Consistency</label>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="reliability">Reliability</label>
+          <span class="chart-group-summary">Grouped by model</span>
+        </div>
+        <div class="mock-scroll">
+          <div class="mock-table chart-table chart-table-grouped">
+            <div class="chart-table-header">
+              <span class="chart-col-header-run"><span class="chart-first-col-title">Model</span></span>
+              <span class="chart-col-header sortable-col active mock-pass-col" data-mock-sort><span class="chart-col-header-label">Pass@K</span><span class="chart-col-sort">↓</span></span>
+              <span class="chart-col-header sortable-col mock-consistency-col" data-mock-sort><span class="chart-col-header-label">Consistency</span></span>
+              <span class="chart-col-header sortable-col mock-reliability-col" data-mock-sort><span class="chart-col-header-label">Reliability</span></span>
+              <span class="chart-col-header sortable-col"><span class="chart-col-header-label">Accuracy</span></span>
+              <span class="chart-col-header chart-col-header-latency sortable-col"><span class="chart-col-header-label">⚡ Avg Latency</span></span>
+            </div>
+
+            <div class="mock-group-row mock-group-only">
+              <span class="chart-group-first-col">
+                <span class="chart-group-toggle" data-mock-expand>▼</span>
+                <span class="chart-group-copy">
+                  <span class="chart-group-title-line">
+                    <span class="chart-group-label"><span class="model-color-dot" style="background:#4ade80"></span>Qwen3.5-397B</span>
+                    <span class="chart-group-count">6 runs</span>
+                  </span>
+                </span>
+              </span>
+              <div class="mock-cell mock-pass-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:51%"><span class="chart-mini-bar-label">51.0%</span></div></div></div>
+              <div class="mock-cell mock-consistency-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:83.7%"><span class="chart-mini-bar-label">83.7%</span></div></div></div>
+              <div class="mock-cell mock-reliability-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:70.3%"><span class="chart-mini-bar-label">70.3%</span></div></div></div>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:35.8%"><span class="chart-mini-bar-label">35.8%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:71.2%"><span class="chart-mini-bar-label">68.9s</span></div></div></div>
+            </div>
+
+            <div class="mock-run-row mock-run-hidden">
+              <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 22 · 21:55</span></span>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:39%"><span class="chart-mini-bar-label">39.0%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><span class="metric-na">—</span></div>
+            </div>
+
+            <div class="mock-two-tier-child mock-expanded-only">
+              <div class="mock-child-table">
+                <div class="chart-table-header">
+                  <span class="chart-col-header-run"><span class="chart-first-col-title">Run</span></span>
+                  <span class="chart-col-header sortable-col"><span class="chart-col-header-label">Accuracy</span></span>
+                  <span class="chart-col-header chart-col-header-latency sortable-col"><span class="chart-col-header-label">⚡ Avg Latency</span></span>
+                </div>
+                <div class="mock-run-row">
+                  <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 22 · 21:55</span></span>
+                  <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:39%"><span class="chart-mini-bar-label">39.0%</span></div></div></div>
+                  <div class="mock-cell"><span class="metric-na">—</span></div>
+                </div>
+                <div class="mock-run-row">
+                  <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 28 · 15:33</span></span>
+                  <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:37%"><span class="chart-mini-bar-label">37.0%</span></div></div></div>
+                  <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:67.6%"><span class="chart-mini-bar-label">67.6s</span></div></div></div>
+                </div>
+                <div class="mock-run-row">
+                  <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 28 · 15:33</span></span>
+                  <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:36%"><span class="chart-mini-bar-label">36.0%</span></div></div></div>
+                  <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:70.7%"><span class="chart-mini-bar-label">70.7s</span></div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mock-frame">
+      <div class="mock-titlebar">
+        <div class="mock-title">Option 3 · Adaptive columns on expand</div>
+        <div class="mock-note">Collapsed groups show group-stat columns. Expanded groups switch to a run-level column schema.</div>
+      </div>
+      <div class="mock-card mock-adaptive" id="mock-option-3" data-mode="grouped" data-expanded="true" data-show-pass="true" data-show-consistency="true" data-show-reliability="true">
+        <div class="mock-toolbar">
+          <span class="chart-control-label">Rows</span>
+          <span class="chart-segment-control chart-row-mode-control">
+            <button class="chart-segment-btn" data-mock-mode="runs">Runs</button>
+            <button class="chart-segment-btn active" data-mock-mode="grouped">Grouped</button>
+          </span>
+          <span class="chart-control-label">Group</span>
+          <span class="chart-segment-control chart-group-axis-control">
+            <button class="chart-segment-btn active">Model</button>
+            <button class="chart-segment-btn">Version</button>
+          </span>
+          <button class="chart-expand-collapse-btn" data-mock-expand>Collapse all</button>
+          <span class="chart-control-label">Columns</span>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="pass">Pass@K</label>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="consistency">Consistency</label>
+          <label class="mock-column-toggle"><input type="checkbox" checked data-mock-column="reliability">Reliability</label>
+          <span class="chart-group-summary">Expanded group layout</span>
+        </div>
+        <div class="mock-scroll">
+          <div class="mock-table chart-table chart-table-grouped">
+            <div class="chart-table-header mock-collapsed-only">
+              <span class="chart-col-header-run"><span class="chart-first-col-title">Model</span></span>
+              <span class="chart-col-header sortable-col active mock-pass-col" data-mock-sort><span class="chart-col-header-label">Pass@K</span><span class="chart-col-sort">↓</span></span>
+              <span class="chart-col-header sortable-col mock-consistency-col" data-mock-sort><span class="chart-col-header-label">Consistency</span></span>
+              <span class="chart-col-header sortable-col mock-reliability-col" data-mock-sort><span class="chart-col-header-label">Reliability</span></span>
+              <span class="chart-col-header sortable-col"><span class="chart-col-header-label">Accuracy</span></span>
+              <span class="chart-col-header chart-col-header-latency sortable-col"><span class="chart-col-header-label">⚡ Avg Latency</span></span>
+            </div>
+
+            <div class="chart-table-header mock-expanded-only">
+              <span class="chart-col-header-run"><span class="chart-first-col-title">Model / Run</span></span>
+              <span class="chart-col-header sortable-col active"><span class="chart-col-header-label">Accuracy</span><span class="chart-col-sort">↓</span></span>
+              <span class="chart-col-header chart-col-header-latency sortable-col"><span class="chart-col-header-label">⚡ Avg Latency</span></span>
+            </div>
+
+            <div class="mock-group-row mock-group-only mock-collapsed-only">
+              <span class="chart-bar-label">
+                <span class="chart-group-toggle" data-mock-expand>▶</span>
+                <span class="model-color-dot" style="background:#4ade80"></span>
+                <span class="model-label-text">Qwen3.5-397B</span>
+                <span class="chart-group-count">6 runs</span>
+              </span>
+              <div class="mock-cell mock-pass-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:51%"><span class="chart-mini-bar-label">51.0%</span></div></div></div>
+              <div class="mock-cell mock-consistency-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:83.7%"><span class="chart-mini-bar-label">83.7%</span></div></div></div>
+              <div class="mock-cell mock-reliability-col"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:70.3%"><span class="chart-mini-bar-label">70.3%</span></div></div></div>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:35.8%"><span class="chart-mini-bar-label">35.8%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:71.2%"><span class="chart-mini-bar-label">68.9s</span></div></div></div>
+            </div>
+
+            <div class="mock-group-row mock-group-only mock-expanded-only">
+              <span class="chart-bar-label">
+                <span class="chart-group-toggle" data-mock-expand>▼</span>
+                <span class="model-color-dot" style="background:#4ade80"></span>
+                <span class="model-label-text">Qwen3.5-397B</span>
+                <span class="chart-group-count">6 runs</span>
+              </span>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:35.8%"><span class="chart-mini-bar-label">35.8%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:71.2%"><span class="chart-mini-bar-label">68.9s</span></div></div></div>
+            </div>
+            <div class="mock-run-row mock-expanded-only">
+              <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 22 · 21:55</span></span>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:39%"><span class="chart-mini-bar-label">39.0%</span></div></div></div>
+              <div class="mock-cell"><span class="metric-na">—</span></div>
+            </div>
+            <div class="mock-run-row mock-expanded-only">
+              <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 28 · 15:33</span></span>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:37%"><span class="chart-mini-bar-label">37.0%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:67.6%"><span class="chart-mini-bar-label">67.6s</span></div></div></div>
+            </div>
+            <div class="mock-run-row mock-expanded-only">
+              <span class="chart-bar-label">Qwen3.5-397B<span class="run-timestamp">Apr 28 · 15:33</span></span>
+              <div class="mock-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:36%"><span class="chart-mini-bar-label">36.0%</span></div></div></div>
+              <div class="mock-cell chart-latency-cell"><div class="chart-mini-bar-track"><div class="chart-mini-bar-fill" data-model-idx="12" style="width:70.7%"><span class="chart-mini-bar-label">70.7s</span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    function setMode(card, mode) {
+      card.dataset.mode = mode;
+      card.querySelectorAll('[data-mock-mode]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mockMode === mode);
+      });
+      if (mode === 'runs') {
+        card.dataset.expanded = 'true';
+      }
+      updateExpandButton(card);
+    }
+
+    function setExpanded(card, expanded) {
+      card.dataset.expanded = String(expanded);
+      card.querySelectorAll('.chart-group-toggle').forEach(toggle => {
+        toggle.textContent = expanded ? '▼' : '▶';
+      });
+      updateExpandButton(card);
+    }
+
+    function updateExpandButton(card) {
+      const btn = card.querySelector('[data-mock-expand].chart-expand-collapse-btn');
+      if (!btn) return;
+      btn.textContent = card.dataset.expanded === 'true' ? 'Collapse all' : 'Expand all';
+      btn.disabled = card.dataset.mode === 'runs';
+    }
+
+    document.querySelectorAll('.mock-card').forEach(card => {
+      card.querySelectorAll('[data-mock-mode]').forEach(btn => {
+        btn.addEventListener('click', () => setMode(card, btn.dataset.mockMode));
+      });
+
+      card.querySelectorAll('[data-mock-expand]').forEach(control => {
+        control.addEventListener('click', () => {
+          if (card.dataset.mode === 'runs') return;
+          setExpanded(card, card.dataset.expanded !== 'true');
+        });
+      });
+
+      card.querySelectorAll('[data-mock-column]').forEach(input => {
+        input.addEventListener('change', () => {
+          card.dataset['show' + input.dataset.mockColumn.charAt(0).toUpperCase() + input.dataset.mockColumn.slice(1)] = String(input.checked);
+        });
+      });
+
+      card.querySelectorAll('[data-mock-sort]').forEach(header => {
+        header.addEventListener('click', () => {
+          const wasActive = header.classList.contains('active');
+          const sort = header.querySelector('.chart-col-sort');
+          card.querySelectorAll('[data-mock-sort]').forEach(h => {
+            h.classList.remove('active');
+            const s = h.querySelector('.chart-col-sort');
+            if (s) s.remove();
+          });
+          header.classList.add('active');
+          const next = document.createElement('span');
+          next.className = 'chart-col-sort';
+          next.textContent = wasActive && sort && sort.textContent === '↓' ? '↑' : '↓';
+          header.appendChild(next);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

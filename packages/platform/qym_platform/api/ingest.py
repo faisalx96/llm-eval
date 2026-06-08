@@ -1077,7 +1077,16 @@ async def ingest_events(
                     pass
 
             item = _get_item(payload.item_id)
+            payload_metadata = (
+                dict(payload.item_metadata)
+                if isinstance(payload.item_metadata, dict)
+                else {}
+            )
+            if payload.task_metadata and "task_metadata" not in payload_metadata:
+                payload_metadata["task_metadata"] = dict(payload.task_metadata)
             if not item:
+                md = _build_item_meta(ts_ms, payload.retry_count)
+                md.update(payload_metadata)
                 item = _remember_item(
                     RunItem(
                         run_id=run_id,
@@ -1091,7 +1100,7 @@ async def ingest_events(
                         retry_count=payload.retry_count,
                         trace_id=payload.trace_id,
                         trace_url=payload.trace_url,
-                        item_metadata=_build_item_meta(ts_ms, payload.retry_count),
+                        item_metadata=_sanitize_for_json(md),
                     )
                 )
                 db.add(item)
@@ -1107,6 +1116,7 @@ async def ingest_events(
                 item.trace_url = payload.trace_url
                 # Merge metadata into item_metadata
                 md = dict(item.item_metadata or {})
+                md.update(payload_metadata)
                 if ts_ms:
                     md["task_started_at_ms"] = ts_ms
                 if payload.retry_count > 0:

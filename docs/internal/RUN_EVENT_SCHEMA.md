@@ -74,6 +74,8 @@ Sent when item completes successfully.
 Payload:
 - `item_id`: string
 - `output`: any JSON
+- `item_metadata`: object (JSON), including `task_metadata` when the task returned `{"output": ..., "metadata": ...}`
+- `task_metadata`: object (JSON), task-return metadata convenience field
 - `latency_ms`: number
 - `trace_id`: string|null
 - `trace_url`: string|null
@@ -109,5 +111,4 @@ Payload:
 {"schema_version":1,"event_id":"d7c8b1d0-3f4a-4e5f-9a0b-1c2d3e4f5a6b","sequence":4,"sent_at":"2025-12-26T12:00:02Z","type":"item_completed","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"item_id":"row_000001","output":"X is ...","latency_ms":412,"trace_id":null,"trace_url":null}}
 {"schema_version":1,"event_id":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d","sequence":5,"sent_at":"2025-12-26T12:00:03Z","type":"run_completed","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"ended_at":"2025-12-26T12:00:03Z","final_status":"COMPLETED","summary":{"total_items":1,"success_count":1,"error_count":0}}}
 ```
-
 

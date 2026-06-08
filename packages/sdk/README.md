@@ -321,6 +321,25 @@ evaluator = Evaluator(
 )
 ```
 
+### Task Metadata for Metrics
+
+If a task needs to pass hidden details to metrics, return a dict with exactly `output` and `metadata`. qym shows only `output` in the platform and stores `metadata` under the item metadata expander.
+
+```python
+def rag_task(question):
+    docs = retrieve(question)
+    answer = generate_answer(question, docs)
+    return {
+        "output": answer,
+        "metadata": {"retrieved_context": docs},
+    }
+
+def faithfulness(output, expected):
+    return judge_faithfulness(output["output"], output["metadata"]["retrieved_context"])
+```
+
+Dict task returns that do not match `{"output": ..., "metadata": {...}}` raise an item error.
+
 ## Documentation
 
 - [User Guide](docs/USER_GUIDE.md) — Tasks, metrics, datasets, CLI, configuration, and troubleshooting

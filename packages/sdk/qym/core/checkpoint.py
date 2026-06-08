@@ -252,6 +252,14 @@ def parse_checkpoint_row(
         "trace_id": row.get("trace_id", ""),
         "time": float(row.get("time") or 0.0),
     }
+    raw_item_metadata = row.get("item_metadata", "")
+    if raw_item_metadata:
+        try:
+            parsed_item_metadata = json.loads(raw_item_metadata)
+            if isinstance(parsed_item_metadata, dict):
+                result["item_metadata"] = parsed_item_metadata
+        except Exception:
+            pass
     raw_started = row.get("task_started_at_ms", "")
     try:
         result["task_started_at_ms"] = int(float(raw_started)) if raw_started not in (None, "") else None

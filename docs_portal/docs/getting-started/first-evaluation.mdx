@@ -75,6 +75,19 @@ python first_eval.py
 | `run_metadata` | Non-secret tags stored with results. | Use for prompt version, job ID, dataset version, owner, and release. |
 | `show_tui=False` | Disables terminal UI. | Useful for notebooks, scripts, services, and tests. |
 
+If your task needs to give metrics extra data that should not appear as the visible output, return a dict with exactly `output` and `metadata`:
+
+```python
+def answer_question(question):
+    docs = retrieve(question)
+    return {
+        "output": call_llm(question, docs),
+        "metadata": {"retrieved_context": docs},
+    }
+```
+
+Custom metrics receive that envelope as `output`, so they can read task metadata from `output["metadata"]`.
+
 ## Add platform streaming
 
 Once local artifacts look correct, stream the same run to the platform:

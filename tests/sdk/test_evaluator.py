@@ -73,6 +73,106 @@ class TestEvaluator:
             tracker.complete_item.assert_called_once_with(0)
 
     @pytest.mark.asyncio
+    async def test_task_output_envelope_passes_metadata_to_metric_and_platform(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
+        captured = {}
+
+        def context_metric(output, expected):
+            captured["output"] = output
+            return {
+                "score": 1.0
+                if output["metadata"]["retrieved_context"][0] == "doc-1"
+                else 0.0,
+                "metadata": {
+                    "context_count": len(output["metadata"]["retrieved_context"])
+                },
+            }
+
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[context_metric],
+                config={"run_name": "task-envelope"},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator.task_adapter = MagicMock()
+        evaluator.task_adapter.arun = AsyncMock(
+            return_value={
+                "output": "answer",
+                "metadata": {"retrieved_context": ["doc-1"]},
+            }
+        )
+        evaluator._notify_observer = MagicMock()
+        evaluator._platform_stream = MagicMock()
+        evaluator.model_name = "test-model"
+
+        item = MagicMock()
+        item.input = "question"
+        item.expected_output = "answer"
+        item.metadata = {"category": "rag"}
+        item.id = "item-1"
+
+        tracker = MagicMock()
+        result = await evaluator._evaluate_item(0, item, tracker)
+
+        assert result["success"] is True
+        assert result["output"] == "answer"
+        assert result["task_metadata"] == {"retrieved_context": ["doc-1"]}
+        assert result["item_metadata"] == {
+            "category": "rag",
+            "task_metadata": {"retrieved_context": ["doc-1"]},
+        }
+        assert captured == {
+            "output": {
+                "output": "answer",
+                "metadata": {"retrieved_context": ["doc-1"]},
+            },
+        }
+
+        emitted = [call.args for call in evaluator._platform_stream.emit.call_args_list]
+        completed = [
+            payload for event_type, payload in emitted if event_type == "item_completed"
+        ]
+        assert completed[0]["output"] == "answer"
+        assert completed[0]["item_metadata"]["task_metadata"] == {
+            "retrieved_context": ["doc-1"]
+        }
+
+    @pytest.mark.asyncio
+    async def test_dict_task_output_must_use_output_metadata_envelope(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "bad-task-envelope", "max_retries": 0},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator.task_adapter = MagicMock()
+        evaluator.task_adapter.arun = AsyncMock(return_value={"answer": "Paris"})
+        evaluator._notify_observer = MagicMock()
+        evaluator._platform_stream = MagicMock()
+        evaluator.model_name = "test-model"
+
+        item = MagicMock()
+        item.input = "question"
+        item.expected_output = "Paris"
+        item.metadata = {}
+        item.id = "item-1"
+
+        tracker = MagicMock()
+        result = await evaluator._evaluate_item(0, item, tracker)
+
+        assert "_error" in result
+        assert "Dict task outputs must use qym's envelope" in result["_error"]
+
+    @pytest.mark.asyncio
     async def test_csv_dataset_without_langfuse_credentials_does_not_require_client(
         self, tmp_path, mock_task, monkeypatch
     ):

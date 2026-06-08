@@ -166,6 +166,7 @@
     availableProjects: [],
     currentProject: null,
     cohortAnchorRuns: null,
+    chartGroupMetricStats: {},
     // Models view state (uses global filterTasks/filterDatasets for task+dataset)
     modelsViewState: {
       selectedMetric: '',
@@ -220,6 +221,14 @@
     { key: 'latency', label: '⚡ Avg Latency' },
     { key: 'median-latency', label: '⚡ Median Latency' },
   ];
+  const GROUP_PASS_AT_K_COLUMN_KEY = '__group_pass_at_k__';
+  const GROUP_CONSISTENCY_COLUMN_KEY = '__group_consistency__';
+  const GROUP_RELIABILITY_COLUMN_KEY = '__group_reliability__';
+  const GROUP_DISPLAY_COLUMNS = [
+    { key: GROUP_PASS_AT_K_COLUMN_KEY, label: 'Pass@K' },
+    { key: GROUP_CONSISTENCY_COLUMN_KEY, label: 'Consistency' },
+    { key: GROUP_RELIABILITY_COLUMN_KEY, label: 'Reliability' },
+  ];
   const RUNS_TABLE_BASE_COLUMN_COUNT = 11;
   const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency', 'correctDistribution'];
   const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency'];
@@ -238,6 +247,7 @@
   function _allMetricsWithTrace(runs = null, baseMetrics = state.allMetrics) {
     return [
       ...(baseMetrics || []),
+      ...GROUP_DISPLAY_COLUMNS.map(col => col.key),
       ...SYSTEM_DISPLAY_COLUMNS.map(col => col.key),
       ..._traceMetricsForRuns(runs).map(tm => tm.key),
     ];
@@ -266,10 +276,47 @@
   }
 
   function getMetricDisplayName(metricKey) {
+    const groupColumn = GROUP_DISPLAY_COLUMNS.find(col => col.key === metricKey);
+    if (groupColumn) return groupColumn.label;
     const systemColumn = SYSTEM_DISPLAY_COLUMNS.find(col => col.key === metricKey);
     if (systemColumn) return systemColumn.label;
     const traceMetric = TRACE_METRICS.find(tm => tm.key === metricKey);
     return traceMetric ? traceMetric.label : metricKey;
+  }
+
+  function getChartCardId(taskName, datasetName) {
+    return `${taskName}|||${datasetName}`.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  function comboHasVersionData(combo) {
+    if (!combo || !combo.models) return false;
+    return Object.values(combo.models).some(data =>
+      (data.runsList || []).some(run => run.git_commit)
+    );
+  }
+
+  function getEffectiveChartGroupMode(cardId, combo) {
+    const mode = state.chartGroupMode?.[cardId] || 'run';
+    if (!comboHasVersionData(combo) && (mode === 'version' || mode === 'version-model' || mode === 'model-version')) {
+      return 'run';
+    }
+    return mode;
+  }
+
+  function shouldShowGroupedRunColumnOptions() {
+    if (state.currentView !== 'charts' || !state.chartData) return false;
+    return (state.chartData.tasks || []).some(taskGroup => {
+      const datasets = taskGroup.datasets || [];
+      const activeDataset = state.chartDatasetTab[taskGroup.task] || datasets[0]?.dataset || '';
+      const combo = datasets.find(d => d.dataset === activeDataset) || datasets[0];
+      if (!combo) return false;
+      const cardId = getChartCardId(combo.task, combo.dataset);
+      const mode = getEffectiveChartGroupMode(cardId, combo);
+      if (mode === 'run') return false;
+      const expansion = state.chartGroupExpansion?.[cardId];
+      if (!expansion || expansion.mode !== mode) return true;
+      return !Object.values(expansion.expanded || {}).some(isExpanded => isExpanded === true);
+    });
   }
 
   function getTraceMetricConfig(metricKey) {
@@ -880,9 +927,11 @@
     if (!wrapper || !dropdown || !btn) return;
 
     const traceMetrics = _traceMetricsForRuns(runs);
+    const groupColumns = shouldShowGroupedRunColumnOptions() ? GROUP_DISPLAY_COLUMNS : [];
     const systemColumns = SYSTEM_DISPLAY_COLUMNS;
     const metricOptions = [
       ...(availableMetrics || []),
+      ...groupColumns.map(col => col.key),
       ...systemColumns.map(col => col.key),
       ...traceMetrics.map(tm => tm.key),
     ];
@@ -915,6 +964,13 @@
         const hidden = searchValue && !getMetricDisplayName(m).toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
         return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
       }).join('') +
+      (groupColumns.length > 0 ?
+        '<div class="mv-trace-separator"></div><div class="mv-trace-label">Grouped Run Columns</div>' +
+        groupColumns.map(col => {
+          const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
+          const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+        }).join('') : '') +
       (systemColumns.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ System Columns</div>' +
         systemColumns.map(col => {
@@ -1730,13 +1786,14 @@
       .map(entry => entry.metric);
   }
 
-  function renderMiniBarCell({ value, label, ratio, modelIdx, isAggregate = false, cellClass = 'chart-metric-cell' }) {
+  function renderMiniBarCell({ value, label, ratio, modelIdx, isAggregate = false, cellClass = 'chart-metric-cell', title = '' }) {
     const safeRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(ratio, 1)) : 0;
     const width = value === null || value === undefined ? 0 : Math.max(safeRatio * 100, 2);
     const aggregateClass = isAggregate && !Number.isInteger(modelIdx) ? ' aggregate' : '';
     const modelAttr = Number.isInteger(modelIdx) ? ` data-model-idx="${modelIdx}"` : '';
+    const titleAttr = title ? ` title="${title}"` : '';
     return `
-      <div class="${cellClass}">
+      <div class="${cellClass}"${titleAttr}>
         <div class="chart-mini-bar-track">
           <div class="chart-mini-bar-fill${aggregateClass}"${modelAttr} style="width:${width}%">
             <span class="chart-mini-bar-label">${label}</span>
@@ -1878,8 +1935,31 @@
       }
 
       const visibleTraceMetrics = _visibleTraceMetrics(allRuns);
+      const groupMetricName = allComboMetrics.find(metric => (state._metricTypes?.[metric] || 'score') !== 'numeric') || '';
 
-      if (metrics.length === 0 && visibleTraceMetrics.length === 0 && visibleSystemColumns.length === 0) {
+      // Generate unique card ID for sorting state
+      const cardId = getChartCardId(combo.task, combo.dataset);
+
+      // Grouping mode: run (default) / version / model / version-model / model-version
+      if (!state.chartGroupMode) state.chartGroupMode = {};
+      const hasVersions = comboHasVersionData(combo);
+      let groupMode = getEffectiveChartGroupMode(cardId, combo);
+      if (groupMode !== (state.chartGroupMode[cardId] || 'run')) {
+        groupMode = 'run';
+        state.chartGroupMode[cardId] = groupMode;
+      }
+      const isGrouped = groupMode !== 'run';
+      const visibleGroupStatColumns = isGrouped
+        ? GROUP_DISPLAY_COLUMNS.filter(col => state.visibleMetrics === null || state.visibleMetrics.has(col.key))
+        : [];
+      const groupExpansion = state.chartGroupExpansion?.[cardId];
+      const hasExpandedGroupState = isGrouped
+        && groupExpansion
+        && groupExpansion.mode === groupMode
+        && Object.values(groupExpansion.expanded || {}).some(isExpanded => isExpanded === true);
+      const showGroupStatColumns = isGrouped && visibleGroupStatColumns.length > 0 && !hasExpandedGroupState;
+
+      if (metrics.length === 0 && visibleTraceMetrics.length === 0 && visibleSystemColumns.length === 0 && !showGroupStatColumns) {
         return `
           <div class="chart-task-section">
             <div class="chart-task-header">
@@ -1896,9 +1976,6 @@
         `;
       }
 
-      // Generate unique card ID for sorting state
-      const cardId = `${combo.task}|||${combo.dataset}`.replace(/[^a-zA-Z0-9]/g, '_');
-
       // Default sort by first metric descending
       if (!state.chartSortState) state.chartSortState = {};
       if (!state.chartSortState[cardId]) {
@@ -1906,12 +1983,14 @@
       }
       const sortState = state.chartSortState[cardId];
 
-      // Grouping mode: run (default) / version / model / version-model / model-version
-      if (!state.chartGroupMode) state.chartGroupMode = {};
-      let groupMode = state.chartGroupMode[cardId] || 'run';
-
       function getChartSortDirection(key) {
         return key === 'model' ? 'asc' : 'desc';
+      }
+
+      function isGroupStatSortKey(key) {
+        return key === GROUP_PASS_AT_K_COLUMN_KEY
+          || key === GROUP_CONSISTENCY_COLUMN_KEY
+          || key === GROUP_RELIABILITY_COLUMN_KEY;
       }
 
       function compareChartSortValues(aVal, bVal, dir) {
@@ -1944,6 +2023,18 @@
         const agg = group.agg || group;
         if (key === 'latency') return agg.avgLatency;
         if (key === 'median-latency') return agg.medianLatency;
+        if (isGroupStatSortKey(key)) {
+          const statsEntry = scheduleChartGroupMetricStats(
+            group.runs || [],
+            groupMetricName,
+            getChartGroupMetricThreshold(group.runs || [], groupMetricName),
+            isChartGroupMetricBoolean(group.runs || [], groupMetricName)
+          );
+          if (statsEntry?.status !== 'ready' || !statsEntry.stats) return -1;
+          if (key === GROUP_PASS_AT_K_COLUMN_KEY) return statsEntry.stats.passAtK ?? -1;
+          if (key === GROUP_CONSISTENCY_COLUMN_KEY) return statsEntry.stats.consistency ?? -1;
+          if (key === GROUP_RELIABILITY_COLUMN_KEY) return statsEntry.stats.reliability ?? -1;
+        }
         if (isTraceMetricKey(key)) return agg.traceAverages?.[key] ?? -1;
         return agg.metricAverages[key] ?? -1;
       }
@@ -1994,15 +2085,10 @@
       const avgLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.latency || 0)), 0);
       const medianLatencyScaleMax = Math.max(...allRuns.map(run => Number(run.median_latency || 0)), 0);
 
-      const hasVersions = allRuns.some(r => r.git_commit);
-      if (!hasVersions && (groupMode === 'version' || groupMode === 'version-model' || groupMode === 'model-version')) {
-        groupMode = 'run';
-        state.chartGroupMode[cardId] = groupMode;
-      }
-
       const firstColSortKey = (groupMode === 'version' || groupMode === 'version-model') ? null : 'model';
       const availableSortKeys = [
         ...(firstColSortKey ? [firstColSortKey] : []),
+        ...(showGroupStatColumns ? visibleGroupStatColumns.map(col => col.key) : []),
         ...displayColumns.map(column => (
           column === AVG_LATENCY_COLUMN_KEY
             ? 'latency'
@@ -2013,16 +2099,23 @@
       ];
 
       if (!availableSortKeys.includes(sortState.key)) {
-        sortState.key = displayColumns[0] === AVG_LATENCY_COLUMN_KEY
+        const fallbackSortKey = (showGroupStatColumns ? visibleGroupStatColumns[0]?.key : null) || displayColumns[0] || firstColSortKey || 'model';
+        sortState.key = fallbackSortKey === AVG_LATENCY_COLUMN_KEY
           ? 'latency'
-          : displayColumns[0] === MEDIAN_LATENCY_COLUMN_KEY
+          : fallbackSortKey === MEDIAN_LATENCY_COLUMN_KEY
             ? 'median-latency'
-            : displayColumns[0];
+            : fallbackSortKey;
         sortState.dir = getChartSortDirection(sortState.key);
         state.chartSortState[cardId] = sortState;
       }
 
       // Build header row with sortable columns
+      const groupStatHeaderCells = visibleGroupStatColumns.map(({ key, label }) => {
+        const isActive = sortState.key === key;
+        const arrow = isActive ? (sortState.dir === 'desc' ? '\u2193' : '\u2191') : '';
+        const title = `${label} for grouped runs`;
+        return `<span class="chart-col-header chart-group-stat-header sortable-col ${isActive ? 'active' : ''}" data-card="${cardId}" data-sort="${key}" title="${title}"><span class="chart-col-header-label">${label}</span>${arrow ? `<span class="chart-col-sort">${arrow}</span>` : ''}</span>`;
+      }).join('');
       const headerCells = displayColumns.map(column => {
         if (column === AVG_LATENCY_COLUMN_KEY) {
           const isActive = sortState.key === 'latency';
@@ -2196,6 +2289,113 @@
         };
       }
 
+      function isChartGroupMetricBoolean(runs, metricName) {
+        if (!metricName) return false;
+        let count = 0;
+        let allBinary = true;
+        for (const run of runs || []) {
+          const value = run.metric_averages?.[metricName];
+          if (value === undefined || value === null || isNaN(Number(value))) continue;
+          count++;
+          const numeric = Number(value);
+          if (Math.abs(numeric) > 0.0001 && Math.abs(numeric - 1) > 0.0001) {
+            allBinary = false;
+            break;
+          }
+        }
+        return count > 0 && allBinary;
+      }
+
+      function getChartGroupMetricCacheKey(runs, metricName, threshold) {
+        const paths = (runs || []).map(run => run.file_path).filter(Boolean).sort();
+        return [cardId, metricName, String(threshold), ...paths].join('||');
+      }
+
+      function getChartGroupMetricThreshold(runs, metricName) {
+        return isChartGroupMetricBoolean(runs, metricName) ? 0.9999 : 0.8;
+      }
+
+      function scheduleChartGroupMetricStats(runs, metricName, threshold, isBoolean) {
+        if (!metricName || !Array.isArray(runs) || runs.length === 0) return null;
+        if (!state.chartGroupMetricStats) state.chartGroupMetricStats = {};
+        const cacheKey = getChartGroupMetricCacheKey(runs, metricName, threshold);
+        const cached = state.chartGroupMetricStats[cacheKey];
+        if (cached) return cached;
+
+        state.chartGroupMetricStats[cacheKey] = { status: 'loading', K: runs.length };
+        const paths = Array.from(new Set(runs.map(run => run.file_path).filter(Boolean)));
+        fetchModelRunsData(paths).then((payload) => {
+          const detailedRuns = payload && Array.isArray(payload.runs) ? payload.runs : [];
+          const stats = calculateModelStatsFromItems(detailedRuns, metricName, threshold, isBoolean);
+          state.chartGroupMetricStats[cacheKey] = { status: 'ready', K: stats.K || runs.length, stats };
+          if (state.currentView === 'charts') renderChartsView();
+        }).catch(() => {
+          state.chartGroupMetricStats[cacheKey] = { status: 'error', K: runs.length };
+          if (state.currentView === 'charts') renderChartsView();
+        });
+        return state.chartGroupMetricStats[cacheKey];
+      }
+
+      function renderEmptyGroupStatCells() {
+        if (!showGroupStatColumns || visibleGroupStatColumns.length === 0) return '';
+        return visibleGroupStatColumns
+          .map(() => '<div class="chart-metric-cell chart-group-stat-cell chart-group-stat-cell-empty"><span class="metric-na">\u2014</span></div>')
+          .join('');
+      }
+
+      function renderGroupStatBar(value, label, title, modelIdx) {
+        if (value === undefined || value === null) {
+          return `<div class="chart-metric-cell chart-group-stat-cell" title="${title}"><span class="metric-na">\u2014</span></div>`;
+        }
+        return renderMiniBarCell({
+          value,
+          label,
+          ratio: value,
+          modelIdx,
+          isAggregate: true,
+          cellClass: 'chart-metric-cell chart-group-stat-cell',
+          title,
+        });
+      }
+
+      function renderChartGroupStatCells(runs, modelIdx = null) {
+        if (!showGroupStatColumns) return '';
+        const emptyCells = renderEmptyGroupStatCells();
+        if (!groupMetricName || !Array.isArray(runs) || runs.length === 0) return emptyCells;
+        const isBoolean = isChartGroupMetricBoolean(runs, groupMetricName);
+        const threshold = getChartGroupMetricThreshold(runs, groupMetricName);
+        const entry = scheduleChartGroupMetricStats(runs, groupMetricName, threshold, isBoolean);
+        const K = entry?.K || runs.length;
+        if (!entry || entry.status === 'loading') {
+          const loadingTitles = {
+            [GROUP_PASS_AT_K_COLUMN_KEY]: `Loading Pass@${K} for ${escapeHtml(groupMetricName)}`,
+            [GROUP_CONSISTENCY_COLUMN_KEY]: `Loading consistency for ${escapeHtml(groupMetricName)}`,
+            [GROUP_RELIABILITY_COLUMN_KEY]: `Loading reliability for ${escapeHtml(groupMetricName)}`,
+          };
+          return visibleGroupStatColumns
+            .map(col => `<div class="chart-metric-cell chart-group-stat-cell is-loading" title="${loadingTitles[col.key]}"><span class="metric-na">\u2014</span></div>`)
+            .join('');
+        }
+        if (entry.status !== 'ready' || !entry.stats) {
+          return emptyCells;
+        }
+        const stats = entry.stats;
+        const consistencyText = stats.consistency !== null ? formatPercent(stats.consistency) : 'NA';
+        const reliabilityText = stats.reliability !== null ? formatPercent(stats.reliability) : 'NA';
+        return visibleGroupStatColumns.map(col => {
+          if (col.key === GROUP_PASS_AT_K_COLUMN_KEY) {
+            return renderGroupStatBar(stats.passAtK, formatPercent(stats.passAtK), `Pass@${K} ${formatPercent(stats.passAtK)}`, modelIdx);
+          }
+          if (col.key === GROUP_CONSISTENCY_COLUMN_KEY) {
+            return renderGroupStatBar(stats.consistency, consistencyText, `Consistency ${consistencyText}`, modelIdx);
+          }
+          if (col.key === GROUP_RELIABILITY_COLUMN_KEY) {
+            return renderGroupStatBar(stats.reliability, reliabilityText, `Reliability ${reliabilityText}`, modelIdx);
+          }
+          return '';
+        }).join('');
+      }
+
       function safeChartGroupId(value) {
         return String(value || 'empty').replace(/[^a-zA-Z0-9_-]/g, '_');
       }
@@ -2236,8 +2436,9 @@
       }
 
       // --- Helper: render a group header row ---
-      function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null, level = 1) {
+      function renderGroupHeader(label, runCount, agg, groupId, groupModelIdx = null, level = 1, groupRuns = null) {
         const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
+        const groupStatCells = isCollapsed ? renderChartGroupStatCells(groupRuns || [], groupModelIdx) : '';
         const dataCells = displayColumns.map(column => {
           if (column === AVG_LATENCY_COLUMN_KEY) {
             return renderLatencyValueCell(agg.avgLatency, avgLatencyScaleMax, groupModelIdx, true);
@@ -2252,12 +2453,19 @@
         }).join('');
         return `
           <div class="chart-table-group-header ${level > 1 ? 'chart-table-group-header-nested' : ''}" data-group-id="${groupId}">
-            <span class="chart-group-first-col">
-              <span class="chart-group-toggle">${isCollapsed ? '\u25b6' : '\u25bc'}</span>
-              <span class="chart-group-label">${label}</span>
-              <span class="chart-group-count">${runCount} run${runCount !== 1 ? 's' : ''}</span>
-            </span>
-            ${dataCells}
+            <div class="chart-table-group-main">
+              <span class="chart-group-first-col">
+                <span class="chart-group-toggle">${isCollapsed ? '\u25b6' : '\u25bc'}</span>
+                <span class="chart-group-copy">
+                  <span class="chart-group-title-line">
+                    <span class="chart-group-label">${label}</span>
+                    <span class="chart-group-count">${runCount} run${runCount !== 1 ? 's' : ''}</span>
+                  </span>
+                </span>
+              </span>
+              ${groupStatCells}
+              ${dataCells}
+            </div>
           </div>
         `;
       }
@@ -2284,7 +2492,7 @@
           const groupId = `vg_${cardId}_${safeChartGroupId(g.key)}`;
           const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
           if (!isCollapsed) hasExpandedGroups = true;
-          rowsHtml += renderGroupHeader(escapeHtml(g.label), g.runs.length, g.agg, groupId);
+          rowsHtml += renderGroupHeader(escapeHtml(g.label), g.runs.length, g.agg, groupId, null, 1, g.runs);
           rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${groupId}">`;
           rowsHtml += g.runs.map(renderRunRow).join('');
           rowsHtml += `</div>`;
@@ -2304,7 +2512,7 @@
           const colorDot = `<span class="model-color-dot" style="background:${CHART_COLORS[modelIdx]}"></span>`;
           const isCollapsed = isChartGroupCollapsed(cardId, groupMode, groupId);
           if (!isCollapsed) hasExpandedGroups = true;
-          rowsHtml += renderGroupHeader(`${colorDot}${g.label}`, g.runs.length, g.agg, groupId, modelIdx);
+          rowsHtml += renderGroupHeader(`${colorDot}${g.label}`, g.runs.length, g.agg, groupId, modelIdx, 1, g.runs);
           rowsHtml += `<div class="chart-table-group-body${isCollapsed ? ' collapsed' : ''}" data-group-id="${groupId}">`;
           rowsHtml += g.runs.map(renderRunRow).join('');
           rowsHtml += `</div>`;
@@ -2332,7 +2540,7 @@
             : `${primaryColorDot}${primary.label}`;
           const primaryCollapsed = isChartGroupCollapsed(cardId, groupMode, primaryId);
           if (!primaryCollapsed) hasExpandedGroups = true;
-          rowsHtml += renderGroupHeader(primaryLabel, primary.runs.length, primary.agg, primaryId, primaryModelIdx);
+          rowsHtml += renderGroupHeader(primaryLabel, primary.runs.length, primary.agg, primaryId, primaryModelIdx, 1, primary.runs);
           rowsHtml += `<div class="chart-table-group-body chart-table-group-body-nested${primaryCollapsed ? ' collapsed' : ''}" data-group-id="${primaryId}">`;
 
           const sortedSecondaryGroups = groupRunsBy(primary.runs, secondaryGrouping).map((g) => {
@@ -2355,7 +2563,7 @@
               : `${secondaryColorDot}${secondary.label}`;
             const secondaryCollapsed = isChartGroupCollapsed(cardId, groupMode, secondaryId);
             if (!secondaryCollapsed) hasExpandedGroups = true;
-            rowsHtml += renderGroupHeader(secondaryLabel, secondary.runs.length, secondary.agg, secondaryId, secondaryModelIdx, 2);
+            rowsHtml += renderGroupHeader(secondaryLabel, secondary.runs.length, secondary.agg, secondaryId, secondaryModelIdx, 2, secondary.runs);
             rowsHtml += `<div class="chart-table-group-body chart-table-group-body-leaf${secondaryCollapsed ? ' collapsed' : ''}" data-group-id="${secondaryId}">`;
             rowsHtml += secondary.runs.map(renderRunRow).join('');
             rowsHtml += `</div>`;
@@ -2365,7 +2573,6 @@
         }
       }
 
-      const isGrouped = groupMode !== 'run';
       const expandCollapseBtn = isGrouped
         ? `<button class="chart-expand-collapse-btn" data-card="${cardId}">${hasExpandedGroups ? 'Collapse all' : 'Expand all'}</button>`
         : '';
@@ -2384,6 +2591,7 @@
       const thenVersionTitle = !hasVersions ? 'No version data available' : (primaryGroup === 'version' ? 'Already grouped by version' : '');
       const thenModelAttrs = thenModelDisabled ? `disabled title="${thenModelTitle}"` : '';
       const thenVersionAttrs = thenVersionDisabled ? `disabled title="${thenVersionTitle}"` : '';
+      const firstColDisplayLabel = isGrouped && hasExpandedGroups ? `${firstColLabel} / Run` : firstColLabel;
 
       const controlsHtml = `
         <div class="chart-table-toolbar">
@@ -2415,11 +2623,11 @@
         <span class="chart-col-header-run">
           <span class="chart-first-col-header-wrap">
             ${firstColSortKey
-              ? `<button class="chart-first-col-sort sortable-col ${sortState.key === firstColSortKey ? 'active' : ''}" type="button" data-card="${cardId}" data-sort="${firstColSortKey}" title="Sort by ${firstColLabel.toLowerCase()}">
-                  <span class="chart-col-header-label">${firstColLabel}</span>
+              ? `<button class="chart-first-col-sort sortable-col ${sortState.key === firstColSortKey ? 'active' : ''}" type="button" data-card="${cardId}" data-sort="${firstColSortKey}" title="Sort by ${firstColDisplayLabel.toLowerCase()}">
+                  <span class="chart-col-header-label">${firstColDisplayLabel}</span>
                   ${sortState.key === firstColSortKey ? `<span class="chart-col-sort">${sortState.dir === 'desc' ? '\u2193' : '\u2191'}</span>` : ''}
                 </button>`
-              : `<span class="chart-first-col-title">${firstColLabel}</span>`}
+              : `<span class="chart-first-col-title">${firstColDisplayLabel}</span>`}
             <button class="chart-col-resizer" type="button" title="Drag to resize first column. Double-click to reset width" aria-label="Resize first column"></button>
           </span>
         </span>
@@ -2429,9 +2637,10 @@
         <div class="chart-table-shell">
           ${controlsHtml}
           <div class="chart-table-scroll">
-            <div class="chart-table" data-card-id="${cardId}">
+            <div class="chart-table ${isGrouped ? 'chart-table-grouped' : ''}" data-card-id="${cardId}">
               <div class="chart-table-header">
                 ${firstColHtml}
+                ${showGroupStatColumns ? groupStatHeaderCells : ''}
                 ${headerCells}
               </div>
               <div class="chart-table-body">
@@ -2510,6 +2719,8 @@
           state.chartGroupExpansion = state.chartGroupExpansion || {};
           state.chartGroupExpansion[cardId] = { mode, expanded: {} };
         }
+        const metricSourceRuns = state.filteredRuns.length > 0 ? state.filteredRuns : state.flatRuns;
+        populateMetricVisibility(getAvailableMetricsForRuns(metricSourceRuns), metricSourceRuns);
         renderChartsView();
       });
     });
@@ -2520,18 +2731,11 @@
         const groupId = header.dataset.groupId;
         const card = header.closest('.chart-table')?.dataset.cardId;
         const body = gridEl.querySelector(`.chart-table-group-body[data-group-id="${groupId}"]`);
-        const toggle = header.querySelector('.chart-group-toggle');
         if (body && card) {
-          const isCollapsed = body.classList.toggle('collapsed');
           const mode = state.chartGroupMode?.[card] || 'run';
-          setChartGroupCollapsed(card, mode, groupId, isCollapsed);
-          if (toggle) toggle.textContent = isCollapsed ? '\u25b6' : '\u25bc';
-          const expandBtn = header.closest('.chart-card')?.querySelector('.chart-expand-collapse-btn');
-          if (expandBtn) {
-            const bodies = header.closest('.chart-card').querySelectorAll('.chart-table-group-body');
-            const anyExpanded = [...bodies].some(b => !b.classList.contains('collapsed'));
-            expandBtn.textContent = anyExpanded ? 'Collapse all' : 'Expand all';
-          }
+          const isCollapsed = body.classList.contains('collapsed');
+          setChartGroupCollapsed(card, mode, groupId, !isCollapsed);
+          render();
         }
       });
     });
@@ -2548,17 +2752,12 @@
         bodies.forEach(b => {
           const groupId = b.dataset.groupId;
           if (anyExpanded) {
-            b.classList.add('collapsed');
             if (groupId) setChartGroupCollapsed(cardId, mode, groupId, true);
           } else {
-            b.classList.remove('collapsed');
             if (groupId) setChartGroupCollapsed(cardId, mode, groupId, false);
           }
         });
-        card.querySelectorAll('.chart-group-toggle').forEach(t => {
-          t.textContent = anyExpanded ? '\u25b6' : '\u25bc';
-        });
-        btn.textContent = anyExpanded ? 'Expand all' : 'Collapse all';
+        render();
       });
     });
 
@@ -3595,6 +3794,9 @@
 
     empty.style.display = 'none';
 
+    // Recompute chart data before rendering display controls; grouped column visibility is chart-mode dependent.
+    state.chartData = computeChartData(state.filteredRuns);
+
     const metricSourceRuns = state.filteredRuns.length > 0 ? state.filteredRuns : state.flatRuns;
     const availableMetrics = getAvailableMetricsForRuns(metricSourceRuns);
     populateMetricVisibility(availableMetrics, metricSourceRuns);
@@ -3621,9 +3823,6 @@
     if (modelsView) modelsView.style.display = state.currentView === 'models' ? 'block' : 'none';
     const tablePagination = el('table-pagination');
     if (tablePagination) tablePagination.style.display = state.currentView === 'table' ? 'flex' : 'none';
-
-    // Recompute chart data based on filtered runs
-    state.chartData = computeChartData(state.filteredRuns);
 
     // Render current view
     switch (state.currentView) {
