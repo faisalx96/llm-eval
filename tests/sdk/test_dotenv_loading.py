@@ -26,37 +26,44 @@ def test_load_cwd_dotenv_only_reads_exact_cwd_file(tmp_path, monkeypatch):
     assert os.getenv("DOTENV_SCOPE") is None
 
 
-def test_evaluator_loads_langfuse_credentials_from_cwd_dotenv(tmp_path, monkeypatch):
+def test_evaluator_loads_cwd_dotenv_without_langfuse_client(tmp_path, monkeypatch):
+    """Evaluator.__init__ loads the caller's cwd .env into the environment.
+
+    Langfuse client initialization was removed (qym uses platform/OTel
+    tracing), so no client is created from credentials — but the dotenv
+    loading side effect must still happen for provider keys etc.
+    """
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.chdir(workspace)
     (workspace / ".env").write_text(
-        "LANGFUSE_PUBLIC_KEY=pk-test\nLANGFUSE_SECRET_KEY=sk-test\n",
+        "QYM_TEST_DOTENV_SENTINEL=from-cwd\n",
         encoding="utf-8",
     )
 
-    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
-    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("QYM_TEST_DOTENV_SENTINEL", raising=False)
 
     csv_path = workspace / "qa.csv"
     csv_path.write_text("q,a\nhello,world\n", encoding="utf-8")
     dataset = CsvDataset(csv_path, input_col="q", expected_col="a")
-    sentinel_client = object()
 
-    with patch("qym.core.evaluator.auto_detect_task"), patch.object(
-        Evaluator, "_init_langfuse", autospec=True, return_value=sentinel_client
-    ) as init_langfuse:
-        evaluator = Evaluator(
-            task=lambda x: x,
-            dataset=dataset,
-            metrics=[],
-            config={"run_name": "dotenv-langfuse", "otel_enabled": False},
-            langfuse_client=None,
-        )
+    try:
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=lambda x: x,
+                dataset=dataset,
+                metrics=[],
+                config={"run_name": "dotenv-load", "otel_enabled": False},
+                langfuse_client=None,
+            )
 
-    assert evaluator.client is sentinel_client
-    assert evaluator.langfuse_enabled is True
-    init_langfuse.assert_called_once()
+        assert os.getenv("QYM_TEST_DOTENV_SENTINEL") == "from-cwd"
+        assert evaluator.client is None
+        assert evaluator.langfuse_enabled is False
+    finally:
+        # load_cwd_dotenv mutates os.environ directly; monkeypatch cannot
+        # restore a key it never saw, so clean up explicitly.
+        os.environ.pop("QYM_TEST_DOTENV_SENTINEL", None)
 
 
 def test_langfuse_base_url_alias_is_used_for_host(tmp_path, monkeypatch):

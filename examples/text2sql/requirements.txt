@@ -1,3 +1,4 @@
-# Additional dependencies for text-to-SQL example
-datasets>=2.14.0  # For loading sql-create-context from HuggingFace
-sqlglot>=20.0.0   # For SQL parsing (optional, fallback available)
+# Dependencies for the text-to-SQL example (on top of the qym SDK).
+datasets>=2.14.0  # upload_dataset.py: loads sql-create-context from HuggingFace
+openai>=1.0.0     # task.py: OpenRouter (OpenAI-compatible) client
+sqlglot>=20.0.0   # metrics.py: SQL parsing (optional, fallback available)

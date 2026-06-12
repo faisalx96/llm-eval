@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import ANY, MagicMock, patch, AsyncMock
 import asyncio
 from qym.core.dashboard import RunDashboard
 from qym.core.evaluator import (
@@ -34,7 +34,9 @@ class TestEvaluator:
             )
 
             assert evaluator.dataset == mock_dataset
-            assert evaluator.client == mock_langfuse
+            # langfuse_client is deprecated and ignored; qym uses
+            # platform/OpenTelemetry tracing, so no client is stored.
+            assert evaluator.client is None
             # Evaluator appends a timestamp suffix for uniqueness
             assert evaluator.run_name.startswith("test-run")
             assert "exact_match" in evaluator.metrics
@@ -70,7 +72,7 @@ class TestEvaluator:
             assert result["success"] is True
             assert result["output"] == "test_output"
             tracker.start_item.assert_called_once_with(0)
-            tracker.complete_item.assert_called_once_with(0)
+            tracker.complete_item.assert_called_once_with(0, elapsed_time=ANY)
 
     @pytest.mark.asyncio
     async def test_task_output_envelope_passes_metadata_to_metric_and_platform(
@@ -414,6 +416,9 @@ class TestEvaluator:
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
 
+        # Give the mock a callable name so the advisory message includes it.
+        mock_task.__name__ = "mock_task"
+
         fake_adapter = MagicMock()
         fake_adapter.execution_mode.return_value = "sync-threadpool"
         fake_adapter._warning_callback = None
@@ -513,6 +518,9 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+        # Give the mock a callable name so the registry is keyed by it.
+        mock_task.__name__ = "mock_task"
 
         fake_adapter = MagicMock()
         fake_adapter.execution_mode.return_value = "sync-threadpool"
@@ -688,6 +696,9 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        # arun() writes checkpoint files under cwd qym_results/ even with
+        # auto_save=False; keep them inside the test tmp dir.
+        monkeypatch.chdir(tmp_path)
 
         class FakeHandle:
             run_id = "run-123"
@@ -766,6 +777,7 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
 
         class FakeHandle:
             run_id = "run-stop-before"
@@ -846,6 +858,7 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
 
         stop = False
         calls = 0
@@ -884,6 +897,7 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
 
         class FakeHandle:
             run_id = "platform-run-1"
@@ -947,6 +961,7 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
 
         class SlowPlatformClient:
             def __init__(self, platform_url=None, api_key=None):
@@ -996,6 +1011,7 @@ class TestEvaluator:
 
         monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
         monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
 
         def exact(output, expected):
             return 1.0 if output == expected else 0.0

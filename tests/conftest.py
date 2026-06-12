@@ -1,27 +1,9 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+import importlib.util
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
-# Mock external heavy dependencies before they are imported by app code
-mock_rich = MagicMock()
-mock_rich.__path__ = []  # Mark as a package
-sys.modules["rich"] = mock_rich
-sys.modules["rich.console"] = MagicMock()
-sys.modules["rich.live"] = MagicMock()
-sys.modules["rich.panel"] = MagicMock()
-sys.modules["rich.progress"] = MagicMock()
-sys.modules["rich.table"] = MagicMock()
-sys.modules["rich.align"] = MagicMock()
-sys.modules["rich.text"] = MagicMock()
-sys.modules["rich.layout"] = MagicMock()
-sys.modules["rich.columns"] = MagicMock()
-sys.modules["rich.rule"] = MagicMock()
-sys.modules["rich.box"] = MagicMock()
-sys.modules["rich.style"] = MagicMock()
-sys.modules["rich.theme"] = MagicMock()
-sys.modules["rich.progress_bar"] = MagicMock()
-sys.modules["rich.spinner"] = MagicMock()
+import pytest
 
 repo_root = Path(__file__).resolve().parents[1]
 sdk_root = repo_root / "packages" / "sdk"
@@ -30,13 +12,58 @@ for p in (str(sdk_root), str(platform_root), str(repo_root)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-mock_langfuse_pkg = MagicMock()
-mock_langfuse_pkg.__path__ = []
-sys.modules["langfuse"] = mock_langfuse_pkg
+# ── Environment isolation ──────────────────────────────────────────────
+# The repo root contains a developer .env with real values (postgres URL,
+# API key, oidc auth mode, ...). PlatformSettings loads cwd .env via
+# pydantic-settings (env_file=".env"), and the SDK reads QYM_API_KEY /
+# QYM_BASE_URL straight from the process environment. Tests must never
+# depend on either, so pin/scrub everything auth- and network-relevant
+# before collection (some modules construct settings at import time).
+# Individual tests that need different values override via monkeypatch.
+_env_patch = pytest.MonkeyPatch()
 
-# Mock other optional heavy deps that may not be installed in test env
-for _mod in ("arabic_reshaper", "bidi", "bidi.algorithm", "openpyxl"):
-    if _mod not in sys.modules:
+
+def pytest_configure(config):
+    # Pinned: real env vars take precedence over .env in pydantic-settings.
+    _env_patch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
+    _env_patch.setenv("QYM_ENVIRONMENT", "dev")
+    _env_patch.setenv("QYM_AUTH_MODE", "none")
+    _env_patch.setenv("QYM_AUTH_LOCAL_ENABLED", "false")
+    # Scrubbed: a leaked QYM_API_KEY/QYM_BASE_URL makes SDK tests attempt
+    # real HTTP against a running dev platform. Keys that exist in the repo
+    # .env are pinned to empty string rather than deleted: Evaluator.__init__
+    # calls load_cwd_dotenv(override=False), which re-injects deleted keys
+    # from .env but skips keys that are present (even when empty). Empty is
+    # falsy in every SDK lookup (`explicit or os.getenv(...)`), so it behaves
+    # as unset.
+    for _var in ("QYM_API_KEY", "QYM_PLATFORM_URL"):
+        _env_patch.setenv(_var, "")
+    # Not in .env, so deletion is safe and keeps PlatformSettings defaults.
+    _env_patch.delenv("QYM_BASE_URL", raising=False)
+
+
+def pytest_unconfigure(config):
+    _env_patch.undo()
+
+# Optional heavy dependencies: use the real package when installed; register a
+# mock only when it's genuinely missing. Mocking installed packages corrupts
+# unrelated imports (e.g. a mocked `rich` breaks `httpx`).
+for _mod in (
+    "rich",
+    "langfuse",
+    "arabic_reshaper",
+    "bidi",
+    "bidi.algorithm",
+    "openai",
+    "openpyxl",
+):
+    if _mod in sys.modules:
+        continue
+    try:
+        _found = importlib.util.find_spec(_mod) is not None
+    except (ImportError, ValueError):
+        _found = False
+    if not _found:
         _m = MagicMock()
         _m.__path__ = []
         sys.modules[_mod] = _m

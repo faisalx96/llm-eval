@@ -2,19 +2,19 @@
 
 import json
 import os
-import sys
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Ensure openai mock is available for the judge imports
-_mock_openai = MagicMock()
-_mock_openai.__path__ = []
-_mock_openai.AsyncOpenAI = MagicMock  # placeholder — overridden per test
-sys.modules.setdefault("openai", _mock_openai)
+# `openai` is mocked by tests/conftest.py only when genuinely missing, so
+# `patch("openai.AsyncOpenAI", ...)` below works in every environment.
 
 from qym.metrics.result import MetricResult
 from qym.metrics.judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
 from qym.metrics.judges.base import snap_to_rail, create_judge
+
+# Judge config is mandatory (no built-in defaults); the client is mocked so
+# these values are never used for real calls.
+_JUDGE_KW = {"judge_model": "test-judge-model", "judge_api_key": "test-judge-key"}
 
 
 # ---------------------------------------------------------------------------
@@ -59,12 +59,15 @@ class TestSnapToRail:
 
 class TestJudgeConfig:
     def test_defaults(self):
+        """No built-in model default — judge configuration is mandatory."""
         with patch.dict(os.environ, {}, clear=True):
             cfg = JudgeConfig()
-            assert cfg.model == "gpt-4o-mini"
+            assert cfg.model == ""
             assert cfg.base_url is None
             assert cfg.api_key is None
             assert cfg.temperature == 0.0
+            with pytest.raises(RuntimeError, match="QYM_JUDGE_MODEL"):
+                cfg.validate()
 
     def test_env_vars(self):
         with patch.dict(os.environ, {
@@ -132,11 +135,12 @@ class TestCreateJudge:
         content = json.dumps({"verdict": "faithful", "explanation": "The response is grounded."})
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="Is this faithful?\n\n{output}",
                 choices={"faithful": 1.0, "unfaithful": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge("test output", "expected", {"question": "test?"})
 
@@ -150,11 +154,12 @@ class TestCreateJudge:
     async def test_json_parse_failure_snaps_to_rail(self):
         mock_client = _make_mock_client("The answer is unfaithful because...")
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
                 choices={"faithful": 1.0, "unfaithful": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge("test output")
 
@@ -165,11 +170,12 @@ class TestCreateJudge:
     async def test_unparsable_response(self):
         mock_client = _make_mock_client("I cannot evaluate this")
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
                 choices={"faithful": 1.0, "unfaithful": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge("test output")
 
@@ -183,11 +189,12 @@ class TestCreateJudge:
         mock_client.chat.completions = MagicMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception("timeout"))
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
                 choices={"good": 1.0, "bad": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge("test output")
 
@@ -200,11 +207,12 @@ class TestCreateJudge:
         content = json.dumps({"verdict": "relevant", "explanation": "On topic."})
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="Question: {question}\nContext: {context}\nResponse: {output}",
                 choices={"relevant": 1.0, "irrelevant": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge(
                 "test output",
@@ -225,11 +233,12 @@ class TestCreateJudge:
         content = json.dumps({"verdict": "Faithful", "explanation": "Case mismatch."})
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch("openai.AsyncOpenAI", new=lambda **kw: mock_client):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
                 choices={"faithful": 1.0, "unfaithful": 0.0},
+                **_JUDGE_KW,
             )
             result = await judge("test output")
 
@@ -246,13 +255,14 @@ class TestCreateJudge:
             captured_kwargs.update(kw)
             return mock_client
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": mock_constructor}):
+        with patch("openai.AsyncOpenAI", new=mock_constructor):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
                 choices={"good": 1.0, "bad": 0.0},
                 judge_model="custom-model",
                 judge_base_url="http://custom:8080/v1",
+                judge_api_key="custom-key",
             )
             result = await judge("test output")
 

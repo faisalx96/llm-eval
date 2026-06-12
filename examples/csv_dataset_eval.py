@@ -1,11 +1,29 @@
+"""Evaluate a task against a local CSV dataset.
+
+Demonstrates:
+- CsvDataset with custom column mapping and metadata columns
+- A custom metric returning either a float or a {"score", "metadata"} dict
+- Smart argument resolution (model_name / trace_id are injected by qym)
+
+Run it (no API keys required):
+
+    python examples/csv_dataset_eval.py
+
+Set QYM_API_KEY / QYM_BASE_URL to stream live results to the qym platform.
+"""
+
 from __future__ import annotations
+
+from pathlib import Path
 
 from qym import CsvDataset, Evaluator
 
+DATASET_PATH = Path(__file__).resolve().parent / "datasets" / "qa.csv"
+
 
 def my_task(question, model_name=None, trace_id=None):
-    # Minimal example task: echo.
-    # If Langfuse credentials are configured, trace_id will be populated.
+    # Minimal example task: echo. model_name and trace_id are filled in by
+    # qym's argument resolution when available.
     if isinstance(question, dict):
         q = question.get("question", question)
     else:
@@ -21,7 +39,7 @@ def exact_match(output, expected):
 
 if __name__ == "__main__":
     dataset = CsvDataset(
-        "examples/datasets/qa.csv",
+        DATASET_PATH,
         input_col="question",
         expected_col="answer",
         metadata_cols=["category", "difficulty"],
@@ -35,6 +53,4 @@ if __name__ == "__main__":
         model="demo-model",
     )
 
-    evaluator.run()
-
-
+    evaluator.run(auto_save=False)

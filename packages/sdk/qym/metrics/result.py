@@ -36,9 +36,19 @@ class MetricResult:
 
         if isinstance(raw, dict):
             if "error" in raw:
+                # Audit EI-1: keep score=0.0 for backward compatibility of
+                # arithmetic, but PRESERVE the error marker (plus any sibling
+                # metadata) in metadata so downstream exclusion logic
+                # (qym.core.results.is_errored_metric_value) recognizes this
+                # result as errored instead of averaging it in as 0.0.
+                md = raw.get("metadata")
+                md = dict(md) if isinstance(md, dict) else {}
+                md["error"] = raw["error"]
                 return MetricResult(
                     score=0.0,
-                    metadata={"error": raw["error"]},
+                    label=raw.get("label"),
+                    explanation=raw.get("explanation"),
+                    metadata=md,
                 )
 
             score_val = raw.get("score")
@@ -61,6 +71,19 @@ class MetricResult:
             )
 
         return MetricResult(score=0.0, metadata={"raw": raw})
+
+    @property
+    def is_errored(self) -> bool:
+        """True when this result represents a failed metric evaluation.
+
+        Shared convention (audit EI-1): errored iff metadata carries an
+        ``'error'`` key or the score is ``None``. Errored results keep
+        ``score=0.0`` for arithmetic backward compatibility but must be
+        EXCLUDED from aggregation by callers.
+        """
+        if isinstance(self.metadata, dict) and "error" in self.metadata:
+            return True
+        return self.score is None
 
     def to_legacy_dict(self) -> Dict[str, Any]:
         """Convert to {"score": float, "metadata": dict} for backward compat."""

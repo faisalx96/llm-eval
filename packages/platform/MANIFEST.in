@@ -1,0 +1,16 @@
+# Package data pulled into sdists/wheels via [tool.setuptools] include-package-data.
+#
+# _static carries every built UI surface:
+#   - _static/app        → SPA build (index.html + hashed assets/ + export/), gitignored
+#   - _static/dashboard  → legacy dashboard HTML/JS/CSS
+#   - _static/ui         → legacy per-run UI
+#   - _static/docs       → built docs site (when present)
+# migrations carries alembic.ini, env.py, script.py.mako and versions/.
+# (qym_platform/product_eval_presets is a regular package of .py files and is
+# packaged automatically — no graft needed.)
+graft qym_platform/_static
+graft qym_platform/migrations
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store

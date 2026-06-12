@@ -43,6 +43,8 @@ Use the SDK for application code and services. Use the CLI for automation bounda
 | `qym run failed` | Fetch failed items for a run. | Triage and repair. |
 | `qym run compare` | Compare two platform runs. | Regression analysis. |
 | `qym run tasks` | List known platform task names. | Discovery and filtering. |
+| `qym dataset list/get/upload/download` | Manage platform datasets. | Shared dataset lifecycle. |
+| `qym dataset version ...` / `alias set` / `item ...` | Manage dataset versions, aliases, and items. | Versioned dataset governance. |
 | `qym metric list` | List available metrics. | Metric discovery. |
 | `qym analyze run` | Run AI-assisted analysis for a run. | Review workflows. |
 | `qym analyze summary` | Fetch analysis summary. | Reporting and dashboards. |
@@ -59,8 +61,10 @@ The generated [CLI Reference](/cli/reference) is the exhaustive command tree. Th
 |------|----------|---------|
 | `--task-file` | Yes for single run | Python file containing the task function. |
 | `--task-function` | Yes for single run | Function name inside the task file. |
-| `--dataset` | Exactly one of dataset inputs | Langfuse dataset name. |
-| `--dataset-csv` | Exactly one of dataset inputs | Local CSV path. |
+| `--dataset` | Exactly one of dataset inputs | qym platform dataset name or local CSV/JSONL path. |
+| `--dataset-version` | Optional with `--dataset` | Pin a platform dataset version. |
+| `--dataset-alias` | Optional with `--dataset` | Follow a platform dataset alias such as `production`. |
+| `--dataset-file`, `--dataset-csv` | Exactly one of dataset inputs | Local CSV/JSONL path. |
 | `--csv-input-col` | CSV only | CSV input column; defaults to `input`. |
 | `--csv-expected-col` | CSV only | CSV expected output column; defaults to `expected_output`; empty disables expected output. |
 | `--csv-id-col` | CSV only | Stable item ID column. |
@@ -89,7 +93,8 @@ The CLI builds these SDK objects internally:
 
 ```text
 --dataset-csv + CSV flags -> CsvDataset(...)
---dataset                  -> Langfuse dataset name
+--dataset                  -> platform dataset name (or local file path)
+--dataset-version/--dataset-alias -> config.dataset_version / config.dataset_alias
 --metrics                  -> metrics=[...]
 --model                    -> Evaluator(model=...)
 --config                   -> EvaluatorConfig(...)
@@ -119,19 +124,19 @@ qym run create \
   --config '{"run_name":"support-rag-smoke","max_concurrency":4,"max_retries":1}'
 ```
 
-### Langfuse dataset run
+### Platform dataset run
 
 ```bash
-export LANGFUSE_PUBLIC_KEY=...
-export LANGFUSE_SECRET_KEY=...
-export LANGFUSE_HOST=https://cloud.langfuse.com
+export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=<platform-api-key>
 
 qym run create \
   --task-file eval_task.py \
   --task-function answer_question \
   --dataset support-smoke \
+  --dataset-alias production \
   --metrics exact_match \
-  --config '{"run_name":"langfuse-smoke"}'
+  --config '{"run_name":"platform-smoke"}'
 ```
 
 ### Platform streaming
@@ -172,11 +177,8 @@ qym run create \
 
 | Env var | CLI use |
 |---------|---------|
-| `QYM_BASE_URL` | Platform commands and streaming. |
+| `QYM_BASE_URL` | Platform commands, streaming, and platform dataset loading. |
 | `QYM_API_KEY` | Platform authentication. |
-| `LANGFUSE_PUBLIC_KEY` | Langfuse dataset loading. |
-| `LANGFUSE_SECRET_KEY` | Langfuse dataset loading. |
-| `LANGFUSE_HOST` | Langfuse host. |
 | `QYM_JUDGE_MODEL` | Judge metrics. |
 | `QYM_JUDGE_API_KEY` or `OPENAI_API_KEY` | Judge metric provider auth. |
 | `QYM_JUDGE_BASE_URL` or `OPENAI_BASE_URL` | OpenAI-compatible judge endpoint. |

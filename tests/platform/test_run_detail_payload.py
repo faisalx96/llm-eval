@@ -19,7 +19,7 @@ if "openai" not in sys.modules:
 
 from qym_platform.api.runs import _build_run_data
 from qym_platform.db.base import Base
-from qym_platform.db.models import OrgUnit, OrgUnitType, Run, RunItem, RunWorkflowStatus, User, UserRole
+from qym_platform.db.models import Project, Run, RunItem, RunWorkflowStatus, User, UserRole
 
 
 def test_build_run_data_includes_hero_fields():
@@ -33,16 +33,21 @@ def test_build_run_data_includes_hero_fields():
 
     try:
         with SessionLocal() as session:
-            team = OrgUnit(id="team-1", name="Platform", type=OrgUnitType.TEAM)
             owner = User(
                 id="user-1",
                 email="owner@example.com",
                 display_name="Owner User",
-                role=UserRole.EMPLOYEE,
-                team_unit_id=team.id,
+                role=UserRole.MEMBER,
+            )
+            project = Project(
+                id="project-1",
+                name="Platform",
+                slug="platform",
+                created_by_user_id=owner.id,
             )
             run = Run(
                 id="run-1",
+                project_id=project.id,
                 external_run_id="ext-run-1",
                 created_by_user_id=owner.id,
                 owner_user_id=owner.id,
@@ -65,7 +70,7 @@ def test_build_run_data_includes_hero_fields():
                 item_metadata={},
                 latency_ms=123.0,
             )
-            session.add_all([team, owner, run, item])
+            session.add_all([owner, project, run, item])
             session.commit()
 
             payload = _build_run_data(session, run)

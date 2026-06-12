@@ -459,7 +459,9 @@ def test_projects_and_me_include_project_summary_fields(client, session_factory)
     assert project["id"] == seed["project_one_id"]
     assert project["description"] == "Primary project"
     assert project["member_count"] == 2
-    assert project["run_count"] == 4
+    # _seed_project_world creates 5 live runs in project-one; the serializer
+    # counts non-soft-deleted runs.
+    assert project["run_count"] == 5
     assert project["role"] == "MANAGER"
 
     me_response = client.get("/v1/me", headers=_headers("manager@example.com"))
@@ -467,5 +469,5 @@ def test_projects_and_me_include_project_summary_fields(client, session_factory)
     me = me_response.json()
     assert me["projects"][0]["description"] == "Primary project"
     assert me["projects"][0]["member_count"] == 2
-    assert me["projects"][0]["run_count"] == 4
+    assert me["projects"][0]["run_count"] == 5
     assert me["default_project"]["slug"] == "project-one"

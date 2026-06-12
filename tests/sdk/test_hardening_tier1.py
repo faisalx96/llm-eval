@@ -39,33 +39,7 @@ async def test_t11_judge_timeout_cancels_hung_create_call():
     by ``asyncio.wait_for`` within ``cfg.timeout`` on each attempt, retried
     with exponential backoff, and raise ``asyncio.TimeoutError`` after all
     attempts are exhausted. Regression for T1.1."""
-    # Need a real(ish) openai module so _call_with_retry's imports work.
-    # Build a tiny shim that exposes the classes the retry code checks against.
-    class _FakeOpenAIShim:
-        class RateLimitError(Exception):
-            pass
-
-        class APIConnectionError(Exception):
-            pass
-
-        class APITimeoutError(Exception):
-            pass
-
-        class APIStatusError(Exception):
-            pass
-
-        class AsyncOpenAI:  # never actually instantiated in this test
-            pass
-
-    shim = MagicMock()
-    shim.__path__ = []
-    shim.RateLimitError = _FakeOpenAIShim.RateLimitError
-    shim.APIConnectionError = _FakeOpenAIShim.APIConnectionError
-    shim.APITimeoutError = _FakeOpenAIShim.APITimeoutError
-    shim.APIStatusError = _FakeOpenAIShim.APIStatusError
-    shim.AsyncOpenAI = _FakeOpenAIShim.AsyncOpenAI
-    sys.modules.setdefault("openai", shim)
-
+    # _call_with_retry imports nothing from openai; the client is duck-typed.
     from qym.metrics.judges.base import _call_with_retry
 
     class FakeResp:
@@ -108,8 +82,6 @@ async def test_t11_judge_fast_path_returns_without_timeout_wrapper():
     """When the create() call resolves quickly, `_call_with_retry` should
     return the response without waiting for the timeout budget. Makes sure
     the wait_for wrapper doesn't introduce an artificial floor on latency."""
-    # Reuse the shim installed above
-    sys.modules.setdefault("openai", MagicMock())
     from qym.metrics.judges.base import _call_with_retry
 
     class FakeResp:
@@ -152,7 +124,9 @@ def _make_single_item_csv() -> str:
 
 
 @pytest.mark.asyncio
-async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score():
+async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
+    tmp_path, monkeypatch
+):
     """Mix a hung metric and a fast metric on a single item and assert that
     (a) the whole eval finishes within ``metric_timeout + 5s``,
     (b) the hung metric gets score=0 with label="timeout",
@@ -160,6 +134,10 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
     Regression for T1.2 — without the fix, the eval would hang indefinitely."""
     from qym import Evaluator
     from qym.core.dataset import CsvDataset
+
+    # arun() writes checkpoint files under cwd qym_results/ even with
+    # auto_save=False; keep them inside the test tmp dir.
+    monkeypatch.chdir(tmp_path)
 
     async def fast_metric(output, expected, input_data):
         return {"score": 0.75}
@@ -169,7 +147,9 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
         return {"score": 1.0}
 
     async def dummy_task(question: str):
-        return {"answer": "42"}
+        # Bare dicts are rejected unless they use the {"output", "metadata"}
+        # envelope; a plain value keeps this test focused on metric timeouts.
+        return "42"
 
     csv_path = _make_single_item_csv()
     try:
@@ -222,7 +202,7 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
 
 
 @pytest.mark.asyncio
-async def test_t13_cancel_mid_finalize_does_not_emit_item_failed():
+async def test_t13_cancel_mid_finalize_does_not_emit_item_failed(tmp_path, monkeypatch):
     """Cancel the eval while the finalizer is running and verify:
       * ``_emit_item_completed`` still fires (shielded)
       * the finally block does NOT emit ``item_failed``
@@ -232,12 +212,16 @@ async def test_t13_cancel_mid_finalize_does_not_emit_item_failed():
     from qym import Evaluator
     from qym.core.dataset import CsvDataset
 
+    monkeypatch.chdir(tmp_path)
+
     async def slow_metric(output, expected, input_data):
         await asyncio.sleep(0.2)
         return {"score": 1.0}
 
     async def dummy_task(question: str):
-        return {"answer": "42"}
+        # Bare dicts are rejected unless they use the {"output", "metadata"}
+        # envelope; a plain value keeps this test focused on metric timeouts.
+        return "42"
 
     csv_path = _make_single_item_csv()
     try:
@@ -436,7 +420,7 @@ def test_t14_close_flushes_late_events_cleanly():
 
 
 @pytest.mark.asyncio
-async def test_t21_shared_client_reused_across_task_invocations():
+async def test_t21_shared_client_reused_across_task_invocations(monkeypatch):
     """With set_shared_client() set, sql_agent_task_async must reuse the same
     AsyncOpenAI instance across every invocation and never close it (the
     runner owns the lifetime). Without set_shared_client(), each invocation
@@ -447,9 +431,9 @@ async def test_t21_shared_client_reused_across_task_invocations():
     ))
     if not os.path.isdir(sql_eval_path):
         pytest.skip(f"sql_eval not found at {sql_eval_path}")
-    sys.path.insert(0, sql_eval_path)
+    monkeypatch.syspath_prepend(sql_eval_path)
 
-    os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
     # aiosqlite is imported at the top of task_v2_async but is not a
     # dependency of this test — stub it out if missing so the shared-client
@@ -458,7 +442,7 @@ async def test_t21_shared_client_reused_across_task_invocations():
         try:
             import aiosqlite  # noqa: F401
         except ImportError:
-            sys.modules["aiosqlite"] = MagicMock()
+            monkeypatch.setitem(sys.modules, "aiosqlite", MagicMock())
 
     try:
         import task_v2_async  # type: ignore
@@ -467,8 +451,6 @@ async def test_t21_shared_client_reused_across_task_invocations():
 
     # Patch at task_v2_async's own bound reference to AsyncOpenAI so we don't
     # depend on the real `openai` package having a class-level `close` method.
-    # The test_judges.py module in this directory installs a MagicMock for
-    # `openai` at import time, which makes `openai.AsyncOpenAI` unreliable.
     construct_count = {"value": 0}
     close_count = {"value": 0}
     original_AsyncOpenAI = task_v2_async.AsyncOpenAI  # type: ignore[attr-defined]

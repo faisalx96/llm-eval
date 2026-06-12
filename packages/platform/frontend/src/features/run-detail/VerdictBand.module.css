@@ -1,0 +1,52 @@
+.band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-sm);
+}
+
+.card {
+  width: 100%;
+}
+
+.sub {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
+  width: 100%;
+}
+
+/* Mini distribution: 4 vertical bars, neutral gray; failing buckets red
+   ONLY (pass/fail is the one place red is allowed for data). */
+.distribution {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+
+.bucket {
+  width: 9px;
+  border-radius: 1px;
+  background: var(--border-strong);
+}
+
+.bucketFail {
+  background: var(--error);
+}
+
+/* Neutral in-progress band while scores are below the minimum n. */
+.gated {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.gatedCaption {
+  margin: 0;
+  font-size: var(--font-md);
+  color: var(--text-muted);
+}

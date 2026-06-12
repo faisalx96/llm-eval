@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
 from typing import Optional
 
@@ -122,10 +123,14 @@ def require_ui_principal(
     x_user_email: Optional[str] = Header(default=None, alias="X-User-Email"),
     x_email: Optional[str] = Header(default=None, alias="X-Email"),
     x_admin_bootstrap: Optional[str] = Header(default=None, alias="X-Admin-Bootstrap"),
+    x_proxy_secret: Optional[str] = Header(default=None, alias="X-Qym-Proxy-Secret"),
 ) -> Principal:
     """UI auth for internal deployments.
 
-    - Prefer reverse-proxy headers (X-User-Email / X-Email)
+    - ``none``: synthetic local dev principal (allowed only in dev/test/local, enforced at startup)
+    - ``oidc``: session-based auth only; identity headers are ignored
+    - ``proxy_headers``: trust reverse-proxy headers (X-User-Email / X-Email), bound to the
+      proxy via the X-Qym-Proxy-Secret shared secret when QYM_PROXY_SHARED_SECRET is set
     - Support first-admin bootstrap via X-Admin-Bootstrap == QYM_ADMIN_BOOTSTRAP_TOKEN
     """
     settings = PlatformSettings()
@@ -150,19 +155,36 @@ def require_ui_principal(
         if auth_mode == "oidc":
             raise HTTPException(status_code=401, detail="Not authenticated")
 
+    # Client-supplied identity headers are only trusted behind an authenticating proxy.
+    if auth_mode != "proxy_headers":
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if settings.proxy_shared_secret:
+        provided = (x_proxy_secret or "").encode("utf-8")
+        expected = settings.proxy_shared_secret.encode("utf-8")
+        if not hmac.compare_digest(provided, expected):
+            raise HTTPException(status_code=401, detail="Invalid proxy secret")
+
     email = (x_user_email or x_email or "").strip().lower()
 
     if email:
         user = db.query(User).filter(User.email == email).first()
         if user and user.is_active:
             return Principal(user=user, auth_type="proxy_headers", provider="proxy_headers")
-        if auth_mode == "proxy_headers" and settings.auto_provision_users:
+        if settings.auto_provision_users:
             user = _provision_proxy_header_user(db, email)
             return Principal(user=user, auth_type="proxy_headers", provider="proxy_headers")
 
     # Bootstrap if allowed and no users exist
     has_any = db.query(User.id).limit(1).first() is not None
-    if not has_any and settings.admin_bootstrap_token and x_admin_bootstrap == settings.admin_bootstrap_token:
+    if (
+        not has_any
+        and settings.admin_bootstrap_token
+        and x_admin_bootstrap
+        and hmac.compare_digest(
+            x_admin_bootstrap.encode("utf-8"), settings.admin_bootstrap_token.encode("utf-8")
+        )
+    ):
         if not email:
             raise HTTPException(status_code=400, detail="Bootstrap requires X-User-Email")
         user = User(email=email, display_name=email, role=UserRole.ADMIN)

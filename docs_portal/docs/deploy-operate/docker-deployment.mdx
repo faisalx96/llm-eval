@@ -2,8 +2,11 @@
 
 Docker is the default deployment path because it packages the platform runtime, migrations, and the final static docs site together.
 
+`docker/.env.template` documents every variable the compose stack requires, with safe local-dev defaults. Copy it and replace the `CHANGE_ME` values before deploying anywhere beyond localhost:
+
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+cp docker/.env.template docker/.env
+docker compose -f docker/docker-compose.yml --env-file docker/.env up --build
 ```
 
 ## What the image should contain

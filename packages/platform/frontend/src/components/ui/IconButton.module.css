@@ -1,0 +1,64 @@
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.iconButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Sizes ── */
+.sm {
+  width: 24px;
+  height: 24px;
+}
+
+.md {
+  width: 30px;
+  height: 30px;
+}
+
+/* ── Variants ── */
+.ghost {
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.danger {
+  color: var(--error);
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+}
+
+/* ── Icon sizing ── */
+.icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.sm .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.icon svg {
+  width: 100%;
+  height: 100%;
+}

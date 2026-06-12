@@ -1,45 +1,35 @@
-"""
-RAG Evaluation with Built-in LLM Judges.
+"""RAG evaluation with built-in LLM judges.
 
-This example shows how to evaluate a RAG pipeline using qym's built-in
-LLM-as-judge metrics.  Compare with rag_eval.py — the hand-rolled
-llm_judge() function there is replaced by pre-built judges that return
-structured MetricResult objects with score, label, and explanation.
+Evaluates a small, self-contained RAG-style dataset (question + context)
+using qym's built-in LLM-as-judge metrics plus a custom judge built with
+``create_judge``. Judges return structured results with score, label, and
+explanation columns.
+
+Requirements (this example calls a real LLM):
+    pip install openai
+
+    # Answer model — an OpenAI-compatible endpoint:
+    export OPENROUTER_API_KEY=...   # or OPENAI_API_KEY
+
+    # Judge model — configured via env vars (defaults to OPENAI_API_KEY):
+    export QYM_JUDGE_MODEL=gpt-4o-mini
+    export QYM_JUDGE_API_KEY=...            # falls back to OPENAI_API_KEY
+    export QYM_JUDGE_BASE_URL=...           # optional: vLLM / Ollama / OpenRouter
 
 Usage:
-    # Upload the dataset first (see rag_eval.py)
-    python upload_dataset.py
+    python examples/rag_eval_judges.py
 
-    # Run with built-in judges (uses OPENAI_API_KEY by default)
-    python rag_eval_judges.py
-
-    # Or point judges at a local vLLM / Ollama server
-    QYM_JUDGE_BASE_URL=http://localhost:8080/v1 \
-    QYM_JUDGE_MODEL=my-model \
-    QYM_JUDGE_API_KEY=dummy \
-    python rag_eval_judges.py
+Without an API key the script prints a skip message and exits cleanly.
 """
 
+from __future__ import annotations
+
 import os
-from dotenv import load_dotenv
+import sys
 from typing import Optional
 
-from openai import AsyncOpenAI
-
-from qym import Evaluator
+from qym import Evaluator, InMemoryDataset
 from qym.metrics.judges import create_judge
-
-load_dotenv()
-
-
-# ---------------------------------------------------------------------------
-# Task: RAG Question Answering (same as rag_eval.py)
-# ---------------------------------------------------------------------------
-
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
-)
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions based on the provided context.
 
@@ -49,40 +39,87 @@ Instructions:
 - Be concise and direct in your answers
 - Do not make up information that is not in the context"""
 
+# ---------------------------------------------------------------------------
+# Dataset: small in-memory RAG samples (question + retrieved context)
+# ---------------------------------------------------------------------------
+
+DATASET = InMemoryDataset(
+    [
+        {
+            "input": {
+                "question": "What is the capital of France?",
+                "context": "France is a country in Western Europe. Its capital and largest city is Paris.",
+            },
+            "expected_output": "Paris",
+        },
+        {
+            "input": {
+                "question": "When was the Eiffel Tower completed?",
+                "context": "The Eiffel Tower was completed in 1889 as the entrance arch to the World's Fair.",
+            },
+            "expected_output": "1889",
+        },
+        {
+            "input": {
+                "question": "Who designed the Sydney Opera House?",
+                "context": "The Sydney Opera House was designed by Danish architect Jorn Utzon and opened in 1973.",
+            },
+            "expected_output": "Jorn Utzon",
+        },
+    ],
+    name="rag-judges-demo",
+)
+
+
+# ---------------------------------------------------------------------------
+# Task: RAG question answering. ``question`` and ``context`` are unpacked
+# from the dataset item's input dict; ``model_name`` is injected by qym.
+# ---------------------------------------------------------------------------
+
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        from openai import AsyncOpenAI
+
+        if os.getenv("OPENROUTER_API_KEY"):
+            _client = AsyncOpenAI(
+                api_key=os.environ["OPENROUTER_API_KEY"],
+                base_url="https://openrouter.ai/api/v1",
+            )
+        else:
+            _client = AsyncOpenAI()  # uses OPENAI_API_KEY / OPENAI_BASE_URL
+    return _client
+
 
 async def rag_qa_task(
     question: str,
     context: str,
     model_name: Optional[str] = None,
-    trace_id: Optional[str] = None,
 ) -> str:
     """RAG QA task — generates an answer from context using an LLM."""
     model = model_name or "openai/gpt-4o-mini"
-
-    response = await client.chat.completions.create(
+    response = await _get_client().chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"},
         ],
         temperature=0.0,
-        max_tokens=512,
+        max_tokens=256,
     )
-    return response.choices[0].message.content.strip()
+    return (response.choices[0].message.content or "").strip()
 
 
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
 
-# Built-in judges can be used by string name (like "faithfulness_llm") or by
-# calling the factory function.  Strings are simpler; factories let you
-# customize the model/endpoint per-metric:
-#
-#   from qym.metrics.judges import faithfulness_llm
-#   faithfulness_llm(judge_model="my-model", judge_base_url="http://localhost:8080/v1")
-
-# Custom judge — define your own prompt + verdict labels:
+# Built-in judges can be used by string name ("faithfulness_llm",
+# "correctness_llm") — they read their model/endpoint from QYM_JUDGE_* env
+# vars. ``create_judge`` builds a custom judge from a prompt + verdict labels:
 completeness_judge = create_judge(
     name="completeness",
     prompt="""\
@@ -102,36 +139,37 @@ Is the response complete or incomplete?""",
 # Run
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
+    if not (os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")):
+        print(
+            "[skip] rag_eval_judges.py needs an LLM API key.\n"
+            "       Set OPENROUTER_API_KEY (or OPENAI_API_KEY) for the answer model\n"
+            "       and QYM_JUDGE_MODEL / QYM_JUDGE_API_KEY for the judges, then re-run."
+        )
+        sys.exit(0)
+
+    model = "openai/gpt-4o-mini" if os.getenv("OPENROUTER_API_KEY") else "gpt-4o-mini"
+
     evaluator = Evaluator(
         task=rag_qa_task,
-        dataset="ragbench-100",
+        dataset=DATASET,
         metrics=[
-            # Built-in code metric
-            "correctness",
-
-            # Built-in LLM judges (by string name — config via env vars)
-            "faithfulness_llm",
-            "correctness_llm",
-
-            # Custom LLM judge defined above
-            completeness_judge,
+            "correctness",        # built-in code metric (token F1)
+            "faithfulness_llm",   # built-in LLM judge (by string name)
+            "correctness_llm",    # built-in LLM judge (by string name)
+            completeness_judge,   # custom LLM judge defined above
         ],
-        model=["openai/gpt-4o-mini"],
+        model=[model],
         config={
-            "max_concurrency": 10,
-            "run_name": "ragbench-judges",
+            "max_concurrency": 3,
+            "run_name": "rag-judges-demo",
         },
     )
 
-    results = evaluator.run()
+    evaluator.run(auto_save=False)
 
-    # The results now include label and explanation for each judge metric.
-    # Check the CSV output — you'll see columns like:
-    #   faithfulness_llm_score, faithfulness_llm_label, faithfulness_llm_explanation
-    #   relevance_score, relevance_label, relevance_explanation
-    #   correctness_llm_score, correctness_llm_label, correctness_llm_explanation
-    #   completeness_score, completeness_label, completeness_explanation
+    # Judge metrics produce structured outputs: the saved results include
+    # columns like faithfulness_llm_score / _label / _explanation.
 
 
 if __name__ == "__main__":

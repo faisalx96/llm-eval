@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import logging
 from uuid import uuid4
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -16,6 +17,8 @@ from .evaluator import Evaluator
 from .observers import CompositeEvaluationObserver, EvaluationObserver
 from .results import EvaluationResult, render_results_summary, summary_display_enabled
 from .config import RunSpec, EvaluatorConfig
+
+logger = logging.getLogger(__name__)
 
 
 class MultiModelRunner:
@@ -31,6 +34,7 @@ class MultiModelRunner:
         self.console = console or Console()
         self.observer = observer
         self.matrix_id = f"run-matrix-{uuid4().hex[:8]}"
+        self._default_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 
     @classmethod
     def from_runs(
@@ -308,9 +312,10 @@ class MultiModelRunner:
         max_conc = max((s.config.max_concurrency or 10) for s in self.specs)
         pool_size = max_conc * effective_parallel
         loop = asyncio.get_running_loop()
-        loop.set_default_executor(
-            concurrent.futures.ThreadPoolExecutor(max_workers=pool_size)
+        self._default_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=pool_size
         )
+        loop.set_default_executor(self._default_executor)
         loop._qym_executor_set = True
 
         async def _run_spec(spec: RunSpec):
@@ -424,12 +429,15 @@ class MultiModelRunner:
                     pass
 
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
-        try:
-            executor = loop.get_default_executor()
-            if executor is not None:
-                executor.shutdown(wait=False)
-        except Exception:
-            pass
+        if self._default_executor is not None:
+            try:
+                self._default_executor.shutdown(wait=False)
+                # Allow a fresh executor to be created if this loop runs again.
+                loop._qym_executor_set = False
+            except Exception:
+                logger.debug(
+                    "Failed to shut down default thread pool executor", exc_info=True
+                )
 
         return final_results
 

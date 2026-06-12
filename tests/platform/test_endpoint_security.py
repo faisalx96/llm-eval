@@ -1,3 +1,12 @@
+"""Endpoint authorization matrix for the project-based access model.
+
+Covers, per router family, a representative endpoint for:
+- unauthenticated requests -> 401
+- authenticated non-members -> 403/404 on other projects' resources
+- member vs project-manager vs platform-admin permission boundaries
+- proxy_headers hardening: shared proxy secret and opt-in auto-provisioning
+"""
+
 from __future__ import annotations
 
 import os
@@ -9,12 +18,10 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
-os.environ.setdefault("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 SDK_SRC = ROOT / "packages" / "sdk"
@@ -28,10 +35,12 @@ from qym_platform.app import create_app
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
-    CorrectionStatus,
-    OrgUnit,
-    OrgUnitType,
-    ReviewCorrection,
+    Approval,
+    Dataset,
+    Project,
+    ProjectLlmConnection,
+    ProjectMembership,
+    ProjectRole,
     Run,
     RunItem,
     RunItemScore,
@@ -39,8 +48,17 @@ from qym_platform.db.models import (
     User,
     UserRole,
 )
+from qym_platform.datetime_utils import utc_now_naive
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+
+ADMIN = "admin@example.com"
+MANAGER = "manager@example.com"
+MEMBER = "member@example.com"
+OUTSIDER = "outsider@example.com"
+
+PROJECT_ONE = "project-1"
+PROJECT_TWO = "project-2"
 
 
 @pytest.fixture()
@@ -48,7 +66,6 @@ def session_factory(monkeypatch):
     monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
     monkeypatch.setenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("QYM_ALLOW_LEGACY_EMPTY_API_KEY_SCOPES", "true")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -85,183 +102,408 @@ def _headers(email: str) -> dict[str, str]:
     return {"X-User-Email": email}
 
 
-def _auth_headers(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def _seed_world(session: Session) -> None:
+    """Two projects: outsider manages project-2 but has no role in project-1."""
+    admin = User(id="admin-1", email=ADMIN, role=UserRole.ADMIN)
+    manager = User(id="manager-1", email=MANAGER, role=UserRole.MEMBER)
+    member = User(id="member-1", email=MEMBER, role=UserRole.MEMBER)
+    outsider = User(id="outsider-1", email=OUTSIDER, role=UserRole.MEMBER)
+    candidate = User(id="candidate-1", email="candidate@example.com", role=UserRole.MEMBER)
 
+    project_one = Project(
+        id=PROJECT_ONE,
+        name="Project One",
+        slug="project-one",
+        created_by_user_id=admin.id,
+    )
+    project_two = Project(
+        id=PROJECT_TWO,
+        name="Project Two",
+        slug="project-two",
+        created_by_user_id=admin.id,
+    )
+    session.add_all([admin, manager, member, outsider, candidate, project_one, project_two])
+    session.flush()
 
-def _seed_platform_data(session: Session) -> None:
-    team_a = OrgUnit(id="team-a", name="Team A", type=OrgUnitType.TEAM, manager_user_id="manager-a")
-    team_b = OrgUnit(id="team-b", name="Team B", type=OrgUnitType.TEAM, manager_user_id="manager-b")
-    manager_a = User(id="manager-a", email="manager-a@example.com", role=UserRole.MANAGER, team_unit_id=team_a.id)
-    manager_b = User(id="manager-b", email="manager-b@example.com", role=UserRole.MANAGER, team_unit_id=team_b.id)
-    owner = User(id="owner-1", email="owner@example.com", role=UserRole.EMPLOYEE, team_unit_id=team_a.id)
-    other = User(id="other-1", email="other@example.com", role=UserRole.EMPLOYEE, team_unit_id=team_b.id)
-    gm = User(id="gm-1", email="gm@example.com", role=UserRole.GM)
-    admin = User(id="admin-1", email="admin@example.com", role=UserRole.ADMIN)
+    session.add_all(
+        [
+            ProjectMembership(project_id=PROJECT_ONE, user_id=manager.id, role=ProjectRole.MANAGER),
+            ProjectMembership(project_id=PROJECT_ONE, user_id=member.id, role=ProjectRole.MEMBER),
+            ProjectMembership(project_id=PROJECT_TWO, user_id=outsider.id, role=ProjectRole.MANAGER),
+        ]
+    )
 
     run = Run(
-        id="run-1",
-        created_by_user_id=owner.id,
-        owner_user_id=owner.id,
-        task="task-1",
-        dataset="dataset-1",
+        id="run-a",
+        project_id=PROJECT_ONE,
+        created_by_user_id=member.id,
+        owner_user_id=member.id,
+        task="task-a",
+        dataset="dataset-a",
         metrics=["judge"],
-        status=RunWorkflowStatus.COMPLETED,
         run_metadata={},
-        run_config={},
+        run_config={"run_name": "Run A"},
+        status=RunWorkflowStatus.COMPLETED,
     )
-    item = RunItem(
-        run_id=run.id,
-        item_id="item-1",
-        index=0,
-        input={"prompt": "hello"},
-        expected={"answer": "world"},
-        output={"answer": "nope"},
-        item_metadata={},
+    submitted_run = Run(
+        id="run-sub",
+        project_id=PROJECT_ONE,
+        created_by_user_id=member.id,
+        owner_user_id=member.id,
+        task="task-a",
+        dataset="dataset-a",
+        metrics=["judge"],
+        run_metadata={},
+        run_config={"run_name": "Submitted"},
+        status=RunWorkflowStatus.SUBMITTED,
     )
-    score = RunItemScore(
-        run_id=run.id,
-        item_id=item.item_id,
-        metric_name="judge",
-        score_numeric=0.2,
-        score_raw=0.2,
-        meta={},
+    deleted_run = Run(
+        id="run-trash",
+        project_id=PROJECT_ONE,
+        created_by_user_id=member.id,
+        owner_user_id=member.id,
+        task="task-a",
+        dataset="dataset-a",
+        metrics=["judge"],
+        run_metadata={},
+        run_config={"run_name": "Trashed"},
+        status=RunWorkflowStatus.COMPLETED,
+        deleted_at=utc_now_naive(),
+        deleted_by_user_id=member.id,
     )
-    correction = ReviewCorrection(
-        run_id=run.id,
-        item_id=item.item_id,
-        task=run.task,
-        input_snapshot=item.input,
-        expected_snapshot=item.expected,
-        output_snapshot=item.output,
-        scores_snapshot={"judge": 0.2},
-        ai_root_cause="Wrong Format",
-        ai_root_cause_note="AI guess",
-        human_root_cause="Wrong Format",
-        human_root_cause_note="Human review",
-        status=CorrectionStatus.PENDING,
-        is_active=True,
+    session.add_all(
+        [
+            run,
+            submitted_run,
+            deleted_run,
+            RunItem(
+                run_id=run.id,
+                item_id="item-1",
+                index=0,
+                input={"prompt": "hi"},
+                expected={"answer": "yes"},
+                output={"answer": "no"},
+                item_metadata={},
+            ),
+            RunItemScore(
+                run_id=run.id,
+                item_id="item-1",
+                metric_name="judge",
+                score_numeric=0.2,
+                score_raw=0.2,
+                meta={},
+            ),
+            Approval(run_id=submitted_run.id, submitted_by_user_id=member.id),
+            Dataset(
+                id="ds-1",
+                project_id=PROJECT_ONE,
+                name="Golden Set",
+                slug="golden-set",
+                created_by_user_id=manager.id,
+            ),
+            ApiKey(
+                id="key-manager",
+                user_id=manager.id,
+                project_id=PROJECT_ONE,
+                name="manager-key",
+                prefix=api_key_prefix("manager-token"),
+                key_hash=hash_api_key("manager-token"),
+                scopes=["runs:write"],
+            ),
+            ApiKey(
+                id="key-member",
+                user_id=member.id,
+                project_id=PROJECT_ONE,
+                name="member-key",
+                prefix=api_key_prefix("member-token"),
+                key_hash=hash_api_key("member-token"),
+                scopes=["runs:write"],
+            ),
+            ProjectLlmConnection(
+                id="conn-1",
+                project_id=PROJECT_ONE,
+                name="default",
+                llm_base_url="https://api.openai.com/v1",
+                llm_model="gpt-4o-mini",
+                is_default=True,
+                created_by_user_id=manager.id,
+            ),
+        ]
     )
-    session.add_all([team_a, team_b, manager_a, manager_b, owner, other, gm, admin, run, item, score, correction])
     session.commit()
 
 
-def _seed_api_key(session: Session, *, token: str, scopes: list[str]) -> None:
-    user = User(id=f"user-{token}", email=f"{token}@example.com", role=UserRole.EMPLOYEE)
-    api_key = ApiKey(
-        id=f"key-{token}",
-        user_id=user.id,
-        name=token,
-        prefix=api_key_prefix(token),
-        key_hash=hash_api_key(token),
-        scopes=scopes,
+@pytest.fixture()
+def seeded_client(client, session_factory):
+    with session_factory() as session:
+        _seed_world(session)
+    return client
+
+
+# --- (a) unauthenticated -> 401 ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("GET", "/api/runs", None),  # runs read
+        ("GET", "/v1/me", None),  # web
+        ("GET", "/v1/projects", None),  # projects
+        ("GET", f"/v1/projects/{PROJECT_ONE}/members", None),  # members
+        ("GET", f"/v1/projects/{PROJECT_ONE}/api-keys", None),  # api keys
+        ("GET", f"/v1/projects/{PROJECT_ONE}/llm-connections", None),  # llm connections
+        ("GET", "/v1/datasets", None),  # datasets read
+        ("POST", "/v1/datasets", {"name": "x", "project_slug": "project-one"}),  # datasets write
+        ("GET", "/api/runs/run-a/corrections", None),  # corrections/analysis
+        ("GET", "/v1/admin/users", None),  # admin
+        ("GET", "/api/runs/trash", None),  # trash
+        ("POST", "/api/runs/update_metric", {"file_path": "run-a", "row_index": 0, "metric_name": "judge", "new_score": 0.9}),  # runs modify
+        ("POST", "/api/runs/delete", {"file_path": "run-a"}),  # runs delete
+        ("POST", "/v1/runs", {"task": "t", "dataset": "d"}),  # SDK ingest (bearer only)
+    ],
+)
+def test_unauthenticated_requests_are_rejected(seeded_client, method, path, body):
+    response = seeded_client.request(method, path, json=body)
+    assert response.status_code == 401
+
+
+def test_invalid_api_key_is_rejected(seeded_client):
+    response = seeded_client.post(
+        "/v1/runs",
+        headers={"Authorization": "Bearer not-a-real-token"},
+        json={"task": "t", "dataset": "d"},
     )
-    session.add_all([user, api_key])
-    session.commit()
+    assert response.status_code == 401
 
 
-def test_proxy_headers_auto_provisions_new_user(client, session_factory):
-    response = client.get("/api/runs", headers=_headers("new.user@example.com"))
-    assert response.status_code == 200
-
-    with session_factory() as session:
-        user = session.query(User).filter(User.email == "new.user@example.com").first()
-        assert user is not None
-        assert user.role == UserRole.EMPLOYEE
-        assert user.display_name == "New User"
+# --- (b) authenticated non-member -> 403/404 on other project's resources ----
 
 
-def test_run_mutation_permissions_enforced(client, session_factory) -> None:
-    with session_factory() as session:
-        _seed_platform_data(session)
+def test_non_member_cannot_read_or_modify_other_projects_resources(seeded_client):
+    # Project metadata and sub-resources
+    assert seeded_client.get(f"/v1/projects/{PROJECT_ONE}", headers=_headers(OUTSIDER)).status_code == 403
+    assert seeded_client.get(f"/v1/projects/{PROJECT_ONE}/members", headers=_headers(OUTSIDER)).status_code == 403
+    assert seeded_client.get(f"/v1/projects/{PROJECT_ONE}/api-keys", headers=_headers(OUTSIDER)).status_code == 403
+    assert seeded_client.get(f"/v1/projects/{PROJECT_ONE}/llm-connections", headers=_headers(OUTSIDER)).status_code == 403
+    assert seeded_client.get("/v1/datasets?project_slug=project-one", headers=_headers(OUTSIDER)).status_code == 403
+    assert seeded_client.get("/api/runs/run-a/corrections", headers=_headers(OUTSIDER)).status_code == 403
 
-    owner_metric = client.post(
+    # Run mutations in a project the caller is not a member of
+    update = seeded_client.post(
         "/api/runs/update_metric",
-        headers=_headers("owner@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.9},
+        headers=_headers(OUTSIDER),
+        json={"file_path": "run-a", "row_index": 0, "metric_name": "judge", "new_score": 0.1},
     )
-    assert owner_metric.status_code == 200
-
-    manager_metric = client.post(
-        "/api/runs/update_metric",
-        headers=_headers("manager-a@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.7},
+    assert update.status_code == 403
+    delete = seeded_client.post(
+        "/api/runs/delete",
+        headers=_headers(OUTSIDER),
+        json={"file_path": "run-a"},
     )
-    assert manager_metric.status_code == 200
+    assert delete.status_code == 403
 
-    other_metric = client.post(
-        "/api/runs/update_metric",
-        headers=_headers("other@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.1},
+    # Unknown project -> 404 (no resource enumeration beyond existence)
+    assert seeded_client.get("/v1/projects/does-not-exist", headers=_headers(OUTSIDER)).status_code == 404
+
+    # Listing only surfaces the caller's own projects
+    projects = seeded_client.get("/v1/projects", headers=_headers(OUTSIDER))
+    assert projects.status_code == 200
+    assert [p["id"] for p in projects.json()["projects"]] == [PROJECT_TWO]
+
+
+# --- (c) member vs manager vs admin boundaries --------------------------------
+
+
+def test_member_cannot_manage_members_but_manager_can(seeded_client):
+    add_as_member = seeded_client.post(
+        f"/v1/projects/{PROJECT_ONE}/members",
+        headers=_headers(MEMBER),
+        json={"user_id": "candidate-1", "role": "MEMBER"},
     )
-    assert other_metric.status_code == 403
+    assert add_as_member.status_code == 403
 
-    gm_root_cause = client.post(
-        "/api/runs/update_root_cause",
-        headers=_headers("gm@example.com"),
-        json={"run_id": "run-1", "item_id": "item-1", "root_cause": "Hallucination"},
+    change_role_as_member = seeded_client.patch(
+        f"/v1/projects/{PROJECT_ONE}/members/member-1",
+        headers=_headers(MEMBER),
+        json={"role": "MANAGER"},
     )
-    assert gm_root_cause.status_code == 403
+    assert change_role_as_member.status_code == 403
 
-    denied_analyze = client.post(
-        "/api/runs/run-1/analyze",
-        headers=_headers("other@example.com"),
-        json={"item_filter": "all"},
+    remove_as_member = seeded_client.delete(
+        f"/v1/projects/{PROJECT_ONE}/members/manager-1",
+        headers=_headers(MEMBER),
     )
-    assert denied_analyze.status_code == 403
+    assert remove_as_member.status_code == 403
 
-
-def test_correction_review_permissions_and_filtering(client, session_factory) -> None:
-    with session_factory() as session:
-        _seed_platform_data(session)
-
-    manager_list = client.get("/api/corrections", headers=_headers("manager-a@example.com"))
-    assert manager_list.status_code == 200
-    assert len(manager_list.json()["corrections"]) == 1
-
-    employee_list = client.get("/api/corrections", headers=_headers("owner@example.com"))
-    assert employee_list.status_code == 200
-    assert employee_list.json()["corrections"] == []
-
-    denied_get = client.get("/api/corrections/1", headers=_headers("owner@example.com"))
-    assert denied_get.status_code == 403
-
-    denied_update = client.put(
-        "/api/corrections/1",
-        headers=_headers("owner@example.com"),
-        json={"human_root_cause_note": "should fail"},
+    add_as_manager = seeded_client.post(
+        f"/v1/projects/{PROJECT_ONE}/members",
+        headers=_headers(MANAGER),
+        json={"user_id": "candidate-1", "role": "MEMBER"},
     )
-    assert denied_update.status_code == 403
+    assert add_as_manager.status_code == 200
 
-    allowed_approve = client.post(
-        "/api/corrections/1/approve",
-        headers=_headers("manager-a@example.com"),
-        json={"comment": "approved"},
+
+def test_llm_connections_are_manager_only_to_mutate(seeded_client):
+    # Members may read connections...
+    listing = seeded_client.get(f"/v1/projects/{PROJECT_ONE}/llm-connections", headers=_headers(MEMBER))
+    assert listing.status_code == 200
+
+    payload = {"name": "secondary", "llm_base_url": "https://api.openai.com/v1", "llm_model": "gpt-4o-mini", "llm_api_key": "sk-test"}
+
+    # ...but only managers may create/update/delete them.
+    assert (
+        seeded_client.post(
+            f"/v1/projects/{PROJECT_ONE}/llm-connections", headers=_headers(MEMBER), json=payload
+        ).status_code
+        == 403
     )
-    assert allowed_approve.status_code == 200
-    assert allowed_approve.json()["status"] == "approved"
-
-    denied_bulk = client.post(
-        "/api/corrections/bulk",
-        headers=_headers("manager-b@example.com"),
-        json={"ids": [1], "action": "reject", "comment": "nope"},
+    assert (
+        seeded_client.put(
+            f"/v1/projects/{PROJECT_ONE}/llm-connections/conn-1",
+            headers=_headers(MEMBER),
+            json={**payload, "llm_api_key": "__KEEP__"},
+        ).status_code
+        == 403
     )
-    assert denied_bulk.status_code == 403
+    assert (
+        seeded_client.delete(
+            f"/v1/projects/{PROJECT_ONE}/llm-connections/conn-1", headers=_headers(MEMBER)
+        ).status_code
+        == 403
+    )
+
+    created = seeded_client.post(
+        f"/v1/projects/{PROJECT_ONE}/llm-connections", headers=_headers(MANAGER), json=payload
+    )
+    assert created.status_code == 200
+    assert created.json()["name"] == "secondary"
 
 
-def test_api_key_scopes_are_not_enforced(client, session_factory) -> None:
-    # Scope enforcement is intentionally disabled: any valid, non-revoked key has full
-    # access to its project regardless of the scopes recorded on the key. Authentication
-    # and project membership still gate access; per-key scopes are no longer checked.
-    with session_factory() as session:
-        _seed_api_key(session, token="write-token", scopes=["runs:write"])
-        _seed_api_key(session, token="read-token", scopes=["runs:read"])
-        _seed_api_key(session, token="legacy-token", scopes=[])
+def test_api_key_revocation_requires_owner_manager_or_admin(seeded_client):
+    # A member cannot revoke someone else's key...
+    as_member = seeded_client.delete(
+        f"/v1/projects/{PROJECT_ONE}/api-keys/key-manager", headers=_headers(MEMBER)
+    )
+    assert as_member.status_code == 403
 
-    for token in ("write-token", "read-token", "legacy-token"):
-        response = client.post(
-            "/v1/runs",
-            headers=_auth_headers(token),
-            json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
+    # ...but can revoke their own.
+    own = seeded_client.delete(
+        f"/v1/projects/{PROJECT_ONE}/api-keys/key-member", headers=_headers(MEMBER)
+    )
+    assert own.status_code == 200
+
+    # Managers can revoke any project key.
+    as_manager = seeded_client.delete(
+        f"/v1/projects/{PROJECT_ONE}/api-keys/key-manager", headers=_headers(MANAGER)
+    )
+    assert as_manager.status_code == 200
+
+
+def test_run_approval_requires_manager_or_admin(seeded_client):
+    as_member = seeded_client.post(
+        "/v1/runs/run-sub/approve", headers=_headers(MEMBER), json={"comment": "lgtm"}
+    )
+    assert as_member.status_code == 403
+
+    as_manager = seeded_client.post(
+        "/v1/runs/run-sub/approve", headers=_headers(MANAGER), json={"comment": "approved"}
+    )
+    assert as_manager.status_code == 200
+    assert as_manager.json()["status"] == "APPROVED"
+
+
+def test_project_creation_requires_admin_or_existing_manager(seeded_client):
+    as_member = seeded_client.post(
+        "/v1/projects", headers=_headers(MEMBER), json={"name": "Member Project"}
+    )
+    assert as_member.status_code == 403
+
+    as_manager = seeded_client.post(
+        "/v1/projects", headers=_headers(MANAGER), json={"name": "Manager Project"}
+    )
+    assert as_manager.status_code == 200
+
+
+def test_admin_endpoints_reject_non_admins(seeded_client):
+    for email in (MEMBER, MANAGER, OUTSIDER):
+        assert seeded_client.get("/v1/admin/users", headers=_headers(email)).status_code == 403
+        assert (
+            seeded_client.post(
+                "/v1/admin/projects", headers=_headers(email), json={"name": "Nope"}
+            ).status_code
+            == 403
         )
-        assert response.status_code == 200, (token, response.text)
+
+    as_admin = seeded_client.get("/v1/admin/users", headers=_headers(ADMIN))
+    assert as_admin.status_code == 200
+    created = seeded_client.post("/v1/admin/projects", headers=_headers(ADMIN), json={"name": "Compliance"})
+    assert created.status_code == 200
+
+
+def test_trash_listing_and_restore_are_admin_only(seeded_client):
+    for email in (MEMBER, MANAGER):
+        assert seeded_client.get("/api/runs/trash", headers=_headers(email)).status_code == 403
+        assert (
+            seeded_client.post(
+                "/api/runs/restore", headers=_headers(email), json={"run_id": "run-trash"}
+            ).status_code
+            == 403
+        )
+
+    listing = seeded_client.get("/api/runs/trash", headers=_headers(ADMIN))
+    assert listing.status_code == 200
+    assert [r["id"] for r in listing.json()] == ["run-trash"]
+
+    restored = seeded_client.post("/api/runs/restore", headers=_headers(ADMIN), json={"run_id": "run-trash"})
+    assert restored.status_code == 200
+
+
+def test_member_can_read_and_write_datasets_in_own_project(seeded_client):
+    listing = seeded_client.get("/v1/datasets?project_slug=project-one", headers=_headers(MEMBER))
+    assert listing.status_code == 200
+    assert [ds["id"] for ds in listing.json()["datasets"]] == ["ds-1"]
+
+    created = seeded_client.post(
+        "/v1/datasets",
+        headers=_headers(MEMBER),
+        json={"name": "Edge Cases", "project_slug": "project-one"},
+    )
+    assert created.status_code == 200
+
+
+# --- (d) proxy_headers hardening ----------------------------------------------
+
+
+def test_proxy_secret_is_required_when_configured(seeded_client, monkeypatch):
+    monkeypatch.setenv("QYM_PROXY_SHARED_SECRET", "proxy-secret")
+
+    no_secret = seeded_client.get("/v1/me", headers=_headers(MEMBER))
+    assert no_secret.status_code == 401
+
+    wrong_secret = seeded_client.get(
+        "/v1/me", headers={**_headers(MEMBER), "X-Qym-Proxy-Secret": "wrong"}
+    )
+    assert wrong_secret.status_code == 401
+
+    with_secret = seeded_client.get(
+        "/v1/me", headers={**_headers(MEMBER), "X-Qym-Proxy-Secret": "proxy-secret"}
+    )
+    assert with_secret.status_code == 200
+    assert with_secret.json()["email"] == MEMBER
+
+
+def test_auto_provision_only_when_explicitly_enabled(seeded_client, session_factory, monkeypatch):
+    # Default (QYM_AUTO_PROVISION_USERS=false): unknown identities are rejected.
+    rejected = seeded_client.get("/v1/me", headers=_headers("stranger@example.com"))
+    assert rejected.status_code == 401
+    with session_factory() as session:
+        assert session.query(User).filter(User.email == "stranger@example.com").first() is None
+
+    monkeypatch.setenv("QYM_AUTO_PROVISION_USERS", "true")
+    provisioned = seeded_client.get("/v1/me", headers=_headers("stranger@example.com"))
+    assert provisioned.status_code == 200
+    assert provisioned.json()["role"] == "MEMBER"
+    with session_factory() as session:
+        created = session.query(User).filter(User.email == "stranger@example.com").first()
+        assert created is not None
+        assert created.role == UserRole.MEMBER

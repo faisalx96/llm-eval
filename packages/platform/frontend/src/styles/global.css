@@ -1,0 +1,47 @@
+/* Global resets + base styles for the qym SPA. Tokens live in tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--bg-primary);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 150, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--accent-primary);
+}
+
+/* Single global focus treatment — keyboard-only, token-driven. */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}

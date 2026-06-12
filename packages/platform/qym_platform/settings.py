@@ -20,9 +20,13 @@ class PlatformSettings(BaseSettings):
     root_path: str = Field(default="", description="URL prefix when served behind a reverse proxy (e.g. /qym)")
 
     # Auth
-    auth_mode: str = Field(default="none")  # none|proxy_headers|oidc|saml (SSO later)
+    auth_mode: str = Field(default="none")  # none|proxy_headers|oidc (validated at startup; none only in dev/test/local)
     admin_bootstrap_token: str = Field(default="")
-    auto_provision_users: bool = Field(default=True)
+    proxy_shared_secret: str = Field(
+        default="",
+        description="Shared secret the reverse proxy must send via X-Qym-Proxy-Secret in proxy_headers mode",
+    )
+    auto_provision_users: bool = Field(default=False)
     allow_legacy_empty_api_key_scopes: bool = Field(default=True)
     auth_session_secret: str = Field(default="")
     auth_local_enabled: bool = Field(default=False)

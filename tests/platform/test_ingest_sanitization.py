@@ -5,13 +5,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ["QYM_AUTH_MODE"] = "proxy_headers"
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 if str(PLATFORM_SRC) not in sys.path:
@@ -21,9 +21,15 @@ if "openai" not in sys.modules:
 
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
-from qym_platform.db.models import ApiKey, RunItem, RunItemScore, User, UserRole
+from qym_platform.db.models import ApiKey, Project, RunItem, RunItemScore, User, UserRole
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+
+
+@pytest.fixture(autouse=True)
+def _auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
+    monkeypatch.setenv("QYM_ALLOW_LEGACY_EMPTY_API_KEY_SCOPES", "true")
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -31,16 +37,18 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 def _seed_api_key(session: Session, token: str = "test-token") -> None:
-    user = User(id="user-1", email="owner@example.com", role=UserRole.EMPLOYEE)
+    user = User(id="user-1", email="owner@example.com", role=UserRole.MEMBER)
+    project = Project(id="project-1", name="Project", slug="project", created_by_user_id=user.id)
     api_key = ApiKey(
         id="key-1",
         user_id=user.id,
+        project_id=project.id,
         name="test",
         prefix=api_key_prefix(token),
         key_hash=hash_api_key(token),
         scopes=[],
     )
-    session.add_all([user, api_key])
+    session.add_all([user, project, api_key])
     session.commit()
 
 

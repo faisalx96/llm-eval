@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
-from .results import EvaluationResult
+from .results import EvaluationResult, is_errored_metric_value
 
 
 @dataclass(frozen=True)
@@ -31,16 +31,24 @@ class _RunRows:
 
 
 def parse_score_value(metric_value: Any) -> Optional[float]:
-    """Parse a raw metric value using the platform dashboard's score rules."""
+    """Parse a raw metric value using the platform dashboard's score rules.
+
+    Audit EI-1: errored metric values — an ``'error'`` key in the dict or its
+    metadata (or a ``MetricResult`` whose metadata carries one), or a ``None``
+    score — return ``None`` so they are EXCLUDED from aggregation rather than
+    being averaged in as ``0.0``. Detection is shared with
+    :func:`qym.core.results.is_errored_metric_value`.
+    """
     if metric_value is None:
+        return None
+
+    if is_errored_metric_value(metric_value):
         return None
 
     if hasattr(metric_value, "score"):
         return parse_score_value(getattr(metric_value, "score"))
 
     if isinstance(metric_value, dict):
-        if "error" in metric_value:
-            return 0.0
         if "score" in metric_value:
             return parse_score_value(metric_value.get("score"))
         return None
@@ -88,7 +96,15 @@ def analyze_group_runs(
 
     This matches the platform item-level aggregation mode: item IDs are unioned
     across runs, and each item is evaluated with the scores that are present.
-    Missing or null scores are excluded; error rows score as 0.
+
+    Error semantics (audit EI-1):
+
+    - Missing or null scores are excluded.
+    - Errored METRIC values (an ``'error'`` key in the value or its metadata —
+      e.g. a failed LLM judge) are excluded from aggregation, not scored 0.0.
+    - Whole-item TASK failures (``EvaluationResult.errors``) keep the platform
+      dashboard semantics: the attempt failed, so it scores 0 and is counted
+      in ``failed_count``.
     """
     runs = [_rows_for_result(result, metric) for result in results]
     k = len(runs)
@@ -389,6 +405,14 @@ class GroupRunAnalysis:
 
 
 def _rows_for_result(result: EvaluationResult, metric: str) -> _RunRows:
+    """Build per-item score rows for one run.
+
+    Completed items with an errored metric value (judge failure, error marker
+    in metadata) get ``score=None`` via :func:`parse_score_value` and are
+    excluded from aggregation (audit EI-1). Task-failed items
+    (``result.errors``) keep platform semantics: ``score=0.0`` with
+    ``is_error=True`` — the attempt itself failed.
+    """
     rows: Dict[str, _ScoreRow] = {}
     metric_names = set(result.metrics or [])
 

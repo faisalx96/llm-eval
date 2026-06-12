@@ -1,0 +1,68 @@
+/* Collapsible JSON tree — mono (it is code), neutral/teal palette only.
+   Reserved hues (red/green/blue/amber/purple) are NOT used for syntax. */
+
+.root {
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.line {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  vertical-align: middle;
+  border-radius: var(--radius-sm);
+}
+
+.toggle:hover {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+/* Keeps primitive lines column-aligned with toggleable lines. */
+.toggleSpacer {
+  display: inline-block;
+  width: 16px;
+}
+
+.key {
+  color: var(--text-primary);
+}
+
+.punct {
+  color: var(--text-dim);
+}
+
+.summary {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.string {
+  color: var(--accent-primary);
+}
+
+.number {
+  color: var(--text-primary);
+}
+
+.keyword {
+  color: var(--text-muted);
+  font-style: italic;
+}

@@ -1,0 +1,179 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  /* The items table can scroll horizontally (many metric columns); keep the
+     expanded panel pinned inside the visible viewport instead of stretching
+     to the full table width. */
+  position: sticky;
+  left: 0;
+  max-width: calc(100vw - var(--sidebar-w) - 3 * var(--space-lg));
+}
+
+.loadError {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-base);
+  color: var(--text-muted);
+}
+
+/* OUTPUT and EXPECTED are EQUAL panels — same width, same chrome. */
+.sideBySide {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.sidePanel {
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .sideBySide {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Chips ── */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.metricChip,
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+button.metricChip {
+  cursor: help;
+}
+
+.chipKey {
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.scoreFail {
+  color: var(--error);
+}
+
+.metaPre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  white-space: pre-wrap;
+}
+
+/* ── Correction block ── */
+
+.correction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.correctionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.blockLabel {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Purple = AI provenance only; human stays neutral. */
+.sourceAi,
+.sourceHuman {
+  padding: 1px var(--space-sm);
+  border-radius: var(--radius-full);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sourceAi {
+  border: 1px solid var(--accent-tertiary);
+  color: var(--accent-tertiary);
+}
+
+.sourceHuman {
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.pendingBadge {
+  padding: 1px var(--space-sm);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-full);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warning);
+}
+
+.correctionActions {
+  display: inline-flex;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.correctionFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+}
+
+.correctionField {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.correctionField dt {
+  flex-shrink: 0;
+  width: 88px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.correctionField dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}

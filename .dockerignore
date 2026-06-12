@@ -8,8 +8,14 @@ __pycache__/
 .cache/
 .ipynb_checkpoints/
 
+# version control
+.git/
+
 # local artifacts / large data
 qym_results/
+outputs/
+tmp/
+node_modules/
 artifacts/
 tui_debug.log
 qym_platform.db

@@ -1,0 +1,105 @@
+/* ════════════════════════════════════════════════════════════════════
+   qym design tokens
+   Ported from the legacy dashboard token system
+   (qym_platform/_static/dashboard/dashboard.css :root + shell.css :root),
+   keeping the dark terminal aesthetic: near-black layered surfaces, teal
+   accent family, mono for data.
+
+   CHANGES vs legacy (accessibility):
+   - --text-muted and --text-dim failed WCAG AA (4.5:1) for body text.
+     Computed with WCAG 2.x relative luminance against both primary
+     surfaces:
+       legacy --text-muted #7a7a90 → 4.52:1 on #101018, 4.10:1 on #1a1a28 (FAIL)
+       legacy --text-dim   #50505e → 2.39:1 on #101018, 2.17:1 on #1a1a28 (FAIL)
+     new values:
+       --text-muted #9494ac → 6.39:1 on #101018, 5.80:1 on #1a1a28 (PASS)
+       --text-dim   #84849c → 5.19:1 on #101018, 4.71:1 on #1a1a28 (PASS)
+   - Added --focus-ring (used by the global :focus-visible rule).
+   - Added --radius-* scale (legacy CSS referenced --radius-md without ever
+     defining it).
+   ════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Surfaces (dark palette, layered separation) ── */
+  --bg-void: #101018;
+  --bg-base: #14141e;
+  --bg-surface: #1a1a28;
+  --bg-elevated: #222232;
+  --bg-hover: #2a2a3c;
+  --bg-active: #323244;
+
+  /* Semantic aliases used by the SPA */
+  --bg-primary: var(--bg-void);
+  --bg-secondary: var(--bg-surface);
+
+  /* ── Text hierarchy (AA-fixed, see header comment) ── */
+  --text-primary: #ededf0;
+  --text-secondary: #a8a8ba;
+  --text-muted: #9494ac;
+  --text-dim: #84849c;
+
+  /* ── Accent colors ── */
+  --accent-primary: #00d4aa;
+  --accent-secondary: #00a8ff;
+  --accent-tertiary: #a855f7;
+
+  /* ── Semantic / status hues ── */
+  --success: #10b981;
+  --success-dim: #064e3b;
+  --warning: #f59e0b;
+  --warning-dim: #78350f;
+  --error: #ef4444;
+  --error-dim: #7f1d1d;
+  --info: #3b82f6;
+
+  /* ── 5-color score scale (red → orange → yellow → lime → green) ── */
+  --score-1: #ef4444; /* 0-39%: red */
+  --score-2: #f97316; /* 40-59%: orange */
+  --score-3: #eab308; /* 60-74%: yellow */
+  --score-4: #84cc16; /* 75-89%: lime */
+  --score-5: #10b981; /* 90-100%: green */
+
+  /* ── Chart colors ── */
+  --chart-1: #00d4aa;
+  --chart-2: #00a8ff;
+  --chart-3: #a855f7;
+  --chart-4: #f472b6;
+  --chart-5: #fbbf24;
+
+  /* ── Borders ── */
+  --border-subtle: #252536;
+  --border-default: #333348;
+  --border-strong: #4a4a60;
+
+  /* ── Focus ── */
+  --focus-ring: 2px solid var(--accent-primary);
+
+  /* ── Spacing ── */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 32px;
+
+  /* ── Radii ── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+
+  /* ── Type scale ── */
+  --font-xs: 10px;
+  --font-sm: 11px;
+  --font-base: 12px;
+  --font-md: 13px;
+  --font-lg: 15px;
+
+  /* ── Font stacks (mono for data) ── */
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+
+  /* ── Shell layout (from shell.css) ── */
+  --sidebar-w: 192px;
+  --sidebar-collapsed-w: 56px;
+  --topbar-h: 50px;
+}

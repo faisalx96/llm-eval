@@ -122,8 +122,17 @@ docs_portal/static/openapi.json
 packages/platform/qym_platform/_static/docs/openapi.json
 packages/platform/qym_platform/_static/docs/portal-data.json
 
+# SPA build output (built into the wheel/image by Docker/CI from packages/platform/frontend)
+packages/platform/qym_platform/_static/app/
+
 # Scratch / prototypes
 tmp/
+
+# Generated decks / exports
+outputs/
+
+# Node dependencies
+node_modules/
 
 # IDE workspace files
 *.code-workspace

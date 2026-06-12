@@ -30,7 +30,7 @@ qym solves this by making evaluation structured, repeatable, observable, and tea
 - A simple evaluation workflow built around tasks, datasets, and metrics
 - High-throughput async execution for large-scale evaluation runs
 - Multi-model benchmarking in the same workflow
-- Support for both Langfuse datasets and local CSV datasets
+- Native datasets: local CSV/JSONL files and versioned platform datasets with aliases
 - Built-in metrics, custom metrics, and LLM-as-judge evaluation
 - Automatic tracing of LLM calls, tools, reasoning steps, latency, tokens, and errors
 - A live platform for run history, comparison, charts, and version tracking
@@ -147,10 +147,13 @@ isort .
 mypy packages/sdk/qym
 ```
 
-Run the platform with Docker:
+Run the platform with Docker — first create the compose env file from
+[docker/.env.template](docker/.env.template) (defaults are safe for localhost;
+replace the `CHANGE_ME` values before exposing the platform anywhere else):
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+cp docker/.env.template docker/.env
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --env-file docker/.env up --build
 ```
 
 For non-Docker platform setup and admin operations, see the [Platform README](packages/platform/README.md).

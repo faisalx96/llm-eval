@@ -1,0 +1,53 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-family: var(--font-sans);
+}
+
+/* Caps micro label — UI chrome stays sans. */
+.label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* The stat itself is a data value — mono. */
+.value {
+  font-family: var(--font-mono);
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sub {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+/* Clickable variant must LOOK interactive: stronger resting border,
+   accent border + lift on hover, pointer cursor. */
+.clickable {
+  cursor: pointer;
+  border-color: var(--border-default);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.clickable:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-elevated);
+}
+
+.clickable:active {
+  background: var(--bg-active);
+}

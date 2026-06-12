@@ -1,123 +1,98 @@
-"""
-Example showing metric usage with built-in and custom metrics.
+"""Metrics showcase: built-in metrics, custom metrics, and result stats.
 
 Demonstrates:
-- Smart argument resolution (model, trace_id)
-- Adding custom spans to Langfuse traces
-- Custom and built-in metrics
+- Listing the built-in metric registry (``list_available_metrics``)
+- Mixing built-in metrics (by name) with custom metric callables
+- Custom metrics returning either a float or a {"score", "metadata"} dict
+- Smart argument resolution (``model`` is injected by the Evaluator)
+- Reading per-metric statistics off the EvaluationResult
+
+Run it (no API keys required):
+
+    python examples/example.py
+
+Set QYM_API_KEY / QYM_BASE_URL to stream live results to the qym platform.
 """
 
-import random
+from __future__ import annotations
+
 import time
+from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
-from langfuse import Langfuse
-from qym import Evaluator, list_available_metrics
+from qym import CsvDataset, Evaluator, list_available_metrics
 
-# Load environment variables from .env file
-load_dotenv()
+DATASET_PATH = Path(__file__).resolve().parent / "datasets" / "qa.csv"
 
-# Initialize Langfuse client for adding custom spans
-langfuse = Langfuse()
+ANSWERS = {
+    "capital of france": "Paris",
+    "2 + 2": "4",
+    "capital of japan": "Tokyo",
+    "romeo and juliet": "William Shakespeare",
+    "symbol for gold": "Au",
+    # Deliberate mistake so the metrics have something to catch:
+    "capital of australia": "Sydney",
+}
 
 
-def ai_assistant(question: str, model: Optional[str] = None, trace_id: Optional[str] = None) -> str:
+def ai_assistant(question: str, model: Optional[str] = None) -> str:
+    """A deterministic stand-in for an LLM call.
+
+    ``model`` is automatically populated by the Evaluator (from the
+    ``model=`` argument), so the same task can be reused across models.
     """
-    A simple AI assistant for demonstration.
-
-    Args:
-        question: The input question from the dataset
-        model: Model name (automatically passed by Evaluator)
-        trace_id: Langfuse trace ID (automatically passed by Evaluator)
-
-    Returns:
-        The assistant's response
-    """
-    # Add a custom span to the existing trace for observability
-    # Use trace_context to attach the span to the existing evaluation trace
-    span = None
-    if trace_id:
-        span = langfuse.start_span(
-            name="ai_assistant_processing",
-            trace_context={"trace_id": trace_id},
-            input={"question": question, "model": model},
-        )
-
+    time.sleep(0.05)  # simulate a tiny bit of latency
     question_lower = question.lower()
-    delay = random.randint(3, 10)  # Simulate processing time
-    time.sleep(delay)
-    prefix = f"[{model}]" if model else "[default-model]"
-    if "capital of france" in question_lower:
-        response = f"""{prefix} **Paris** is the capital and largest city of France.
-
-Key facts:
-- Population: ~2.1 million (city proper)
-- Known for the *Eiffel Tower* and Louvre Museum
-- Home to `Île de la Cité` and Notre-Dame"""
-    elif "python" in question_lower:
-        response = f"""{prefix} ## Python Overview
-
-Python is a **high-level**, interpreted programming language. Key features:
-
-1. Readability via significant whitespace
-2. Dynamic typing and `print("hello")` simplicity
-3. Rich ecosystem (NumPy, Django, etc.)
-
-> "Simple is better than complex." — Zen of Python"""
-    elif "hello" in question_lower or "hi" in question_lower:
-        response = f"""{prefix} *Hello!* I'm an AI assistant.
-
-**How can I help?**
-- Answer questions
-- Explain concepts
-- Provide `code` examples"""
-    else:
-        response = f"""{prefix} I'm not sure about that specific question.
-
-**Suggestions:**
-1. Try rephrasing
-2. Ask about *capital cities* or *Python*
-3. Say **hello** for a greeting"""
-
-    # End the span with output
-    if span:
-        span.update(output={"response": response, "delay": delay})
-        span.end()
-
-    return response
+    for key, answer in ANSWERS.items():
+        if key in question_lower:
+            return answer
+    return "I'm not sure about that one."
 
 
-def main():    
-    
-    # Example: Mix built-in metrics with custom metrics
-    def response_length_check(output: str) -> float:
-        """Custom metric: Check if response is appropriate length."""
-        length = len(output)
-        if length < 10:
-            return 0.0  # Too short
-        elif length > 200:
-            return 0.5  # Too long
-        else:
-            return 1.0  # Just right
-    
-    evaluator_mixed = Evaluator(
+def response_length_check(output: str) -> float:
+    """Custom metric (float return): is the response a sensible length?"""
+    length = len(str(output))
+    if length < 1:
+        return 0.0  # empty
+    if length > 200:
+        return 0.5  # too long
+    return 1.0
+
+
+def starts_with_capital(output: str, expected: str) -> dict:
+    """Custom metric (dict return): score plus metadata for the results table."""
+    text = str(output).strip()
+    score = 1.0 if text[:1].isupper() or text[:1].isdigit() else 0.0
+    return {"score": score, "metadata": {"first_char": text[:1]}}
+
+
+def main() -> None:
+    # See every metric you can reference by name.
+    list_available_metrics()
+
+    evaluator = Evaluator(
         task=ai_assistant,
-        dataset="saudi-qa-verification-v1",
+        dataset=CsvDataset(
+            DATASET_PATH,
+            input_col="question",
+            expected_col="answer",
+            metadata_cols=["category", "difficulty"],
+        ),
         metrics=[
-            # response_length_check,  # Custom metric
-            "exact_match"          # Simple comparison
+            "exact_match",  # built-in, referenced by name
+            "fuzzy_match",  # built-in similarity metric
+            response_length_check,  # custom float metric
+            starts_with_capital,  # custom dict metric
         ],
-        model=["gpt-4o-mini"], #, "llama-3.1"],
-        config={"task_name": "ai_assistant_single", "run_name": "first batch"}
+        model="demo-model",
+        config={"run_name": "metrics-showcase", "max_concurrency": 5},
     )
-    
-    results_mixed = evaluator_mixed.run(save_format="csv")
-    # if isinstance(results_mixed, list):
-    #     for res in results_mixed:
-    #         res.print_summary()
-    # else:
-    #     results_mixed.print_summary()
+
+    result = evaluator.run(auto_save=False)
+
+    exact = result.get_metric_stats("exact_match")
+    print(f"\nExact match accuracy: {exact['mean']:.1%}")
+    print(f"Items evaluated: {result.total_items}, success rate: {result.success_rate:.1%}")
 
 
 if __name__ == "__main__":

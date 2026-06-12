@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>qym</title>
+    <!-- Match the app's void surface before CSS loads to avoid a white flash -->
+    <style>
+      html {
+        background: #0a0a0f;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Fallback: the backend injects the real root path when serving this
+         file; default to '' so hashed-asset URLs resolve in dev/preview. -->
+    <script>
+      window.__QYM_ROOT_PATH__ = window.__QYM_ROOT_PATH__ || '';
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

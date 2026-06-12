@@ -1,0 +1,186 @@
+/* Dense dark table grammar: caps micro-header, compact rows, row hover,
+   sticky header, optional pinned-right actions column. */
+
+.scroller {
+  position: relative;
+  overflow: auto;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+}
+
+/* ── Caps micro-header, sticky ── */
+.th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-surface);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-default);
+  text-align: left;
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.sortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+.sortBtn:hover {
+  color: var(--text-secondary);
+}
+
+.sortIcon {
+  flex-shrink: 0;
+}
+
+/* Idle sort affordance only surfaces on hover/focus — keeps the header quiet. */
+.sortIdle {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.sortBtn:hover .sortIdle,
+.sortBtn:focus-visible .sortIdle {
+  opacity: 0.7;
+}
+
+.th[aria-sort='ascending'] .sortBtn,
+.th[aria-sort='descending'] .sortBtn {
+  color: var(--accent-primary);
+}
+
+/* ── Compact rows ── */
+.td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+/* Per-row backgrounds flow through a custom property so the sticky
+   pinned-right cell can stay opaque while tracking hover/selected state. */
+.row {
+  --row-pin-bg: var(--bg-base);
+}
+
+.row:hover {
+  background: var(--bg-hover);
+  --row-pin-bg: var(--bg-hover);
+}
+
+.row:focus-visible {
+  outline-offset: -2px;
+}
+
+.selected {
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-base));
+  --row-pin-bg: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-base));
+}
+
+.selected:hover {
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-hover));
+  --row-pin-bg: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-hover));
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+/* ── Pinned-right actions column: sticky right + shadow edge ── */
+.pinRight {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--row-pin-bg, var(--bg-base));
+  box-shadow: -10px 0 10px -8px rgba(0, 0, 0, 0.55);
+}
+
+.pinRightHead {
+  z-index: 3;
+  background: var(--bg-surface);
+}
+
+.alignRight {
+  text-align: right;
+}
+
+.alignCenter {
+  text-align: center;
+}
+
+/* Mono is opt-in per column — data values/IDs/code only. */
+.mono {
+  font-family: var(--font-mono);
+}
+
+.checkbox {
+  accent-color: var(--accent-primary);
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* ── Expanded sub-row: full-width, slightly recessed ── */
+.subRow {
+  background: var(--bg-void);
+}
+
+.subCell {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-void);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* ── Empty + loading slots ── */
+.emptyCell {
+  padding: var(--space-xl) var(--space-md);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.skeleton {
+  height: 11px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.spacer {
+  padding: 0;
+  border: 0;
+}

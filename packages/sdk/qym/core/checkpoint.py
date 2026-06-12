@@ -8,6 +8,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from .results import is_error_row as _shared_is_error_row
+
 
 BASE_FIELDS = [
     "dataset_name",
@@ -26,14 +28,15 @@ BASE_FIELDS = [
 
 
 def _is_error_row(row: Dict[str, Any], metrics: Sequence[str]) -> bool:
-    output = str(row.get("output", "") or "")
-    if output.startswith("ERROR:") or output.startswith("ERROR "):
-        return True
-    if metrics:
-        score_str = str(row.get(f"{metrics[0]}_score", "") or "")
-        if "ERROR" in score_str or score_str.strip().upper() == "N/A":
-            return True
-    return False
+    """Row-level error detection.
+
+    Delegates to the single shared implementation in ``qym.core.results``
+    (audit EI-1): a row is an error row iff its output carries an ERROR
+    marker, or EVERY metric cell is errored. A row where only some metrics
+    errored is NOT an error row — on resume it is restored as a completed
+    item and the errored metrics are excluded per-metric downstream.
+    """
+    return _shared_is_error_row(row, metrics)
 
 
 def _parse_metric_score(value: Any) -> Optional[float]:
@@ -146,12 +149,59 @@ class CheckpointWriter:
         self._writer = None
 
     def open(self) -> None:
+        """Open the checkpoint file for appending.
+
+        Audit EI-3: when resuming into an existing non-empty file, the
+        EXISTING header row is reused as the DictWriter fieldnames so that
+        appended values land under the original columns even if the current
+        run declares its metrics in a different order. If the existing
+        header's metric set differs from the current run's metrics, a
+        ``ValueError`` naming both sets is raised instead of silently
+        appending misaligned columns.
+        """
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        file_exists = os.path.exists(self.path)
-        self._file = open(self.path, "a", newline="", encoding="utf-8")
-        header = build_checkpoint_header(self.metrics)
-        self._writer = csv.DictWriter(self._file, fieldnames=header)
-        if not file_exists or os.path.getsize(self.path) == 0:
+
+        existing_header: Optional[List[str]] = None
+        if os.path.exists(self.path) and os.path.getsize(self.path) > 0:
+            with open(self.path, "r", newline="", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                try:
+                    first_row = next(reader)
+                except StopIteration:
+                    first_row = None
+            if first_row:
+                existing_header = first_row
+
+        if existing_header is not None:
+            existing_metrics = {
+                name[: -len("_score")]
+                for name in existing_header
+                if name.endswith("_score") and "__meta__" not in name
+            }
+            current_metrics = set(self.metrics)
+            if existing_metrics != current_metrics:
+                raise ValueError(
+                    "Checkpoint metric mismatch: existing checkpoint "
+                    f"{self.path!r} has metrics {sorted(existing_metrics)} "
+                    f"but the current run uses {sorted(current_metrics)}. "
+                    "Refusing to append rows under a mismatched header."
+                )
+            self._file = open(self.path, "a", newline="", encoding="utf-8")
+            # extrasaction="ignore": legacy files may lack optional
+            # {metric}__meta__json columns; drop those values rather than
+            # corrupting the existing column layout. restval="" fills any
+            # extra audit columns (e.g. {metric}__meta__modified).
+            self._writer = csv.DictWriter(
+                self._file,
+                fieldnames=existing_header,
+                extrasaction="ignore",
+                restval="",
+            )
+        else:
+            self._file = open(self.path, "a", newline="", encoding="utf-8")
+            self._writer = csv.DictWriter(
+                self._file, fieldnames=build_checkpoint_header(self.metrics)
+            )
             self._writer.writeheader()
             self._flush()
 

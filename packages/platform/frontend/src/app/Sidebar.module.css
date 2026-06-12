@@ -1,0 +1,171 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  background: var(--bg-base);
+  border-right: 1px solid var(--border-subtle);
+  transition: width 120ms ease, min-width 120ms ease;
+  overflow: hidden;
+}
+
+.collapsed {
+  width: var(--sidebar-collapsed-w);
+  min-width: var(--sidebar-collapsed-w);
+}
+
+/* ── Brand block (global context) ── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: var(--topbar-h);
+  padding: 0 var(--space-md);
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.collapsed .brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.brandIcon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.brandIconFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-md);
+  flex-shrink: 0;
+}
+
+.brandName {
+  font-family: var(--font-mono);
+  font-size: var(--font-lg);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ── Nav ── */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 7px var(--space-md);
+  color: var(--text-secondary);
+  font-size: var(--font-md);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.collapsed .navItem {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.navItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ONE active treatment: teal left bar + subtle bg. */
+.navItemActive {
+  border-left-color: var(--accent-primary);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.navIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.navLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.externalMark {
+  color: var(--text-dim);
+}
+
+.divider {
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--space-sm) var(--space-md);
+}
+
+.collapsed .divider {
+  margin: var(--space-sm) var(--space-sm);
+}
+
+/* ── Footer (collapse toggle + user chip) ── */
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.collapseButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 7px var(--space-md);
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.collapsed .collapseButton {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.collapseButton:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

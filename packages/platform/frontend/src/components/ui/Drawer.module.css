@@ -1,0 +1,103 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: color-mix(in srgb, var(--bg-void) 72%, transparent);
+  animation: overlay-in 140ms ease;
+}
+
+/* Full viewport height, anchored to the right edge — sits OVER any
+   sidebar/topbar (z-index above shell chrome). */
+.content {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  border-left: 1px solid var(--border-default);
+  box-shadow: -16px 0 48px color-mix(in srgb, var(--bg-void) 60%, transparent);
+  animation: drawer-in 180ms ease;
+}
+
+/* ── Sizes ── */
+.md {
+  width: 480px;
+  max-width: 100vw;
+}
+
+.lg {
+  width: 760px;
+  max-width: 100vw;
+}
+
+.full {
+  width: 100vw;
+  border-left: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex: none;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-lg);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description {
+  flex: none;
+  margin: 0;
+  padding: var(--space-sm) var(--space-lg) 0;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .content {
+    animation: none;
+  }
+}

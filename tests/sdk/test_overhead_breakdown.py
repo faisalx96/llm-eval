@@ -296,7 +296,10 @@ async def _run_overhead_breakdown_test(monkeypatch: pytest.MonkeyPatch) -> Dict[
         assert platform_breakdown["stream_init_s"] > 0.0, report
         assert platform_breakdown["event_emit_s"] > 0.0, report
         assert platform_breakdown["stream_close_s"] > 0.0, report
-        assert harness.total_count(platform_phase, "platform.emit") == repeat_count * ((2 * len(items)) + 2), report
+        # Per item: item_started, item_attempt_started, item_attempt_finished,
+        # item_completed (no metrics configured). Per run: run_started +
+        # run_completed.
+        assert harness.total_count(platform_phase, "platform.emit") == repeat_count * ((4 * len(items)) + 2), report
         reports.append(report)
 
     return {"cases": reports}

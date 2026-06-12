@@ -1,0 +1,376 @@
+/* Runs list page — tokens only, no raw colors. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-xl);
+}
+
+/* ── Header: title + topbar-style stat chips ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.statChips {
+  display: flex;
+  gap: var(--space-sm);
+  margin-left: auto;
+}
+
+.statChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+}
+
+.statLabel {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.statValue {
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+
+/* ── FilterBar trailing controls ── */
+.barEnd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.reviewToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 3px var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reviewToggle:hover {
+  background: var(--bg-hover);
+}
+
+.reviewToggle:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Amber = needs-attention (N > 0). */
+.reviewToggleAttention {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.reviewToggleOn {
+  background: color-mix(in srgb, var(--warning) 16%, var(--bg-surface));
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* ── Columns menu ── */
+.menuGroupLabel {
+  padding: var(--space-xs) var(--space-sm) 2px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.menuCheckOff {
+  visibility: hidden;
+}
+
+.menuHint {
+  margin-left: var(--space-sm);
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+}
+
+/* ── Selection toolbar ── */
+.selectionBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.selectionCount {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.selectionChips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.selectionChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 1px var(--space-xs) 1px var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--font-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chipRemove:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chipRemove:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* ── Table ── */
+.tableWrap {
+  min-width: 0;
+}
+
+.tableStale {
+  opacity: 0.65;
+  transition: opacity 120ms ease;
+}
+
+/* Status cell */
+.statusCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
+
+/* Amber = needs-attention: finished run with item-level errors. */
+.errorChip {
+  font-size: var(--font-sm);
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+/* Name cell + inline rename */
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: 100%;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.nameIndent {
+  padding-left: var(--space-md);
+}
+
+.nameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.renameBtn {
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.nameCell:hover .renameBtn,
+.renameBtn:focus-visible {
+  opacity: 1;
+}
+
+.renameInput {
+  width: 100%;
+  max-width: 40ch;
+  padding: 2px var(--space-xs);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+}
+
+.renameInput:focus {
+  outline: none;
+}
+
+/* Group header rows: subtle band across the whole row. The DataTable owns
+   the <tr>, so the band styles hang off :has(.groupBand). */
+tr:has(.groupBand) {
+  background: var(--bg-surface);
+  --row-pin-bg: var(--bg-surface);
+}
+
+tr:has(.groupBand):hover {
+  background: var(--bg-elevated);
+  --row-pin-bg: var(--bg-elevated);
+}
+
+.groupBand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  white-space: nowrap;
+}
+
+.groupLabel {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+/* Model cell */
+.modelCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  white-space: nowrap;
+}
+
+.modelDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* Version chip — mono data value */
+.versionChip {
+  display: inline-block;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.dateText {
+  white-space: nowrap;
+}
+
+/* Owner cell */
+.owner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  white-space: nowrap;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.ownerName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+/* ── Error state ── */
+.errorCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.errorText {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+/* ── Delete modal extras ── */
+.deleteList {
+  margin: 0 0 var(--space-sm);
+  padding-left: var(--space-lg);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.deleteList li {
+  margin-bottom: 2px;
+}
+
+.deleteWarning {
+  color: var(--warning);
+  font-weight: 600;
+}

@@ -13,8 +13,6 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
-os.environ.setdefault("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 SDK_SRC = ROOT / "packages" / "sdk"
@@ -35,6 +33,9 @@ CONNECTIONS_URL = f"/v1/projects/{PROJECT_ID}/llm-connections"
 def session_factory(monkeypatch):
     monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
+    # Pin base_url so the same-origin write guard matches the Origin header below even
+    # when another test module has leaked QYM_BASE_URL into the process environment.
+    monkeypatch.setenv("QYM_BASE_URL", "http://localhost:8000")
     monkeypatch.setenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     engine = create_engine(
         "sqlite://",

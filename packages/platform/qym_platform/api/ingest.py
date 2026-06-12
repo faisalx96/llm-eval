@@ -9,7 +9,7 @@ import sys
 from collections import defaultdict
 
 csv.field_size_limit(sys.maxsize)
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 
 
 def _sanitize_for_json(obj: Any) -> Any:
@@ -537,72 +537,145 @@ def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]
     return trace_stats
 
 
-def _refresh_live_trace_stats(db: Session, run: Run) -> None:
+def _refresh_live_trace_stats(
+    db: Session,
+    run: Run,
+    item_ids: Optional[Iterable[str]] = None,
+    trace_ids: Optional[Iterable[str]] = None,
+) -> None:
+    """Recompute live (mid-run) per-item and run-level trace stats.
+
+    Without filters this is a full recompute from stored spans (mirrors
+    ``_store_trace_stats``). When ``item_ids``/``trace_ids`` are provided
+    (batch ingestion), only the spans for the touched items/traces are
+    re-read; untouched items keep their previously stored per-item
+    ``trace_stats`` and contribute to run-level counters via the persisted
+    ``RunTraceAggregate`` rows. Aggregates do not carry latency totals, so
+    mid-run run-level latency averages only reflect freshly refreshed
+    traces; the authoritative final numbers are recomputed from all spans
+    by ``_store_trace_stats`` when the run completes.
+    """
     db.flush()
     items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
-    trace_ids = sorted({item.trace_id for item in items if item.trace_id})
+    scoped = item_ids is not None or trace_ids is not None
+    touched_items = set(item_ids or ())
+    touched_traces = set(trace_ids or ())
+    if scoped:
+        target_items = [
+            item
+            for item in items
+            if item.item_id in touched_items
+            or (item.trace_id and item.trace_id in touched_traces)
+        ]
+    else:
+        target_items = items
+    target_item_ids = {item.item_id for item in target_items}
+    trace_ids_to_read = sorted({item.trace_id for item in target_items if item.trace_id})
     trace_buckets: Dict[str, Dict[str, Any]] = {}
-    if trace_ids:
+    if trace_ids_to_read:
         spans = (
             db.query(Span)
-            .filter(Span.run_id == run.id, Span.trace_id.in_(trace_ids))
+            .filter(Span.run_id == run.id, Span.trace_id.in_(trace_ids_to_read))
             .all()
         )
         trace_buckets = _build_trace_buckets_from_spans(spans)
 
+    # For untouched items (scoped mode), pull their counters from the
+    # persisted per-trace aggregates so run-level stats keep covering the
+    # whole run without re-reading every span on every batch.
+    aggregate_buckets: Dict[str, Dict[str, Any]] = {}
+    if scoped:
+        fresh_trace_ids = set(trace_ids_to_read)
+        other_trace_ids = sorted(
+            {
+                item.trace_id
+                for item in items
+                if item.trace_id and item.trace_id not in fresh_trace_ids
+            }
+        )
+        if other_trace_ids:
+            aggregates = (
+                db.query(RunTraceAggregate)
+                .filter(
+                    RunTraceAggregate.run_id == run.id,
+                    RunTraceAggregate.trace_id.in_(other_trace_ids),
+                )
+                .all()
+            )
+            aggregate_buckets = {
+                agg.trace_id: _trace_bucket_from_aggregate(agg) for agg in aggregates
+            }
+
     item_buckets: list[dict[str, Any]] = []
     for item in items:
-        bucket = trace_buckets.get(item.trace_id or "")
-        md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-        if bucket and int(bucket.get("span_count") or 0) > 0:
-            md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
-            if not item.error:
-                item_buckets.append(bucket)
+        if item.item_id in target_item_ids:
+            bucket = trace_buckets.get(item.trace_id or "")
+            md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+            if bucket and int(bucket.get("span_count") or 0) > 0:
+                md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
+                if not item.error:
+                    item_buckets.append(bucket)
+            else:
+                md.pop("trace_stats", None)
+            item.item_metadata = _sanitize_for_json(md)
         else:
-            md.pop("trace_stats", None)
-        item.item_metadata = _sanitize_for_json(md)
+            bucket = trace_buckets.get(item.trace_id or "") or aggregate_buckets.get(
+                item.trace_id or ""
+            )
+            if bucket and int(bucket.get("span_count") or 0) > 0 and not item.error:
+                item_buckets.append(bucket)
 
     current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
     current["trace_stats"] = _build_run_trace_stats(item_buckets)
     run.run_metadata = _sanitize_for_json(current)
 
 
-def _upsert_trace_aggregate(
-    db: Session, run_id: str, payload: SpanCompletedPayload
+def _upsert_trace_aggregates(
+    db: Session, run_id: str, trace_ids: Iterable[str]
 ) -> None:
-    agg = (
-        db.query(RunTraceAggregate)
-        .filter(
-            RunTraceAggregate.run_id == run_id,
-            RunTraceAggregate.trace_id == payload.trace_id,
-        )
-        .first()
-    )
-    if not agg:
-        agg = RunTraceAggregate(run_id=run_id, trace_id=payload.trace_id)
-        db.add(agg)
-        db.flush()
+    """Recompute the persisted per-trace aggregates for the given traces.
 
+    Called once per ingestion batch for the traces that received new spans
+    (previously recomputed per span event, which made batch ingestion
+    quadratic in the number of spans).
+    """
+    ids = sorted({trace_id for trace_id in trace_ids if trace_id})
+    if not ids:
+        return
+    db.flush()
     spans = (
         db.query(Span)
-        .filter(Span.run_id == run_id, Span.trace_id == payload.trace_id)
+        .filter(Span.run_id == run_id, Span.trace_id.in_(ids))
         .all()
     )
-    bucket = _build_trace_buckets_from_spans(spans).get(
-        payload.trace_id, _empty_trace_bucket()
-    )
-    agg.span_count = int(bucket["span_count"])
-    agg.tokens = int(bucket["tokens"])
-    agg.cost = float(bucket["cost"])
-    agg.llm_calls = int(bucket["llm_calls"])
-    agg.tool_calls = int(bucket["tool_calls"])
-    agg.tool_errors = int(bucket["tool_errors"])
-    agg.malformed_tool_calls = int(bucket["malformed_tool_calls"])
-    agg.noisy_reasoning = int(bucket["noisy_reasoning"])
-    agg.provider_errors = int(bucket["provider_errors"])
-    agg.has_reasoning = bool(bucket["has_reasoning"])
-    agg.has_reasoning_tokens = bool(bucket["has_reasoning_tokens"])
-    agg.reasoning_tokens = int(bucket["reasoning_tokens"])
+    buckets = _build_trace_buckets_from_spans(spans)
+    existing = {
+        agg.trace_id: agg
+        for agg in db.query(RunTraceAggregate)
+        .filter(
+            RunTraceAggregate.run_id == run_id,
+            RunTraceAggregate.trace_id.in_(ids),
+        )
+        .all()
+    }
+    for trace_id in ids:
+        bucket = buckets.get(trace_id, _empty_trace_bucket())
+        agg = existing.get(trace_id)
+        if not agg:
+            agg = RunTraceAggregate(run_id=run_id, trace_id=trace_id)
+            db.add(agg)
+        agg.span_count = int(bucket["span_count"])
+        agg.tokens = int(bucket["tokens"])
+        agg.cost = float(bucket["cost"])
+        agg.llm_calls = int(bucket["llm_calls"])
+        agg.tool_calls = int(bucket["tool_calls"])
+        agg.tool_errors = int(bucket["tool_errors"])
+        agg.malformed_tool_calls = int(bucket["malformed_tool_calls"])
+        agg.noisy_reasoning = int(bucket["noisy_reasoning"])
+        agg.provider_errors = int(bucket["provider_errors"])
+        agg.has_reasoning = bool(bucket["has_reasoning"])
+        agg.has_reasoning_tokens = bool(bucket["has_reasoning_tokens"])
+        agg.reasoning_tokens = int(bucket["reasoning_tokens"])
 
 
 def _store_trace_stats(db: Session, run: Run) -> None:
@@ -855,59 +928,15 @@ async def ingest_events(
 
     applied = 0
     skipped = 0
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            raw = json.loads(line)
-            evt = RunEventV1.model_validate(raw)
-        except Exception as e:
-            # Skip malformed events instead of rejecting the entire batch.
-            # One bad span_completed must never take down an item_completed.
-            logger.warning("Skipping malformed event for run %s: %s", run_id, e)
-            continue
-        if str(evt.run_id) != run_id:
-            # run_id mismatch is a real error — skip this event
-            logger.warning("Skipping event with run_id mismatch for run %s", run_id)
-            continue
+    rejected = 0
+    # Items/traces touched by this batch; live trace stats and per-trace
+    # aggregates are refreshed once after the event loop (scoped to these)
+    # instead of once per event.
+    touched_item_ids: set[str] = set()
+    touched_trace_ids: set[str] = set()
 
-        existing = (
-            db.query(RunEvent)
-            .filter(RunEvent.run_id == run_id, RunEvent.event_id == str(evt.event_id))
-            .first()
-        )
-        if existing:
-            skipped += 1
-            continue
-
-        # Store event (optional but useful)
-        db.add(
-            RunEvent(
-                run_id=run_id,
-                event_id=str(evt.event_id),
-                sequence=evt.sequence,
-                type=evt.type,
-                sent_at=evt.sent_at,
-                payload=raw.get("payload") or {},
-            )
-        )
-
-        # Apply side-effects into normalized tables
-        # Parse payload explicitly based on event type to avoid Union ambiguity
-        raw_payload = raw.get("payload") or {}
-        payload_cls = _PAYLOAD_TYPE.get(evt.type)
-        payload = (
-            payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
-        )
-        logger.debug(
-            "Ingest run=%s type=%s payload_type=%s",
-            run_id,
-            evt.type,
-            type(payload).__name__,
-        )
-        touch_run_event(run, evt.sent_at)
-
+    def _apply_payload(evt: RunEventV1, payload: Any) -> None:
+        """Apply one event's side-effects to the normalized tables."""
         if isinstance(payload, RunStartedPayload):
             run.external_run_id = payload.external_run_id
             run.task = payload.task
@@ -993,14 +1022,7 @@ async def ingest_events(
                     md["task_started_at_ms"] = payload.task_started_at_ms
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            touched_item_ids.add(payload.item_id)
 
         elif isinstance(payload, ItemAttemptFinishedPayload):
             mark_run_running(run)
@@ -1125,14 +1147,7 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            touched_item_ids.add(payload.item_id)
 
         elif isinstance(payload, ItemFailedPayload):
             mark_run_running(run)
@@ -1175,14 +1190,7 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            touched_item_ids.add(payload.item_id)
 
         elif isinstance(payload, RunCompletedPayload):
             _FINAL_STATUS = {
@@ -1215,6 +1223,11 @@ async def ingest_events(
             try:
                 db.flush()  # ensure all spans from this batch are visible
                 _store_trace_stats(db, run)
+                # Final stats are authoritative: drop pending live-refresh
+                # work so the post-loop refresh does not overwrite them.
+                # Events arriving after run_completed re-mark themselves.
+                touched_item_ids.clear()
+                touched_trace_ids.clear()
             except Exception:
                 logger.warning(
                     "Failed to compute trace stats for run %s", run_id, exc_info=True
@@ -1242,8 +1255,8 @@ async def ingest_events(
             # Wrapped in a savepoint so a span-storage failure (e.g. pending
             # migration) never rolls back the rest of the batch (items, metrics).
             span_inserted = False
+            nested = db.begin_nested()
             try:
-                nested = db.begin_nested()
                 existing = (
                     db.query(Span)
                     .filter(
@@ -1272,22 +1285,127 @@ async def ingest_events(
                     span_inserted = True
                 nested.commit()
             except Exception as e:
+                # Roll back to the savepoint: without this the session is
+                # left in a failed state on PostgreSQL and every subsequent
+                # statement in the batch (and the final commit) errors out.
+                nested.rollback()
+                span_inserted = False
                 logger.warning("Span storage failed for run %s: %s", run_id, e)
             if span_inserted:
-                try:
-                    nested = db.begin_nested()
-                    _upsert_trace_aggregate(db, run_id, payload)
-                    _refresh_live_trace_stats(db, run)
-                    nested.commit()
-                except Exception as e:
-                    logger.warning(
-                        "Live trace aggregation failed for run %s: %s", run_id, e
-                    )
+                touched_trace_ids.add(payload.trace_id)
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            raw = json.loads(line)
+            evt = RunEventV1.model_validate(raw)
+        except Exception as e:
+            # Skip malformed events instead of rejecting the entire batch.
+            # One bad span_completed must never take down an item_completed.
+            logger.warning("Skipping malformed event for run %s: %s", run_id, e)
+            rejected += 1
+            continue
+        if str(evt.run_id) != run_id:
+            # run_id mismatch is a real error — skip this event
+            logger.warning("Skipping event with run_id mismatch for run %s", run_id)
+            rejected += 1
+            continue
+
+        existing = (
+            db.query(RunEvent)
+            .filter(RunEvent.run_id == run_id, RunEvent.event_id == str(evt.event_id))
+            .first()
+        )
+        if existing:
+            skipped += 1
+            continue
+
+        # Parse payload explicitly based on event type to avoid Union ambiguity
+        raw_payload = raw.get("payload") or {}
+        payload_cls = _PAYLOAD_TYPE.get(evt.type)
+
+        # Apply each event inside a savepoint so one poison event (an
+        # invalid typed payload or a constraint violation) cannot 500 the
+        # whole batch or leave partial writes behind.
+        nested = db.begin_nested()
+        try:
+            # Store event (optional but useful)
+            db.add(
+                RunEvent(
+                    run_id=run_id,
+                    event_id=str(evt.event_id),
+                    sequence=evt.sequence,
+                    type=evt.type,
+                    sent_at=evt.sent_at,
+                    payload=raw_payload,
+                )
+            )
+            payload = (
+                payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
+            )
+            logger.debug(
+                "Ingest run=%s type=%s payload_type=%s",
+                run_id,
+                evt.type,
+                type(payload).__name__,
+            )
+            touch_run_event(run, evt.sent_at)
+            _apply_payload(evt, payload)
+            nested.commit()
+        except Exception as e:
+            nested.rollback()
+            # The rolled-back rows may still sit in the per-batch caches;
+            # drop them so later events re-query instead of reusing stale
+            # (expunged or reverted) objects.
+            item_cache.clear()
+            attempt_cache.clear()
+            score_cache.clear()
+            rejected += 1
+            logger.warning(
+                "Rejected poison event %s (type=%s) for run %s: %s",
+                evt.event_id,
+                evt.type,
+                run_id,
+                e,
+            )
+            continue
 
         applied += 1
 
+    # Refresh per-trace aggregates and live trace stats once per batch,
+    # scoped to the touched traces/items (previously refreshed per event,
+    # re-reading every item and span each time).
+    if touched_trace_ids:
+        nested = db.begin_nested()
+        try:
+            _upsert_trace_aggregates(db, run_id, touched_trace_ids)
+            nested.commit()
+        except Exception:
+            nested.rollback()
+            logger.warning(
+                "Live trace aggregation failed for run %s", run_id, exc_info=True
+            )
+    if touched_item_ids or touched_trace_ids:
+        nested = db.begin_nested()
+        try:
+            _refresh_live_trace_stats(
+                db, run, item_ids=touched_item_ids, trace_ids=touched_trace_ids
+            )
+            nested.commit()
+        except Exception:
+            nested.rollback()
+            logger.warning(
+                "Failed to refresh live trace stats for run %s",
+                run_id,
+                exc_info=True,
+            )
+
     db.commit()
-    return JSONResponse({"ok": True, "applied": applied, "skipped": skipped})
+    return JSONResponse(
+        {"ok": True, "applied": applied, "skipped": skipped, "rejected": rejected}
+    )
 
 
 @router.post("/runs:upload")

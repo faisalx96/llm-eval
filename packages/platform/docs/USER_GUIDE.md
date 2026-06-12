@@ -5,65 +5,77 @@ The qym platform is the deployed web app that stores evaluation runs centrally a
 ## Table of Contents
 
 1. [Access Model](#access-model)
-2. [Organization & Roles](#organization--roles)
+2. [Projects & Roles](#projects--roles)
 3. [Profile Page](#profile-page)
 4. [Runs Dashboard](#runs-dashboard)
-5. [Single Run View](#single-run-view)
-6. [Compare View](#compare-view)
-7. [Charts View](#charts-view)
-8. [Trace Viewer](#trace-viewer)
-9. [AI Root Cause Analysis](#ai-root-cause-analysis)
-10. [Corrections Review](#corrections-review)
-11. [Run Workflow & Statuses](#run-workflow--statuses)
-12. [Uploading & Submitting Runs](#uploading--submitting-runs)
-13. [CLI Commands](#cli-commands)
-14. [Admin Panel](#admin-panel)
+5. [Datasets](#datasets)
+6. [Single Run View](#single-run-view)
+7. [Compare View](#compare-view)
+8. [Charts View](#charts-view)
+9. [Trace Viewer](#trace-viewer)
+10. [AI Root Cause Analysis](#ai-root-cause-analysis)
+11. [Corrections Review](#corrections-review)
+12. [Run Workflow & Statuses](#run-workflow--statuses)
+13. [Uploading & Submitting Runs](#uploading--submitting-runs)
+14. [CLI Commands](#cli-commands)
+15. [Admin Panel](#admin-panel)
 
 ---
 
 ## Access Model
 
-The platform identifies users via reverse-proxy headers:
-- `X-User-Email` (preferred) or `X-Email`
+How the platform identifies you depends on the deployment's `QYM_AUTH_MODE`:
+
+- **`oidc`** — native browser login (Google/GitHub) with a session cookie
+- **`proxy_headers`** — an identity-aware reverse proxy supplies `X-User-Email` (or `X-Email`)
+- **`none`** — open local-development mode
+
+SDK, CLI, and API clients authenticate separately with a **project-scoped API key** sent as `Authorization: Bearer <token>`.
 
 First admin bootstrap:
 1. Set `QYM_ADMIN_BOOTSTRAP_TOKEN`
-2. Send `X-Admin-Bootstrap: <token>` + `X-User-Email: you@company.com` on your first request
+2. In `proxy_headers` mode, send `X-Admin-Bootstrap: <token>` + `X-User-Email: you@company.com` on your first request; in `oidc` mode, sign in and submit the token via `POST /v1/auth/bootstrap-admin`
+
+This creates the first user with the `ADMIN` role.
 
 ---
 
-## Organization & Roles
+## Projects & Roles
 
-### Organizational Hierarchy
+### Projects
 
-Users are organized into a three-level hierarchy:
-- **Sector** → **Department** → **Team**
-
-Each user belongs to exactly one Team, which determines their visibility and approval authority.
+All work is scoped to **projects**. A project groups runs, datasets, API keys, and LLM connections. Users are added to projects as members, and everything you see in the dashboard is filtered to the projects you belong to.
 
 ### Roles
 
-| Role | Visibility | Can Approve/Reject |
-|------|-----------|-------------------|
-| **EMPLOYEE** | Own runs only | No (can submit) |
-| **MANAGER** | Managed team(s)' runs | Yes |
-| **GM** | Approved runs only (configurable) | No |
-| **VP** | Approved runs only (configurable) | No |
-| **ADMIN** | All runs and settings | Yes (full access) |
+There are two levels of role:
 
-### Visibility Rules (Admin Configurable)
-- **GM/VP Approved-Only**: When enabled, GM and VP users can only see runs that have been approved
-- **Manager Visibility Scope**: Controls whether managers see all runs in their org subtree or just their direct team
+**Global user role**
+
+| Role | Meaning |
+|------|---------|
+| **MEMBER** | Standard user. Sees only projects they are a member of. |
+| **ADMIN** | Platform administrator. Sees all projects, manages users and projects from `/admin`. |
+
+**Per-project role**
+
+| Role | Visibility | Powers |
+|------|-----------|--------|
+| **MEMBER** | All runs in the project | Run evaluations, create API keys, submit own runs for review |
+| **MANAGER** | All runs in the project | Everything members can do, plus approve/reject runs and manage project members and API keys |
+
+Admins and project managers can create new projects. Every project keeps at least one manager — the last manager cannot be removed or demoted.
 
 ---
 
 ## Profile Page
 
-Access at `/profile`. From here you can:
+Access at `/profile`. From here you can view your account info and the projects you belong to.
 
-- **View** your profile and organization info
-- **Manage API keys** for SDK integration — click **Create New Key**, name it, and copy the token (shown only once)
-- **Configure your LLM provider** for AI root cause analysis — set model, API key, and base URL for any OpenAI-compatible provider (OpenAI, OpenRouter, Azure, Ollama, vLLM), with a **Test Connection** button to verify
+Integrations are configured per project in the project settings page:
+
+- **API keys** (**API Keys** tab) — click **Create New Key**, name it, and copy the token (shown only once)
+- **LLM connections** (**LLM Connections** tab) — providers for AI root cause analysis. Set name, model, API key, and base URL for any OpenAI-compatible provider (OpenAI, OpenRouter, Azure, Ollama, vLLM), with a **Test Connection** button to verify
 
 A **user dropdown** in the header across all pages provides quick access to Profile and Admin.
 
@@ -97,9 +109,55 @@ A **metric visibility dropdown** lets you select which metrics appear in the run
 ### Actions
 
 - Role-aware action menu per run — **Submit**, **Approve**, **Reject**, or **Delete** in one click
-- **Langfuse integration** — one-click jump to the trace
+- **Trace access** — one-click jump to an item's trace in the embedded trace viewer
 - Click a run ID to open the single run view (`/run/<run_id>`)
 - Select multiple runs and click **Compare Selected** to open the compare view
+
+---
+
+## Datasets
+
+The **Datasets** page (`/datasets`) manages the platform's shared, versioned evaluation datasets. SDK and CLI runs reference these datasets by name.
+
+### Concepts
+
+| Concept | Meaning |
+|---------|---------|
+| **Dataset** | A named collection of evaluation items, scoped to a project |
+| **Version** | An immutable snapshot of items. Starts as `draft`, becomes `published`, can be `archived` |
+| **Alias** | A movable pointer to a version — most importantly `production` |
+
+### Creating a Dataset
+
+Click **New Dataset** and choose:
+
+- **Start blank** — create an empty dataset and add items or upload files later
+- **Import CSV / JSONL** — opens the three-step **upload wizard**:
+  1. **Source** — pick a `.csv` or `.jsonl` file
+  2. **Map columns** — for CSV, assign columns to input, expected output, item ID, and metadata (with auto-detection)
+  3. **Review** — confirm, then create the dataset with its first version
+
+### Versions, Publishing, and Production
+
+- New uploads create **draft** versions; drafts can still receive items
+- **Publish** a version to freeze it for evaluation use
+- Point the **`production` alias** at the version teams should run against by default — SDK runs that reference the dataset by name load `production` unless they pin a specific version or alias
+- **Compare** two versions to see added, removed, and changed items
+- Per-item history shows which runs used each item
+
+### Using Platform Datasets in Runs
+
+```bash
+qym run create --task-file agent.py --task-function chat \
+  --dataset qa-set --dataset-version v3 --metrics exact_match
+```
+
+```python
+Evaluator(task=my_task, dataset="qa-set", metrics=["exact_match"],
+          config={"dataset_alias": "production"})
+```
+
+The full CLI surface lives under `qym dataset` (`list`, `get`, `upload`, `download`, `version list/create/publish/compare`, `alias set`, `item list/runs`).
 
 ---
 
@@ -377,8 +435,8 @@ Runs go through a lifecycle of statuses:
 | **STOPPED** | Run interrupted by user (Ctrl+C) — the SDK sends this instead of leaving runs stuck in RUNNING |
 | **DRAFT** | Run completed but not submitted for approval |
 | **SUBMITTED** | User submitted run for approval |
-| **APPROVED** | Manager approved the run (visible to GM/VP) |
-| **REJECTED** | Manager rejected the run |
+| **APPROVED** | A project manager or admin approved the run |
+| **REJECTED** | A project manager or admin rejected the run |
 
 Dashboard status filters, auto-refresh, polling, and badges treat PENDING as active and display STOPPED explicitly.
 
@@ -462,6 +520,22 @@ qym analyze run      # Trigger AI root-cause analysis on a run's items
 qym analyze summary  # Get aggregated root-cause analysis summary
 ```
 
+### Dataset Commands
+
+```bash
+qym dataset list             # List platform datasets
+qym dataset get              # Show one dataset
+qym dataset upload           # Upload a CSV/JSONL file as a dataset version
+qym dataset download         # Download a dataset version as JSONL
+qym dataset version list     # List a dataset's versions
+qym dataset version create   # Create a new draft version (from an alias by default)
+qym dataset version publish  # Publish a draft version (optionally set production)
+qym dataset version compare  # Diff two versions
+qym dataset alias set        # Point an alias (e.g. production) at a version
+qym dataset item list        # List items in a version
+qym dataset item runs        # Show runs that used a specific item
+```
+
 ### Other Commands
 
 ```bash
@@ -480,12 +554,11 @@ Old-style invocations like `qym --task-file ...` and `qym resume --run-file ...`
 
 ## Admin Panel
 
-Access at `/admin` (ADMIN role only). The platform README covers bootstrap, org structure, API keys, and admin settings. From the admin panel you can:
-- User management
-- Organization structure (Sector → Department → Team)
-- Platform settings (visibility rules, hidden tasks)
-- API key management
+Access at `/admin` (ADMIN role only). The platform README covers bootstrap, the project access model, and API keys. From the admin panel you can manage:
+- Users (create, update roles, deactivate)
+- Projects (create, rename, archive, delete)
+- Project memberships across all projects
 
 ### Hidden Tasks
 
-Operators can configure `hidden_tasks` in platform settings to hide specific tasks from run listings and task discovery — both the CLI (`qym run tasks`) and the dashboard respect this setting.
+Operators can set the `QYM_HIDDEN_TASKS` environment variable (comma-separated task names) to hide specific tasks from run listings and task discovery — both the CLI (`qym run tasks`) and the dashboard respect this setting.

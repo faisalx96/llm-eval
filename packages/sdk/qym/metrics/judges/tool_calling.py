@@ -9,13 +9,24 @@ Incorrect tool calls use the wrong tool, pass wrong arguments, or fail to call a
 
 [Question]: {question}
 [Tool Definitions]: {tool_definitions}
-[Tool Calls Made]: {tool_calls}
+[Tool Calls Made]: {output}
 
 Are the tool calls correct or incorrect?"""
 
 
 def tool_calling(*, judge_model=None, judge_base_url=None, judge_api_key=None):
-    """Return a tool calling judge metric."""
+    """Return a tool calling judge metric.
+
+    The ``[Tool Calls Made]`` section of the prompt is filled from the model
+    OUTPUT being evaluated (the ``{output}`` placeholder, i.e. the ``output``
+    argument passed to the metric), NOT from the dataset input. ``{question}``
+    and ``{tool_definitions}`` are filled from the dataset input dict.
+
+    Expected output shape: the serialized tool calls made by the system under
+    test — either a plain string or a JSON-serialized list of tool-call
+    objects, e.g. ``'[{"name": "get_weather", "arguments": {"city": "Paris"}}]'``.
+    Non-string outputs are coerced with ``str()`` before substitution.
+    """
     return create_judge(
         name="tool_calling",
         prompt=PROMPT,

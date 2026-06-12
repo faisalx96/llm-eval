@@ -1,0 +1,234 @@
+/* Filter bar: search + facet popover + active chips + time segmented. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* ── Search ── */
+.search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--space-sm);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 220px;
+  padding: var(--space-xs) var(--space-sm);
+  padding-left: 26px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+
+.searchInput::placeholder {
+  color: var(--text-dim);
+}
+
+.searchInput:hover {
+  border-color: var(--border-strong);
+}
+
+/* ── Filter trigger ── */
+.filterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.filterBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.badge {
+  min-width: 16px;
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--accent-primary);
+  color: var(--bg-void);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-align: center;
+  line-height: 16px;
+}
+
+/* ── Facet popover ── */
+.popover {
+  z-index: 50;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--space-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.facetGroup {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.facetGroup + .facetGroup {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.facetLabel {
+  padding: 0;
+  margin-bottom: var(--space-xs);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.facetHint {
+  padding: var(--space-xs) 0;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.checkbox {
+  accent-color: var(--accent-primary);
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+/* ── Active facet chips ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px var(--space-xs) 2px var(--space-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  font-size: var(--font-sm);
+}
+
+.chipFacet {
+  color: var(--text-dim);
+}
+
+.chipValue {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chipRemove:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.clearAll {
+  padding: 2px var(--space-sm);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-full);
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.clearAll:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ── Time segmented toggle ── */
+.segmented {
+  display: inline-flex;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segment {
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.segment:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.segmentActive {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+}

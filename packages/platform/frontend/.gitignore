@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output (the SPA is built into ../qym_platform/_static/app by Docker/CI)
+dist/
+*.tsbuildinfo
+
+# Test / tooling artifacts
+coverage/
+playwright-report/
+test-results/
+.vite/
+
+# Local verification screenshots produced by scripts/*.mjs smoke harnesses
+scripts/*.png

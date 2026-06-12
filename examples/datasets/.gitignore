@@ -1,0 +1,4 @@
+# The repo-root .gitignore excludes *.csv globally; the example datasets in
+# this directory are source data for the runnable examples and must be
+# committed (same pattern as tools/seed_data/.gitignore).
+!*.csv

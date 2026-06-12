@@ -1,0 +1,13 @@
+question,answer,category,difficulty
+How do I reset my password?,Go to Settings > Security and click Reset Password. A reset link is emailed to you.,account,easy
+Why was my card charged twice?,Duplicate authorization holds release within 3-5 business days; only one charge settles.,billing,medium
+How do I export my invoices?,Open Billing > Invoices and click Export CSV for any date range.,billing,easy
+Can I change my subscription plan mid-cycle?,Yes. Upgrades apply immediately with prorated billing; downgrades apply next cycle.,billing,medium
+My API key stopped working after rotation. What happened?,Rotation revokes the old key immediately. Update all services to use the new key.,technical,hard
+How do I add a teammate to my workspace?,Workspace owners can invite members from Settings > Members > Invite.,account,easy
+Where is my order? It says shipped 10 days ago.,Carrier delays can occur. Check tracking; if no movement for 7 days we reship or refund.,shipping,medium
+Do you support SSO with Okta?,Yes. SAML SSO including Okta is available on the Enterprise plan.,technical,medium
+How do I delete my account permanently?,Settings > Account > Delete Account. Data is purged after a 30-day grace period.,account,hard
+What is your refund policy for annual plans?,Annual plans are refundable within 30 days of purchase on a prorated basis.,billing,medium
+The mobile app crashes when uploading photos. Help?,Update to version 4.2+ which fixes the photo upload crash on iOS 17.,technical,hard
+Can I get an invoice with my company VAT number?,Yes. Add the VAT number under Billing > Tax Details and reissue the invoice.,billing,easy

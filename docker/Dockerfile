@@ -53,10 +53,41 @@ RUN --mount=type=cache,target=/root/.npm \
 RUN npm run build
 
 
+FROM node:22-slim AS frontend-build
+
+# Mirror the repo layout so vite's relative outDir
+# (../qym_platform/_static/app) resolves to a predictable path.
+WORKDIR /src/packages/platform/frontend
+
+COPY packages/platform/frontend/package.json packages/platform/frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# Selective copy (instead of the whole frontend dir) so a locally installed
+# node_modules in the build context can never clobber the `npm ci` result
+# (.dockerignore only excludes the repo-root node_modules/).
+COPY packages/platform/frontend/index.html \
+     packages/platform/frontend/export.html \
+     packages/platform/frontend/vite.config.ts \
+     packages/platform/frontend/vite.config.export.ts \
+     packages/platform/frontend/tsconfig.json \
+     packages/platform/frontend/tsconfig.node.json \
+     ./
+COPY packages/platform/frontend/src ./src
+COPY packages/platform/frontend/e2e ./e2e
+
+# build → _static/app (index.html + hashed assets/), then build:export →
+# _static/app/export/export.html (must run AFTER build: emptyOutDir wipes app/).
+RUN npm run build && npm run build:export
+
+
 FROM python-base AS runtime-base
 
 COPY packages/sdk /app/packages/sdk
 COPY packages/platform /app/packages/platform
+
+# Built SPA (gitignored locally, so never guaranteed in the build context).
+COPY --from=frontend-build /src/packages/platform/qym_platform/_static/app /app/packages/platform/qym_platform/_static/app
 COPY insightor_eval.py /app/insightor_eval.py
 COPY examples /app/examples
 COPY tools /app/tools

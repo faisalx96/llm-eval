@@ -1,0 +1,118 @@
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg);
+}
+
+.header {
+  margin-bottom: var(--space-xl);
+}
+
+.pageTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-lg);
+  font-weight: 600;
+}
+
+.pageSubtitle {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-base);
+}
+
+.section {
+  margin-bottom: var(--space-xl);
+  padding: var(--space-lg);
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 600;
+}
+
+.example {
+  margin-bottom: var(--space-md);
+}
+
+.example:last-child {
+  margin-bottom: 0;
+}
+
+.exampleLabel {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--text-dim);
+  font-size: var(--font-sm);
+}
+
+.exampleBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.tabPanel {
+  padding: var(--space-md) 0;
+  color: var(--text-secondary);
+  font-size: var(--font-base);
+}
+
+.skeletonDemo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  width: 320px;
+  max-width: 100%;
+}
+
+.progressDemo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  width: 320px;
+  max-width: 100%;
+}
+
+.drawerDemoText {
+  margin: 0 0 var(--space-lg);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.mono {
+  padding: 2px var(--space-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+}
+
+.docsNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  text-decoration: none;
+}
+
+.docsNote:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.docsNoteIcon {
+  width: 12px;
+  height: 12px;
+}

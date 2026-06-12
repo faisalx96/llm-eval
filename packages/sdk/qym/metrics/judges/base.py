@@ -225,15 +225,22 @@ async def llm_judge(
 
 
 def _safe_substitute(template: str, subs: Dict[str, str]) -> str:
-    """Replace {key} placeholders in template with values, escaping braces in values."""
-    result = template
-    for k, v in subs.items():
-        # Escape any braces in the value to prevent accidental substitution
-        safe_v = v.replace("{", "{{").replace("}", "}}")
-        result = result.replace("{" + k + "}", safe_v)
-    # Unescape double braces back to single
-    result = result.replace("{{", "{").replace("}}", "}")
-    return result
+    """Replace ``{key}`` placeholders in *template* with values, in a single pass.
+
+    Only the ORIGINAL template is scanned for placeholders; substituted values
+    are inserted verbatim and never re-scanned. This prevents prompt injection
+    where a model output containing e.g. ``{expected}`` would otherwise get the
+    ground-truth answer substituted into its own slot.
+
+    Unknown placeholders (no matching key in *subs*) are left as literal text.
+    """
+    def _replace(match: "re.Match[str]") -> str:
+        name = match.group(1)
+        if name in subs:
+            return subs[name]
+        return match.group(0)  # unknown placeholder: keep literal
+
+    return re.sub(r"\{(\w+)\}", _replace, template)
 
 
 def create_judge(

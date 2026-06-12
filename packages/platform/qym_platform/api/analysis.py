@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import String, and_, cast, func, or_, tuple_
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
+    ApiKey,
     CorrectionStatus,
     Project,
     ProjectLlmConnection,
@@ -29,6 +30,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
+from qym_platform.security import api_key_prefix, verify_api_key
 from qym_platform.secrets import resolve_llm_api_key
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
@@ -47,6 +49,68 @@ from qym_platform.settings import PlatformSettings
 router = APIRouter(tags=["analysis"])
 
 MappingSource = Union[str, List[str]]
+
+
+def _principal_from_bearer(db: Session, authorization: Optional[str]) -> Optional[Principal]:
+    """Resolve a Bearer API key into a Principal (mirrors datasets.py)."""
+    if not authorization:
+        return None
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    token = parts[1].strip()
+    if not token:
+        return None
+    row = (
+        db.query(ApiKey)
+        .filter(ApiKey.prefix == api_key_prefix(token))
+        .filter(ApiKey.revoked_at.is_(None))
+        .first()
+    )
+    if not row or not verify_api_key(token, row.key_hash):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    user = db.query(User).filter(User.id == row.user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=403, detail="User disabled")
+    scopes = tuple(str(scope).strip() for scope in (row.scopes or []) if str(scope).strip())
+    return Principal(user=user, auth_type="api_key", scopes=scopes, project_id=row.project_id)
+
+
+def analysis_principal(
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+    x_user_email: Optional[str] = Header(default=None, alias="X-User-Email"),
+    x_email: Optional[str] = Header(default=None, alias="X-Email"),
+    x_admin_bootstrap: Optional[str] = Header(default=None, alias="X-Admin-Bootstrap"),
+    x_proxy_secret: Optional[str] = Header(default=None, alias="X-Qym-Proxy-Secret"),
+) -> Principal:
+    """Accept either a Bearer API key or a UI session/proxy-header principal."""
+    api_principal = _principal_from_bearer(db, authorization)
+    if api_principal:
+        return api_principal
+    return require_ui_principal(
+        request=request,
+        db=db,
+        x_user_email=x_user_email,
+        x_email=x_email,
+        x_admin_bootstrap=x_admin_bootstrap,
+        x_proxy_secret=x_proxy_secret,
+    )
+
+
+def _ensure_run_access(db: Session, principal: Principal, run: Run, checker) -> None:
+    """Enforce run access for analysis routes.
+
+    Project-scoped API keys may only touch runs in their own project; all other
+    principals fall through to the regular permission checker.
+    """
+    if principal.auth_type == "api_key" and principal.project_id:
+        if principal.project_id != run.project_id:
+            raise HTTPException(status_code=403, detail="API key is not scoped to this run's project")
+        return
+    if not checker(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 class PlaygroundConfig(BaseModel):
@@ -450,14 +514,13 @@ async def analyze_run_items(
     run_id: str,
     request: AnalyzeRequest,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    principal: Principal = Depends(analysis_principal),
 ) -> Dict[str, Any]:
     """Trigger LLM-powered root cause analysis for selected items in a run."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_modify_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    _ensure_run_access(db, principal, run, can_modify_run)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
@@ -531,14 +594,13 @@ async def analyze_run_items_stream(
     run_id: str,
     request: AnalyzeRequest,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    principal: Principal = Depends(analysis_principal),
 ) -> StreamingResponse:
     """Stream LLM-powered root cause analysis progress for selected items."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_modify_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    _ensure_run_access(db, principal, run, can_modify_run)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
@@ -673,14 +735,13 @@ def analyze_preview(
     run_id: str,
     request: PreviewRequest,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    principal: Principal = Depends(analysis_principal),
 ) -> Dict[str, Any]:
     """Return the exact LLM messages for an item with custom config (no LLM call)."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    _ensure_run_access(db, principal, run, can_view_run)
 
     item = (
         db.query(RunItem)
@@ -718,14 +779,13 @@ async def analyze_test(
     run_id: str,
     request: TestRequest,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    principal: Principal = Depends(analysis_principal),
 ) -> Dict[str, Any]:
     """Run analysis on 1-3 items with custom config. Does NOT save to DB."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    _ensure_run_access(db, principal, run, can_view_run)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     items = (
@@ -857,14 +917,13 @@ def get_corrections(
 def get_analysis_config(
     run_id: str,
     db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    principal: Principal = Depends(analysis_principal),
 ) -> Dict[str, Any]:
     """Return analysis configuration for the frontend."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    _ensure_run_access(db, principal, run, can_view_run)
 
     connections = (
         db.query(ProjectLlmConnection)

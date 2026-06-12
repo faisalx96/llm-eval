@@ -55,6 +55,7 @@ from qym_platform.permissions import (
 from qym_platform.services.run_lifecycle import reconcile_stale_running_run
 from qym_platform.services.root_cause_changes import apply_root_cause_change
 from qym_platform.settings import PlatformSettings
+from qym_platform.spa import spa_shell_response
 
 
 router = APIRouter()
@@ -647,46 +648,40 @@ def _summarize_runs_for_admin(db: Session, runs: List[Run]) -> List[Dict[str, An
 
 @router.get("/", response_model=None)
 def dashboard_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    """SPA takeover (Phase 2): serve the React shell instead of projects.html."""
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
-    idx = _platform_static_projects()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Projects UI not found")
-    return _dashboard_html_response(idx, request)
+    return spa_shell_response(request)
 
 
 @router.get("/projects/{project_slug}", response_model=None)
 def dashboard_project_index(project_slug: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    guarded = _guard_project_page(request, db, project_slug)
-    if guarded:
-        return guarded
-    idx = _platform_static_dashboard_index()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Dashboard UI not found")
-    return _dashboard_html_response(idx, request)
+    """SPA takeover (Phase 2): the shell is data-free, so the legacy
+    server-side project guard is dropped here; project access (and unknown
+    slugs) are enforced/rendered by the SPA against the /v1 APIs."""
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    return spa_shell_response(request)
 
 
 @router.get("/profile", response_model=None)
 def profile_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    """SPA takeover (Phase 2)."""
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
-    idx = _platform_static_profile_index()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Profile UI not found")
-    return _dashboard_html_response(idx, request)
+    return spa_shell_response(request)
 
 
 @router.get("/admin", response_model=None)
 def admin_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    """SPA takeover (Phase 2)."""
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
-    idx = _platform_static_admin_index()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Admin UI not found")
-    return _dashboard_html_response(idx, request)
+    return spa_shell_response(request)
 
 
 @router.get("/compare", response_model=None)
@@ -798,21 +793,31 @@ def project_settings_index(project_slug: str, request: Request, db: Session = De
 
 @router.get("/run/{run_id:path}", response_model=None)
 def run_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """Canonical redirect: legacy /run/{id} → /projects/{slug}/runs/{id}."""
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
-    idx = _platform_static_dashboard_run()
-    if not idx.exists():
-        raise HTTPException(status_code=404, detail="Run UI not found")
-    return _dashboard_html_response(idx, request)
+    run_id = run_id.strip("/")
+    row = (
+        db.query(Project.slug)
+        .join(Run, Run.project_id == Project.id)
+        .filter(Run.id == run_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Run not found")
+    root = request_root_path(request)
+    return RedirectResponse(url=f"{root}/projects/{row.slug}/runs/{run_id}", status_code=308)
 
 
 @router.get("/projects/{project_slug}/runs/{run_id:path}", response_model=None)
 def project_run_ui(project_slug: str, run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    guarded = _guard_project_page(request, db, project_slug)
-    if guarded:
-        return guarded
-    return run_ui(run_id=run_id, request=request, db=db)
+    """SPA takeover (Phase 2): run detail is rendered client-side; access is
+    enforced by the /v1 run APIs the SPA calls."""
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    return spa_shell_response(request)
 
 
 @router.get("/api/runs")

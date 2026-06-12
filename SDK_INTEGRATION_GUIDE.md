@@ -82,7 +82,7 @@ Most integrations should start with this shape:
 | Component | You provide | qym does |
 | --- | --- | --- |
 | Task | A Python callable or supported framework object. | Calls it once per dataset item input. |
-| Dataset | A `CsvDataset`, Langfuse dataset name, or compatible dataset object. | Loads items with `id`, `input`, `expected_output`, and `metadata`. |
+| Dataset | A `CsvDataset`, `JsonlDataset`, qym platform dataset name, or compatible dataset object. | Loads items with `id`, `input`, `expected_output`, and `metadata`. |
 | Metrics | Built-in metric names or metric callables. | Scores every task output. |
 | Config | A dict or `EvaluatorConfig`. | Applies concurrency, retries, timeouts, output, tracing, model, and platform settings. |
 | Progress | Optional `progress_callback` or `EvaluationObserver`. | Emits local lifecycle updates for your wrapper. |
@@ -201,7 +201,7 @@ Each run spec has this shape:
     "name": "required-stable-run-key",
     "display_name": "optional human label",
     "task": callable_or_adapter,
-    "dataset": "langfuse-dataset-name or dataset object",
+    "dataset": "platform-dataset-name, local CSV/JSONL path, or dataset object",
     "metrics": ["metric_name", custom_metric],
     "config": {"run_name": "optional", "max_concurrency": 4},
     "metadata": {"optional": "non-secret labels"},
@@ -225,7 +225,6 @@ Evaluator(
     config={"max_concurrency": 4},
     observer=None,
     model=None,
-    langfuse_client=None,
     progress_callback=None,
 )
 ```
@@ -233,13 +232,14 @@ Evaluator(
 | Argument | Type | Required | Shape |
 | --- | --- | --- | --- |
 | `task` | `Any` | Yes | Callable or supported framework object. |
-| `dataset` | `str` or dataset object | Yes | Langfuse dataset name, `CsvDataset`, or object with `get_items()`. |
+| `dataset` | `str` or dataset object | Yes | qym platform dataset name, local `.csv`/`.jsonl` path, `CsvDataset`, `JsonlDataset`, or object with `get_items()`. |
 | `metrics` | `list[str or Callable]` | Yes | Built-in metric names and/or metric callables. |
 | `config` | `dict` or `EvaluatorConfig` | No | Run config fields described below. |
 | `observer` | `EvaluationObserver` | No | Advanced lifecycle hook object. |
 | `model` | `str` or `Sequence[str]` | No | Single model label or multi-model list. |
-| `langfuse_client` | `Any` | No | Injected Langfuse client for Langfuse datasets. |
 | `progress_callback` | `Callable[[ProgressSnapshot], None]` | No | Simple progress event callback. |
+
+When `dataset` is a string, qym first checks for a local file path. A `.csv` path resolves to `CsvDataset`, a `.jsonl` path resolves to `JsonlDataset`, and any other string is treated as a qym platform dataset name (which requires `QYM_BASE_URL` and `QYM_API_KEY`).
 
 ### Dataset Item Shape
 
@@ -296,6 +296,47 @@ qa-002,What is 2+2?,4,math,easy
 id,input,expected_output,difficulty
 case-1,"{""question"": ""What is qym?"", ""context"": ""LLM eval""}","An evaluation framework",easy
 ```
+
+### JSONL Dataset Shape
+
+Use `JsonlDataset` when data lives in a local `.jsonl` file. Each line is one JSON object with `input` and optional `expected_output`, `metadata`, and `item_id`/`id`.
+
+```python
+from qym import JsonlDataset
+
+dataset = JsonlDataset("datasets/qa.jsonl")
+```
+
+```jsonl
+{"item_id": "qa-001", "input": "What is qym?", "expected_output": "An evaluation framework", "metadata": {"domain": "docs"}}
+{"item_id": "qa-002", "input": {"question": "What is 2+2?"}, "expected_output": "4"}
+```
+
+### Platform Dataset References
+
+Use a qym platform dataset when the dataset is centrally managed with versions and aliases. Pass the dataset name as a string and set platform credentials (`QYM_BASE_URL` and `QYM_API_KEY`).
+
+```python
+result = Evaluator(
+    task=my_task,
+    dataset="support-regression",          # platform dataset name
+    metrics=["exact_match"],
+    config={
+        "dataset_version": "v3",           # pin an exact version, or
+        # "dataset_alias": "production",   # follow an alias (default when neither is set)
+    },
+).run(show_tui=False)
+```
+
+Resolution rules:
+
+| You set | qym loads |
+| --- | --- |
+| Neither `dataset_version` nor `dataset_alias` | The version the `production` alias points to. |
+| `dataset_version` | That exact version label. |
+| `dataset_alias` | The version that alias currently points to. |
+
+The resolved `dataset_version_id` is recorded in `run_metadata`, so platform runs stay comparable per dataset version. For programmatic access, `qym.QymDataset(name, version=..., alias=...)` exposes the same loader directly.
 
 ### Task Function Shape
 
@@ -410,7 +451,7 @@ Common fields and properties:
 | `start_time` | `datetime` | Run start time. |
 | `end_time` | optional `datetime` | Run completion time. |
 | `last_saved_path` | optional `str` | Last artifact path written by qym. |
-| `langfuse_url` | optional `str` | Langfuse dataset run URL when available. |
+| `langfuse_url` | optional `str` | Legacy external trace-link field. `None` unless an external tracing backend supplied a link. |
 | `inputs` | `dict[item_id, Any]` | Input values by item ID. |
 | `metadatas` | `dict[item_id, dict]` | Item metadata by item ID. |
 | `results` | `dict[item_id, dict]` | Successful item results by item ID. |
@@ -833,7 +874,6 @@ Use this event to create pending rows in your own UI. Platform URLs are usually 
     "trace": {
       "destinations": {
         "phoenix": false,
-        "langfuse": false,
         "platform": true
       },
       "instrumentors": []
@@ -1231,16 +1271,14 @@ Preferred service pattern:
 | `phoenix_enabled` | `bool` | `False` | Export traces to Phoenix. |
 | `phoenix_endpoint` | optional `str` | Env | Phoenix collector endpoint. |
 
-### Langfuse
+### Platform Dataset Selection
 
 | Field | Type | Default | Use |
 | --- | --- | --- | --- |
-| `langfuse_public_key` | optional `str` | Env | Langfuse public key override. |
-| `langfuse_secret_key` | optional `str` | Env | Langfuse secret key override. |
-| `langfuse_host` | optional `str` | Env | Langfuse host override. |
-| `langfuse_project_id` | optional `str` | Env | Project ID for URL construction and trace links. |
+| `dataset_version` | optional `str` | `None` | Pin a platform dataset to an exact version label. |
+| `dataset_alias` | optional `str` | `None` | Follow a platform dataset alias such as `production`. |
 
-You only need Langfuse credentials when `dataset` is a Langfuse dataset name or when your workflow depends on Langfuse trace links. `CsvDataset` does not require Langfuse.
+These fields only apply when `dataset` is a platform dataset name. Local `CsvDataset` and `JsonlDataset` runs ignore them and need no platform credentials.
 
 ### UI And CLI Metadata
 

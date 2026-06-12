@@ -1,0 +1,11 @@
+question,sql,complexity,domain
+List all customers from Germany,SELECT * FROM customers WHERE country = 'Germany';,simple,sales
+Total revenue per product category in 2025,"SELECT c.name, SUM(o.amount) FROM orders o JOIN categories c ON o.category_id = c.id WHERE o.year = 2025 GROUP BY c.name;",aggregate,sales
+Top 5 employees by closed tickets last month,SELECT employee_id: COUNT(*) AS closed FROM tickets WHERE closed_at >= date_trunc('month' - now()) GROUP BY employee_id ORDER BY closed DESC LIMIT 5;,aggregate,support
+Find orders with no matching invoice,SELECT o.id FROM orders o LEFT JOIN invoices i ON i.order_id = o.id WHERE i.id IS NULL;,join,finance
+Average session duration per plan tier,"SELECT p.tier, AVG(s.duration_s) FROM sessions s JOIN plans p ON s.plan_id = p.id GROUP BY p.tier;",join,product
+Customers who churned in Q1 but reactivated in Q2,SELECT customer_id FROM subscriptions WHERE churned_q = 'Q1' INTERSECT SELECT customer_id FROM subscriptions WHERE active_q = 'Q2';,complex,sales
+Daily active users for the last 30 days,"SELECT date(activity_at), COUNT(DISTINCT user_id) FROM events WHERE activity_at > now() - interval '30 days' GROUP BY 1 ORDER BY 1;",aggregate,product
+Products never ordered,SELECT p.id FROM products p WHERE NOT EXISTS (SELECT 1 FROM order_items oi WHERE oi.product_id = p.id);,join,sales
+Median ticket resolution time per priority,"SELECT priority, percentile_cont(0.5) WITHIN GROUP (ORDER BY resolved_at - created_at) FROM tickets GROUP BY priority;",complex,support
+Month-over-month revenue growth,"WITH m AS (SELECT date_trunc('month', paid_at) mo, SUM(amount) rev FROM payments GROUP BY 1) SELECT mo, rev, rev - LAG(rev) OVER (ORDER BY mo) FROM m;",complex,finance

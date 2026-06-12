@@ -35,8 +35,34 @@ def _looks_like_asset_path(raw_path: str) -> bool:
     return bool(suffix) and suffix not in {".html", ".htm"}
 
 
+def _is_unsafe_request_path(raw_path: str) -> bool:
+    if "\\" in raw_path or "\x00" in raw_path:
+        return True
+    if raw_path.startswith("/"):
+        return True
+    candidate = Path(raw_path.strip("/"))
+    if candidate.is_absolute() or candidate.drive:
+        return True
+    return any(part == ".." for part in candidate.parts)
+
+
+def _contained(candidate: Path, root: Path) -> bool:
+    try:
+        return candidate.resolve().is_relative_to(root.resolve())
+    except OSError:
+        return False
+
+
 def _candidate_paths(raw_path: str, root_path: str = "", *, include_spa_fallback: bool = True) -> Iterable[Path]:
+    if _is_unsafe_request_path(raw_path):
+        return
     docs_root = _docs_root(root_path)
+    for candidate in _unchecked_candidate_paths(docs_root, raw_path, include_spa_fallback=include_spa_fallback):
+        if _contained(candidate, docs_root):
+            yield candidate
+
+
+def _unchecked_candidate_paths(docs_root: Path, raw_path: str, *, include_spa_fallback: bool = True) -> Iterable[Path]:
     if not raw_path or raw_path == ".":
         yield docs_root / "index.html"
         return
@@ -48,7 +74,7 @@ def _candidate_paths(raw_path: str, root_path: str = "", *, include_spa_fallback
         yield (docs_root / Path(*parts[asset_index:])).resolve()
 
     target = (docs_root / cleaned).resolve()
-    if docs_root.resolve() not in target.parents and target != docs_root.resolve():
+    if not _contained(target, docs_root):
         if include_spa_fallback:
             yield docs_root / "index.html"
         return
@@ -66,6 +92,8 @@ def _candidate_paths(raw_path: str, root_path: str = "", *, include_spa_fallback
 def docs_file_response(request: Request, raw_path: str = "") -> FileResponse | Response:
     root_path = request.scope.get("root_path", "")
     docs_root = _docs_root(root_path)
+    if _is_unsafe_request_path(raw_path):
+        return Response(status_code=404)
     is_asset_request = _looks_like_asset_path(raw_path)
     for candidate in _candidate_paths(raw_path, root_path, include_spa_fallback=not is_asset_request):
         if candidate.exists() and candidate.is_file():

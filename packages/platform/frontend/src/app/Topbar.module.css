@@ -1,0 +1,52 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  height: var(--topbar-h);
+  padding: 0 var(--space-lg);
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  font-size: var(--font-md);
+}
+
+.crumbLink {
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumbLink:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.crumbSeparator {
+  color: var(--text-dim);
+}
+
+.crumbCurrent {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Reserved right-side slot for page-level actions. */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}

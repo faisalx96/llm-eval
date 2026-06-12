@@ -24,7 +24,12 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.openai_compat import create_chat_completion_compat
-from qym_platform.permissions import can_manage_project_members, get_project_membership, has_project_access
+from qym_platform.permissions import (
+    can_manage_project_members,
+    get_project_membership,
+    has_project_access,
+    is_project_manager,
+)
 from qym_platform.secrets import (
     build_llm_config_storage,
     encryption_available,
@@ -32,6 +37,7 @@ from qym_platform.secrets import (
 )
 from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.settings import PlatformSettings
+from qym_platform.url_guard import validate_llm_base_url
 
 
 router = APIRouter()
@@ -65,6 +71,13 @@ def _require_project_access(db: Session, principal: Principal, project_id: str) 
     project = _get_project(db, project_id)
     if not has_project_access(db, principal, project.id):
         raise HTTPException(status_code=403, detail="Access denied")
+    return project
+
+
+def _require_project_manager(db: Session, principal: Principal, project_id: str) -> Project:
+    project = _get_project(db, project_id)
+    if not is_project_manager(db, principal, project.id):
+        raise HTTPException(status_code=403, detail="Project manager access required")
     return project
 
 
@@ -278,6 +291,13 @@ def _get_connection(db: Session, project_id: str, connection_id: str) -> Project
     return conn
 
 
+def _validate_connection_base_url(base_url: str, settings: PlatformSettings) -> None:
+    try:
+        validate_llm_base_url(base_url, environment=settings.environment)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 def _apply_connection_key(
     conn: ProjectLlmConnection,
     req: LlmConnectionRequest,
@@ -286,11 +306,21 @@ def _apply_connection_key(
     settings: PlatformSettings,
 ) -> None:
     """Set base_url/model/name and resolve the API key (new / keep / clear)."""
-    conn.name = req.name.strip()
-    conn.llm_base_url = req.llm_base_url.strip().rstrip("/")
-    conn.llm_model = req.llm_model.strip()
+    new_base_url = req.llm_base_url.strip().rstrip("/")
+    _validate_connection_base_url(new_base_url, settings)
 
     api_key = req.llm_api_key.strip()
+    if api_key == "__KEEP__" and not is_new:
+        # Compare against the OLD stored URL before mutating: keeping the stored
+        # key while pointing it at a new host would let any caller exfiltrate it.
+        old_base_url = (conn.llm_base_url or "").strip().rstrip("/")
+        if new_base_url != old_base_url:
+            raise HTTPException(status_code=400, detail="Re-enter the API key when changing the base URL")
+
+    conn.name = req.name.strip()
+    conn.llm_base_url = new_base_url
+    conn.llm_model = req.llm_model.strip()
+
     if api_key == "__KEEP__":
         return  # leave the stored encrypted key untouched
     if not api_key:
@@ -331,7 +361,7 @@ def create_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
     existing = db.query(ProjectLlmConnection).filter(ProjectLlmConnection.project_id == project_id).count()
     conn = ProjectLlmConnection(project_id=project_id, created_by_user_id=principal.user.id)
@@ -355,7 +385,7 @@ def update_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
     conn = _get_connection(db, project_id, connection_id)
     _apply_connection_key(conn, req, is_new=False, settings=settings)
@@ -375,7 +405,7 @@ def delete_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     conn = _get_connection(db, project_id, connection_id)
     was_default = conn.is_default
     db.delete(conn)
@@ -401,7 +431,7 @@ def set_default_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     conn = _get_connection(db, project_id, connection_id)
     db.query(ProjectLlmConnection).filter(
         ProjectLlmConnection.project_id == project_id
@@ -419,7 +449,7 @@ async def test_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
     conn = _get_connection(db, project_id, connection_id)
     cfg = {

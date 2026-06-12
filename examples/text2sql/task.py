@@ -1,5 +1,4 @@
-"""
-Text-to-SQL Task for evaluation.
+"""Text-to-SQL Task for evaluation.
 
 This module defines the task function that takes a natural language question
 and database schema, and returns a SQL query using an LLM.
@@ -7,16 +6,6 @@ and database schema, and returns a SQL query using an LLM.
 
 import os
 from typing import Optional
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# Initialize OpenRouter client
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1"
-)
 
 SYSTEM_PROMPT = """You are a SQL expert. Given a natural language question and database schema, generate the SQL query that answers the question.
 
@@ -26,21 +15,35 @@ Instructions:
 - Use the exact table and column names from the schema
 - The query should be valid SQL"""
 
+_client = None
+
+
+def _get_client():
+    """Create the OpenRouter (OpenAI-compatible) client lazily.
+
+    Built on first use so importing this module never requires an API key.
+    """
+    global _client
+    if _client is None:
+        from openai import AsyncOpenAI
+
+        _client = AsyncOpenAI(
+            api_key=os.environ["OPENROUTER_API_KEY"],
+            base_url="https://openrouter.ai/api/v1",
+        )
+    return _client
+
 
 async def text2sql_task(
     question: str,
     schema: str,
     model_name: Optional[str] = None,
-    trace_id: Optional[str] = None
 ) -> str:
-    """
-    Text-to-SQL task.
+    """Text-to-SQL task.
 
-    Args:
-        question: Natural language question
-        schema: SQL CREATE TABLE statements defining the database schema
-        model_name: The model to use (automatically passed by Evaluator)
-        trace_id: Langfuse trace ID (automatically passed by Evaluator)
+    ``question`` and ``schema`` are unpacked from the dataset item's input
+    dict by qym's argument resolution; ``model_name`` is injected from the
+    Evaluator's ``model=`` argument.
 
     Returns:
         Generated SQL query
@@ -54,14 +57,14 @@ Question: {question}
 
 SQL:"""
 
-    response = await client.chat.completions.create(
+    response = await _get_client().chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ],
         temperature=0.0,
-        max_tokens=512
+        max_tokens=512,
     )
 
-    return response.choices[0].message.content.strip()
+    return (response.choices[0].message.content or "").strip()

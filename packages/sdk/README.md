@@ -28,7 +28,7 @@ qym is the Python SDK for evaluating LLM applications with repeatable datasets, 
 
 You can run evaluations from Python or the CLI, score outputs with built-in and LLM-as-judge metrics, and optionally stream runs to a qym platform deployment for shared review and comparison.
 
-The SDK supports [Langfuse](https://langfuse.com) datasets with tracing or local CSV files for lightweight offline evaluation.
+The SDK supports local CSV/JSONL files for lightweight offline evaluation and versioned qym platform datasets (referenced by name, version, or alias) for shared, centrally managed evaluation sets.
 
 ## Features
 
@@ -41,7 +41,7 @@ The SDK supports [Langfuse](https://langfuse.com) datasets with tracing or local
 - **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, AI root cause analysis, and corrections review
 - **Version Tracking** — Auto-detects git branch and commit per run for version leaderboards
 - **Framework Agnostic** — Works with LangChain, LangGraph, LlamaIndex, CrewAI, Haystack, OpenAI Agents, or any Python function
-- **Flexible Datasets** — Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
+- **Flexible Datasets** — Use local CSV/JSONL files (custom column names supported) or versioned qym platform datasets with aliases like `production`
 - **Auto-Save & Retry** — Automatically persist results to CSV/XLSX/JSON, with exponential backoff retries on failure (default: 2 retries, 300s timeout)
 - **Resume Runs** — Checkpoint partial results and resume interrupted evaluations; Ctrl+C sends STOPPED status instead of leaving runs stuck
 
@@ -58,12 +58,8 @@ pip install qym
 Create a `.env` file:
 
 ```bash
-# Langfuse (required for Langfuse datasets, optional for CSV)
-LANGFUSE_PUBLIC_KEY=pk-...
-LANGFUSE_SECRET_KEY=sk-...
-LANGFUSE_HOST=https://cloud.langfuse.com  # or your self-hosted instance
-
-# qym Platform (optional — syncs runs to a central dashboard)
+# qym Platform (optional for local CSV/JSONL runs; required for platform datasets
+# and for syncing runs to the central dashboard)
 QYM_API_KEY=your-api-key
 QYM_BASE_URL=https://your-qym-platform.example.com
 ```
@@ -78,13 +74,13 @@ QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem
 
 For local development only, certificate verification can be disabled with `QYM_PLATFORM_SSL_VERIFY=false`.
 
-> **Using CSV datasets?** Langfuse credentials are optional. Without them, evaluations still run but without tracing.
+> **Using local CSV/JSONL datasets?** No platform credentials are required. Evaluations run fully offline and results are saved locally.
 
 ### 3. Run Evaluation
 
 You need three things:
 1. **Task function** - Takes input (and optionally `model_name`), returns output
-2. **Dataset** - Langfuse dataset name or a local CSV file
+2. **Dataset** - A local CSV/JSONL file or a qym platform dataset name
 3. **Metrics** - Built-in (`exact_match`, `contains`, `fuzzy_match`) or custom functions
 
 ```python
@@ -94,16 +90,27 @@ from qym import Evaluator
 def my_llm_task(question):
     return call_your_llm(question)
 
-# Run evaluation with a Langfuse dataset
+# Run evaluation with a qym platform dataset (loads the 'production' version by default)
 evaluator = Evaluator(
     task=my_llm_task,
-    dataset="my-langfuse-dataset",  # Dataset name in Langfuse
+    dataset="my-dataset",  # Dataset name on the qym platform
     metrics=["exact_match", "contains"],
 )
 results = evaluator.run()
 ```
 
-**Using a local CSV instead of Langfuse:**
+Pin a platform dataset to a specific version or alias via config:
+
+```python
+evaluator = Evaluator(
+    task=my_llm_task,
+    dataset="my-dataset",
+    metrics=["exact_match"],
+    config={"dataset_version": "v3"},  # or {"dataset_alias": "production"}
+)
+```
+
+**Using a local CSV instead:**
 
 ```python
 from qym import Evaluator, CsvDataset
@@ -118,7 +125,7 @@ evaluator = Evaluator(
 results = evaluator.run()
 ```
 
-> CSV datasets work without Langfuse credentials. If credentials are set, traces are still recorded.
+> Local datasets work without any platform credentials. JSONL files are supported through `JsonlDataset` or by passing a `.jsonl` path string.
 
 ## Run Progress Hooks
 
@@ -137,7 +144,7 @@ def on_progress(snapshot: ProgressSnapshot):
 
 evaluator = Evaluator(
     task=my_llm_task,
-    dataset="my-langfuse-dataset",
+    dataset="my-dataset",
     metrics=["exact_match"],
     progress_callback=on_progress,
 )
@@ -196,10 +203,14 @@ results = Evaluator.run_parallel(
 The CLI uses noun-verb command groups. All commands support `--json` for structured output.
 
 ```bash
-# Run an evaluation
+# Run an evaluation against a platform dataset (production alias by default)
 qym run create --task-file agent.py --task-function chat --dataset qa-set --metrics exact_match
 
-# Run from a local CSV (no Langfuse dataset required)
+# Pin a platform dataset version or alias
+qym run create --task-file agent.py --task-function chat \
+  --dataset qa-set --dataset-version v3 --metrics exact_match
+
+# Run from a local CSV (no platform required)
 qym run create --task-file agent.py --task-function chat \
   --dataset-csv datasets/qa.csv \
   --csv-input-col question --csv-expected-col answer --csv-metadata-cols category,difficulty \
@@ -212,6 +223,14 @@ qym run create --runs-config experiments.json
 qym run create --task-file agent.py --task-function chat \
   --dataset qa-set --metrics exact_match \
   --resume-from qym_results/task/model/date/run-id.csv
+
+# Manage platform datasets
+qym dataset list                                      # List datasets in your project
+qym dataset upload --name qa-set --file qa.csv \
+  --version v1 --publish --production                 # Upload, publish, and set production
+qym dataset version list qa-set                       # List versions and aliases
+qym dataset alias set qa-set production v2            # Repoint the production alias
+qym dataset download qa-set --output qa.jsonl         # Export a version locally
 
 # Other commands
 qym run list --user USER # List recent runs, optionally filtered by owner
@@ -248,7 +267,7 @@ qym dashboard   # Opens the platform in your browser
 - **Trace viewer** — embedded per-item span tree with LLM message reconstruction, reasoning display, error path highlighting, and framework noise collapsing
 - **AI analysis** — one-click root cause analysis with an interactive playground for prompt editing, category catalogs, and correction bank
 - **Corrections review** — dedicated approval queue with bulk moderation and revision history
-- **Team workflows** — role-based visibility, approval workflows, and org-level access controls
+- **Team workflows** — project-scoped visibility, approval workflows, and role-based access controls
 
 **Setup:** Set `QYM_BASE_URL` to your deployment, create an API key there, and add `QYM_API_KEY=...` to your `.env`. Results are also saved locally to `qym_results/`.
 

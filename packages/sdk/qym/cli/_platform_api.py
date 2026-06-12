@@ -130,8 +130,8 @@ class PlatformAPIClient:
     # ── Analysis operations ─────────────────────────────────────
 
     def analyze_run(self, run_id: str, body: dict | None = None) -> dict:
-        """POST /v1/runs/{run_id}/analyze -> trigger AI analysis."""
-        return self._post(f"/v1/runs/{run_id}/analyze", body=body)
+        """POST /api/runs/{run_id}/analyze -> trigger AI analysis."""
+        return self._post(f"/api/runs/{run_id}/analyze", body=body)
 
     # ── Connectivity ────────────────────────────────────────────
 

@@ -21,6 +21,9 @@ def analyze_run(
     """Trigger AI root-cause analysis on a run's items."""
     client = PlatformAPIClient()
 
+    # The platform caps analysis concurrency at 20 (AnalyzeRequest).
+    concurrency = max(1, min(concurrency, 20))
+
     try:
         result = client.analyze_run(run_id, body={"concurrency": concurrency})
     except PlatformAPIError as exc:
@@ -34,9 +37,21 @@ def analyze_run(
     if is_json_mode():
         output(result)
     else:
-        analyzed = result.get("analyzed", 0)
-        err_console.print(f"[green]Analysis complete:[/green] {analyzed} items analyzed")
-        categories = result.get("categories", {})
+        analyzed = result.get("total_analyzed", 0)
+        errors = result.get("errors", 0)
+        summary = f"[green]Analysis complete:[/green] {analyzed} items analyzed"
+        if errors:
+            summary += f" ([red]{errors} errors[/red])"
+        err_console.print(summary)
+
+        # Derive a category summary from the per-item results
+        categories: dict[str, int] = {}
+        for item in result.get("results", []) or []:
+            if item.get("error"):
+                continue
+            root_cause = item.get("root_cause")
+            if root_cause:
+                categories[root_cause] = categories.get(root_cause, 0) + 1
         if categories:
             from rich.table import Table
 

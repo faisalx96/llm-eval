@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 if str(PLATFORM_SRC) not in sys.path:

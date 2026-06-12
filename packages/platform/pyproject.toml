@@ -34,8 +34,13 @@ dependencies = [
 [project.scripts]
 qym-platform = "qym_platform.cli:main"
 
+# Package data (static UI builds, docs, alembic migrations) is declared in
+# MANIFEST.in (graft qym_platform/_static + graft qym_platform/migrations) and
+# pulled into wheels/sdists via include-package-data. This replaced the old
+# non-recursive [tool.setuptools.package-data] globs, which silently missed
+# nested build output like _static/app/assets/*.
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["."]
-
-[tool.setuptools.package-data]
-qym_platform = ["_static/dashboard/*", "_static/ui/*", "_static/docs/*", "migrations/*", "migrations/versions/*"]

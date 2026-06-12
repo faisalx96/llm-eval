@@ -1,0 +1,64 @@
+/* The app's ONE tab paradigm: underline tabs. */
+
+.list {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: -1px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.trigger:hover {
+  color: var(--text-primary);
+}
+
+.trigger[data-state='active'] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Count badges are data → mono. */
+.count {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  line-height: 1;
+  padding: 2px var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.trigger[data-state='active'] .count {
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+
+.content {
+  outline: none;
+}

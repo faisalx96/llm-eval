@@ -1,0 +1,128 @@
+/* Status values are data → mono. Hues come from the STATUS_HUES contract
+   in StatusBadge.tsx; keep the two in sync. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+/* ── Sizes (same hues, md = hero) ── */
+.sm {
+  font-size: var(--font-sm);
+  padding: 3px var(--space-sm);
+}
+
+.md {
+  font-size: var(--font-md);
+  padding: 6px var(--space-md);
+}
+
+/* ── Status hues ── */
+.running {
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+}
+
+.pending {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+}
+
+.completed {
+  /* Neutral-blue outline: done, not celebratory. */
+  color: color-mix(in srgb, var(--accent-secondary) 70%, var(--text-secondary));
+  background: transparent;
+  border-color: color-mix(in srgb, var(--accent-secondary) 45%, var(--border-default));
+}
+
+.failed {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border-color: color-mix(in srgb, var(--error) 35%, transparent);
+}
+
+.stopped {
+  /* Amber-gray: halted by a human, not an error. */
+  color: color-mix(in srgb, var(--warning) 45%, var(--text-muted));
+  background: var(--bg-surface);
+  border-color: color-mix(in srgb, var(--warning) 25%, var(--border-default));
+}
+
+.draft {
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--border-default);
+  border-style: dashed;
+}
+
+.submitted {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.approved {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+}
+
+.rejected {
+  color: var(--error);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+}
+
+/* ── Running pulse dot ── */
+.pulseDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--info);
+  animation: badge-pulse 1.4s ease-in-out infinite;
+}
+
+.md .pulseDot {
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulseDot {
+    animation: none;
+  }
+}
+
+/* ── Failure icon ── */
+.statusIcon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.md .statusIcon {
+  width: 14px;
+  height: 14px;
+}

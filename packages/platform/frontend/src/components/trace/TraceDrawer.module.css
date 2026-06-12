@@ -1,0 +1,503 @@
+/* TraceDrawer — span tree + detail split, ported from the legacy viewer
+   layout (dashboard.css .tv-* rules, ~L6742-7100). Tokens only. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Pull the panes to the drawer body edges (body has --space-lg padding):
+     negative margins cancel the padding, height grows by the same amount so
+     the split fills the body exactly without scrolling it. */
+  margin: calc(-1 * var(--space-lg));
+  height: calc(100% + 2 * var(--space-lg));
+}
+
+/* ── Summary bar (chips under the drawer title) ── */
+
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: none;
+  padding: var(--space-sm) var(--space-lg) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+}
+
+.chipValue {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* Red is reserved for failures — error count qualifies. */
+.chipError {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 30%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+}
+
+.chipWarning {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+/* Score chips stay NEUTRAL (no absolute-threshold coloring). */
+.chipScore .chipValue {
+  color: var(--text-primary);
+}
+
+.attemptGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.attemptBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.attemptBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.attemptBtnActive {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.attemptTag {
+  font-size: var(--font-xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.attemptTagFailed {
+  color: var(--error);
+}
+
+/* ── Split panes ── */
+
+.split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.treePane {
+  flex: 0 0 46%;
+  min-width: 280px;
+  max-width: 60%;
+  overflow: auto;
+  padding: var(--space-sm) var(--space-sm) var(--space-lg);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.detailPane {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-md) var(--space-lg) var(--space-xl);
+}
+
+.detailPane:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* ── Span tree rows ── */
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px 4px calc(8px + var(--row-indent, 0px));
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--bg-hover);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+/* Error rows: red-tinted (legacy .tv-row.row-err). */
+.rowError {
+  background: color-mix(in srgb, var(--error) 7%, transparent);
+}
+
+.rowError:hover {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
+.rowError.rowSelected {
+  background: color-mix(in srgb, var(--error) 16%, transparent);
+}
+
+.rowError .name {
+  color: var(--error);
+}
+
+/* Failed earlier attempts stay visible but dimmed (legacy .row-failed). */
+.rowFailed {
+  opacity: 0.55;
+}
+
+.chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.chevronStub {
+  flex: none;
+  width: 12px;
+}
+
+.kindIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentcolor 13%, transparent);
+}
+
+.kindIcon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.kindDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: currentcolor;
+  opacity: 0.7;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-base);
+}
+
+.retryTag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  color: var(--warning);
+  font-size: var(--font-xs);
+}
+
+.errBadge {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--error);
+}
+
+/* Duration: data value → mono, right-aligned. */
+.dur {
+  flex: none;
+  min-width: 52px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Waterfall track aligned per row. */
+.wf {
+  position: relative;
+  flex: none;
+  width: 96px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.wfBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-full);
+  background: currentcolor;
+  opacity: 0.9;
+}
+
+/* ── Detail pane ── */
+
+.detailHead {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.detailHead .kindIcon {
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.detailHead .kindIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.detailInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailName {
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.detailSub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.detailSub .mono {
+  font-family: var(--font-mono);
+}
+
+.statusError {
+  flex: none;
+  color: var(--error);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.statusOk {
+  flex: none;
+  color: var(--success);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+/* Error box (legacy .tv-det-error) */
+.errorBox {
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--error) 7%, transparent);
+}
+
+.errorTitle {
+  color: var(--error);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.errorType {
+  margin-top: var(--space-xs);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+}
+
+.errorMsg {
+  margin-top: var(--space-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.errorStack {
+  margin-top: var(--space-sm);
+}
+
+.errorStack summary {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+
+.errorStack pre {
+  margin: var(--space-xs) 0 0;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--bg-void);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  overflow: auto;
+  max-height: 240px;
+}
+
+.tabBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+}
+
+/* Attributes key-value table (mono). */
+.attrTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-base);
+}
+
+.attrTable th {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  text-align: left;
+}
+
+.attrTable td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  vertical-align: top;
+}
+
+.attrKey {
+  width: 38%;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.attrVal {
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.emptyHint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-base);
+}
+
+/* ── Loading / error / empty states ── */
+
+.stateWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+.loading {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.loadingTree {
+  flex: 0 0 46%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.loadingDetail {
+  flex: 1;
+  padding: var(--space-md) var(--space-lg);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 860px) {
+  .split {
+    flex-direction: column;
+  }
+
+  .treePane {
+    flex: 0 0 45%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+}

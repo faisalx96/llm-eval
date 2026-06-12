@@ -71,7 +71,8 @@ def test_platform_event_stream_sanitizes_non_json_payloads(monkeypatch):
     completed_payload = events[0]["payload"]
     assert completed_payload["output"] == {
         "payload": {"label": "ok"},
-        "path": "/tmp/result.json",
+        # Path objects are sanitized via str(); the separator is OS-specific.
+        "path": str(Path("/tmp/result.json")),
         "nan_value": None,
     }
 

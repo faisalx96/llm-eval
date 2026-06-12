@@ -1,0 +1,37 @@
+/* Text + small arrow only. No background fills, ever (anti-green-flood). */
+
+.root {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-family: var(--font-mono);
+}
+
+.value {
+  color: var(--text-primary);
+}
+
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.arrow {
+  flex-shrink: 0;
+}
+
+/* Reserved hues: green/red are pass-fail (improvement/regression) ONLY. */
+.delta[data-tone='good'] {
+  color: var(--success);
+}
+
+.delta[data-tone='bad'] {
+  color: var(--error);
+}
+
+.delta[data-tone='neutral'] {
+  color: var(--text-muted);
+}

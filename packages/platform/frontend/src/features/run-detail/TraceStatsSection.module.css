@@ -1,0 +1,27 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-sm);
+}
+
+.card {
+  width: 100%;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: var(--font-base);
+  color: var(--text-muted);
+}
+
+.docsLink {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.docsLink:hover {
+  text-decoration: underline;
+}

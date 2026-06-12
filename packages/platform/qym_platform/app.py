@@ -17,11 +17,39 @@ from qym_platform.api.ingest import router as ingest_router
 from qym_platform.api.analysis import router as analysis_router
 from qym_platform.api.product_evals import router as product_evals_router
 from qym_platform.api.datasets import router as datasets_router
+from qym_platform.api.v1_runs import router as v1_runs_router
 from qym_platform.docs_site import docs_available, docs_file_response
+from qym_platform.spa import register_spa
+from qym_platform.url_guard import is_dev_environment
+
+
+VALID_AUTH_MODES = {"none", "proxy_headers", "oidc"}
+
+
+def validate_auth_settings(settings: PlatformSettings) -> None:
+    """Fail fast at startup on unsafe auth configuration."""
+    auth_mode = str(settings.auth_mode).strip().lower()
+    dev = is_dev_environment(settings.environment)
+    if auth_mode not in VALID_AUTH_MODES:
+        raise RuntimeError(
+            f"QYM_AUTH_MODE must be one of {sorted(VALID_AUTH_MODES)}, got {settings.auth_mode!r}"
+        )
+    if auth_mode == "none" and not dev:
+        raise RuntimeError(
+            "QYM_AUTH_MODE=none is only allowed in a dev-like environment "
+            f"(dev/development/test/testing/local), got QYM_ENVIRONMENT={settings.environment!r}"
+        )
+    if auth_mode == "proxy_headers" and not settings.proxy_shared_secret and not dev:
+        raise RuntimeError(
+            "QYM_PROXY_SHARED_SECRET is required when QYM_AUTH_MODE=proxy_headers and "
+            f"QYM_ENVIRONMENT={settings.environment!r} is not dev-like"
+        )
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     settings = settings or PlatformSettings()
+
+    validate_auth_settings(settings)
 
     app = FastAPI(
         title="qym-platform",
@@ -38,7 +66,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
             SessionMiddleware,
             secret_key=settings.auth_session_secret,
             same_site="lax",
-            https_only=str(settings.environment).lower() not in {"dev", "test", "local"},
+            https_only=not is_dev_environment(settings.environment),
             session_cookie="qym_session",
         )
 
@@ -98,7 +126,12 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(analysis_router)  # before runs_router (its {run_id:path} is a catch-all)
     app.include_router(product_evals_router)
     app.include_router(datasets_router)
+    app.include_router(v1_runs_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
+
+    # SPA assets + catch-all shell. Must come after every router/mount so the
+    # '/{full_path:path}' catch-all only sees requests nothing else claimed.
+    register_spa(app, settings)
 
     return app

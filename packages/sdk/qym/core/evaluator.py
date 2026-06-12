@@ -899,10 +899,12 @@ class Evaluator:
         # Size the thread pool to match concurrency so sync tasks don't queue.
         # Skip if MultiModelRunner already sized the pool for all models.
         loop = asyncio.get_running_loop()
+        self._default_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
         if not getattr(loop, "_qym_executor_set", False):
-            loop.set_default_executor(
-                concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrency)
+            self._default_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.max_concurrency
             )
+            loop.set_default_executor(self._default_executor)
             loop._qym_executor_set = True
 
         checkpoint_state = None
@@ -1062,7 +1064,7 @@ class Evaluator:
                                 "dataset_alias": getattr(self.dataset, "alias", None),
                                 "model": self.model_name,
                                 "metrics": list(self.metrics.keys()),
-                                "total_items": int(self.total_items),
+                                "total_items": len(items),
                                 "run_metadata": dict(self.run_metadata or {}),
                                 "run_config": {
                                     "max_concurrency": self.max_concurrency,
@@ -1076,7 +1078,9 @@ class Evaluator:
                             },
                         )
                     except Exception:
-                        pass
+                        logger.debug(
+                            "Failed to emit run_started event", exc_info=True
+                        )
         else:
             # No platform configured - TUI only, no live web UI
             pass
@@ -1523,13 +1527,15 @@ class Evaluator:
                 )
 
         # Shut down the thread pool so asyncio.run() doesn't hang waiting for idle threads.
-        try:
-            loop = asyncio.get_running_loop()
-            executor = loop.get_default_executor()
-            if executor is not None:
-                executor.shutdown(wait=False)
-        except Exception:
-            pass
+        if self._default_executor is not None:
+            try:
+                self._default_executor.shutdown(wait=False)
+                # Allow a fresh executor to be created if this loop runs again.
+                loop._qym_executor_set = False
+            except Exception:
+                logger.debug(
+                    "Failed to shut down default thread pool executor", exc_info=True
+                )
 
         if cancel_exc is not None:
             raise cancel_exc
@@ -2705,11 +2711,20 @@ def _announce_saved_results(
 
 
 def _derive_task_name(task: Any) -> str:
-    """Pick a readable name for a task callable/object."""
+    """Pick a readable, filesystem-safe name for a task callable/object.
+
+    Qualnames of nested callables embed a ``<locals>.`` prefix and lambdas
+    are named ``<lambda>``; both contain characters that are invalid in
+    Windows paths, and the task name feeds the qym_results save path. Keep
+    only the trailing component and drop path-unsafe characters.
+    """
     for attr in ("__qualname__", "__name__"):
         name = getattr(task, attr, None)
         if isinstance(name, str) and name.strip():
-            return name.strip()
+            name = name.strip().rsplit("<locals>.", 1)[-1]
+            name = re.sub(r'[<>:"/\\|?*]', "", name).strip(". ")
+            if name:
+                return name
     return "task"
 
 

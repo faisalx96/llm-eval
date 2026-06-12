@@ -1,0 +1,202 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* ── Toolbar ── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segment {
+  padding: var(--space-xs) var(--space-md);
+  border: 0;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.segment + .segment {
+  border-left: 1px solid var(--border-default);
+}
+
+.segment:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.segment[aria-pressed='true'] {
+  background: var(--bg-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.controlLabel {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.select {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+}
+
+.search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 360px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+}
+
+.search::placeholder {
+  color: var(--text-dim);
+}
+
+.truncatedNote {
+  margin: 0;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+/* ── Cells ── */
+
+.expander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.expander:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chevron,
+.chevronOpen {
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.dotWrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Status dot: red fail / green pass / amber error (item-level task error). */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.dot_pass {
+  background: var(--success);
+}
+
+.dot_fail {
+  background: var(--error);
+}
+
+.dot_error {
+  background: var(--warning);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.preview {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Metric values stay NEUTRAL; red appears only below the pass threshold. */
+.scoreFail {
+  color: var(--error);
+}
+
+.noScore {
+  color: var(--text-dim);
+}
+
+.tag {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+/* Purple is reserved for AI provenance. */
+.tagAi {
+  border-color: var(--accent-tertiary);
+  color: var(--accent-tertiary);
+}
+
+.traceDisabled {
+  display: inline-flex;
+  border-radius: var(--radius-sm);
+}

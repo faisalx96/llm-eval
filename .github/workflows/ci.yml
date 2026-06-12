@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python tests (3.11)
+    runs-on: ubuntu-latest
+    env:
+      QYM_DATABASE_URL: "sqlite:///:memory:"
+      QYM_AUTH_MODE: none
+      QYM_ENVIRONMENT: test
+      QYM_AUTO_PROVISION_USERS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            packages/sdk/pyproject.toml
+            packages/platform/pyproject.toml
+      - name: Install packages
+        # Test deps live in the SDK's [dev] extra; we install only the
+        # test-relevant subset (pytest, pytest-asyncio) to keep CI lean
+        # (the extra also pulls jupyter/black/mypy which tests don't need).
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e packages/sdk -e packages/platform pytest pytest-asyncio
+      - name: Run full test suite
+        # This is the gate. No escape hatch: the suite is expected to be green.
+        continue-on-error: false
+        run: pytest tests -q
+
+  python-39-floor:
+    name: Python 3.9 import floor
+    runs-on: ubuntu-latest
+    env:
+      QYM_DATABASE_URL: "sqlite:///:memory:"
+      QYM_AUTH_MODE: none
+      QYM_ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: |
+            packages/sdk/pyproject.toml
+            packages/platform/pyproject.toml
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e packages/sdk -e packages/platform
+      - name: Import-only smoke (keeps the 3.9 floor honest)
+        run: python -c "import qym; import qym_platform"
+
+  migrations-postgres:
+    name: Migrations + Postgres tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qym
+          POSTGRES_PASSWORD: qym
+          POSTGRES_DB: qym
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qym -d qym"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      QYM_DATABASE_URL: postgresql+psycopg2://qym:qym@localhost:5432/qym
+      QYM_AUTH_MODE: none
+      QYM_ENVIRONMENT: test
+      QYM_AUTO_PROVISION_USERS: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            packages/sdk/pyproject.toml
+            packages/platform/pyproject.toml
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e packages/sdk -e packages/platform pytest pytest-asyncio
+      - name: Alembic upgrade head from empty database
+        run: alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head
+      - name: Run postgres-marked platform tests
+        # Convention: mark tests requiring a real PostgreSQL server with
+        # @pytest.mark.postgres (registered in the repo-root pytest.ini).
+        # The helper treats "no tests collected" as success until such tests land.
+        run: bash tools/ci/run_postgres_tests.sh
+
+  examples-smoke:
+    name: Examples smoke
+    runs-on: ubuntu-latest
+    # Blocking since DOC-5: the examples are maintained and must keep passing
+    # tools/ci/examples_smoke.py (compile + import-resolution checks).
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            packages/sdk/pyproject.toml
+            packages/platform/pyproject.toml
+      - name: Install packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e packages/sdk -e packages/platform
+      - name: Smoke-check examples (compile + import resolution, no execution)
+        run: python tools/ci/examples_smoke.py
+
+  frontend:
+    name: Frontend (scaffold)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      # hashFiles() evaluates against the runner workspace, which is empty before
+      # checkout — so the guard must live on the steps, not the job. The job
+      # no-ops gracefully until the frontend lands (CI-3).
+      - uses: actions/setup-node@v4
+        if: hashFiles('packages/platform/frontend/package.json') != ''
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/platform/frontend/package-lock.json
+      - name: Install dependencies
+        if: hashFiles('packages/platform/frontend/package.json') != ''
+        run: npm ci
+      - name: Lint
+        if: hashFiles('packages/platform/frontend/package.json') != ''
+        run: npm run lint --if-present
+      - name: Test
+        if: hashFiles('packages/platform/frontend/package.json') != ''
+        run: npm run test --if-present
+      - name: Build
+        if: hashFiles('packages/platform/frontend/package.json') != ''
+        run: npm run build --if-present

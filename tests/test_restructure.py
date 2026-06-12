@@ -13,25 +13,19 @@ Verifies:
 
 import os
 import re
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
+
+# Heavy optional dependencies (rich, langfuse, arabic_reshaper, bidi,
+# openpyxl, ...) are mocked by tests/conftest.py — and only when they are
+# genuinely missing, so installed packages are never shadowed.
 
 # ── Repo root ──────────────────────────────────────────────────────────
 
 REPO = Path(__file__).resolve().parents[1]
 SDK_ROOT = REPO / "packages" / "sdk"
 PLATFORM_ROOT = REPO / "packages" / "platform"
-
-# ── Mock heavy optional dependencies that may not be installed ─────────
-# conftest.py already mocks rich and langfuse; add others here.
-for _mod_name in ("arabic_reshaper", "bidi", "bidi.algorithm", "openpyxl"):
-    if _mod_name not in sys.modules:
-        _mock = MagicMock()
-        _mock.__path__ = []
-        sys.modules[_mod_name] = _mock
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -81,10 +75,9 @@ class TestDirectoryStructure:
         assert (utils / "errors.py").exists()
         assert (utils / "text.py").exists()
 
-    def test_sdk_static_dashboard(self):
-        d = SDK_ROOT / "qym" / "_static" / "dashboard"
-        assert d.exists()
-        assert (d / "index.html").exists()
+    def test_sdk_static_dashboard_removed(self):
+        """The SDK static dashboard moved to _static/ui; old dir must be gone."""
+        assert not (SDK_ROOT / "qym" / "_static" / "dashboard").exists()
 
     def test_sdk_static_ui(self):
         u = SDK_ROOT / "qym" / "_static" / "ui"
@@ -96,7 +89,8 @@ class TestDirectoryStructure:
         assert not (SDK_ROOT / "qym" / "_static" / "dashboard" / "profile.html").exists()
 
     def test_sdk_cli(self):
-        assert (SDK_ROOT / "qym" / "cli.py").exists()
+        """The CLI is a package (qym/cli/) since the command-group split."""
+        assert (SDK_ROOT / "qym" / "cli" / "__init__.py").exists()
 
     # ── Platform package ───────────────────────────────────────────────
 
@@ -118,7 +112,7 @@ class TestDirectoryStructure:
         assert (api / "__init__.py").exists()
         assert (api / "ingest.py").exists()
         assert (api / "runs.py").exists()
-        assert (api / "org.py").exists()
+        # org.py removed: dead, unmounted module (repo hygiene, see AUDIT_REPORT.md)
         assert (api / "web.py").exists()
 
     def test_platform_db(self):
@@ -297,12 +291,16 @@ class TestPlatformImports:
         assert cfg.get("env_prefix") == "QYM_"
 
     def test_import_db_models(self):
+        # OrgUnit/OrgUnitType/OrgUnitClosure removed: org-unit hierarchy was
+        # replaced by the Project/ProjectMembership access model.
         from qym_platform.db.models import (
             User, UserRole, Run, RunItem, RunItemScore,
-            RunWorkflowStatus, OrgUnit, OrgUnitType,
-            OrgUnitClosure, PlatformSetting,
+            RunWorkflowStatus, Project, ProjectMembership,
+            PlatformSetting,
         )
         assert User is not None
+        assert Project is not None
+        assert ProjectMembership is not None
         assert RunWorkflowStatus.DRAFT is not None
         assert UserRole.ADMIN is not None
 
@@ -311,14 +309,14 @@ class TestPlatformImports:
         assert callable(create_app)
 
     def test_import_api_routers(self):
+        # qym_platform.api.org removed: dead, unmounted module (repo hygiene,
+        # see AUDIT_REPORT.md)
         from qym_platform.api.web import router as web_router
         from qym_platform.api.runs import router as runs_router
         from qym_platform.api.ingest import router as ingest_router
-        from qym_platform.api.org import router as org_router
         assert web_router is not None
         assert runs_router is not None
         assert ingest_router is not None
-        assert org_router is not None
 
     def test_import_auth(self):
         from qym_platform.auth import Principal
@@ -473,9 +471,13 @@ class TestPyprojectToml:
         assert scripts["qym-platform"] == "qym_platform.cli:main"
 
     def test_platform_package_data(self, platform_toml):
-        pkg_data = platform_toml["tool"]["setuptools"]["package-data"]["qym_platform"]
-        assert "_static/dashboard/*" in pkg_data
-        assert "migrations/*" in pkg_data
+        # Packaging switched from non-recursive [tool.setuptools.package-data]
+        # globs (which silently dropped nested build output like the SPA's
+        # _static/app/assets/*) to include-package-data + MANIFEST.in grafts.
+        assert platform_toml["tool"]["setuptools"]["include-package-data"] is True
+        manifest = (REPO / "packages" / "platform" / "MANIFEST.in").read_text()
+        assert "graft qym_platform/_static" in manifest
+        assert "graft qym_platform/migrations" in manifest
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -513,10 +515,11 @@ class TestDockerFiles:
         assert "LLM_EVAL_" not in text
 
     def test_compose_postgres_creds(self):
+        """Compose no longer hardcodes credentials; it interpolates from env."""
         text = (REPO / "docker" / "docker-compose.yml").read_text()
-        assert "POSTGRES_USER: qym" in text
-        assert "POSTGRES_PASSWORD: qym" in text
-        assert "POSTGRES_DB: qym" in text
+        assert "POSTGRES_USER: ${POSTGRES_USER}" in text
+        assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}" in text
+        assert "POSTGRES_DB: ${POSTGRES_DB}" in text
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -552,8 +555,9 @@ class TestEnvVarPrefix:
 class TestStaticAssets:
     """Verify both packages own appropriate static assets."""
 
-    def test_sdk_dashboard_has_index(self):
-        assert (SDK_ROOT / "qym" / "_static" / "dashboard" / "index.html").exists()
+    def test_sdk_dashboard_not_reintroduced(self):
+        """SDK static lives in _static/ui; the old dashboard dir must stay gone."""
+        assert not (SDK_ROOT / "qym" / "_static" / "dashboard").exists()
 
     def test_sdk_ui_has_index(self):
         assert (SDK_ROOT / "qym" / "_static" / "ui" / "index.html").exists()

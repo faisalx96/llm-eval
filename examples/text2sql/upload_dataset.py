@@ -1,23 +1,29 @@
-"""
-Upload text-to-SQL samples to Langfuse.
+"""Upload text-to-SQL samples to the qym platform.
 
-This script loads 100 samples from the sql-create-context dataset
-(built from Spider + WikiSQL) and uploads them to Langfuse.
+This script loads samples from the sql-create-context dataset (built from
+Spider + WikiSQL), converts them to qym dataset items, and uploads them to
+the qym platform as a published dataset named ``text2sql-100``.
 
-Each item includes:
+Each item's input is a JSON object with:
 - question: Natural language query
-- context: SQL CREATE TABLE statements (schema)
-- answer: Ground truth SQL query
+- schema: SQL CREATE TABLE statements
+
+and the expected_output is the ground-truth SQL query.
+
+Requirements:
+    pip install -r requirements.txt
+    export QYM_API_KEY=...       # qym platform API key (datasets:write scope)
+    export QYM_BASE_URL=...      # optional, defaults to http://localhost:8000
 
 Usage:
     python upload_dataset.py
 """
 
-from datasets import load_dataset
-from langfuse import Langfuse
-from dotenv import load_dotenv
-
-load_dotenv()
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
 
 DATASET_NAME = "text2sql-100"
 NUM_SAMPLES = 100
@@ -25,69 +31,74 @@ SEED = 42
 
 
 def main():
-    print("Loading sql-create-context dataset from HuggingFace...")
-
-    # Load dataset (Spider + WikiSQL combined)
-    ds = load_dataset("b-mc2/sql-create-context", split="train")
-
-    print(f"Dataset loaded with {len(ds)} examples")
-
-    # Shuffle and select samples
-    ds_sampled = ds.shuffle(seed=SEED).select(range(min(NUM_SAMPLES, len(ds))))
-
-    print(f"Selected {len(ds_sampled)} samples")
-
-    # Initialize Langfuse client
-    client = Langfuse()
-
-    # Create or get dataset
-    try:
-        client.create_dataset(name=DATASET_NAME)
-        print(f"Created new dataset: {DATASET_NAME}")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print(f"Dataset '{DATASET_NAME}' already exists.")
-        else:
-            raise e
-
-    # Upload each sample
-    print(f"\nUploading {len(ds_sampled)} items to Langfuse...")
-
-    for i, item in enumerate(ds_sampled):
-        question = item["question"]
-        context = item["context"]  # CREATE TABLE statements
-        answer = item["answer"]    # Ground truth SQL
-
-        # Input structure for the task
-        input_data = {
-            "question": question,
-            "schema": context  # SQL schema (CREATE TABLE statements)
-        }
-
-        # Metadata
-        metadata = {
-            "dataset_source": "sql-create-context",
-        }
-
-        # Create dataset item
-        client.create_dataset_item(
-            dataset_name=DATASET_NAME,
-            input=input_data,
-            expected_output=answer,
-            metadata=metadata
+    api_key = os.getenv("QYM_API_KEY")
+    if not api_key:
+        sys.exit(
+            "QYM_API_KEY is not set. Create an API key in the qym platform and\n"
+            "export QYM_API_KEY (and QYM_BASE_URL if not http://localhost:8000)."
         )
 
-        if (i + 1) % 10 == 0:
-            print(f"  Uploaded {i + 1}/{len(ds_sampled)} items...")
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        sys.exit(
+            "The HuggingFace 'datasets' package is required to download the source data.\n"
+            "Install the example dependencies first: pip install -r requirements.txt"
+        )
 
-    print(f"\nSuccessfully uploaded {len(ds_sampled)} items to dataset '{DATASET_NAME}'")
-    print(f"\nDataset structure:")
-    print(f"  - input.question: Natural language question")
-    print(f"  - input.schema: SQL CREATE TABLE statements")
-    print(f"  - expected_output: Ground truth SQL query")
+    from qym.platform.client import PlatformClient
+    from qym.platform.defaults import DEFAULT_PLATFORM_URL
 
-    client.flush()
-    print("\nDone!")
+    print("Loading sql-create-context dataset from HuggingFace...")
+    ds = load_dataset("b-mc2/sql-create-context", split="train")
+    print(f"Dataset loaded with {len(ds)} examples")
+
+    ds_sampled = ds.shuffle(seed=SEED).select(range(min(NUM_SAMPLES, len(ds))))
+    print(f"Selected {len(ds_sampled)} samples")
+
+    # Write items to a temporary JSONL file in qym's dataset item format.
+    fd, jsonl_path = tempfile.mkstemp(prefix="text2sql_", suffix=".jsonl")
+    os.close(fd)
+    try:
+        with open(jsonl_path, "w", encoding="utf-8") as handle:
+            for item in ds_sampled:
+                handle.write(
+                    json.dumps(
+                        {
+                            "input": {
+                                "question": item["question"],
+                                "schema": item["context"],  # CREATE TABLE statements
+                            },
+                            "expected_output": item["answer"],  # ground-truth SQL
+                            "metadata": {"dataset_source": "sql-create-context"},
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+        platform_url = DEFAULT_PLATFORM_URL
+        print(f"\nUploading {len(ds_sampled)} items to {platform_url} as '{DATASET_NAME}'...")
+        client = PlatformClient(platform_url=platform_url, api_key=api_key)
+        response = client.upload_dataset(
+            path=jsonl_path,
+            name=DATASET_NAME,
+            version="v1",
+            publish=True,
+            set_alias="production",
+        )
+    finally:
+        Path(jsonl_path).unlink(missing_ok=True)
+
+    version = response.get("version") or {}
+    print(f"\nSuccessfully uploaded dataset '{DATASET_NAME}'")
+    print(f"  version: {version.get('version')} (status: {version.get('status')})")
+    print(f"  items:   {version.get('item_count')}")
+    print("\nDataset structure:")
+    print("  - input.question:  Natural language question")
+    print("  - input.schema:    SQL CREATE TABLE statements")
+    print("  - expected_output: Ground-truth SQL query")
+    print("\nRun the evaluation next: python run_eval.py")
 
 
 if __name__ == "__main__":

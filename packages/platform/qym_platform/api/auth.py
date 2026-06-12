@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 from datetime import datetime
 from pathlib import Path
@@ -245,7 +246,9 @@ def bootstrap_admin(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     settings = PlatformSettings()
-    if not settings.admin_bootstrap_token or req.bootstrap_token != settings.admin_bootstrap_token:
+    if not settings.admin_bootstrap_token or not hmac.compare_digest(
+        req.bootstrap_token.encode("utf-8"), settings.admin_bootstrap_token.encode("utf-8")
+    ):
         raise HTTPException(status_code=403, detail="Invalid bootstrap token")
 
     user = db.query(User).filter(User.id == principal.user.id).first()

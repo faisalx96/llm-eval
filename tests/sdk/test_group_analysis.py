@@ -47,7 +47,10 @@ def _result(name, scores, *, metric="accuracy", errors=None, retries=None):
         ("\u2713", 1.0),
         ("\u2717", 0.0),
         ({"score": 0.6}, 0.6),
-        ({"error": "boom"}, 0.0),
+        # Audit EI-1: errored metric values are excluded (None), no longer
+        # averaged in as 0.0.
+        ({"error": "boom"}, None),
+        ({"score": 0.0, "metadata": {"error": "judge failed"}}, None),
         ("N/A", None),
         ("null", None),
         ("not-a-score", None),

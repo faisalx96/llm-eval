@@ -21,12 +21,9 @@ import requests
 import urllib3
 from urllib3.exceptions import InsecureRequestWarning
 
-urllib3.disable_warnings(InsecureRequestWarning)
-
 # Third-party imports - Specialized tools
 import dataikuapi
 from dotenv import load_dotenv
-from langfuse import Langfuse
 from qym import Evaluator
 
 load_dotenv()
@@ -47,8 +44,17 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return os.getenv(name, default)
 
 
-# Initialize Langfuse client for tracking
-client = Langfuse()
+def _insightor_ssl_verify() -> bool:
+    """Whether to verify TLS certificates on Insightor API calls.
+
+    Defaults to True (certificates are verified). The Insightor deployment
+    historically sat behind a self-signed certificate and this script
+    hardcoded ``verify=False``; disabling verification now requires explicit
+    opt-in by setting ``QYM_INSIGHTOR_SSL_VERIFY=false`` (accepted falsy
+    values: 0/false/no/off, case-insensitive).
+    """
+    value = (_env("QYM_INSIGHTOR_SSL_VERIFY", "true") or "true").strip().lower()
+    return value not in ("0", "false", "no", "off")
 
 # =============================================================================
 # PROMPT GENERATION FOR LLM EVALUATION
@@ -394,7 +400,12 @@ def exact_match(output, expected, input_data=None):
     try:
         execution_accuracy = ExecutionAccuracy()
 
-        _, EX_cell = execution_accuracy.evaluate(output, expected)
+        # Reference rows MUST be the gold/expected rows: the score is the
+        # fraction of gold rows recovered by the LLM output (recall). Passing
+        # (output, expected) here inverted the direction and computed precision
+        # over the LLM rows instead — an answer returning 1 of 10 required
+        # rows scored 100%.
+        _, EX_cell = execution_accuracy.evaluate(expected, output)
         error = None
     except Exception as e:
         exc_type = f"{type(e).__module__}.{type(e).__name__}"
@@ -408,12 +419,21 @@ def exact_match(output, expected, input_data=None):
             },
             ensure_ascii=False,
         )
-        EX_cell = 0
+        EX_cell = None
 
-    # print("exact_match output", EX_cell >= 95)
+    if error is not None:
+        # Infrastructure/scoring failure: do NOT report it as a wrong answer
+        # (score=0). Return score=None with metadata.error set (the SDK's
+        # error convention, cf. qym.core.evaluator metric timeout sentinel and
+        # qym.metrics.result) so these items are distinguishable/excludable.
+        return {
+            "score": None,
+            "metadata": {"cell_f1": None, "error": error},
+        }
+
     return {
         "score": EX_cell >= 95,
-        "metadata": {"cell_f1": EX_cell, "error": error},
+        "metadata": {"cell_f1": EX_cell, "error": None},
     }
 
 
@@ -421,41 +441,13 @@ def exact_match(output, expected, input_data=None):
 # SQL PARSING HELPER FUNCTIONS
 # =============================================================================
 
-
-def extract_tables(sql: str) -> set:
-    """
-    Extract table names from SQL query using SQLGlot, excluding CTE aliases.
-
-    Args:
-        sql: SQL query string
-
-    Returns:
-        Set of lowercase table names (without schema prefix)
-    """
-    tables = set()
-
-    if not sql or not sql.strip():
-        return tables
-
-    try:
-        parsed = sqlglot.parse_one(sql, dialect="hive")
-
-        # Collect CTE aliases first
-        cte_names = set()
-        for node in parsed.walk():
-            if isinstance(node, exp.CTE):
-                cte_names.add(node.alias)
-
-        # Walk through all Table nodes, excluding CTE aliases
-        for node in parsed.walk():
-            if isinstance(node, exp.Table):
-                table_name = node.name.lower()
-                if table_name and table_name not in cte_names:
-                    tables.add(table_name)
-    except Exception as e:
-        print(f"Error parsing SQL for tables: {e}")
-
-    return list(tables)
+# NOTE: an `extract_tables(sql)` helper used to live here. It relied on
+# sqlglot, which was never imported nor declared as a dependency, so the call
+# raised NameError internally, was swallowed by its own try/except, and the
+# function always returned []. It has been removed rather than "fixed" with an
+# import because sqlglot is not installed/declared for this script's
+# environment. If ground-truth table extraction is needed again, add sqlglot
+# as a real dependency and reintroduce the parser.
 
 
 # =============================================================================
@@ -746,8 +738,12 @@ def context_judge(output, expected, input_data) -> str:
     else:
         retrieved_tables = []
 
-    # Extract tables from ground truth query using sqlglot
-    groundtruth_tables = extract_tables(expected)
+    # Ground-truth table extraction removed: it used `extract_tables`, whose
+    # sqlglot dependency was never imported/declared, so it always failed
+    # silently and returned []. Keep the same observable behavior (no
+    # ground-truth tables => table_recall 0.0) until sqlglot becomes a real
+    # dependency.
+    groundtruth_tables: List[str] = []
 
     # Table recall: does the context contain the tables needed for the ground truth query?
     gold_set = set(groundtruth_tables)
@@ -955,8 +951,17 @@ def accuracy(output, expected, input_data=None) -> dict:
             }
         )
 
-        # Set final score and reasoning
-        score = exact_match_result_score | llm_judge_metric_result_score
+        # Set final score and reasoning. Either sub-metric may return
+        # score=None on an infrastructure error (exact_match) or an
+        # unparseable judge response (llm_judge_metric); treat None as
+        # "no signal" rather than a wrong answer. If neither produced a
+        # score, surface None so the item is excludable downstream.
+        available_scores = [
+            s
+            for s in (exact_match_result_score, llm_judge_metric_result_score)
+            if s is not None
+        ]
+        score = any(available_scores) if available_scores else None
         exact_match_cell_f1 = exact_match_result["metadata"]["cell_f1"]
         exact_match_error = exact_match_result["metadata"]["error"]
         llm_judge_reasoning = llm_judge_metric_result["metadata"]["reasoning"]
@@ -1022,6 +1027,11 @@ def insightor_api(question: str) -> Dict[str, Any]:
     base_url = _env("INSIGHTOR_URL")
     access_token = None
     session = requests.Session()
+    ssl_verify = _insightor_ssl_verify()
+    if not ssl_verify:
+        # Only silence the insecure-request warnings when verification was
+        # explicitly opted out via QYM_INSIGHTOR_SSL_VERIFY.
+        urllib3.disable_warnings(InsecureRequestWarning)
 
     def _refresh_token() -> bool:
         """Refresh the access token using the refresh_token."""
@@ -1030,7 +1040,7 @@ def insightor_api(question: str) -> Dict[str, Any]:
                 f"{base_url}/auth/token",
                 json={"refresh_token": _env("REFRESH_TOKEN")},
                 headers={"Content-Type": "application/json"},
-                verify=False,
+                verify=ssl_verify,
                 timeout=30,
             )
 
@@ -1103,7 +1113,7 @@ def insightor_api(question: str) -> Dict[str, Any]:
         json=payload,
         stream=True,
         timeout=120,
-        verify=False,
+        verify=ssl_verify,
         headers={"Accept": "text/event-stream"},
     )
     response.raise_for_status()

@@ -35,6 +35,55 @@ _registered_instrumentors: List[str] = []
 _phoenix_enabled: bool = False
 _phoenix_endpoint: Optional[str] = None
 
+# --- Lifecycle ownership tracking (OT-1) -----------------------------------
+# qym may either create the process-global TracerProvider itself or attach to
+# one that a host application already installed via set_tracer_provider().
+# Shutdown must only ever touch what qym itself created/attached:
+#   _qym_owned_provider    — the SdkTracerProvider qym created, or None when
+#                            qym attached to a pre-existing (host) provider.
+#   _qym_owned_processors  — span processors qym added to the provider (the
+#                            shared QymSpanProcessor and the optional Phoenix
+#                            OTLP BatchSpanProcessor).
+#   _shared_qym_processor  — singleton QymSpanProcessor; repeated Evaluator
+#                            constructions in one process re-use it instead of
+#                            stacking a new processor per run.
+_qym_owned_provider: Optional[Any] = None
+_qym_owned_processors: List[Any] = []
+_shared_qym_processor: Optional[Any] = None
+
+# --- Trace content privacy gate (DOC-3) -------------------------------------
+# Documented control: TRACELOOP_TRACE_CONTENT=false disables prompt/response
+# content capture. QYM_TRACE_CONTENT is honored as a qym-native alias; either
+# being false-y disables capture. Counts, latency, model names, and error
+# classifications are always kept — only message/prompt/response/reasoning
+# text is redacted.
+_TRACE_CONTENT_ENV_VARS = ("TRACELOOP_TRACE_CONTENT", "QYM_TRACE_CONTENT")
+_FALSY_ENV_VALUES = frozenset({"false", "0", "no", "off"})
+_REDACTED = "<redacted>"
+
+
+def _read_trace_content_env() -> bool:
+    """Return False when any of the privacy env vars disables content capture."""
+    for var in _TRACE_CONTENT_ENV_VARS:
+        raw = os.environ.get(var)
+        if raw is not None and raw.strip().lower() in _FALSY_ENV_VALUES:
+            return False
+    return True
+
+
+_trace_content_enabled: bool = _read_trace_content_env()
+
+
+def _refresh_trace_content_gate() -> bool:
+    """Re-read the privacy env vars (called once per otel setup)."""
+    global _trace_content_enabled
+    _trace_content_enabled = _read_trace_content_env()
+    return _trace_content_enabled
+
+
+def _capture_content() -> bool:
+    return _trace_content_enabled
+
 # Track emitted tool_call_ids per trace context to avoid duplicates
 _emitted_tool_ids: contextvars.ContextVar[Set[str]] = contextvars.ContextVar(
     "_emitted_tool_ids",
@@ -292,14 +341,31 @@ class OtelManager:
         _qym_usage_scope.reset(token)
 
     def shutdown(self):
-        try:
-            from opentelemetry import trace
+        """Flush qym-owned span processors; never touch the global provider.
 
-            provider = trace.get_tracer_provider()
-            if hasattr(provider, "shutdown"):
-                provider.shutdown()
-        except Exception as e:
-            logger.debug(f"OTEL shutdown error: {e}")
+        The process-global TracerProvider may belong to a host application
+        (qym attaches to an existing provider when one is already installed),
+        and even when qym created it, the global provider cannot be replaced
+        once set — so calling ``provider.shutdown()`` here would permanently
+        kill tracing for the rest of the process: host-app span processors
+        stop receiving spans, and a second Evaluator run in the same process
+        (e.g. multi-model runs) loses Phoenix export.
+
+        Instead, only the processors qym itself attached (the shared
+        QymSpanProcessor and the optional Phoenix OTLP BatchSpanProcessor)
+        are force-flushed so buffered spans are exported at the end of a run.
+        They are intentionally left running so subsequent Evaluator runs in
+        the same process keep working; final shutdown is handled by the OTel
+        SDK's own atexit hook for a provider qym created, or by the host
+        application for a provider qym attached to.
+        """
+        for processor in list(_qym_owned_processors):
+            try:
+                force_flush = getattr(processor, "force_flush", None)
+                if callable(force_flush):
+                    force_flush()
+            except Exception as e:
+                logger.debug(f"OTEL processor flush error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +489,9 @@ def _set_span_attr_if_missing(span: Any, key: str, value: Any) -> None:
 def _set_message_span_attrs(span: Any, prefix: str, messages: Any) -> None:
     if not isinstance(messages, (list, tuple)):
         return
+    # Privacy gate (DOC-3): when content capture is disabled, keep the message
+    # structure (roles, tool-call ids/names) but redact all free text.
+    capture = _capture_content()
     for i, msg in enumerate(messages[:50]):
         role = _obj_get(msg, "role") or (
             "assistant" if prefix.endswith("output_messages") else ""
@@ -430,6 +499,11 @@ def _set_message_span_attrs(span: Any, prefix: str, messages: Any) -> None:
         content = _normalize_message_content(_obj_get(msg, "content"))
         reasoning = _extract_reasoning_text(msg)
         tool_call_id = _obj_get(msg, "tool_call_id")
+        if not capture:
+            if content:
+                content = _REDACTED
+            if reasoning:
+                reasoning = _REDACTED
         _set_span_attr_if_missing(span, f"{prefix}.{i}.message.role", str(role or ""))
         if content:
             _set_span_attr_if_missing(span, f"{prefix}.{i}.message.content", content)
@@ -445,6 +519,8 @@ def _set_message_span_attrs(span: Any, prefix: str, messages: Any) -> None:
             _extract_tool_calls_from_message(msg)[:20]
         ):
             base = f"{prefix}.{i}.message.tool_calls.{j}.tool_call"
+            if args and not capture:
+                args = _REDACTED
             _set_span_attr_if_missing(span, f"{base}.id", tc_id)
             _set_span_attr_if_missing(span, f"{base}.function.name", name)
             _set_span_attr_if_missing(span, f"{base}.function.arguments", args)
@@ -473,6 +549,8 @@ def _enrich_openai_span_io(
     except Exception:
         return
 
+    capture = _capture_content()
+
     request_payload = {
         key: _to_jsonable(value)
         for key, value in kwargs.items()
@@ -481,23 +559,29 @@ def _enrich_openai_span_io(
     if messages is not None:
         request_payload["messages"] = _to_jsonable(messages)
     if request_payload:
-        _set_span_attr_if_missing(
-            span,
-            "input.value",
-            _json.dumps(request_payload, ensure_ascii=False, default=str)[:64000],
-        )
-        _set_span_attr_if_missing(span, "input.mime_type", "application/json")
+        if capture:
+            _set_span_attr_if_missing(
+                span,
+                "input.value",
+                _json.dumps(request_payload, ensure_ascii=False, default=str)[:64000],
+            )
+            _set_span_attr_if_missing(span, "input.mime_type", "application/json")
+        else:
+            _set_span_attr_if_missing(span, "input.value", _REDACTED)
 
     if messages:
         _set_message_span_attrs(span, "llm.input_messages", messages)
 
     result_payload = _to_jsonable(result)
-    _set_span_attr_if_missing(
-        span,
-        "output.value",
-        _json.dumps(result_payload, ensure_ascii=False, default=str)[:64000],
-    )
-    _set_span_attr_if_missing(span, "output.mime_type", "application/json")
+    if capture:
+        _set_span_attr_if_missing(
+            span,
+            "output.value",
+            _json.dumps(result_payload, ensure_ascii=False, default=str)[:64000],
+        )
+        _set_span_attr_if_missing(span, "output.mime_type", "application/json")
+    else:
+        _set_span_attr_if_missing(span, "output.value", _REDACTED)
 
     output_messages = _extract_output_messages(result)
     if output_messages:
@@ -711,6 +795,44 @@ def _has_structured_tool_calls(msg: Any) -> bool:
     return bool(tc)
 
 
+# Span names used by instrumentors whose LLM spans may not have the
+# openinference.span.kind attribute set yet while the wrapped provider call
+# is still executing (OpenInference OpenAI uses ChatCompletion/Completion;
+# OpenInference Anthropic and qym's own Anthropic wrapper use Messages).
+_LLM_SPAN_NAMES = frozenset(
+    {"ChatCompletion", "Completion", "Messages", "AsyncMessages"}
+)
+
+
+def _is_recording_llm_span(span: Any) -> bool:
+    """True when `span` is a recording LLM span (attribute or name check).
+
+    Response classification and reasoning enrichment write status/attributes
+    onto the *current* span; they must only ever do so when that span is the
+    LLM call span. Without this guard they would write onto whatever ambient
+    span is current (often the eval ITEM span), mismarking successful items
+    as errored.
+    """
+    try:
+        if span is None or not span.is_recording():
+            return False
+    except Exception:
+        return False
+    try:
+        attrs = getattr(span, "attributes", None) or {}
+        kind = str(
+            attrs.get("openinference.span.kind", "")
+            or attrs.get("ai.openinference.span.kind", "")
+        ).upper()
+        if kind == "LLM":
+            return True
+        if kind:  # explicitly some other kind (CHAIN, TOOL, ...)
+            return False
+    except Exception:
+        pass
+    return getattr(span, "name", "") in _LLM_SPAN_NAMES
+
+
 def _classify_response(result: Any) -> None:
     """Scan choice.message {content, reasoning, tool_calls[i].arguments} for
     leaked tool-call syntax and set qym.response.* on the current span. Also
@@ -723,7 +845,9 @@ def _classify_response(result: Any) -> None:
         return
     try:
         span = otel_trace.get_current_span()
-        if span is None or not span.is_recording():
+        # Only ever classify onto the LLM call span — never onto whatever
+        # ambient span happens to be current (e.g. the eval item span).
+        if not _is_recording_llm_span(span):
             return
     except Exception:
         return
@@ -919,6 +1043,8 @@ def _emit_tool_spans(tracer, messages):
     count = len(new_tools)
     slot_ns = max((now_ns - range_start_ns) // count, 1) if count else 1
 
+    capture = _capture_content()
+
     for i, (tc_id, content) in enumerate(new_tools):
         info = id_to_info.get(tc_id, {})
         tool_name = info.get("name", "unknown")
@@ -931,9 +1057,15 @@ def _emit_tool_spans(tracer, messages):
         span.set_attribute("openinference.span.kind", "TOOL")
         span.set_attribute("tool.name", tool_name)
         if tool_args:
-            span.set_attribute("input.value", _serialize_span_value(tool_args))
+            span.set_attribute(
+                "input.value",
+                _serialize_span_value(tool_args) if capture else _REDACTED,
+            )
         if content:
-            span.set_attribute("output.value", _serialize_span_value(content))
+            span.set_attribute(
+                "output.value",
+                _serialize_span_value(content) if capture else _REDACTED,
+            )
 
         # Detect error results in tool output and flag the span. Cover the
         # dialects we see in practice: {"error":...} JSON, {"status":"error"},
@@ -945,6 +1077,10 @@ def _emit_tool_spans(tracer, messages):
             try:
                 from opentelemetry.trace import StatusCode
 
+                # err_msg is derived from tool-result content; redact it when
+                # content capture is disabled (error type/status are kept).
+                if not capture and err_msg:
+                    err_msg = _REDACTED
                 span.add_event(
                     "exception",
                     attributes={
@@ -952,7 +1088,7 @@ def _emit_tool_spans(tracer, messages):
                         "exception.message": err_msg,
                     },
                 )
-                span.set_status(StatusCode.ERROR, err_msg or err_type)
+                span.set_status(StatusCode.ERROR, (err_msg or err_type) if capture else err_type)
                 span.set_attribute("qym.tool.error_source", err_source)
             except Exception:
                 pass
@@ -961,20 +1097,27 @@ def _emit_tool_spans(tracer, messages):
 
 
 def _enrich_with_reasoning(result):
-    """Add reasoning field to current span if present in response."""
+    """Add reasoning field to the current LLM span if present in response.
+
+    No-ops unless the current span is the LLM call span — writing onto an
+    ambient (e.g. item) span would misattribute the reasoning. When content
+    capture is disabled, the reasoning *presence* is kept (so has_reasoning
+    detection still works) but the text is redacted.
+    """
     try:
         from opentelemetry import trace as otel_trace
 
         span = otel_trace.get_current_span()
-        if not span or not span.is_recording():
+        if not _is_recording_llm_span(span):
             return
+        capture = _capture_content()
         for choice in result.choices:
             msg = choice.message
             reasoning = _extract_reasoning_text(msg)
             if reasoning:
                 span.set_attribute(
                     f"gen_ai.completion.{choice.index}.reasoning",
-                    str(reasoning)[:16000],
+                    str(reasoning)[:16000] if capture else _REDACTED,
                 )
     except Exception:
         pass
@@ -1054,8 +1197,100 @@ def _patch_openai_enrichments():
     logger.debug("OpenAI enrichments (tool spans + reasoning) installed")
 
 
+def _enrich_anthropic_span_io(
+    span: Any, *, messages: Any, kwargs: Dict[str, Any], result: Any
+) -> None:
+    """Populate OpenInference-convention IO attrs on qym's Anthropic LLM span.
+
+    Mirrors the attribute conventions the OpenAI instrumentation produces so
+    platform trace-stat aggregation (llm_calls / tokens keyed off
+    openinference.span.kind == "LLM" and llm.token_count.*) treats Anthropic
+    calls identically.
+    """
+    try:
+        if span is None or not span.is_recording():
+            return
+    except Exception:
+        return
+
+    model = kwargs.get("model") or _obj_get(result, "model")
+    if model:
+        _set_span_attr_if_missing(span, "llm.model_name", str(model))
+        _set_span_attr_if_missing(span, "gen_ai.request.model", str(model))
+
+    capture = _capture_content()
+
+    request_payload = {
+        key: _to_jsonable(value)
+        for key, value in kwargs.items()
+        if key not in {"api_key", "extra_headers", "default_headers"}
+    }
+    if request_payload:
+        if capture:
+            _set_span_attr_if_missing(
+                span,
+                "input.value",
+                _json.dumps(request_payload, ensure_ascii=False, default=str)[:64000],
+            )
+            _set_span_attr_if_missing(span, "input.mime_type", "application/json")
+        else:
+            _set_span_attr_if_missing(span, "input.value", _REDACTED)
+
+    if messages:
+        _set_message_span_attrs(span, "llm.input_messages", messages)
+
+    if result is None:
+        return
+
+    result_payload = _to_jsonable(result)
+    if capture:
+        _set_span_attr_if_missing(
+            span,
+            "output.value",
+            _json.dumps(result_payload, ensure_ascii=False, default=str)[:64000],
+        )
+        _set_span_attr_if_missing(span, "output.mime_type", "application/json")
+    else:
+        _set_span_attr_if_missing(span, "output.value", _REDACTED)
+
+    if isinstance(result_payload, dict):
+        output_message = dict(result_payload)
+        output_message.setdefault("role", "assistant")
+        _set_message_span_attrs(span, "llm.output_messages", [output_message])
+
+    usage = _obj_get(result, "usage")
+    if usage is not None:
+        prompt_tokens = _obj_get(usage, "input_tokens")
+        completion_tokens = _obj_get(usage, "output_tokens")
+        _set_span_attr_if_missing(span, "llm.token_count.prompt", prompt_tokens)
+        _set_span_attr_if_missing(
+            span, "llm.token_count.completion", completion_tokens
+        )
+        try:
+            total = int(prompt_tokens or 0) + int(completion_tokens or 0)
+        except (TypeError, ValueError):
+            total = 0
+        if total:
+            _set_span_attr_if_missing(span, "llm.token_count.total", total)
+
+    stop_reason = _obj_get(result, "stop_reason")
+    if stop_reason:
+        _set_span_attr_if_missing(span, "llm.stop_reason", str(stop_reason))
+
+
 def _patch_anthropic_enrichments():
-    """Wrap Anthropic SDK message creation so tool spans and reasoning are captured."""
+    """Wrap Anthropic SDK message creation in a dedicated LLM span.
+
+    qym self-instruments the Anthropic SDK (no OpenInference/OTel Anthropic
+    instrumentor is registered — see _OTEL_DISCOVERY_SKIP). The wrapper:
+      - creates a child LLM span (openinference.span.kind=LLM) around each
+        Messages.create call, so platform trace stats count llm_calls and
+        tokens for Anthropic the same way they do for OpenAI;
+      - emits tool spans reconstructed from the message history;
+      - applies reasoning enrichment and response classification, which are
+        guarded to write only onto this LLM span — never onto the ambient
+        item span (previously successful items were mismarked as errored).
+    """
     try:
         import anthropic.resources.messages as mod
         from opentelemetry import trace as otel_trace
@@ -1064,15 +1299,16 @@ def _patch_anthropic_enrichments():
 
     tracer = otel_trace.get_tracer("qym.enrichments")
 
-    _real_create = mod.Messages.create
+    # "Messages" matches the OpenInference Anthropic instrumentor's span-name
+    # convention; the LLM kind attribute is set at span start so
+    # QymSpanProcessor.on_start registers it for nested-LLM deduplication.
+    _LLM_SPAN_ATTRS = {"openinference.span.kind": "LLM"}
 
-    @functools.wraps(_real_create)
-    def _enriched_create(self, *args, **kwargs):
-        messages = kwargs.get("messages")
-        if messages:
-            _emit_tool_spans(tracer, messages)
-        result = _real_create(self, *args, **kwargs)
+    def _finish_llm_span(llm_span, *, messages, kwargs, result):
         _last_llm_end_ns.set(time.time_ns())
+        _enrich_anthropic_span_io(
+            llm_span, messages=messages, kwargs=kwargs, result=result
+        )
         if hasattr(result, "content"):
             wrapped = type(
                 "AnthropicResult",
@@ -1081,6 +1317,19 @@ def _patch_anthropic_enrichments():
             )()
             _enrich_with_reasoning(wrapped)
             _classify_response(wrapped)
+
+    _real_create = mod.Messages.create
+
+    @functools.wraps(_real_create)
+    def _enriched_create(self, *args, **kwargs):
+        messages = kwargs.get("messages")
+        if messages:
+            _emit_tool_spans(tracer, messages)
+        with tracer.start_as_current_span(
+            "Messages", attributes=dict(_LLM_SPAN_ATTRS)
+        ) as llm_span:
+            result = _real_create(self, *args, **kwargs)
+            _finish_llm_span(llm_span, messages=messages, kwargs=kwargs, result=result)
         return result
 
     mod.Messages.create = _enriched_create
@@ -1092,20 +1341,15 @@ def _patch_anthropic_enrichments():
         messages = kwargs.get("messages")
         if messages:
             _emit_tool_spans(tracer, messages)
-        result = await _real_acreate(self, *args, **kwargs)
-        _last_llm_end_ns.set(time.time_ns())
-        if hasattr(result, "content"):
-            wrapped = type(
-                "AnthropicResult",
-                (),
-                {"choices": [type("Choice", (), {"index": 0, "message": result})()]},
-            )()
-            _enrich_with_reasoning(wrapped)
-            _classify_response(wrapped)
+        with tracer.start_as_current_span(
+            "Messages", attributes=dict(_LLM_SPAN_ATTRS)
+        ) as llm_span:
+            result = await _real_acreate(self, *args, **kwargs)
+            _finish_llm_span(llm_span, messages=messages, kwargs=kwargs, result=result)
         return result
 
     mod.AsyncMessages.create = _enriched_acreate
-    logger.debug("Anthropic enrichments (tool spans + reasoning) installed")
+    logger.debug("Anthropic enrichments (LLM span + tool spans + reasoning) installed")
 
 
 # ---------------------------------------------------------------------------
@@ -1129,6 +1373,12 @@ _PROVIDER_INSTRUMENTORS: List[Tuple[str, str]] = [
 # Do not auto-register official OTel instrumentors when qym already registers
 # an OpenInference equivalent for the same surface area; that creates redundant
 # spans for the same logical operation.
+#
+# "anthropic" stays in this list even though no OpenInference Anthropic
+# instrumentor is registered above: qym self-instruments the Anthropic SDK in
+# _patch_anthropic_enrichments (dedicated LLM span per Messages.create call).
+# Registering the official OTel Anthropic instrumentor on top would produce a
+# second, duplicate LLM span for every call.
 _OTEL_DISCOVERY_SKIP: Set[str] = {
     "anthropic",
     "langchain",
@@ -1257,6 +1507,7 @@ def create_otel_manager(config) -> Any:
     platform event stream is active.
     """
     global _initialized, _registered_instrumentors, _phoenix_enabled, _phoenix_endpoint
+    global _qym_owned_provider, _shared_qym_processor
 
     if not getattr(config, "otel_enabled", True):
         return NullOtelManager()
@@ -1268,17 +1519,30 @@ def create_otel_manager(config) -> Any:
         logger.debug("opentelemetry-sdk not installed — auto-instrumentation disabled")
         return NullOtelManager()
 
-    qym_processor = QymSpanProcessor()
+    # Load .env and (re-)read the privacy gate before anything that writes or
+    # exports content (instrumentor registration + Phoenix export below).
+    load_cwd_dotenv()
+    _refresh_trace_content_gate()
 
     if not _initialized:
         try:
-            # Create a real TracerProvider
+            # Re-use the host application's TracerProvider when one is already
+            # installed; only create (and own) a provider when none exists.
             existing = trace.get_tracer_provider()
             if not isinstance(existing, SdkTracerProvider):
                 provider = SdkTracerProvider()
                 trace.set_tracer_provider(provider)
+                _qym_owned_provider = provider
             else:
                 provider = existing
+                _qym_owned_provider = None
+
+            if not _capture_content():
+                # Propagate the documented privacy control to OpenInference
+                # instrumentors (they read these env vars at instrument()
+                # time); respect explicit user overrides.
+                os.environ.setdefault("OPENINFERENCE_HIDE_INPUTS", "true")
+                os.environ.setdefault("OPENINFERENCE_HIDE_OUTPUTS", "true")
 
             # Apply provider SDK enrichments (tool span emission, reasoning
             # capture, and IO fallback) before instrumentors register. The
@@ -1295,9 +1559,9 @@ def create_otel_manager(config) -> Any:
                 )
 
             # Optional: Phoenix OTLP export for dual tracing. Auto-enable if an
-            # endpoint is configured.
-            load_cwd_dotenv()
-
+            # endpoint is configured. Content redaction happens at span-write
+            # time (see _capture_content), so the privacy gate applies to
+            # Phoenix-exported spans as well.
             phoenix_endpoint = (
                 getattr(config, "phoenix_endpoint", None)
                 or os.environ.get("PHOENIX_ENDPOINT")
@@ -1319,7 +1583,9 @@ def create_otel_manager(config) -> Any:
                     )
 
                     phoenix_exporter = OTLPSpanExporter(endpoint=phoenix_endpoint)
-                    provider.add_span_processor(BatchSpanProcessor(phoenix_exporter))
+                    phoenix_processor = BatchSpanProcessor(phoenix_exporter)
+                    provider.add_span_processor(phoenix_processor)
+                    _qym_owned_processors.append(phoenix_processor)
                     logger.info(f"Phoenix trace export enabled -> {phoenix_endpoint}")
                 except ImportError:
                     logger.warning(
@@ -1333,10 +1599,18 @@ def create_otel_manager(config) -> Any:
             logger.warning(f"Failed to initialize OTEL auto-instrumentation: {e}")
             return NullOtelManager()
 
-    # Register QymSpanProcessor on the provider
+    # Register the (shared) QymSpanProcessor on the provider. Repeated
+    # Evaluator constructions in one process re-use the same processor so the
+    # provider never accumulates one processor per run.
     provider = trace.get_tracer_provider()
-    if hasattr(provider, "add_span_processor"):
-        provider.add_span_processor(qym_processor)
+    if _shared_qym_processor is not None:
+        qym_processor = _shared_qym_processor
+    else:
+        qym_processor = QymSpanProcessor()
+        if hasattr(provider, "add_span_processor"):
+            provider.add_span_processor(qym_processor)
+            _shared_qym_processor = qym_processor
+            _qym_owned_processors.append(qym_processor)
 
     tracer = trace.get_tracer("qym")
     return OtelManager(

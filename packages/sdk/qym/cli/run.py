@@ -228,9 +228,10 @@ def run_create(
         )
 
         status("Starting evaluation...")
-        show_progress = not no_progress and not quiet
-        show_table = not no_ui
-        raw_results = evaluator.run(show_progress=show_progress, show_table=show_table)
+        show_tui = not quiet and not no_progress and not no_ui
+        # When --output is given the CLI saves explicitly below, so disable
+        # the evaluator's auto-save to avoid writing results twice.
+        raw_results = evaluator.run(show_tui=show_tui, auto_save=output_file is None)
         run_results = raw_results if isinstance(raw_results, list) else [raw_results]
 
         # Output results

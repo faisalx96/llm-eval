@@ -59,7 +59,7 @@ qym run create \
   --ui-port 0
 ```
 
-Every flag is optional except the task, dataset, and metric requirements. Use exactly one dataset source: `--dataset` or `--dataset-csv`.
+Every flag is optional except the task, dataset, and metric requirements. Use exactly one dataset source: `--dataset` or `--dataset-file`/`--dataset-csv`.
 
 ## Dataset Modes
 
@@ -77,21 +77,21 @@ qym run create \
 
 Use CSV for first runs, offline workflows, CI smoke tests, and air-gapped execution.
 
-### Langfuse dataset
+### Platform dataset
 
 ```bash
-export LANGFUSE_PUBLIC_KEY=...
-export LANGFUSE_SECRET_KEY=...
-export LANGFUSE_HOST=https://cloud.langfuse.com
+export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=<platform-api-key>
 
 qym run create \
   --task-file eval_task.py \
   --task-function answer_question \
-  --dataset production-qa-regression \
+  --dataset qa-regression \
+  --dataset-version v3 \
   --metrics exact_match,relevance
 ```
 
-Use Langfuse dataset names when the dataset is already managed remotely.
+Use platform dataset names when the dataset is centrally managed. Without `--dataset-version` or `--dataset-alias`, the run loads the version the `production` alias points to. Manage these datasets with the `qym dataset` command group (`upload`, `version publish`, `alias set`, ...).
 
 ## Configuration Through `--config`
 
@@ -259,7 +259,7 @@ Rules:
 |---------|-------|-----|
 | Task import fails | Wrong `--task-file` or `--task-function`. | Import the function in Python first. |
 | CSV columns missing | Wrong CSV flags. | Match `--csv-input-col`, `--csv-expected-col`, and metadata names to the file. |
-| Langfuse dataset fails | Missing Langfuse credentials or wrong dataset name. | Set Langfuse env vars and verify the dataset. |
+| Platform dataset fails | Missing platform credentials or wrong dataset/version name. | Set `QYM_BASE_URL`/`QYM_API_KEY` and verify with `qym dataset list`. |
 | Judge metric fails before scoring | Missing judge model or key. | Set `QYM_JUDGE_MODEL` and `QYM_JUDGE_API_KEY`. |
 | Platform streaming fails | Missing URL/key or auth issue. | Run `qym config check --json`. |
 | Automation parses unstable text | Human stderr output was parsed. | Use global `--json`. |

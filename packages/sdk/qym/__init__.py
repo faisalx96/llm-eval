@@ -6,7 +6,38 @@ Evaluate any LLM task with just 3 lines of code:
     results = evaluator.run()
 """
 
-__version__ = "0.9.0"
+def _resolve_version() -> str:
+    """Resolve the package version from installed distribution metadata.
+
+    Falls back to the adjacent pyproject.toml (editable/uninstalled source
+    checkouts), then to a literal as a last resort. Keeping a single source
+    of truth in pyproject.toml prevents the version drift that previously
+    made runs report a stale hardcoded __version__.
+    """
+    try:
+        from importlib.metadata import version as _dist_version
+
+        return _dist_version("qym")
+    except Exception:
+        pass
+    try:
+        import re as _re
+        from pathlib import Path as _Path
+
+        _pyproject = _Path(__file__).resolve().parent.parent / "pyproject.toml"
+        _match = _re.search(
+            r'^version\s*=\s*"([^"]+)"',
+            _pyproject.read_text(encoding="utf-8"),
+            _re.MULTILINE,
+        )
+        if _match:
+            return _match.group(1)
+    except Exception:
+        pass
+    return "1.1.0"  # last resort — keep in sync with pyproject.toml
+
+
+__version__ = _resolve_version()
 
 # Load .env from the caller's CWD as early as possible, so module-level reads of
 # os.environ (e.g. qym.platform.defaults.DEFAULT_PLATFORM_URL) see the right values.

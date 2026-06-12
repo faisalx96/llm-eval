@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ["QYM_AUTH_MODE"] = "proxy_headers"
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 if str(PLATFORM_SRC) not in sys.path:
@@ -35,6 +34,11 @@ from qym_platform.db.models import (
     UserRole,
 )
 from qym_platform.deps import get_db
+
+
+@pytest.fixture(autouse=True)
+def _auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
 
 
 @pytest.fixture()

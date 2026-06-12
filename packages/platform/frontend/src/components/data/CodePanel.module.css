@@ -1,0 +1,144 @@
+/* Mono code panel. Tone = subtle left border + label color ONLY — never a
+   solid colored block (reserved hues stay low-key). */
+
+.panel {
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-left-width: 2px;
+  border-left-color: var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ── Tones: left border + label color only ── */
+.tone_pass {
+  border-left-color: var(--success);
+}
+.tone_pass .label {
+  color: var(--success);
+}
+.tone_fail {
+  border-left-color: var(--error);
+}
+.tone_fail .label {
+  color: var(--error);
+}
+.tone_info {
+  border-left-color: var(--info);
+}
+.tone_info .label {
+  color: var(--info);
+}
+.tone_warn {
+  border-left-color: var(--warning);
+}
+.tone_warn .label {
+  color: var(--warning);
+}
+.tone_ai {
+  border-left-color: var(--accent-tertiary);
+}
+.tone_ai .label {
+  color: var(--accent-tertiary);
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.copyBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.body {
+  position: relative;
+  overflow: hidden;
+}
+
+.pre {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.jsonBody {
+  padding: var(--space-sm) var(--space-md);
+}
+
+/* Bottom fade hint when clamped content overflows. */
+.fade {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 28px;
+  background: linear-gradient(to bottom, transparent, var(--bg-base));
+  pointer-events: none;
+}
+
+.expandBtn {
+  display: block;
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.expandBtn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+/* ── Inline word diff: reserved pass/fail hues at low alpha ── */
+.ins {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+  border-radius: 2px;
+}
+
+.del {
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  color: var(--error);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  border-radius: 2px;
+}

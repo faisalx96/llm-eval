@@ -15,6 +15,10 @@ from typing import Any, Dict, List, Optional
 import time
 
 from .item_identity import build_identity_fingerprint, looks_like_positional_item_id
+from .results import (
+    is_error_row as _shared_is_error_row,
+    is_errored_metric_cell,
+)
 
 # Configure logger for run discovery
 logger = logging.getLogger(__name__)
@@ -27,8 +31,9 @@ csv.field_size_limit(CSV_FIELD_SIZE_LIMIT)
 
 DEFAULT_RESULTS_DIR = "qym_results"
 
-# Error score constant - errors are always scored as 0
-# This is the Python equivalent of metrics.js getRowScore()
+# DEPRECATED (audit EI-1): errored metric values are now EXCLUDED from
+# aggregation instead of being averaged in as 0.0. Kept only for backward
+# compatibility of imports.
 ERROR_SCORE = 0.0
 
 
@@ -175,20 +180,16 @@ def _finalize_compare_alignment(run_payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def is_error_row(row: Dict[str, Any], metrics: List[str]) -> bool:
-    """Check if a row represents an error.
+    """Check if a row represents a failed item (row-level error).
 
-    This is the SINGLE SOURCE OF TRUTH for error detection in Python.
+    Delegates to the single shared implementation in ``qym.core.results``
+    (audit EI-1). A row is an error row iff its output carries an ERROR
+    marker, or EVERY metric cell is errored — not just the first. A row
+    where only some metrics errored (e.g. one judge failed) is NOT an error
+    row; those metrics are excluded individually during aggregation.
     Frontend equivalent: metrics.js isErrorRow()
     """
-    output = str(row.get("output", "") or "")
-    if output.startswith("ERROR:"):
-        return True
-    # Also check if first metric score contains ERROR
-    if metrics:
-        score_str = str(row.get(f"{metrics[0]}_score", "") or "")
-        if "ERROR" in score_str or score_str == "N/A":
-            return True
-    return False
+    return _shared_is_error_row(row, metrics)
 
 
 @dataclass
@@ -205,6 +206,7 @@ class RunInfo:
     success_count: int
     error_count: int
     metric_averages: Dict[str, float] = field(default_factory=dict)
+    metric_error_counts: Dict[str, int] = field(default_factory=dict)
     avg_latency_ms: float = 0.0
     langfuse_url: Optional[str] = None
     langfuse_dataset_id: Optional[str] = None
@@ -226,6 +228,7 @@ class RunInfo:
             "file_path": self.file_path,
             "metrics": self.metrics,
             "metric_averages": self.metric_averages,
+            "metric_error_counts": self.metric_error_counts,
             "total_items": self.total_items,
             "success_count": self.success_count,
             "error_count": self.error_count,
@@ -369,10 +372,24 @@ class RunDiscovery:
                 declared_total_items = parse_total_items(metadata.get("total_items"))
                 total_items = max(processed_items, declared_total_items or 0)
 
-                # Count successes vs errors and calculate metric averages
+                # Count successes vs errors and calculate metric averages.
+                #
+                # Error semantics (audit EI-1):
+                # - A metric value that is errored (per is_errored_metric_cell:
+                #   "ERROR: ..." score, error marker in __meta__json, ...) is
+                #   EXCLUDED from that metric's sum/count and tracked in
+                #   metric_error_counts instead. Exclusion is per-metric: a
+                #   row where one judge failed still contributes its healthy
+                #   metric values.
+                # - A row-level error (task failure, or every metric errored)
+                #   increments error_count, is excluded from every metric's
+                #   mean, and counts one error per metric. It still counts in
+                #   total_items, so success_rate (success_count/total_items)
+                #   reflects it.
                 error_count = 0
                 metric_sums: Dict[str, float] = {m: 0.0 for m in metrics}
                 metric_counts: Dict[str, int] = {m: 0 for m in metrics}
+                metric_error_counts: Dict[str, int] = {m: 0 for m in metrics}
                 latency_sum = 0.0
                 latency_count = 0
 
@@ -381,18 +398,15 @@ class RunDiscovery:
                     if row_is_error:
                         error_count += 1
 
-                    # Accumulate metric scores (errors = 0)
+                    # Accumulate metric scores, excluding errored values
                     for m in metrics:
-                        score_str = row.get(f"{m}_score", "")
-                        if row_is_error:
-                            # Errors are scored as 0
-                            metric_sums[m] += ERROR_SCORE
+                        if row_is_error or is_errored_metric_cell(row, m):
+                            metric_error_counts[m] += 1
+                            continue
+                        score = parse_metric_score(row.get(f"{m}_score", ""))
+                        if score is not None:
+                            metric_sums[m] += score
                             metric_counts[m] += 1
-                        else:
-                            score = parse_metric_score(score_str)
-                            if score is not None:
-                                metric_sums[m] += score
-                                metric_counts[m] += 1
 
                     # Accumulate latency (time column is in seconds)
                     time_str = row.get("time", "")
@@ -431,6 +445,7 @@ class RunDiscovery:
                     success_count=success_count,
                     error_count=error_count,
                     metric_averages=metric_averages,
+                    metric_error_counts=metric_error_counts,
                     avg_latency_ms=avg_latency_ms,
                     langfuse_url=langfuse_url,
                     langfuse_dataset_id=langfuse_dataset_id,
@@ -504,10 +519,16 @@ class RunDiscovery:
             declared_total_items = parse_total_items(metadata.get("total_items"))
             total_items = max(processed_items, declared_total_items or 0)
 
-            # Count successes vs errors and calculate metric averages
+            # Count successes vs errors and calculate metric averages.
+            # Same error semantics as _parse_csv_file (audit EI-1): errored
+            # metric values are excluded per-metric and tracked in
+            # metric_error_counts; row-level errors count once per metric and
+            # are excluded from every metric mean while still counting in
+            # total_items.
             error_count = 0
             metric_sums: Dict[str, float] = {m: 0.0 for m in metrics}
             metric_counts: Dict[str, int] = {m: 0 for m in metrics}
+            metric_error_counts: Dict[str, int] = {m: 0 for m in metrics}
             latency_sum = 0.0
             latency_count = 0
 
@@ -516,21 +537,19 @@ class RunDiscovery:
                 if row_is_error:
                     error_count += 1
 
-                # Accumulate metric scores (errors = 0)
+                # Accumulate metric scores, excluding errored values
                 for m in metrics:
+                    if row_is_error or is_errored_metric_cell(row, m):
+                        metric_error_counts[m] += 1
+                        continue
                     score_val = row.get(f"{m}_score")
-                    if row_is_error:
-                        # Errors are scored as 0
-                        metric_sums[m] += ERROR_SCORE
-                        metric_counts[m] += 1
-                    else:
-                        try:
-                            score = float(score_val) if score_val is not None else None
-                            if score is not None:
-                                metric_sums[m] += score
-                                metric_counts[m] += 1
-                        except (ValueError, TypeError):
-                            pass
+                    try:
+                        score = float(score_val) if score_val is not None else None
+                        if score is not None:
+                            metric_sums[m] += score
+                            metric_counts[m] += 1
+                    except (ValueError, TypeError):
+                        pass
 
                 # Accumulate latency
                 time_val = row.get("time")
@@ -567,6 +586,7 @@ class RunDiscovery:
                 success_count=success_count,
                 error_count=error_count,
                 metric_averages=metric_averages,
+                metric_error_counts=metric_error_counts,
                 avg_latency_ms=avg_latency_ms,
                 langfuse_url=langfuse_url,
                 langfuse_dataset_id=langfuse_dataset_id,
@@ -674,7 +694,9 @@ class RunDiscovery:
         duplicate_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
             output = row.get("output", "")
-            is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
+            # Shared row-level convention (audit EI-1): task failure or every
+            # metric errored.
+            is_error = is_error_row(row, metric_names)
 
             # Determine status
             status = "completed"
@@ -854,7 +876,9 @@ class RunDiscovery:
         duplicate_counts: Dict[str, int] = {}
         for idx, row in enumerate(rows):
             output = str(row.get("output", "") or "")
-            is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
+            # Shared row-level convention (audit EI-1): task failure or every
+            # metric errored.
+            is_error = is_error_row(row, metric_names)
 
             # Determine status
             status = "completed"

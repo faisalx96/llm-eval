@@ -20,8 +20,11 @@ Use this when changes in `packages/sdk` or `packages/platform` need to be import
 
 ## Run platform locally for development
 
+On first run, create the compose env file from the template (the committed defaults suit local development):
+
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+cp docker/.env.template docker/.env
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --env-file docker/.env up --build
 ```
 
 Use the development compose file when iterating on platform APIs, static assets, docs serving, or integration behavior. Do not use development convenience settings as a production hardening model.

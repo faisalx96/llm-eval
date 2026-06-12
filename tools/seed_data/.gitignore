@@ -1,0 +1,3 @@
+# The repo-root .gitignore excludes *.csv globally; the demo seed datasets in
+# this directory are source data for tools/seed_demo.py and must be committed.
+!*.csv

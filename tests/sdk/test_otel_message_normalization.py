@@ -119,7 +119,9 @@ def test_extract_reasoning_text_from_object_payload_content():
 def test_classify_response_flags_reasoning_tool_call_leak_without_content(monkeypatch):
     class FakeSpan:
         def __init__(self):
-            self.attributes = {}
+            # _classify_response only writes onto LLM spans (OT-2 guard), so
+            # the fake current span must carry the LLM kind attribute.
+            self.attributes = {"openinference.span.kind": "LLM"}
             self.status = None
 
         def is_recording(self):

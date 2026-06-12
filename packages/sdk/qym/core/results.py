@@ -22,6 +22,139 @@ from rich.text import Text
 console = Console()
 
 
+def is_errored_metric_value(value: Any) -> bool:
+    """Return True when a per-metric value represents an errored metric result.
+
+    SINGLE SOURCE OF TRUTH for the per-metric error convention (audit EI-1):
+    a metric result is *errored* iff its metadata (or the raw dict itself)
+    carries an ``'error'`` key, OR its score is ``None``.
+
+    Errored metric values must be EXCLUDED from means/min/max and reported via
+    error counts — never silently averaged in as ``0.0``.
+
+    Handles every in-memory shape a metric value can take in this codebase:
+
+    - ``MetricResult`` instances (duck-typed: ``metadata={'error': ...}`` or
+      ``score is None``)
+    - legacy dicts with a top-level error: ``{'score': 0, 'error': tb}``
+    - legacy dicts with a nested error: ``{'score': 0.0, 'metadata': {'error': ...}}``
+    - ``None`` (missing score == errored per the convention)
+    - CSV-serialized scalars: ``"ERROR: ..."`` strings, ``"N/A"``, and
+      stringified dict/``MetricResult`` reprs that carry an ``'error'`` marker
+
+    Plain numbers, booleans, and dicts/objects without an error marker are
+    NOT errored.
+    """
+    if value is None:
+        return True
+
+    if isinstance(value, dict):
+        if "error" in value:
+            return True
+        md = value.get("metadata")
+        if isinstance(md, dict) and "error" in md:
+            return True
+        if "score" in value and value["score"] is None:
+            return True
+        return False
+
+    if isinstance(value, (bool, int, float)):
+        return False
+
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return False
+        if raw.upper().startswith("ERROR"):
+            return True
+        if raw.lower() == "n/a":
+            return True
+        # Stringified dict / MetricResult repr carrying an error marker
+        # (e.g. "{'score': 0, 'error': '...'}" or "MetricResult(score=0.0,
+        # ..., metadata={'error': '...'})"). Plain numeric strings never
+        # contain an 'error' key.
+        if "'error':" in raw or '"error":' in raw:
+            return True
+        return False
+
+    # MetricResult-like objects (duck-typed to avoid an import cycle with
+    # qym.metrics.result).
+    if hasattr(value, "score") or hasattr(value, "metadata"):
+        md = getattr(value, "metadata", None)
+        if isinstance(md, dict) and "error" in md:
+            return True
+        if getattr(value, "score", 0.0) is None:
+            return True
+        return False
+
+    return False
+
+
+def is_errored_metric_cell(row: Dict[str, Any], metric: str) -> bool:
+    """Return True when the serialized row cell(s) for *metric* are errored.
+
+    CSV/XLSX variant of :func:`is_errored_metric_value` for rows keyed by the
+    standard result columns. A metric cell is errored iff:
+
+    - the ``{metric}_score`` cell itself is an errored value per
+      :func:`is_errored_metric_value` (``"ERROR: ..."``, ``"N/A"``,
+      stringified error dicts, ...), or
+    - the ``{metric}__meta__json`` cell parses to a dict carrying an
+      ``'error'`` key (how nested-metadata errors survive CSV round-trips), or
+    - the legacy flattened ``{metric}__meta__error`` cell is non-empty
+      (``EvaluationResult.save_csv`` flattens metadata into per-key columns).
+
+    A missing column or empty cell is treated as *missing*, not errored, so
+    legacy files without these columns keep their old behavior.
+    """
+    score_cell = row.get(f"{metric}_score")
+    if score_cell is not None and str(score_cell).strip() != "":
+        if is_errored_metric_value(score_cell):
+            return True
+
+    meta_raw = row.get(f"{metric}__meta__json")
+    if meta_raw not in (None, ""):
+        try:
+            parsed = json.loads(str(meta_raw))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict) and "error" in parsed:
+            return True
+
+    legacy_error = row.get(f"{metric}__meta__error")
+    if legacy_error not in (None, ""):
+        return True
+
+    return False
+
+
+def is_error_row(row: Dict[str, Any], metrics: Sequence[str]) -> bool:
+    """Return True when a serialized row represents a failed item.
+
+    SINGLE SOURCE OF TRUTH for row-level error detection (shared by
+    ``qym.core.checkpoint`` and ``qym.core.run_discovery``; frontend
+    equivalent: metrics.js ``isErrorRow()``).
+
+    A row is an *error row* iff:
+
+    - its ``output`` starts with ``"ERROR:"`` / ``"ERROR "`` (task failure), or
+    - it has metrics and EVERY metric cell is errored per
+      :func:`is_errored_metric_cell` (task failures serialize all scores as
+      ``"N/A"``; an item whose every metric errored carries no usable signal).
+
+    A row where only SOME metrics errored (e.g. one judge failed) is NOT an
+    error row — the item completed and its healthy metric values must still
+    count. Those per-metric errors are excluded individually by callers via
+    :func:`is_errored_metric_cell`.
+    """
+    output = str(row.get("output", "") or "")
+    if output.startswith("ERROR:") or output.startswith("ERROR "):
+        return True
+    if metrics:
+        return all(is_errored_metric_cell(row, m) for m in metrics)
+    return False
+
+
 class EvaluationResult:
     """Container for evaluation results with analysis capabilities."""
     
@@ -105,42 +238,56 @@ class EvaluationResult:
     def get_metric_stats(self, metric_name: str) -> Dict[str, float]:
         """
         Get statistics for a specific metric.
-        
-        Returns dict with: mean, std, min, max, success_rate
+
+        Returns dict with: mean, std, min, max, success_rate, error_count.
+
+        Error semantics (audit EI-1): metric values that are *errored* per
+        :func:`is_errored_metric_value` (an ``'error'`` key in the value or
+        its metadata, or a ``None`` score) are EXCLUDED from mean/std/min/max
+        and reported in ``error_count`` instead. ``success_rate`` is the share
+        of scored values among scored + errored values for this metric.
+        Item-level task failures live in ``self.errors`` and are not part of
+        these per-metric stats.
         """
         scores = []
         errors = 0
-        
+
         for result in self.results.values():
             if 'scores' in result and metric_name in result['scores']:
                 score = result['scores'][metric_name]
+                if is_errored_metric_value(score):
+                    errors += 1
+                    continue
                 if isinstance(score, dict):
-                    if 'error' in score:
-                        errors += 1
-                        continue
                     if 'score' in score and isinstance(score['score'], (int, float)):
                         scores.append(float(score['score']))
-                        continue
+                    continue
                 if isinstance(score, (int, float)):
+                    # bool is a subclass of int: True -> 1.0, False -> 0.0
                     scores.append(float(score))
-                elif isinstance(score, bool):
-                    scores.append(1.0 if score else 0.0)
-        
+                elif hasattr(score, 'score') and isinstance(
+                    getattr(score, 'score'), (int, float)
+                ):
+                    # MetricResult-like object (duck-typed)
+                    scores.append(float(score.score))
+
         if not scores:
             return {
                 'mean': 0.0,
                 'std': 0.0,
                 'min': 0.0,
                 'max': 0.0,
-                'success_rate': 0.0
+                'success_rate': 0.0,
+                'error_count': errors,
             }
-        
+
         return {
             'mean': statistics.mean(scores),
             'std': statistics.stdev(scores) if len(scores) > 1 else 0.0,
             'min': min(scores),
             'max': max(scores),
-            'success_rate': len(scores) / (len(scores) + errors)
+            'success_rate': len(scores) / (len(scores) + errors),
+            'error_count': errors,
         }
     
     def get_timing_stats(self) -> Dict[str, float]:

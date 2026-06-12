@@ -11,23 +11,32 @@
 - run history and task/model comparisons
 - trace viewing and per-item drill-down
 - AI-assisted analysis and corrections review
-- org, role, and admin workflows
+- versioned datasets with aliases and an upload wizard
+- project, role, and admin workflows
 - APIs for streamed SDK ingestion and local uploads
 
 ## Quick Start
 
 ### Docker
 
+First create the compose env file from the template (run from the repo root).
+The defaults are safe for localhost; replace every `CHANGE_ME` value before
+exposing the platform anywhere else:
+
+```bash
+cp docker/.env.template docker/.env
+```
+
 Development with hot reload:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --env-file docker/.env up --build
 ```
 
 Production-style baseline:
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f docker/docker-compose.yml --env-file docker/.env up --build
 ```
 
 ### Without Docker
@@ -81,16 +90,20 @@ The platform is a FastAPI + Postgres application that serves:
 From the repo root:
 
 ```bash
+# One-time: create the compose env file (edit the CHANGE_ME values)
+cp docker/.env.template docker/.env
+
 # Production-style baseline
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f docker/docker-compose.yml --env-file docker/.env up --build
 
 # Development with hot reload and bind mounts
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --env-file docker/.env up --build
 ```
 
 ### Required Environment Variables
 
-Set these on the platform service:
+Set these on the platform service ([docker/.env.template](../../docker/.env.template)
+documents the full set with safe local-dev defaults):
 
 | Variable | Purpose |
 |----------|---------|
@@ -144,53 +157,41 @@ This creates the first user with role `ADMIN`.
 
 Navigate to `/admin` to manage the platform. Admins can:
 
-- view, create, and update users
-- manage the organization tree as `Sector -> Department -> Team`
-- assign team managers
-- update platform visibility settings
-- rebuild the org closure table when authorization data needs repair
+- view, create, update, and deactivate users
+- create, rename, archive, and delete projects
+- manage project memberships across all projects
 
-### Organization Model
+### Access Model
 
-The platform uses a three-level hierarchy:
+The platform uses a flat, project-scoped access model:
 
-- **Sector**: top-level organizational unit
-- **Department**: belongs to a sector
-- **Team**: belongs to a department
+- **Users** have a global role: `MEMBER` or `ADMIN`. Admins see and manage everything.
+- **Projects** group runs, datasets, API keys, and LLM connections.
+- **Project memberships** give a user a per-project role: `MEMBER` or `MANAGER`.
 
-Each user belongs to exactly one team. Team managers can approve or reject runs from their managed teams.
-
-### Platform Settings
-
-Admins can configure:
-
-- **GM/VP Approved-Only Visibility**: GM and VP users only see approved runs
-- **Manager Visibility Scope**: managers see either their full subtree or only their direct team
+Project managers can manage members and API keys for their project and can approve or reject runs in it. Regular members see the projects they belong to and can submit their own runs for review.
 
 ### API Keys
 
-API keys are created per user. In the UI auth context, call:
+API keys are project-scoped. Create them from the project settings page (**API Keys** tab), or via the API in the UI auth context:
 
 ```bash
-POST /v1/me/api-keys
+POST /v1/projects/{project_id}/api-keys
 ```
 
-The token is returned once and should be stored securely.
+The token is returned once and should be stored securely. SDK and CLI clients send it as `Authorization: Bearer <token>`, which scopes their requests to that project.
 
 ### Useful Admin Endpoints
 
 - `GET /v1/admin/users`
 - `POST /v1/admin/users`
 - `PUT /v1/admin/users/{user_id}`
-- `GET /v1/admin/org/tree`
-- `GET /v1/admin/org/teams`
-- `POST /v1/admin/org/units`
-- `PATCH /v1/admin/org/units/{id}`
-- `DELETE /v1/admin/org/units/{id}`
-- `PUT /v1/admin/org/teams/{id}/manager`
-- `POST /v1/admin/org/rebuild-closure`
-- `GET /v1/admin/settings`
-- `PUT /v1/admin/settings`
+- `DELETE /v1/admin/users/{user_id}`
+- `POST /v1/admin/projects`
+- `PATCH /v1/admin/projects/{project_id}`
+- `DELETE /v1/admin/projects/{project_id}`
+
+Project-level membership and API key management is available to project managers (not only admins) under `/v1/projects/{project_id}/members` and `/v1/projects/{project_id}/api-keys`.
 
 ### Import Legacy Local Results
 
