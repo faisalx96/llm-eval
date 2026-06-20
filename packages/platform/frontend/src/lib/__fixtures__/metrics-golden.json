@@ -1,0 +1,7933 @@
+[
+ {
+  "id": "parseScoreValue#1",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#2",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   null
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#3",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   0
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#4",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   1
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#5",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   0.5
+  ],
+  "result": 0.5
+ },
+ {
+  "id": "parseScoreValue#6",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   -0.25
+  ],
+  "result": -0.25
+ },
+ {
+  "id": "parseScoreValue#7",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   1.5
+  ],
+  "result": 1.5
+ },
+ {
+  "id": "parseScoreValue#8",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#9",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   {
+    "$num": "inf"
+   }
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#10",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   {
+    "$num": "-inf"
+   }
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#11",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   true
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#12",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   false
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#13",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   ""
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#14",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "   "
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#15",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "n/a"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#16",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "N/A"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#17",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "na"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#18",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "none"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#19",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "NULL"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#20",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "null"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#21",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "✓"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#22",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "true"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#23",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "TRUE"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#24",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "yes"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#25",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "Y"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#26",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "✗"
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#27",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "false"
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#28",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "no"
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#29",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "N"
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#30",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "85%"
+  ],
+  "result": 0.85
+ },
+ {
+  "id": "parseScoreValue#31",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   " 85.5 %"
+  ],
+  "result": 0.855
+ },
+ {
+  "id": "parseScoreValue#32",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "12.5%"
+  ],
+  "result": 0.125
+ },
+ {
+  "id": "parseScoreValue#33",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "100%"
+  ],
+  "result": 1
+ },
+ {
+  "id": "parseScoreValue#34",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "0%"
+  ],
+  "result": 0
+ },
+ {
+  "id": "parseScoreValue#35",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "abc%"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#36",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "%"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#37",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "0.75"
+  ],
+  "result": 0.75
+ },
+ {
+  "id": "parseScoreValue#38",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   " 42 "
+  ],
+  "result": 42
+ },
+ {
+  "id": "parseScoreValue#39",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "3.5abc"
+  ],
+  "result": 3.5
+ },
+ {
+  "id": "parseScoreValue#40",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "abc"
+  ],
+  "result": null
+ },
+ {
+  "id": "parseScoreValue#41",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "1e-3"
+  ],
+  "result": 0.001
+ },
+ {
+  "id": "parseScoreValue#42",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "1e3"
+  ],
+  "result": 1000
+ },
+ {
+  "id": "parseScoreValue#43",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "Infinity"
+  ],
+  "result": {
+   "$num": "inf"
+  }
+ },
+ {
+  "id": "parseScoreValue#44",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "-2"
+  ],
+  "result": -2
+ },
+ {
+  "id": "parseScoreValue#45",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "07"
+  ],
+  "result": 7
+ },
+ {
+  "id": "parseScoreValue#46",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   ".5"
+  ],
+  "result": 0.5
+ },
+ {
+  "id": "parseScoreValue#47",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "5."
+  ],
+  "result": 5
+ },
+ {
+  "id": "parseScoreValue#48",
+  "kind": "plain",
+  "fn": "parseScoreValue",
+  "args": [
+   "-0"
+  ],
+  "result": 0
+ },
+ {
+  "id": "isErrorRow#49",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   null
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#50",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#51",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {}
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#52",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": "error"
+   }
+  ],
+  "result": true
+ },
+ {
+  "id": "isErrorRow#53",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": "failed"
+   }
+  ],
+  "result": true
+ },
+ {
+  "id": "isErrorRow#54",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": "ok"
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#55",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": "ERROR"
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#56",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": "Failed"
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#57",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": null
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "isErrorRow#58",
+  "kind": "plain",
+  "fn": "isErrorRow",
+  "args": [
+   {
+    "status": 0
+   }
+  ],
+  "result": false
+ },
+ {
+  "id": "getRowScore#59",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   null,
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#60",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "$undef": true
+   },
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#61",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "status": "error",
+    "metric_values": [
+     1,
+     0.9
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": 0,
+   "isError": true
+  }
+ },
+ {
+  "id": "getRowScore#62",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "status": "failed"
+   },
+   2
+  ],
+  "result": {
+   "score": 0,
+   "isError": true
+  }
+ },
+ {
+  "id": "getRowScore#63",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     0.7,
+     "80%"
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": 0.7,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#64",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     0.7,
+     "80%"
+    ]
+   },
+   1
+  ],
+  "result": {
+   "score": 0.8,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#65",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     0.7,
+     "80%"
+    ]
+   },
+   2
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#66",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     0.7,
+     "80%"
+    ]
+   },
+   -1
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#67",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     "n/a"
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#68",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {},
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#69",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "status": "ok",
+    "metric_values": [
+     true,
+     false
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": 1,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#70",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "status": "ok",
+    "metric_values": [
+     true,
+     false
+    ]
+   },
+   1
+  ],
+  "result": {
+   "score": 0,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#71",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     {
+      "$num": "nan"
+     }
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "getRowScore#72",
+  "kind": "plain",
+  "fn": "getRowScore",
+  "args": [
+   {
+    "metric_values": [
+     null
+    ]
+   },
+   0
+  ],
+  "result": {
+   "score": null,
+   "isError": false
+  }
+ },
+ {
+  "id": "calculateMedian#73",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   []
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#74",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   null
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#75",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#76",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   "not-an-array"
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#77",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    5
+   ]
+  ],
+  "result": 5
+ },
+ {
+  "id": "calculateMedian#78",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    1,
+    2,
+    3
+   ]
+  ],
+  "result": 2
+ },
+ {
+  "id": "calculateMedian#79",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    1,
+    2,
+    3,
+    4
+   ]
+  ],
+  "result": 2.5
+ },
+ {
+  "id": "calculateMedian#80",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    3,
+    1,
+    2
+   ]
+  ],
+  "result": 2
+ },
+ {
+  "id": "calculateMedian#81",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    "3",
+    "1",
+    "2"
+   ]
+  ],
+  "result": 2
+ },
+ {
+  "id": "calculateMedian#82",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    1,
+    "x",
+    2,
+    {
+     "$num": "nan"
+    },
+    {
+     "$num": "inf"
+    },
+    3
+   ]
+  ],
+  "result": 2
+ },
+ {
+  "id": "calculateMedian#83",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    -5,
+    5
+   ]
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#84",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    2.5,
+    1.5
+   ]
+  ],
+  "result": 2
+ },
+ {
+  "id": "calculateMedian#85",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    10,
+    10,
+    10,
+    10
+   ]
+  ],
+  "result": 10
+ },
+ {
+  "id": "calculateMedian#86",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    0,
+    0,
+    1
+   ]
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateMedian#87",
+  "kind": "plain",
+  "fn": "calculateMedian",
+  "args": [
+   [
+    "abc",
+    {
+     "$num": "nan"
+    }
+   ]
+  ],
+  "result": 0
+ },
+ {
+  "id": "calculateItemLevelMetrics#88:threeRuns-mixed",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "r1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 100
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 200
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "85%"
+        ],
+        "latency_ms": 1500
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "n/a"
+        ],
+        "latency_ms": 0
+       },
+       {
+        "item_id": "e",
+        "status": "error",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 50
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         true
+        ],
+        "latency_ms": 120
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "✗"
+        ],
+        "latency_ms": 80
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         0.6
+        ],
+        "latency_ms": null
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         0.9
+        ],
+        "latency_ms": 300
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r3",
+     "metric_idx": 1,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         "other",
+         0.4
+        ],
+        "latency_ms": 90
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "other",
+         1
+        ],
+        "latency_ms": 60
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "other",
+         "yes"
+        ],
+        "latency_ms": -5
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "other",
+         null
+        ],
+        "latency_ms": 40
+       },
+       {
+        "item_id": "e",
+        "metric_values": [
+         "other",
+         0.7
+        ],
+        "latency_ms": 70
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": "accuracy",
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 0.4,
+   "maxAtK": 0.9199999999999999,
+   "consistency": 0.41666666666666663,
+   "reliability": 0.625,
+   "avgScore": 0.6208333333333333,
+   "avgLatency": 237.27272727272728,
+   "medianLatency": 90,
+   "totalItems": 5,
+   "failedCount": 1,
+   "K": 3,
+   "totalScoreSum": 7.45,
+   "totalScoreCount": 12,
+   "totalLatencySum": 2610,
+   "totalLatencyCount": 11,
+   "correctDistribution": [
+    0,
+    3,
+    1,
+    1
+   ],
+   "minScore": 0,
+   "stddevScore": 0.3997177823859674
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#89:threeRuns-threshold1",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "r1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 100
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 200
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "85%"
+        ],
+        "latency_ms": 1500
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "n/a"
+        ],
+        "latency_ms": 0
+       },
+       {
+        "item_id": "e",
+        "status": "error",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 50
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         true
+        ],
+        "latency_ms": 120
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "✗"
+        ],
+        "latency_ms": 80
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         0.6
+        ],
+        "latency_ms": null
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         0.9
+        ],
+        "latency_ms": 300
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r3",
+     "metric_idx": 1,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         "other",
+         0.4
+        ],
+        "latency_ms": 90
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "other",
+         1
+        ],
+        "latency_ms": 60
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "other",
+         "yes"
+        ],
+        "latency_ms": -5
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "other",
+         null
+        ],
+        "latency_ms": 40
+       },
+       {
+        "item_id": "e",
+        "metric_values": [
+         "other",
+         0.7
+        ],
+        "latency_ms": 70
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 1,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0.6,
+   "passHatK": 0,
+   "maxAtK": 0.9199999999999999,
+   "consistency": 0.49999999999999994,
+   "reliability": 0.4444444444444444,
+   "avgScore": 0.6208333333333333,
+   "avgLatency": 237.27272727272728,
+   "medianLatency": 90,
+   "totalItems": 5,
+   "failedCount": 1,
+   "K": 3,
+   "totalScoreSum": 7.45,
+   "totalScoreCount": 12,
+   "totalLatencySum": 2610,
+   "totalLatencyCount": 11,
+   "correctDistribution": [
+    2,
+    2,
+    1,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0.3997177823859674
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#90:threeRuns-threshold0",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "r1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 100
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 200
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "85%"
+        ],
+        "latency_ms": 1500
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "n/a"
+        ],
+        "latency_ms": 0
+       },
+       {
+        "item_id": "e",
+        "status": "error",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 50
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         true
+        ],
+        "latency_ms": 120
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "✗"
+        ],
+        "latency_ms": 80
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         0.6
+        ],
+        "latency_ms": null
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         0.9
+        ],
+        "latency_ms": 300
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "r3",
+     "metric_idx": 1,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         "other",
+         0.4
+        ],
+        "latency_ms": 90
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         "other",
+         1
+        ],
+        "latency_ms": 60
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         "other",
+         "yes"
+        ],
+        "latency_ms": -5
+       },
+       {
+        "item_id": "d",
+        "metric_values": [
+         "other",
+         null
+        ],
+        "latency_ms": 40
+       },
+       {
+        "item_id": "e",
+        "metric_values": [
+         "other",
+         0.7
+        ],
+        "latency_ms": 70
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0,
+   "itemIdKey": "item_id",
+   "trackDistribution": false
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 1,
+   "maxAtK": 0.9199999999999999,
+   "consistency": 1,
+   "reliability": 1,
+   "avgScore": 0.6208333333333333,
+   "avgLatency": 237.27272727272728,
+   "medianLatency": 90,
+   "totalItems": 5,
+   "failedCount": 1,
+   "K": 3,
+   "totalScoreSum": 7.45,
+   "totalScoreCount": 12,
+   "totalLatencySum": 2610,
+   "totalLatencyCount": 11,
+   "correctDistribution": null,
+   "minScore": 0,
+   "stddevScore": 0.3997177823859674
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#91:emptyRunsData",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": null,
+   "trackDistribution": false
+  },
+  "result": {
+   "passAtK": 0,
+   "passHatK": 0,
+   "maxAtK": 0,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 0,
+   "failedCount": 0,
+   "K": 0,
+   "totalScoreSum": 0,
+   "totalScoreCount": 0,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": null,
+   "minScore": 0,
+   "stddevScore": 0
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#92:nullRunsData",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": null,
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": null,
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0,
+   "passHatK": 0,
+   "maxAtK": 0,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 0,
+   "failedCount": 0,
+   "K": 0,
+   "totalScoreSum": 0,
+   "totalScoreCount": 0,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": [
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#93:emptyRows",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": []
+     }
+    },
+    null
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": null,
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0,
+   "passHatK": 0,
+   "maxAtK": 0,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 0,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 0,
+   "totalScoreCount": 0,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": [
+    0,
+    0,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#94:singleRun-mixed",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 111
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 222
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         0.5
+        ],
+        "latency_ms": 333
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0.6666666666666666,
+   "passHatK": 0.6666666666666666,
+   "maxAtK": 0.5,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0.5,
+   "avgLatency": 222,
+   "medianLatency": 222,
+   "totalItems": 3,
+   "failedCount": 0,
+   "K": 1,
+   "totalScoreSum": 1.5,
+   "totalScoreCount": 3,
+   "totalLatencySum": 666,
+   "totalLatencyCount": 3,
+   "correctDistribution": [
+    1,
+    2
+   ],
+   "minScore": 0,
+   "stddevScore": 0.408248290463863
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#95:allPass-twoRuns",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0.9
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 1,
+   "maxAtK": 1,
+   "consistency": 1,
+   "reliability": 1,
+   "avgScore": 0.925,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 2,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 3.7,
+   "totalScoreCount": 4,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": [
+    0,
+    0,
+    2
+   ],
+   "minScore": 0.8,
+   "stddevScore": 0.08291561975888498
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#96:allFail-twoRuns",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0.1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0,
+   "passHatK": 0,
+   "maxAtK": 0.15000000000000002,
+   "consistency": 1,
+   "reliability": null,
+   "avgScore": 0.07500000000000001,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 2,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 0.30000000000000004,
+   "totalScoreCount": 4,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": [
+    2,
+    0,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0.082915619758885
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#97:defaultItemId-unevenRuns",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "index": 0,
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 10
+       },
+       {
+        "index": 1,
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 20
+       },
+       {
+        "index": 2,
+        "metric_values": [
+         0.75
+        ],
+        "latency_ms": 30
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "index": 0,
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "index": 1,
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": null,
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 0.3333333333333333,
+   "maxAtK": 0.9166666666666666,
+   "consistency": 0,
+   "reliability": 0.5,
+   "avgScore": 0.55,
+   "avgLatency": 20,
+   "medianLatency": 20,
+   "totalItems": 3,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 2.75,
+   "totalScoreCount": 5,
+   "totalLatencySum": 60,
+   "totalLatencyCount": 3,
+   "correctDistribution": [
+    0,
+    3,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0.45825756949558405
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#98:defaultItemId-missingIndex",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "metric_values": [
+         0.6
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": null,
+   "trackDistribution": false
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 1,
+   "maxAtK": 1,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 1,
+   "avgLatency": 0,
+   "medianLatency": 0,
+   "totalItems": 1,
+   "failedCount": 0,
+   "K": 1,
+   "totalScoreSum": 1,
+   "totalScoreCount": 1,
+   "totalLatencySum": 0,
+   "totalLatencyCount": 0,
+   "correctDistribution": null,
+   "minScore": 1,
+   "stddevScore": 0
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#99:metricIdxMinusOne",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 5
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 6
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": -1,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 7
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 8
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0.5,
+   "passHatK": 0.5,
+   "maxAtK": 0.5,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0.5,
+   "avgLatency": 5.5,
+   "medianLatency": 5.5,
+   "totalItems": 2,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 1,
+   "totalScoreCount": 2,
+   "totalLatencySum": 11,
+   "totalLatencyCount": 2,
+   "correctDistribution": [
+    1,
+    1,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0.5
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#100:numericScores",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         5
+        ],
+        "latency_ms": 1000
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         12
+        ],
+        "latency_ms": 2000
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         -3
+        ],
+        "latency_ms": 3000
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         4
+        ]
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         2
+        ]
+       },
+       {
+        "item_id": "c",
+        "metric_values": [
+         6
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 4,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 0.3333333333333333,
+   "maxAtK": 7.666666666666667,
+   "consistency": 0.3333333333333333,
+   "reliability": 0.6666666666666666,
+   "avgScore": 4.333333333333333,
+   "avgLatency": 2000,
+   "medianLatency": 2000,
+   "totalItems": 3,
+   "failedCount": 0,
+   "K": 2,
+   "totalScoreSum": 26,
+   "totalScoreCount": 6,
+   "totalLatencySum": 6000,
+   "totalLatencyCount": 3,
+   "correctDistribution": [
+    0,
+    2,
+    1
+   ],
+   "minScore": -3,
+   "stddevScore": 4.4969125210773475
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#101:duplicateItemIdsInRun",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 10
+       },
+       {
+        "item_id": "a",
+        "metric_values": [
+         0
+        ],
+        "latency_ms": 99999
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         0.5
+        ],
+        "latency_ms": 20
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": false
+  },
+  "result": {
+   "passAtK": 1,
+   "passHatK": 1,
+   "maxAtK": 0.75,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0.75,
+   "avgLatency": 15,
+   "medianLatency": 15,
+   "totalItems": 2,
+   "failedCount": 0,
+   "K": 1,
+   "totalScoreSum": 1.5,
+   "totalScoreCount": 2,
+   "totalLatencySum": 30,
+   "totalLatencyCount": 2,
+   "correctDistribution": null,
+   "minScore": 0.5,
+   "stddevScore": 0.25
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#102:allNullScores",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         "n/a"
+        ],
+        "latency_ms": 10
+       },
+       {
+        "item_id": "b",
+        "metric_values": [
+         null
+        ],
+        "latency_ms": 20
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0,
+   "passHatK": 0,
+   "maxAtK": 0,
+   "consistency": null,
+   "reliability": null,
+   "avgScore": 0,
+   "avgLatency": 15,
+   "medianLatency": 15,
+   "totalItems": 0,
+   "failedCount": 0,
+   "K": 1,
+   "totalScoreSum": 0,
+   "totalScoreCount": 0,
+   "totalLatencySum": 30,
+   "totalLatencyCount": 2,
+   "correctDistribution": [
+    0,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0
+  }
+ },
+ {
+  "id": "calculateItemLevelMetrics#103:errorsOnly",
+  "kind": "itemLevel",
+  "fn": "calculateItemLevelMetrics",
+  "spec": {
+   "runsData": [
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "status": "error",
+        "latency_ms": 10
+       },
+       {
+        "item_id": "b",
+        "status": "failed",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "a",
+        "metric_values": [
+         1
+        ],
+        "latency_ms": 30
+       },
+       {
+        "item_id": "b",
+        "status": "error",
+        "latency_ms": 40
+       }
+      ]
+     }
+    }
+   ],
+   "metricName": null,
+   "threshold": 0.5,
+   "itemIdKey": "item_id",
+   "trackDistribution": true
+  },
+  "result": {
+   "passAtK": 0.5,
+   "passHatK": 0,
+   "maxAtK": 0.5,
+   "consistency": 0.5,
+   "reliability": 0.5,
+   "avgScore": 0.25,
+   "avgLatency": 26.666666666666668,
+   "medianLatency": 30,
+   "totalItems": 2,
+   "failedCount": 3,
+   "K": 2,
+   "totalScoreSum": 1,
+   "totalScoreCount": 4,
+   "totalLatencySum": 80,
+   "totalLatencyCount": 3,
+   "correctDistribution": [
+    1,
+    1,
+    0
+   ],
+   "minScore": 0,
+   "stddevScore": 0.4330127018922193
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#104:twoVsTwo",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "L2"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 5,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "k": 2,
+   "left": {
+    "passAtK": 0.6,
+    "passHatK": 0.4,
+    "avgAtK": 0.54,
+    "consistency": 0.8,
+    "reliability": 0.8333333333333334,
+    "avgAttempts": 1.5
+   },
+   "right": {
+    "passAtK": 0.6,
+    "passHatK": 0.6,
+    "avgAtK": 0.615,
+    "consistency": 1,
+    "reliability": 1,
+    "avgAttempts": 1.3
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0.19999999999999996,
+    "avgAtK": 0.07499999999999996,
+    "consistency": 0.19999999999999996,
+    "reliability": 0.16666666666666663
+   },
+   "summary": {
+    "improvedCount": 2,
+    "regressedCount": 1,
+    "unchangedCount": 2,
+    "avgAttemptsDelta": -0.2
+   },
+   "items": [
+    {
+     "itemId": "i2",
+     "rawItemId": "i2",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.2
+     ],
+     "rightScores": [
+      1,
+      0.95
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      2,
+      1
+     ],
+     "rightAttempts": [
+      4,
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1.5,
+     "rightAvgAttempts": 2.5,
+     "move": 2,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i5",
+     "rawItemId": "i5",
+     "metadata": {},
+     "leftScores": [
+      0.4,
+      1
+     ],
+     "rightScores": [
+      1,
+      1
+     ],
+     "leftPasses": [
+      false,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      3,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": 1,
+     "bucketKey": null
+    },
+    {
+     "itemId": "i3",
+     "rawItemId": "i3",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.8
+     ],
+     "rightScores": [
+      1,
+      0.7
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i4",
+     "rawItemId": "i4",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.1
+     ],
+     "rightScores": [
+      0.3,
+      0
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      false,
+      false
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_fail"
+    },
+    {
+     "itemId": "i1",
+     "rawItemId": "i1",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.9
+     ],
+     "rightScores": [
+      0,
+      0.2
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      false,
+      false
+     ],
+     "leftAttempts": [
+      1,
+      3
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": -2,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i1"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i2"
+     ]
+    },
+    "both_pass": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i3"
+     ]
+    },
+    "both_fail": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i4"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#105:nullOptions",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": null,
+   "leftRunIds": null,
+   "rightRunIds": null,
+   "threshold": null,
+   "omitCallbacks": false,
+   "nullOptions": true
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 0,
+   "rightRunCount": 0,
+   "k": 0,
+   "left": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "right": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 0,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": 0
+   },
+   "items": [],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#106:missingRunId",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "NOPE"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "k": 2,
+   "left": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "right": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 0,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": 0
+   },
+   "items": [],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#107:omitCallbacks",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1"
+   ],
+   "rightRunIds": [
+    "R1"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": true,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 1,
+   "rightRunCount": 1,
+   "k": 1,
+   "left": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "right": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 0,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": 0
+   },
+   "items": [],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedOutcomeBuckets#108:twoVsTwo",
+  "kind": "grouped",
+  "fn": "calculateGroupedOutcomeBuckets",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "L2"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 5,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i1"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i2"
+     ]
+    },
+    "both_pass": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i3"
+     ]
+    },
+    "both_fail": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i4"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedOutcomeBuckets#109:nullOptions",
+  "kind": "grouped",
+  "fn": "calculateGroupedOutcomeBuckets",
+  "spec": {
+   "runsData": null,
+   "leftRunIds": null,
+   "rightRunIds": null,
+   "threshold": null,
+   "omitCallbacks": false,
+   "nullOptions": true
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 0,
+   "rightRunCount": 0,
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedOutcomeBuckets#110:missingRunId",
+  "kind": "grouped",
+  "fn": "calculateGroupedOutcomeBuckets",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "NOPE"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedOutcomeBuckets#111:omitCallbacks",
+  "kind": "grouped",
+  "fn": "calculateGroupedOutcomeBuckets",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1"
+   ],
+   "rightRunIds": [
+    "R1"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": true,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 1,
+   "rightRunCount": 1,
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#112:oneVsOne",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1"
+   ],
+   "rightRunIds": [
+    "R1"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 6,
+   "leftRunCount": 1,
+   "rightRunCount": 1,
+   "k": 1,
+   "left": {
+    "passAtK": 0.5,
+    "passHatK": 0.5,
+    "avgAtK": 0.5666666666666667,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1.5
+   },
+   "right": {
+    "passAtK": 0.6666666666666666,
+    "passHatK": 0.6666666666666666,
+    "avgAtK": 0.7166666666666667,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1.5
+   },
+   "deltas": {
+    "passAtK": 0.16666666666666663,
+    "passHatK": 0.16666666666666663,
+    "avgAtK": 0.15000000000000002,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 2,
+    "regressedCount": 1,
+    "unchangedCount": 3,
+    "avgAttemptsDelta": 0
+   },
+   "items": [
+    {
+     "itemId": "i2",
+     "rawItemId": "i2",
+     "metadata": {},
+     "leftScores": [
+      0
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      false
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      2
+     ],
+     "rightAttempts": [
+      4
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 4,
+     "move": 1,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i5",
+     "rawItemId": "i5",
+     "metadata": {},
+     "leftScores": [
+      0.4
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      false
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      3
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 3,
+     "rightAvgAttempts": 1,
+     "move": 1,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i3",
+     "rawItemId": "i3",
+     "metadata": {},
+     "leftScores": [
+      1
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      true
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i6",
+     "rawItemId": "i6",
+     "metadata": {},
+     "leftScores": [
+      1
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      true
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i4",
+     "rawItemId": "i4",
+     "metadata": {},
+     "leftScores": [
+      0
+     ],
+     "rightScores": [
+      0.3
+     ],
+     "leftPasses": [
+      false
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_fail"
+    },
+    {
+     "itemId": "i1",
+     "rawItemId": "i1",
+     "metadata": {},
+     "leftScores": [
+      1
+     ],
+     "rightScores": [
+      0
+     ],
+     "leftPasses": [
+      true
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": -1,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.16666666666666666,
+     "itemIds": [
+      "i1"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 2,
+     "percentage": 0.3333333333333333,
+     "itemIds": [
+      "i2",
+      "i5"
+     ]
+    },
+    "both_pass": {
+     "count": 2,
+     "percentage": 0.3333333333333333,
+     "itemIds": [
+      "i3",
+      "i6"
+     ]
+    },
+    "both_fail": {
+     "count": 1,
+     "percentage": 0.16666666666666666,
+     "itemIds": [
+      "i4"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#113:unevenGroups",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "L2"
+   ],
+   "rightRunIds": [
+    "R1"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 6,
+   "leftRunCount": 2,
+   "rightRunCount": 1,
+   "k": 2,
+   "left": {
+    "passAtK": 0.6666666666666666,
+    "passHatK": 0.5,
+    "avgAtK": 0.6166666666666667,
+    "consistency": 0.8333333333333334,
+    "reliability": 0.875,
+    "avgAttempts": 1.4166666666666667
+   },
+   "right": {
+    "passAtK": 0.6666666666666666,
+    "passHatK": 0.6666666666666666,
+    "avgAtK": 0.7166666666666667,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1.5
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0.16666666666666663,
+    "avgAtK": 0.09999999999999998,
+    "consistency": -0.8333333333333334,
+    "reliability": -0.875
+   },
+   "summary": {
+    "improvedCount": 1,
+    "regressedCount": 3,
+    "unchangedCount": 2,
+    "avgAttemptsDelta": 0.08333333333333333
+   },
+   "items": [
+    {
+     "itemId": "i2",
+     "rawItemId": "i2",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.2
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      2,
+      1
+     ],
+     "rightAttempts": [
+      4
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1.5,
+     "rightAvgAttempts": 4,
+     "move": 1,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i5",
+     "rawItemId": "i5",
+     "metadata": {},
+     "leftScores": [
+      0.4,
+      1
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      false,
+      true
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      3,
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": null
+    },
+    {
+     "itemId": "i4",
+     "rawItemId": "i4",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.1
+     ],
+     "rightScores": [
+      0.3
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_fail"
+    },
+    {
+     "itemId": "i3",
+     "rawItemId": "i3",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.8
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": -1,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i6",
+     "rawItemId": "i6",
+     "metadata": {},
+     "leftScores": [
+      1,
+      1
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": -1,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i1",
+     "rawItemId": "i1",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.9
+     ],
+     "rightScores": [
+      0
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      1,
+      3
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": -2,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.16666666666666666,
+     "itemIds": [
+      "i1"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 1,
+     "percentage": 0.16666666666666666,
+     "itemIds": [
+      "i2"
+     ]
+    },
+    "both_pass": {
+     "count": 2,
+     "percentage": 0.3333333333333333,
+     "itemIds": [
+      "i3",
+      "i6"
+     ]
+    },
+    "both_fail": {
+     "count": 1,
+     "percentage": 0.16666666666666666,
+     "itemIds": [
+      "i4"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#114:duplicateRunIdInGroup",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "L1"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 5,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "k": 2,
+   "left": {
+    "passAtK": 0.4,
+    "passHatK": 0.4,
+    "avgAtK": 0.48,
+    "consistency": 1,
+    "reliability": 1,
+    "avgAttempts": 1.6
+   },
+   "right": {
+    "passAtK": 0.6,
+    "passHatK": 0.6,
+    "avgAtK": 0.615,
+    "consistency": 1,
+    "reliability": 1,
+    "avgAttempts": 1.3
+   },
+   "deltas": {
+    "passAtK": 0.19999999999999996,
+    "passHatK": 0.19999999999999996,
+    "avgAtK": 0.135,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 2,
+    "regressedCount": 1,
+    "unchangedCount": 2,
+    "avgAttemptsDelta": -0.3
+   },
+   "items": [
+    {
+     "itemId": "i2",
+     "rawItemId": "i2",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0
+     ],
+     "rightScores": [
+      1,
+      0.95
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      2,
+      2
+     ],
+     "rightAttempts": [
+      4,
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 2.5,
+     "move": 2,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i5",
+     "rawItemId": "i5",
+     "metadata": {},
+     "leftScores": [
+      0.4,
+      0.4
+     ],
+     "rightScores": [
+      1,
+      1
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      3,
+      3
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 3,
+     "rightAvgAttempts": 1,
+     "move": 2,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "i3",
+     "rawItemId": "i3",
+     "metadata": {},
+     "leftScores": [
+      1,
+      1
+     ],
+     "rightScores": [
+      1,
+      0.7
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i4",
+     "rawItemId": "i4",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0
+     ],
+     "rightScores": [
+      0.3,
+      0
+     ],
+     "leftPasses": [
+      false,
+      false
+     ],
+     "rightPasses": [
+      false,
+      false
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_fail"
+    },
+    {
+     "itemId": "i1",
+     "rawItemId": "i1",
+     "metadata": {},
+     "leftScores": [
+      1,
+      1
+     ],
+     "rightScores": [
+      0,
+      0.2
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      false,
+      false
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": -2,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i1"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 2,
+     "percentage": 0.4,
+     "itemIds": [
+      "i2",
+      "i5"
+     ]
+    },
+    "both_pass": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i3"
+     ]
+    },
+    "both_fail": {
+     "count": 1,
+     "percentage": 0.2,
+     "itemIds": [
+      "i4"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#115:emptyLeftIds",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [],
+   "rightRunIds": [
+    "R1"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 0,
+   "leftRunCount": 0,
+   "rightRunCount": 1,
+   "k": 0,
+   "left": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "right": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 0
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 0,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": 0
+   },
+   "items": [],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#116:errorRowsCountAsFail",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "A",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "x",
+        "status": "error",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "y",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 1
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "B",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "x",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "y",
+        "status": "failed"
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "A"
+   ],
+   "rightRunIds": [
+    "B"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 2,
+   "leftRunCount": 1,
+   "rightRunCount": 1,
+   "k": 1,
+   "left": {
+    "passAtK": 0.5,
+    "passHatK": 0.5,
+    "avgAtK": 0.5,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1.5
+   },
+   "right": {
+    "passAtK": 0.5,
+    "passHatK": 0.5,
+    "avgAtK": 0.5,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 1,
+    "regressedCount": 1,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": -0.5
+   },
+   "items": [
+    {
+     "itemId": "x",
+     "rawItemId": "x",
+     "metadata": {},
+     "leftScores": [
+      0
+     ],
+     "rightScores": [
+      1
+     ],
+     "leftPasses": [
+      false
+     ],
+     "rightPasses": [
+      true
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 0,
+     "rightPassCount": 1,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 1,
+     "bucketKey": "b_sweeps_a"
+    },
+    {
+     "itemId": "y",
+     "rawItemId": "y",
+     "metadata": {},
+     "leftScores": [
+      1
+     ],
+     "rightScores": [
+      0
+     ],
+     "leftPasses": [
+      true
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      2
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": -1,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 0.5,
+     "itemIds": [
+      "y"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 1,
+     "percentage": 0.5,
+     "itemIds": [
+      "x"
+     ]
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#117:thresholdZero",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "L1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 0
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0
+        ],
+        "retry_count": 1
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ],
+        "retry_count": null
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         0.4
+        ],
+        "retry_count": "2"
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         "n/a"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "L2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.9
+        ],
+        "retry_count": 2
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.8
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.1
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R1",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         1
+        ],
+        "retry_count": 3
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0.3
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i6",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "R2",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "i1",
+        "metric_values": [
+         0.2
+        ]
+       },
+       {
+        "item_id": "i2",
+        "metric_values": [
+         0.95
+        ]
+       },
+       {
+        "item_id": "i3",
+        "metric_values": [
+         0.7
+        ]
+       },
+       {
+        "item_id": "i4",
+        "metric_values": [
+         0
+        ]
+       },
+       {
+        "item_id": "i5",
+        "metric_values": [
+         1
+        ]
+       },
+       {
+        "item_id": "i7",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "L1",
+    "L2"
+   ],
+   "rightRunIds": [
+    "R1",
+    "R2"
+   ],
+   "threshold": 0,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 5,
+   "leftRunCount": 2,
+   "rightRunCount": 2,
+   "k": 2,
+   "left": {
+    "passAtK": 1,
+    "passHatK": 1,
+    "avgAtK": 0.54,
+    "consistency": 1,
+    "reliability": 1,
+    "avgAttempts": 1.5
+   },
+   "right": {
+    "passAtK": 1,
+    "passHatK": 1,
+    "avgAtK": 0.615,
+    "consistency": 1,
+    "reliability": 1,
+    "avgAttempts": 1.3
+   },
+   "deltas": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0.07499999999999996,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 0,
+    "unchangedCount": 5,
+    "avgAttemptsDelta": -0.2
+   },
+   "items": [
+    {
+     "itemId": "i1",
+     "rawItemId": "i1",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.9
+     ],
+     "rightScores": [
+      0,
+      0.2
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      1,
+      3
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i2",
+     "rawItemId": "i2",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.2
+     ],
+     "rightScores": [
+      1,
+      0.95
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      2,
+      1
+     ],
+     "rightAttempts": [
+      4,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1.5,
+     "rightAvgAttempts": 2.5,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i3",
+     "rawItemId": "i3",
+     "metadata": {},
+     "leftScores": [
+      1,
+      0.8
+     ],
+     "rightScores": [
+      1,
+      0.7
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i4",
+     "rawItemId": "i4",
+     "metadata": {},
+     "leftScores": [
+      0,
+      0.1
+     ],
+     "rightScores": [
+      0.3,
+      0
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      1,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    },
+    {
+     "itemId": "i5",
+     "rawItemId": "i5",
+     "metadata": {},
+     "leftScores": [
+      0.4,
+      1
+     ],
+     "rightScores": [
+      1,
+      1
+     ],
+     "leftPasses": [
+      true,
+      true
+     ],
+     "rightPasses": [
+      true,
+      true
+     ],
+     "leftAttempts": [
+      3,
+      1
+     ],
+     "rightAttempts": [
+      1,
+      1
+     ],
+     "leftPassCount": 2,
+     "rightPassCount": 2,
+     "leftAvgAttempts": 2,
+     "rightAvgAttempts": 1,
+     "move": 0,
+     "bucketKey": "both_pass"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 5,
+     "percentage": 1,
+     "itemIds": [
+      "i1",
+      "i2",
+      "i3",
+      "i4",
+      "i5"
+     ]
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "calculateGroupedCohortComparison#118:duplicateRunDataId",
+  "kind": "grouped",
+  "fn": "calculateGroupedCohortComparison",
+  "spec": {
+   "runsData": [
+    {
+     "run_id": "D",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "x",
+        "metric_values": [
+         1
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "D",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "x",
+        "metric_values": [
+         0
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "run_id": "E",
+     "metric_idx": 0,
+     "snapshot": {
+      "rows": [
+       {
+        "item_id": "x",
+        "metric_values": [
+         0
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "leftRunIds": [
+    "D"
+   ],
+   "rightRunIds": [
+    "E"
+   ],
+   "threshold": 0.5,
+   "omitCallbacks": false,
+   "nullOptions": false
+  },
+  "result": {
+   "eligibleItems": 1,
+   "leftRunCount": 1,
+   "rightRunCount": 1,
+   "k": 1,
+   "left": {
+    "passAtK": 1,
+    "passHatK": 1,
+    "avgAtK": 1,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1
+   },
+   "right": {
+    "passAtK": 0,
+    "passHatK": 0,
+    "avgAtK": 0,
+    "consistency": null,
+    "reliability": null,
+    "avgAttempts": 1
+   },
+   "deltas": {
+    "passAtK": -1,
+    "passHatK": -1,
+    "avgAtK": -1,
+    "consistency": 0,
+    "reliability": 0
+   },
+   "summary": {
+    "improvedCount": 0,
+    "regressedCount": 1,
+    "unchangedCount": 0,
+    "avgAttemptsDelta": 0
+   },
+   "items": [
+    {
+     "itemId": "x",
+     "rawItemId": "x",
+     "metadata": {},
+     "leftScores": [
+      1
+     ],
+     "rightScores": [
+      0
+     ],
+     "leftPasses": [
+      true
+     ],
+     "rightPasses": [
+      false
+     ],
+     "leftAttempts": [
+      1
+     ],
+     "rightAttempts": [
+      1
+     ],
+     "leftPassCount": 1,
+     "rightPassCount": 0,
+     "leftAvgAttempts": 1,
+     "rightAvgAttempts": 1,
+     "move": -1,
+     "bucketKey": "a_sweeps_b"
+    }
+   ],
+   "buckets": {
+    "a_sweeps_b": {
+     "count": 1,
+     "percentage": 1,
+     "itemIds": [
+      "x"
+     ]
+    },
+    "b_sweeps_a": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_pass": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    },
+    "both_fail": {
+     "count": 0,
+     "percentage": 0,
+     "itemIds": []
+    }
+   }
+  }
+ },
+ {
+  "id": "detectMetricType#119",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [],
+   0
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricType#120",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      1
+     ]
+    },
+    {
+     "metric_values": [
+      0
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "boolean"
+ },
+ {
+  "id": "detectMetricType#121",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      1
+     ]
+    },
+    {
+     "metric_values": [
+      0.5
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricType#122",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      1.5
+     ]
+    },
+    {
+     "metric_values": [
+      0.5
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricType#123",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      -0.1
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricType#124",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      "n/a"
+     ]
+    },
+    {
+     "metric_values": [
+      null
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricType#125",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "status": "error",
+     "metric_values": [
+      5
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "boolean"
+ },
+ {
+  "id": "detectMetricType#126",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      true
+     ]
+    },
+    {
+     "metric_values": [
+      "no"
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "boolean"
+ },
+ {
+  "id": "detectMetricType#127",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      "85%"
+     ]
+    }
+   ],
+   0
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricType#128",
+  "kind": "plain",
+  "fn": "detectMetricType",
+  "args": [
+   [
+    {
+     "metric_values": [
+      0,
+      7
+     ]
+    }
+   ],
+   1
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#129",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   null
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#130",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#131",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#132",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   0
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#133",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   0.5
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#134",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   1
+  ],
+  "result": "score"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#135",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   1.0001
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#136",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   -0.1
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#137",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   100
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "detectMetricTypeFromAvg#138",
+  "kind": "plain",
+  "fn": "detectMetricTypeFromAvg",
+  "args": [
+   -5
+  ],
+  "result": "numeric"
+ },
+ {
+  "id": "formatPercent#139",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatPercent#140",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   null
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatPercent#141",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatPercent#142",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0
+  ],
+  "result": "0.0%"
+ },
+ {
+  "id": "formatPercent#143",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   1
+  ],
+  "result": "100.0%"
+ },
+ {
+  "id": "formatPercent#144",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.528
+  ],
+  "result": "52.8%"
+ },
+ {
+  "id": "formatPercent#145",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.5285
+  ],
+  "result": "52.8%"
+ },
+ {
+  "id": "formatPercent#146",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.5285,
+   2
+  ],
+  "result": "52.85%"
+ },
+ {
+  "id": "formatPercent#147",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.5285,
+   0
+  ],
+  "result": "53%"
+ },
+ {
+  "id": "formatPercent#148",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.5285,
+   3
+  ],
+  "result": "52.850%"
+ },
+ {
+  "id": "formatPercent#149",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.9999
+  ],
+  "result": "100.0%"
+ },
+ {
+  "id": "formatPercent#150",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   -0.123
+  ],
+  "result": "-12.3%"
+ },
+ {
+  "id": "formatPercent#151",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   2.5
+  ],
+  "result": "250.0%"
+ },
+ {
+  "id": "formatPercent#152",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.0005
+  ],
+  "result": "0.1%"
+ },
+ {
+  "id": "formatPercent#153",
+  "kind": "plain",
+  "fn": "formatPercent",
+  "args": [
+   0.3333333333333333
+  ],
+  "result": "33.3%"
+ },
+ {
+  "id": "formatLatency#154",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   null
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatLatency#155",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatLatency#156",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   0
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatLatency#157",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   -5
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatLatency#158",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatLatency#159",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   1
+  ],
+  "result": "1ms"
+ },
+ {
+  "id": "formatLatency#160",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   129
+  ],
+  "result": "129ms"
+ },
+ {
+  "id": "formatLatency#161",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   999
+  ],
+  "result": "999ms"
+ },
+ {
+  "id": "formatLatency#162",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   999.5
+  ],
+  "result": "1000ms"
+ },
+ {
+  "id": "formatLatency#163",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   1000
+  ],
+  "result": "1.0s"
+ },
+ {
+  "id": "formatLatency#164",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   1500
+  ],
+  "result": "1.5s"
+ },
+ {
+  "id": "formatLatency#165",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   2300
+  ],
+  "result": "2.3s"
+ },
+ {
+  "id": "formatLatency#166",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   59999
+  ],
+  "result": "60.0s"
+ },
+ {
+  "id": "formatLatency#167",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   60000
+  ],
+  "result": "1m 0s"
+ },
+ {
+  "id": "formatLatency#168",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   90000
+  ],
+  "result": "1m 30s"
+ },
+ {
+  "id": "formatLatency#169",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   106000
+  ],
+  "result": "1m 46s"
+ },
+ {
+  "id": "formatLatency#170",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   119999
+  ],
+  "result": "1m 60s"
+ },
+ {
+  "id": "formatLatency#171",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   3600000
+  ],
+  "result": "60m 0s"
+ },
+ {
+  "id": "formatLatency#172",
+  "kind": "plain",
+  "fn": "formatLatency",
+  "args": [
+   11406000
+  ],
+  "result": "190m 6s"
+ },
+ {
+  "id": "getScoreColorClass#173",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.95
+  ],
+  "result": "score-5"
+ },
+ {
+  "id": "getScoreColorClass#174",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.9
+  ],
+  "result": "score-5"
+ },
+ {
+  "id": "getScoreColorClass#175",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.89
+  ],
+  "result": "score-4"
+ },
+ {
+  "id": "getScoreColorClass#176",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.75
+  ],
+  "result": "score-4"
+ },
+ {
+  "id": "getScoreColorClass#177",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.74
+  ],
+  "result": "score-3"
+ },
+ {
+  "id": "getScoreColorClass#178",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.6
+  ],
+  "result": "score-3"
+ },
+ {
+  "id": "getScoreColorClass#179",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.59
+  ],
+  "result": "score-2"
+ },
+ {
+  "id": "getScoreColorClass#180",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.4
+  ],
+  "result": "score-2"
+ },
+ {
+  "id": "getScoreColorClass#181",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0.39
+  ],
+  "result": "score-1"
+ },
+ {
+  "id": "getScoreColorClass#182",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   0
+  ],
+  "result": "score-1"
+ },
+ {
+  "id": "getScoreColorClass#183",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   -1
+  ],
+  "result": "score-1"
+ },
+ {
+  "id": "getScoreColorClass#184",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": "score-1"
+ },
+ {
+  "id": "getScoreColorClass#185",
+  "kind": "plain",
+  "fn": "getScoreColorClass",
+  "args": [
+   1.5
+  ],
+  "result": "score-5"
+ },
+ {
+  "id": "getMetricColorClass#186",
+  "kind": "plain",
+  "fn": "getMetricColorClass",
+  "args": [
+   0.8,
+   "numeric"
+  ],
+  "result": ""
+ },
+ {
+  "id": "getMetricColorClass#187",
+  "kind": "plain",
+  "fn": "getMetricColorClass",
+  "args": [
+   0.8,
+   "score"
+  ],
+  "result": "score-4"
+ },
+ {
+  "id": "getMetricColorClass#188",
+  "kind": "plain",
+  "fn": "getMetricColorClass",
+  "args": [
+   1,
+   "boolean"
+  ],
+  "result": "score-5"
+ },
+ {
+  "id": "getMetricColorClass#189",
+  "kind": "plain",
+  "fn": "getMetricColorClass",
+  "args": [
+   0.1,
+   "score"
+  ],
+  "result": "score-1"
+ },
+ {
+  "id": "formatMetricValue#190",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   {
+    "$undef": true
+   },
+   "score"
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatMetricValue#191",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   null,
+   "numeric"
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatMetricValue#192",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   {
+    "$num": "nan"
+   },
+   "score"
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatMetricValue#193",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   0.5285,
+   "score"
+  ],
+  "result": "52.8%"
+ },
+ {
+  "id": "formatMetricValue#194",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   0.5285,
+   "score",
+   2
+  ],
+  "result": "52.85%"
+ },
+ {
+  "id": "formatMetricValue#195",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   0.5285,
+   "boolean"
+  ],
+  "result": "52.8%"
+ },
+ {
+  "id": "formatMetricValue#196",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   1234.5,
+   "numeric"
+  ],
+  "result": "1,235"
+ },
+ {
+  "id": "formatMetricValue#197",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   1234.5,
+   "numeric",
+   2
+  ],
+  "result": "1,235"
+ },
+ {
+  "id": "formatMetricValue#198",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   0.5,
+   "numeric"
+  ],
+  "result": "0.5"
+ },
+ {
+  "id": "formatMetricValue#199",
+  "kind": "plain",
+  "fn": "formatMetricValue",
+  "args": [
+   7,
+   "numeric"
+  ],
+  "result": "7"
+ },
+ {
+  "id": "formatMetricValueSmart#200",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   {
+    "$undef": true
+   },
+   "score",
+   []
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatMetricValueSmart#201",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   {
+    "$num": "nan"
+   },
+   "numeric",
+   [
+    1
+   ]
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatMetricValueSmart#202",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   null
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#203",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   []
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#204",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    0.524
+   ]
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#205",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    0.5231
+   ]
+  ],
+  "result": "52.30%"
+ },
+ {
+  "id": "formatMetricValueSmart#206",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    0.9
+   ]
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#207",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    0.523
+   ]
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#208",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    {
+     "$num": "nan"
+    },
+    null,
+    {
+     "$undef": true
+    },
+    0.524
+   ]
+  ],
+  "result": "52.3%"
+ },
+ {
+  "id": "formatMetricValueSmart#209",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.5,
+   "score",
+   [
+    0.52
+   ],
+   1,
+   3
+  ],
+  "result": "50.0%"
+ },
+ {
+  "id": "formatMetricValueSmart#210",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   7,
+   "numeric",
+   [
+    7.04
+   ]
+  ],
+  "result": "7"
+ },
+ {
+  "id": "formatMetricValueSmart#211",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   7,
+   "numeric",
+   [
+    8
+   ]
+  ],
+  "result": "7"
+ },
+ {
+  "id": "formatMetricValueSmart#212",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   7.123,
+   "numeric",
+   [
+    7.1
+   ]
+  ],
+  "result": "7.12"
+ },
+ {
+  "id": "formatMetricValueSmart#213",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   1234.5,
+   "numeric",
+   [
+    1234.6
+   ]
+  ],
+  "result": "1,235"
+ },
+ {
+  "id": "formatMetricValueSmart#214",
+  "kind": "plain",
+  "fn": "formatMetricValueSmart",
+  "args": [
+   0.523,
+   "score",
+   [
+    0.524
+   ],
+   2,
+   3
+  ],
+  "result": "52.30%"
+ },
+ {
+  "id": "formatNumericValue#215",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   {
+    "$undef": true
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatNumericValue#216",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   null
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatNumericValue#217",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   {
+    "$num": "nan"
+   }
+  ],
+  "result": "—"
+ },
+ {
+  "id": "formatNumericValue#218",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   0
+  ],
+  "result": "0"
+ },
+ {
+  "id": "formatNumericValue#219",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   5
+  ],
+  "result": "5"
+ },
+ {
+  "id": "formatNumericValue#220",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   5.25
+  ],
+  "result": "5.3"
+ },
+ {
+  "id": "formatNumericValue#221",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   5.25,
+   2
+  ],
+  "result": "5.25"
+ },
+ {
+  "id": "formatNumericValue#222",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   -3.7
+  ],
+  "result": "-3.7"
+ },
+ {
+  "id": "formatNumericValue#223",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   999
+  ],
+  "result": "999"
+ },
+ {
+  "id": "formatNumericValue#224",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   999.9
+  ],
+  "result": "999.9"
+ },
+ {
+  "id": "formatNumericValue#225",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   1000
+  ],
+  "result": "1,000"
+ },
+ {
+  "id": "formatNumericValue#226",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   1234.56
+  ],
+  "result": "1,235"
+ },
+ {
+  "id": "formatNumericValue#227",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   9999
+  ],
+  "result": "9,999"
+ },
+ {
+  "id": "formatNumericValue#228",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   10000
+  ],
+  "result": "10.0K"
+ },
+ {
+  "id": "formatNumericValue#229",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   999999
+  ],
+  "result": "1000.0K"
+ },
+ {
+  "id": "formatNumericValue#230",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   1000000
+  ],
+  "result": "1.0M"
+ },
+ {
+  "id": "formatNumericValue#231",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   1234567
+  ],
+  "result": "1.2M"
+ },
+ {
+  "id": "formatNumericValue#232",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   -1234567
+  ],
+  "result": "-1.2M"
+ },
+ {
+  "id": "formatNumericValue#233",
+  "kind": "plain",
+  "fn": "formatNumericValue",
+  "args": [
+   -10000
+  ],
+  "result": "-10.0K"
+ },
+ {
+  "id": "getMetricTooltips#234",
+  "kind": "plain",
+  "fn": "getMetricTooltips",
+  "args": [
+   3,
+   true,
+   80
+  ],
+  "result": {
+   "passAtK": "Percentage of items where at least one of the 3 runs achieved a perfect score (100%).",
+   "passHatK": "Percentage of items where all 3 runs achieved a perfect score (100%).",
+   "maxAtK": "Average of the best score across all 3 runs for each item.",
+   "consistency": "Measures how often runs agree on pass/fail across 3 runs. 100% = all runs agree, 0% = 50/50 split.",
+   "reliability": "When an item CAN be solved, how often is it? Only includes items with at least one passing run.",
+   "failedCount": "Number of runs that threw an error (across all items). Errors are scored as 0%.",
+   "avgScore": "The mean score across all items and all runs.",
+   "avgLatency": "The mean response time across all items and all runs.",
+   "medianLatency": "The median response time across all items and all runs. Less sensitive to outliers than the mean."
+  }
+ },
+ {
+  "id": "getMetricTooltips#235",
+  "kind": "plain",
+  "fn": "getMetricTooltips",
+  "args": [
+   5,
+   false,
+   50
+  ],
+  "result": {
+   "passAtK": "Percentage of items where at least one of the 5 runs scored ≥50%.",
+   "passHatK": "Percentage of items where all 5 runs scored ≥50%.",
+   "maxAtK": "Average of the best score across all 5 runs for each item.",
+   "consistency": "Measures how often runs agree on pass/fail across 5 runs. 100% = all runs agree, 0% = 50/50 split.",
+   "reliability": "When an item CAN be solved, how often is it? Only includes items with at least one passing run.",
+   "failedCount": "Number of runs that threw an error (across all items). Errors are scored as 0%.",
+   "avgScore": "The mean score across all items and all runs.",
+   "avgLatency": "The mean response time across all items and all runs.",
+   "medianLatency": "The median response time across all items and all runs. Less sensitive to outliers than the mean."
+  }
+ },
+ {
+  "id": "getMetricTooltips#236",
+  "kind": "plain",
+  "fn": "getMetricTooltips",
+  "args": [
+   1,
+   false,
+   0
+  ],
+  "result": {
+   "passAtK": "Percentage of items where at least one of the 1 runs scored ≥0%.",
+   "passHatK": "Percentage of items where all 1 runs scored ≥0%.",
+   "maxAtK": "Average of the best score across all 1 runs for each item.",
+   "consistency": "Measures how often runs agree on pass/fail across 1 runs. 100% = all runs agree, 0% = 50/50 split.",
+   "reliability": "When an item CAN be solved, how often is it? Only includes items with at least one passing run.",
+   "failedCount": "Number of runs that threw an error (across all items). Errors are scored as 0%.",
+   "avgScore": "The mean score across all items and all runs.",
+   "avgLatency": "The mean response time across all items and all runs.",
+   "medianLatency": "The median response time across all items and all runs. Less sensitive to outliers than the mean."
+  }
+ }
+]

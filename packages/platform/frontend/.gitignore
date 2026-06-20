@@ -13,3 +13,8 @@ test-results/
 
 # Local verification screenshots produced by scripts/*.mjs smoke harnesses
 scripts/*.png
+
+# Re-include app source under src/lib. The repo-root .gitignore's bare `lib/`
+# rule (a Python-build convention) otherwise silently drops this directory.
+!src/lib/
+!src/lib/**
