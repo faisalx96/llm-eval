@@ -3219,11 +3219,11 @@
           ];
           Object.keys(agg.metrics || {}).sort().forEach(metric => {
             const m = agg.metrics[metric] || {};
-            aggTiles.push(['Avg ' + metric, m.avg != null ? fmtScore(m.avg) : '—']);
+            aggTiles.push(['Avg ' + metric, metricScoreNode(m.avg)]);
           });
           aggTiles.forEach(([label, value]) => {
             aggWrap.appendChild(el('div', { className: 'tile' }, [
-              el('div', { className: 'value' }, String(value == null ? '—' : value)),
+              el('div', { className: 'value' }, value == null ? '—' : value),
               el('div', { className: 'label' }, label),
             ]));
           });
@@ -3252,7 +3252,7 @@
             (r.scores || []).forEach(s => { scoresByMetric[s.metric_name] = s; });
             metricNames.forEach(metric => {
               const score = scoresByMetric[metric];
-              row.appendChild(el('td', { style: { fontFamily: 'var(--font-mono)' } }, score ? fmtScore(score.score_numeric != null ? score.score_numeric : score.score_raw) : '—'));
+              row.appendChild(el('td', { style: { fontFamily: 'var(--font-mono)' } }, metricScoreNode(score ? (score.score_numeric != null ? score.score_numeric : score.score_raw) : null)));
             });
             row.appendChild(el('td', { style: { fontFamily: 'var(--font-mono)' } }, fmtSeconds(r.latency_ms)));
             tbody.appendChild(row);
