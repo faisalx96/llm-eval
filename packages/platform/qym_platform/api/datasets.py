@@ -213,7 +213,29 @@ def _require_draft(version: DatasetVersion) -> None:
         raise HTTPException(status_code=409, detail="Only draft dataset versions can be edited")
 
 
-def _item_payload(item: DatasetItem, *, run_count: Optional[int] = None) -> Dict[str, Any]:
+def _user_payload(user: Optional[User]) -> Optional[Dict[str, Any]]:
+    if not user:
+        return None
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name or user.email.split("@")[0],
+    }
+
+
+def _user_map(db: Session, user_ids: Iterable[Optional[str]]) -> Dict[str, User]:
+    ids = {str(user_id) for user_id in user_ids if user_id}
+    if not ids:
+        return {}
+    return {user.id: user for user in db.query(User).filter(User.id.in_(ids)).all()}
+
+
+def _item_payload(
+    item: DatasetItem,
+    *,
+    run_count: Optional[int] = None,
+    result_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     payload = {
         "id": item.id,
         "item_id": item.item_id,
@@ -228,6 +250,8 @@ def _item_payload(item: DatasetItem, *, run_count: Optional[int] = None) -> Dict
     }
     if run_count is not None:
         payload["run_count"] = int(run_count)
+    if result_summary is not None:
+        payload["result_summary"] = result_summary
     return payload
 
 
@@ -242,6 +266,7 @@ def _version_payload(db: Session, version: DatasetVersion, *, include_aliases: b
             .all()
         ]
     run_count = db.query(Run.id).filter(Run.dataset_version_id == version.id, Run.deleted_at.is_(None)).count()
+    users = _user_map(db, [version.created_by_user_id, version.published_by_user_id])
     return {
         "id": version.id,
         "dataset_id": version.dataset_id,
@@ -255,9 +280,12 @@ def _version_payload(db: Session, version: DatasetVersion, *, include_aliases: b
         "schema": version.schema or {},
         "labels": version.labels or [],
         "item_count": version.item_count,
+        "run_count": int(run_count or 0),
         "content_hash": version.content_hash,
         "created_by_user_id": version.created_by_user_id,
         "published_by_user_id": version.published_by_user_id,
+        "created_by": _user_payload(users.get(version.created_by_user_id)),
+        "published_by": _user_payload(users.get(version.published_by_user_id)),
         "created_at": to_api_timestamp(version.created_at),
         "updated_at": to_api_timestamp(version.updated_at),
         "published_at": to_api_timestamp(version.published_at),
@@ -309,6 +337,254 @@ def _record_change(db: Session, version: DatasetVersion, summary: Dict[str, Any]
     )
 
 
+def _item_changed(a: DatasetItem, b: DatasetItem) -> bool:
+    return (
+        a.fingerprint != b.fingerprint
+        or (a.labels or []) != (b.labels or [])
+        or a.input != b.input
+        or a.expected_output != b.expected_output
+        or (a.item_metadata or {}) != (b.item_metadata or {})
+    )
+
+
+def _version_delta_summary(db: Session, version: DatasetVersion) -> Dict[str, int]:
+    current_items = {
+        item.item_id: item
+        for item in db.query(DatasetItem)
+        .filter(DatasetItem.dataset_version_id == version.id)
+        .all()
+    }
+    if not version.parent_version_id:
+        return {
+            "added": len(current_items),
+            "modified": 0,
+            "deleted": 0,
+            "unchanged": 0,
+        }
+    parent_items = {
+        item.item_id: item
+        for item in db.query(DatasetItem)
+        .filter(DatasetItem.dataset_version_id == version.parent_version_id)
+        .all()
+    }
+    current_ids = set(current_items)
+    parent_ids = set(parent_items)
+    shared = current_ids & parent_ids
+    modified = sum(1 for item_id in shared if _item_changed(parent_items[item_id], current_items[item_id]))
+    return {
+        "added": len(current_ids - parent_ids),
+        "modified": modified,
+        "deleted": len(parent_ids - current_ids),
+        "unchanged": len(shared) - modified,
+    }
+
+
+def _score_numeric_value(score: RunItemScore) -> Optional[float]:
+    if score.score_numeric is not None:
+        return float(score.score_numeric)
+    raw = score.score_raw
+    if isinstance(raw, (int, float, bool)):
+        return float(raw)
+    if isinstance(raw, str):
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    if isinstance(raw, dict):
+        for key in ("score", "value"):
+            value = raw.get(key)
+            if isinstance(value, (int, float, bool)):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    continue
+    return None
+
+
+def _is_generated_item_id(value: Any) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", text, flags=re.I):
+        return True
+    if re.fullmatch(r"item-\d+", text, flags=re.I):
+        return True
+    if re.fullmatch(r"ds_[0-9a-f]{64}__\d{4}", text, flags=re.I):
+        return True
+    return False
+
+
+def _item_result_summaries(
+    db: Session,
+    version: DatasetVersion,
+    items: list[DatasetItem],
+) -> Dict[int, Dict[str, Any]]:
+    if not items:
+        return {}
+    by_pk = {item.id: item for item in items}
+    by_item_id = {item.item_id: item for item in items}
+    rows = (
+        db.query(Run, RunItem)
+        .join(RunItem, RunItem.run_id == Run.id)
+        .filter(
+            Run.deleted_at.is_(None),
+            Run.dataset_version_id == version.id,
+            (
+                RunItem.dataset_item_pk.in_(list(by_pk))
+                | RunItem.item_id.in_(list(by_item_id))
+            ),
+        )
+        .all()
+    )
+    summaries: Dict[int, Dict[str, Any]] = {
+        item.id: {
+            "run_count": 0,
+            "success_count": 0,
+            "error_count": 0,
+            "avg_latency_ms": None,
+            "avg_score": None,
+            "metrics": {},
+        }
+        for item in items
+    }
+    run_item_keys_by_pk: Dict[int, set[tuple[str, str]]] = {item.id: set() for item in items}
+    latencies_by_pk: Dict[int, list[float]] = {item.id: [] for item in items}
+    for run, run_item in rows:
+        item = by_pk.get(run_item.dataset_item_pk) if run_item.dataset_item_pk is not None else None
+        if item is None:
+            item = by_item_id.get(run_item.item_id)
+        if item is None:
+            continue
+        summary = summaries[item.id]
+        summary["run_count"] += 1
+        if run_item.error:
+            summary["error_count"] += 1
+        else:
+            summary["success_count"] += 1
+        if run_item.latency_ms is not None:
+            latencies_by_pk[item.id].append(float(run_item.latency_ms))
+        run_item_keys_by_pk[item.id].add((run.id, run_item.item_id))
+
+    all_run_ids = {run_id for keys in run_item_keys_by_pk.values() for run_id, _ in keys}
+    all_item_ids = {item_id for keys in run_item_keys_by_pk.values() for _, item_id in keys}
+    score_rows: list[RunItemScore] = []
+    if all_run_ids and all_item_ids:
+        score_rows = (
+            db.query(RunItemScore)
+            .filter(RunItemScore.run_id.in_(all_run_ids), RunItemScore.item_id.in_(all_item_ids))
+            .all()
+        )
+    scores_by_key: Dict[tuple[str, str], list[RunItemScore]] = defaultdict(list)
+    for score in score_rows:
+        scores_by_key[(score.run_id, score.item_id)].append(score)
+
+    for item in items:
+        numeric_scores: list[float] = []
+        metrics: Dict[str, Dict[str, Any]] = {}
+        for key in run_item_keys_by_pk[item.id]:
+            for score in scores_by_key.get(key, []):
+                value = _score_numeric_value(score)
+                if value is None:
+                    continue
+                numeric_scores.append(value)
+                metric = metrics.setdefault(
+                    score.metric_name,
+                    {"count": 0, "avg": None, "min": None, "max": None, "_sum": 0.0},
+                )
+                metric["count"] += 1
+                metric["_sum"] += value
+                metric["min"] = value if metric["min"] is None else min(float(metric["min"]), value)
+                metric["max"] = value if metric["max"] is None else max(float(metric["max"]), value)
+        for metric in metrics.values():
+            metric["avg"] = round(float(metric["_sum"]) / int(metric["count"]), 4) if metric["count"] else None
+            metric.pop("_sum", None)
+        latencies = latencies_by_pk[item.id]
+        summary = summaries[item.id]
+        summary["avg_latency_ms"] = round(sum(latencies) / len(latencies), 2) if latencies else None
+        summary["avg_score"] = round(sum(numeric_scores) / len(numeric_scores), 4) if numeric_scores else None
+        summary["metrics"] = metrics
+    return summaries
+
+
+def _version_metric_names(db: Session, version: DatasetVersion) -> list[str]:
+    names: set[str] = set()
+    score_rows = (
+        db.query(RunItemScore.metric_name)
+        .join(Run, Run.id == RunItemScore.run_id)
+        .filter(
+            Run.deleted_at.is_(None),
+            Run.dataset_version_id == version.id,
+        )
+        .distinct()
+        .order_by(RunItemScore.metric_name)
+        .all()
+    )
+    names.update(str(metric_name) for (metric_name,) in score_rows if metric_name)
+    run_rows = (
+        db.query(Run.metrics)
+        .filter(Run.deleted_at.is_(None), Run.dataset_version_id == version.id)
+        .all()
+    )
+    for (metrics,) in run_rows:
+        if isinstance(metrics, list):
+            names.update(str(metric) for metric in metrics if metric)
+    return sorted(names)
+
+
+def _item_edit_counts(db: Session, version: DatasetVersion, items: list[DatasetItem]) -> Dict[int, int]:
+    if not items:
+        return {}
+    versions_by_id = {
+        row.id: row
+        for row in db.query(DatasetVersion).filter(DatasetVersion.dataset_id == version.dataset_id).all()
+    }
+    chain_ids: list[str] = []
+    seen: set[str] = set()
+    cursor: Optional[DatasetVersion] = version
+    while cursor and cursor.id not in seen:
+        seen.add(cursor.id)
+        chain_ids.append(cursor.id)
+        cursor = versions_by_id.get(cursor.parent_version_id) if cursor.parent_version_id else None
+
+    tracked = {
+        item.id: {
+            "item_id": item.item_id,
+            "index": item.index,
+            "use_index": _is_generated_item_id(item.item_id),
+            "count": 0,
+        }
+        for item in items
+    }
+    revisions = (
+        db.query(DatasetItemRevision)
+        .filter(
+            DatasetItemRevision.dataset_version_id.in_(chain_ids),
+            DatasetItemRevision.change_type == "updated",
+        )
+        .all()
+    )
+    for revision in revisions:
+        before = revision.before or {}
+        after = revision.after or {}
+        before_id = str(before.get("item_id") or "")
+        after_id = str(after.get("item_id") or "")
+        before_index = before.get("index")
+        after_index = after.get("index")
+        for item_pk, identity in tracked.items():
+            if revision.dataset_item_id == item_pk:
+                identity["count"] += 1
+                break
+            if identity["item_id"] in {before_id, after_id}:
+                identity["count"] += 1
+                break
+            if identity["use_index"] and identity["index"] in {before_index, after_index}:
+                identity["count"] += 1
+                break
+    return {item.id: int(tracked[item.id]["count"]) for item in items}
+
+
 def _record_item_revision(
     db: Session,
     version: DatasetVersion,
@@ -336,6 +612,20 @@ def _record_item_revision(
             actor_user_id=actor_user_id,
             created_at=utc_now_naive(),
         )
+    )
+
+
+def _detach_item_revisions(db: Session, item: DatasetItem) -> None:
+    db.query(DatasetItemRevision).filter(DatasetItemRevision.dataset_item_id == item.id).update(
+        {DatasetItemRevision.dataset_item_id: None},
+        synchronize_session=False,
+    )
+
+
+def _detach_item_run_results(db: Session, item: DatasetItem) -> None:
+    db.query(RunItem).filter(RunItem.dataset_item_pk == item.id).update(
+        {RunItem.dataset_item_pk: None},
+        synchronize_session=False,
     )
 
 
@@ -672,7 +962,9 @@ def list_dataset_runs(
     }
     run_ids = [run.id for run in runs]
     items_counts: Dict[str, int] = {}
-    eval_scores: Dict[str, float] = {}
+    avg_latencies: Dict[str, float] = {}
+    metric_values_by_run: Dict[str, Dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    eval_values_by_run: Dict[str, list[float]] = defaultdict(list)
     if run_ids:
         items_counts = dict(
             db.query(RunItem.run_id, func.count(RunItem.id))
@@ -680,30 +972,68 @@ def list_dataset_runs(
             .group_by(RunItem.run_id)
             .all()
         )
-        eval_scores = dict(
-            db.query(RunItemScore.run_id, func.avg(RunItemScore.score_numeric))
-            .filter(RunItemScore.run_id.in_(run_ids), RunItemScore.score_numeric.isnot(None))
-            .group_by(RunItemScore.run_id)
+        avg_latencies = {
+            run_id: round(float(avg_latency), 2)
+            for run_id, avg_latency in (
+                db.query(RunItem.run_id, func.avg(RunItem.latency_ms))
+                .filter(RunItem.run_id.in_(run_ids), RunItem.latency_ms.isnot(None))
+                .group_by(RunItem.run_id)
+                .all()
+            )
+            if avg_latency is not None
+        }
+        score_rows = (
+            db.query(RunItemScore)
+            .filter(RunItemScore.run_id.in_(run_ids))
             .all()
         )
+        for score in score_rows:
+            value = _score_numeric_value(score)
+            if value is None:
+                continue
+            metric_values_by_run[score.run_id][score.metric_name].append(value)
+            eval_values_by_run[score.run_id].append(value)
+
+    metric_names = sorted({metric for metrics in metric_values_by_run.values() for metric in metrics})
+
+    def run_metric_averages(run_id: str) -> Dict[str, Optional[float]]:
+        metrics = metric_values_by_run.get(run_id, {})
+        return {
+            metric: round(sum(values) / len(values), 4) if values else None
+            for metric, values in sorted(metrics.items())
+        }
+
+    def run_eval_score(run_id: str) -> Optional[float]:
+        values = eval_values_by_run.get(run_id) or []
+        return round(sum(values) / len(values), 4) if values else None
 
     return {
         "runs": [
             {
                 "id": run.id,
+                "run_name": (
+                    str((run.run_config or {}).get("run_name") or "")
+                    if isinstance(run.run_config, dict)
+                    else ""
+                )
+                or run.external_run_id
+                or run.id,
                 "external_run_id": run.external_run_id,
                 "status": run.status.value if hasattr(run.status, "value") else str(run.status),
                 "task": run.task,
                 "model": run.model,
                 "started_at": to_api_timestamp(run.started_at),
                 "completed_at": to_api_timestamp(run.ended_at),
-                "eval_score": (round(float(eval_scores[run.id]), 4) if eval_scores.get(run.id) is not None else None),
+                "avg_latency_ms": avg_latencies.get(run.id),
+                "eval_score": run_eval_score(run.id),
+                "metric_averages": run_metric_averages(run.id),
                 "version_label": version_labels.get(run.dataset_version_id),
                 "items_count": int(items_counts.get(run.id, 0)),
             }
             for run in runs
         ],
         "total": total,
+        "metric_names": metric_names,
     }
 
 
@@ -859,9 +1189,23 @@ def get_lineage(
         .order_by(DatasetVersionChange.created_at)
         .all()
     )
+    user_ids: set[str] = set()
+    for version in versions:
+        if version.created_by_user_id:
+            user_ids.add(version.created_by_user_id)
+        if version.published_by_user_id:
+            user_ids.add(version.published_by_user_id)
+    users = _user_map(db, user_ids)
+    version_payloads = []
+    for version in versions:
+        payload = _version_payload(db, version)
+        payload["created_by"] = _user_payload(users.get(version.created_by_user_id))
+        payload["published_by"] = _user_payload(users.get(version.published_by_user_id))
+        payload["change_counts"] = _version_delta_summary(db, version)
+        version_payloads.append(payload)
     return {
         "dataset": _dataset_payload(db, dataset),
-        "versions": [_version_payload(db, version) for version in versions],
+        "versions": version_payloads,
         "changes": [
             {
                 "id": change.id,
@@ -892,13 +1236,6 @@ def list_items(
     project = _project_for_request(db, principal, project_slug)
     dataset = _get_dataset(db, project, dataset_ref)
     version = _resolve_version(db, dataset, version_ref)
-    run_counts = dict(
-        db.query(RunItem.dataset_item_pk, func.count(RunItem.id))
-        .filter(RunItem.dataset_item_pk.isnot(None))
-        .group_by(RunItem.dataset_item_pk)
-        .all()
-    )
-
     query = db.query(DatasetItem).filter(DatasetItem.dataset_version_id == version.id)
     if search:
         needle = f"%{search.strip().lower()}%"
@@ -912,22 +1249,90 @@ def list_items(
     if label:
         query = query.filter(cast(DatasetItem.labels, String).like(f"%{label}%"))
 
-    sort_key = (sort or "index_asc").lower()
-    if sort_key == "index_desc":
-        query = query.order_by(DatasetItem.index.desc(), DatasetItem.item_id)
-    elif sort_key == "updated_desc":
-        query = query.order_by(DatasetItem.updated_at.desc(), DatasetItem.item_id)
-    elif sort_key == "item_id":
-        query = query.order_by(DatasetItem.item_id)
-    else:
-        query = query.order_by(DatasetItem.index, DatasetItem.item_id)
+    sort_raw = sort or "index_asc"
+    sort_key = sort_raw.lower()
+    computed_sort = (
+        sort_key.startswith("runs_")
+        or sort_key.startswith("edits_")
+        or sort_key.startswith("latency_")
+        or sort_key.startswith("metric:")
+    )
+    if computed_sort:
+        all_items = query.order_by(DatasetItem.index, DatasetItem.item_id).all()
+        all_result_summaries = _item_result_summaries(db, version, all_items)
+        all_edit_counts = _item_edit_counts(db, version, all_items)
+        direction = "desc" if sort_key.endswith("_desc") or sort_key.endswith(":desc") else "asc"
 
-    total = query.with_entities(func.count(DatasetItem.id)).order_by(None).scalar() or 0
-    items = query.offset(offset).limit(limit).all()
+        def computed_value(row: DatasetItem) -> Any:
+            summary = all_result_summaries.get(row.id, {}) or {}
+            if sort_key.startswith("runs_"):
+                return summary.get("run_count") or 0
+            if sort_key.startswith("edits_"):
+                return all_edit_counts.get(row.id, 0)
+            if sort_key.startswith("latency_"):
+                value = summary.get("avg_latency_ms")
+                return float(value) if value is not None else None
+            if sort_key.startswith("metric:"):
+                parts = sort_raw.split(":")
+                metric_name = parts[1] if len(parts) >= 2 else ""
+                value = ((summary.get("metrics") or {}).get(metric_name) or {}).get("avg")
+                return float(value) if value is not None else None
+            return row.index
+
+        def sort_tuple(row: DatasetItem) -> tuple[int, Any, int, str]:
+            value = computed_value(row)
+            missing = 1 if value is None else 0
+            if isinstance(value, (int, float)) and direction == "desc":
+                value = -value
+            return (missing, value if value is not None else 0, row.index, row.item_id)
+
+        all_items.sort(key=sort_tuple)
+        total = len(all_items)
+        items = all_items[offset : offset + limit]
+        result_summaries = {item.id: all_result_summaries.get(item.id) for item in items}
+        edit_counts = {item.id: all_edit_counts.get(item.id, 0) for item in items}
+    else:
+        if sort_key == "index_desc":
+            query = query.order_by(DatasetItem.index.desc(), DatasetItem.item_id)
+        elif sort_key == "updated_desc":
+            query = query.order_by(DatasetItem.updated_at.desc(), DatasetItem.item_id)
+        elif sort_key == "item_id" or sort_key == "item_id_asc":
+            query = query.order_by(DatasetItem.item_id)
+        elif sort_key == "item_id_desc":
+            query = query.order_by(DatasetItem.item_id.desc())
+        elif sort_key == "input_asc":
+            query = query.order_by(cast(DatasetItem.input, String), DatasetItem.index)
+        elif sort_key == "input_desc":
+            query = query.order_by(cast(DatasetItem.input, String).desc(), DatasetItem.index)
+        elif sort_key == "expected_asc":
+            query = query.order_by(cast(DatasetItem.expected_output, String), DatasetItem.index)
+        elif sort_key == "expected_desc":
+            query = query.order_by(cast(DatasetItem.expected_output, String).desc(), DatasetItem.index)
+        elif sort_key == "metadata_asc":
+            query = query.order_by(cast(DatasetItem.item_metadata, String), DatasetItem.index)
+        elif sort_key == "metadata_desc":
+            query = query.order_by(cast(DatasetItem.item_metadata, String).desc(), DatasetItem.index)
+        else:
+            query = query.order_by(DatasetItem.index, DatasetItem.item_id)
+
+        total = query.with_entities(func.count(DatasetItem.id)).order_by(None).scalar() or 0
+        items = query.offset(offset).limit(limit).all()
+        result_summaries = _item_result_summaries(db, version, items)
+        edit_counts = _item_edit_counts(db, version, items)
+    metric_names = _version_metric_names(db, version)
     return {
         "dataset": _dataset_payload(db, dataset),
         "version": _version_payload(db, version),
-        "items": [_item_payload(item, run_count=run_counts.get(item.id, 0)) for item in items],
+        "items": [
+            _item_payload(
+                item,
+                run_count=(result_summaries.get(item.id, {}) or {}).get("run_count", 0),
+                result_summary=result_summaries.get(item.id),
+            )
+            | {"edit_count": edit_counts.get(item.id, 0)}
+            for item in items
+        ],
+        "metric_names": metric_names,
         "total": int(total),
         "next_offset": offset + limit if offset + limit < int(total) else None,
     }
@@ -1073,7 +1478,9 @@ def delete_item(
     if not item:
         raise HTTPException(status_code=404, detail="Dataset item not found")
     before = _item_payload(item)
-    _record_item_revision(db, version, item, change_type="deleted", before=before, after={}, actor_user_id=principal.user.id)
+    _record_item_revision(db, version, None, change_type="deleted", before=before, after={}, actor_user_id=principal.user.id)
+    _detach_item_revisions(db, item)
+    _detach_item_run_results(db, item)
     db.delete(item)
     version.item_count = max(0, int(version.item_count or 0) - 1)
     db.commit()
@@ -1112,8 +1519,10 @@ def bulk_items(
             continue
         before = _item_payload(item)
         _record_item_revision(
-            db, version, item, change_type="deleted", before=before, after={}, actor_user_id=principal.user.id,
+            db, version, None, change_type="deleted", before=before, after={}, actor_user_id=principal.user.id,
         )
+        _detach_item_revisions(db, item)
+        _detach_item_run_results(db, item)
         db.delete(item)
         version.item_count = max(0, int(version.item_count or 0) - 1)
         deleted.append(target_id)
@@ -1223,23 +1632,229 @@ def item_runs(
         .order_by(Run.created_at.desc())
         .all()
     )
+    run_ids = [run.id for run, _ in rows]
+    run_item_keys = {(run.id, run_item.item_id) for run, run_item in rows}
+    score_rows: list[RunItemScore] = []
+    if run_ids:
+        score_rows = (
+            db.query(RunItemScore)
+            .filter(RunItemScore.run_id.in_(run_ids))
+            .all()
+        )
+    scores_by_key: Dict[tuple[str, str], list[RunItemScore]] = defaultdict(list)
+    for score in score_rows:
+        key = (score.run_id, score.item_id)
+        if key in run_item_keys:
+            scores_by_key[key].append(score)
+    users = _user_map(db, [run.owner_user_id for run, _ in rows])
+    numeric_scores_by_metric: Dict[str, list[float]] = defaultdict(list)
+    all_numeric_scores: list[float] = []
+    latencies: list[float] = []
+    error_count = 0
+    for run, run_item in rows:
+        if run_item.error:
+            error_count += 1
+        if run_item.latency_ms is not None:
+            latencies.append(float(run_item.latency_ms))
+        for score in scores_by_key.get((run.id, run_item.item_id), []):
+            value = _score_numeric_value(score)
+            if value is None:
+                continue
+            all_numeric_scores.append(value)
+            numeric_scores_by_metric[score.metric_name].append(value)
+    metric_aggregates = {
+        metric: {
+            "count": len(values),
+            "avg": round(sum(values) / len(values), 4) if values else None,
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+        }
+        for metric, values in sorted(numeric_scores_by_metric.items())
+    }
     return {
         "item": _item_payload(item),
+        "aggregates": {
+            "run_count": len(rows),
+            "success_count": len(rows) - error_count,
+            "error_count": error_count,
+            "avg_latency_ms": round(sum(latencies) / len(latencies), 2) if latencies else None,
+            "avg_score": round(sum(all_numeric_scores) / len(all_numeric_scores), 4) if all_numeric_scores else None,
+            "metrics": metric_aggregates,
+        },
         "runs": [
             {
                 "run_id": run.id,
+                "run_name": (
+                    str((run.run_config or {}).get("run_name") or "")
+                    if isinstance(run.run_config, dict)
+                    else ""
+                )
+                or run.external_run_id
+                or run.id,
                 "external_run_id": run.external_run_id,
                 "task": run.task,
                 "dataset": run.dataset,
                 "model": run.model,
                 "status": run.status.value if hasattr(run.status, "value") else str(run.status),
                 "created_at": to_api_timestamp(run.created_at),
+                "started_at": to_api_timestamp(run.started_at),
+                "completed_at": to_api_timestamp(run.ended_at),
+                "owner": _user_payload(users.get(run.owner_user_id)),
                 "item_id": run_item.item_id,
+                "output": run_item.output,
                 "trace_id": run_item.trace_id,
                 "trace_url": run_item.trace_url,
                 "error": run_item.error,
+                "latency_ms": run_item.latency_ms,
+                "retry_count": run_item.retry_count,
+                "scores": [
+                    {
+                        "metric_name": score.metric_name,
+                        "score_numeric": score.score_numeric,
+                        "score_raw": score.score_raw,
+                        "label": score.label,
+                        "explanation": score.explanation,
+                    }
+                    for score in scores_by_key.get((run.id, run_item.item_id), [])
+                ],
             }
             for run, run_item in rows
+        ],
+    }
+
+
+@router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/neighbors")
+def item_neighbors(
+    dataset_ref: str,
+    version_ref: str,
+    item_id: str,
+    project_slug: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    sort: str = Query(default="index_asc"),
+    label: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:read")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    query = db.query(DatasetItem).filter(DatasetItem.dataset_version_id == version.id)
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(DatasetItem.item_id).like(needle),
+                func.lower(cast(DatasetItem.input, String)).like(needle),
+                func.lower(cast(DatasetItem.expected_output, String)).like(needle),
+            )
+        )
+    if label:
+        query = query.filter(cast(DatasetItem.labels, String).like(f"%{label}%"))
+    sort_key = (sort or "index_asc").lower()
+    if sort_key == "index_desc":
+        query = query.order_by(DatasetItem.index.desc(), DatasetItem.item_id)
+    elif sort_key == "updated_desc":
+        query = query.order_by(DatasetItem.updated_at.desc(), DatasetItem.item_id)
+    elif sort_key == "item_id":
+        query = query.order_by(DatasetItem.item_id)
+    else:
+        query = query.order_by(DatasetItem.index, DatasetItem.item_id)
+    rows = query.all()
+    idx = next((i for i, row in enumerate(rows) if row.item_id == item_id), -1)
+    if idx < 0:
+        raise HTTPException(status_code=404, detail="Dataset item not found in current item set")
+    previous_item = rows[idx - 1] if idx > 0 else None
+    next_item = rows[idx + 1] if idx + 1 < len(rows) else None
+    return {
+        "item_id": item_id,
+        "index": idx,
+        "total": len(rows),
+        "previous": _item_payload(previous_item) if previous_item else None,
+        "next": _item_payload(next_item) if next_item else None,
+    }
+
+
+@router.get("/v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/lineage")
+def item_lineage(
+    dataset_ref: str,
+    version_ref: str,
+    item_id: str,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    _require_scope(principal, "datasets:read")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    versions_by_id = {
+        row.id: row
+        for row in db.query(DatasetVersion).filter(DatasetVersion.dataset_id == dataset.id).all()
+    }
+    chain: list[DatasetVersion] = []
+    seen: set[str] = set()
+    cursor: Optional[DatasetVersion] = version
+    while cursor and cursor.id not in seen:
+        seen.add(cursor.id)
+        chain.append(cursor)
+        cursor = versions_by_id.get(cursor.parent_version_id) if cursor.parent_version_id else None
+    chain.reverse()
+
+    items_by_version = {
+        row.dataset_version_id: row
+        for row in db.query(DatasetItem)
+        .filter(DatasetItem.dataset_version_id.in_([v.id for v in chain]), DatasetItem.item_id == item_id)
+        .all()
+    }
+    revision_rows = (
+        db.query(DatasetItemRevision)
+        .filter(DatasetItemRevision.dataset_version_id.in_([v.id for v in chain]))
+        .order_by(DatasetItemRevision.created_at, DatasetItemRevision.revision_number)
+        .all()
+    )
+    relevant_revisions: list[DatasetItemRevision] = []
+    for revision in revision_rows:
+        before_id = (revision.before or {}).get("item_id")
+        after_id = (revision.after or {}).get("item_id")
+        if before_id == item_id or after_id == item_id:
+            relevant_revisions.append(revision)
+            continue
+        item = items_by_version.get(revision.dataset_version_id)
+        if item and revision.dataset_item_id == item.id:
+            relevant_revisions.append(revision)
+    users = _user_map(
+        db,
+        [r.actor_user_id for r in relevant_revisions]
+        + [v.created_by_user_id for v in chain]
+        + [v.published_by_user_id for v in chain],
+    )
+    revisions_by_version: Dict[str, list[DatasetItemRevision]] = defaultdict(list)
+    for revision in relevant_revisions:
+        revisions_by_version[revision.dataset_version_id].append(revision)
+    return {
+        "item_id": item_id,
+        "lineage": [
+            {
+                "version": _version_payload(db, v),
+                "item": _item_payload(items_by_version[v.id]) if v.id in items_by_version else None,
+                "revisions": [
+                    {
+                        "id": row.id,
+                        "revision_number": row.revision_number,
+                        "change_type": row.change_type,
+                        "before": row.before,
+                        "after": row.after,
+                        "actor_user_id": row.actor_user_id,
+                        "actor": _user_payload(users.get(row.actor_user_id)),
+                        "actor_email": (users.get(row.actor_user_id).email if users.get(row.actor_user_id) else None),
+                        "actor_name": (users.get(row.actor_user_id).display_name if users.get(row.actor_user_id) else None),
+                        "created_at": to_api_timestamp(row.created_at),
+                    }
+                    for row in revisions_by_version.get(v.id, [])
+                ],
+            }
+            for v in chain
         ],
     }
 
@@ -1263,6 +1878,33 @@ def compare_versions(
     target_items = {item.item_id: item for item in db.query(DatasetItem).filter(DatasetItem.dataset_version_id == target.id).all()}
     added = sorted(set(target_items) - set(base_items))
     removed = sorted(set(base_items) - set(target_items))
+    revision_rows = (
+        db.query(DatasetItemRevision)
+        .filter(DatasetItemRevision.dataset_version_id == target.id)
+        .order_by(DatasetItemRevision.created_at.desc(), DatasetItemRevision.revision_number.desc())
+        .all()
+    )
+    latest_revision_by_item_id: Dict[str, DatasetItemRevision] = {}
+    for revision in revision_rows:
+        before_id = (revision.before or {}).get("item_id")
+        after_id = (revision.after or {}).get("item_id")
+        for candidate_id in (after_id, before_id):
+            if candidate_id and candidate_id not in latest_revision_by_item_id:
+                latest_revision_by_item_id[str(candidate_id)] = revision
+    actor_users = _user_map(
+        db,
+        [revision.actor_user_id for revision in revision_rows]
+        + [target.created_by_user_id, target.published_by_user_id],
+    )
+
+    def _revision_actor_payload(item_id_value: str) -> Optional[Dict[str, Any]]:
+        revision = latest_revision_by_item_id.get(item_id_value)
+        if revision:
+            return _user_payload(actor_users.get(revision.actor_user_id))
+        # Imported versions and legacy data may not have per-item revision rows.
+        # In that case, the head version creator is the narrowest attribution we have.
+        return _user_payload(actor_users.get(target.created_by_user_id or target.published_by_user_id))
+
     changed = []
     unchanged = []
     field_diffs: list[Dict[str, Any]] = []
@@ -1282,12 +1924,23 @@ def compare_versions(
                 fields.append("metadata")
             if (b.labels or []) != (t.labels or []):
                 fields.append("labels")
-            changed.append({"item_id": item_id_key, "fields": fields})
+            actor_payload = _revision_actor_payload(item_id_key)
+            changed_entry = {
+                "item_id": item_id_key,
+                "base_index": b.index,
+                "target_index": t.index,
+                "fields": fields,
+                "edited_by": actor_payload,
+            }
+            changed.append(changed_entry)
             if want_diffs:
                 field_diffs.append(
                     {
                         "item_id": item_id_key,
+                        "base_index": b.index,
+                        "target_index": t.index,
                         "fields": fields,
+                        "edited_by": actor_payload,
                         "before": {
                             "input": b.input,
                             "expected_output": b.expected_output,
