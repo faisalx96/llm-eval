@@ -181,6 +181,12 @@
       var hl = hljsLang(lang);
       if (hl && window.hljs) {
         try { pre.innerHTML = window.hljs.highlight(text, { language: hl, ignoreIllegals: true }).value; } catch (e) {}
+      } else if (text.indexOf('\n') === -1) {
+        // Single-line plain-text output (error messages, URLs) reads better
+        // wrapped than behind a horizontal scrollbar. Multi-line text blocks
+        // (ASCII diagrams) keep pre + scroll.
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.wordBreak = 'break-word';
       }
 
       var wrap = document.createElement('div');
