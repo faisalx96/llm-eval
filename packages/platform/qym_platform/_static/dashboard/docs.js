@@ -1,0 +1,285 @@
+/* قيِّم Docs — client-side engine for the native documentation page.
+ * Renders the section nav, loads content partials on demand (hash-routed),
+ * builds a per-page table of contents with scroll-spy, and enhances code
+ * blocks with copy buttons. No build step, no external dependencies. */
+(function () {
+  'use strict';
+
+  // ── Information architecture (verified against code) ──
+  var SECTIONS = [
+    {
+      id: 'get-started',
+      title: 'Get started',
+      icon: '<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2 0-2.8a2 2 0 0 0-3 0z"/><path d="M12 15l-3-3a22 22 0 0 1 8-10c2.6 0 5 2.4 5 5a22 22 0 0 1-10 8z"/><path d="M9 12H4s.6-3.3 2-4.5C7.1 6.5 9 7 9 7"/><path d="M12 15v5s3.3-.6 4.5-2c1-1.1.5-3 .5-3"/>',
+      pages: [
+        { id: 'what-is-qym', title: 'What is qym' },
+        { id: 'install', title: 'Install & requirements' },
+        { id: 'api-keys', title: 'Link repo & API keys' },
+        { id: 'first-run', title: 'Your first run' },
+        { id: 'builtin-metrics', title: 'Built-in metrics tour' },
+        { id: 'task-metric-io', title: 'Task & metric I/O' },
+        { id: 'datasets', title: 'Datasets & data access' },
+        { id: 'errors', title: 'Handling common errors' }
+      ]
+    },
+    {
+      id: 'sdk-guide',
+      title: 'SDK guide',
+      icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+      pages: [
+        { id: 'structure', title: 'Structure & exports' },
+        { id: 'ways-to-evaluate', title: 'Ways to evaluate' },
+        { id: 'metrics', title: 'Metrics deep dive' },
+        { id: 'custom-metrics', title: 'Custom metrics' },
+        { id: 'judges', title: 'LLM-as-judge & pairwise' },
+        { id: 'config', title: 'Configs & options' },
+        { id: 'multi-model', title: 'Multi-model & group analysis' },
+        { id: 'observers', title: 'Progress & observers' },
+        { id: 'results', title: 'Results, artifacts & tracing' }
+      ]
+    },
+    {
+      id: 'developer',
+      title: 'Developer / API',
+      icon: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+      pages: [
+        { id: 'api-overview', title: 'API overview & conventions' },
+        { id: 'auth', title: 'Authentication' },
+        { id: 'ingestion', title: 'Run ingestion' },
+        { id: 'endpoints', title: 'Endpoint reference' },
+        { id: 'cli', title: 'CLI reference' }
+      ]
+    }
+  ];
+
+  // Flatten for prev/next + lookups.
+  var FLAT = [];
+  SECTIONS.forEach(function (s) {
+    s.pages.forEach(function (p) { FLAT.push({ section: s.id, page: p.id, title: p.title, sectionTitle: s.title }); });
+  });
+
+  var ROOT = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+  function staticUrl(p) { return ROOT + '/static/' + String(p).replace(/^\/+/, ''); }
+
+  var ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+
+  var els = {};
+  var partialCache = {};
+  var tocObserver = null;
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+  function slugify(text) {
+    return String(text).toLowerCase().trim()
+      .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+  }
+
+  function findPage(sectionId, pageId) {
+    var s = SECTIONS.find(function (x) { return x.id === sectionId; });
+    if (!s) return null;
+    var p = s.pages.find(function (x) { return x.id === pageId; });
+    return p ? { section: s, page: p } : null;
+  }
+
+  function currentRoute() {
+    var h = (location.hash || '').replace(/^#\/?/, '');
+    if (!h) return null;
+    var parts = h.split('/');
+    if (parts.length < 2) return null;
+    return { section: parts[0], page: parts[1] };
+  }
+
+  // ── Section nav ──
+  function buildNav() {
+    var html = ''
+      + '<div class="docs-search">' + ICON_SEARCH
+      + '<input type="text" id="docs-search-input" placeholder="Search docs…" autocomplete="off" spellcheck="false" /></div>';
+    SECTIONS.forEach(function (s) {
+      html += '<div class="docs-nav-section" data-section="' + s.id + '">'
+        + '<div class="docs-nav-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + s.icon + '</svg>' + esc(s.title) + '</div>';
+      s.pages.forEach(function (p) {
+        html += '<a class="docs-nav-link" href="#' + s.id + '/' + p.id + '" data-key="' + s.id + '/' + p.id + '">' + esc(p.title) + '</a>';
+      });
+      html += '</div>';
+    });
+    html += '<div class="docs-nav-empty" id="docs-nav-empty" style="display:none">No matching pages</div>';
+    els.subnav.innerHTML = html;
+
+    var input = document.getElementById('docs-search-input');
+    if (input) input.addEventListener('input', function () { filterNav(input.value); });
+  }
+
+  function filterNav(query) {
+    var q = (query || '').toLowerCase().trim();
+    var anyVisible = false;
+    SECTIONS.forEach(function (s) {
+      var sectionEl = els.subnav.querySelector('.docs-nav-section[data-section="' + s.id + '"]');
+      var visibleInSection = 0;
+      s.pages.forEach(function (p) {
+        var link = sectionEl.querySelector('[data-key="' + s.id + '/' + p.id + '"]');
+        var match = !q || p.title.toLowerCase().indexOf(q) !== -1 || s.title.toLowerCase().indexOf(q) !== -1;
+        link.style.display = match ? '' : 'none';
+        if (match) { visibleInSection++; anyVisible = true; }
+      });
+      sectionEl.style.display = visibleInSection ? '' : 'none';
+    });
+    var empty = document.getElementById('docs-nav-empty');
+    if (empty) empty.style.display = anyVisible ? 'none' : '';
+  }
+
+  function setActiveNav(key) {
+    els.subnav.querySelectorAll('.docs-nav-link').forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('data-key') === key);
+    });
+  }
+
+  // ── Code block enhancement (copy buttons) ──
+  function enhanceCode() {
+    els.content.querySelectorAll('pre').forEach(function (pre) {
+      if (pre.closest('.docs-codeblock')) return;
+      var lang = pre.getAttribute('data-lang') || 'code';
+      var wrap = document.createElement('div');
+      wrap.className = 'docs-codeblock';
+      var head = document.createElement('div');
+      head.className = 'docs-codeblock-head';
+      head.innerHTML = '<span class="docs-codeblock-lang">' + esc(lang) + '</span>'
+        + '<button class="docs-copy-btn" type="button">' + ICON_COPY + '<span>Copy</span></button>';
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(head);
+      wrap.appendChild(pre);
+      var btn = head.querySelector('.docs-copy-btn');
+      btn.addEventListener('click', function () {
+        var text = pre.innerText;
+        var done = function () {
+          btn.classList.add('copied');
+          btn.innerHTML = ICON_CHECK + '<span>Copied</span>';
+          if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Copied to clipboard', 'success');
+          setTimeout(function () { btn.classList.remove('copied'); btn.innerHTML = ICON_COPY + '<span>Copy</span>'; }, 1800);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); });
+        } else { fallbackCopy(text); done(); }
+      });
+    });
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+  }
+
+  // ── Table of contents + scroll-spy ──
+  function buildTOC() {
+    if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+    var headings = Array.prototype.slice.call(els.content.querySelectorAll('h2, h3'));
+    if (!headings.length) { els.toc.innerHTML = '<div class="docs-toc-empty">—</div>'; return; }
+    var html = '<div class="docs-toc-title">On this page</div>';
+    headings.forEach(function (h, i) {
+      if (!h.id) h.id = slugify(h.textContent) || ('section-' + i);
+      var lvl = h.tagName === 'H3' ? ' lvl-3' : '';
+      html += '<a class="docs-toc-link' + lvl + '" data-target="' + h.id + '">' + esc(h.textContent) + '</a>';
+    });
+    els.toc.innerHTML = html;
+
+    els.toc.querySelectorAll('.docs-toc-link').forEach(function (a) {
+      a.addEventListener('click', function () {
+        var target = document.getElementById(a.getAttribute('data-target'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    var scroller = document.getElementById('shell-content') || null;
+    tocObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = entry.target.id;
+        els.toc.querySelectorAll('.docs-toc-link').forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('data-target') === id);
+        });
+      });
+    }, { root: scroller, rootMargin: '0px 0px -75% 0px', threshold: 0 });
+    headings.forEach(function (h) { tocObserver.observe(h); });
+  }
+
+  // ── Prev / next ──
+  function buildPager(key) {
+    var idx = FLAT.findIndex(function (f) { return (f.section + '/' + f.page) === key; });
+    if (idx < 0) return;
+    var prev = idx > 0 ? FLAT[idx - 1] : null;
+    var next = idx < FLAT.length - 1 ? FLAT[idx + 1] : null;
+    var html = '';
+    if (prev) html += '<a class="prev" href="#' + prev.section + '/' + prev.page + '"><span class="docs-pager-label">Previous</span><span class="docs-pager-title">' + esc(prev.title) + '</span></a>';
+    if (next) html += '<a class="next" href="#' + next.section + '/' + next.page + '"><span class="docs-pager-label">Next</span><span class="docs-pager-title">' + esc(next.title) + '</span></a>';
+    if (html) {
+      var pager = document.createElement('div');
+      pager.className = 'docs-pager';
+      pager.innerHTML = html;
+      els.content.appendChild(pager);
+    }
+  }
+
+  // ── Page loading ──
+  function loadPage(sectionId, pageId) {
+    var found = findPage(sectionId, pageId);
+    if (!found) { found = findPage(FLAT[0].section, FLAT[0].page); sectionId = FLAT[0].section; pageId = FLAT[0].page; }
+    var key = sectionId + '/' + pageId;
+    setActiveNav(key);
+    document.title = 'قيِّم • ' + found.page.title;
+    els.content.innerHTML = '<div class="docs-loading">Loading…</div>';
+
+    var render = function (htmlText) {
+      els.content.innerHTML = htmlText;
+      enhanceCode();
+      buildTOC();
+      buildPager(key);
+      var scroller = document.getElementById('shell-content');
+      if (scroller) scroller.scrollTop = 0;
+    };
+
+    if (partialCache[key]) { render(partialCache[key]); return; }
+    fetch(staticUrl('docs/' + key + '.html'), { credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then(function (text) { partialCache[key] = text; render(text); })
+      .catch(function () {
+        render('<p class="docs-eyebrow">' + esc(found.section.title) + '</p>'
+          + '<h1>' + esc(found.page.title) + '</h1>'
+          + '<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+          + '<p>This page hasn’t been written yet.</p></div>');
+      });
+  }
+
+  function route() {
+    var r = currentRoute();
+    if (!r || !findPage(r.section, r.page)) {
+      var first = FLAT[0];
+      history.replaceState(null, '', '#' + first.section + '/' + first.page);
+      loadPage(first.section, first.page);
+      return;
+    }
+    loadPage(r.section, r.page);
+  }
+
+  function start() {
+    els.subnav = document.getElementById('docs-subnav');
+    els.content = document.getElementById('docs-content');
+    els.toc = document.getElementById('docs-toc');
+    if (!els.subnav || !els.content || !els.toc) return;
+    buildNav();
+    window.addEventListener('hashchange', route);
+    route();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();

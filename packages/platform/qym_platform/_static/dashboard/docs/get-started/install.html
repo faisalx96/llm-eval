@@ -1,0 +1,126 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Install &amp; requirements</h1>
+<p class="docs-lead">qym installs as a single PyPI package into whatever Python environment runs your evaluations. The base install is fully offline-capable — credentials and optional extras only matter when you reach for the platform or LLM-as-judge metrics.</p>
+
+<h2>Requirements</h2>
+<ul>
+  <li><strong>Python 3.9 or newer.</strong> The package declares <code>requires-python = "&gt;=3.9"</code> and is tested on 3.9, 3.10, and 3.11.</li>
+  <li><strong>Any standard environment</strong> — a virtualenv, <code>uv</code> environment, Poetry, Conda, or a container all work. Install qym into the same environment that runs your application code or notebook kernel.</li>
+  <li><strong>No external services required to start.</strong> The base install evaluates against local CSV/JSONL files with no API keys. Platform streaming and LLM judges are opt-in (covered below).</li>
+</ul>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">One environment per project.</span> Keep qym, your provider clients, and your notebook kernel in the same environment so imports don't drift. The single most common install problem is running Python from a different environment than the one where qym was installed.</p>
+</div>
+
+<h2>Install the SDK</h2>
+<p>Install <code>qym</code> from PyPI:</p>
+<pre data-lang="bash">pip install qym</pre>
+<p>This is the normal install for application code, notebooks, workers, services, and CI jobs. It pulls in everything needed for local evaluation and for streaming runs to a platform deployment — including the built-in auto-instrumentation for OpenAI, LangChain, and LiteLLM, which ship in the base package.</p>
+
+<h2>Verify the install</h2>
+<p>Confirm qym imports and the core classes are available:</p>
+<pre data-lang="bash">python -c "from qym import Evaluator, CsvDataset; print(Evaluator, CsvDataset)"</pre>
+<p>Or, equivalently, from a script or notebook cell:</p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+print(Evaluator)
+print(CsvDataset)</pre>
+<p>Both <code>Evaluator</code> and <code>CsvDataset</code> are top-level exports. The full public surface from <code>qym</code> also includes <code>EvaluationResult</code>, <code>InMemoryDataset</code>, <code>JsonlDataset</code>, <code>QymDataset</code>, <code>EvaluationObserver</code>, <code>ProgressSnapshot</code>, <code>RunSpec</code>, and <code>list_available_metrics</code>. There is no free <code>evaluate()</code> or <code>run()</code> function — the entry point is the <code>Evaluator</code> class.</p>
+
+<h2>Optional: LLM-as-judge metrics</h2>
+<p>The seven built-in <strong>code metrics</strong> ship with the base install and need nothing extra: <code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>response_time</code>, <code>token_count</code>, <code>correctness</code>, and <code>faithfulness</code>.</p>
+<p>The seven <strong>LLM-as-judge metrics</strong> — <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, and <code>tool_calling</code> — are gated behind the <code>openai</code> package. qym imports them only if <code>openai</code> is installed; without it, those names are simply absent from the metric registry. Install it with:</p>
+<pre data-lang="bash">pip install openai</pre>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">About <code>pip install qym[judges]</code>.</span> If you call a judge without <code>openai</code> installed, the error message suggests <code>pip install qym[judges]</code>. That extra resolves to the same dependency — the <code>openai</code> package — so <code>pip install openai</code> is the reliable command. Judges also need runtime configuration (a model and an API key); see <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise</a> for judge setup.</p>
+</div>
+<p>The judges use any OpenAI-compatible Chat Completions endpoint (OpenAI, vLLM, Ollama, and similar), so a self-hosted model works as long as the <code>openai</code> client can reach it.</p>
+
+<h2>About the platform package</h2>
+<p>The qym <strong>platform</strong> is a deployed service that stores runs, shows trends, and supports review — it is something a team operates, not something most SDK users install. If you are writing tasks and streaming runs to an existing deployment, you only need <code>pip install qym</code>; you point the SDK at the deployment with environment variables (next section).</p>
+<p>Installing and operating the platform server itself is a separate, deployment-time concern handled by whoever runs your qym instance, and is out of scope for this page.</p>
+
+<h2>Environment variables by use case</h2>
+<p>The base install needs no configuration. Add variables only as you opt into each capability.</p>
+
+<h3>Local CSV / JSONL evaluation</h3>
+<p>No qym environment variables are required. Load a file directly and run:</p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+dataset = CsvDataset("qa.csv", input_col="question", expected_col="answer")</pre>
+<p>See <a href="#get-started/first-run">Your first run</a> for the complete offline walkthrough.</p>
+
+<h3>Stream runs to the platform</h3>
+<p>Set these two variables so SDK runs appear in the shared app while they execute:</p>
+<pre data-lang="bash">export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=&lt;your-platform-api-key&gt;</pre>
+<p><code>QYM_BASE_URL</code> is the canonical base-URL variable (a trailing slash is stripped automatically). API keys are <strong>project-scoped</strong> and created in the platform UI — the raw token is shown once. How to create one is covered in <a href="#get-started/api-keys">Link repo &amp; API keys</a>.</p>
+
+<h3>Self-signed or internal-CA platform</h3>
+<p>If your deployment uses an internal certificate authority, point the SDK at the issuing CA bundle:</p>
+<pre data-lang="bash">export QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem</pre>
+<p>For local development only, certificate verification can be disabled:</p>
+<pre data-lang="bash">export QYM_PLATFORM_SSL_VERIFY=false</pre>
+<p>These fall back to <code>QYM_CA_BUNDLE</code> and <code>QYM_SSL_VERIFY</code> respectively if the platform-specific variables are unset.</p>
+<div class="docs-callout danger">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <p><span class="docs-callout-title">Don't disable TLS verification in production.</span> <code>QYM_PLATFORM_SSL_VERIFY=false</code> turns off certificate checking entirely. Use it only for local troubleshooting; in any shared or production setting, install the correct CA bundle instead.</p>
+</div>
+
+<h3>LLM-as-judge configuration</h3>
+<p>Judge metrics need a model and an API key at runtime (in addition to the <code>openai</code> package):</p>
+<pre data-lang="bash">export QYM_JUDGE_MODEL=gpt-4o-mini
+export QYM_JUDGE_API_KEY=&lt;provider-key&gt;
+export QYM_JUDGE_BASE_URL=https://api.openai.com/v1</pre>
+<p><code>QYM_JUDGE_API_KEY</code> falls back to <code>OPENAI_API_KEY</code>, and <code>QYM_JUDGE_BASE_URL</code> falls back to <code>OPENAI_BASE_URL</code>. There is <strong>no default model</strong>: if neither a model nor a key is configured, the judge raises a <code>RuntimeError</code> when it runs.</p>
+
+<h2>Common install checks</h2>
+<table>
+  <thead>
+    <tr><th>Symptom</th><th>Likely cause &amp; fix</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>ModuleNotFoundError: No module named 'qym'</code></td>
+      <td>Python is running from a different environment than the one where qym was installed. Activate the right environment, or run <code>python -m pip install qym</code> with the interpreter you'll actually use.</td>
+    </tr>
+    <tr>
+      <td>Notebook can't import qym</td>
+      <td>Install qym into the <em>kernel's</em> environment, not just your shell. Run <code>%pip install qym</code> in a cell, or install into the environment backing the kernel.</td>
+    </tr>
+    <tr>
+      <td>Judge metric raises <code>ImportError</code></td>
+      <td>The <code>openai</code> package is missing. Run <code>pip install openai</code>. The error text suggests <code>pip install qym[judges]</code>, which installs the same dependency.</td>
+    </tr>
+    <tr>
+      <td>Judge metric raises <code>RuntimeError</code> before scoring</td>
+      <td>Judge runtime config is missing. Set <code>QYM_JUDGE_MODEL</code> and an API key (<code>QYM_JUDGE_API_KEY</code> or <code>OPENAI_API_KEY</code>) — there is no default model.</td>
+    </tr>
+    <tr>
+      <td><code>Metric 'X' not found. Available metrics: ...</code></td>
+      <td>Either a typo in the metric name, or a judge metric requested without <code>openai</code> installed (judge names only register when <code>openai</code> is present). Check the spelling against the listed names.</td>
+    </tr>
+    <tr>
+      <td>Platform runs don't appear</td>
+      <td>Verify <code>QYM_BASE_URL</code> and <code>QYM_API_KEY</code> are set in the SDK's environment and the key belongs to the right project. See <a href="#get-started/api-keys">Link repo &amp; API keys</a>.</td>
+    </tr>
+    <tr>
+      <td>SSL certificate verification error</td>
+      <td>Your platform uses an internal CA. Set <code>QYM_PLATFORM_CA_BUNDLE</code> to the issuing CA on the machine running the SDK.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Next steps</h2>
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>Your first run</h3>
+    <p>Score a local CSV end-to-end with zero credentials. The fastest path to a green run. <a href="#get-started/first-run">Open the walkthrough</a>.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Link repo &amp; API keys</h3>
+    <p>Create a project-scoped API key and stream runs to the shared app for review. <a href="#get-started/api-keys">Set up credentials</a>.</p>
+  </div>
+</div>

@@ -1,0 +1,468 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Multi-model, multi-run &amp; group analysis</h1>
+<p class="docs-lead">One run rarely settles a question. When you need to compare models, repeat the same task several times to measure stability, or compute Pass@K-style statistics over a group of runs, qym gives you three building blocks: multi-model evaluation, multi-run specs, and the group-analysis helpers that mirror the platform dashboard's cohort math in plain Python.</p>
+
+<p>This page covers, in order:</p>
+<ul>
+  <li><strong>Multi-model</strong> &mdash; same task, same dataset, same metrics, only the model changes (<code>model=[...]</code>).</li>
+  <li><strong>Multi-run</strong> &mdash; tasks, datasets, metrics, or configs differ between runs (<code>Evaluator.run_parallel(...)</code> / <code>RunSpec</code>).</li>
+  <li><strong>Group analysis</strong> &mdash; compute Pass@K, Pass^K, Avg@K, Max@K, consistency, and reliability over a list of <code>EvaluationResult</code> objects (<code>analyze_group_runs</code> / <code>compare_group_runs</code>).</li>
+</ul>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Align by item ID.</span> Every comparison and group metric on this page aligns runs by <strong>dataset item identity</strong>, not row position. Give each dataset row a stable <code>id</code> (see <a href="#get-started/datasets">Datasets</a>) so runs line up correctly across models and repetitions.</p>
+</div>
+
+<h2>Choosing the right mode</h2>
+<table>
+  <thead>
+    <tr><th>Mode</th><th>Use when</th><th>Entry point</th><th>Returns</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Multi-model</strong></td>
+      <td>Only the model changes. Task, dataset, metrics, and config are identical.</td>
+      <td><code>Evaluator(..., model=[...]).run()</code></td>
+      <td><code>list[EvaluationResult]</code></td>
+    </tr>
+    <tr>
+      <td><strong>Multi-run</strong></td>
+      <td>Tasks, datasets, metrics, configs, or model groups differ between runs (e.g. prompt A vs prompt B).</td>
+      <td><code>Evaluator.run_parallel(runs=[...])</code></td>
+      <td><code>list[EvaluationResult]</code></td>
+    </tr>
+    <tr>
+      <td><strong>Repeated single config</strong> (for Pass@K)</td>
+      <td>Same exact config run K times to measure stability/flakiness.</td>
+      <td>Call <code>.run()</code> K times, or list the same model K times.</td>
+      <td><code>list[EvaluationResult]</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>All three produce a <strong>list of <code>EvaluationResult</code></strong>, which is exactly the input the group-analysis helpers expect.</p>
+
+<h2>Multi-model runs</h2>
+
+<p>Pass a list of model labels to <code>model=</code>. qym creates one run per model, all sharing the same task, dataset, metrics, and config.</p>
+
+<pre data-lang="python">from qym import Evaluator
+
+
+def answer(question: str, model_name: str = "gpt-4o-mini") -&gt; str:
+    return call_llm(model=model_name, prompt=question)
+
+
+results = Evaluator(
+    task=answer,
+    dataset=dataset,
+    metrics=["exact_match", "contains"],
+    model=["gpt-4o-mini", "gpt-4.1-mini"],
+    config={"run_name": "qa-model-compare"},
+).run(show_tui=False, max_parallel_runs=2)
+
+for r in results:
+    print(r.run_name, r.success_rate)</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">List vs single result.</span> A multi-model run returns a <strong>list</strong>. Internally, <code>run()</code> only takes the multi-model path when <strong>more than one</strong> model is given (the check is <code>len(models) &gt; 1</code>). So <code>model=["gpt-4o-mini"]</code> &mdash; a one-element list &mdash; runs as a single model and returns a single <code>EvaluationResult</code>, not a list. Use two or more entries when you want list semantics.</p>
+</div>
+
+<h3>Routing the model into your task</h3>
+<p>qym injects the model into your task function when the function declares a parameter named <code>model_name</code> or <code>model</code>. If your task hardcodes a provider model and ignores that parameter, every model run will silently call the same model &mdash; the comparison looks like it ran but tells you nothing.</p>
+
+<pre data-lang="python"># qym fills model_name for each run in the list
+def answer(question: str, model_name: str = "gpt-4o-mini") -&gt; str:
+    return call_llm(model=model_name, prompt=question)
+
+# Equivalent: name the parameter `model`
+def answer(question: str, model: str = "gpt-4o-mini") -&gt; str:
+    return call_llm(model=model, prompt=question)</pre>
+
+<h3>Provider-prefixed model names</h3>
+<p>You can pass provider-prefixed IDs such as <code>openai/gpt-4o-mini</code> or <code>qwen/qwen3-235b</code>. qym strips the provider prefix for display, run IDs, and artifact paths (so the run shows <code>gpt-4o-mini</code>), while the <strong>full</strong> prefixed name is preserved for routing into your task (delivered through <code>model</code> / <code>model_full</code>). This is what lets OpenRouter-style identifiers work for the API call while keeping platform displays clean.</p>
+
+<h3>Controlling parallelism with <code>max_parallel_runs</code></h3>
+<table>
+  <thead><tr><th>Value</th><th>Behavior</th></tr></thead>
+  <tbody>
+    <tr><td><code>None</code> (default)</td><td>All model runs execute in parallel.</td></tr>
+    <tr><td><code>1</code></td><td>Sequential &mdash; one model run at a time.</td></tr>
+    <tr><td><code>N</code></td><td>At most <code>N</code> model runs active concurrently.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Concurrency multiplies.</span> Each run uses its own <code>max_concurrency</code> (default <strong>10</strong>; see <a href="#sdk-guide/config">Configs &amp; options</a>). Running models in parallel multiplies the in-flight item calls: <code>parallel runs &times; max_concurrency</code>. Four models at <code>max_concurrency=10</code> can produce up to 40 simultaneous provider calls. Cap it with <code>max_parallel_runs</code>, a lower <code>max_concurrency</code>, or both before you hit rate limits.</p>
+</div>
+
+<h3>The CLI equivalent</h3>
+<p>From the command line, pass <strong>comma-separated</strong> model names to a single <code>--model</code> option. See the <a href="#developer/cli">CLI reference</a> for the full flag set.</p>
+
+<pre data-lang="bash">qym run create \
+  --task-file tasks.py --task-function answer \
+  --dataset-csv datasets/qa.csv \
+  --metrics exact_match,contains \
+  --model gpt-4o-mini,gpt-4.1-mini \
+  --no-ui</pre>
+
+<h2>Multi-run specs (<code>run_parallel</code>)</h2>
+
+<p>Use <code>Evaluator.run_parallel(...)</code> when runs differ in more than just the model &mdash; different tasks, datasets, metric sets, or config values. Each run is described by a dict (or a <code>RunSpec</code>), and they all execute together under one shared dashboard.</p>
+
+<p>The verified signature is:</p>
+
+<pre data-lang="python">Evaluator.run_parallel(
+    runs,                       # Sequence[dict | RunSpec]
+    show_tui=True,
+    auto_save=False,            # note: defaults False here, unlike run()
+    save_format="csv",
+    max_parallel_runs=None,
+    observer=None,
+) -&gt; list[EvaluationResult]</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">auto_save differs from run().</span> <code>run_parallel(...)</code> defaults <code>auto_save=False</code> (and so does <code>arun()</code>), whereas <code>run()</code> defaults <code>auto_save=True</code>. If you want artifacts written automatically, pass <code>auto_save=True</code> &mdash; or set a per-run <code>output_path</code> (see below), which is saved regardless.</p>
+</div>
+
+<h3>The run dict shape</h3>
+<p>Each run definition accepts these keys (mapped to a <code>RunSpec</code> internally):</p>
+
+<table>
+  <thead><tr><th>Key</th><th>Required</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td>Yes</td><td>Stable run key. Required on <code>RunSpec</code>; becomes the run identifier.</td></tr>
+    <tr><td><code>task</code></td><td>Yes</td><td>The callable (or supported framework object) being evaluated.</td></tr>
+    <tr><td><code>dataset</code></td><td>Yes</td><td>A dataset object, a local <code>.csv</code>/<code>.jsonl</code> path, or a platform dataset name. See the <a href="#get-started/datasets">Datasets</a> page for string-resolution rules.</td></tr>
+    <tr><td><code>metrics</code></td><td>Yes</td><td>List of built-in metric names and/or metric callables. A comma-separated string is also accepted and split into a list.</td></tr>
+    <tr><td><code>config</code></td><td>No</td><td>A dict (or <code>EvaluatorConfig</code>) of run config such as <code>run_name</code>, <code>max_concurrency</code>, <code>task_name</code>.</td></tr>
+    <tr><td><code>display_name</code></td><td>No</td><td>Human-readable label for the dashboard / TUI.</td></tr>
+    <tr><td><code>metadata</code></td><td>No</td><td>Non-secret labels (e.g. <code>prompt_version</code>). Keep secrets out.</td></tr>
+    <tr><td><code>output</code> / <code>output_path</code></td><td>No</td><td>File path to save this run's artifact to. The format is inferred from the extension (<code>.csv</code> or <code>.json</code>).</td></tr>
+    <tr><td><code>models</code></td><td>No</td><td>A list here is <strong>expanded</strong> into one run per model before execution.</td></tr>
+  </tbody>
+</table>
+
+<pre data-lang="python">from qym import Evaluator
+
+results = Evaluator.run_parallel(
+    runs=[
+        {
+            "name": "baseline",
+            "display_name": "Baseline prompt",
+            "task": baseline_task,
+            "dataset": dataset,
+            "metrics": ["exact_match"],
+            "config": {"task_name": "support-rag", "max_concurrency": 4},
+            "metadata": {"prompt_version": "v1"},
+            "output_path": "qym_results/baseline.csv",
+        },
+        {
+            "name": "candidate",
+            "display_name": "Candidate prompt",
+            "task": candidate_task,
+            "dataset": dataset,
+            "metrics": ["exact_match", "relevance"],
+            "config": {"task_name": "support-rag", "max_concurrency": 4},
+            "metadata": {"prompt_version": "v2"},
+            "output_path": "qym_results/candidate.csv",
+        },
+    ],
+    show_tui=False,
+    max_parallel_runs=2,
+)</pre>
+
+<h3>Using a typed <code>RunSpec</code></h3>
+<p><code>RunSpec</code> is exported from <code>qym</code> and is the typed form of a run dict. Its required field is <code>name</code>; <code>task</code>, <code>dataset</code>, and <code>metrics</code> are also required, while <code>config</code> defaults to an empty <code>EvaluatorConfig</code> and <code>metadata</code> to an empty dict.</p>
+
+<pre data-lang="python">from qym import Evaluator, RunSpec
+from qym.core.config import EvaluatorConfig
+
+results = Evaluator.run_parallel(
+    runs=[
+        RunSpec(
+            name="baseline",
+            task=baseline_task,
+            dataset=dataset,
+            metrics=["exact_match"],
+            config=EvaluatorConfig(task_name="support-rag", max_concurrency=4),
+            metadata={"prompt_version": "v1"},
+        ),
+    ],
+)</pre>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Multi-model is multi-run under the hood.</span> When you call <code>Evaluator(..., model=[...]).run()</code>, qym builds one run dict per model and delegates to <code>run_parallel(...)</code>. That is why both modes return a list and share the same dashboard, observer events, and <code>max_parallel_runs</code> semantics.</p>
+</div>
+
+<h3>Progress for wrappers: the <code>run_matrix</code> event</h3>
+<p>Both multi-model and multi-run executions emit a <code>run_matrix</code> progress event <strong>before</strong> any individual run starts, so a wrapper UI can create pending rows up front. Attach a callback via <code>observer=ProgressCallbackObserver(...)</code> (the <code>progress_callback=</code> shortcut lives on <code>Evaluator(...)</code>, not on <code>run_parallel(...)</code>). See <a href="#sdk-guide/observers">Progress, observers &amp; wrappers</a> for the full event vocabulary.</p>
+
+<pre data-lang="python">from qym import Evaluator, ProgressCallbackObserver, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -&gt; None:
+    if snapshot.event == "run_matrix":
+        for row in snapshot.run_matrix or []:
+            create_pending_row(
+                run_id=row["run_id"],
+                display_name=row["display_name"],
+                model=row.get("model"),
+                metrics=row["metrics"],
+                total_items=row.get("total_items"),  # None if dataset not yet resolved
+            )
+        return
+    if snapshot.event == "run_start":
+        patch_row(
+            run_id=snapshot.run_id,
+            qym_url=(snapshot.run_info or {}).get("qym_url"),
+            platform_run_id=(snapshot.run_info or {}).get("platform_run_id"),
+        )
+
+
+results = Evaluator.run_parallel(
+    runs=runs_config,
+    observer=ProgressCallbackObserver(on_progress),
+)</pre>
+
+<p>Each matrix row carries: <code>run_id</code>, <code>display_name</code>, <code>task</code>, <code>dataset</code>, <code>model</code>, <code>metrics</code>, <code>total_items</code> (when the dataset can be resolved up front, otherwise <code>None</code>), <code>status</code> (initially <code>"pending"</code>), and <code>qym_url</code> / <code>platform_run_id</code> (both <code>null</code> in the matrix). Platform URLs are patched in later through each run's own <code>run_start</code> event, because the platform run is only created when that run begins.</p>
+
+<h2>Group run analysis</h2>
+
+<p>Once you have a list of <code>EvaluationResult</code> objects &mdash; from a multi-model run, a multi-run batch, or K repetitions of the same config &mdash; the group-analysis helpers compute the same cohort statistics the platform dashboard shows, entirely in Python and offline. They are exported at the top level:</p>
+
+<pre data-lang="python">from qym import (
+    analyze_group_runs,
+    compare_group_runs,
+    GroupRunAnalysis,
+)</pre>
+
+<h3>How scores are read</h3>
+<p>For each run, the helpers read every item's score for the requested metric out of <code>result.results[item_id]["scores"][metric]</code>, normalize it to a number, and then aggregate <strong>over the union of item IDs</strong> across the runs in the group. Score normalization (verified from <code>parse_score_value</code>) is:</p>
+
+<table>
+  <thead><tr><th>Raw value</th><th>Normalized score</th></tr></thead>
+  <tbody>
+    <tr><td><code>bool</code> <code>True</code> / <code>False</code></td><td><code>1.0</code> / <code>0.0</code></td></tr>
+    <tr><td><code>int</code> / <code>float</code> (finite)</td><td>the number itself</td></tr>
+    <tr><td>object with a <code>.score</code> attribute (e.g. <code>MetricResult</code>)</td><td>recurses into <code>.score</code></td></tr>
+    <tr><td>dict with an <code>"error"</code> key</td><td><code>0.0</code></td></tr>
+    <tr><td>dict with a <code>"score"</code> key</td><td>recurses into <code>"score"</code></td></tr>
+    <tr><td>strings <code>"true"/"yes"/"y"</code> or <code>&#x2713;</code></td><td><code>1.0</code></td></tr>
+    <tr><td>strings <code>"false"/"no"/"n"</code> or <code>&#x2717;</code></td><td><code>0.0</code></td></tr>
+    <tr><td>percent string like <code>"82%"</code></td><td><code>0.82</code></td></tr>
+    <tr><td><code>None</code>, empty, or <code>"n/a"/"na"/"none"/"null"</code></td><td><code>None</code> (excluded for that item)</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Missing scores are excluded; errors count as 0.</span> If an item has no score in a given run (missing or <code>None</code>), that run is simply not counted for that item. Failed items count as a <code>0.0</code> score &mdash; but <strong>only when the requested metric is among that run's declared metrics</strong> (<code>result.metrics</code>). Erroring on a metric the run never declared does not silently inject zeros.</p>
+</div>
+
+<h3><code>analyze_group_runs</code> &mdash; statistics for one group</h3>
+
+<p>Verified signature (all arguments after <code>results</code> are keyword-only):</p>
+
+<pre data-lang="python">analyze_group_runs(
+    results,                    # Sequence[EvaluationResult]
+    *,
+    metric: str,                # required
+    threshold: float = 0.8,
+    track_distribution: bool = False,
+) -&gt; dict</pre>
+
+<pre data-lang="python">from qym import Evaluator, analyze_group_runs
+
+results = Evaluator(
+    task=answer,
+    dataset=dataset,
+    metrics=["correctness"],
+    model=["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"],
+).run(show_tui=False)
+
+summary = analyze_group_runs(results, metric="correctness", threshold=0.8)
+
+print(summary["pass_at_k"], summary["pass_hat_k"], summary["avg_at_k"])</pre>
+
+<p>The returned dict contains (verified field names):</p>
+
+<table>
+  <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>metric</code>, <code>threshold</code></td><td>Echo of the inputs.</td></tr>
+    <tr><td><code>k</code></td><td>Number of runs in the group (<code>len(results)</code>).</td></tr>
+    <tr><td><code>total_items</code></td><td>Items that had at least one usable score across the group.</td></tr>
+    <tr><td><code>total_score_count</code>, <code>total_score_sum</code></td><td>Count and sum of all included item&times;run scores.</td></tr>
+    <tr><td><code>failed_count</code></td><td>Number of error rows counted across the group.</td></tr>
+    <tr><td><code>pass_at_k</code></td><td><strong>Pass@K</strong> &mdash; fraction of items where <em>at least one</em> run scored <code>&gt;= threshold</code>.</td></tr>
+    <tr><td><code>pass_hat_k</code></td><td><strong>Pass^K</strong> &mdash; fraction of items where <em>every included</em> run passed.</td></tr>
+    <tr><td><code>avg_at_k</code> / <code>avg_score</code></td><td><strong>Avg@K</strong> &mdash; mean over all included item&times;run scores. (Both keys carry the same value.)</td></tr>
+    <tr><td><code>max_at_k</code></td><td><strong>Max@K</strong> &mdash; mean of the best score per item.</td></tr>
+    <tr><td><code>consistency</code></td><td>Average agreement across runs (see formula below). <code>None</code> if no item had &gt;1 score.</td></tr>
+    <tr><td><code>reliability</code></td><td>Average pass frequency for solvable items (see below). <code>None</code> if no item had &gt;1 score and a pass.</td></tr>
+    <tr><td><code>avg_latency</code>, <code>median_latency</code></td><td>Latency stats in milliseconds over scored item&times;run pairs.</td></tr>
+    <tr><td><code>min_score</code>, <code>stddev_score</code></td><td>Min and population standard deviation over all included scores.</td></tr>
+    <tr><td><code>correct_distribution</code></td><td>Histogram of pass counts per item (length <code>k+1</code>), only when <code>track_distribution=True</code>; otherwise <code>None</code>.</td></tr>
+    <tr><td><code>items</code></td><td>Per-item breakdown (scores, passes, attempts, per-item consistency/reliability, etc.).</td></tr>
+  </tbody>
+</table>
+
+<h3>The metric definitions</h3>
+<p>These are the exact formulas the helper computes per item, then averages. Let <code>score_count</code> be the number of usable runs for an item, <code>pass_count</code> the number scoring <code>&gt;= threshold</code>, and <code>fail_count = score_count - pass_count</code>.</p>
+
+<table>
+  <thead><tr><th>Metric</th><th>Per item</th><th>Reported as</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Pass@K</strong> (<code>pass_at_k</code>)</td><td><code>pass_count &gt; 0</code></td><td>fraction of items that are true</td></tr>
+    <tr><td><strong>Pass^K</strong> (<code>pass_hat_k</code>)</td><td><code>pass_count == score_count</code> (and <code>score_count &gt; 0</code>)</td><td>fraction of items that are true</td></tr>
+    <tr><td><strong>Avg@K</strong> (<code>avg_at_k</code>)</td><td>&mdash;</td><td><code>total_score_sum / total_score_count</code></td></tr>
+    <tr><td><strong>Max@K</strong> (<code>max_at_k</code>)</td><td><code>max(scores)</code></td><td>mean of per-item max</td></tr>
+    <tr><td><strong>Consistency</strong></td><td><code>2 * max(pass_count, fail_count) / score_count - 1</code> (only for items with <code>score_count &gt; 1</code>)</td><td>mean over multi-run items</td></tr>
+    <tr><td><strong>Reliability</strong></td><td><code>pass_count / score_count</code> (only items with <code>score_count &gt; 1</code> <em>and</em> at least one pass)</td><td>mean over those items</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Reading the two stability metrics.</strong> Consistency ranges from <code>0</code> (a perfect 50/50 split &mdash; maximally flaky) to <code>1</code> (every run agrees). Reliability is simply how often a solvable item actually passes, so it focuses on items the system <em>can</em> get right but doesn't always. A model that always passes or always fails an item is perfectly consistent; reliability tells you, among the items it sometimes gets right, how dependable it is.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Threshold matters.</span> The default <code>threshold</code> is <code>0.8</code>. Pass@K, Pass^K, consistency, and reliability all depend on it &mdash; a score <em>at or above</em> the threshold counts as a pass. For boolean metrics like <code>exact_match</code> (which normalize to <code>1.0</code>/<code>0.0</code>) the threshold is effectively a yes/no line. For graded judge scores, set it to the bar you actually care about.</p>
+</div>
+
+<h3>The <code>GroupRunAnalysis</code> wrapper</h3>
+<p><code>GroupRunAnalysis</code> is a thin convenience class over a list of results, useful when you want to call several metrics or compare without re-passing the same list.</p>
+
+<pre data-lang="python">from qym import GroupRunAnalysis
+
+group = GroupRunAnalysis(results)
+acc = group.metric("correctness", threshold=0.8)
+overlap = group.metric("contains", threshold=1.0)
+
+# compare_to(other, *, metric, threshold=0.8)
+delta = group.compare_to(other_results, metric="correctness", threshold=0.8)</pre>
+
+<h3><code>compare_group_runs</code> &mdash; comparing two groups</h3>
+
+<p>Use this to compare a baseline cohort against a candidate cohort (for example, prompt v1 across 3 seeds vs prompt v2 across 3 seeds). It uses <strong>stricter cohort semantics</strong> than <code>analyze_group_runs</code>.</p>
+
+<pre data-lang="python">compare_group_runs(
+    left_results,               # Sequence[EvaluationResult] (baseline)
+    right_results,              # Sequence[EvaluationResult] (candidate)
+    *,
+    metric: str,                # required
+    threshold: float = 0.8,
+) -&gt; dict</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Eligibility is all-or-nothing.</span> An item is <strong>eligible</strong> only when <em>every</em> run on <em>both</em> sides has a non-null score for it. If any single run on either side is missing that item, the item is dropped from the comparison entirely. This keeps the two sides perfectly aligned, but it means an item that errored in even one run is excluded.</p>
+</div>
+
+<pre data-lang="python">from qym import compare_group_runs
+
+comparison = compare_group_runs(
+    baseline_results,
+    candidate_results,
+    metric="correctness",
+    threshold=0.8,
+)
+
+print(comparison["deltas"]["pass_at_k"])      # candidate minus baseline
+print(comparison["summary"]["improved_count"])
+print(comparison["buckets"]["b_sweeps_a"]["item_ids"])</pre>
+
+<p>The returned dict includes (verified):</p>
+
+<table>
+  <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>metric</code>, <code>threshold</code>, <code>k</code></td><td>Inputs and the left run count.</td></tr>
+    <tr><td><code>eligible_items</code></td><td>Items scored by every run on both sides.</td></tr>
+    <tr><td><code>left_run_count</code>, <code>right_run_count</code></td><td>Runs per side.</td></tr>
+    <tr><td><code>left</code>, <code>right</code></td><td>Aggregates per side: <code>pass_at_k</code>, <code>pass_hat_k</code>, <code>avg_at_k</code>, <code>consistency</code>, <code>reliability</code>, <code>avg_attempts</code>.</td></tr>
+    <tr><td><code>deltas</code></td><td><code>right - left</code> for <code>pass_at_k</code>, <code>pass_hat_k</code>, <code>avg_at_k</code>, <code>consistency</code>, <code>reliability</code>.</td></tr>
+    <tr><td><code>summary</code></td><td><code>improved_count</code>, <code>regressed_count</code>, <code>unchanged_count</code> (by per-item pass-count move), and <code>avg_attempts_delta</code>.</td></tr>
+    <tr><td><code>buckets</code></td><td>Four swing buckets (see below), each with <code>count</code>, <code>percentage</code>, and <code>item_ids</code>.</td></tr>
+    <tr><td><code>items</code></td><td>Per-item rows, sorted so the biggest swings toward the candidate appear first.</td></tr>
+  </tbody>
+</table>
+
+<h3>Swing buckets</h3>
+<p>For each eligible item, <code>compare_group_runs</code> classifies it into one of four buckets when the result is unambiguous (all runs on a side agree). "A" is the left/baseline group, "B" is the right/candidate group:</p>
+
+<table>
+  <thead><tr><th>Bucket</th><th>Condition</th><th>Read it as</th></tr></thead>
+  <tbody>
+    <tr><td><code>a_sweeps_b</code></td><td>Baseline passes on every run; candidate fails on every run.</td><td>Regression the candidate introduced.</td></tr>
+    <tr><td><code>b_sweeps_a</code></td><td>Candidate passes on every run; baseline fails on every run.</td><td>Clean win for the candidate.</td></tr>
+    <tr><td><code>both_pass</code></td><td>Every run on both sides passes.</td><td>Solidly solved either way.</td></tr>
+    <tr><td><code>both_fail</code></td><td>Every run on both sides fails.</td><td>Hard item neither side solves.</td></tr>
+  </tbody>
+</table>
+
+<p>Items that are mixed (some runs pass, some fail) fall into none of the four buckets &mdash; they still appear in <code>items</code> with a <code>move</code> value (<code>right_pass_count - left_pass_count</code>) and feed the <code>improved/regressed/unchanged</code> summary counts.</p>
+
+<h2>End-to-end: compare two models with Pass@K</h2>
+
+<p>A complete pattern: run the same task across several models, then compute and compare group statistics offline.</p>
+
+<pre data-lang="python">from qym import Evaluator, analyze_group_runs, compare_group_runs
+
+baseline = Evaluator(
+    task=baseline_task,
+    dataset=dataset,
+    metrics=["correctness"],
+    model=["model-a", "model-b", "model-c"],
+    config={"run_name": "baseline"},
+).run(show_tui=False)            # -&gt; list[EvaluationResult]
+
+candidate = Evaluator(
+    task=candidate_task,
+    dataset=dataset,
+    metrics=["correctness"],
+    model=["model-a", "model-b", "model-c"],
+    config={"run_name": "candidate"},
+).run(show_tui=False)
+
+base_stats = analyze_group_runs(baseline, metric="correctness", threshold=0.8)
+cand_stats = analyze_group_runs(candidate, metric="correctness", threshold=0.8)
+
+print("baseline  pass@k:", round(base_stats["pass_at_k"], 3))
+print("candidate pass@k:", round(cand_stats["pass_at_k"], 3))
+
+diff = compare_group_runs(baseline, candidate, metric="correctness", threshold=0.8)
+print("pass@k delta:", round(diff["deltas"]["pass_at_k"], 3))
+print("regressions:", diff["buckets"]["a_sweeps_b"]["item_ids"])</pre>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Pass@K from repetition, not just models.</span> The group helpers don't care whether the K runs came from K different models or K repeats of one config. To measure how flaky a single model is on a task, run the same config K times (each <code>run()</code> returns one result; collect them into a list) and pass that list to <code>analyze_group_runs</code>. <code>consistency</code> and <code>reliability</code> then describe run-to-run stability for that one model.</p>
+</div>
+
+<h2>Common pitfalls</h2>
+<table>
+  <thead><tr><th>Pitfall</th><th>Symptom</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Hardcoded model in the task</td><td><code>model=[...]</code> runs but every model gets identical scores.</td><td>Accept a <code>model_name</code> (or <code>model</code>) parameter and route the API call through it.</td></tr>
+    <tr><td>Unstable item IDs</td><td>Group metrics look noisy; <code>compare_group_runs</code> reports few <code>eligible_items</code>.</td><td>Give every dataset row a stable <code>id</code> so runs align by identity, not row order.</td></tr>
+    <tr><td>One-element model list</td><td>Expected a list, got a single <code>EvaluationResult</code>.</td><td>Multi-model needs &gt;1 model. Use 2+ entries, or wrap the single result in a list yourself.</td></tr>
+    <tr><td>Mismatched metric names across runs</td><td><code>analyze_group_runs(metric=...)</code> finds no scores for some runs.</td><td>Keep the metric you analyze in every run's <code>metrics</code> list, under the same name.</td></tr>
+    <tr><td>Provider throttling</td><td>Timeouts and sporadic failures under multi-model load.</td><td>Lower <code>max_parallel_runs</code> and/or per-run <code>max_concurrency</code>.</td></tr>
+    <tr><td>Forgotten artifacts</td><td><code>run_parallel</code> produced no saved files.</td><td><code>run_parallel</code> defaults <code>auto_save=False</code> &mdash; pass <code>auto_save=True</code> or set <code>output_path</code> per run.</td></tr>
+  </tbody>
+</table>
+
+<h2>Related pages</h2>
+<ul>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> &mdash; <code>max_concurrency</code>, <code>dataset_version</code>/<code>dataset_alias</code>, and the rest of <code>EvaluatorConfig</code>.</li>
+  <li><a href="#sdk-guide/observers">Progress, observers &amp; wrappers</a> &mdash; the full local event vocabulary, including <code>run_matrix</code>.</li>
+  <li><a href="#sdk-guide/results">Results, artifacts &amp; tracing</a> &mdash; the shape of each <code>EvaluationResult</code> the group helpers consume.</li>
+  <li><a href="#get-started/datasets">Datasets</a> &mdash; stable item IDs and dataset string resolution.</li>
+  <li><a href="#developer/cli">CLI reference</a> &mdash; <code>qym run create</code> flags for multi-model and <code>--runs-config</code>.</li>
+</ul>

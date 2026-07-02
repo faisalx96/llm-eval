@@ -1,0 +1,244 @@
+<p class="docs-eyebrow">SDK guide</p>
+<h1>SDK structure &amp; exports</h1>
+<p class="docs-lead">Everything you use day to day lives at the top level of the <code>qym</code> package: one evaluator class, four dataset loaders, the observer types, and the group-analysis helpers. This page is the map — what each export is, what you import it for, and the run-method behavior that trips people up.</p>
+
+<h2>The one mental model</h2>
+<p>qym evaluates <strong>one task over one dataset</strong> and scores every output with one or more <strong>metrics</strong>. Everything else is configuration around that loop:</p>
+<pre data-lang="text">dataset item  ->  task function  ->  output  ->  metric(s)  ->  EvaluationResult
+                                              ->  local artifacts (qym_results/)
+                                              ->  optional platform stream
+                                              ->  optional local progress events</pre>
+<p>The entry point is always <code>Evaluator</code>. There is no free-standing <code>evaluate()</code> or <code>run()</code> function — you construct an <code>Evaluator</code> and call a method on it.</p>
+
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+def task(question):
+    return my_model(question)
+
+result = Evaluator(
+    task=task,
+    dataset=CsvDataset("qa.csv"),
+    metrics=["exact_match"],
+).run(show_tui=False)
+
+print(result.success_rate)</pre>
+
+<h2>Top-level exports</h2>
+<p>These are the names exported from the <code>qym</code> package (its <code>__all__</code>). Import everything you need directly from <code>qym</code> — you should rarely need to reach into submodules.</p>
+
+<table>
+  <thead><tr><th>Export</th><th>Kind</th><th>What it's for</th></tr></thead>
+  <tbody>
+    <tr><td><code>Evaluator</code></td><td>class</td><td>The entry point. Holds the task, dataset, metrics, and config; runs the loop via <code>.run()</code> / <code>.arun()</code> / <code>.run_parallel()</code>.</td></tr>
+    <tr><td><code>EvaluationResult</code></td><td>class</td><td>The object a run returns. Holds aggregate stats, per-item results, errors, run metadata, and saved-artifact paths.</td></tr>
+    <tr><td><code>CsvDataset</code></td><td>class</td><td>Load items from a local <code>.csv</code> file with configurable column mapping.</td></tr>
+    <tr><td><code>JsonlDataset</code></td><td>class</td><td>Load items from a local <code>.jsonl</code> file (one JSON object per line, fixed keys).</td></tr>
+    <tr><td><code>InMemoryDataset</code></td><td>class</td><td>Wrap a list of dicts you build in code — handy for generated or programmatic evals.</td></tr>
+    <tr><td><code>QymDataset</code></td><td>class</td><td>Load a versioned dataset from the qym platform by name (uses <code>QYM_BASE_URL</code> / <code>QYM_API_KEY</code>).</td></tr>
+    <tr><td><code>EvaluationObserver</code></td><td>class</td><td>Base class for named lifecycle hooks (<code>on_run_start</code>, <code>on_item_complete</code>, …) when embedding qym in a service.</td></tr>
+    <tr><td><code>ProgressCallbackObserver</code></td><td>class</td><td>Adapts a single <code>ProgressSnapshot</code> callback to the observer interface; used internally by <code>progress_callback</code>.</td></tr>
+    <tr><td><code>ProgressSnapshot</code></td><td>class</td><td>The immutable progress event your <code>progress_callback</code> receives.</td></tr>
+    <tr><td><code>MultiModelRunner</code></td><td>class</td><td>The engine behind multi-model and multi-run execution; <code>run_parallel()</code> delegates to it.</td></tr>
+    <tr><td><code>RunSpec</code></td><td>class</td><td>A structured description of one run for <code>run_parallel()</code> (an alternative to a plain dict).</td></tr>
+    <tr><td><code>GroupRunAnalysis</code></td><td>class</td><td>The result object returned by group-analysis helpers.</td></tr>
+    <tr><td><code>analyze_group_runs</code></td><td>function</td><td>Compute Pass@K, Avg@K, consistency, reliability, and more over a set of results.</td></tr>
+    <tr><td><code>compare_group_runs</code></td><td>function</td><td>Compare two sets of results with strict cohort semantics.</td></tr>
+    <tr><td><code>list_available_metrics</code></td><td>function</td><td>Return the names of every registered metric (built-ins plus anything you registered).</td></tr>
+    <tr><td><code>builtin_metrics</code></td><td>function</td><td>Return the built-in metric registry as a mapping of name to callable.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Verify your install in one line.</span> <code>from qym import Evaluator, CsvDataset</code> should import cleanly. To list the metric names available in your environment, run <code>from qym import list_available_metrics; print(list_available_metrics())</code>.</p>
+</div>
+
+<h2>The Evaluator constructor</h2>
+<p>The constructor takes the three required pieces plus optional configuration. Signature:</p>
+<pre data-lang="python">Evaluator(
+    task,                    # callable or supported framework object
+    dataset,                 # dataset object, or a string (resolved — see below)
+    metrics,                 # list of metric names and/or callables
+    config=None,             # dict or EvaluatorConfig
+    observer=None,           # EvaluationObserver
+    model=None,              # str or Sequence[str]
+    langfuse_client=None,    # deprecated and ignored
+    progress_callback=None,  # Callable[[ProgressSnapshot], None]
+)</pre>
+
+<table>
+  <thead><tr><th>Argument</th><th>Required</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>task</code></td><td>Yes</td><td>callable / object</td><td>Called once per dataset item with that item's <code>input</code>.</td></tr>
+    <tr><td><code>dataset</code></td><td>Yes</td><td>object or <code>str</code></td><td>A dataset object (<code>CsvDataset</code>, etc.) or a string that qym resolves (see <a href="#sdk-guide/structure">String datasets</a> below).</td></tr>
+    <tr><td><code>metrics</code></td><td>Yes</td><td><code>list[str | Callable]</code></td><td>Built-in metric names and/or your own callables.</td></tr>
+    <tr><td><code>config</code></td><td>No</td><td><code>dict</code> or <code>EvaluatorConfig</code></td><td>A dict is converted into an <code>EvaluatorConfig</code> for you. See <a href="#sdk-guide/config">Configs &amp; options</a>.</td></tr>
+    <tr><td><code>observer</code></td><td>No</td><td><code>EvaluationObserver</code></td><td>Lower-level lifecycle hooks for service integrations.</td></tr>
+    <tr><td><code>model</code></td><td>No</td><td><code>str</code> or <code>Sequence[str]</code></td><td>A single model label, or a list to run the same task across multiple models.</td></tr>
+    <tr><td><code>langfuse_client</code></td><td>No</td><td>—</td><td><strong>Deprecated and ignored.</strong> qym uses platform / OpenTelemetry tracing; passing this only logs a warning.</td></tr>
+    <tr><td><code>progress_callback</code></td><td>No</td><td><code>Callable</code></td><td>Receives a <code>ProgressSnapshot</code> on each lifecycle event. A shortcut on the constructor only — not on <code>run_parallel()</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Langfuse is not part of the runtime.</span> There is no Langfuse dataset source and no <code>langfuse_*</code> config. The <code>langfuse_client</code> argument exists only for backward compatibility and does nothing.</p>
+</div>
+
+<h2>Run methods: run() vs arun() vs run_parallel()</h2>
+<p>Once you have an <code>Evaluator</code>, there are three ways to execute it. They share the same loop but differ in calling context, defaults, and return shape.</p>
+
+<table>
+  <thead><tr><th>Method</th><th>Call from</th><th>Returns</th><th><code>auto_save</code> default</th></tr></thead>
+  <tbody>
+    <tr><td><code>.run(...)</code></td><td>normal (sync) code</td><td>one <code>EvaluationResult</code>, or a <strong>list</strong> for multi-model runs</td><td><code>True</code></td></tr>
+    <tr><td><code>await .arun(...)</code></td><td>inside an async caller</td><td>one <code>EvaluationResult</code></td><td><code>False</code></td></tr>
+    <tr><td><code>Evaluator.run_parallel(runs, ...)</code></td><td>normal (sync) code; <strong>static method</strong></td><td><code>list[EvaluationResult]</code></td><td><code>False</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">The auto_save mismatch.</span> <code>run()</code> saves artifacts by default (<code>auto_save=True</code>); <code>arun()</code> does <strong>not</strong> (<code>auto_save=False</code>). If you switch to the async path, pass <code>auto_save=True</code> explicitly or call <code>result.save(...)</code> yourself.</p>
+</div>
+
+<h3>run()</h3>
+<p>The everyday entry point. It handles event-loop setup for you (including Jupyter) and runs the async core synchronously.</p>
+<pre data-lang="python">def run(
+    show_tui=True,
+    auto_save=True,
+    save_format="csv",       # "csv", "json", or "xlsx"
+    max_parallel_runs=None,  # only used for multi-model runs
+): ...</pre>
+<ul>
+  <li><strong>Single model</strong> &rarr; returns one <code>EvaluationResult</code>.</li>
+  <li><strong>Multiple models</strong> (<code>model=[...]</code>) &rarr; returns a <code>list[EvaluationResult]</code>, one per model. Guard your code with <code>isinstance(result, list)</code> when a run might be multi-model.</li>
+  <li><code>max_parallel_runs</code> only applies to multi-model runs: <code>None</code> runs all models in parallel, <code>1</code> runs them sequentially, <code>N</code> runs N at a time.</li>
+</ul>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">run() prints nothing by default.</span> The end-of-run summary is silent unless you set the environment variable <code>QYM_SHOW_SUMMARY=1</code>. To read results in code, use the <code>EvaluationResult</code> object (e.g. <code>result.success_rate</code>) regardless of that setting.</p>
+</div>
+
+<h3>arun()</h3>
+<p>Use this when your caller is already inside an event loop and should <code>await</code> the evaluation. It returns a single <code>EvaluationResult</code> and, as noted above, defaults <code>auto_save=False</code>.</p>
+<pre data-lang="python">result = await Evaluator(
+    task=my_async_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+).arun(show_tui=False, auto_save=True)</pre>
+
+<h3>run_parallel()</h3>
+<p>A <strong>static method</strong> for running several different configurations at once — different tasks, datasets, metrics, or config per run. Each entry is a dict (or <code>RunSpec</code>); the <code>runs</code> argument is the first parameter.</p>
+<pre data-lang="python">from qym import Evaluator
+
+results = Evaluator.run_parallel(
+    runs=[
+        {"name": "baseline",  "task": baseline_task,  "dataset": dataset, "metrics": ["exact_match"]},
+        {"name": "candidate", "task": candidate_task, "dataset": dataset, "metrics": ["exact_match"]},
+    ],
+    show_tui=False,
+    max_parallel_runs=2,
+)</pre>
+<p><code>progress_callback</code> is not available here — pass <code>observer=ProgressCallbackObserver(on_progress)</code> instead. For the difference between multi-<em>model</em> (<code>model=[...]</code>) and multi-<em>run</em> (<code>run_parallel</code>), and the analysis helpers, see <a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a>.</p>
+
+<h2>The four dataset classes</h2>
+<p>All four implement the same item contract — every item resolves to <code>id</code>, <code>input</code>, <code>expected_output</code>, and <code>metadata</code> — but they differ in source and constructor.</p>
+
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>CsvDataset</h3>
+    <p>Local <code>.csv</code> with configurable columns. Cells that start with <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string.</p>
+  </div>
+  <div class="docs-card">
+    <h3>JsonlDataset</h3>
+    <p>Local <code>.jsonl</code>, one JSON object per line. Keys are fixed (<code>input</code>, optional <code>expected_output</code>, <code>metadata</code>, <code>id</code>/<code>item_id</code>) — no column remapping.</p>
+  </div>
+  <div class="docs-card">
+    <h3>InMemoryDataset</h3>
+    <p>Wrap a Python list of dicts. Ideal for generated cases or quick programmatic evals with no file on disk.</p>
+  </div>
+  <div class="docs-card">
+    <h3>QymDataset</h3>
+    <p>A versioned dataset stored on the qym platform, fetched by name over <code>QYM_BASE_URL</code> with <code>QYM_API_KEY</code>.</p>
+  </div>
+</div>
+
+<pre data-lang="python">from qym import CsvDataset, JsonlDataset, InMemoryDataset, QymDataset
+
+# Local CSV with column mapping
+csv_ds = CsvDataset(
+    "datasets/qa.csv",
+    input_col="question",
+    expected_col="answer",
+    id_col="id",
+    metadata_cols=["domain", "difficulty"],
+)
+
+# Local JSONL (fixed keys, no remapping)
+jsonl_ds = JsonlDataset("datasets/qa.jsonl")
+
+# Built in code
+mem_ds = InMemoryDataset([
+    {"input": "2 + 2", "expected_output": "4", "metadata": {"topic": "math"}},
+])
+
+# Platform dataset by name (optionally pin a version or alias)
+plat_ds = QymDataset("support-regression", alias="production")</pre>
+
+<p>See <a href="#get-started/datasets">Datasets in depth</a> for column rules, the JSON-in-cell behavior, and platform versioning.</p>
+
+<h3>String datasets &amp; how they resolve</h3>
+<p>You can pass a plain string as <code>dataset</code> instead of a dataset object. qym resolves it like this:</p>
+<ul>
+  <li>If the string is an existing local <code>.csv</code> file &rarr; loaded as a <code>CsvDataset</code>.</li>
+  <li>If it's an existing local <code>.jsonl</code> file &rarr; loaded as a <code>JsonlDataset</code>.</li>
+  <li>If it's an existing local file with any other extension &rarr; an error (unsupported extension).</li>
+  <li><strong>Otherwise</strong> (the path does not exist) &rarr; treated as a <strong>qym platform dataset name</strong> and fetched as a <code>QymDataset</code>.</li>
+</ul>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">A typo'd file path becomes a platform lookup.</span> Because any non-existent path falls through to the platform, a mistyped local path like <code>"datsets/qa.csv"</code> is treated as a platform dataset name. Without <code>QYM_BASE_URL</code> / <code>QYM_API_KEY</code> that surfaces as a <code>DatasetNotFoundError</code>, not a "file not found." When in doubt, construct the dataset object explicitly (e.g. <code>CsvDataset("datasets/qa.csv")</code>) so a missing file fails loudly and locally.</p>
+</div>
+
+<h2>The task-output envelope</h2>
+<p>A task returns the value to score. Returning a plain value (string, number, list, etc.) is the common case. A <strong>dict</strong> return is special — qym reserves it for an explicit output envelope, and it must match exactly:</p>
+<pre data-lang="python">def rag_task(question):
+    docs = retrieve(question)
+    answer = call_llm(question, context=docs)
+    return {"output": answer, "metadata": {"retrieved_context": docs}}</pre>
+<ul>
+  <li>The dict must have <strong>exactly</strong> the keys <code>output</code> and <code>metadata</code> — no more, no fewer.</li>
+  <li><code>metadata</code> must itself be a <code>dict</code>.</li>
+  <li>Only <code>output</code> is shown as the visible task output; built-in metrics score against it.</li>
+  <li>Anything else (missing keys, extra keys, or a non-dict <code>metadata</code>) raises <code>InvalidTaskOutputError</code>.</li>
+</ul>
+<p>The exact error message, copied from the source, is:</p>
+<pre data-lang="text">Task returned a dict. Dict task outputs must use qym's envelope {"output": &lt;visible output&gt;, "metadata": &lt;dict&gt;} (missing keys: ...; unexpected keys: ...).</pre>
+<p>If you want to return structured data as the output itself, return a non-dict (e.g. a list) or wrap it in the envelope. See <a href="#sdk-guide/custom-metrics">Custom metrics</a> for how a metric reads <code>output["metadata"]</code> from the envelope.</p>
+
+<h2>Where things live (import paths)</h2>
+<p>Prefer the top-level <code>qym</code> imports — they are the stable, supported surface. A few things you may reach for live in submodules:</p>
+<table>
+  <thead><tr><th>Symbol</th><th>Import from</th></tr></thead>
+  <tbody>
+    <tr><td>All public exports listed above</td><td><code>qym</code></td></tr>
+    <tr><td><code>EvaluatorConfig</code></td><td><code>qym.core.config</code></td></tr>
+    <tr><td><code>InvalidTaskOutputError</code></td><td><code>qym.core.evaluator</code></td></tr>
+    <tr><td><code>DatasetNotFoundError</code>, <code>CsvDatasetSchemaError</code></td><td><code>qym.utils.errors</code></td></tr>
+  </tbody>
+</table>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Exceptions are not all in one place.</span> <code>InvalidTaskOutputError</code> is defined in the evaluator module, while dataset errors live in <code>qym.utils.errors</code>. If you catch qym exceptions, import each from its actual module rather than assuming a single errors namespace.</p>
+</div>
+
+<h2>Next steps</h2>
+<ul>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> — the full <code>EvaluatorConfig</code> field reference and defaults.</li>
+  <li><a href="#get-started/datasets">Datasets in depth</a> — column mapping, JSON-in-cell rules, and platform versioning.</li>
+  <li><a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a> — <code>model=[...]</code>, <code>run_parallel</code>, and Pass@K-style metrics.</li>
+  <li><a href="#get-started/first-run">Your first run</a> — if you haven't run an evaluation yet, start here.</li>
+</ul>

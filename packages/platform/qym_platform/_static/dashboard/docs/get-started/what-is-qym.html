@@ -1,0 +1,30 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>What is qym</h1>
+<p class="docs-lead">qym is an evaluation operating system for LLM products. You define a <strong>task</strong>, point it at a <strong>dataset</strong>, apply one or more <strong>metrics</strong>, run it, and inspect the evidence — locally or streamed to this platform.</p>
+
+<h2>The problem it solves</h2>
+<p>Most teams evaluate LLMs with a scatter of one-off scripts, notebooks, and spreadsheets. Results live on someone's laptop, scoring logic drifts between runs, and nobody can answer "is the new prompt actually better?" with confidence.</p>
+<p>qym makes evaluation <strong>repeatable</strong> and <strong>reviewable</strong>: the same task + dataset + metrics produce comparable runs every time, and every run becomes a durable, shareable record.</p>
+
+<h2>How it works</h2>
+<p>Every run follows the same pipeline, no matter how you score:</p>
+<pre data-lang="pipeline">dataset item  →  task()  →  output  →  metric(s)  →  EvaluationResult
+                                                       ├─ artifacts (CSV / JSON / XLSX)
+                                                       └─ optional live stream to the platform</pre>
+<ul>
+  <li><strong>Dataset item</strong> — an input (and usually an expected output) to evaluate against.</li>
+  <li><strong>Task</strong> — your function: it receives the input and returns your system's output.</li>
+  <li><strong>Metrics</strong> — score the output (deterministic checks, custom code, or an LLM judge).</li>
+  <li><strong>Result</strong> — aggregate scores plus per-item detail, saved as artifacts and optionally streamed here for review.</li>
+</ul>
+
+<h2>SDK vs. platform</h2>
+<p>There are two pieces, and you can use the first without the second:</p>
+<ul>
+  <li><strong>The SDK</strong> (<code>pip install qym</code>) is the implementation surface — where you write tasks, choose metrics, and run evaluations. It works fully offline.</li>
+  <li><strong>The platform</strong> (this app) stores runs, shows trends, and supports human review and approval. The SDK streams to it when you give it an API key.</li>
+</ul>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">New here?</span> Go straight to <a href="#get-started/first-run">Your first run</a> — you can get a green run in under a minute with zero credentials.</p>
+</div>

@@ -1,0 +1,196 @@
+<p class="docs-eyebrow">DEVELOPER / API</p>
+<h1>API overview &amp; conventions</h1>
+<p class="docs-lead">The qym platform is a FastAPI service. The SDK and CLI talk to it over HTTP, and so can you. This page covers what the API is for, how it is organized, where to find the machine-readable schema, and the cross-cutting conventions — auth, identifiers, request and response shapes, pagination, errors, and idempotency — that every endpoint follows.</p>
+
+<h2>When to use the HTTP API</h2>
+<p>Most users never call the API directly. The <a href="#developer/cli">CLI</a> and the Python SDK already wrap it: <code>qym run create</code> and <code>Evaluator(...).run()</code> create a run and stream events for you. Reach for raw HTTP when:</p>
+<ul>
+  <li>You are integrating from a language other than Python, or from a service that cannot embed the SDK.</li>
+  <li>You are building operational tooling around projects, runs, datasets, or review — dashboards, schedulers, CI gates.</li>
+  <li>You need a behavior the CLI does not expose, or you want full control over the request payload.</li>
+</ul>
+<p>If the CLI covers your case, prefer it — it handles auth, retries, NDJSON batching, and finalization that you would otherwise reimplement.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">The SDK is the reference client.</span> If you are unsure how an endpoint is meant to be called, the SDK's platform client is a working example: it creates a run with <code>POST /v1/runs</code>, then streams NDJSON events to <code>POST /v1/runs/{run_id}/events</code>. The HTTP contracts on this page are exactly what it uses.</p></div>
+
+<h2>The machine-readable schema</h2>
+<p>The service generates an OpenAPI schema and serves an interactive explorer. Treat these as the source of truth for exact request and response models — this documentation explains the conventions and the load-bearing behavior, but the generated schema is always in sync with the running build.</p>
+
+<table>
+  <thead><tr><th>Path</th><th>What it is</th><th>Auth</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /openapi.json</code></td><td>The OpenAPI specification — the stable, machine-readable contract. Point your client generators at this.</td><td>None</td></tr>
+    <tr><td><code>GET /api-docs</code></td><td>Swagger UI, an exploratory browser for trying endpoints. Good for discovery, not for learning the conventions.</td><td>None</td></tr>
+  </tbody>
+</table>
+
+<p>Both are registered by the framework with no auth dependency, so anyone who can reach the deployment can read the schema. ReDoc is disabled. The service also serves a static human docs portal at <code>/docs/</code>, which is distinct from <code>/api-docs</code> (Swagger) and <code>/openapi.json</code> (the spec).</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The schema's version field is not the release version.</span> The OpenAPI document reports <code>title: "qym-platform"</code> and a hardcoded <code>version: "0.1.0"</code>, which does not track the package release. Do not use the spec's <code>version</code> to detect the deployed build — use it only to discover endpoints and models.</p></div>
+
+<h2>Base URL and health</h2>
+<p>Every example on these pages uses <code>https://qym.example.com</code> as the deployment's base URL. Substitute your own host. The same value is what the SDK and CLI read from the <code>QYM_BASE_URL</code> environment variable.</p>
+
+<p>To check that a deployment is up without authenticating, hit the health endpoint:</p>
+
+<pre data-lang="bash">curl https://qym.example.com/healthz</pre>
+
+<pre data-lang="json">{ "ok": true, "service": "qym-platform", "env": "dev" }</pre>
+
+<p>It is unauthenticated and always returns the service name and the configured environment.</p>
+
+<h2>URL surface: <code>/v1</code> vs <code>/api</code></h2>
+<p>The API is split across two path prefixes, but <strong>not</strong> along an "ingestion vs review" line. The split is roughly "the documented v1 surface" versus "analysis, corrections, and legacy dashboard JSON".</p>
+
+<table>
+  <thead><tr><th>Prefix</th><th>Carries</th><th>Examples</th></tr></thead>
+  <tbody>
+    <tr><td><code>/v1/...</code></td><td>Run ingestion, dataset CRUD and versioning, project / member / API-key management, and run review actions.</td><td><code>POST /v1/runs</code>, <code>POST /v1/runs/{id}/events</code>, <code>POST /v1/runs:upload</code>, <code>GET /v1/datasets</code>, <code>POST /v1/projects/{id}/api-keys</code>, <code>POST /v1/runs/{id}/approve</code></td></tr>
+    <tr><td><code>/api/...</code></td><td>LLM root-cause analysis, corrections, and the legacy dashboard read JSON the web UI consumes.</td><td><code>POST /api/runs/{id}/analyze</code>, <code>GET /api/corrections</code>, <code>GET /api/runs</code>, <code>GET /api/runs/{id}</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Don't read "review" into the prefix.</span> Run <em>review</em> actions (submit / approve / reject) live under <code>/v1</code>, while the legacy read JSON the dashboard polls lives under <code>/api</code>. The CLI's connectivity check (<code>qym config check</code>) deliberately uses the legacy <code>GET /api/runs</code> path, so a failure there can indicate routing rather than auth.</p></div>
+
+<p>Routes are mounted in a deliberate order — analysis before the run routes, because some run routes use a catch-all path parameter that would otherwise swallow analysis URLs. You don't need to think about this when calling specific endpoints; it only matters that paths are matched most-specific-first.</p>
+
+<h2>Authentication, in one paragraph</h2>
+<p>Machine clients send a project-scoped <strong>API key</strong> as a Bearer token: <code>Authorization: Bearer &lt;token&gt;</code>. Humans in the dashboard authenticate with a browser <strong>session</strong>. The two are not interchangeable — ingestion needs a key, and project/member/key administration and run review need a session. Keys are always bound to exactly one project, and although a key records a list of scopes, <strong>those scopes are not enforced</strong>: any valid, non-revoked key has full access to its project. Isolate access with separate projects, not with scopes.</p>
+
+<pre data-lang="bash">curl https://qym.example.com/v1/runs \
+  -H "Authorization: Bearer &lt;your-token&gt;"</pre>
+
+<p>The full mechanics — creating and revoking keys, the token format, error strings, and the deployment auth modes — are on the <a href="#developer/auth">Authentication</a> page.</p>
+
+<h2>Identifiers are the scoping handles</h2>
+<p>Almost every operational workflow is keyed on two identifiers, and most endpoints take one or both as path parameters or filters:</p>
+<ul>
+  <li><strong>Project</strong> — referenced by its UUID (<code>project_id</code>) or by its URL <code>slug</code>. List endpoints that span projects typically require one of <code>project_id</code> or <code>project_slug</code>. Your API key already pins a project, so calls made with a key are auto-scoped to it.</li>
+  <li><strong>Run</strong> — referenced by its <code>run_id</code> (returned when you create a run). Items within a run carry an <code>item_id</code> you assign in your event payloads.</li>
+</ul>
+<p>Datasets are addressable by id, by name/slug, or by a version reference (a numeric version or an alias). When no version is given, qym resolves the <code>production</code> alias by default. See <a href="#get-started/datasets">Datasets &amp; data access</a> for the SDK side of this.</p>
+
+<h2>Request and response shapes</h2>
+<p>The API speaks JSON throughout, with two deliberate exceptions for ingestion.</p>
+
+<table>
+  <thead><tr><th>Operation</th><th>Content type</th><th>Body shape</th></tr></thead>
+  <tbody>
+    <tr><td>Most reads and writes</td><td><code>application/json</code></td><td>A single JSON object.</td></tr>
+    <tr><td>Streaming run events</td><td><code>application/x-ndjson</code></td><td>Newline-delimited JSON: one complete event object per line. <strong>Not</strong> a JSON array.</td></tr>
+    <tr><td>Uploading a finished artifact</td><td><code>multipart/form-data</code></td><td>A file part plus form fields. Only <code>.csv</code> and <code>.json</code> files are accepted; any other extension is rejected with <code>400 Unsupported file type (use .csv or .json)</code>.</td></tr>
+  </tbody>
+</table>
+
+<p>Creating a run returns the run's id and a link to its live page in the dashboard:</p>
+
+<pre data-lang="json">{
+  "run_id": "...",
+  "live_url": "https://qym.example.com/projects/&lt;project-slug&gt;/runs/&lt;run-id&gt;"
+}</pre>
+
+<p>When the project has a slug the <code>live_url</code> uses the <code>/projects/{slug}/runs/{run_id}</code> form; otherwise it falls back to <code>/run/{run_id}</code>. The artifact-upload endpoint always returns the <code>/run/{run_id}</code> form.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Non-finite numbers are coerced to null.</span> Both the SDK and the platform sanitize JSON before it is stored: <code>NaN</code> and <code>Infinity</code> become <code>null</code> so the payload is valid JSON and acceptable to the database. Don't rely on a metric score round-tripping as <code>NaN</code> — read it back as <code>null</code>.</p></div>
+
+<h2>Pagination and filtering</h2>
+<p>List endpoints page with <code>limit</code> and <code>offset</code> query parameters and return rows in a sorted order you can control with a <code>sort</code> parameter. Defaults and bounds vary by endpoint and are enforced server-side; for example, the run list defaults to 50 rows (max 200), sorted newest-first. Read endpoints also accept filter parameters such as status, owner, task, dataset, model, and free-text query, and dataset-spanning lists require a project handle. Consult the <a href="#developer/endpoints">Endpoint reference</a> (or <code>/openapi.json</code>) for the exact parameters, defaults, and ceilings of each list.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Page with <code>offset</code>, don't fetch everything.</span> <code>limit</code> is capped per endpoint, so to walk a large result set you advance <code>offset</code> by <code>limit</code> until a short page comes back. The SDK's platform dataset reader does exactly this, paging items 1000 at a time.</p></div>
+
+<h2>Error responses</h2>
+<p>Errors use standard HTTP status codes with a JSON body of the form <code>{ "detail": "..." }</code>. The detail strings are stable but human-facing — branch on the status code, and use the detail for diagnostics. The codes you will encounter most:</p>
+
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th><th>Typical cause</th></tr></thead>
+  <tbody>
+    <tr><td><code>400</code></td><td>Bad request</td><td>Malformed body, unsupported upload type, or an invalid request payload.</td></tr>
+    <tr><td><code>401</code></td><td>Unauthenticated</td><td>Missing or invalid Bearer key (<code>Missing Bearer API key</code> / <code>Invalid API key</code>), or no session where one is required.</td></tr>
+    <tr><td><code>403</code></td><td>Forbidden</td><td>Authenticated but not allowed: a key not bound to a project (<code>API key is not bound to a project</code>), accessing another project's resource, a disabled user, or a cross-origin write blocked by the same-origin guard.</td></tr>
+    <tr><td><code>404</code></td><td>Not found</td><td>The run, dataset, project, or key does not exist (or is not visible to you).</td></tr>
+    <tr><td><code>410</code></td><td>Gone</td><td>The target run was soft-deleted on the platform. Create a fresh run.</td></tr>
+  </tbody>
+</table>
+
+<p>The CLI maps these onto stable exit codes (for example 404 to <em>not found</em>, 401/403 to <em>auth denied</em>, 409 to <em>conflict</em>) — see the <a href="#developer/cli">CLI reference</a>.</p>
+
+<h2>The run-event envelope</h2>
+<p>Ingestion is event-sourced. After creating a run you stream events to it; each line of the NDJSON body is one event wrapped in a fixed v1 envelope:</p>
+
+<pre data-lang="json">{
+  "schema_version": 1,
+  "event_id": "&lt;uuid&gt;",
+  "sequence": 1,
+  "sent_at": "2026-06-20T12:00:00Z",
+  "type": "run_started",
+  "run_id": "&lt;uuid&gt;",
+  "payload": { }
+}</pre>
+
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>schema_version</code></td><td>literal <code>1</code></td><td>Must be <code>1</code>.</td></tr>
+    <tr><td><code>event_id</code></td><td>UUID</td><td>Unique per distinct event; reuse the same id only when retrying that exact event.</td></tr>
+    <tr><td><code>sequence</code></td><td>integer &ge; 1</td><td>Monotonic per stream, starting at 1.</td></tr>
+    <tr><td><code>sent_at</code></td><td>datetime</td><td>UTC ISO-8601 (the SDK emits a trailing <code>Z</code>).</td></tr>
+    <tr><td><code>type</code></td><td>string</td><td>One of the 11 event types below.</td></tr>
+    <tr><td><code>run_id</code></td><td>UUID</td><td>Must match the run in the URL path, or the event is dropped.</td></tr>
+    <tr><td><code>payload</code></td><td>object</td><td>Typed per event type.</td></tr>
+  </tbody>
+</table>
+
+<p>The eleven valid event types are: <code>run_started</code>, <code>item_started</code>, <code>item_attempt_started</code>, <code>item_attempt_finished</code>, <code>metric_scored</code>, <code>item_completed</code>, <code>item_failed</code>, <code>run_completed</code>, <code>run_heartbeat</code>, <code>metadata_update</code>, and <code>span_completed</code>. A run is finalized by a <code>run_completed</code> event whose payload carries a <code>final_status</code> of <code>COMPLETED</code>, <code>FAILED</code>, or <code>STOPPED</code> (default <code>COMPLETED</code>). The full field-by-field payloads are on the <a href="#developer/ingestion">Run ingestion</a> page.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">These are platform <em>wire</em> events.</span> Do not confuse them with the SDK's in-process progress events (<code>run_start</code>, <code>item_start</code>, <code>item_complete</code>, <code>run_complete</code>, etc.) delivered to local observers. Those are a separate, local vocabulary covered in <a href="#sdk-guide/observers">Progress &amp; observers</a>.</p></div>
+
+<h2>Idempotency and partial batches</h2>
+<p>Event ingestion is built to be retried safely. Idempotency is keyed on the pair <code>(run_id, event_id)</code>: if an event with that id was already stored, it is skipped rather than applied twice. The endpoint never fails a whole batch over one bad line — it returns <code>200</code> with a small summary:</p>
+
+<pre data-lang="json">{ "ok": true, "applied": 12, "skipped": 1 }</pre>
+
+<ul>
+  <li><strong><code>applied</code></strong> — events newly written.</li>
+  <li><strong><code>skipped</code></strong> — duplicates whose <code>(run_id, event_id)</code> was already present.</li>
+</ul>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Malformed events are silently dropped.</span> Lines that fail to parse or whose payload <code>run_id</code> does not match the path are discarded with a server-side warning — they count toward neither <code>applied</code> nor <code>skipped</code>. A <code>200</code> with fewer <code>applied</code> than you sent means some events did not land. Validate your payloads against the schema before streaming; a write that silently no-ops is harder to notice than a rejected one.</p></div>
+
+<h2>Run status vocabulary</h2>
+<p>A run carries a single workflow status. These are the only values the platform uses; map any UI label back to one of them rather than inventing synonyms.</p>
+
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>RUNNING</code></td><td>Created and accepting events; not yet finalized.</td></tr>
+    <tr><td><code>COMPLETED</code></td><td>Finalized by a <code>run_completed</code> event with <code>final_status: COMPLETED</code> (also the status of uploaded artifacts).</td></tr>
+    <tr><td><code>FAILED</code></td><td>Finalized with <code>final_status: FAILED</code> (any unrecognized final status maps here).</td></tr>
+    <tr><td><code>STOPPED</code></td><td>Finalized with <code>final_status: STOPPED</code>, e.g. an interrupted run; also where stale runs are reconciled to.</td></tr>
+    <tr><td><code>DRAFT</code> / <code>SUBMITTED</code> / <code>APPROVED</code> / <code>REJECTED</code> / <code>PENDING</code></td><td>Review-workflow states a run moves through after execution.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Always send a terminal event.</span> A run that never receives <code>run_completed</code> stays <code>RUNNING</code> until stale-run recovery reconciles it to <code>STOPPED</code>. The SDK sends the terminal event synchronously to avoid this; if you stream events yourself, finalize explicitly. Periodic <code>run_heartbeat</code> events keep a long run from looking stale.</p></div>
+
+<h2>Same-origin guard (session mode)</h2>
+<p>When the deployment runs in a session-based auth mode, a middleware blocks cross-origin state-changing requests (<code>POST</code>/<code>PUT</code>/<code>PATCH</code>/<code>DELETE</code>) from the browser unless they carry a Bearer header. A request whose <code>Origin</code> or <code>Referer</code> does not match the configured base URL gets <code>403 Cross-origin request blocked</code>; one with neither header gets <code>403 Missing same-origin headers</code>. <strong>Bearer API-key calls bypass this guard entirely</strong>, so server-to-server clients are unaffected — it only protects browser sessions. A misconfigured <code>QYM_BASE_URL</code> behind a proxy is the usual cause of spurious blocks.</p>
+
+<h2>Where to go next</h2>
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3><a href="#developer/auth">Authentication</a></h3>
+    <p>Create and revoke API keys, the token format, the exact error strings, and the deployment auth modes.</p>
+  </div>
+  <div class="docs-card">
+    <h3><a href="#developer/ingestion">Run ingestion</a></h3>
+    <p>Create a run, stream NDJSON events with full payload schemas, upload a finished artifact, and finalize.</p>
+  </div>
+  <div class="docs-card">
+    <h3><a href="#developer/endpoints">Endpoint reference</a></h3>
+    <p>Grouped reference for the read API, datasets, projects, review, and analysis — methods, paths, and parameters.</p>
+  </div>
+  <div class="docs-card">
+    <h3><a href="#developer/cli">CLI reference</a></h3>
+    <p>The command catalog, flag tables, exit codes, and the JSON output contract for automation.</p>
+  </div>
+</div>

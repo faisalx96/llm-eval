@@ -1,0 +1,210 @@
+<p class="docs-eyebrow">SDK guide</p>
+<h1>Custom metrics</h1>
+<p class="docs-lead">When a built-in metric is too generic, write your own. A custom metric is just a Python callable that scores one task output — pass it to <code>Evaluator</code> directly, or register it once and reference it by name everywhere.</p>
+
+<h2>When to write a custom metric</h2>
+<p>Reach for a custom metric whenever scoring follows a <strong>deterministic rule</strong> you can express in code: JSON or schema validity, required citations, field-level equality, tool-call correctness, numeric tolerances, or any domain-specific check. They are fast, free, and reproducible — no model calls involved.</p>
+<p>If scoring needs semantic judgement that no rule captures, use an <a href="#sdk-guide/judges">LLM-as-judge metric</a> instead. The two compose freely: most suites mix a few deterministic custom metrics with one or two judges.</p>
+
+<h2>The metric contract</h2>
+<p>A metric is any callable. qym inspects its signature and passes the values it recognizes. The full set of recognized parameter names is:</p>
+<table>
+  <thead><tr><th>Parameter</th><th>What qym passes</th></tr></thead>
+  <tbody>
+    <tr><td><code>output</code></td><td>The task's output for this item. For tasks that return the envelope <code>{"output": ..., "metadata": ...}</code>, custom metrics receive the <strong>whole envelope</strong> here (see <a href="#sdk-guide/custom-metrics">Reading task metadata</a> below).</td></tr>
+    <tr><td><code>expected</code></td><td>The item's <code>expected_output</code> from the dataset (may be <code>None</code>).</td></tr>
+    <tr><td><code>input_data</code></td><td>The item's <code>input</code> (the same value the task received).</td></tr>
+    <tr><td><code>metadata</code></td><td>The dataset item's <code>metadata</code> dict (the row's metadata, not the task's).</td></tr>
+    <tr><td><code>item_metadata</code></td><td>An alias for the same dataset item metadata. Use whichever name reads better.</td></tr>
+  </tbody>
+</table>
+
+<p>The simplest possible metric takes only <code>output</code>:</p>
+<pre data-lang="python">def has_answer(output, expected=None):
+    return 1.0 if str(output).strip() else 0.0
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=[has_answer],
+).run(show_tui=False)</pre>
+
+<p>The metric's name is taken from the function's <code>__name__</code> (<code>has_answer</code> above), so it appears as <code>has_answer_score</code> in artifacts and on the platform.</p>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Two callables with the same name collide.</span> Metrics are keyed by <code>__name__</code> in an internal dict, so passing two functions both named <code>score</code> (or two <code>lambda</code>s, which share the name <code>&lt;lambda&gt;</code>) means the second silently overwrites the first. Give each metric a distinct function name, or register it under an explicit name (below).</p>
+</div>
+
+<h3>Parameter names are load-bearing</h3>
+<p>qym resolves arguments by name <strong>only</strong> when every parameter your function declares is one of the five recognized names above (or you accept <code>**kwargs</code>). In that case order does not matter — <code>def m(expected, output)</code> works fine.</p>
+<p>If your function declares a parameter <em>outside</em> that set (for example <code>def valid_sql(output, expected, schema)</code>), qym falls back to <strong>positional</strong> passing in this fixed order:</p>
+<pre data-lang="text">output, expected, input_data, item_metadata</pre>
+<p>So a third positional parameter receives <code>input_data</code> regardless of what you named it. The safest habit is to stick to the recognized names and give optional ones defaults:</p>
+<pre data-lang="python">def my_metric(output, expected=None, input_data=None, metadata=None):
+    ...</pre>
+
+<h2>Return types</h2>
+<p>qym normalizes whatever you return into a structured score. The accepted shapes are:</p>
+<table>
+  <thead><tr><th>You return</th><th>qym records</th></tr></thead>
+  <tbody>
+    <tr><td><code>bool</code></td><td><code>True</code> &rarr; <code>1.0</code>, <code>False</code> &rarr; <code>0.0</code>.</td></tr>
+    <tr><td><code>int</code> / <code>float</code></td><td>Used directly as the numeric score (coerced to <code>float</code>).</td></tr>
+    <tr><td><code>dict</code> with a <code>score</code> key</td><td>Numeric <code>score</code> plus optional <code>label</code>, <code>explanation</code>, and <code>metadata</code>. A non-numeric <code>score</code> becomes <code>0.0</code>.</td></tr>
+    <tr><td><code>dict</code> with an <code>error</code> key</td><td>Score forced to <code>0.0</code> and the item is treated as a <strong>metric error</strong> — see the warning below.</td></tr>
+    <tr><td><code>MetricResult</code></td><td>Passed through unchanged (richest option).</td></tr>
+    <tr><td>anything else</td><td>Score <code>0.0</code>; the raw value is stashed in <code>metadata</code> under <code>raw</code>.</td></tr>
+  </tbody>
+</table>
+
+<h3>Returning a dict with metadata</h3>
+<p>A dict lets you attach evidence alongside the score. The <code>metadata</code> you return is saved to artifacts and shown in the platform's item detail, which makes failures debuggable later:</p>
+<pre data-lang="python">def citation_score(output, expected=None):
+    has_citation = "[" in str(output) and "]" in str(output)
+    return {
+        "score": 1.0 if has_citation else 0.0,
+        "metadata": {
+            "has_citation": has_citation,
+            "rule": "square-bracket citation required",
+        },
+    }</pre>
+
+<div class="docs-callout danger">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <p><span class="docs-callout-title">A top-level <code>error</code> key excludes the item from aggregation.</span> A dict whose <strong>top level</strong> contains <code>error</code> (e.g. <code>{"score": 0, "error": "..."}</code>) is recorded as a metric error: it counts against the metric's success rate but is left <em>out</em> of the mean. If instead you want a genuine failing score that still pulls the average down, return a real <code>0.0</code> and put the reason in <code>metadata</code> — i.e. <code>{"score": 0.0, "metadata": {"error": "..."}}</code>. The nested form is a normal scored zero; only the top-level <code>error</code> key triggers exclusion.</p>
+</div>
+
+<h3>MetricResult — the structured form</h3>
+<p>For full control, return a <code>MetricResult</code>. It carries a score plus a human-readable label and explanation, a <code>kind</code> and <code>direction</code>, and arbitrary metadata:</p>
+<pre data-lang="python">import json
+from qym.metrics.result import MetricResult
+
+def json_validity(output, expected=None):
+    try:
+        json.loads(output)
+        return MetricResult(
+            score=1.0,
+            label="valid",
+            explanation="Output parses as JSON.",
+            metadata={"parser": "json.loads"},
+        )
+    except Exception as exc:
+        return MetricResult(
+            score=0.0,
+            label="invalid",
+            explanation=str(exc),
+            metadata={"parser": "json.loads"},
+        )</pre>
+
+<p><code>MetricResult</code> fields:</p>
+<table>
+  <thead><tr><th>Field</th><th>Type / default</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>score</code></td><td><code>float</code> (required)</td><td>The numeric score.</td></tr>
+    <tr><td><code>label</code></td><td><code>str</code> / <code>None</code></td><td>Short categorical tag (e.g. <code>"valid"</code>, <code>"timeout"</code>).</td></tr>
+    <tr><td><code>explanation</code></td><td><code>str</code> / <code>None</code></td><td>Free-text reason, surfaced in the UI.</td></tr>
+    <tr><td><code>kind</code></td><td><code>"code"</code> (default), <code>"llm"</code>, or <code>"human"</code></td><td>How the score was produced.</td></tr>
+    <tr><td><code>direction</code></td><td><code>"maximize"</code> (default) or <code>"minimize"</code></td><td>Whether higher or lower is better.</td></tr>
+    <tr><td><code>metadata</code></td><td><code>dict</code> (default <code>{}</code>)</td><td>Arbitrary evidence saved with the score.</td></tr>
+  </tbody>
+</table>
+
+<h2>Reading task metadata from the envelope</h2>
+<p>A task can hand hidden context to its metrics by returning qym's task-output envelope instead of a bare value:</p>
+<pre data-lang="python">def rag_task(question):
+    docs = retrieve(question)
+    answer = generate_answer(question, docs)
+    return {
+        "output": answer,
+        "metadata": {"retrieved_context": docs},
+    }</pre>
+
+<p>Only the envelope's <code>output</code> field is the <em>visible</em> output written to artifacts and shown on the platform. But a <strong>custom metric receives the entire envelope as its <code>output</code> argument</strong>, so it can read the hidden context:</p>
+<pre data-lang="python">def grounded_in_context(output, expected=None):
+    answer = output["output"]
+    docs = output["metadata"]["retrieved_context"]
+    return 1.0 if any(d in answer for d in docs) else 0.0</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">The envelope keys are exact.</span> A dict task return must contain <strong>exactly</strong> <code>output</code> and <code>metadata</code> (where <code>metadata</code> is a dict). Any missing or extra key raises <code>InvalidTaskOutputError</code> for that item. To return a plain value, return it directly — do not wrap it in a dict. Built-in metrics auto-unwrap the envelope; only custom metrics see it whole.</p>
+</div>
+
+<h2>A real example</h2>
+<p>Here is a deterministic metric that decides whether generated SQL is syntactically valid, using the third positional parameter to reach the row's <code>schema</code> via <code>input_data</code>. It returns a scored dict with diagnostic metadata and degrades gracefully when an optional dependency is missing:</p>
+<pre data-lang="python">def valid_sql(output, expected, input_data):
+    """1.0 if the generated SQL parses, else 0.0."""
+    if output is None or str(output).strip() == "":
+        return {"score": 0.0, "metadata": {"is_valid": False, "error": "Empty output"}}
+
+    sql = str(output).strip()
+    try:
+        import sqlglot
+        sqlglot.parse(sql)
+        return {"score": 1.0, "metadata": {"is_valid": True}}
+    except ImportError:
+        # Fallback heuristic when sqlglot isn't installed
+        up = sql.upper()
+        is_valid = "SELECT" in up and "FROM" in up
+        return {
+            "score": 1.0 if is_valid else 0.0,
+            "metadata": {"is_valid": is_valid, "note": "sqlglot not installed"},
+        }
+    except Exception as exc:
+        return {"score": 0.0, "metadata": {"is_valid": False, "error": str(exc)}}</pre>
+
+<p>Note the failure path returns a real <code>0.0</code> with the reason nested in <code>metadata</code> — those zeros stay in the aggregate, which is what you want for a "this output is wrong" signal.</p>
+
+<h2>Async metrics</h2>
+<p>Make a metric <code>async</code> <strong>only</strong> when it must <code>await</code> a genuinely async dependency. Synchronous metrics are already run in a thread pool, so they never block the event loop:</p>
+<pre data-lang="python">async def policy_check(output, expected=None):
+    result = await policy_client.check(str(output))
+    return {"score": 1.0 if result.allowed else 0.0, "metadata": result.details}</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Don't make a blocking function <code>async</code>.</span> An <code>async</code> metric that does CPU work or a blocking network call stalls the whole run. qym probes for this and warns: "<em>Async metric '…' appears to block the event loop … Fix: remove 'async' from your metric function so qym runs it in a thread pool automatically.</em>" If you aren't awaiting something, leave the metric synchronous.</p>
+</div>
+
+<h3>Guarding against hangs</h3>
+<p>Every metric call is wrapped in a wall-clock budget set by <code>metric_timeout</code> (default <strong>60.0</strong> seconds; see <a href="#sdk-guide/config">Configs &amp; options</a>). A metric that exceeds it is cancelled and recorded as <code>{"score": 0.0, "label": "timeout", "metadata": {"error": "metric timeout after 60.0s"}}</code> so one stuck metric can't hold up the item. Raise <code>metric_timeout</code> for legitimately slow checks, or set it to <code>None</code> to disable the cap. Metrics run with a per-item concurrency of <code>max_metric_concurrency</code> (default <code>1</code>).</p>
+
+<h2>Registering a metric by name</h2>
+<p>For a metric you reuse across runs, register it once at import time and then reference it by string — the same way you use built-ins:</p>
+<pre data-lang="python">from qym.metrics.registry import register_metric
+
+register_metric("has_citation", citation_score)</pre>
+<pre data-lang="python">metrics = ["has_citation", "exact_match"]</pre>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Custom names shadow built-ins.</span> Lookup checks the custom registry <em>before</em> the built-ins, so registering a metric named <code>contains</code> or <code>correctness</code> replaces the built-in of that name. Use it deliberately to override a built-in, or pick a unique name to avoid surprises. An unknown name raises <code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code> with the full sorted list.</p>
+</div>
+
+<h2>Testing your metric</h2>
+<p>A custom metric is plain Python — test it directly, before it ever touches a run:</p>
+<pre data-lang="python">def test_citation_score():
+    assert citation_score("Answer [1]")["score"] == 1.0
+    assert citation_score("Answer")["score"] == 0.0</pre>
+<p>Then run it against a tiny 5-row dataset (a smoke run) and confirm the scores and the saved <code>&lt;metric&gt;_score</code> column look right before adding it to a large regression suite.</p>
+
+<h2>Common mistakes</h2>
+<table>
+  <thead><tr><th>Mistake</th><th>What happens</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Raising an exception on ordinary bad output</td><td>qym catches it and records a metric <strong>error</strong> (<code>{"score": 0, "error": ...}</code>), which is excluded from the mean.</td><td>Return <code>0.0</code> with the reason in <code>metadata</code> instead of raising.</td></tr>
+    <tr><td>Returning a string as the score</td><td>A non-numeric <code>score</code> is coerced to <code>0.0</code>.</td><td>Return a number, a scored dict, or a <code>MetricResult</code>.</td></tr>
+    <tr><td>Two metrics with the same <code>__name__</code> (or two lambdas)</td><td>One silently overwrites the other in the metrics dict.</td><td>Use distinct function names or <code>register_metric</code> with explicit names.</td></tr>
+    <tr><td>Marking a blocking function <code>async</code></td><td>It stalls the event loop and slows the whole run.</td><td>Keep it synchronous — qym threads sync metrics automatically.</td></tr>
+    <tr><td>Network call with no time budget</td><td>A hung dependency stalls the item until <code>metric_timeout</code> fires.</td><td>Tune <code>metric_timeout</code> and use a client-side timeout in your call.</td></tr>
+  </tbody>
+</table>
+
+<h2>Related</h2>
+<ul>
+  <li><a href="#sdk-guide/metrics">Metrics</a> — the built-in catalog and return-type reference.</li>
+  <li><a href="#sdk-guide/judges">LLM-as-judge metrics</a> — for scoring that needs semantic judgement.</li>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>metric_timeout</code>, <code>max_metric_concurrency</code>, and the rest.</li>
+  <li><a href="#sdk-guide/results">Results &amp; artifacts</a> — how scores and metadata are written to disk.</li>
+</ul>

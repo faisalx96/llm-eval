@@ -180,6 +180,10 @@ def _platform_static_datasets() -> Path:
     return _platform_static_dir() / "dashboard" / "datasets.html"
 
 
+def _platform_static_docs_guide() -> Path:
+    return _platform_static_dir() / "dashboard" / "docs.html"
+
+
 def _project_path_prefix(request: Request, project_slug: str) -> str:
     path = request.url.path
     marker = f"/projects/{project_slug}"
@@ -697,6 +701,17 @@ def compare_index(request: Request, db: Session = Depends(get_db)) -> Any:
     idx = _platform_static_dashboard_compare()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Compare UI not found")
+    return _dashboard_html_response(idx, request)
+
+
+@router.get("/docs-guide", response_model=None)
+def docs_guide_index(request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_docs_guide()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Docs UI not found")
     return _dashboard_html_response(idx, request)
 
 

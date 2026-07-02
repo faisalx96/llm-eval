@@ -1,0 +1,300 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Results, artifacts &amp; tracing</h1>
+<p class="docs-lead">Every qym run produces a durable, inspectable record: an in-memory <code>EvaluationResult</code> you can analyze in code, local artifact files (CSV / JSON / XLSX) you can review or upload later, and optional OpenTelemetry spans that explain what happened inside each item. This page is the reference for all three.</p>
+
+<p>The result is the durable fallback even when platform streaming is enabled — if the platform is unreachable, your run still completes and your artifacts are still written to disk. Treat the local files as the source of truth and the platform as a richer, optional view on top.</p>
+
+<h2>The EvaluationResult object</h2>
+<p>Both <code>run()</code> and <code>arun()</code> return an <code>EvaluationResult</code> for a single-model run. A multi-model run (<code>model=[...]</code>) returns a <strong>list</strong> of <code>EvaluationResult</code> — one per model. See <a href="#sdk-guide/multi-model">Multi-model, multi-run &amp; group analysis</a> for that path.</p>
+
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+result = Evaluator(
+    task=my_task,
+    dataset=CsvDataset("qa.csv", input_col="question", expected_col="answer"),
+    metrics=["exact_match"],
+).run(show_tui=False)
+
+print(result.run_name)        # e.g. "my_task-241120-1432"
+print(result.total_items)     # successes + failures
+print(result.success_rate)    # 0.0 - 1.0 (a fraction, not a percentage)
+print(result.get_metric_stats("exact_match"))</pre>
+
+<h3>Attributes</h3>
+<p>These are set during the run and are safe to read afterward.</p>
+<table>
+  <thead><tr><th>Attribute</th><th>Type</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>dataset_name</code></td><td>str</td><td>Resolved dataset name or file-backed label.</td></tr>
+    <tr><td><code>run_name</code></td><td>str</td><td>The run identity (used in artifact paths and on the platform).</td></tr>
+    <tr><td><code>metrics</code></td><td>List[str]</td><td>Names of the metrics that were run, in order.</td></tr>
+    <tr><td><code>run_metadata</code></td><td>dict</td><td>Run-level metadata (includes <code>task_name</code>, <code>model</code>, <code>total_items</code>, and any dataset IDs).</td></tr>
+    <tr><td><code>run_config</code></td><td>dict</td><td>Snapshot of the effective concurrency/timeout config for this run.</td></tr>
+    <tr><td><code>start_time</code> / <code>end_time</code></td><td>datetime</td><td>Wall-clock start and finish. <code>end_time</code> is <code>None</code> until <code>finish()</code> is called internally.</td></tr>
+    <tr><td><code>inputs</code></td><td>dict</td><td><code>item_id -&gt; input</code> for every item (including failed ones).</td></tr>
+    <tr><td><code>metadatas</code></td><td>dict</td><td><code>item_id -&gt; metadata</code> dict.</td></tr>
+    <tr><td><code>results</code></td><td>dict</td><td><code>item_id -&gt; per-item result dict</code> for <strong>successful</strong> items only.</td></tr>
+    <tr><td><code>errors</code></td><td>dict</td><td><code>item_id -&gt; {error, trace_id, task_started_at_ms, time}</code> for <strong>failed</strong> items.</td></tr>
+    <tr><td><code>last_saved_path</code></td><td>Optional[str]</td><td>Path of the most recently written artifact. Use this instead of reconstructing paths by hand.</td></tr>
+    <tr><td><code>html_url</code></td><td>str</td><td>Platform run URL — present only when the run streamed to the platform.</td></tr>
+    <tr><td><code>interrupted</code></td><td>bool</td><td><code>True</code> if the run was stopped early (Ctrl+C / stop signal).</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Successes and failures live in different places.</span> Successful items are in <code>results</code>; failed items are in <code>errors</code>. To iterate over everything, walk both — or read the artifact CSV, which writes failed items as rows too.</p></div>
+
+<h3>Properties</h3>
+<table>
+  <thead><tr><th>Property</th><th>Returns</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>total_items</code></td><td>int</td><td><code>len(results) + len(errors)</code>.</td></tr>
+    <tr><td><code>success_rate</code></td><td>float</td><td>Fraction in <code>[0.0, 1.0]</code> (<code>len(results) / total_items</code>), <strong>not</strong> a percentage. Returns <code>0.0</code> when there are no items.</td></tr>
+    <tr><td><code>duration</code></td><td>Optional[float]</td><td>Seconds between <code>start_time</code> and <code>end_time</code>; <code>None</code> before the run finishes.</td></tr>
+  </tbody>
+</table>
+
+<h3>Methods</h3>
+<table>
+  <thead><tr><th>Method</th><th>Returns</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>get_metric_stats(metric_name)</code></td><td>dict</td><td>Aggregates one metric across successful items: <code>{mean, std, min, max, success_rate}</code>.</td></tr>
+    <tr><td><code>get_timing_stats()</code></td><td>dict</td><td>Task-duration aggregates across successful items: <code>{mean, std, min, max, total}</code>.</td></tr>
+    <tr><td><code>successful_items()</code></td><td>List[str]</td><td>Item IDs that succeeded (the keys of <code>results</code>).</td></tr>
+    <tr><td><code>failed_items()</code></td><td>List[str]</td><td>Item IDs that failed (the keys of <code>errors</code>).</td></tr>
+    <tr><td><code>summary()</code></td><td>str</td><td>A plain-text summary string (run name, totals, per-metric mean/std/range, error list).</td></tr>
+    <tr><td><code>to_dict()</code></td><td>dict</td><td>Full structured snapshot (see below) — the same shape written by JSON export.</td></tr>
+    <tr><td><code>save(format, filepath, output_dir)</code></td><td>str</td><td>Writes an artifact and returns its path. See <strong>Saving artifacts</strong> below.</td></tr>
+    <tr><td><code>print_summary(html_url=None)</code></td><td>None</td><td>Renders a Rich summary panel — but only when summaries are enabled (see the gating note below).</td></tr>
+  </tbody>
+</table>
+
+<h3>How metric aggregation handles errors</h3>
+<p><code>get_metric_stats()</code> only reads from successful items, and within those it applies a precise rule for how each score is counted:</p>
+<ul>
+  <li>A <strong>bool</strong> counts as <code>1.0</code> / <code>0.0</code>.</li>
+  <li>A plain <strong>number</strong> counts as itself.</li>
+  <li>A <strong>dict with a numeric <code>score</code></strong> contributes <code>score</code>.</li>
+  <li>A <strong>dict containing an <code>error</code> key</strong> is <em>excluded</em> from <code>mean/std/min/max</code> and instead lowers that metric's reported <code>success_rate</code>.</li>
+</ul>
+<p>So a single metric that raised an exception on a few items does not silently pull your mean toward zero — those items drop out of the average and surface as a reduced metric success rate instead. (A judge or other metric that <em>times out</em> is recorded as <code>score=0.0, label="timeout"</code> and <strong>does</strong> count as a real zero. See <a href="#sdk-guide/config">Configs &amp; options</a> for <code>metric_timeout</code>, which defaults to <code>60.0</code>s.)</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">The console prints nothing by default.</span> <code>run()</code> calls <code>print_summary()</code>, but it is a no-op unless you opt in with <code>QYM_SHOW_SUMMARY=1</code> (also accepts <code>true</code>/<code>yes</code>/<code>on</code>). If you want the summary unconditionally from code, call <code>result.print_summary(force=True)</code> or just print <code>result.summary()</code>.</p></div>
+
+<h2>The to_dict() shape</h2>
+<p><code>to_dict()</code> is the canonical serialization and exactly what JSON export writes. Its keys:</p>
+<pre data-lang="json">{
+  "dataset_name": "qa",
+  "run_name": "my_task-241120-1432",
+  "start_time": "2024-11-20T14:32:01.123456",
+  "end_time": "2024-11-20T14:32:09.654321",
+  "duration": 8.53,
+  "total_items": 20,
+  "success_rate": 0.95,
+  "metrics": ["exact_match"],
+  "metric_stats": {
+    "exact_match": { "mean": 0.8, "std": 0.41, "min": 0.0, "max": 1.0, "success_rate": 1.0 }
+  },
+  "langfuse_url": null,
+  "inputs": { "item_0": "..." },
+  "metadatas": { "item_0": { } },
+  "results": { "item_0": { "output": "...", "expected": "...", "scores": { }, "time": 0.42, "trace_id": "..." } },
+  "errors": { "item_7": { "error": "...", "trace_id": null, "task_started_at_ms": null, "time": 0.0 } }
+}</pre>
+<p><code>langfuse_url</code> is always <code>null</code> in current runs — it is a legacy field kept for backward compatibility and is not populated. Langfuse has been removed from the SDK runtime, so ignore it.</p>
+
+<h2>Saving artifacts</h2>
+<p>Use <code>result.save(...)</code> to write a file. The signature is:</p>
+<pre data-lang="python">result.save(format="json", filepath=None, output_dir=".")</pre>
+<table>
+  <thead><tr><th>Argument</th><th>Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>format</code></td><td><code>"json"</code></td><td>One of <code>"json"</code>, <code>"csv"</code>, <code>"xlsx"</code> (case-insensitive). Anything else raises <code>ValueError</code>.</td></tr>
+    <tr><td><code>filepath</code></td><td><code>None</code></td><td>Explicit output path. If omitted, qym derives a hierarchical path (see below).</td></tr>
+    <tr><td><code>output_dir</code></td><td><code>"."</code></td><td>Base directory used only when <code>filepath</code> is not given.</td></tr>
+  </tbody>
+</table>
+
+<pre data-lang="python">json_path = result.save("csv")                       # positional format
+csv_path  = result.save(format="csv")                # keyword form — identical
+xlsx_path = result.save(format="xlsx")
+here_path = result.save("json", filepath="run.json") # exact path, no hierarchy</pre>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title"><code>save()</code> defaults to JSON, but auto-save defaults to CSV.</span> An unqualified <code>result.save()</code> writes JSON. The <code>auto_save</code> path on <code>run()</code>, however, uses <code>save_format="csv"</code>. Pass the format explicitly to avoid surprises. Note that <code>xlsx</code> requires <code>openpyxl</code> — without it, export raises <code>ImportError: openpyxl is required for Excel export. Install it with: pip install openpyxl</code>.</p></div>
+
+<h3>Auto-save and checkpoints</h3>
+<p><code>run()</code> defaults to <code>auto_save=True</code>; <code>arun()</code> defaults to <code>auto_save=False</code>. The default <code>save_format</code> for both is <code>"csv"</code>. With the default config, <code>checkpoint_enabled=True</code> means qym is already streaming each item to a CSV checkpoint as it runs — so when checkpointing is active, the run does <em>not</em> auto-save a second file at the end; the checkpoint <em>is</em> the artifact, and <code>last_saved_path</code> points at it. Read <code>result.last_saved_path</code> rather than guessing.</p>
+
+<h3>Where files land by default</h3>
+<p>When you do not pass <code>filepath</code>, qym builds a stable hierarchy under the base directory:</p>
+<pre data-lang="text">&lt;output_dir&gt;/&lt;task&gt;/&lt;model&gt;/&lt;date&gt;/&lt;run-file&gt;</pre>
+<p>The CLI and the <code>EvaluatorConfig</code> default the run-level <code>output_dir</code> to <code>qym_results</code>, so a typical layout is:</p>
+<pre data-lang="text">qym_results/my_task/gpt-4o-mini/2024-11-20/my_task-qa-gpt-4o-mini-241120-1432.csv</pre>
+<ul>
+  <li><strong>task</strong> comes from <code>run_metadata["task_name"]</code> (falls back to <code>task</code>).</li>
+  <li><strong>model</strong> comes from run metadata/config (falls back to <code>nomodel</code>).</li>
+  <li><strong>date</strong> is <code>YYYY-MM-DD</code>, derived from the run-name timestamp when present.</li>
+  <li>Each path component is sanitized for the filesystem.</li>
+</ul>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Do not treat the derived path as a stable API.</span> The filename encodes task/model/date and can change. For downstream automation, either pass an explicit <code>filepath</code> or read <code>result.last_saved_path</code> after saving.</p></div>
+
+<h2>Artifact formats</h2>
+<div class="docs-cards">
+  <div class="docs-card"><h3>CSV</h3><p>Flat, one row per item (successes <em>and</em> failures). Best for spreadsheet review and for uploading to the platform.</p></div>
+  <div class="docs-card"><h3>JSON</h3><p>The full <code>to_dict()</code> structure — nested, lossless. Best when another program consumes results directly.</p></div>
+  <div class="docs-card"><h3>XLSX</h3><p>Same logical columns as CSV, written via <code>openpyxl</code>. Best for business review in Excel-compatible tools.</p></div>
+</div>
+
+<h3>CSV / XLSX columns</h3>
+<p>CSV and XLSX share the same column model. The base columns, in order:</p>
+<table>
+  <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>dataset_name</code></td><td>Dataset name or file-backed label.</td></tr>
+    <tr><td><code>run_name</code></td><td>qym run name.</td></tr>
+    <tr><td><code>run_metadata</code></td><td>JSON-encoded run metadata.</td></tr>
+    <tr><td><code>run_config</code></td><td>JSON-encoded config snapshot (concurrency / timeout fields).</td></tr>
+    <tr><td><code>trace_id</code></td><td>Trace ID for the item, when a trace was created.</td></tr>
+    <tr><td><code>item_id</code></td><td>Dataset item ID.</td></tr>
+    <tr><td><code>input</code></td><td>Task input.</td></tr>
+    <tr><td><code>item_metadata</code></td><td>JSON-encoded item metadata (string).</td></tr>
+    <tr><td><code>output</code></td><td>Task output, or <code>ERROR: ...</code> for failed items.</td></tr>
+    <tr><td><code>expected_output</code></td><td>Expected/reference output (empty for failed items).</td></tr>
+    <tr><td><code>time</code></td><td>Task duration in seconds.</td></tr>
+    <tr><td><code>task_started_at_ms</code></td><td>Epoch milliseconds when the task began.</td></tr>
+  </tbody>
+</table>
+
+<p>After the base columns come per-metric columns. For each metric, qym writes a score column plus one column per metadata key that any item produced:</p>
+<pre data-lang="text">&lt;metric&gt;_score
+&lt;metric&gt;__meta__&lt;key&gt;</pre>
+<p>For example, a run with <code>exact_match</code> and an LLM judge named <code>relevance</code> (which returns a label and explanation) yields:</p>
+<pre data-lang="text">exact_match_score
+relevance_score
+relevance__meta__label
+relevance__meta__explanation</pre>
+<p>The double-underscore <code>__meta__</code> separator distinguishes metadata columns from the score column. Nested metadata dicts are flattened one level using a single underscore (e.g. a metric whose metadata is <code>{"usage": {"tokens": 12}}</code> becomes a key <code>usage_tokens</code>, surfaced as <code>&lt;metric&gt;__meta__usage_tokens</code>). Metadata columns are unioned across all items, so the header is stable even if some items omitted a key.</p>
+
+<h3>How scores are encoded in a cell</h3>
+<p>The value written to <code>&lt;metric&gt;_score</code> depends on what the metric returned for that item:</p>
+<table>
+  <thead><tr><th>Metric return</th><th>Cell value</th></tr></thead>
+  <tbody>
+    <tr><td>bool / number</td><td>The value itself.</td></tr>
+    <tr><td>dict with <code>score</code></td><td>The numeric <code>score</code>.</td></tr>
+    <tr><td>dict with an <code>error</code> key</td><td><code>ERROR: &lt;message&gt;</code>.</td></tr>
+    <tr><td>(item failed entirely)</td><td><code>N/A</code> for every metric column.</td></tr>
+  </tbody>
+</table>
+
+<h3>Failed items in the artifact</h3>
+<p>Failed items are written as full rows so failure rate never disappears:</p>
+<ul>
+  <li><code>output</code> starts with <code>ERROR:</code> followed by the message.</li>
+  <li>Every <code>&lt;metric&gt;_score</code> is <code>N/A</code>; metric metadata columns are blank.</li>
+  <li><code>trace_id</code>, <code>time</code>, and <code>task_started_at_ms</code> are included when available.</li>
+</ul>
+
+<h3>JSON export</h3>
+<p>JSON preserves the structured object from <code>to_dict()</code>: dataset/run names, metric list and aggregate <code>metric_stats</code>, run metadata and config, plus per-item <code>inputs</code>, <code>metadatas</code>, <code>results</code>, and <code>errors</code>. Use JSON when a downstream program reads qym results directly; use CSV/XLSX for human review and platform upload.</p>
+
+<h2>Parsing artifacts downstream</h2>
+<p>When you read a qym CSV in another tool, apply these rules:</p>
+<ul>
+  <li>Parse <code>run_metadata</code>, <code>run_config</code>, and <code>item_metadata</code> as JSON when they look like JSON.</li>
+  <li>Treat any <code>output</code> beginning with <code>ERROR:</code> as a failed item.</li>
+  <li>Treat <code>N/A</code> metric scores as missing-due-to-failure, not as zero.</li>
+  <li>Split metric metadata columns on the <code>__meta__</code> separator: text before it is the metric name, text after it is the metadata key.</li>
+</ul>
+<table>
+  <thead><tr><th>Mistake</th><th>Impact</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Consuming only successful rows</td><td>Failure rate vanishes.</td><td>Include rows whose <code>output</code> starts with <code>ERROR:</code>.</td></tr>
+    <tr><td>Ignoring metric metadata</td><td>Judge labels/explanations are lost.</td><td>Parse <code>&lt;metric&gt;__meta__*</code> columns.</td></tr>
+    <tr><td>Treating the artifact path as a stable API</td><td>Breaks when task/model/date change.</td><td>Use the returned <code>last_saved_path</code> or an explicit <code>filepath</code>.</td></tr>
+    <tr><td>Storing secrets in metadata</td><td>Secrets can land in artifacts.</td><td>Keep run/item metadata non-sensitive.</td></tr>
+  </tbody>
+</table>
+
+<h3>Uploading a saved artifact later</h3>
+<p>A CSV (or JSON) written earlier can be ingested into the platform without re-running the task. Only <code>.csv</code> and <code>.json</code> files are accepted by the upload endpoint — <code>.xlsx</code> is rejected. See the <a href="#developer/auth">Developer / API</a> docs for the HTTP contract and the CLI for the convenience wrapper.</p>
+
+<h2>Tracing</h2>
+<p>Metrics tell you <em>that</em> something failed; traces help explain <em>why</em>. qym instruments each item with OpenTelemetry spans and can route that span data to two destinations: the qym platform (when streaming is enabled) and, optionally, a Phoenix collector.</p>
+
+<h3>OpenTelemetry instrumentation</h3>
+<p><code>otel_enabled</code> defaults to <code>True</code>. When the OpenTelemetry SDK and supported OpenInference instrumentors are installed, qym wraps each item in a span tree (a root eval span, a task span, and a metrics span) and auto-captures spans for instrumented LLM/framework calls made <em>inside</em> the task.</p>
+<pre data-lang="python">Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config={"otel_enabled": True},  # default
+).run()</pre>
+<p>Auto-instrumentation is best-effort and degrades quietly:</p>
+<ul>
+  <li>If <code>otel_enabled=False</code>, qym uses a no-op manager — no spans, no overhead.</li>
+  <li>If the OpenTelemetry SDK is not installed, qym also falls back to the no-op manager.</li>
+  <li>If the SDK is present but <strong>no instrumentors</strong> are found, tracing initializes but captures no LLM/framework spans (auto-instrumentation is inactive). The run still succeeds.</li>
+</ul>
+<p>qym recognizes OpenInference instrumentors for OpenAI, Anthropic, LangChain, and LiteLLM among others; the instrumentors it actually registered are reported per run. Disable OTEL only when tracing overhead or a provider interaction is causing problems:</p>
+<pre data-lang="python">config={"otel_enabled": False}</pre>
+
+<h3>Trace IDs on results</h3>
+<p>When a trace is created for an item, its <code>trace_id</code> appears on the per-item result (and in the <code>trace_id</code> CSV column, and on failed items' <code>errors</code> entries). This lets you correlate a row in the artifact with the trace stored on the platform.</p>
+
+<h3>Platform trace streaming</h3>
+<p>When platform streaming is enabled (a <code>QYM_API_KEY</code> is configured — see <a href="#get-started/api-keys">Link your repo &amp; create API keys</a>), qym emits a <code>span_completed</code> wire event for each finished span. The platform stores the span tree and exposes trace views from the run's items. Each span event carries:</p>
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>trace_id</code> / <code>span_id</code></td><td>Hex IDs (32 / 16 chars).</td></tr>
+    <tr><td><code>parent_span_id</code></td><td>Parent span hex ID, or <code>null</code> for a root span.</td></tr>
+    <tr><td><code>name</code></td><td>Span name.</td></tr>
+    <tr><td><code>kind</code></td><td>Span kind (e.g. <code>INTERNAL</code>, <code>CLIENT</code>).</td></tr>
+    <tr><td><code>start_time_ns</code> / <code>end_time_ns</code></td><td>Start/end timestamps in nanoseconds.</td></tr>
+    <tr><td><code>duration_ms</code></td><td>Computed span duration in milliseconds.</td></tr>
+    <tr><td><code>status</code></td><td>Span status code name (e.g. <code>OK</code>, <code>ERROR</code>, <code>UNSET</code>).</td></tr>
+    <tr><td><code>attributes</code></td><td>Span attributes (includes OpenInference fields and inputs/outputs).</td></tr>
+    <tr><td><code>events</code> / <code>links</code></td><td>Span events (including per-metric score events) and any span links.</td></tr>
+  </tbody>
+</table>
+<p><code>span_completed</code> is one of qym's platform wire events. The local progress events your wrappers see (<code>run_start</code>, <code>item_complete</code>, etc.) are a separate vocabulary covered in <a href="#sdk-guide/observers">Progress, observers &amp; wrappers</a>.</p>
+
+<h3>Phoenix export</h3>
+<p>You can also export spans to an <a href="https://phoenix.arize.com">Arize Phoenix</a> collector, in parallel with platform streaming. Set an endpoint via config or environment; an endpoint alone is enough to enable export.</p>
+<pre data-lang="python">config={
+    "phoenix_enabled": True,
+    "phoenix_endpoint": "http://localhost:6006/v1/traces",
+}</pre>
+<p>Equivalent environment variables (read at run start): <code>PHOENIX_ENDPOINT</code> (or <code>PHOENIX_COLLECTOR_ENDPOINT</code>) sets the endpoint, and <code>PHOENIX_ENABLED=true</code> is honored as a legacy flag. Export requires the OTLP HTTP exporter package; if it is missing, qym logs a warning and disables Phoenix export while the run continues.</p>
+
+<h3>Trace-friendly task code</h3>
+<p>For traces to be useful, keep the LLM/framework calls <em>inside</em> the task function so the instrumentor can wrap them under the active item span:</p>
+<pre data-lang="python">async def answer_question(question, context, model_name="gpt-4o-mini"):
+    prompt = build_prompt(question, context)
+    response = await llm_client.chat.completions.create(
+        model=model_name,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content</pre>
+<p>Avoid hiding all the real work behind an opaque subprocess or a remote job ID. If you must, attach the relevant trace/job IDs to your own logs so you can still correlate them.</p>
+
+<h3>Debugging missing traces</h3>
+<table>
+  <thead><tr><th>Symptom</th><th>Check</th></tr></thead>
+  <tbody>
+    <tr><td>No spans at all</td><td><code>otel_enabled</code> is not <code>False</code>; the OpenTelemetry SDK is installed.</td></tr>
+    <tr><td>Spans but no LLM/framework detail</td><td>The matching OpenInference instrumentor is installed, and the LLM call runs inside the task.</td></tr>
+    <tr><td>No traces on the platform</td><td>Platform streaming is configured (<code>QYM_BASE_URL</code> + <code>QYM_API_KEY</code>) and the run created successfully.</td></tr>
+    <tr><td>No traces in Phoenix</td><td>A Phoenix endpoint is set and the OTLP HTTP exporter package is installed.</td></tr>
+    <tr><td>Trace missing for one item</td><td>The item may have failed before the span was created — check its <code>errors</code> entry.</td></tr>
+  </tbody>
+</table>
+
+<h2>Related pages</h2>
+<ul>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>output_dir</code>, <code>otel_enabled</code>, <code>phoenix_*</code>, <code>metric_timeout</code>, and checkpoint settings.</li>
+  <li><a href="#sdk-guide/multi-model">Multi-model, multi-run &amp; group analysis</a> — when <code>run()</code> returns a list of results.</li>
+  <li><a href="#sdk-guide/observers">Progress, observers &amp; wrappers</a> — local progress events vs. platform wire events.</li>
+  <li><a href="#developer/auth">Developer / API</a> — uploading saved artifacts and the <code>span_completed</code> event on the wire.</li>
+</ul>

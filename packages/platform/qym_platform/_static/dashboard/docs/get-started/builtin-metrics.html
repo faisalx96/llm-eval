@@ -1,0 +1,155 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Built-in metrics tour</h1>
+<p class="docs-lead">qym ships a small set of metrics you can use by name — no code required. Seven work offline out of the box; seven more are LLM-as-judge metrics that activate when you install the <code>judges</code> extra. This page is the accurate catalog: exact names, what each one measures, and the footguns the older docs got wrong.</p>
+
+<h2>How metrics are selected</h2>
+<p>You pass metrics to the <code>Evaluator</code> as a list. Each entry is either a <strong>string</strong> (the registry name of a built-in) or a <strong>callable</strong> (your own function — see <a href="#sdk-guide/custom-metrics">Custom metrics</a>). You can mix them freely:</p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+result = Evaluator(
+    task,
+    CsvDataset("qa.csv"),
+    metrics=["exact_match", "contains", my_custom_metric],
+).run(show_tui=False)</pre>
+<p>When you pass a string, qym looks it up in the metric registry. If the name is not registered, it raises <code>ValueError</code> with this exact message:</p>
+<pre data-lang="text">Metric 'X' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">List them from code or CLI.</span> Run <code>qym metric list</code>, or in Python <code>from qym import list_available_metrics; list_available_metrics()</code>. The available set grows by exactly the seven judges when the <code>judges</code> extra is installed.</p>
+</div>
+
+<h2>The seven built-ins (no extras)</h2>
+<p>These are registered unconditionally and run with zero external dependencies — no API key, no network. The registry name is on the left; note that several differ from the function name in the source.</p>
+<table>
+  <thead><tr><th>Name</th><th>What it measures</th><th>Reads from the item</th><th>Returns</th></tr></thead>
+  <tbody>
+    <tr><td><code>exact_match</code></td><td>Output equals expected after <code>str().strip()</code> on both sides.</td><td><code>output</code>, <code>expected</code></td><td><code>1.0</code> / <code>0.0</code></td></tr>
+    <tr><td><code>contains</code></td><td>Lowercased <code>expected</code> appears as a substring of lowercased <code>output</code>.</td><td><code>output</code>, <code>expected</code></td><td><code>1.0</code> / <code>0.0</code></td></tr>
+    <tr><td><code>fuzzy_match</code></td><td>Sequence-similarity ratio via <code>difflib.SequenceMatcher</code>.</td><td><code>output</code>, <code>expected</code></td><td>Continuous <code>0.0</code>–<code>1.0</code></td></tr>
+    <tr><td><code>correctness</code></td><td>SQuAD-style token-level F1 between output and expected (lowercased, articles &amp; punctuation stripped).</td><td><code>output</code>, <code>expected</code></td><td>Continuous <code>0.0</code>–<code>1.0</code></td></tr>
+    <tr><td><code>faithfulness</code></td><td>Fraction of meaningful (non-stopword) output tokens that also appear in the context. A heuristic, not an LLM.</td><td><code>output</code>, <code>input_data["context"]</code></td><td>Continuous <code>0.0</code>–<code>1.0</code></td></tr>
+    <tr><td><code>response_time</code></td><td>Placeholder. Always returns <code>1.0</code> regardless of input.</td><td><code>output</code> (ignored)</td><td>Always <code>1.0</code></td></tr>
+    <tr><td><code>token_count</code></td><td>Rough token estimate: word count &times; 1.3, floored to an int.</td><td><code>output</code></td><td>Integer count</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">The name is <code>contains</code>, not <code>contains_expected</code>.</span> The function in the source is called <code>contains_expected</code>, but it is registered under the name <code>contains</code>. Use the registry name in your <code>metrics=[...]</code> list. Passing <code>"contains_expected"</code> raises the "not found" error above.</p>
+</div>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title"><code>faithfulness</code> (code) is not <code>faithfulness_llm</code> (judge).</span> The built-in <code>faithfulness</code> is a dependency-free token-overlap heuristic. The LLM-based version is a separate judge registered as <code>faithfulness_llm</code> and requires the <code>judges</code> extra. Don't confuse the two.</p>
+</div>
+
+<h3>Behavior notes worth knowing</h3>
+<ul>
+  <li><strong><code>fuzzy_match</code>'s <code>threshold</code> argument is inert.</strong> The function accepts <code>threshold=0.8</code> but never applies it — the returned value is always the raw similarity ratio. (You can't pass it via a string name anyway; string metrics call the function with default arguments.)</li>
+  <li><strong><code>response_time</code> and <code>token_count</code> are placeholders.</strong> <code>response_time</code> always returns <code>1.0</code> — actual latency is captured by the evaluator elsewhere, not by this metric. <code>token_count</code> is a whitespace-based estimate, not a real tokenizer.</li>
+  <li><strong><code>None</code> handling.</strong> <code>exact_match</code>, <code>contains</code>, and <code>fuzzy_match</code> score <code>0.0</code> when either side is <code>None</code>. <code>correctness</code> coerces <code>None</code> to the empty string before comparing.</li>
+  <li><strong><code>faithfulness</code> can self-report an error.</strong> If there's no output, or no <code>context</code> in the input, it returns <code>{"score": 0.0, "metadata": {"error": "..."}}</code> — e.g. <code>"No context found in input_data"</code>. It looks for <code>context</code> at <code>input_data["context"]</code> and, failing that, <code>input_data["input"]["context"]</code>.</li>
+</ul>
+
+<h2>How built-ins read your task output</h2>
+<p>If your task returns the output envelope — a dict that is <strong>exactly</strong> <code>{"output": ..., "metadata": {...}}</code> — the built-in metrics automatically unwrap it and score the inner <code>output</code> value. You don't have to strip the envelope yourself.</p>
+<pre data-lang="python">def rag_task(question):
+    docs = retrieve(question)
+    answer = generate(question, docs)
+    # The envelope: built-ins score `answer`, the platform hides `metadata`
+    return {"output": answer, "metadata": {"retrieved": len(docs)}}</pre>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Custom metrics see the whole envelope.</span> Auto-unwrapping is a convenience of the built-ins only. A custom metric receives the full envelope as its <code>output</code> argument — read <code>output["output"]</code> and <code>output["metadata"]</code> yourself. See <a href="#sdk-guide/custom-metrics">Custom metrics</a>.</p>
+</div>
+
+<h2>LLM-as-judge metrics (the <code>judges</code> extra)</h2>
+<p>Seven additional metrics use an OpenAI-compatible model to grade each output and return a verdict label plus the model's explanation. They are <strong>only registered when the <code>openai</code> package is installed</strong>, via:</p>
+<pre data-lang="bash">pip install qym[judges]</pre>
+<p>Without that extra, the seven judge names are absent from the registry and selecting one raises the "not found" error. Each judge fills its prompt from your dataset's fields — <code>{output}</code> and <code>{expected}</code> are filled automatically, and any other <code>{variable}</code> is pulled from the matching key in the item's input dict.</p>
+
+<table>
+  <thead><tr><th>Name</th><th>What it evaluates</th><th>Verdict labels (score)</th><th>Prompt variables it reads</th></tr></thead>
+  <tbody>
+    <tr><td><code>relevance</code></td><td>Does the response address the question?</td><td><code>relevant</code> (1.0) / <code>irrelevant</code> (0.0)</td><td><code>{question}</code>, <code>{output}</code></td></tr>
+    <tr><td><code>faithfulness_llm</code></td><td>Is the response supported by the context?</td><td><code>faithful</code> (1.0) / <code>unfaithful</code> (0.0)</td><td><code>{context}</code>, <code>{question}</code>, <code>{output}</code></td></tr>
+    <tr><td><code>correctness_llm</code></td><td>Does the response match the expected answer in meaning?</td><td><code>correct</code> (1.0) / <code>incorrect</code> (0.0)</td><td><code>{question}</code>, <code>{expected}</code>, <code>{output}</code></td></tr>
+    <tr><td><code>conciseness</code></td><td>Is the response concise rather than padded?</td><td><code>concise</code> (1.0) / <code>verbose</code> (0.0)</td><td><code>{question}</code>, <code>{output}</code></td></tr>
+    <tr><td><code>hallucination</code></td><td>Is the response grounded in the context, or invented?</td><td><code>grounded</code> (1.0) / <code>hallucinated</code> (0.0)</td><td><code>{context}</code>, <code>{output}</code></td></tr>
+    <tr><td><code>toxicity</code></td><td>Is the response free of harmful content?</td><td><code>non-toxic</code> (1.0) / <code>toxic</code> (0.0)</td><td><code>{output}</code></td></tr>
+    <tr><td><code>tool_calling</code></td><td>Are the tool calls correct for the question?</td><td><code>correct</code> (1.0) / <code>incorrect</code> (0.0)</td><td><code>{question}</code>, <code>{tool_definitions}</code>, <code>{tool_calls}</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Higher is always better.</span> For every judge, <code>1.0</code> is the good outcome — including the safety ones. <code>toxicity</code> scores <code>1.0</code> for <code>non-toxic</code> and <code>0.0</code> for <code>toxic</code>; <code>hallucination</code> scores <code>1.0</code> for <code>grounded</code>. There is no "lower is better" judge in the built-in set.</p>
+</div>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title"><code>tool_calling</code> reads <code>{tool_calls}</code>, not the output.</span> Its prompt expects three input fields — <code>{question}</code>, <code>{tool_definitions}</code>, and <code>{tool_calls}</code> — all sourced from your item's input dict. Put the calls your agent made under a <code>tool_calls</code> key in the input, not in the task's return value.</p>
+</div>
+
+<h3>Configuring the judge model</h3>
+<p>Judges have <strong>no default model</strong>. Before a run reaches a judge you must set the model and an API key, or the judge raises <code>RuntimeError</code> at evaluation time. Configuration comes from environment variables:</p>
+<pre data-lang="bash">export QYM_JUDGE_MODEL=gpt-4o-mini        # required: no default
+export QYM_JUDGE_API_KEY=sk-...           # required (falls back to OPENAI_API_KEY)
+export QYM_JUDGE_BASE_URL=https://...     # optional (falls back to OPENAI_BASE_URL)</pre>
+<p>If the model or key is missing, the raised error names the missing variables verbatim, e.g. <code>LLM judge metrics require configuration. Missing: QYM_JUDGE_MODEL</code>. You can also configure programmatically with <code>JudgeConfig</code>:</p>
+<pre data-lang="python">from qym.metrics import JudgeConfig, set_default_judge_config
+
+set_default_judge_config(JudgeConfig(model="gpt-4o-mini", api_key="sk-..."))</pre>
+<p>Judges call the model with <code>response_format={"type": "json_object"}</code>, so any OpenAI-compatible endpoint that supports JSON mode (including vLLM and similar self-hosted servers) works via <code>QYM_JUDGE_BASE_URL</code>. Temperature defaults to <code>0.0</code> and each call has its own <code>60.0s</code> timeout with retry/backoff.</p>
+
+<div class="docs-callout danger">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <p><span class="docs-callout-title">Two distinct failures if you forget the extra.</span> Selecting a judge name without <code>pip install qym[judges]</code> fails with the registry "not found" error (the name was never registered). Selecting it <em>with</em> the extra but without a configured model/key fails later with <code>RuntimeError</code> from the judge config. They are different problems with different fixes.</p>
+</div>
+
+<h2>Custom and pairwise judges</h2>
+<p>When the built-in judges don't fit, build your own with the factories from <code>qym.metrics.judges</code>. <code>create_judge</code> takes a name, a prompt template using <code>{variable}</code> placeholders, and a <code>choices</code> dict mapping verdict labels to scores:</p>
+<pre data-lang="python">from qym.metrics.judges import create_judge
+
+helpfulness = create_judge(
+    name="helpfulness",
+    prompt="Is this response helpful?\n[Question]: {question}\n[Response]: {output}",
+    choices={"helpful": 1.0, "partial": 0.5, "unhelpful": 0.0},
+)
+
+result = Evaluator(task, dataset, metrics=[helpfulness]).run(show_tui=False)</pre>
+<p>For comparative evaluation, <code>create_pairwise_judge</code> compares two outputs (A vs B) and uses a fixed set of choices: <code>{"A": 1.0, "B": 0.0, "tie": 0.5}</code>. Its prompt exposes <code>{output_a}</code> and <code>{output_b}</code> (B is taken from <code>input_data["output_b"]</code>, falling back to <code>expected</code>).</p>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Unknown <code>{vars}</code> stay as literal text.</span> Template substitution replaces only the placeholders it has values for. A <code>{variable}</code> with no matching key is left in the prompt verbatim — it does <strong>not</strong> raise an error. Double-check your placeholder names against the keys actually present in your dataset items.</p>
+</div>
+
+<h2>Return shapes, in brief</h2>
+<p>Built-ins return one of three shapes, all normalized into a <code>MetricResult</code> internally: a bare number (mapped straight to <code>score</code>), a <code>{"score": ..., "metadata": {...}}</code> dict, or — for judges — a full <code>MetricResult</code> carrying <code>score</code>, <code>label</code>, and <code>explanation</code>. One detail to know now: a metric that returns a dict containing an <code>"error"</code> key is recorded with score <code>0.0</code> and excluded from aggregate scoring rather than dragging the average down silently. The full return-type contract for your own metrics lives in <a href="#sdk-guide/metrics">Metrics (deep dive)</a>.</p>
+
+<h2>Picking a starter set</h2>
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>Short factual answers</h3>
+    <p>Start with <code>exact_match</code>; add <code>contains</code> when wording may vary but a key fact must appear. Reach for <code>correctness</code> (F1) when partial credit matters.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Typo / format tolerance</h3>
+    <p><code>fuzzy_match</code> for OCR, transcription, or near-miss formatting where a continuous similarity score is more useful than pass/fail.</p>
+  </div>
+  <div class="docs-card">
+    <h3>RAG / grounding</h3>
+    <p>Begin with the offline <code>faithfulness</code> heuristic (needs a <code>context</code> field). Upgrade to <code>faithfulness_llm</code> or <code>hallucination</code> once you've installed the <code>judges</code> extra.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Open-ended quality</h3>
+    <p>Use judges — <code>relevance</code>, <code>conciseness</code>, <code>correctness_llm</code> — when there's no single correct string and you need a model's judgment with an explanation.</p>
+  </div>
+</div>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Combine cheap and expensive.</span> Mix a deterministic metric (free, instant) with a judge (slower, paid) in the same <code>metrics=[...]</code> list. The deterministic one catches obvious regressions; the judge handles nuance. Each metric scores every item independently.</p>
+</div>
+
+<p>Next: see how the task return value flows into these metrics in <a href="#get-started/task-metric-io">Task &amp; metric I/O structure</a>, or go deeper on writing your own in <a href="#sdk-guide/custom-metrics">Custom metrics</a> and <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>.</p>

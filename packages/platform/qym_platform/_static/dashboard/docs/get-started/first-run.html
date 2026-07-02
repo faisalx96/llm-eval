@@ -1,0 +1,63 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Your first run</h1>
+<p class="docs-lead">The fastest path to a green run: a local CSV, a few lines of Python, one built-in metric. No API key, no platform connection — everything runs on your machine and saves results to disk.</p>
+
+<h2>1. A tiny dataset</h2>
+<p>Create <code>qa.csv</code>. By default qym reads an <code>input</code> column and an <code>expected_output</code> column (both names are configurable):</p>
+<pre data-lang="qa.csv">input,expected_output
+"What is 2 + 2?","4"
+"Capital of France?","Paris"</pre>
+
+<h2>2. Write the task and run it</h2>
+<p>Your <strong>task</strong> receives each item's input and returns your system's output. Returning a plain value is all you need to start:</p>
+<pre data-lang="first_eval.py">from qym import Evaluator, CsvDataset
+
+# Point qym at the CSV (uses the `input` / `expected_output` columns)
+data = CsvDataset("qa.csv")
+
+# Your task: take the input, return your system's answer (a plain string)
+def task(question):
+    return my_model(question)
+
+# Score it against a built-in metric
+result = Evaluator(task, data, metrics=["exact_match"]).run(show_tui=False)
+print(result.success_rate)</pre>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Returning a dict?</span> qym reserves dict returns for its output envelope. A dict must contain <strong>exactly</strong> <code>output</code> and <code>metadata</code> (a dict) — e.g. <code>{"output": ans, "metadata": {"tokens": 42}}</code> — or it raises <code>InvalidTaskOutputError</code>. To return just a value, return it plainly (not wrapped in a dict).</p>
+</div>
+
+<h2>What each part does</h2>
+<table>
+  <thead><tr><th>Piece</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>CsvDataset("qa.csv")</code></td><td>Loads items from the CSV. Override columns with <code>input_col=</code> / <code>expected_col=</code>.</td></tr>
+    <tr><td><code>task</code></td><td>Called once per item with the input; returns the output to score.</td></tr>
+    <tr><td><code>metrics=["exact_match"]</code></td><td>A built-in metric. Compares output to <code>expected_output</code>.</td></tr>
+    <tr><td><code>.run(show_tui=False)</code></td><td>Runs the evaluation. <code>show_tui=False</code> skips the live terminal UI.</td></tr>
+    <tr><td><code>result.success_rate</code></td><td>Aggregate pass rate. Per-item results are written to <code>qym_results/</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>Or run it from the CLI</h2>
+<p>The same evaluation without writing a runner script:</p>
+<pre data-lang="bash">qym run create \
+  --task-file first_eval.py \
+  --task-function task \
+  --dataset-csv qa.csv \
+  --metrics exact_match</pre>
+
+<h2>What to inspect</h2>
+<ul>
+  <li><code>result.success_rate</code> and <code>result.total_items</code> — did it run end to end?</li>
+  <li>The saved artifacts under <code>qym_results/&lt;task&gt;/...</code> (path is in <code>result.last_saved_path</code>).</li>
+  <li>Rows encoded as <code>ERROR:</code> or <code>N/A</code> — these are items where the task or a metric failed.</li>
+</ul>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Two things that surprise people</span> — <code>run()</code> prints nothing by default (set <code>QYM_SHOW_SUMMARY=1</code> for a summary), and a multi-model run (<code>model=[...]</code>) returns a <strong>list</strong> of results, not a single one.</p>
+</div>
+
+<p>Ready to send runs here for review? Next: <a href="#get-started/api-keys">Link your repo &amp; create API keys</a>.</p>

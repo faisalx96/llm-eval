@@ -1,0 +1,178 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Task &amp; metric I/O structure</h1>
+<p class="docs-lead">The one contract worth memorizing: a dataset item flows into your task, your task returns an output, and that output flows into your metrics. Get the shapes right at each hop and everything else in qym just works.</p>
+
+<p>Every qym run is the same four-step pipeline, repeated once per dataset item:</p>
+<pre data-lang="text">dataset item  -->  task(input)  -->  output  -->  metric(output, expected, ...)  -->  score</pre>
+<p>This page is the high-level map of <strong>what each step receives and what it must hand to the next</strong>. For the full reference on writing tasks, custom metrics, and configs, follow the links to the SDK Guide as you go.</p>
+
+<h2>1. The dataset item</h2>
+<p>Every item — whether it came from a local CSV, a JSONL file, an in-memory list, or a qym platform dataset — is normalized to the same four fields before your task ever sees it:</p>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>What it is</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>string</td><td>Stable identifier for the item. Auto-generated from a content fingerprint when you don't supply one.</td></tr>
+    <tr><td><code>input</code></td><td>any JSON value</td><td>The payload passed to your task. A string, number, list, or dict.</td></tr>
+    <tr><td><code>expected_output</code></td><td>any JSON value or <code>None</code></td><td>The reference answer. Passed to metrics as <code>expected</code>. Optional, but most built-in metrics need it.</td></tr>
+    <tr><td><code>metadata</code></td><td>dict</td><td>Side data about the item (category, difficulty, source, etc.). Not passed to the task; available to metrics.</td></tr>
+  </tbody>
+</table>
+<p>These names are fixed at the item level. When you load from a CSV with different column names, you remap them at load time (<code>input_col=</code>, <code>expected_col=</code>, <code>id_col=</code>, <code>metadata_cols=</code>) — see <a href="#get-started/datasets">Using datasets &amp; reaching data in code</a>.</p>
+
+<h2>2. What the task receives</h2>
+<p>Your task is called once per item and receives <strong>only that item's <code>input</code></strong> — not the whole item. qym inspects your function's signature and resolves the call for you, so you can name your parameter whatever reads well.</p>
+
+<h3>Smart argument resolution</h3>
+<p>How <code>input</code> maps onto your parameters depends on both the input's shape and your signature:</p>
+<table>
+  <thead><tr><th>Your function</th><th>Item input</th><th>How qym calls it</th></tr></thead>
+  <tbody>
+    <tr><td><code>def task(question)</code></td><td><code>"What is 2+2?"</code></td><td><code>task(question="What is 2+2?")</code></td></tr>
+    <tr><td><code>def task(x)</code></td><td><code>"What is 2+2?"</code></td><td><code>task(x="What is 2+2?")</code> — any single name works</td></tr>
+    <tr><td><code>def task(q, context)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(q=..., context=...)</code> — dict keys matched to params</td></tr>
+    <tr><td><code>def task(item)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(item={...})</code> — single param, no key match → whole dict</td></tr>
+    <tr><td><code>def task(**kwargs)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(q=..., context=...)</code></td></tr>
+  </tbody>
+</table>
+<p>In short: a <strong>dict input is unpacked</strong> into matching keyword arguments when your parameter names line up (or when you accept <code>**kwargs</code> or have more than one parameter). A non-dict input goes to your single parameter. A single parameter that matches no dict key receives the whole dict.</p>
+
+<h3>Auto-injected parameters</h3>
+<p>Three parameter names are special. If your task declares any of them, qym fills them in automatically — they are <strong>not</strong> drawn from the item input:</p>
+<table>
+  <thead><tr><th>Parameter</th><th>qym injects</th></tr></thead>
+  <tbody>
+    <tr><td><code>model</code> or <code>model_name</code></td><td>The model being evaluated (the current entry of <code>model=[...]</code>, or the configured single model). Add this to support multi-model runs.</td></tr>
+    <tr><td><code>trace_id</code></td><td>The trace identifier for the current item, for correlating your own logging.</td></tr>
+  </tbody>
+</table>
+
+<pre data-lang="python">async def task(question, model_name="gpt-4o-mini"):
+    # `question` comes from item.input; `model_name` is injected by qym
+    return await call_llm(model=model_name, prompt=question)</pre>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Sync or async, your choice.</span> An <code>async def</code> task is awaited directly on the event loop; a plain <code>def</code> task is run in a worker thread so it never blocks the loop. Prefer async for I/O-heavy LLM calls — qym warns if a sync client (e.g. <code>requests.get</code>) blocks the loop inside an <code>async def</code>.</p>
+</div>
+
+<h2>3. What the task returns</h2>
+<p>Your task's return value becomes the item's <strong>output</strong>. There are exactly two accepted shapes:</p>
+
+<h3>A plain value (the common case)</h3>
+<p>Return a string, number, list — anything that is not a dict. That value is the output, stored as-is and passed straight to your metrics.</p>
+<pre data-lang="python">def task(question):
+    return "Paris"   # output = "Paris"</pre>
+
+<h3>The output envelope (when metrics need extra detail)</h3>
+<p>To expose supporting data to metrics without polluting the visible output, return a dict in qym's <strong>envelope</strong> shape. It must contain <strong>exactly</strong> the keys <code>output</code> and <code>metadata</code>, and <code>metadata</code> must be a dict:</p>
+<pre data-lang="python">def rag_task(question):
+    docs = retrieve(question)
+    answer = call_llm(question, context=docs)
+    return {
+        "output": answer,                       # the visible output
+        "metadata": {"retrieved_context": docs} # hidden, for metrics
+    }</pre>
+<ul>
+  <li>The <strong>visible output</strong> shown in the platform and saved to artifacts is the envelope's <code>output</code> field only.</li>
+  <li>The envelope's <code>metadata</code> is merged into the item's stored metadata under <code>task_metadata</code>.</li>
+</ul>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Dict returns are reserved.</span> Any dict return is treated as the envelope. If the keys are not exactly <code>{output, metadata}</code> (or <code>metadata</code> isn't a dict), qym raises <code>InvalidTaskOutputError</code> for that item — e.g. <code>{"answer": "Paris"}</code> is rejected because qym can't tell which field is the visible output. To return a literal dict as your output, wrap it: <code>{"output": {...}, "metadata": {}}</code>.</p>
+</div>
+
+<h2>4. What the metric receives</h2>
+<p>Each metric is called once per item with the task output and the item's reference data. qym resolves a metric's arguments much like it resolves a task's — by inspecting the signature — but the set of available values is different. These are the names qym recognizes:</p>
+<table>
+  <thead><tr><th>Parameter name</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td><code>output</code></td><td>What the task returned (see the envelope note below).</td></tr>
+    <tr><td><code>expected</code></td><td>The item's <code>expected_output</code> (or <code>None</code>).</td></tr>
+    <tr><td><code>input_data</code></td><td>The original item <code>input</code>.</td></tr>
+    <tr><td><code>metadata</code> or <code>item_metadata</code></td><td>The item's <code>metadata</code> dict. Both names resolve to the same value.</td></tr>
+  </tbody>
+</table>
+
+<h3>Naming vs. positional order</h3>
+<p>If your metric's parameter names are all drawn from the recognized set above, qym passes them by keyword — order doesn't matter. If you use names outside that set, qym falls back to <strong>positional</strong> order:</p>
+<pre data-lang="text">position 1 -> output
+position 2 -> expected
+position 3 -> input_data
+position 4 -> item_metadata</pre>
+<pre data-lang="python"># Recognized names -> matched by keyword (order-independent)
+def my_metric(expected, output):
+    return 1.0 if output == expected else 0.0
+
+# Custom names -> matched by POSITION (order is load-bearing)
+def my_metric(result, ground_truth):   # result=output, ground_truth=expected
+    return 1.0 if result == ground_truth else 0.0</pre>
+<p>Declare only the parameters you actually use; a one-arg <code>def m(output)</code> and a four-arg <code>def m(output, expected, input_data, metadata)</code> are both valid.</p>
+
+<h3>The envelope, from the metric's side</h3>
+<p>This is the subtle part. When your task returns the <code>{output, metadata}</code> envelope, the two kinds of metric see <code>output</code> differently:</p>
+<ul>
+  <li><strong>Built-in metrics auto-unwrap.</strong> They read only the envelope's inner <code>output</code> value, so <code>exact_match</code> compares the visible answer, never the wrapper.</li>
+  <li><strong>Custom metrics receive the full envelope.</strong> Your function's <code>output</code> argument is the entire <code>{"output": ..., "metadata": ...}</code> dict, so you can reach task metadata via <code>output["metadata"]</code>.</li>
+</ul>
+<pre data-lang="python"># Task returned {"output": "Paris", "metadata": {"confidence": 0.95}}
+
+def confidence(output, expected):
+    # custom metric: `output` is the whole envelope
+    return output["metadata"]["confidence"]      # -> 0.95
+
+# Built-in "exact_match" on the same item compares "Paris" to expected</pre>
+
+<h2>5. What the metric returns</h2>
+<p>A metric can return any of these shapes; qym normalizes them all into a structured score:</p>
+<table>
+  <thead><tr><th>Return value</th><th>Becomes</th></tr></thead>
+  <tbody>
+    <tr><td><code>True</code> / <code>False</code></td><td>score <code>1.0</code> / <code>0.0</code></td></tr>
+    <tr><td>an <code>int</code> or <code>float</code></td><td>that numeric score</td></tr>
+    <tr><td><code>{"score": 0.85, "label": "good", "explanation": "...", "metadata": {...}}</code></td><td>score plus optional label, explanation, and per-metric metadata</td></tr>
+    <tr><td>a <code>MetricResult</code> object</td><td>used directly</td></tr>
+  </tbody>
+</table>
+<p>One special case: a dict containing an <code>"error"</code> key is recorded with score <code>0.0</code> and the error stashed in metadata, so a single broken metric doesn't crash the item. A metric that raises an exception is also caught and recorded as a failure rather than aborting the run.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Metrics have a wall-clock budget.</span> Each metric call is capped by <code>metric_timeout</code> (default <strong>60.0s</strong>). A metric that hangs past the budget is recorded with score <code>0.0</code> and label <code>"timeout"</code> instead of holding the whole item hostage. Tune it in <a href="#sdk-guide/config">Configs &amp; options</a>.</p>
+</div>
+
+<h2>Putting the hops together</h2>
+<p>A single end-to-end view of one item flowing through the pipeline:</p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+# item: input="What is the capital of France?", expected_output="Paris"
+data = CsvDataset("qa.csv")
+
+def task(question):              # receives item.input
+    return "Paris"               # plain value -> output
+
+def looks_capitalized(output, expected):   # recognized names
+    return output[:1].isupper()  # bool -> 1.0 / 0.0
+
+# built-in "exact_match" compares output to expected_output
+Evaluator(task, data, metrics=["exact_match", looks_capitalized]).run(show_tui=False)</pre>
+
+<h2>Where to go next</h2>
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>Built-in metrics tour</h3>
+    <p>The metrics that ship with qym and exactly what each one reads. See <a href="#get-started/builtin-metrics">Built-in metrics tour</a>.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Custom metrics</h3>
+    <p>Signature rules, the <code>error</code>-key behavior, and async metrics in depth. See <a href="#sdk-guide/custom-metrics">Custom metrics</a>.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Using datasets</h3>
+    <p>Local CSV/JSONL, in-memory items, and platform datasets — and how column remapping feeds the item shape. See <a href="#get-started/datasets">Using datasets &amp; reaching data in code</a>.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Handling common errors</h3>
+    <p>Symptom → cause → fix for <code>InvalidTaskOutputError</code>, unknown metrics, and more. See <a href="#get-started/errors">Handling common errors</a>.</p>
+  </div>
+</div>

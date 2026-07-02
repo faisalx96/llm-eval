@@ -1,0 +1,342 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Progress, observers &amp; wrappers</h1>
+<p class="docs-lead">When you embed qym inside another Python system &mdash; a service, queue worker, notebook, CI harness, scheduler, or internal eval platform &mdash; you need to surface progress in <em>your</em> UI. qym gives you two local integration layers for exactly that: a simple <code>progress_callback</code> and a lower-level <code>EvaluationObserver</code>.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Local progress vs. platform wire events.</span> This page is about <strong>local progress events</strong> &mdash; in-process callbacks that drive your own job table, websocket, or cell output. They are a different vocabulary from the <strong>platform wire events</strong> the SDK streams to qym over HTTP (covered in the Developer/API ingestion docs). Don't confuse the two: a <code>ProgressSnapshot</code> with <code>event="item_complete"</code> is not the same as the <code>item_completed</code> wire event.</p></div>
+
+<h2>The two integration layers</h2>
+<p>Both layers are driven by the same internal observer mechanism, so they see the same lifecycle. Pick by how much structure you want.</p>
+
+<table>
+  <thead><tr><th>Layer</th><th>Use it when</th><th>How you wire it</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Progress callback</strong></td><td>You want one function that receives structured progress snapshots with counters already computed.</td><td><code>Evaluator(..., progress_callback=fn)</code></td></tr>
+    <tr><td><strong>Observer</strong></td><td>You want named lifecycle methods, explicit composition, or access to richer per-event arguments.</td><td><code>observer=ProgressCallbackObserver(fn)</code> or a subclass of <code>EvaluationObserver</code></td></tr>
+  </tbody>
+</table>
+
+<p>All three of <code>Evaluator</code>, <code>EvaluationObserver</code>, <code>ProgressCallbackObserver</code>, and <code>ProgressSnapshot</code> are top-level exports from <code>qym</code>.</p>
+
+<pre data-lang="python">from qym import (
+    Evaluator,
+    EvaluationObserver,
+    ProgressCallbackObserver,
+    ProgressSnapshot,
+)</pre>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Always pass <code>show_tui=False</code> in a wrapper.</span> When qym runs inside a service, worker, notebook, or CI job, your code owns the status display. Disabling the terminal dashboard keeps qym from fighting your output. The web UI &mdash; when platform streaming is configured &mdash; is unaffected.</p></div>
+
+<h2>Progress callback (the simple path)</h2>
+<p>For most wrappers, pass a single callback to the <code>Evaluator</code> constructor. It receives an immutable <code>ProgressSnapshot</code> at each lifecycle point, with running counters (<code>completed</code>, <code>failed</code>, <code>in_progress</code>, <code>pending</code>) already maintained for you.</p>
+
+<pre data-lang="python">from qym import Evaluator, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -&gt; None:
+    jobs.update(
+        run_id=snapshot.run_id,
+        event=snapshot.event,
+        finished=snapshot.finished,        # completed + failed
+        failed=snapshot.failed,
+        total=snapshot.total_items,
+        percent=snapshot.percent_complete,  # 0.0..100.0
+    )
+
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    progress_callback=on_progress,
+).run(show_tui=False)</pre>
+
+<p>Internally the constructor wraps your function in a <code>ProgressCallbackObserver</code>, which is the layer that converts raw lifecycle hooks into snapshots. The two forms below are equivalent on <code>Evaluator(...)</code>:</p>
+
+<pre data-lang="python"># Shortcut form
+Evaluator(..., progress_callback=on_progress)
+
+# Explicit form (same result)
+Evaluator(..., observer=ProgressCallbackObserver(on_progress))</pre>
+
+<h2>ProgressSnapshot fields</h2>
+<p><code>ProgressSnapshot</code> is a frozen dataclass. Every field below is verified against the SDK; not all fields are populated on every event &mdash; the table notes which events carry which extras.</p>
+
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Populated on</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>run_id</code></td><td>str</td><td>all events</td><td>The qym run identifier. For <code>run_matrix</code> this is the matrix ID instead.</td></tr>
+    <tr><td><code>event</code></td><td>str</td><td>all events</td><td>The lifecycle event name (see vocabulary below).</td></tr>
+    <tr><td><code>total_items</code></td><td>int</td><td>run + item events</td><td>Dataset item count when known (defaults to 0).</td></tr>
+    <tr><td><code>completed</code></td><td>int</td><td>item + run events</td><td>Successful item count, including any resumed-from-checkpoint offset.</td></tr>
+    <tr><td><code>failed</code></td><td>int</td><td>item + run events</td><td>Failed item count, including any resumed offset.</td></tr>
+    <tr><td><code>in_progress</code></td><td>int</td><td>item events</td><td>Items currently being evaluated.</td></tr>
+    <tr><td><code>pending</code></td><td>int</td><td>item events</td><td>Items not yet started (<code>total &minus; completed &minus; failed &minus; in_progress</code>, floored at 0).</td></tr>
+    <tr><td><code>metrics</code></td><td>List[str]</td><td>run + metric events</td><td>The metric names configured for the run.</td></tr>
+    <tr><td><code>item_index</code></td><td>Optional[int]</td><td>item + metric events</td><td>Zero-based index of the dataset item.</td></tr>
+    <tr><td><code>metric_name</code></td><td>Optional[str]</td><td><code>metric_result</code></td><td>The metric that just finished computing.</td></tr>
+    <tr><td><code>score</code></td><td>Any</td><td><code>metric_result</code></td><td>The raw metric return value (may be a number, bool, dict, or an error dict).</td></tr>
+    <tr><td><code>error</code></td><td>Optional[str]</td><td><code>item_error</code></td><td>Error string for a failed item.</td></tr>
+    <tr><td><code>message</code></td><td>Optional[str]</td><td><code>warning</code></td><td>Human-readable warning text.</td></tr>
+    <tr><td><code>payload</code></td><td>Optional[dict]</td><td><code>item_start</code></td><td>Item-start payload: <code>{"input": ..., "expected": ...}</code>.</td></tr>
+    <tr><td><code>metadata</code></td><td>Optional[dict]</td><td><code>metric_result</code></td><td>Metric timing/status metadata.</td></tr>
+    <tr><td><code>result</code></td><td>Optional[dict]</td><td><code>item_complete</code></td><td>Output, scores, latency, retry, and trace details for the completed item.</td></tr>
+    <tr><td><code>run_info</code></td><td>Optional[dict]</td><td><code>run_start</code> and later</td><td>Run metadata plus platform URLs when streaming is enabled.</td></tr>
+    <tr><td><code>run_matrix</code></td><td>Optional[List[dict]]</td><td><code>run_matrix</code></td><td>Planned run rows for multi-model / multi-run evaluations.</td></tr>
+    <tr><td><code>total_runs</code></td><td>int</td><td><code>run_matrix</code></td><td>Number of planned runs.</td></tr>
+    <tr><td><code>result_summary</code></td><td>Optional[dict]</td><td><code>run_complete</code></td><td>Final run summary (<code>success_rate</code>, <code>total_items</code>, <code>metrics</code>, <code>run_metadata</code>).</td></tr>
+  </tbody>
+</table>
+
+<h3>Computed properties</h3>
+<p>Two read-only properties save you from recomputing the obvious:</p>
+<ul>
+  <li><code>snapshot.finished</code> &rarr; <code>completed + failed</code>.</li>
+  <li><code>snapshot.percent_complete</code> &rarr; <code>finished / total_items * 100.0</code>, returning <code>0.0</code> when <code>total_items</code> is 0 or unknown.</li>
+</ul>
+
+<h2>The local event vocabulary</h2>
+<p>The <code>event</code> field on a <code>ProgressSnapshot</code> takes one of these exact strings. This is the vocabulary your wrapper should branch on:</p>
+
+<table>
+  <thead><tr><th>Event</th><th>Fires when</th></tr></thead>
+  <tbody>
+    <tr><td><code>run_matrix</code></td><td>A multi-model or multi-run shape is known, before any run starts. Carries <code>run_matrix</code> + <code>total_runs</code>.</td></tr>
+    <tr><td><code>run_start</code></td><td>A run is about to begin. <code>run_info</code> now carries platform links if streaming.</td></tr>
+    <tr><td><code>item_start</code></td><td>An item begins processing. Carries <code>item_index</code> + <code>payload</code>.</td></tr>
+    <tr><td><code>metric_result</code></td><td>A metric finishes computing for an item. Carries <code>metric_name</code>, <code>score</code>, <code>metadata</code>.</td></tr>
+    <tr><td><code>item_complete</code></td><td>An item completes successfully. Carries the <code>result</code> dict.</td></tr>
+    <tr><td><code>item_error</code></td><td>An item fails. Carries the <code>error</code> string.</td></tr>
+    <tr><td><code>warning</code></td><td>qym detects an integration concern (e.g. a sync task at high concurrency). Carries <code>message</code>.</td></tr>
+    <tr><td><code>run_complete</code></td><td>The run finishes. Carries <code>result_summary</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The metric event is <code>metric_result</code>, not <code>metric_complete</code>.</span> Older docs and snippets used <code>metric_complete</code> &mdash; that string is never emitted. Branch on <code>"metric_result"</code>. Likewise, item events are <code>item_complete</code> / <code>item_error</code> (not <code>item_completed</code>, which is a platform wire event).</p></div>
+
+<h3>Typical single-run sequence</h3>
+<pre data-lang="text">run_start
+item_start
+metric_result      (one per metric, per item)
+item_complete      (or item_error on failure)
+...
+run_complete</pre>
+<p>For multi-model (<code>model=[...]</code>) or multi-run (<code>run_parallel</code>) evaluations, a single <code>run_matrix</code> event precedes the per-run sequences:</p>
+<pre data-lang="text">run_matrix
+run_start ... run_complete   (run 1)
+run_start ... run_complete   (run 2)</pre>
+
+<h2>Custom observers</h2>
+<p>Subclass <code>EvaluationObserver</code> when you want named lifecycle methods rather than one callback that branches on <code>event</code>. Every hook has a no-op default, so override only the ones you need. Hooks always receive <code>run_id</code> as a keyword argument.</p>
+
+<table>
+  <thead><tr><th>Hook</th><th>Signature</th><th>Fires when</th></tr></thead>
+  <tbody>
+    <tr><td><code>on_run_matrix</code></td><td><code>(matrix_id, runs, total_runs)</code></td><td>A multi-model / multi-run shape is known.</td></tr>
+    <tr><td><code>on_run_start</code></td><td><code>(run_id, run_info, total_items, metrics)</code></td><td>A run is starting.</td></tr>
+    <tr><td><code>on_item_start</code></td><td><code>(run_id, item_index, payload=None)</code></td><td>An item begins processing.</td></tr>
+    <tr><td><code>on_metric_result</code></td><td><code>(run_id, item_index, metric_name, score, metadata=None)</code></td><td>A metric finishes for an item.</td></tr>
+    <tr><td><code>on_item_complete</code></td><td><code>(run_id, item_index, result)</code></td><td>An item completes successfully.</td></tr>
+    <tr><td><code>on_item_error</code></td><td><code>(run_id, item_index, error)</code></td><td>An item fails.</td></tr>
+    <tr><td><code>on_warning</code></td><td><code>(run_id, message)</code></td><td>qym detects a performance/integration warning.</td></tr>
+    <tr><td><code>on_run_complete</code></td><td><code>(run_id, result_summary)</code></td><td>A run finishes.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The hook is <code>on_run_complete</code> and its last argument is <code>result_summary</code> &mdash; a dict, not an <code>EvaluationResult</code>.</span> It contains <code>success_rate</code>, <code>total_items</code>, <code>metrics</code>, and <code>run_metadata</code>. For the full result object, return value from <code>run()</code> is the source of truth.</p></div>
+
+<pre data-lang="python">from qym import Evaluator, EvaluationObserver
+
+
+class JobObserver(EvaluationObserver):
+    def on_run_matrix(self, run_id, matrix_id, runs, total_runs):
+        for row in runs:
+            jobs.create_pending(
+                matrix_id=matrix_id,
+                run_id=row["run_id"],
+                display_name=row.get("display_name"),
+                model=row.get("model"),
+                total_items=row.get("total_items"),
+            )
+
+    def on_run_start(self, run_id, run_info, total_items, metrics):
+        jobs.mark_running(
+            run_id=run_id,
+            total_items=total_items,
+            metrics=metrics,
+            qym_url=(run_info or {}).get("qym_url"),
+        )
+
+    def on_item_complete(self, run_id, item_index, result):
+        jobs.record_item(run_id=run_id, item_index=item_index, status="complete")
+
+    def on_item_error(self, run_id, item_index, error):
+        jobs.record_item(run_id=run_id, item_index=item_index, status="error", error=str(error))
+
+    def on_run_complete(self, run_id, result_summary):
+        jobs.mark_complete(run_id=run_id, success_rate=result_summary["success_rate"])
+
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    observer=JobObserver(),
+).run(show_tui=False)</pre>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Hooks receive <code>run_id</code> as a keyword.</span> The dispatcher always injects <code>run_id=...</code>, so a custom hook's signature must accept it &mdash; either name it first (as above) or absorb it with <code>**kwargs</code>. <code>on_run_matrix</code> gets both <code>run_id</code> (the matrix id) and <code>matrix_id</code>.</p></div>
+
+<h2>Multi-run &amp; multi-model wrappers</h2>
+<p>The <code>progress_callback=</code> shortcut exists only on the <code>Evaluator(...)</code> constructor. For <code>Evaluator.run_parallel(...)</code> (multi-run), pass an observer instead:</p>
+
+<pre data-lang="python">from qym import Evaluator, ProgressCallbackObserver, ProgressSnapshot
+
+
+def on_progress(snapshot: ProgressSnapshot) -&gt; None:
+    if snapshot.event == "run_matrix":
+        for row in snapshot.run_matrix or []:
+            jobs.create_pending(
+                run_id=row["run_id"],
+                display_name=row.get("display_name"),
+                model=row.get("model"),
+                total_items=row.get("total_items"),
+            )
+        return
+
+    if snapshot.event == "run_start":
+        info = snapshot.run_info or {}
+        jobs.attach_platform_link(
+            run_id=snapshot.run_id,
+            qym_url=info.get("qym_url"),
+            platform_run_id=info.get("platform_run_id"),
+        )
+        return
+
+    jobs.update_progress(
+        run_id=snapshot.run_id,
+        event=snapshot.event,
+        percent=snapshot.percent_complete,
+    )
+
+
+results = Evaluator.run_parallel(
+    run_specs,
+    observer=ProgressCallbackObserver(on_progress),
+    show_tui=False,
+)</pre>
+
+<h3>The run_matrix row shape</h3>
+<p>The <code>run_matrix</code> event lets you pre-create pending rows in your UI before any run starts. Each row is a dict with these keys:</p>
+
+<pre data-lang="json">{
+  "index": 0,
+  "run_id": "qa-gpt-4o-mini-260621-1000",
+  "display_name": "qa [gpt-4o-mini]",
+  "task": "answer-question",
+  "task_file": null,
+  "task_function": null,
+  "dataset": "qa.csv",
+  "model": "gpt-4o-mini",
+  "metrics": ["exact_match"],
+  "total_items": 100,
+  "status": "pending",
+  "qym_url": null,
+  "platform_run_id": null
+}</pre>
+
+<p>At the <code>run_matrix</code> stage, <code>qym_url</code> and <code>platform_run_id</code> are always <code>null</code> &mdash; they are populated later, per run, in the <code>run_start</code> snapshot's <code>run_info</code> once the platform assigns them.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">A multi-model <code>run()</code> returns a list.</span> When you pass <code>model=[...]</code>, <code>Evaluator(...).run()</code> returns a <code>List[EvaluationResult]</code> &mdash; one per model &mdash; not a single result. <code>run_parallel()</code> always returns a list. Handle both shapes in your wrapper (see the <a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a> page).</p></div>
+
+<h2>A realistic service wrapper</h2>
+<p>This pattern ties it together: local job progress for your own UI, platform streaming for a shared review link, durable artifacts for evidence, and non-secret correlation IDs in <code>run_metadata</code>.</p>
+
+<pre data-lang="python">import os
+from qym import CsvDataset, Evaluator, ProgressSnapshot
+
+
+def launch_eval(job):
+    dataset = CsvDataset(
+        job.dataset_path,
+        input_col="question",
+        expected_col="answer",
+        id_col="id",
+        metadata_cols=["domain", "difficulty"],
+    )
+
+    def on_progress(snapshot: ProgressSnapshot) -&gt; None:
+        if snapshot.event == "run_matrix":
+            for row in snapshot.run_matrix or []:
+                jobs.create_pending_child(job.id, row)
+            return
+
+        update = {
+            "qym_run_id": snapshot.run_id,
+            "event": snapshot.event,
+            "finished": snapshot.finished,
+            "completed": snapshot.completed,
+            "failed": snapshot.failed,
+            "total": snapshot.total_items,
+            "percent": snapshot.percent_complete,
+        }
+        if snapshot.event == "run_start":
+            info = snapshot.run_info or {}
+            update["qym_url"] = info.get("qym_url")
+            update["platform_run_id"] = info.get("platform_run_id")
+        if snapshot.event == "item_complete":
+            update["last_item_ms"] = (snapshot.result or {}).get("total_time_ms")
+
+        jobs.update(job.id, **update)
+
+    result = Evaluator(
+        task=job.task,
+        dataset=dataset,
+        metrics=["exact_match", "relevance"],
+        model=job.models,
+        config={
+            "run_name": job.name,
+            "task_name": job.task_name,
+            "max_concurrency": job.max_concurrency,
+            "timeout": 300,
+            "output_dir": "qym_results/jobs",
+            # Platform streaming (optional) for a shared review link:
+            "platform_url": os.environ.get("QYM_BASE_URL"),
+            "platform_api_key": os.environ.get("QYM_API_KEY"),
+            # Non-secret correlation IDs only:
+            "run_metadata": {
+                "job_id": job.id,
+                "owner": job.owner,
+                "prompt_version": job.prompt_version,
+            },
+        },
+        progress_callback=on_progress,
+    ).run(show_tui=False, max_parallel_runs=job.max_parallel_runs)
+
+    # result is a list when job.models has more than one model.
+    results = result if isinstance(result, list) else [result]
+    jobs.finish(
+        job.id,
+        result_count=len(results),
+        artifact_paths=[r.last_saved_path for r in results],
+    )
+    return result</pre>
+
+<p>For the platform side of this wrapper &mdash; how <code>QYM_BASE_URL</code> / <code>QYM_API_KEY</code> are resolved and what appears in the shared dashboard &mdash; see <a href="#sdk-guide/config">Configs &amp; options</a>. To read durable results off <code>EvaluationResult</code>, see <a href="#sdk-guide/results">Results, artifacts &amp; tracing</a>.</p>
+
+<h2>Rules for reliable wrappers</h2>
+<p>Callbacks and hooks run <strong>inside the evaluation process</strong>, in the hot path. Treat them accordingly.</p>
+<ul>
+  <li><strong>Keep callbacks fast and non-blocking.</strong> If publishing progress to another service can block, enqueue the update locally and let a separate worker publish it. A slow callback throttles the whole run.</li>
+  <li><strong>Treat progress as status, not as results.</strong> Progress events are for live UI; the authoritative evidence is the returned <code>EvaluationResult</code> (or the saved artifacts), not the snapshots.</li>
+  <li><strong>Exceptions in your callback are swallowed.</strong> The dispatcher catches and logs failures so a buggy observer can't crash a run &mdash; which also means a silently failing callback won't surface loudly. Test it.</li>
+  <li><strong>Branch defensively on <code>event</code>.</strong> New event names may be added; default to a generic "update" path rather than assuming an exhaustive set.</li>
+  <li><strong>Use <code>run_metadata</code> for correlation IDs</strong> (job id, owner, prompt version) so you can join qym runs back to your own records.</li>
+  <li><strong>Never put secrets in metadata, item metadata, callback logs, or artifact paths.</strong> All of these may be persisted to disk and streamed to the platform.</li>
+  <li><strong>Always <code>show_tui=False</code></strong> when your wrapper owns the display.</li>
+</ul>
+
+<h2>Related pages</h2>
+<ul>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> &mdash; <code>run_metadata</code>, <code>platform_url</code>/<code>platform_api_key</code>, concurrency, and the full config field table.</li>
+  <li><a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a> &mdash; <code>model=[...]</code>, <code>run_parallel</code>, and the list-return semantics referenced here.</li>
+  <li><a href="#sdk-guide/results">Results, artifacts &amp; tracing</a> &mdash; reading durable evidence off <code>EvaluationResult</code>.</li>
+</ul>

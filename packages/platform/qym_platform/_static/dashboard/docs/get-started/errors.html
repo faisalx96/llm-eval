@@ -1,0 +1,187 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Handling common errors</h1>
+<p class="docs-lead">Most failures in qym map to a handful of clear, named exceptions. This page lists every error you are likely to hit, the exact message it produces, why it happens, and the one-line fix — plus how to reproduce a failure in the smallest possible way.</p>
+
+<h2>Triage in three steps</h2>
+<p>Before reading the catalog, classify the failure. This tells you which layer to look at and stops you from debugging the platform when the bug is in your task.</p>
+<ol>
+  <li><strong>Local SDK</strong> — task import fails, CSV won't load, a metric crashes, an item errors. Reproduce with a tiny local CSV and <code>show_tui=False</code> (or <code>--no-progress</code>).</li>
+  <li><strong>Provider / judge config</strong> — a judge metric raises before scoring, or LLM calls error. Check your judge env vars and model name.</li>
+  <li><strong>Platform connectivity</strong> — the run runs fine locally but no run appears in the dashboard. Check <code>QYM_BASE_URL</code> / <code>QYM_API_KEY</code> and look for a stderr warning.</li>
+</ol>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Smallest reproduction wins.</span> A five-row CSV with one deterministic metric (<code>exact_match</code>) separates task bugs from platform or provider bugs faster than anything else. Add the platform and judges back only after the local path is green.</p>
+</div>
+
+<h2>Where qym's exceptions live</h2>
+<p>The SDK's named exceptions are defined in <code>qym.utils.errors</code> — they are <strong>not</strong> re-exported from the top-level <code>qym</code> package, so import them from there if you want to catch them:</p>
+<pre data-lang="python">from qym.utils.errors import (
+    QymError,              # base class for all qym errors (alias: LLMEvalError)
+    DatasetNotFoundError,  # dataset couldn't be resolved locally or on the platform
+    CsvDatasetError,       # loading/parsing a CSV dataset failed
+    CsvDatasetSchemaError, # CSV doesn't match the expected schema (carries file/row/column)
+    MetricError,           # a metric computation failed
+    TaskExecutionError,    # task execution failed
+)</pre>
+<p>Two task-related exceptions live in <code>qym.core.evaluator</code> instead, because they are raised while normalizing a task's return value: <code>InvalidTaskOutputError</code> and <code>TaskExecutionTimeoutError</code>.</p>
+
+<h2>Symptom-to-fix quick reference</h2>
+<table>
+  <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td><code>InvalidTaskOutputError</code></td><td>Task returned a dict that isn't the <code>{output, metadata}</code> envelope.</td><td>Return a plain value, or wrap as <code>{"output": value, "metadata": {}}</code>.</td></tr>
+    <tr><td><code>DatasetNotFoundError</code> on a string dataset</td><td>String isn't an existing local file, so it's treated as a platform dataset, but credentials are missing.</td><td>Fix the path / use <code>CsvDataset</code>, or set <code>QYM_BASE_URL</code> + <code>QYM_API_KEY</code>.</td></tr>
+    <tr><td><code>CsvDatasetSchemaError</code></td><td>Missing column, bad JSON cell, no header, or non-<code>.csv</code> path.</td><td>Read the <code>file</code>/<code>row</code>/<code>column</code> in the message and fix that cell or column mapping.</td></tr>
+    <tr><td><code>ValueError: Metric '…' not found</code></td><td>Unknown metric name (typo, or a judge name without the <code>[judges]</code> extra).</td><td>Use a registered name or pass a callable. Install <code>qym[judges]</code> for judges.</td></tr>
+    <tr><td><code>RuntimeError: LLM judge metrics require configuration</code></td><td>A judge ran without <code>QYM_JUDGE_MODEL</code> and/or an API key.</td><td>Set <code>QYM_JUDGE_MODEL</code> and <code>QYM_JUDGE_API_KEY</code> (or <code>OPENAI_API_KEY</code>).</td></tr>
+    <tr><td><code>ImportError</code> on judge import</td><td>The optional <code>openai</code> dependency isn't installed.</td><td>Run <code>pip install qym[judges]</code>.</td></tr>
+    <tr><td>No run appears in the dashboard</td><td><code>QYM_API_KEY</code> not set in the run's process, or <code>create_run</code> failed silently.</td><td>Check the stderr <code>Platform live UI disabled…</code> warning; set <code>QYM_PLATFORM_DEBUG=1</code>.</td></tr>
+    <tr><td>A metric scores <code>0</code> with a <code>timeout</code> label</td><td>The metric exceeded <code>metric_timeout</code> (default 60.0s).</td><td>Raise <code>metric_timeout</code> for slow custom metrics, or speed up the metric.</td></tr>
+    <tr><td>Rows show <code>ERROR:</code> or <code>N/A</code></td><td>The task raised, or a metric failed, for that item.</td><td>Inspect the row's output and trace; the run still completes for other items.</td></tr>
+  </tbody>
+</table>
+
+<h2>Task output errors</h2>
+
+<h3>InvalidTaskOutputError: dict returns must use the envelope</h3>
+<p>qym treats a plain (non-dict) return value as the visible output. A <strong>dict</strong> return is reserved for qym's task-output envelope, which must have <strong>exactly</strong> the keys <code>output</code> and <code>metadata</code> — and <code>metadata</code> must itself be a dict. Anything else raises <code>InvalidTaskOutputError</code> (this is non-retryable; the item fails). The message lists the offending keys:</p>
+<pre data-lang="text">InvalidTaskOutputError: Task returned a dict. Dict task outputs must use qym's envelope {"output": &lt;visible output&gt;, "metadata": &lt;dict&gt;} (missing keys: metadata; unexpected keys: answer).</pre>
+<pre data-lang="python"># Returns {"answer": "Paris"} -> raises InvalidTaskOutputError
+def bad_task(question):
+    return {"answer": call_llm(question)}
+
+# Fix 1: return the value plainly
+def task_plain(question):
+    return call_llm(question)
+
+# Fix 2: to surface a dict as the output, wrap it in the envelope
+def task_envelope(question):
+    return {"output": call_llm(question), "metadata": {}}</pre>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Custom metrics see the whole envelope.</span> When a task returns the envelope, qym stores only <code>output</code> as the visible output, but a custom metric receives the <strong>full</strong> envelope as its <code>output</code> argument — so read <code>output["output"]</code> and <code>output["metadata"]</code>. Built-in metrics auto-unwrap. See <a href="#sdk-guide/custom-metrics">Custom metrics</a>.</p>
+</div>
+
+<h3>Task returned None</h3>
+<p>If your task has no <code>return</code> statement it returns <code>None</code>, which is scored like any other output (usually 0 against <code>exact_match</code>). This is not an exception — it's a silent logic bug. Make sure every code path returns the value you intend.</p>
+
+<h2>Dataset errors</h2>
+
+<h3>DatasetNotFoundError: a string that isn't a local file</h3>
+<p>When you pass a <strong>string</strong> as the dataset, qym first checks whether it's an existing local <code>.csv</code> or <code>.jsonl</code> file. If it is not, the string is interpreted as a <strong>qym platform dataset name</strong>, which needs platform credentials. With no credentials it raises at construction time, before any items run:</p>
+<pre data-lang="text">DatasetNotFoundError: Dataset 'my-dataset' is not a local file and qym platform credentials are missing. Set QYM_BASE_URL and QYM_API_KEY, or pass CsvDataset/JsonlDataset.</pre>
+<div class="docs-callout danger">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <p><span class="docs-callout-title">A typo'd path looks like a credentials error.</span> Because any non-file string falls through to "platform dataset", a mistyped local path (e.g. <code>"datsets/qa.csv"</code>) surfaces as this <code>DatasetNotFoundError</code> about missing credentials — <em>not</em> a "file not found" error. Double-check the path first, or pass an explicit <code>CsvDataset(...)</code> so a bad path fails loudly.</p>
+</div>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+# Unambiguous: a bad path raises a CSV error, not a platform-credentials error
+data = CsvDataset("datasets/qa.csv", input_col="question", expected_col="answer")
+result = Evaluator(task, data, metrics=["exact_match"]).run(show_tui=False)</pre>
+<p>To reference a real platform dataset by name, set both credentials (see <a href="#get-started/api-keys">Link your repo &amp; create API keys</a>):</p>
+<pre data-lang="bash">export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=&lt;platform-api-key&gt;</pre>
+
+<h3>CsvDatasetSchemaError: structural CSV problems</h3>
+<p>A <code>CsvDataset</code> validates the file extension and existence the moment you construct it; column and JSON-cell problems surface when items are first loaded. The error carries a <code>file</code>, and where relevant a <code>row</code> and <code>column</code>, appended in parentheses. Common variants:</p>
+<table>
+  <thead><tr><th>Message</th><th>Cause</th></tr></thead>
+  <tbody>
+    <tr><td><code>Custom dataset must be a .csv file</code></td><td>The path's suffix is not <code>.csv</code>.</td></tr>
+    <tr><td><code>CSV file not found</code></td><td>The <code>.csv</code> path doesn't exist (raised at construction).</td></tr>
+    <tr><td><code>CSV has no header row</code></td><td>The file is empty or has no header line.</td></tr>
+    <tr><td><code>Missing required column</code></td><td>An <code>input_col</code> / <code>expected_col</code> / <code>id_col</code> / metadata column isn't in the header.</td></tr>
+    <tr><td><code>Invalid JSON value: …</code></td><td>A cell starts with <code>{</code> or <code>[</code> but isn't valid JSON.</td></tr>
+  </tbody>
+</table>
+<p>Only cells that begin with <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string. If you intended a literal value that happens to start with a brace, that's the source of <code>Invalid JSON value</code>.</p>
+
+<h2>Metric errors</h2>
+
+<h3>"Metric 'X' not found"</h3>
+<p>Passing a metric name the registry doesn't recognize raises a <code>ValueError</code>. The message lists every available name (custom-registered names first, then built-ins, sorted):</p>
+<pre data-lang="text">ValueError: Metric 'contains_expected' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
+<p>The built-in metrics that ship without any extras are exactly:</p>
+<pre data-lang="python">exact_match, contains, fuzzy_match, response_time, token_count, correctness, faithfulness</pre>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The function is named <code>contains_expected</code> internally, but it is registered under <code>"contains"</code>. Likewise, the code metric <code>faithfulness</code> is a token-overlap heuristic; the LLM judge is the separate name <code>faithfulness_llm</code> and only appears with the judges extra (below).</p>
+</div>
+<p>The seven LLM-judge names (<code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code>) are only registered when the optional <code>openai</code> dependency is installed. Without it, those names are simply absent from the registry — requesting one produces the same "Metric '…' not found" error. To check what's available from the CLI:</p>
+<pre data-lang="bash">qym metric list</pre>
+
+<h3>A metric that hangs: the metric_timeout wall</h3>
+<p>Each metric call has a hard wall-clock budget, <code>metric_timeout</code>, defaulting to <strong>60.0 seconds</strong>. A metric that exceeds it is cancelled and recorded as <code>score = 0</code> with a <code>timeout</code> label, so one stuck metric (for example an LLM judge that never returns) can't hold the whole item hostage. For legitimately slow custom metrics, raise the budget in config:</p>
+<pre data-lang="python">config = {"metric_timeout": 180.0}  # or None to disable the cap
+result = Evaluator(task, data, metrics=[slow_metric], config=config).run(show_tui=False)</pre>
+<p>See <a href="#sdk-guide/config">Configs &amp; options</a> for the full timeout and concurrency reference.</p>
+
+<h2>LLM-as-judge errors</h2>
+
+<h3>ImportError: judges need the openai extra</h3>
+<p>The judge metrics depend on the optional <code>openai</code> package. If it's missing, the judge module fails to import (and, as noted above, the judge names won't be in the registry). Install the extra:</p>
+<pre data-lang="bash">pip install qym[judges]</pre>
+
+<h3>RuntimeError: missing judge configuration</h3>
+<p>A judge needs a model name and an API key. If either is missing when the judge runs, <code>JudgeConfig.validate()</code> raises a <code>RuntimeError</code> that names exactly what's missing and how to set it:</p>
+<pre data-lang="text">RuntimeError: LLM judge metrics require configuration. Missing: QYM_JUDGE_MODEL, QYM_JUDGE_API_KEY (or OPENAI_API_KEY)</pre>
+<pre data-lang="bash">export QYM_JUDGE_MODEL=gpt-4o-mini       # required: there is no default model
+export QYM_JUDGE_API_KEY=&lt;provider-key&gt;   # required (falls back to OPENAI_API_KEY)
+export QYM_JUDGE_BASE_URL=https://api.openai.com/v1  # optional (falls back to OPENAI_BASE_URL)</pre>
+
+<h3>Judge runs but its prompt is wrong</h3>
+<p>Judge prompts are filled from your dataset item. If a prompt references a variable that your input doesn't provide, qym leaves the placeholder as the <strong>literal</strong> text (for example <code>{context}</code> appears verbatim in the prompt) — this does <em>not</em> raise an error, so verify your dataset actually carries the keys the judge expects. As a guide, <code>relevance</code> needs <code>input["question"]</code>; <code>faithfulness_llm</code> needs <code>input["context"]</code> and <code>input["question"]</code>; <code>tool_calling</code> needs <code>input["question"]</code> and <code>input["tool_definitions"]</code> (the tool calls themselves come from the task <strong>output</strong>). See <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a> for the per-judge field list.</p>
+
+<h2>Platform &amp; connectivity</h2>
+
+<h3>No run appears in the dashboard</h3>
+<p>Live streaming to the platform turns on only when <code>QYM_API_KEY</code> is set <strong>in the same process</strong> that launches the run. If creating the run fails (bad URL, unreachable host, auth, certificate), qym does not crash your evaluation — it logs a warning to stderr and keeps running locally:</p>
+<pre data-lang="text">Platform live UI disabled: failed to create run at https://qym.example.com/v1/runs (ConnectionError: ...)</pre>
+<p>Things to check, in order:</p>
+<ul>
+  <li><code>QYM_API_KEY</code> and <code>QYM_BASE_URL</code> are exported in the shell (or <code>.env</code>) that runs the script — not just your interactive shell.</li>
+  <li>The keys are valid and the host is reachable. Validate connectivity with the CLI: <code>qym config show</code> then <code>qym config check</code>.</li>
+  <li>Set <code>QYM_PLATFORM_DEBUG=1</code> to surface the underlying streamer errors instead of the single summarized warning.</li>
+</ul>
+
+<h3>Self-signed or internal HTTPS certificates</h3>
+<p>If your deployment uses an internal CA, point qym at the bundle so TLS verification succeeds:</p>
+<pre data-lang="bash">export QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem
+# For local development only, you can disable verification entirely:
+# export QYM_PLATFORM_SSL_VERIFY=false</pre>
+
+<h2>Reading failed rows in your results</h2>
+<p>Individual item failures don't stop the run — the rest of the dataset still completes. Failed items are encoded in the saved artifacts so you can find them quickly:</p>
+<ul>
+  <li>A task that raised is written with the output column set to <code>ERROR: &lt;message&gt;</code>, and each metric score set to <code>N/A</code>.</li>
+  <li>A metric that returns a dict containing an <code>error</code> key is scored <code>0.0</code> for that item and excluded from that metric's aggregate, so a few metric failures don't quietly skew the average.</li>
+  <li>The saved path is in <code>result.last_saved_path</code>; per-item rows live under <code>qym_results/&lt;task&gt;/&lt;model&gt;/&lt;date&gt;/</code>.</li>
+</ul>
+<p>To pull just the failures of a stored run from the CLI:</p>
+<pre data-lang="bash">qym run failed &lt;run_id&gt;</pre>
+
+<h2>A minimal reproduction template</h2>
+<p>When something fails and you're not sure which layer is at fault, collapse it to this: a few-row CSV, a deterministic metric, no TUI, no platform. If this passes, the bug is in your real task, dataset, judge config, or platform setup — not in qym's core loop.</p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+data = CsvDataset("smoke.csv", input_col="question", expected_col="answer")
+
+def task(question):
+    return question  # echo: deterministic, no external calls
+
+result = Evaluator(task, data, metrics=["exact_match"]).run(show_tui=False)
+print(result.total_items, result.success_rate)</pre>
+<p>Or the CLI equivalent:</p>
+<pre data-lang="bash">qym run create \
+  --task-file smoke_task.py \
+  --task-function task \
+  --dataset-csv smoke.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --metrics exact_match \
+  --no-progress</pre>
+
+<p>Still stuck? Capture your qym version, the exact command or snippet, the dataset type, the metric list, whether <code>QYM_BASE_URL</code>/<code>QYM_API_KEY</code> were set, and the run ID — then revisit <a href="#get-started/first-run">Your first run</a> to confirm the happy path works on your machine.</p>

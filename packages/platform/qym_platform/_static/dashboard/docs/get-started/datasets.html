@@ -1,0 +1,214 @@
+<p class="docs-eyebrow">GET STARTED</p>
+<h1>Using datasets &amp; reaching data in code</h1>
+<p class="docs-lead">A dataset is the set of test items qym evaluates: each item carries an <code>input</code> for your task, an optional <code>expected_output</code> for metrics, and <code>metadata</code> for slicing results. This page shows every way to bring those items into a run — a local CSV, a JSONL file, an in-memory list, or a versioned dataset stored on the qym platform — and the exact rules each loader follows.</p>
+
+<h2>The dataset item model</h2>
+<p>No matter where items come from, every loader yields the same row type — a frozen <code>CsvDatasetItem</code> (the name is generic despite the <code>Csv</code> prefix; CSV, JSONL, in-memory, and platform datasets all reuse it). Each item has four fields you care about:</p>
+<table>
+<thead><tr><th>Field</th><th>Type</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>id</code></td><td><code>str</code></td><td>Stable item identity for resume, comparison, and review. Auto-generated if you don't supply one.</td></tr>
+<tr><td><code>input</code></td><td><code>Any</code></td><td>The value passed into your task function. Can be a string, a dict, or any JSON value.</td></tr>
+<tr><td><code>expected_output</code></td><td><code>Any</code> (default <code>None</code>)</td><td>The reference answer metrics compare against. Built-in comparison metrics need it.</td></tr>
+<tr><td><code>metadata</code></td><td><code>dict</code> (default <code>{}</code>)</td><td>Tags used for filtering, grouping, and analysis. Reaches metrics as <code>metadata</code> / <code>item_metadata</code>.</td></tr>
+</tbody>
+</table>
+<p>Your task receives <strong>only</strong> <code>item.input</code>. Metrics receive <code>output</code> (what the task returned), <code>expected</code> (<code>item.expected_output</code>), <code>input_data</code> (<code>item.input</code>), and the item <code>metadata</code>. For the full task/metric I/O contract see <a href="#get-started/task-metric-io">Task &amp; metric I/O structure</a>.</p>
+
+<h2>The four dataset sources</h2>
+<p>qym's public package exports exactly four dataset classes — import them from the top-level package:</p>
+<pre data-lang="python">from qym import CsvDataset, JsonlDataset, InMemoryDataset, QymDataset</pre>
+<div class="docs-cards">
+<div class="docs-card"><h3>CsvDataset</h3><p>A local <code>.csv</code> file. Column names are configurable, so existing spreadsheets don't need renaming. Best for offline and air-gapped evaluation.</p></div>
+<div class="docs-card"><h3>JsonlDataset</h3><p>A local <code>.jsonl</code> file, one JSON object per line. Fixed keys (no column remapping). Best for nested/structured inputs.</p></div>
+<div class="docs-card"><h3>InMemoryDataset</h3><p>A list of Python dicts built in code. Best for generated tests and programmatic evals — nothing touches disk.</p></div>
+<div class="docs-card"><h3>QymDataset</h3><p>A versioned dataset stored on the qym platform, referenced by name plus a version or alias. Best for shared, reviewed regression sets.</p></div>
+</div>
+<p>Every dataset object exposes the same small interface: <code>get_items()</code> returning a list of items, a <code>size</code> property, <code>len(...)</code>, and a <code>name</code> attribute. There is no shared base class — datasets are duck-typed, so you can pass any object with <code>get_items()</code>.</p>
+
+<h2>Local CSV datasets</h2>
+<p>Point <code>CsvDataset</code> at a file and map your columns. The full constructor signature (all column-mapping args are keyword-only):</p>
+<pre data-lang="python">CsvDataset(
+    path,                              # str | Path to a .csv file
+    *,
+    input_col="input",                 # column holding the task input
+    expected_col="expected_output",    # column holding the reference answer (or None)
+    id_col=None,                       # column holding a stable item id (optional)
+    metadata_cols=None,                # list of columns to collect into metadata
+    name=None,                         # dataset name (defaults to the file's basename)
+)</pre>
+<p>Example — map your own column names:</p>
+<pre data-lang="python">from qym import CsvDataset, Evaluator
+
+dataset = CsvDataset(
+    "datasets/qa.csv",
+    input_col="question",
+    expected_col="answer",
+    id_col="id",
+    metadata_cols=["difficulty", "domain", "source"],
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+)
+results = evaluator.run()</pre>
+<p>A matching CSV:</p>
+<pre data-lang="csv">id,question,answer,difficulty,domain,source
+qa-001,What is 2+2?,4,easy,math,smoke
+qa-002,What is qym?,An evaluation framework,medium,evals,docs</pre>
+
+<h3>When errors are raised</h3>
+<p><code>CsvDataset</code> validates eagerly at construction and lazily on first read:</p>
+<ul>
+<li><strong>At construction</strong> it raises <code>CsvDatasetSchemaError</code> immediately if the path suffix is not <code>.csv</code> (case-insensitive) — message <code>"Custom dataset must be a .csv file"</code> — or if the file does not exist (<code>"CSV file not found"</code>).</li>
+<li><strong>On first <code>get_items()</code></strong> it validates the header. <code>input_col</code> is always required; <code>expected_col</code> and <code>id_col</code> are required only when set (non-<code>None</code>); every name in <code>metadata_cols</code> must exist. A missing column raises <code>CsvDatasetSchemaError("Missing required column", ...)</code>; a file with no header row raises <code>"CSV has no header row"</code>.</li>
+</ul>
+<p>Items are loaded once and cached, so column errors surface the first time the run reads the dataset.</p>
+
+<h3>JSON-in-cell parsing rule</h3>
+<p>CSV cells are parsed with deliberately minimal magic. The rule (verified in <code>_parse_cell</code>):</p>
+<ul>
+<li>A cell is JSON-parsed with <code>json.loads</code> <strong>only</strong> if its first non-whitespace character is <code>{</code> or <code>[</code>.</li>
+<li>Every other value is kept as a <strong>string, verbatim</strong> — there is no numeric or boolean coercion. <code>42</code> stays the string <code>"42"</code>; <code>true</code> stays <code>"true"</code>.</li>
+<li>Empty or whitespace-only cells become the empty string <code>""</code>.</li>
+<li>A <code>{...}</code> or <code>[...]</code> cell containing invalid JSON raises <code>CsvDatasetSchemaError("Invalid JSON value: ...")</code> with the file, row, and column attached.</li>
+</ul>
+<p>This lets a single CSV mix scalar and structured inputs. Here the second row's <code>input</code> is a JSON object, so the task can accept dict input:</p>
+<pre data-lang="csv">id,input,expected_output,metadata
+case-1,What is 2+2?,4,{"difficulty": "easy"}
+case-2,"{""question"": ""What is qym?"", ""context"": ""LLM eval""}",An evaluation framework,{"difficulty": "medium"}</pre>
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Quote your JSON cells.</span> In CSV, embedded double-quotes must be doubled (<code>""</code>) and the whole cell wrapped in quotes, as in <code>case-2</code> above. A JSON value reaches the task exactly as the parsed dict/list, so a task like <code>def task(question, context)</code> can unpack it by key.</p></div>
+
+<h3>Item IDs</h3>
+<p>If you set <code>id_col</code>, the raw id is used as-is (an empty id value raises <code>CsvDatasetSchemaError("Empty id value")</code>). If you omit it, qym generates a deterministic id of the form <code>csv_&lt;fingerprint&gt;__NNNN</code>, where the fingerprint is a hash of the item's input, expected output, and metadata, and <code>NNNN</code> is a 4-digit counter that disambiguates duplicate rows. These ids are stable across reloads and row reordering — but prefer an explicit <code>id_col</code> for any dataset you will review, resume, or compare.</p>
+
+<h2>Local JSONL datasets</h2>
+<p>Use <code>JsonlDataset</code> when your items are naturally nested. Each non-blank line must be a JSON object. Unlike CSV, the keys are <strong>fixed — there is no column remapping</strong>:</p>
+<pre data-lang="python">JsonlDataset(path, *, name=None)   # path must end in .jsonl</pre>
+<table>
+<thead><tr><th>Key</th><th>Required</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>input</code></td><td>Yes</td><td>The task input (any JSON value).</td></tr>
+<tr><td><code>expected_output</code> or <code>expected</code></td><td>No</td><td><code>expected</code> is accepted as an alias for <code>expected_output</code>.</td></tr>
+<tr><td><code>metadata</code></td><td>No</td><td>A dict; defaults to <code>{}</code>.</td></tr>
+<tr><td><code>item_id</code> or <code>id</code></td><td>No</td><td>Either is accepted as the item id; if neither is present an id <code>ds_&lt;fingerprint&gt;__NNNN</code> is generated.</td></tr>
+</tbody>
+</table>
+<pre data-lang="json">{"id": "case-1", "input": {"question": "What is 2+2?", "context": "math"}, "expected_output": "4", "metadata": {"difficulty": "easy"}}
+{"id": "case-2", "input": "What is qym?", "expected": "An evaluation framework"}</pre>
+<p>Construction raises <code>CsvDatasetSchemaError</code> if the suffix isn't <code>.jsonl</code> (<code>"JSONL dataset must be a .jsonl file"</code>) or the file is missing (<code>"JSONL file not found"</code>). A non-object line raises <code>"JSONL line must be an object"</code> with the row number. Blank lines are skipped.</p>
+
+<h2>In-memory datasets</h2>
+<p><code>InMemoryDataset</code> takes a list of dicts directly — ideal for generated test cases or quick experiments where you don't want a file on disk:</p>
+<pre data-lang="python">from qym import InMemoryDataset, Evaluator
+
+dataset = InMemoryDataset(
+    [
+        {"id": "q1", "input": "What is 2+2?", "expected_output": "4", "metadata": {"domain": "math"}},
+        {"id": "q2", "input": "Capital of Japan?", "expected": "Tokyo"},
+    ],
+    name="smoke-set",
+)
+
+results = Evaluator(task=my_task, dataset=dataset, metrics=["exact_match"]).run()</pre>
+<p>Per-dict keys: <code>item_id</code>/<code>id</code> (falls back to <code>item_&lt;index&gt;</code> if absent), <code>input</code>, <code>expected_output</code>/<code>expected</code>, and <code>metadata</code>. The constructor signature is <code>InMemoryDataset(items, *, name="in-memory", version=None)</code>.</p>
+
+<h2>Platform datasets (by name + version/alias)</h2>
+<p>A <code>QymDataset</code> pulls a versioned dataset from a qym platform deployment over HTTP. Reference it by name and select a specific version or a moving alias:</p>
+<pre data-lang="python">QymDataset(
+    dataset_name,
+    *,
+    version=None,        # exact version label, e.g. "v3"
+    alias=None,          # moving alias, e.g. "production"
+    platform_url=None,   # defaults to env QYM_BASE_URL
+    api_key=None,        # defaults to env QYM_API_KEY
+    project_slug=None,
+)</pre>
+<p>Alias resolution: if you pass neither <code>version</code> nor <code>alias</code>, the alias defaults to <code>"production"</code>. With credentials set in the environment, you usually only pass the name:</p>
+<pre data-lang="python">from qym import QymDataset, Evaluator
+
+# Uses QYM_BASE_URL + QYM_API_KEY from the environment; resolves to the
+# "production" alias unless you pass version= or alias=.
+dataset = QymDataset("qa-regression")                  # production alias
+dataset = QymDataset("qa-regression", version="v3")    # pinned version
+dataset = QymDataset("qa-regression", alias="staging") # named alias
+
+results = Evaluator(task=my_task, dataset=dataset, metrics=["exact_match"]).run()</pre>
+<p>Items are fetched lazily on first read via <code>GET /v1/datasets/{name}/versions/{version-or-alias}/items</code> with <code>Authorization: Bearer &lt;token&gt;</code>, paginating until the platform reports no more pages. Credentials are required: if <code>platform_url</code> or <code>api_key</code> is missing, the constructor raises <code>DatasetNotFoundError</code> right away (see the gotcha below). For how to set <code>QYM_BASE_URL</code> / <code>QYM_API_KEY</code> and create a key, see <a href="#get-started/api-keys">Link your repo &amp; create API keys</a>.</p>
+
+<h2>Passing a dataset as a string</h2>
+<p>You can hand <code>Evaluator</code> a plain string instead of a dataset object. qym resolves it through <code>resolve_dataset</code>, which checks the filesystem first:</p>
+<table>
+<thead><tr><th>String value</th><th>Resolves to</th></tr></thead>
+<tbody>
+<tr><td>An existing <code>.csv</code> file path</td><td><code>CsvDataset(path)</code> (default column mapping)</td></tr>
+<tr><td>An existing <code>.jsonl</code> file path</td><td><code>JsonlDataset(path)</code></td></tr>
+<tr><td>An existing file with any other extension</td><td>raises <code>CsvDatasetSchemaError("Unsupported dataset file extension")</code></td></tr>
+<tr><td>A string that is <strong>not</strong> an existing file</td><td><code>QymDataset(string)</code> — a qym <strong>platform</strong> dataset name</td></tr>
+</tbody>
+</table>
+<pre data-lang="python">from qym import Evaluator
+
+# Existing local file -> CsvDataset
+Evaluator(task=my_task, dataset="datasets/qa.csv", metrics=["exact_match"]).run()
+
+# Not a file on disk -> resolved as a platform dataset name (needs creds)
+Evaluator(task=my_task, dataset="qa-regression", metrics=["exact_match"]).run()</pre>
+<p>When the string is a platform name, <code>dataset_version</code> and <code>dataset_alias</code> from your config choose the version/alias:</p>
+<pre data-lang="python">Evaluator(
+    task=my_task,
+    dataset="qa-regression",
+    metrics=["exact_match"],
+    config={"dataset_version": "v3"},   # or {"dataset_alias": "staging"}
+).run()</pre>
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">A typo'd file path turns into a credentials error.</span> Because any non-file string is treated as a <em>platform</em> dataset name, a misspelled local path like <code>"datsets/qa.csv"</code> is not reported as a missing file — it's sent to the platform resolver. Without credentials that surfaces as a confusing <code>DatasetNotFoundError</code> rather than a "file not found". When you mean a local file, pass an explicit <code>CsvDataset</code>/<code>JsonlDataset</code> or double-check the path.</p></div>
+<p>This string is resolved against the qym platform — there is no Langfuse involvement anywhere in dataset loading. The deprecated <code>langfuse_client</code> constructor argument is ignored.</p>
+
+<h2>Choosing a dataset via the CLI</h2>
+<p><code>qym run create</code> exposes the same sources through flags. You must provide <strong>exactly one</strong> of <code>--dataset</code> or a local file flag (<code>--dataset-file</code> / <code>--dataset-csv</code>) — supplying both, or neither, exits with a usage error.</p>
+<table>
+<thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--dataset NAME</code></td><td>A qym platform dataset name (or a local dataset path that exists).</td></tr>
+<tr><td><code>--dataset-version VERSION</code></td><td>Platform dataset version to pin.</td></tr>
+<tr><td><code>--dataset-alias ALIAS</code></td><td>Platform dataset alias to use.</td></tr>
+<tr><td><code>--dataset-file PATH</code></td><td>A local <code>.csv</code> or <code>.jsonl</code> file.</td></tr>
+<tr><td><code>--dataset-csv PATH</code></td><td>A local CSV file (equivalent to <code>--dataset-file</code> for CSVs).</td></tr>
+<tr><td><code>--csv-input-col</code></td><td>CSV column for input (default <code>input</code>).</td></tr>
+<tr><td><code>--csv-expected-col</code></td><td>CSV column for expected output (default <code>expected_output</code>; an empty string means "no expected column").</td></tr>
+<tr><td><code>--csv-id-col</code></td><td>CSV column for the item id (optional).</td></tr>
+<tr><td><code>--csv-metadata-cols</code></td><td>Comma-separated CSV metadata columns.</td></tr>
+</tbody>
+</table>
+<pre data-lang="bash">qym run create \
+  --task-file agent.py --task-function my_task \
+  --dataset-csv datasets/qa.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --csv-metadata-cols difficulty,domain,source \
+  --metrics exact_match</pre>
+<p>A local file ending in <code>.jsonl</code> is loaded as a <code>JsonlDataset</code> and the <code>--csv-*</code> column flags are ignored (JSONL keys are fixed). Anything else local is loaded as a <code>CsvDataset</code> with your column mapping. For the full command and flag reference see the <a href="#developer/cli">CLI reference</a>.</p>
+
+<h2>Writing good datasets</h2>
+<p>Metric quality is bounded by dataset quality — a clean run on a weak dataset still produces misleading evidence. A short checklist:</p>
+<ul>
+<li><strong>One behavior per item.</strong> Mixing task types in one dataset makes aggregate metrics incoherent — split by task instead.</li>
+<li><strong>Stable, explicit ids.</strong> Use an <code>id_col</code> (CSV) or <code>id</code>/<code>item_id</code> (JSONL) so resume and comparison stay aligned across reruns.</li>
+<li><strong>Specific expected outputs.</strong> Deterministic metrics like <code>exact_match</code> can only score well against precise reference answers; loosen with a fuzzy or judge metric when the answer is open-ended.</li>
+<li><strong>Metadata for the slices you actually review.</strong> Good fields: <code>domain</code>, <code>difficulty</code>, <code>source</code>, <code>language</code>, <code>prompt_version</code>, <code>risk_level</code>. Avoid fields that are unique per row (unless they are identifiers) — they make breakdowns noisy.</li>
+<li><strong>Keep a small smoke subset</strong> for fast local checks before running the full regression set.</li>
+</ul>
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">RAG and tool fields live inside <code>input</code>.</span> Metrics receive <code>input_data = item.input</code>. If a metric or judge needs a <code>context</code>, <code>schema</code>, or <code>question</code>, those must be keys <em>inside</em> the item's <code>input</code> dict — not separate top-level columns. In CSV, put a JSON object in the input cell (see the JSON-in-cell rule above).</p></div>
+
+<h2>Missing expected outputs</h2>
+<p><code>expected_output</code> is optional everywhere — but built-in comparison metrics (<code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>correctness</code>) compare against it. If your dataset has no expected column, those metrics receive <code>None</code> and will score everything as failing. Either add an expected column, or choose metrics that don't need a reference (for example an LLM judge that scores relevance from the input alone). See the <a href="#get-started/builtin-metrics">Built-in metrics tour</a> for which metrics need what.</p>
+
+<h2>Where to go next</h2>
+<ul>
+<li><a href="#get-started/task-metric-io">Task &amp; metric I/O structure</a> — exactly which fields your task and metrics receive, and how dict inputs unpack.</li>
+<li><a href="#get-started/builtin-metrics">Built-in metrics tour</a> — the metrics that need <code>expected_output</code> versus those that read the input.</li>
+<li><a href="#get-started/errors">Handling common errors</a> — <code>DatasetNotFoundError</code>, schema errors, and the platform-credentials gotcha.</li>
+<li><a href="#developer/cli">CLI reference</a> — the full <code>qym run create</code> and <code>qym dataset</code> command set, including version/alias lifecycle.</li>
+</ul>

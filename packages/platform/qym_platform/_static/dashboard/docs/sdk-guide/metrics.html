@@ -1,0 +1,205 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Metrics (deep dive)</h1>
+<p class="docs-lead">A metric is the function that turns one task output into a score. qym accepts plain numbers, booleans, dicts, or a structured <code>MetricResult</code> &mdash; and it ships seven code metrics out of the box. This page is the reference for what a metric may return, how qym normalizes and aggregates those returns, and the exact behavior of every built-in.</p>
+
+<p>For writing your own scoring functions, see <a href="#sdk-guide/custom-metrics">Custom metrics</a>. For LLM-graded scoring, see <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>. For where these tunables live, see <a href="#sdk-guide/config">Configs &amp; options</a>.</p>
+
+<h2>The metric contract</h2>
+<p>A metric is any Python callable that qym invokes once per task output. Its return value is normalized into a single internal model, <code>MetricResult</code>, before it is recorded. You never have to construct that model yourself &mdash; qym wraps whatever you return via <code>MetricResult.from_raw</code>.</p>
+
+<p>Built-in metrics are referenced by string name (<code>metrics=['exact_match']</code>); custom metrics are passed as callables (<code>metrics=[my_metric]</code>) or registered by name. Both go through the same return-value normalization.</p>
+
+<h2>Return types</h2>
+<p>The table below is the exact normalization performed by <code>MetricResult.from_raw</code> (in <code>qym/metrics/result.py</code>). Anything not listed becomes <code>score=0.0</code> with the raw value stored under <code>metadata.raw</code>.</p>
+
+<table>
+<thead><tr><th>You return</th><th>Recorded score</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>bool</code></td><td><code>1.0</code> if <code>True</code>, else <code>0.0</code></td><td>Cleanest shape for pass/fail checks.</td></tr>
+<tr><td><code>int</code> / <code>float</code></td><td><code>float(value)</code></td><td>Used as the numeric score directly.</td></tr>
+<tr><td><code>dict</code> with a <code>score</code> key</td><td><code>float(score)</code></td><td>A non-numeric/missing <code>score</code> falls back to <code>0.0</code>. <code>label</code>, <code>explanation</code>, and <code>metadata</code> are carried through.</td></tr>
+<tr><td><code>dict</code> with an <code>error</code> key</td><td><code>0.0</code></td><td><strong>Excluded from aggregation</strong> &mdash; see below. The error message is stored under <code>metadata.error</code>.</td></tr>
+<tr><td><code>MetricResult</code></td><td>its <code>score</code></td><td>Pass-through; the richest shape.</td></tr>
+<tr><td>anything else</td><td><code>0.0</code></td><td>Raw value preserved in <code>metadata.raw</code>. This is the silent-failure case for a metric that returns a string.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Returning a string is a footgun.</span> A metric that returns <code>"pass"</code> does not error &mdash; it is silently recorded as <code>0.0</code> with the string tucked into <code>metadata.raw</code>. Return a <code>bool</code>, a number, or a dict with a numeric <code>score</code>.</p></div>
+
+<h3>Dict return shape</h3>
+<p>The dict form is the most common return for code metrics, because it carries diagnostics alongside the score:</p>
+
+<pre data-lang="python">def citation_score(output, expected=None):
+    has_citation = "[" in str(output) and "]" in str(output)
+    return {
+        "score": 1.0 if has_citation else 0.0,
+        "label": "cited" if has_citation else "uncited",
+        "explanation": "Square-bracket citation required.",
+        "metadata": {"rule": "square-bracket-citation"},
+    }</pre>
+
+<p>Only <code>score</code> drives aggregation; <code>label</code>, <code>explanation</code>, and <code>metadata</code> are stored and surfaced in artifacts and the platform item view.</p>
+
+<h3>MetricResult</h3>
+<p><code>MetricResult</code> is the structured model qym wraps everything into. You can return one directly when you want full control over its fields. Verified fields and defaults from <code>qym/metrics/result.py</code>:</p>
+
+<table>
+<thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>score</code></td><td><code>float</code></td><td>(required)</td><td>The numeric score.</td></tr>
+<tr><td><code>label</code></td><td><code>str</code> / None</td><td><code>None</code></td><td>Short verdict, e.g. <code>"valid"</code>.</td></tr>
+<tr><td><code>explanation</code></td><td><code>str</code> / None</td><td><code>None</code></td><td>Human-readable reasoning.</td></tr>
+<tr><td><code>kind</code></td><td><code>"llm"</code> / <code>"code"</code> / <code>"human"</code></td><td><code>"code"</code></td><td>Provenance of the score.</td></tr>
+<tr><td><code>direction</code></td><td><code>"maximize"</code> / <code>"minimize"</code></td><td><code>"maximize"</code></td><td>Whether higher is better.</td></tr>
+<tr><td><code>metadata</code></td><td><code>dict</code></td><td><code>{}</code></td><td>Arbitrary provenance.</td></tr>
+</tbody>
+</table>
+
+<pre data-lang="python">from qym.metrics.result import MetricResult
+import json
+
+def json_validity(output, expected=None):
+    try:
+        json.loads(str(output))
+        return MetricResult(
+            score=1.0,
+            label="valid",
+            explanation="Output is valid JSON.",
+            metadata={"parser": "json.loads"},
+        )
+    except Exception as exc:
+        return MetricResult(
+            score=0.0,
+            label="invalid",
+            explanation=str(exc),
+            metadata={"parser": "json.loads"},
+        )</pre>
+
+<h2>Errored metrics are excluded from aggregation</h2>
+<p>This is the most important and least obvious behavior. A metric return that contains an <code>error</code> key &mdash; whether you returned it deliberately, or qym caught an exception &mdash; is recorded as <code>score=0.0</code> but is <strong>not</strong> counted in the metric's mean. It is counted as an error instead.</p>
+
+<p>Verified in <code>qym/core/results.py</code> (<code>get_metric_stats</code>): a score dict with an <code>error</code> key increments an <code>errors</code> counter and is skipped; the reported <code>success_rate</code> is then:</p>
+
+<pre data-lang="text">success_rate = len(scores) / (len(scores) + errors)</pre>
+
+<p>The practical consequences:</p>
+<ul>
+<li>A metric that <strong>raises</strong> is caught by qym and recorded as <code>{"score": 0, "error": &lt;traceback&gt;}</code> &mdash; so it drops out of the mean but pulls down <code>success_rate</code>.</li>
+<li>A metric that returns a normal low score (e.g. <code>0.0</code> for a failed check) <strong>does</strong> count toward the mean. This is the difference between "the model scored badly" and "the metric itself failed."</li>
+<li>If you want a bad output to lower the average, return <code>0.0</code>; if you want it to register as an infrastructure failure, surface an <code>error</code> key.</li>
+</ul>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Score low output, do not raise.</span> For ordinary "bad answer" cases, return <code>0.0</code> &mdash; not an exception. Reserve exceptions/error keys for genuine metric failures (a dependency is down, parsing the wrong shape) that you want to triage separately from model quality.</p></div>
+
+<h2>The task-output envelope and what metrics receive</h2>
+<p>A task may return a plain value (the visible output) or qym's <strong>envelope</strong>: a dict with <em>exactly</em> the keys <code>output</code> and <code>metadata</code>. Any other dict shape raises <code>InvalidTaskOutputError</code> before metrics run (verified in <code>qym/core/evaluator.py</code>, <code>_normalize_task_output</code>):</p>
+
+<pre data-lang="text">Task returned a dict. Dict task outputs must use qym's envelope
+{"output": &lt;visible output&gt;, "metadata": &lt;dict&gt;} (missing keys: ...; unexpected keys: ...).</pre>
+
+<p>The <code>metadata</code> field must itself be a dict, or you get: <code>Task output envelope field 'metadata' must be a dict.</code></p>
+
+<p>Crucially, qym passes the <strong>full envelope</strong> to metrics as their <code>output</code> argument &mdash; it does not unwrap it for you. The seven built-ins unwrap it internally (via a private <code>_visible_output</code> helper that detects a dict whose keys are exactly <code>{output, metadata}</code> and returns the inner <code>output</code>). Custom metrics get the whole envelope, which is the entire point: hidden task details (retrieved context, tool traces) ride along in <code>output["metadata"]</code>.</p>
+
+<pre data-lang="python">def rag_task(question):
+    docs = retrieve(question)
+    answer = generate_answer(question, docs)
+    return {"output": answer, "metadata": {"retrieved_context": docs}}
+
+def grounded_in_context(output, expected=None):
+    answer = output["output"]                         # visible output
+    docs = output["metadata"]["retrieved_context"]    # hidden task detail
+    return 1.0 if all(t in docs for t in key_terms(answer)) else 0.0</pre>
+
+<h3>Argument resolution</h3>
+<p>qym inspects your metric's signature and supplies arguments by these recognized names (verified in <code>_resolve_metric_arguments</code>): <code>output</code>, <code>expected</code>, <code>input_data</code>, <code>metadata</code>, <code>item_metadata</code>. Both <code>metadata</code> and <code>item_metadata</code> resolve to the <strong>dataset row's metadata</strong> (they are the same value).</p>
+<ul>
+<li>If every parameter name is in that recognized set (or your function takes <code>**kwargs</code>), qym calls it with keyword arguments &mdash; order does not matter.</li>
+<li>If a parameter falls outside that set, qym falls back to <strong>positional</strong> call order: <code>output, expected, input_data, item_metadata</code> (truncated to your parameter count). In that case, the position of each parameter is load-bearing.</li>
+</ul>
+<p>The safe, order-independent signature is therefore one whose names all come from the recognized set:</p>
+<pre data-lang="python">def my_metric(output, expected=None, input_data=None, item_metadata=None):
+    ...</pre>
+
+<h2>Sync vs async metrics</h2>
+<p>qym runs <strong>synchronous</strong> metrics in a thread pool automatically, so a blocking call inside a sync metric does not stall the event loop. An <code>async</code> metric is awaited directly on the loop.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Do not put blocking work in an async metric.</span> qym probes async metrics and emits a warning if one blocks the event loop: <code>Async metric '...' appears to block the event loop ... Fix: remove 'async' from your metric function so qym runs it in a thread pool automatically.</code> Use <code>async</code> only when the metric genuinely <code>await</code>s an async dependency; otherwise keep it sync.</p></div>
+
+<h2>Timeouts and metric concurrency</h2>
+<p>Two config fields govern how metrics execute. Verified defaults from <code>qym/core/config.py</code>:</p>
+
+<table>
+<thead><tr><th>Field</th><th>Default</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><code>metric_timeout</code></td><td><code>60.0</code> (seconds)</td><td>Hard wall-clock cap per metric call. A metric that exceeds it is cancelled and recorded as <code>score=0.0</code> with <code>label="timeout"</code> and <code>metadata.error = "metric timeout after 60.0s"</code>. Set to <code>None</code> to disable.</td></tr>
+<tr><td><code>max_metric_concurrency</code></td><td><code>1</code></td><td>How many metrics run concurrently per item. Default <code>1</code> evaluates an item's metrics serially. Raise it when metrics are independent and slow (e.g. multiple LLM judges).</td></tr>
+</tbody>
+</table>
+
+<p>A timed-out metric records an <code>error</code> key, so per the rule above it is excluded from the metric mean and counts against <code>success_rate</code>. Bump <code>metric_timeout</code> for legitimately slow custom metrics rather than letting them be cancelled.</p>
+
+<pre data-lang="python">from qym import Evaluator
+from qym.core.config import EvaluatorConfig
+
+config = EvaluatorConfig(metric_timeout=180.0, max_metric_concurrency=4)
+Evaluator(task=my_task, dataset=ds, metrics=["correctness"], config=config).run()</pre>
+
+<h2>Built-in metric catalog</h2>
+<p>Exactly <strong>seven</strong> metrics ship without any extras. These are registered in <code>qym/metrics/__init__.py</code> as <code>builtin_metrics</code>; the names below are the registry keys you pass as strings.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The underlying function is named <code>contains_expected</code>, but it is registered under the key <code>contains</code>. Use <code>metrics=['contains']</code>. Likewise, the built-in <code>faithfulness</code> is a code token-overlap heuristic &mdash; the LLM-graded version is the separate judge <code>faithfulness_llm</code> (requires the <code>[judges]</code> extra).</p></div>
+
+<table>
+<thead><tr><th>Registry name</th><th>Reads</th><th>Returns</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>exact_match</code></td><td><code>output</code>, <code>expected</code></td><td>dict: <code>1.0</code> / <code>0.0</code></td><td>Stripped string equality. <code>0.0</code> if either side is <code>None</code>.</td></tr>
+<tr><td><code>contains</code></td><td><code>output</code>, <code>expected</code></td><td>float: <code>1.0</code> / <code>0.0</code></td><td>Case-insensitive substring: is <code>expected</code> inside <code>output</code>?</td></tr>
+<tr><td><code>fuzzy_match</code></td><td><code>output</code>, <code>expected</code></td><td>float <code>0.0</code>&ndash;<code>1.0</code></td><td><code>difflib.SequenceMatcher(...).ratio()</code> on stripped strings.</td></tr>
+<tr><td><code>response_time</code></td><td><code>output</code></td><td>float</td><td>Placeholder &mdash; always returns <code>1.0</code>.</td></tr>
+<tr><td><code>token_count</code></td><td><code>output</code></td><td><code>int</code></td><td>Rough estimate: word count &times; 1.3.</td></tr>
+<tr><td><code>correctness</code></td><td><code>output</code>, <code>expected</code></td><td>dict <code>0.0</code>&ndash;<code>1.0</code></td><td>SQuAD-style token-level F1 with answer normalization.</td></tr>
+<tr><td><code>faithfulness</code></td><td><code>output</code>, <code>input_data</code></td><td>dict <code>0.0</code>&ndash;<code>1.0</code></td><td>Token-overlap groundedness against context. Needs context (see below).</td></tr>
+</tbody>
+</table>
+
+<h3>exact_match</h3>
+<p>Strips both sides, compares as strings. Returns <code>{"score": 0.0, "metadata": {}}</code> when either <code>output</code> or <code>expected</code> is <code>None</code>. Best for IDs, codes, yes/no, single-token answers.</p>
+<pre data-lang="python">exact_match("Paris", " Paris ")   # -&gt; {"score": 1.0, "metadata": {}}</pre>
+
+<h3>contains</h3>
+<p>Returns <code>1.0</code> when <code>str(expected).lower()</code> is a substring of <code>str(output).lower()</code>, else <code>0.0</code>; <code>0.0</code> if either is <code>None</code>. Good for "the answer must mention X" checks &mdash; but note it is order-insensitive and substring-based, so it can match spuriously inside a longer word.</p>
+
+<h3>fuzzy_match</h3>
+<p>Returns the <code>difflib.SequenceMatcher</code> ratio (character-sequence similarity, not Levenshtein distance, not semantic similarity).</p>
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The <code>threshold</code> argument is inert.</span> <code>fuzzy_match</code> accepts <code>threshold=0.8</code> but the source documents it as "not used in score" &mdash; it always returns the raw ratio, never a thresholded pass/fail. To get pass/fail behavior, wrap it in a custom metric and compare the ratio yourself.</p></div>
+
+<h3>response_time and token_count</h3>
+<p>Both are placeholders. <code>response_time</code> always returns <code>1.0</code> regardless of input &mdash; actual timing is recorded by the evaluator, not this metric. <code>token_count</code> returns a crude estimate (<code>len(words) * 1.3</code> as an <code>int</code>), not a real tokenizer count. Treat both as scaffolding, not measurement.</p>
+
+<h3>correctness</h3>
+<p>SQuAD-style F1 over normalized tokens. Normalization lowercases, removes the articles <code>a/an/the</code>, strips punctuation, and collapses whitespace; F1 is computed bag-of-words (so duplicate tokens are handled via <code>Counter</code> intersection). Returns a dict with <code>score</code> plus <code>metadata</code> (<code>prediction_tokens</code>, <code>ground_truth_tokens</code>). This is the right deterministic choice for QA-style answers where partial token overlap should count.</p>
+
+<h3>faithfulness (code heuristic)</h3>
+<p>Measures what proportion of meaningful output tokens appear in the source context. It reads <code>context</code> from <code>input_data</code> &mdash; either <code>input_data["context"]</code> or, if absent, <code>input_data["input"]["context"]</code>. It lowercases everything, drops a built-in stopword list and single-character tokens, then scores <code>grounded_tokens / total_tokens</code>.</p>
+<p>It returns an <strong>error dict</strong> (which excludes the item from aggregation, per the rule above) when:</p>
+<ul>
+<li>the output is empty &mdash; <code>{"score": 0.0, "metadata": {"error": "Empty output"}}</code></li>
+<li>no context is found &mdash; <code>{"score": 0.0, "metadata": {"error": "No context found in input_data"}}</code></li>
+</ul>
+<p>This is a dependency-free heuristic, not a model-graded check. For semantic faithfulness, use the <code>faithfulness_llm</code> judge.</p>
+
+<h3>Inspecting the registry at runtime</h3>
+<p><code>list_available_metrics()</code> prints every registered metric (including judges, if installed). An unknown name raises a <code>ValueError</code> with the exact message (verified in <code>qym/metrics/registry.py</code>):</p>
+<pre data-lang="text">Metric 'X' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
+<p>The listed names are the union of custom-registered metrics and built-ins, sorted. With the <code>[judges]</code> extra installed, the seven judge names appear in that list too.</p>
+
+<h2>Judge metrics require the [judges] extra</h2>
+<p>Seven LLM-graded metrics &mdash; <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code> &mdash; are added to the registry only when the optional <code>openai</code> dependency is present (<code>pip install qym[judges]</code>). Without it, those names are simply absent and resolving one raises the "not found" error above.</p>
+<p>Judges need configuration: <code>QYM_JUDGE_MODEL</code> and an API key (<code>QYM_JUDGE_API_KEY</code>, falling back to <code>OPENAI_API_KEY</code>). There is no default model &mdash; <code>JudgeConfig.validate()</code> raises a <code>RuntimeError</code> listing the missing variables. Full setup, the built-in judge inputs, and <code>create_judge</code> / <code>create_pairwise_judge</code> live on the dedicated page: <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>.</p>
+
+<h2>Built-in vs. recipe</h2>
+<p>qym's older Metric Bank documents many useful metric <em>ideas</em> &mdash; semantic similarity, PII detection, schema compliance, BLEU, tool accuracy, and so on. Those are <strong>recipes you write yourself</strong>, not built-ins. Only the seven names in the catalog above resolve as strings out of the box (plus the seven judges with the extra installed). Everything else is a custom metric &mdash; see <a href="#sdk-guide/custom-metrics">Custom metrics</a> for the signature rules, registration, and testing.</p>
+
+<h2>Where scores land</h2>
+<p>Per-metric statistics (<code>mean</code>, <code>std</code>, <code>min</code>, <code>max</code>, <code>success_rate</code>) come from <code>EvaluationResult.get_metric_stats(name)</code>. In saved artifacts, each metric contributes a numeric <code>&lt;metric&gt;_score</code> column, with any metadata flattened into <code>&lt;metric&gt;__meta__&lt;key&gt;</code> columns. For the full artifact layout and column naming, see <a href="#sdk-guide/results">Results, artifacts &amp; tracing</a>.</p>

@@ -1,0 +1,332 @@
+<p class="docs-eyebrow">DEVELOPER / API</p>
+<h1>CLI reference</h1>
+<p class="docs-lead">The <code>qym</code> command-line interface runs evaluations and inspects platform runs from a shell, CI job, or agent — no Python glue required. It is a thin wrapper over the SDK: every run command builds the same <code>Evaluator</code>, dataset, and config objects you would write by hand.</p>
+
+<p>The CLI is built with <a href="#sdk-guide/structure">Typer</a> and uses a noun-verb structure: a top-level noun (<code>run</code>, <code>metric</code>, <code>analyze</code>, <code>config</code>, <code>dataset</code>) followed by a verb. Two legacy top-level commands (<code>dashboard</code>, <code>submit</code>) remain for convenience. Running <code>qym</code> with no arguments prints help.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">SDK vs CLI.</span> Use the SDK for application code, services, custom observers, and direct result access. Use the CLI for automation boundaries — CI steps, shell scripts, and agents that want predictable JSON. If a run is unclear, reproduce it in Python first.</p></div>
+
+<h2>Command catalog</h2>
+<p>Every command is listed below with its purpose. Detailed flags follow for the commands that take options.</p>
+
+<table>
+<thead><tr><th>Command</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>qym run create</code></td><td>Execute an evaluation from a Python task file (single-run or multi-run).</td></tr>
+<tr><td><code>qym run list</code></td><td>List recent platform runs (filterable).</td></tr>
+<tr><td><code>qym run get &lt;run_id&gt;</code></td><td>Fetch detailed data for one run.</td></tr>
+<tr><td><code>qym run failed &lt;run_id&gt;</code></td><td>Show only failed/errored items (and items with a zero metric score).</td></tr>
+<tr><td><code>qym run compare &lt;run_id&gt; &lt;run_id&gt; ...</code></td><td>Compare two or more runs side by side.</td></tr>
+<tr><td><code>qym run tasks</code></td><td>List distinct task names known to the platform.</td></tr>
+<tr><td><code>qym metric list</code></td><td>List the metrics registered in the SDK.</td></tr>
+<tr><td><code>qym analyze run &lt;run_id&gt;</code></td><td>Trigger AI root-cause analysis on a run's items.</td></tr>
+<tr><td><code>qym analyze summary &lt;run_id&gt;</code></td><td>Aggregate root-cause categories for a run.</td></tr>
+<tr><td><code>qym config show</code></td><td>Print the resolved platform configuration (URL, key status, TLS).</td></tr>
+<tr><td><code>qym config check</code></td><td>Validate connectivity and auth against the platform API.</td></tr>
+<tr><td><code>qym dataset ...</code></td><td>Manage platform datasets, versions, aliases, and items.</td></tr>
+<tr><td><code>qym dashboard</code></td><td>Open the platform dashboard in your browser.</td></tr>
+<tr><td><code>qym submit</code></td><td>Upload a saved results file (<code>.csv</code>/<code>.json</code>) to the platform.</td></tr>
+</tbody>
+</table>
+
+<h2>Global options</h2>
+<p>These options are defined on the app callback and apply to every subcommand. Typer requires them <strong>before</strong> the subcommand, but the CLI automatically hoists <code>--json</code> and <code>--no-color</code> to the front, so agents may place them anywhere on the line.</p>
+
+<table>
+<thead><tr><th>Option</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><code>--json</code></td><td>Emit machine-readable JSON to <strong>stdout</strong>; all human-readable text goes to <strong>stderr</strong>.</td></tr>
+<tr><td><code>--no-color</code></td><td>Disable Rich color in console output.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">stdout is clean under <code>--json</code>.</span> Status lines, progress, and tables are written to stderr at all times. With <code>--json</code>, stdout contains only the JSON document — safe to pipe into <code>jq</code> or capture in CI.</p></div>
+
+<h2><code>qym run create</code></h2>
+<p>The primary command. It loads your task function from a file, builds a dataset, constructs an <code>Evaluator</code>, and runs it. Required flags for a single run: <code>--task-file</code>, <code>--task-function</code>, a dataset input, and <code>--metrics</code>. If any are missing, the CLI exits <code>2</code> with <code>Missing required arguments: ...</code>.</p>
+
+<h3>Task and metrics flags</h3>
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--task-file</code></td><td>—</td><td>Python file containing the task function. <strong>Required</strong> (single run).</td></tr>
+<tr><td><code>--task-function</code></td><td>—</td><td>Name of the function to evaluate inside the task file. <strong>Required</strong> (single run).</td></tr>
+<tr><td><code>--metrics</code></td><td>—</td><td>Comma-separated metric names, e.g. <code>exact_match,fuzzy_match</code>. <strong>Required</strong> (single run).</td></tr>
+<tr><td><code>--model</code></td><td>—</td><td>Model name, or comma-separated list. Multiple models trigger a multi-model run.</td></tr>
+<tr><td><code>--task-name</code></td><td>auto-derived</td><td>Override the auto-derived task name (sets <code>config.task_name</code>).</td></tr>
+</tbody>
+</table>
+
+<h3>Dataset flags</h3>
+<p>Provide <strong>exactly one</strong> of: <code>--dataset</code> (platform/string dataset) or a local file (<code>--dataset-file</code>/<code>--dataset-csv</code>). Supplying both, or neither, exits <code>2</code> with <code>Provide exactly one of --dataset or --dataset-file/--dataset-csv.</code></p>
+
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--dataset</code></td><td>—</td><td>A qym platform dataset name, or a local dataset path. A bare string that is not an existing local file resolves to a <strong>platform dataset</strong> (requires <code>QYM_BASE_URL</code> + <code>QYM_API_KEY</code>).</td></tr>
+<tr><td><code>--dataset-version</code></td><td>—</td><td>Platform dataset version (sets <code>config.dataset_version</code>).</td></tr>
+<tr><td><code>--dataset-alias</code></td><td>—</td><td>Platform dataset alias (sets <code>config.dataset_alias</code>).</td></tr>
+<tr><td><code>--dataset-file</code></td><td>—</td><td>Local <code>.csv</code> or <code>.jsonl</code> file. A <code>.jsonl</code> path builds a <code>JsonlDataset</code>; anything else builds a <code>CsvDataset</code>.</td></tr>
+<tr><td><code>--dataset-csv</code></td><td>—</td><td>Local CSV path. Equivalent to <code>--dataset-file</code> for CSVs.</td></tr>
+<tr><td><code>--csv-input-col</code></td><td><code>input</code></td><td>CSV column used as the task input. (CSV datasets only.)</td></tr>
+<tr><td><code>--csv-expected-col</code></td><td><code>expected_output</code></td><td>CSV column used as the expected output. An empty string disables expected output.</td></tr>
+<tr><td><code>--csv-id-col</code></td><td>—</td><td>CSV column used as a stable item ID.</td></tr>
+<tr><td><code>--csv-metadata-cols</code></td><td>—</td><td>Comma-separated CSV columns carried as item metadata.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">A typo'd path is not a local-file error.</span> If you pass <code>--dataset ./data/qa.csv</code> and the file does not exist, the string falls through to <strong>platform dataset</strong> resolution and surfaces a <code>DatasetNotFoundError</code> (or a credentials error) rather than "file not found". Use <code>--dataset-csv</code>/<code>--dataset-file</code> for local files so a missing path fails loudly.</p></div>
+
+<h3>Config, platform, and run flags</h3>
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--config</code></td><td>—</td><td>JSON string merged into the <code>EvaluatorConfig</code>, e.g. <code>'{"max_concurrency":4}'</code>. Invalid JSON exits <code>2</code>.</td></tr>
+<tr><td><code>--platform-url</code></td><td><code>QYM_BASE_URL</code></td><td>Override the platform base URL (sets <code>config.platform_url</code>).</td></tr>
+<tr><td><code>--platform-api-key</code></td><td><code>QYM_API_KEY</code></td><td>Override the platform API key (sets <code>config.platform_api_key</code>).</td></tr>
+<tr><td><code>--resume-from</code>, <code>--run-file</code></td><td>—</td><td>Checkpoint CSV to resume from (sets <code>config.resume_from</code>). The two spellings are aliases.</td></tr>
+<tr><td><code>--runs-config</code></td><td>—</td><td>Multi-run YAML/JSON config. Switches the command into multi-run mode (see below).</td></tr>
+<tr><td><code>--output</code></td><td>—</td><td>Save the single-model result to a JSON file. Ignored (with a warning) for multi-model runs.</td></tr>
+<tr><td><code>--git-branch</code></td><td>auto-detected</td><td>Override the recorded git branch metadata.</td></tr>
+<tr><td><code>--git-commit</code></td><td>auto-detected</td><td>Override the recorded git commit hash metadata.</td></tr>
+</tbody>
+</table>
+
+<h3>Output and UI flags</h3>
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--quiet</code>, <code>-q</code></td><td>off</td><td>Print only the final summary (success rate plus each metric mean) instead of the full per-item summary.</td></tr>
+<tr><td><code>--no-progress</code></td><td>off</td><td>Disable the progress bar.</td></tr>
+<tr><td><code>--no-ui</code></td><td>off</td><td>Disable the local results table / web UI output.</td></tr>
+<tr><td><code>--ui-port</code></td><td><code>0</code></td><td>Port for the local web UI; <code>0</code> means auto-select.</td></tr>
+<tr><td><code>--no-open</code></td><td>off</td><td>Do not open the browser automatically when a UI URL is available.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">No <code>--concurrency</code> or <code>--no-tui</code> flag.</span> Concurrency is set through <code>--config</code> (for example <code>'{"max_concurrency":8}'</code>). To suppress local rendering, use <code>--no-progress</code> and/or <code>--no-ui</code>. There is also a hidden, deprecated <code>--live-mode</code> flag — do not use it; platform streaming turns on automatically when both <code>QYM_BASE_URL</code> and <code>QYM_API_KEY</code> are present.</p></div>
+
+<h3>Multi-run mode (<code>--runs-config</code>)</h3>
+<p>When <code>--runs-config</code> is provided, <code>qym run create</code> ignores <code>--task-file</code>/<code>--dataset</code>/<code>--model</code> and instead loads a list of run specs from the YAML/JSON file. All specs run via the <code>MultiModelRunner</code> and auto-save as CSV. If any run is interrupted, the CLI prints a <code>Resume with: qym run create --resume-from &lt;path&gt; ...</code> hint and exits <code>1</code>.</p>
+
+<pre data-lang="bash">qym run create --runs-config runs.yaml</pre>
+
+<h2>Examples</h2>
+
+<h3>Local CSV run (no credentials)</h3>
+<p>The offline-first happy path: a local CSV plus a code metric. Nothing is sent to the platform.</p>
+<pre data-lang="bash">qym run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset-csv datasets/qa.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --csv-id-col id \
+  --csv-metadata-cols topic,source \
+  --metrics exact_match,fuzzy_match \
+  --task-name support-rag \
+  --config '{"run_name":"support-rag-smoke","max_concurrency":4,"max_retries":1}'</pre>
+
+<h3>Platform dataset run</h3>
+<p>A bare <code>--dataset</code> name resolves to a platform dataset. Streaming to the platform turns on automatically because both env vars are set.</p>
+<pre data-lang="bash">export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=&lt;your-token&gt;
+
+qym run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset support-smoke \
+  --dataset-alias production \
+  --metrics exact_match \
+  --config '{"run_name":"support-smoke"}'</pre>
+
+<h3>JSON automation</h3>
+<p>Place <code>--json</code> anywhere; the result object lands on stdout as JSON. A single-model run emits one object; a multi-model run emits an array.</p>
+<pre data-lang="bash">qym --json run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset-csv datasets/qa.csv \
+  --metrics exact_match \
+  &gt; result.json</pre>
+
+<h3>Resume from a checkpoint</h3>
+<pre data-lang="bash">qym run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset-csv datasets/qa.csv \
+  --metrics exact_match \
+  --resume-from qym_results/checkpoints/support-rag.csv</pre>
+
+<h2>CLI to SDK mapping</h2>
+<p>Each <code>run create</code> flag maps to an SDK construct. Reproducing a CLI run in Python is mechanical:</p>
+<pre data-lang="text">--dataset-csv + --csv-* flags -> CsvDataset(input_col=..., expected_col=..., id_col=..., metadata_cols=[...])
+--dataset-file (*.jsonl)       -> JsonlDataset(path)
+--dataset (bare string)        -> resolved by Evaluator (platform dataset or local path)
+--metrics a,b                  -> metrics=["a", "b"]
+--model "x,y"                  -> Evaluator(model=["x", "y"])  # list -> multi-model
+--config '{...}'               -> EvaluatorConfig fields (merged dict)
+--task-name                    -> config.task_name
+--platform-url                 -> config.platform_url
+--platform-api-key             -> config.platform_api_key
+--resume-from                  -> config.resume_from
+--dataset-version/-alias       -> config.dataset_version / config.dataset_alias</pre>
+<p>See <a href="#sdk-guide/config">Configs &amp; options</a> for the full <code>EvaluatorConfig</code> field reference and <a href="#get-started/datasets">Datasets</a> for dataset construction.</p>
+
+<h2>Inspecting runs</h2>
+<p>These read-only commands query the platform over HTTP. They authenticate with <code>QYM_API_KEY</code> when set; <code>list</code>/<code>get</code> can run unauthenticated against an open deployment, but most endpoints require a key.</p>
+
+<h3><code>qym run list</code></h3>
+<p>Lists recent runs, sorted newest-first, then truncated to <code>--limit</code>. Filters are applied client-side.</p>
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--limit</code></td><td><code>50</code></td><td>Maximum runs to return.</td></tr>
+<tr><td><code>--task</code></td><td>—</td><td>Substring filter on task name.</td></tr>
+<tr><td><code>--model</code></td><td>—</td><td>Substring filter on model name.</td></tr>
+<tr><td><code>--status</code></td><td>—</td><td>Exact (case-insensitive) status filter.</td></tr>
+<tr><td><code>--user</code></td><td>—</td><td>Substring filter on the run owner's id, email, or display name.</td></tr>
+</tbody>
+</table>
+
+<h3><code>qym run get</code> / <code>failed</code> / <code>compare</code></h3>
+<ul>
+<li><code>qym run get &lt;run_id&gt;</code> — prints the run name, dataset, status, item count, and metric averages. With <code>--json</code>, dumps the full run document.</li>
+<li><code>qym run failed &lt;run_id&gt;</code> — shows items that have an error <em>or</em> any zero metric score. The human table caps at 50 rows; use <code>--json</code> for all of them.</li>
+<li><code>qym run compare &lt;run_id&gt; &lt;run_id&gt; ...</code> — side-by-side success rate and metric averages. Requires at least two run IDs, otherwise exits <code>2</code>.</li>
+</ul>
+
+<pre data-lang="bash">qym run list --task support-rag --status COMPLETED --limit 10
+qym run get a1b2c3d4
+qym run failed a1b2c3d4 --json | jq '.failed_items[].item_id'
+qym run compare a1b2c3d4 e5f6a7b8</pre>
+
+<h2><code>qym metric list</code></h2>
+<p>Prints every metric registered in the SDK (built-ins plus anything registered at import time), each with the first line of its docstring. The built-in code metrics that ship without extras are <code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>response_time</code>, <code>token_count</code>, <code>correctness</code>, and <code>faithfulness</code>. The LLM judges appear only when the <code>[judges]</code> extra is installed.</p>
+<pre data-lang="bash">qym --json metric list | jq -r '.metrics[].name'</pre>
+<p>See <a href="#sdk-guide/metrics">Metrics</a> for signatures and return-type contracts.</p>
+
+<h2><code>qym analyze</code></h2>
+<ul>
+<li><code>qym analyze run &lt;run_id&gt;</code> — triggers AI root-cause analysis on the run's items via <code>POST /v1/runs/{run_id}/analyze</code>. Accepts <code>--concurrency</code> (default <code>20</code>) controlling parallel analysis threads. Reports the count analyzed plus a category breakdown.</li>
+<li><code>qym analyze summary &lt;run_id&gt;</code> — aggregates already-recorded root-cause categories (from corrections or item metadata) for the run; it does not start new analysis.</li>
+</ul>
+<pre data-lang="bash">qym analyze run a1b2c3d4 --concurrency 10
+qym analyze summary a1b2c3d4 --json</pre>
+
+<h2><code>qym config</code></h2>
+<p>Two commands for verifying your environment before a run.</p>
+<ul>
+<li><code>qym config show</code> — prints the resolved <code>platform_url</code> (from <code>QYM_BASE_URL</code>), whether <code>QYM_API_KEY</code> is set, the TLS-verify setting, and the CA-bundle path. Reads only environment; makes no network call.</li>
+<li><code>qym config check</code> — makes a live request to the platform. On success it prints <code>Connected to &lt;url&gt;</code> (and warns if no API key is set). A connection failure reports <code>connection_failed</code> and exits <code>1</code>; an auth failure reports <code>auth_denied</code> and exits <code>4</code>.</li>
+</ul>
+<pre data-lang="bash">qym config show
+qym config check --json</pre>
+
+<h2><code>qym dataset</code></h2>
+<p>Manage platform datasets and their versions, aliases, and items. Every dataset command requires an API key (via <code>--api-key</code> or <code>QYM_API_KEY</code>); without one it exits <code>4</code> with <code>Missing API key. Provide --api-key or set QYM_API_KEY.</code> All commands accept <code>--project</code>, <code>--api-key</code>, and <code>--platform-url</code>.</p>
+
+<table>
+<thead><tr><th>Command</th><th>Key options</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>dataset list</code></td><td><code>--project</code></td><td>List datasets in the project.</td></tr>
+<tr><td><code>dataset get &lt;dataset&gt;</code></td><td>—</td><td>Fetch one dataset.</td></tr>
+<tr><td><code>dataset upload</code></td><td><code>--name</code>, <code>--file</code>, <code>--version</code> (<code>v1</code>), <code>--publish</code>, <code>--production</code>, <code>--input-col</code>, <code>--expected-col</code>, <code>--id-col</code>, <code>--metadata-cols</code>, <code>--labels</code></td><td>Upload a file as a new dataset version. <code>--production</code> sets the <code>production</code> alias.</td></tr>
+<tr><td><code>dataset download &lt;dataset&gt;</code></td><td><code>--output</code>, <code>--version</code> (<code>production</code>)</td><td>Download a dataset version to a file.</td></tr>
+<tr><td><code>dataset version list &lt;dataset&gt;</code></td><td>—</td><td>List versions.</td></tr>
+<tr><td><code>dataset version create &lt;dataset&gt;</code></td><td><code>--version</code>, <code>--from</code> (<code>production</code>)</td><td>Create a version, optionally branching from a ref.</td></tr>
+<tr><td><code>dataset version publish &lt;dataset&gt; &lt;version&gt;</code></td><td><code>--production</code></td><td>Publish a version; optionally move the <code>production</code> alias.</td></tr>
+<tr><td><code>dataset version compare &lt;dataset&gt; &lt;version&gt;</code></td><td><code>--base</code> (required)</td><td>Diff a version against a base.</td></tr>
+<tr><td><code>dataset alias set &lt;dataset&gt; &lt;alias&gt; &lt;version&gt;</code></td><td>—</td><td>Point an alias at a version.</td></tr>
+<tr><td><code>dataset item list &lt;dataset&gt;</code></td><td><code>--version</code> (<code>production</code>), <code>--limit</code> (<code>100</code>)</td><td>List items in a version.</td></tr>
+<tr><td><code>dataset item runs &lt;dataset&gt; &lt;item_id&gt;</code></td><td><code>--version</code> (<code>production</code>)</td><td>List runs that touched a dataset item.</td></tr>
+</tbody>
+</table>
+
+<pre data-lang="bash">qym dataset upload --name support-smoke --file datasets/qa.csv \
+  --version v2 --publish --production \
+  --input-col question --expected-col answer --id-col id
+
+qym dataset version list support-smoke
+qym dataset download support-smoke --output snapshot.csv --version v2</pre>
+
+<h2>Legacy commands</h2>
+
+<h3><code>qym dashboard</code></h3>
+<p>Opens the platform dashboard at the resolved <code>QYM_BASE_URL</code> (or <code>--platform-url</code>). Pass <code>--no-open</code> to print the URL without launching a browser. Under <code>--json</code> it emits <code>{"dashboard_url": "..."}</code>.</p>
+
+<h3><code>qym submit</code></h3>
+<p>Uploads a saved results file to the platform via <code>POST /v1/runs:upload</code>. All three of <code>--file</code>, <code>--task</code>, and <code>--dataset</code> are required; <code>--model</code> and <code>--api-key</code> are optional.</p>
+<table>
+<thead><tr><th>Flag</th><th>Required</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>--file</code></td><td>Yes</td><td>Path to the results file (<code>.csv</code> or <code>.json</code>).</td></tr>
+<tr><td><code>--task</code></td><td>Yes</td><td>Task name to record.</td></tr>
+<tr><td><code>--dataset</code></td><td>Yes</td><td>Dataset name to record.</td></tr>
+<tr><td><code>--model</code></td><td>No</td><td>Model name (defaults to empty).</td></tr>
+<tr><td><code>--api-key</code></td><td>No</td><td>API key; falls back to <code>QYM_API_KEY</code>. Missing key exits <code>4</code>.</td></tr>
+</tbody>
+</table>
+<pre data-lang="bash">qym submit --file qym_results/run.csv --task support-rag --dataset support-smoke --model gpt-4o-mini</pre>
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Upload accepts <code>.csv</code> and <code>.json</code> only.</span> The <code>/v1/runs:upload</code> endpoint rejects <code>.xlsx</code> with a 400. Convert to CSV or JSON before submitting. See <a href="#developer/ingestion">Run ingestion</a> for the full upload contract.</p></div>
+
+<h2>Environment variables</h2>
+<p>The CLI resolves platform settings from the environment (a <code>.env</code> file in the working directory is loaded automatically at startup).</p>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Used for</th></tr></thead>
+<tbody>
+<tr><td><code>QYM_BASE_URL</code></td><td><code>http://localhost:8000</code></td><td>Platform base URL for all platform commands and streaming. Trailing slash is stripped.</td></tr>
+<tr><td><code>QYM_API_KEY</code></td><td>—</td><td>Platform bearer token. Sent as <code>Authorization: Bearer &lt;token&gt;</code>.</td></tr>
+<tr><td><code>QYM_PLATFORM_SSL_VERIFY</code> / <code>QYM_SSL_VERIFY</code></td><td>on</td><td>Toggle TLS verification for platform requests.</td></tr>
+<tr><td><code>QYM_PLATFORM_CA_BUNDLE</code> / <code>QYM_CA_BUNDLE</code></td><td>—</td><td>Path to a custom CA bundle for internal/self-signed certs.</td></tr>
+<tr><td><code>QYM_JUDGE_MODEL</code></td><td>—</td><td>Model for judge metrics (required when a run uses a judge).</td></tr>
+<tr><td><code>QYM_JUDGE_API_KEY</code> / <code>OPENAI_API_KEY</code></td><td>—</td><td>Provider auth for judge metrics.</td></tr>
+<tr><td><code>QYM_JUDGE_BASE_URL</code> / <code>OPENAI_BASE_URL</code></td><td>—</td><td>OpenAI-compatible endpoint for judges.</td></tr>
+<tr><td><code>QYM_SHOW_SUMMARY</code></td><td>off</td><td>When <code>1</code>, the SDK's <code>print_summary()</code> emits output (otherwise it is a no-op in library use).</td></tr>
+</tbody>
+</table>
+<p>For platform host setup and API-key creation, see <a href="#developer/auth">Authentication</a>.</p>
+
+<h2>Exit codes</h2>
+<p>Exit codes are semantic, so CI and agents can branch on them. They come from the <code>ExitCode</code> enum.</p>
+<table>
+<thead><tr><th>Code</th><th>Name</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td>SUCCESS</td><td>Command completed successfully.</td></tr>
+<tr><td><code>1</code></td><td>FAILURE</td><td>General failure (load error, interrupted run, HTTP 5xx, connection failure, multi-run errors).</td></tr>
+<tr><td><code>2</code></td><td>USAGE_ERROR</td><td>Bad invocation (missing/conflicting flags, invalid <code>--config</code> JSON, &lt;2 IDs for compare). <strong>Also</strong> returned by <code>run create</code> when a run's success rate is below 50%.</td></tr>
+<tr><td><code>3</code></td><td>NOT_FOUND</td><td>Requested resource not found (HTTP 404, or a missing file for <code>submit</code>).</td></tr>
+<tr><td><code>4</code></td><td>AUTH_DENIED</td><td>Auth failed or missing (HTTP 401/403, or no API key where one is required).</td></tr>
+<tr><td><code>5</code></td><td>CONFLICT</td><td>Resource conflict (HTTP 409).</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Exit <code>2</code> is overloaded.</span> Besides usage errors, <code>qym run create</code> exits <code>2</code> when a completed run has a success rate below 50% (printing <code>Warning: Success rate below 50% for runs: ...</code>). In CI, treat exit <code>2</code> from a <em>completed</em> run as a quality gate rather than a malformed command.</p></div>
+
+<h2>JSON output contract</h2>
+<p>With the global <code>--json</code> flag, structured output is written to stdout and humans get stderr. The shapes are stable:</p>
+<ul>
+<li><strong>Success</strong> — the command's data document. A single-model <code>run create</code> emits the result dict; multi-model and multi-run emit an array of result dicts.</li>
+<li><strong>Error</strong> — an object <code>{"error": "&lt;type&gt;", "message": "...", "suggestion": "..."}</code> (suggestion omitted when absent). Error types include <code>usage_error</code>, <code>not_found</code>, <code>auth_denied</code>, <code>connection_failed</code>, and <code>failure</code>.</li>
+</ul>
+<pre data-lang="json">{
+  "error": "auth_denied",
+  "message": "Missing API key. Provide --api-key or set QYM_API_KEY.",
+  "suggestion": "Check QYM_API_KEY or use 'qym config check' to validate auth."
+}</pre>
+<p>Because errors are written to stdout under <code>--json</code> (not stderr), always check the exit code and parse the <code>error</code> field rather than assuming stdout is a success payload.</p>
+
+<h2>Behavior notes &amp; gotchas</h2>
+<ul>
+<li><strong>Streaming is automatic.</strong> If both <code>QYM_BASE_URL</code> and <code>QYM_API_KEY</code> resolve (and you did not pass the deprecated <code>--live-mode</code>), the run streams to the platform with <code>live_mode="auto"</code>. With no key, runs stay local.</li>
+<li><strong>Multi-model returns a list.</strong> Passing <code>--model "a,b"</code> produces multiple results; <code>--output</code> only supports a single model and is skipped (with a warning) otherwise.</li>
+<li><strong>Legacy argv is rewritten.</strong> <code>qym --task-file ...</code> is rewritten to <code>qym run create --task-file ...</code>, and <code>qym resume --run-file X</code> becomes <code>qym run create --resume-from X</code>. New scripts should use the noun-verb form directly.</li>
+<li><strong>Connectivity uses the read API.</strong> <code>config check</code> probes <code>/api/runs</code>; a clean connection plus a valid (or absent) key returns success.</li>
+</ul>
+
+<h2>Related pages</h2>
+<ul>
+<li><a href="#sdk-guide/config">Configs &amp; options</a> — every <code>EvaluatorConfig</code> field you can pass via <code>--config</code>.</li>
+<li><a href="#sdk-guide/metrics">Metrics</a> — the built-in catalog behind <code>--metrics</code> and <code>qym metric list</code>.</li>
+<li><a href="#developer/auth">Authentication</a> — creating project-scoped API keys for platform commands.</li>
+<li><a href="#developer/ingestion">Run ingestion</a> — the HTTP upload/stream contract behind <code>qym submit</code> and live streaming.</li>
+</ul>

@@ -1,0 +1,175 @@
+<p class="docs-eyebrow">DEVELOPER / API</p>
+<h1>Authentication</h1>
+<p class="docs-lead">qym authenticates HTTP callers two ways: ingestion clients (the SDK, the CLI, and your own scripts) present a project-scoped <strong>API key</strong> as a Bearer token, while people working in the dashboard authenticate through a browser <strong>session</strong>. This page covers how keys are created, formatted, and verified, and which endpoints accept which credential.</p>
+
+<h2>The two credential types</h2>
+<p>Every authenticated endpoint expects exactly one of these. They are not interchangeable: a Bearer API key will not authorize a dashboard-only action, and a browser session cannot stream a run.</p>
+
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>API key (Bearer token)</h3>
+    <p>For machine clients: the SDK, the <a href="#developer/cli">CLI</a>, and direct HTTP. Always bound to a single project. Used for run ingestion and the project-scoped read API. Sent as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Browser session</h3>
+    <p>For humans in the dashboard. Established by the deployment's configured auth mode (none, reverse-proxy headers, or OIDC). Required for project administration, key management, and run review actions.</p>
+  </div>
+</div>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Rule of thumb.</span> If a request comes from your code, use an API key. If it represents a person clicking in the dashboard (creating projects, managing members, approving runs), it needs a session.</p></div>
+
+<h2>Authenticating with an API key</h2>
+<p>API keys are verified by the <code>require_api_key_principal</code> dependency. The client sends the token in the standard HTTP Authorization header:</p>
+
+<pre data-lang="bash">curl https://qym.example.com/v1/runs \
+  -H "Authorization: Bearer &lt;your-token&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"task_name": "qa-eval", "model": "gpt-4o-mini"}'</pre>
+
+<p>The header is parsed strictly. The scheme must be the word <code>bearer</code> (case-insensitive), followed by a single space and the token. Anything else is treated as no credential.</p>
+
+<h3>How verification works</h3>
+<ol>
+  <li>The token is split on the first space; the scheme must be <code>bearer</code> or the request is rejected.</li>
+  <li>The first 8 characters of the token form a non-secret <strong>prefix</strong> used to look up the key row in the database.</li>
+  <li>A row is only considered if its <code>revoked_at</code> is null (revoked keys never match).</li>
+  <li>The full token is verified against the stored hash with a constant-time comparison.</li>
+  <li>The owning user must still exist and be active.</li>
+</ol>
+
+<p>On success the request runs as a <code>Principal</code> carrying the key's <code>user</code>, <code>auth_type="api_key"</code>, the recorded <code>scopes</code>, and the <code>project_id</code> the key is bound to.</p>
+
+<h3>Authentication errors</h3>
+<p>These are the exact responses the API-key path returns. Match on the status code; the detail strings are stable but human-facing.</p>
+
+<table>
+  <thead><tr><th>Status</th><th>detail</th><th>Cause</th></tr></thead>
+  <tbody>
+    <tr><td><code>401</code></td><td><code>Missing Bearer API key</code></td><td>No <code>Authorization</code> header, or it is not a well-formed <code>Bearer &lt;token&gt;</code>.</td></tr>
+    <tr><td><code>401</code></td><td><code>Invalid API key</code></td><td>No active key matches the prefix, or the token fails hash verification (wrong, revoked, or mistyped token).</td></tr>
+    <tr><td><code>403</code></td><td><code>User disabled</code></td><td>The key verified, but its owning user is missing or deactivated.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">A revoked key reads as <code>Invalid API key</code>.</span> Revocation does not produce a distinct error — the lookup simply skips revoked rows, so the token looks invalid. If a previously working key suddenly returns 401, check whether it was revoked before assuming it was typed wrong.</p></div>
+
+<h2>API keys are project-scoped</h2>
+<p>Every API key belongs to exactly one project, fixed at creation time. The key's <code>project_id</code> rides along on the authenticated <code>Principal</code>, and ingestion endpoints use it directly: a run created with a key is filed under that key's project, and reading another project's run with the wrong key is denied.</p>
+
+<p>There is no global or cross-project API key. To send runs to two projects, create one key per project.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Per-key scopes are stored but not enforced.</span> Keys record a scope list (e.g. <code>runs:write</code>, <code>datasets:read</code>) for forward compatibility, but the platform's scope check is intentionally a no-op today. <strong>Any valid, non-revoked key has full access to its project.</strong> Do not rely on scopes as an access-control boundary — use separate projects to isolate access.</p></div>
+
+<h2>Creating and managing API keys</h2>
+<p>Key management lives under each project and requires a <strong>browser session</strong> (these endpoints use <code>require_ui_principal</code>, not a Bearer key). You create keys in the dashboard for a project you can access; the snippets below show the underlying HTTP calls.</p>
+
+<h3>Create a key</h3>
+<p><code>POST /v1/projects/{project_id}/api-keys</code></p>
+
+<pre data-lang="json">{
+  "name": "ci-pipeline",
+  "scopes": ["runs:write", "runs:read", "datasets:read", "datasets:write", "datasets:delete"]
+}</pre>
+
+<p>Both fields are optional. <code>name</code> defaults to <code>"default"</code>; <code>scopes</code> defaults to the full set shown above (and, as noted, is recorded but not enforced). The response is the <strong>only</strong> time the raw token is returned:</p>
+
+<pre data-lang="json">{
+  "id": "...",
+  "prefix": "AbCdEfGh",
+  "token": "AbCdEfGh...the-full-token..."
+}</pre>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">The token is shown once.</span> Only a one-way hash is stored — the platform cannot show or recover the token again. Copy it immediately into your secret store. If you lose it, revoke the key and create a new one.</p></div>
+
+<h3>List keys</h3>
+<p><code>GET /v1/projects/{project_id}/api-keys</code> returns metadata only — never the token. Each entry includes <code>id</code>, <code>name</code>, <code>prefix</code>, <code>project_id</code>, the <code>creator</code>, the stored <code>scopes</code>, <code>created_at</code>, and <code>revoked_at</code> (null while active). Use the <code>prefix</code> to recognize which key is which.</p>
+
+<h3>Revoke a key</h3>
+<p><code>DELETE /v1/projects/{project_id}/api-keys/{key_id}</code> sets <code>revoked_at</code> on the key. Revocation takes effect immediately on the next request. Who may revoke:</p>
+<ul>
+  <li>A platform <strong>admin</strong>, or</li>
+  <li>The <strong>creator</strong> of the key, or</li>
+  <li>A <strong>manager</strong> of the key's project.</li>
+</ul>
+<p>Anyone else gets <code>403 Access denied</code>. Revoking an already-revoked key returns <code>400 API key already revoked</code>.</p>
+
+<h2>Token format and storage</h2>
+<table>
+  <thead><tr><th>Property</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Generation</td><td><code>secrets.token_urlsafe(32)</code> (URL-safe base64 of 32 random bytes, ~43 characters)</td></tr>
+    <tr><td>Prefix</td><td>First 8 characters of the token. Stored in the clear for lookup and display; <strong>not secret</strong>.</td></tr>
+    <tr><td>Format</td><td>No <code>qym_</code> prefix or any other marker — it is an opaque random string.</td></tr>
+    <tr><td>At rest</td><td>Hashed with PBKDF2-HMAC-SHA256 (600,000 iterations, random 16-byte salt). The raw token is never stored.</td></tr>
+    <tr><td>Header</td><td><code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Do not try to fingerprint keys by shape.</span> Because tokens carry no fixed prefix, you cannot detect a leaked qym key by pattern-matching alone. Treat the whole string as a secret, keep it out of logs and source control, and identify keys by their 8-character <code>prefix</code> instead.</p></div>
+
+<h2>Using a key from the SDK and CLI</h2>
+<p>The SDK and CLI read the key and the platform URL from environment variables — you rarely pass the token in code. Set both, and runs stream to the platform automatically.</p>
+
+<pre data-lang="bash"># .env or your shell
+QYM_BASE_URL=https://qym.example.com
+QYM_API_KEY=AbCdEfGh...the-full-token...</pre>
+
+<table>
+  <thead><tr><th>Variable</th><th>Purpose</th><th>Default</th></tr></thead>
+  <tbody>
+    <tr><td><code>QYM_BASE_URL</code></td><td>Platform base URL the client talks to. A trailing slash is stripped.</td><td><code>http://localhost:8000</code></td></tr>
+    <tr><td><code>QYM_API_KEY</code></td><td>The Bearer token created above.</td><td>(none)</td></tr>
+  </tbody>
+</table>
+
+<p>Verify connectivity and credentials before a real run:</p>
+
+<pre data-lang="bash">qym config check</pre>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">No key needed for local CSV runs.</span> Streaming to the platform is optional. You can run an evaluation entirely offline and results still save to <code>qym_results/</code> — see <a href="#sdk-guide/results">Results, artifacts &amp; tracing</a>. The API key only matters once you want runs to appear in the dashboard.</p></div>
+
+<h3>Self-signed or internal CA certificates</h3>
+<p>If your deployment serves HTTPS with an internal or self-signed certificate, point the client at your CA bundle so TLS verification succeeds:</p>
+
+<pre data-lang="bash">QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem</pre>
+
+<p>The client falls back to <code>QYM_CA_BUNDLE</code> if <code>QYM_PLATFORM_CA_BUNDLE</code> is unset. As a last resort for local troubleshooting only, disable verification with <code>QYM_PLATFORM_SSL_VERIFY=false</code> (it falls back to <code>QYM_SSL_VERIFY</code>). Never disable verification in production.</p>
+
+<h2>Browser session authentication (deployment auth modes)</h2>
+<p>Dashboard requests are authenticated by the <code>require_ui_principal</code> dependency, whose behavior is set by the deployment's <code>auth_mode</code> setting. This is chosen by whoever operates the platform, not by API callers.</p>
+
+<table>
+  <thead><tr><th>auth_mode</th><th>Behavior</th></tr></thead>
+  <tbody>
+    <tr><td><code>none</code></td><td>Local/dev: no identity required. Every request runs as a stable <code>dev@local</code> admin user. The default.</td></tr>
+    <tr><td><code>proxy_headers</code></td><td>A trusted reverse proxy injects the user's identity via <code>X-User-Email</code> (or <code>X-Email</code>). With <code>auto_provision_users</code> on (the default), an unknown but proxy-asserted email is created on first sight.</td></tr>
+    <tr><td><code>oidc</code></td><td>Native single sign-on. Unauthenticated dashboard requests get <code>401 Not authenticated</code>.</td></tr>
+  </tbody>
+</table>
+
+<p>A one-time <strong>first-admin bootstrap</strong> is also supported: when no users exist yet, a request carrying <code>X-Admin-Bootstrap</code> equal to the configured <code>admin_bootstrap_token</code> (plus an <code>X-User-Email</code>) provisions the first admin.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">An API key cannot stand in for a session.</span> Endpoints that manage projects, members, API keys, or run review require <code>require_ui_principal</code> — a Bearer key will not satisfy them. Conversely, run ingestion requires an API key and will not accept a session. Choose the credential that matches the endpoint.</p></div>
+
+<h2>Which credential does each endpoint need?</h2>
+<table>
+  <thead><tr><th>Endpoint group</th><th>Examples</th><th>Credential</th></tr></thead>
+  <tbody>
+    <tr><td>Run ingestion</td><td><code>POST /v1/runs</code>, <code>POST /v1/runs/{id}/events</code>, <code>POST /v1/runs:upload</code></td><td>API key</td></tr>
+    <tr><td>Project administration</td><td><code>POST /v1/projects</code>, <code>.../members</code>, <code>.../api-keys</code></td><td>Session</td></tr>
+    <tr><td>Run review actions</td><td>submit / approve / reject a run</td><td>Session</td></tr>
+    <tr><td>Public</td><td><code>GET /openapi.json</code></td><td>None</td></tr>
+  </tbody>
+</table>
+
+<p>For the full request/response shapes of the ingestion endpoints, see <a href="#developer/ingestion">Run ingestion</a>; for everything else see the <a href="#developer/endpoints">Endpoint reference</a>.</p>
+
+<h2>Security checklist</h2>
+<ul>
+  <li><strong>Store the token in a secret manager.</strong> It is shown once and only its hash is kept server-side.</li>
+  <li><strong>Use one key per environment.</strong> A separate key for CI, local, and prod makes targeted revocation possible.</li>
+  <li><strong>Rotate by create-then-revoke.</strong> Create the replacement, deploy it, then revoke the old key — revocation is immediate.</li>
+  <li><strong>Isolate access with projects, not scopes.</strong> Scopes are not enforced; project boundaries are the real control.</li>
+  <li><strong>Keep tokens out of URLs and logs.</strong> Always send them in the <code>Authorization</code> header; identify keys by their <code>prefix</code>.</li>
+  <li><strong>Verify TLS.</strong> Configure <code>QYM_PLATFORM_CA_BUNDLE</code> for internal CAs rather than disabling verification.</li>
+</ul>

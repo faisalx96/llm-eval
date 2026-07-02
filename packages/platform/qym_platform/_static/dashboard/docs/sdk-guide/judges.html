@@ -1,0 +1,289 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>LLM-as-judge &amp; pairwise judging</h1>
+<p class="docs-lead">When a deterministic rule cannot capture quality — relevance, faithfulness, tone, "is this actually correct?" — hand the decision to an LLM. qym ships seven prebuilt judges and two factories (single-output and pairwise) that turn a prompt and a set of labels into a scored, explainable metric.</p>
+
+<p>A judge is just a metric. It plugs into the same <code>metrics=[...]</code> list as <code>exact_match</code> and your custom callables, returns a <a href="#sdk-guide/metrics">MetricResult</a>, and writes a numeric <code>score</code> plus a human-readable <code>label</code> and <code>explanation</code> to every item. The difference is that the score comes from an LLM verdict instead of code, which makes judges more expensive, non-deterministic, and dependent on an external provider. Reach for them only where rules genuinely fall short — and keep deterministic metrics in the same run as cheap, stable guardrails.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Judges need the optional extra.</span> The judge names below only appear in the metric registry when the <code>openai</code> package is installed. Install with <code>pip install qym[judges]</code>. Without it, asking for a judge by name raises <code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code>.</p></div>
+
+<h2>Configure the judge provider</h2>
+<p>Every judge call talks to an OpenAI-compatible chat-completions endpoint (OpenAI, vLLM, Ollama, OpenRouter, and similar). Configuration is read from environment variables — there is <strong>no default model</strong>, so you must supply one.</p>
+
+<pre data-lang="bash">export QYM_JUDGE_MODEL=gpt-4o-mini          # required — no default
+export QYM_JUDGE_API_KEY=sk-...             # required (falls back to OPENAI_API_KEY)
+export QYM_JUDGE_BASE_URL=https://api.openai.com/v1   # optional (falls back to OPENAI_BASE_URL)</pre>
+
+<table>
+<thead><tr><th>Variable</th><th>Required</th><th>Fallback</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>QYM_JUDGE_MODEL</code></td><td>Yes</td><td>—</td><td>Model name, e.g. <code>gpt-4o-mini</code> or <code>llama-3.1-8b</code>.</td></tr>
+<tr><td><code>QYM_JUDGE_API_KEY</code></td><td>Yes</td><td><code>OPENAI_API_KEY</code></td><td>API key for the provider.</td></tr>
+<tr><td><code>QYM_JUDGE_BASE_URL</code></td><td>No</td><td><code>OPENAI_BASE_URL</code></td><td>Base URL — set this for vLLM, Ollama, etc.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The judge provider is separate from your platform credentials.</span> <code>QYM_JUDGE_*</code> points at the LLM that does the scoring. It has nothing to do with <code>QYM_BASE_URL</code>/<code>QYM_API_KEY</code>, which connect the SDK to the qym platform. Set both when you stream judge runs to the platform.</p></div>
+
+<h3>Configuring in Python instead of env vars</h3>
+<p>Set a global default that every judge in the process uses:</p>
+
+<pre data-lang="python">from qym.metrics import JudgeConfig, set_default_judge_config
+
+set_default_judge_config(
+    JudgeConfig(
+        model="gpt-4o-mini",
+        api_key="sk-...",
+        base_url="https://api.openai.com/v1",  # optional
+    )
+)</pre>
+
+<p><code>JudgeConfig</code> is a dataclass. Any field you leave unset is back-filled from the environment in <code>__post_init__</code> (model from <code>QYM_JUDGE_MODEL</code>; base URL from <code>QYM_JUDGE_BASE_URL</code> then <code>OPENAI_BASE_URL</code>; key from <code>QYM_JUDGE_API_KEY</code> then <code>OPENAI_API_KEY</code>). Its verified fields and defaults:</p>
+
+<table>
+<thead><tr><th>Field</th><th>Default</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>model</code></td><td><code>""</code></td><td>Empty string → resolved from env. Must be non-empty or <code>validate()</code> raises.</td></tr>
+<tr><td><code>base_url</code></td><td><code>None</code></td><td>Resolved from env; <code>None</code> uses the provider's default URL.</td></tr>
+<tr><td><code>api_key</code></td><td><code>None</code></td><td>Resolved from env. Required.</td></tr>
+<tr><td><code>temperature</code></td><td><code>0.0</code></td><td>Judges run greedy by default for repeatability.</td></tr>
+<tr><td><code>max_tokens</code></td><td><code>1024</code></td><td>Cap on the verdict-plus-explanation response.</td></tr>
+<tr><td><code>timeout</code></td><td><code>60.0</code></td><td>Per-attempt wall-clock cap (seconds) on each LLM call.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">Missing config fails at call time, not at construction.</span> <code>JudgeConfig.validate()</code> runs on the first judge call. If the model or key is absent it raises <code>RuntimeError</code> with: <code>LLM judge metrics require configuration. Missing: ...</code> followed by the exact env-var exports to set. Smoke-test on one item before scaling so you hit this immediately, not 500 items in.</p></div>
+
+<h2>The seven built-in judges</h2>
+<p>Each is a registry name you can drop straight into <code>metrics=[...]</code>. The <strong>required input fields</strong> column lists the keys your dataset's <code>input</code> dict must carry — they are substituted into the judge's prompt by name. The <strong>labels &rarr; scores</strong> column is the fixed verdict mapping each judge uses.</p>
+
+<table>
+<thead><tr><th>Name</th><th>Evaluates</th><th>Required input fields</th><th>Labels &rarr; scores</th></tr></thead>
+<tbody>
+<tr><td><code>relevance</code></td><td>Does the response address the question?</td><td><code>question</code></td><td><code>relevant</code>=1.0, <code>irrelevant</code>=0.0</td></tr>
+<tr><td><code>faithfulness_llm</code></td><td>Is the response grounded in the context?</td><td><code>context</code>, <code>question</code></td><td><code>faithful</code>=1.0, <code>unfaithful</code>=0.0</td></tr>
+<tr><td><code>correctness_llm</code></td><td>Does the response match the expected answer?</td><td><code>question</code> (uses <code>expected</code>)</td><td><code>correct</code>=1.0, <code>incorrect</code>=0.0</td></tr>
+<tr><td><code>conciseness</code></td><td>Is the response concise vs. padded?</td><td><code>question</code></td><td><code>concise</code>=1.0, <code>verbose</code>=0.0</td></tr>
+<tr><td><code>hallucination</code></td><td>Does it stay grounded vs. invent facts?</td><td><code>context</code></td><td><code>grounded</code>=1.0, <code>hallucinated</code>=0.0</td></tr>
+<tr><td><code>toxicity</code></td><td>Is the response free of harmful content?</td><td><em>(none)</em></td><td><code>non-toxic</code>=1.0, <code>toxic</code>=0.0</td></tr>
+<tr><td><code>tool_calling</code></td><td>Are the tool calls correct for the question?</td><td><code>question</code>, <code>tool_definitions</code>, <code>tool_calls</code></td><td><code>correct</code>=1.0, <code>incorrect</code>=0.0</td></tr>
+</tbody>
+</table>
+
+<pre data-lang="python">from qym import Evaluator
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", "relevance", "faithfulness_llm"],
+)
+results = evaluator.run()</pre>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title"><code>tool_calling</code> reads the tool calls from your dataset input, not from the task output.</span> Its prompt template fills <code>{question}</code>, <code>{tool_definitions}</code>, and <code>{tool_calls}</code> — all from the item's <code>input</code> dict. It does not reference the task's <code>{output}</code>. Put the model's actual tool calls into <code>input["tool_calls"]</code> (alongside <code>question</code> and <code>tool_definitions</code>) for this judge to score anything meaningful.</p></div>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Don't confuse <code>faithfulness</code> with <code>faithfulness_llm</code>.</span> <code>faithfulness</code> is a dependency-free code metric (token overlap with the context). <code>faithfulness_llm</code> is the LLM judge described here. Both are registered. See <a href="#sdk-guide/metrics">Metrics</a> for the code version.</p></div>
+
+<h2>Custom single-output judges with create_judge</h2>
+<p>When none of the seven fit, write your own. <code>create_judge</code> returns an async metric function you pass into <code>metrics=[...]</code> exactly like a built-in name.</p>
+
+<pre data-lang="python">from qym.metrics.judges import create_judge
+
+# Binary judge
+helpfulness = create_judge(
+    name="helpfulness",
+    prompt="Is this response helpful?\n[Question]: {question}\n[Response]: {output}",
+    choices={"helpful": 1.0, "unhelpful": 0.0},
+)
+
+# Graded (multi-level) judge — choices can have any number of labels
+answer_quality = create_judge(
+    name="answer_quality",
+    prompt="""\
+Rate the quality of this response.
+- excellent: fully correct, well structured, comprehensive
+- good: mostly correct with minor gaps
+- poor: partially correct, missing key information
+- bad: incorrect or off-topic
+
+[Question]: {question}
+[Response]: {output}""",
+    choices={"excellent": 1.0, "good": 0.7, "poor": 0.3, "bad": 0.0},
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["exact_match", helpfulness, answer_quality],
+)</pre>
+
+<h3>create_judge signature</h3>
+<pre data-lang="python">create_judge(
+    name: str,
+    prompt: str,
+    choices: Dict[str, float],
+    *,
+    langfuse_prompt: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    judge_model: Optional[str] = None,
+    judge_base_url: Optional[str] = None,
+    judge_api_key: Optional[str] = None,
+) -&gt; Callable  # async (output, expected=None, input_data=None) -&gt; MetricResult</pre>
+
+<table>
+<thead><tr><th>Parameter</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>name</code></td><td>Metric name. Becomes the metric's <code>__name__</code> and its key in results.</td></tr>
+<tr><td><code>prompt</code></td><td>Template with <code>{variable}</code> placeholders (see substitution rules below).</td></tr>
+<tr><td><code>choices</code></td><td>Dict mapping each verdict label to a score. Scores outside <code>[0.0, 1.0]</code> are allowed but log a warning — keep them in range for consistent aggregation.</td></tr>
+<tr><td><code>system_prompt</code></td><td>Override the default judge system prompt. If unset, a built-in prompt instructs the model to reply with JSON <code>{"verdict": ..., "explanation": ...}</code>.</td></tr>
+<tr><td><code>judge_model</code>, <code>judge_base_url</code>, <code>judge_api_key</code></td><td>Per-judge provider override — point one judge at a different model/endpoint than the global default.</td></tr>
+<tr><td><code>langfuse_prompt</code></td><td><strong>Non-functional.</strong> Langfuse prompt fetching was removed from the runtime. Passing this logs a warning and silently falls back to the inline <code>prompt</code>. Always inline your template.</td></tr>
+</tbody>
+</table>
+
+<h3>Per-judge provider override</h3>
+<p>Run one judge on a cheaper local model while others use a hosted one:</p>
+
+<pre data-lang="python">toxicity_local = create_judge(
+    name="toxicity_local",
+    prompt="Is this response toxic or non-toxic?\n[Response]: {output}",
+    choices={"non-toxic": 1.0, "toxic": 0.0},
+    judge_model="llama-3.1-8b",
+    judge_base_url="http://localhost:11434/v1",
+    judge_api_key="ollama",
+)</pre>
+
+<h2>Prompt template substitution</h2>
+<p>The prompt is filled with simple <code>{key}</code> replacement. Three variables are always available, plus every key of <code>input_data</code> when it is a dict:</p>
+
+<table>
+<thead><tr><th>Placeholder</th><th>Filled from</th></tr></thead>
+<tbody>
+<tr><td><code>{output}</code></td><td>The task's output (stringified).</td></tr>
+<tr><td><code>{expected}</code></td><td>The item's expected output (stringified), or empty string.</td></tr>
+<tr><td><code>{input}</code></td><td>The whole input value (stringified), or empty string.</td></tr>
+<tr><td><code>{&lt;any key&gt;}</code></td><td>Each key of <code>input_data</code> when it is a dict — e.g. <code>{question}</code>, <code>{context}</code>. The three built-in names above win if a key collides with them.</td></tr>
+</tbody>
+</table>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">A placeholder with no matching value stays in the prompt verbatim — it does NOT raise.</span> If your prompt references <code>{context}</code> but the item has no <code>context</code>, the literal text <code>{context}</code> is sent to the LLM. There is no error and no warning. The result is a silently degraded judge. Verify on a tiny sample that every <code>{variable}</code> actually got filled before running at scale.</p></div>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title"><code>{output}</code> stringifies the whole envelope for envelope-returning tasks.</span> If your task returns the <code>{'output': ..., 'metadata': {...}}</code> envelope, judges receive that entire dict as <code>output</code>, so <code>{output}</code> renders the full dict — metadata and all — not just the answer. Either return a bare string from the task, or write a custom judge that reads <code>output['output']</code>. See <a href="#sdk-guide/custom-metrics">Custom metrics</a> for the envelope contract.</p></div>
+
+<h2>Pairwise judging with create_pairwise_judge</h2>
+<p>Instead of scoring one output on an absolute scale, a pairwise judge compares two outputs (A vs. B) and picks a winner. LLMs are more reliable at relative comparison than absolute scoring, which makes pairwise judging a strong fit for A/B model comparisons and regression gates against a baseline.</p>
+
+<pre data-lang="python">from qym.metrics.judges import create_pairwise_judge
+
+compare_quality = create_pairwise_judge(
+    name="compare_quality",
+    prompt="""\
+Compare these two responses to the same question.
+
+[Question]: {question}
+[Response A]: {output_a}
+[Response B]: {output_b}
+
+Which response is better? Consider accuracy, completeness, and clarity.
+Answer A, B, or tie.""",
+)
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=[compare_quality],
+)</pre>
+
+<h3>Fixed verdict mapping</h3>
+<p>Pairwise choices are not configurable — they are always:</p>
+
+<table>
+<thead><tr><th>Label</th><th>Score</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>A</code></td><td><code>1.0</code></td><td>The task's output (A) wins.</td></tr>
+<tr><td><code>tie</code></td><td><code>0.5</code></td><td>No clear winner.</td></tr>
+<tr><td><code>B</code></td><td><code>0.0</code></td><td>The comparison output (B) wins.</td></tr>
+</tbody>
+</table>
+
+<h3>Where A and B come from</h3>
+<ul>
+<li><code>{output_a}</code> is <strong>always</strong> your task's output (the thing being evaluated).</li>
+<li><code>{output_b}</code> is resolved in this order: <code>input_data["output_b"]</code> if present, otherwise the item's <code>expected</code> field.</li>
+</ul>
+
+<p>So to compare against a gold answer, leave <code>output_b</code> out and rely on <code>expected</code>. To compare two models head-to-head, put the baseline model's response in an <code>output_b</code> column:</p>
+
+<pre data-lang="csv">id,question,expected,output_b
+1,"What is 2+2?","4","The answer is four."</pre>
+
+<p>Your task produces A; the dataset provides B; the judge compares them. The signature mirrors <code>create_judge</code> minus <code>choices</code> and <code>langfuse_prompt</code>:</p>
+
+<pre data-lang="python">create_pairwise_judge(
+    name: str,
+    prompt: str,
+    *,
+    system_prompt: Optional[str] = None,
+    judge_model: Optional[str] = None,
+    judge_base_url: Optional[str] = None,
+    judge_api_key: Optional[str] = None,
+) -&gt; Callable  # async (output, expected=None, input_data=None) -&gt; MetricResult</pre>
+
+<h2>What a judge returns</h2>
+<p>Every judge resolves to a <code>MetricResult</code>. The LLM is asked for JSON like <code>{"verdict": "good", "explanation": "..."}</code>; qym maps the verdict through <code>choices</code> and fills these fields:</p>
+
+<table>
+<thead><tr><th>Field</th><th>Example</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>score</code></td><td><code>0.7</code></td><td>Numeric value mapped from the verdict via <code>choices</code>.</td></tr>
+<tr><td><code>label</code></td><td><code>"good"</code></td><td>The verdict label the LLM chose.</td></tr>
+<tr><td><code>explanation</code></td><td><code>"Covers the main points but..."</code></td><td>The LLM's stated reasoning.</td></tr>
+<tr><td><code>kind</code></td><td><code>"llm"</code></td><td>Always <code>"llm"</code> for judges (code metrics use <code>"code"</code>).</td></tr>
+<tr><td><code>metadata</code></td><td><code>{}</code></td><td>Empty on success; carries an <code>error</code> key when the verdict could not be obtained (see below).</td></tr>
+</tbody>
+</table>
+
+<p>Labels and explanations are persisted per item, so the dashboard shows not just the score but <em>why</em> the judge decided that way.</p>
+
+<h2>How a verdict is extracted (and what failure looks like)</h2>
+<p>Judges are defensive about messy LLM output. The verdict-extraction path is, in order:</p>
+<ol>
+<li><strong>JSON parse.</strong> Read <code>verdict</code> and <code>explanation</code> from the JSON response. Verdicts match against <code>choices</code> exactly, then case-insensitively.</li>
+<li><strong>One stricter retry.</strong> If parsing fails, the judge re-asks once with an explicit "respond with ONLY a JSON object" nudge listing the allowed labels.</li>
+<li><strong>Rail snapping.</strong> If that still fails, it scans the raw text for any label as a whole word (longest label first, case-insensitive) and uses the first match.</li>
+<li><strong>Give up.</strong> If nothing matches, the result is <code>score=0.0</code> with <code>metadata={"error": "Could not parse LLM verdict", "raw_response": ...}</code>.</li>
+</ol>
+
+<p>Transport failures are also handled: each LLM call retries up to three times with exponential backoff and jitter, capped by the per-attempt <code>timeout</code>. If all attempts fail, the judge returns <code>score=0.0</code> with <code>metadata={"error": "..."}</code> rather than crashing the run.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">A failed judge call scores 0.0, not "no data".</span> Because parse and transport failures both return <code>score=0.0</code> with an <code>error</code> in metadata, a provider outage can quietly look like a wave of zeros. Inspect the per-item <code>error</code> metadata before treating a low judge mean as a real quality drop.</p></div>
+
+<h2>Cost, latency, and concurrency</h2>
+<p>Judges are network calls, so they dominate run time. Tuning levers:</p>
+<ul>
+<li><strong>Sample first.</strong> Validate prompts and config on a handful of items before a full run — it surfaces the <code>RuntimeError</code> config check and any unfilled <code>{placeholders}</code> immediately.</li>
+<li><strong><code>max_metric_concurrency</code></strong> (default <code>1</code>) controls how many metrics run in parallel <em>per item</em>. Raise it to fan out multiple judge calls on the same item; keep it low when your provider's rate limits are strict.</li>
+<li><strong><code>metric_timeout</code></strong> (default <code>60.0</code>s) is the wall-clock budget per metric. A judge that legitimately needs longer is cancelled and recorded as a timeout — raise this (or set it to <code>None</code>) for slow models.</li>
+<li><strong>Tier your judges.</strong> Use a cheap model for smoke tests and a stronger one for release gates via per-judge <code>judge_model</code> overrides.</li>
+<li><strong>Record provenance.</strong> Store the judge model and prompt version in your run metadata so scores stay comparable across runs.</li>
+</ul>
+<p>See <a href="#sdk-guide/config">Configs &amp; options</a> for where these live on <code>EvaluatorConfig</code>.</p>
+
+<h2>Debugging judge failures</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>RuntimeError: LLM judge metrics require configuration. Missing: ...</code></td><td>Model or API key unset.</td><td>Set <code>QYM_JUDGE_MODEL</code> and <code>QYM_JUDGE_API_KEY</code> (or <code>OPENAI_API_KEY</code>).</td></tr>
+<tr><td><code>ImportError: The 'openai' package is required...</code></td><td>Judges extra not installed.</td><td><code>pip install qym[judges]</code>.</td></tr>
+<tr><td><code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code></td><td>Judge name requested but <code>openai</code> missing, so it's not in the registry.</td><td>Install the extra, or check the name's spelling.</td></tr>
+<tr><td>All scores are 0.0</td><td>An unfilled <code>{placeholder}</code>, an ambiguous prompt, or repeated parse/transport failures.</td><td>Verify every variable is filled on a sample item; inspect per-item <code>error</code> metadata.</td></tr>
+<tr><td>Many items recorded as timeout</td><td>Judge calls exceeding <code>metric_timeout</code>.</td><td>Raise <code>metric_timeout</code> or use a faster model.</td></tr>
+<tr><td>Inconsistent labels</td><td>Choices or rubric too vague.</td><td>Use sharper labels and a clearer rubric in the prompt.</td></tr>
+</tbody>
+</table>
+
+<h2>Related</h2>
+<ul>
+<li><a href="#sdk-guide/metrics">Metrics</a> — the built-in code metrics and the <code>MetricResult</code> contract.</li>
+<li><a href="#sdk-guide/custom-metrics">Custom metrics</a> — the task-output envelope and reading <code>input_data</code>.</li>
+<li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>metric_timeout</code>, <code>max_metric_concurrency</code>, and the full field reference.</li>
+</ul>

@@ -1,0 +1,338 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Configs &amp; options</h1>
+<p class="docs-lead">Every run is shaped by one object: <code>EvaluatorConfig</code>. This page is the complete, code-verified reference for its fields, the environment variables the SDK reads, how CLI flags map back into the same config, and the patterns worth copying for smoke tests, production jobs, and multi-run comparisons.</p>
+
+<h2>How configuration flows</h2>
+<p>There is a single configuration object — <code>EvaluatorConfig</code> — and every entry point funnels into it:</p>
+<ul>
+  <li><strong>Python:</strong> pass an <code>EvaluatorConfig</code> instance, or a plain <code>dict</code> with the same keys. The constructor does <code>EvaluatorConfig(**(config or {}))</code>, so a dict is validated by Pydantic exactly like the typed object.</li>
+  <li><strong>CLI:</strong> <code>qym run create</code> forwards its flags into the same config. Anything without a dedicated flag can be set through <code>--config</code> (a JSON string merged into the config).</li>
+  <li><strong>Environment:</strong> secrets and deployment endpoints (platform URL, API key, judge credentials, TLS) are read from environment variables, never hardcoded.</li>
+</ul>
+<p>A rule of thumb: explicit Python config in services and notebooks, environment variables for secrets and per-deployment endpoints, CLI flags for shell automation.</p>
+
+<pre data-lang="python">from qym import Evaluator
+from qym.core.config import EvaluatorConfig
+
+config = EvaluatorConfig(
+    run_name="support-rag-smoke",
+    task_name="support-rag",
+    max_concurrency=5,
+    timeout=120,
+    max_retries=1,
+    run_metadata={"prompt_version": "2026-04-24-a"},
+)
+
+result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config=config,
+).run(show_tui=False)</pre>
+
+<p>The dict form is equivalent — useful when config comes from JSON, YAML, or a service request:</p>
+
+<pre data-lang="python">result = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match"],
+    config={
+        "run_name": "support-rag-smoke",
+        "task_name": "support-rag",
+        "max_concurrency": 5,
+        "timeout": 120,
+        "max_retries": 1,
+        "run_metadata": {"prompt_version": "2026-04-24-a"},
+    },
+).run(show_tui=False)</pre>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Validation happens at construction.</span> Because the config is a Pydantic model, an unknown key or an out-of-range value (for example <code>max_concurrency=0</code>, which has a <code>ge=1</code> constraint) raises immediately — before any dataset item runs.</p></div>
+
+<h2>Complete <code>EvaluatorConfig</code> reference</h2>
+<p>Every field below is defined on <code>EvaluatorConfig</code> in <code>qym/core/config.py</code>. Defaults are copied directly from the source. Fields are grouped by what they control.</p>
+
+<h3>Run identity</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>run_name</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Human-readable run name used in artifacts and the platform.</td></tr>
+    <tr><td><code>task_name</code></td><td>optional <code>str</code></td><td><code>None</code> (auto-derived)</td><td>Stable task identity. Overrides the name auto-derived from the task callable so renames of files/functions do not split history.</td></tr>
+    <tr><td><code>run_metadata</code></td><td><code>dict</code></td><td><code>{}</code></td><td>Non-secret tags attached to the run (job ID, prompt version, dataset version, owner, release).</td></tr>
+    <tr><td><code>git_branch</code></td><td>optional <code>str</code></td><td><code>None</code> (auto-detected)</td><td>Override the auto-detected git branch.</td></tr>
+    <tr><td><code>git_commit</code></td><td>optional <code>str</code></td><td><code>None</code> (auto-detected)</td><td>Override the auto-detected commit hash (useful in CI or detached HEAD).</td></tr>
+    <tr><td><code>cli_invocation</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Records the command used to launch the run. Set automatically by the CLI.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Keep secrets out of <code>run_metadata</code>.</span> Its contents are written into artifacts and shown in the platform UI. Store labels, not credentials.</p></div>
+
+<h3>Execution</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>max_concurrency</code></td><td><code>int</code> (≥1)</td><td><code>10</code></td><td>How many dataset items run at once. Lower it for provider rate limits; raise it once the run is stable.</td></tr>
+    <tr><td><code>max_metric_concurrency</code></td><td><code>int</code> (≥1)</td><td><code>1</code></td><td>How many metrics evaluate concurrently per item. Raise it when metrics call external services.</td></tr>
+    <tr><td><code>timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>300</code></td><td>Wall-clock cap per task item, in seconds. Set <code>None</code> only when you trust the task never to hang.</td></tr>
+    <tr><td><code>metric_timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>60.0</code></td><td>Hard wall-clock cap per metric call. A metric that exceeds it is cancelled and recorded as score <code>0</code> with a timeout label, so one hung metric (e.g. an LLM judge that never returns) cannot hold an item hostage. Set <code>None</code> to disable.</td></tr>
+    <tr><td><code>max_retries</code></td><td><code>int</code> (≥0)</td><td><code>2</code></td><td>Retries on task failure. Use <code>0</code> for deterministic smoke tests and debugging.</td></tr>
+    <tr><td><code>interrupt_grace_seconds</code></td><td><code>float</code></td><td><code>2.0</code></td><td>Grace window for cleanup and final-status emission when a run is interrupted.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">The default <code>metric_timeout</code> is 60 seconds, not 120.</span> That comfortably covers a healthy LLM judge (typically 5-30s) while still catching a hung upstream within about a minute. Bump it explicitly for genuinely slow custom metrics.</p></div>
+
+<h3>Output, checkpointing &amp; recovery</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>output_dir</code></td><td><code>str</code></td><td><code>"qym_results"</code></td><td>Base directory for saved artifacts and checkpoints.</td></tr>
+    <tr><td><code>checkpoint_enabled</code></td><td><code>bool</code></td><td><code>True</code></td><td>Enables incremental checkpoint writes so an interrupted run can resume.</td></tr>
+    <tr><td><code>checkpoint_format</code></td><td><code>str</code></td><td><code>"csv"</code></td><td>Checkpoint serialization format.</td></tr>
+    <tr><td><code>checkpoint_flush_each_item</code></td><td><code>bool</code></td><td><code>True</code></td><td>Flush after each item for stronger durability.</td></tr>
+    <tr><td><code>checkpoint_fsync</code></td><td><code>bool</code></td><td><code>False</code></td><td>Force a filesystem sync on each flush. Worth the small cost on high-value long runs.</td></tr>
+    <tr><td><code>resume_from</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Path to a checkpoint CSV (or saved result) to resume from.</td></tr>
+    <tr><td><code>resume_rerun_errors</code></td><td><code>bool</code></td><td><code>False</code></td><td>On resume, re-run rows that previously errored instead of preserving the failures.</td></tr>
+  </tbody>
+</table>
+
+<h3>Dataset selection</h3>
+<p>These two fields apply only when the dataset is resolved from the qym platform (a dataset name string rather than a local file or a dataset object). See <a href="#get-started/datasets">Datasets</a> for the full resolution rules.</p>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>dataset_version</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Pin a specific platform dataset version.</td></tr>
+    <tr><td><code>dataset_alias</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Resolve by alias instead of version. When neither version nor alias is given, the platform dataset defaults to the <code>production</code> alias.</td></tr>
+  </tbody>
+</table>
+
+<h3>Model routing</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>model</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Single model label passed to task signatures and stored in metadata.</td></tr>
+    <tr><td><code>models</code></td><td>optional <code>list[str]</code></td><td><code>None</code></td><td>Run the same task/dataset/metrics across several models. A comma-separated string is normalized into a list.</td></tr>
+    <tr><td><code>model_full</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Full provider-prefixed model ID (e.g. <code>qwen/qwen3.5-397b-a17b</code>) for integrations that call the API directly.</td></tr>
+    <tr><td><code>force_model_override</code></td><td><code>bool</code></td><td><code>False</code></td><td>Replace a hardcoded OpenAI chat-completion model at the SDK boundary. Use only when you understand the adapter behavior.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Prefer the constructor for models.</span> Passing <code>model="gpt-4o-mini"</code> or <code>model=["a", "b"]</code> to <code>Evaluator(...)</code> sets <code>config.model</code>/<code>config.models</code> for you. A multi-model run returns a <strong>list</strong> of <code>EvaluationResult</code> — see <a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a>.</p></div>
+
+<h3>Platform streaming</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>platform_url</code></td><td>optional <code>str</code></td><td><code>None</code> (falls back to <code>QYM_BASE_URL</code>)</td><td>Base URL of the qym platform to stream the run to.</td></tr>
+    <tr><td><code>platform_api_key</code></td><td>optional <code>str</code></td><td><code>None</code> (falls back to <code>QYM_API_KEY</code>)</td><td>Project-scoped API key for ingestion. Prefer the environment variable for secrets.</td></tr>
+    <tr><td><code>platform_timeout</code></td><td><code>float</code> (&gt;0)</td><td><code>5.0</code></td><td>Per-request timeout for platform calls, in seconds.</td></tr>
+    <tr><td><code>live_mode</code></td><td><code>str</code></td><td><code>"platform"</code></td><td>Streaming policy: <code>platform</code> (default), <code>local</code> (opt out of streaming), or <code>auto</code>.</td></tr>
+    <tr><td><code>ui_port</code></td><td><code>int</code></td><td><code>0</code></td><td>Port for the local run UI; <code>0</code> chooses one automatically.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Don't hardcode <code>platform_api_key</code> in source.</span> Set <code>QYM_API_KEY</code> in the environment and leave the field unset; the SDK falls back to the env var. API keys are project-scoped, shown once on creation, and sent as <code>Authorization: Bearer &lt;token&gt;</code>.</p></div>
+
+<h3>Tracing</h3>
+<table>
+  <thead><tr><th>Field</th><th>Type</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>otel_enabled</code></td><td><code>bool</code></td><td><code>True</code></td><td>Enables OpenTelemetry auto-instrumentation when instrumentors are installed. A no-op if none are present.</td></tr>
+    <tr><td><code>phoenix_enabled</code></td><td><code>bool</code></td><td><code>False</code></td><td>Additionally export traces to Phoenix over OTLP.</td></tr>
+    <tr><td><code>phoenix_endpoint</code></td><td>optional <code>str</code></td><td><code>None</code></td><td>Phoenix collector endpoint, e.g. <code>http://localhost:6006/v1/traces</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">There are no Langfuse config fields.</span> Langfuse has been removed from the SDK runtime. The <code>langfuse_client</code> constructor argument is deprecated and ignored (it only logs a warning). Do not configure Langfuse keys, hosts, or dataset names — they are not read by anything.</p></div>
+
+<h2>Environment variables</h2>
+<p>These are the variables the SDK and CLI actually read. Each name and fallback below is taken from the source.</p>
+
+<h3>Platform connection</h3>
+<table>
+  <thead><tr><th>Variable</th><th>Read by</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>QYM_BASE_URL</code></td><td>SDK, CLI</td><td>Platform base URL. Resolved by <code>get_platform_url_env</code>, which strips a trailing slash. When unset, the SDK falls back to <code>http://localhost:8000</code>.</td></tr>
+    <tr><td><code>QYM_API_KEY</code></td><td>SDK, CLI</td><td>Project-scoped API key for ingestion and authenticated platform commands. Sent as a Bearer token.</td></tr>
+    <tr><td><code>QYM_PLATFORM_DEBUG</code></td><td>SDK platform client</td><td>Enable streaming debug logging. Set to <code>1</code> or a file path.</td></tr>
+    <tr><td><code>QYM_SHOW_SUMMARY</code></td><td>SDK results</td><td>Opt in to the printed run summary. Truthy values: <code>1</code>, <code>true</code>, <code>yes</code>, <code>on</code>. When unset, <code>run()</code> prints nothing and <code>print_summary()</code> is a no-op.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title"><code>QYM_BASE_URL</code> is the canonical platform variable.</span> Point it at your deployment, for example <code>https://qym.example.com</code>. The same variable doubles as the default platform URL for <code>QymDataset</code> name resolution.</p></div>
+
+<h3>TLS for self-signed / internal CAs</h3>
+<p>When the platform sits behind an internal certificate authority, these variables control how the SDK's platform HTTP client verifies HTTPS. The platform-specific variable wins; the unprefixed one is the fallback.</p>
+<table>
+  <thead><tr><th>Variable</th><th>Falls back to</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>QYM_PLATFORM_CA_BUNDLE</code></td><td><code>QYM_CA_BUNDLE</code></td><td>Path to a custom CA bundle used for platform HTTPS calls.</td></tr>
+    <tr><td><code>QYM_PLATFORM_SSL_VERIFY</code></td><td><code>QYM_SSL_VERIFY</code></td><td>Toggle certificate verification (default on). Accepted off values: <code>0</code>, <code>false</code>, <code>no</code>, <code>off</code>, <code>disable</code>, <code>disabled</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Prefer a CA bundle over disabling verification.</span> Setting <code>QYM_PLATFORM_SSL_VERIFY=0</code> turns off certificate checks entirely. Point <code>QYM_PLATFORM_CA_BUNDLE</code> at your internal CA instead whenever you can.</p></div>
+
+<h3>Judge metrics</h3>
+<p>LLM-as-judge metrics (the <code>[judges]</code> extra) read their provider configuration from the environment. See <a href="#sdk-guide/judges">LLM-as-judge</a> for the full behavior.</p>
+<table>
+  <thead><tr><th>Variable</th><th>Falls back to</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>QYM_JUDGE_MODEL</code></td><td>—</td><td>Judge model name (e.g. <code>gpt-4o-mini</code>). No default; <code>validate()</code> raises if it is missing.</td></tr>
+    <tr><td><code>QYM_JUDGE_API_KEY</code></td><td><code>OPENAI_API_KEY</code></td><td>Provider API key. <code>validate()</code> raises if neither is set.</td></tr>
+    <tr><td><code>QYM_JUDGE_BASE_URL</code></td><td><code>OPENAI_BASE_URL</code></td><td>Base URL for OpenAI-compatible providers (vLLM, Ollama, etc.).</td></tr>
+  </tbody>
+</table>
+
+<h3>Phoenix tracing</h3>
+<table>
+  <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>PHOENIX_ENDPOINT</code></td><td>Preferred Phoenix collector endpoint.</td></tr>
+    <tr><td><code>PHOENIX_COLLECTOR_ENDPOINT</code></td><td>Compatibility alias for the endpoint.</td></tr>
+    <tr><td><code>PHOENIX_ENABLED</code></td><td>Legacy enable flag; prefer the explicit <code>phoenix_enabled</code> config field.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">A local <code>.env</code> is loaded automatically.</span> On construction, <code>Evaluator</code> loads the <code>.env</code> in the current working directory (and only that one) before reading config or auto-detecting environment values.</p></div>
+
+<h2>Config patterns</h2>
+
+<h3>Local, deterministic smoke test</h3>
+<p>Zero credentials, no retries, low concurrency — built for iterating on the task and metric contract.</p>
+<pre data-lang="python">config = {
+    "run_name": "local-smoke",
+    "task_name": "support-rag",
+    "max_concurrency": 2,
+    "timeout": 60,
+    "max_retries": 0,
+    "checkpoint_enabled": True,
+    "run_metadata": {"suite": "smoke"},
+}</pre>
+
+<h3>Provider-backed production job</h3>
+<p>Higher concurrency, durable checkpoints, platform streaming via environment variables, and reproducibility metadata.</p>
+<pre data-lang="python">import os
+
+config = {
+    "run_name": "nightly-support-rag",
+    "task_name": "support-rag",
+    "max_concurrency": 8,
+    "max_metric_concurrency": 2,
+    "timeout": 300,
+    "metric_timeout": 90,
+    "max_retries": 2,
+    "checkpoint_enabled": True,
+    "checkpoint_flush_each_item": True,
+    "output_dir": "qym_results/nightly",
+    # platform_url / platform_api_key fall back to QYM_BASE_URL / QYM_API_KEY
+    # if omitted; set them explicitly only when overriding the environment.
+    "run_metadata": {
+        "source": "nightly",
+        "prompt_version": os.environ.get("PROMPT_VERSION", ""),
+        "dataset_version": os.environ.get("DATASET_VERSION", ""),
+    },
+}</pre>
+
+<h3>Multi-model run</h3>
+<p>Same task, dataset, and metrics across several models. Returns a list of results.</p>
+<pre data-lang="python">results = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=["exact_match", "fuzzy_match"],
+    model=["gpt-4o-mini", "gpt-4.1-mini"],
+    config={"run_name": "model-comparison"},
+).run(show_tui=False)  # list[EvaluationResult]</pre>
+
+<h3>Multiple run specs</h3>
+<p>When task, dataset, metrics, or config differ between runs, drive them with <code>run_parallel</code>. Each entry is a dict or a <code>RunSpec</code>.</p>
+<pre data-lang="python">from qym import Evaluator
+
+results = Evaluator.run_parallel(
+    [
+        {
+            "name": "baseline",
+            "task": baseline_task,
+            "dataset": dataset,
+            "metrics": ["exact_match"],
+            "config": {"run_name": "baseline"},
+        },
+        {
+            "name": "candidate",
+            "task": candidate_task,
+            "dataset": dataset,
+            "metrics": ["exact_match"],
+            "config": {"run_name": "candidate"},
+        },
+    ],
+    show_tui=False,
+    max_parallel_runs=2,
+)</pre>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Auto-save defaults differ by entry point.</span> <code>run()</code> defaults <code>auto_save=True</code>; <code>arun()</code> and <code>run_parallel()</code> default <code>auto_save=False</code>. Pass <code>auto_save=True</code> explicitly to the async paths when you want artifacts written.</p></div>
+
+<h2>CLI flag mapping</h2>
+<p>The CLI is a thin shell over the same config. Most run configuration arrives through <code>qym run create</code> flags; everything else goes through <code>--config</code> (a JSON object merged into <code>EvaluatorConfig</code>).</p>
+<table>
+  <thead><tr><th>CLI flag</th><th>Maps to</th></tr></thead>
+  <tbody>
+    <tr><td><code>--task-file</code>, <code>--task-function</code></td><td>Loads the <code>task</code> callable.</td></tr>
+    <tr><td><code>--dataset</code></td><td>qym platform dataset name, or a local dataset path.</td></tr>
+    <tr><td><code>--dataset-version</code> / <code>--dataset-alias</code></td><td><code>config.dataset_version</code> / <code>config.dataset_alias</code>.</td></tr>
+    <tr><td><code>--dataset-file</code></td><td>Local CSV or JSONL dataset file.</td></tr>
+    <tr><td><code>--dataset-csv</code></td><td><code>CsvDataset(path)</code>.</td></tr>
+    <tr><td><code>--csv-input-col</code></td><td><code>CsvDataset(input_col=...)</code> (default <code>input</code>).</td></tr>
+    <tr><td><code>--csv-expected-col</code></td><td><code>CsvDataset(expected_col=...)</code> (default <code>expected_output</code>); empty string disables expected output.</td></tr>
+    <tr><td><code>--csv-id-col</code></td><td><code>CsvDataset(id_col=...)</code>.</td></tr>
+    <tr><td><code>--csv-metadata-cols</code></td><td><code>CsvDataset(metadata_cols=[...])</code> (comma-separated).</td></tr>
+    <tr><td><code>--metrics</code></td><td>Comma-separated metric names.</td></tr>
+    <tr><td><code>--model</code></td><td><code>Evaluator(model=...)</code>; comma-separated values become a multi-model run.</td></tr>
+    <tr><td><code>--task-name</code></td><td><code>config.task_name</code>.</td></tr>
+    <tr><td><code>--config</code></td><td>JSON string merged into <code>EvaluatorConfig</code>.</td></tr>
+    <tr><td><code>--platform-url</code></td><td><code>config.platform_url</code>.</td></tr>
+    <tr><td><code>--platform-api-key</code></td><td><code>config.platform_api_key</code>.</td></tr>
+    <tr><td><code>--resume-from</code> (alias <code>--run-file</code>)</td><td><code>config.resume_from</code>.</td></tr>
+    <tr><td><code>--git-branch</code> / <code>--git-commit</code></td><td><code>config.git_branch</code> / <code>config.git_commit</code>.</td></tr>
+    <tr><td><code>--ui-port</code></td><td><code>config.ui_port</code>.</td></tr>
+    <tr><td><code>--no-ui</code></td><td>Disables the local web UI.</td></tr>
+    <tr><td><code>--no-progress</code></td><td>Disables the progress bar.</td></tr>
+    <tr><td><code>--quiet</code> / <code>-q</code></td><td>Only show the final summary.</td></tr>
+    <tr><td><code>--runs-config</code></td><td>Multi-run YAML/JSON loaded into run specs.</td></tr>
+    <tr><td><code>--output</code></td><td>Save single-model results to a JSON file.</td></tr>
+  </tbody>
+</table>
+
+<p>Concurrency, timeouts, retries, and checkpoint options have no dedicated flags — set them through <code>--config</code>:</p>
+<pre data-lang="bash">qym run create \
+  --task-file eval_task.py \
+  --task-function answer_question \
+  --dataset-csv datasets/smoke.csv \
+  --csv-input-col question \
+  --csv-expected-col answer \
+  --metrics exact_match \
+  --task-name support-rag \
+  --model gpt-4o-mini,gpt-4.1-mini \
+  --config '{"run_name":"ci-smoke","max_concurrency":4,"timeout":120,"max_retries":1}'</pre>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">There is no <code>--concurrency</code> or <code>--no-tui</code> flag.</span> Set concurrency via <code>--config</code>, and use <code>--no-ui</code> / <code>--no-progress</code> to quiet output. The <code>--live-mode</code> flag exists but is hidden and deprecated.</p></div>
+
+<h2>Common mistakes</h2>
+<table>
+  <thead><tr><th>Mistake</th><th>Impact</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr><td>Cranking <code>max_concurrency</code> high before knowing provider limits.</td><td>Rate limits, timeouts, noisy retries.</td><td>Start at 2-5 and scale by evidence.</td></tr>
+    <tr><td>Hardcoding <code>platform_api_key</code> in source.</td><td>Leaked credentials in version control.</td><td>Set <code>QYM_API_KEY</code> and leave the field unset.</td></tr>
+    <tr><td>Putting secrets in <code>run_metadata</code>.</td><td>Secrets surface in artifacts and the platform UI.</td><td>Store only non-sensitive labels.</td></tr>
+    <tr><td>A typo'd local dataset path passed as a string.</td><td>Resolves to a platform dataset and raises <code>DatasetNotFoundError</code> when creds are missing.</td><td>Use a concrete <code>CsvDataset</code>/<code>JsonlDataset</code> object, or fix the path. See <a href="#get-started/datasets">Datasets</a>.</td></tr>
+    <tr><td>Disabling checkpoints on long runs.</td><td>Any interruption forces a full rerun.</td><td>Keep <code>checkpoint_enabled=True</code>.</td></tr>
+    <tr><td>Passing empty-string boolean env vars in Docker.</td><td>Pydantic validation errors.</td><td>Use explicit <code>true</code>/<code>false</code>, not <code>""</code>.</td></tr>
+    <tr><td>Expecting <code>run()</code> to print a summary.</td><td>It prints nothing by default.</td><td>Set <code>QYM_SHOW_SUMMARY=1</code> to opt in.</td></tr>
+  </tbody>
+</table>
+
+<h2>Related pages</h2>
+<ul>
+  <li><a href="#get-started/datasets">Datasets</a> — local vs platform dataset resolution.</li>
+  <li><a href="#sdk-guide/metrics">Metrics</a> — built-in metric catalog and return-type contract.</li>
+  <li><a href="#sdk-guide/judges">LLM-as-judge</a> — judge configuration and credentials.</li>
+  <li><a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a> — multi-model and multi-run mechanics.</li>
+</ul>

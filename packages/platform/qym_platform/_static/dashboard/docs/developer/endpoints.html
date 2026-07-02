@@ -1,0 +1,270 @@
+<p class="docs-eyebrow">Developer / API</p>
+<h1>Endpoint reference</h1>
+<p class="docs-lead">A grouped, verb-prefixed reference for the qym platform HTTP API: read run data, manage datasets and their versions, provision projects and keys, run the review workflow, trigger analysis, and drive product evals. Every path, method, query parameter, and error string on this page is copied from the platform source.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Prefer the SDK and CLI first.</span> This page covers the raw HTTP surface for cases where the CLI and SDK do not give enough control. For ingesting runs (creating a run, streaming events, uploading an artifact) see <a href="#developer/auth">Authentication</a> for keys and the ingestion guide for the wire contract. The schema of every endpoint is also served live at <code>/openapi.json</code> with a Swagger UI at <code>/api-docs</code>.</p></div>
+
+<h2>Conventions</h2>
+<p>The platform exposes two path families, and the split is <strong>not</strong> "ingestion vs review":</p>
+<ul>
+  <li><code>/v1/...</code> carries ingestion, datasets, projects, project API keys, members, product evals, and the run review actions (submit / approve / reject).</li>
+  <li><code>/api/...</code> carries the dashboard read JSON (run lists, run detail, compare, spans), analysis, and corrections.</li>
+</ul>
+<p>Authentication differs by family. Ingestion, datasets, and product-eval endpoints accept a <strong>project-scoped API key</strong> as <code>Authorization: Bearer &lt;token&gt;</code>. Almost everything else (run review, analysis, corrections, project/member/key management, the read JSON) is resolved by a logged-in <strong>UI session</strong> (the <code>require_ui_principal</code> dependency) and is not callable with a Bearer key alone. Where an endpoint accepts either, it is called out below.</p>
+<p>The placeholder host on this page is <code>https://qym.example.com</code>. Substitute your deployment's <code>QYM_BASE_URL</code>.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">API-key "scopes" are stored but not enforced.</span> A project key is created with a full scope set, but the platform's scope check is a no-op for these endpoints: any valid, unrevoked key has full access to its bound project. Do not treat scopes as access control. Cross-project access is the real boundary &mdash; a key is permanently bound to one project.</p></div>
+
+<h2>Read API: runs, items &amp; comparison</h2>
+<p>These are the dashboard-facing read endpoints under <code>/api</code>. They require a UI session and enforce per-run visibility (<code>can_view_run</code>). There is no <code>GET /v1/runs</code> public read endpoint &mdash; run reads go through <code>/api/runs</code> (or the dataset-scoped listing under <code>/v1/datasets</code>, below).</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th><th>Key query params</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/runs</code></td><td>List runs for the selected project, grouped <code>tasks &rarr; model &rarr; [runs]</code>, with per-run metric averages and progress. Returns <code>total_count</code> and the resolved <code>project</code>.</td><td><code>limit</code> (default 100, max 500), <code>offset</code> (&ge;0), <code>project_slug</code>, <code>status</code> (comma-separated workflow statuses), <code>exclude_live</code>, <code>user</code> / <code>user_id</code> / <code>owner_user_id</code></td></tr>
+    <tr><td><code>GET /api/runs/live</code></td><td>Currently live runs (<code>RUNNING</code> or <code>PENDING</code>) for a project, newest event first.</td><td><code>limit</code> (default 25, 1&ndash;100), <code>project_slug</code>, <code>all_projects</code> (admin only)</td></tr>
+    <tr><td><code>GET /api/runs/recent</code></td><td>Cross-project recent runs plus per-project sections. Admin only.</td><td><code>all_projects=true</code> (required), <code>global_limit</code>, <code>global_offset</code>, <code>per_project_limit</code>, <code>include_projects</code></td></tr>
+    <tr><td><code>GET /api/runs/{run_id}</code></td><td>Full run detail: run header, per-item rows (input / output / expected / metric values / metric meta / trace ids), and snapshot stats. Returns <code>{"error": "Run not found"}</code> or <code>{"error": "Access denied"}</code> in the body rather than an HTTP error.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/export-html</code></td><td>Download the run as a self-contained HTML file (CSS/JS inlined). Returns <code>404 Run not found</code> / <code>403 Access denied</code>.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/models/runs</code></td><td>Lightweight per-run snapshots for the Models view. Requires <code>files</code> or returns <code>400 No files specified</code>.</td><td><code>files</code> (repeatable; comma-separated run ids accepted)</td></tr>
+    <tr><td><code>GET /api/compare</code></td><td>Multiple run snapshots for side-by-side comparison. Requires <code>files</code>.</td><td><code>files</code> (run ids)</td></tr>
+    <tr><td><code>GET /api/runs/trash</code></td><td>Soft-deleted runs. Admin only (<code>403 Admin only</code>).</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/spans</code></td><td>All OTEL spans captured for a run, ordered by start time.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/items/{item_id}/spans</code></td><td>Spans for one item, looked up via the item's <code>trace_id</code>.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/items/{item_id}/trace</code></td><td>Trace metadata + spans for one item, broken out per attempt.</td><td>&mdash;</td></tr>
+  </tbody>
+</table>
+
+<p>In the run detail payload, output rows for failed items are encoded as the literal string <code>ERROR: &lt;message&gt;</code>, and <code>time</code> is the latency rendered as seconds to three decimals. <code>status</code> per row is either <code>completed</code> or <code>error</code>.</p>
+
+<pre data-lang="bash"># List the most recent 25 runs for a project (UI session cookie required)
+curl -s "https://qym.example.com/api/runs?project_slug=my-project&amp;limit=25" \
+  -H "Cookie: &lt;session-cookie&gt;"
+
+# Fetch one run's full detail
+curl -s "https://qym.example.com/api/runs/run_abc123" \
+  -H "Cookie: &lt;session-cookie&gt;"</pre>
+
+<h2>Datasets</h2>
+<p>Dataset endpoints live under <code>/v1/datasets</code> and accept <strong>either</strong> a project API key (Bearer) <strong>or</strong> a UI session &mdash; the <code>dataset_principal</code> dependency tries the Bearer key first, then falls back to session auth. A Bearer key pins the project automatically; with a session you select the project via the <code>project_slug</code> query param (or the first accessible project is used).</p>
+
+<h3>Dataset CRUD</h3>
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /v1/datasets</code></td><td>List datasets in the project, with production/latest version summaries.</td><td><code>project_slug</code> (session only)</td></tr>
+    <tr><td><code>POST /v1/datasets</code></td><td>Create a dataset. Body: <code>name</code>, optional <code>slug</code>, <code>description</code>, <code>tags[]</code>, <code>project_slug</code>.</td><td><code>409 Dataset slug already exists in this project</code> on collision</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}</code></td><td>Get one dataset. <code>dataset_ref</code> resolves by id, slug, or name.</td><td><code>404 Dataset not found</code></td></tr>
+    <tr><td><code>PATCH /v1/datasets/{dataset_ref}</code></td><td>Update <code>name</code> / <code>slug</code> / <code>description</code> / <code>tags</code> (all optional).</td><td>&mdash;</td></tr>
+    <tr><td><code>DELETE /v1/datasets/{dataset_ref}</code></td><td>Soft-delete the dataset. Returns <code>{"ok": true}</code>. The slug is freed for reuse.</td><td>&mdash;</td></tr>
+  </tbody>
+</table>
+
+<h3>Versions &amp; aliases</h3>
+<p>A dataset is a container of immutable, published <strong>versions</strong>. A <strong>version ref</strong> resolves in this order: exact version name (e.g. <code>v3</code>), then an alias name, then &mdash; for the special ref <code>production</code> &mdash; the latest published version. The default version ref when none is given is <code>production</code>. New versions are created in <code>DRAFT</code> status; only draft versions can have their items edited, and aliases can only point at <code>PUBLISHED</code> versions.</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions</code></td><td>List all versions, newest first.</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions</code></td><td>Create a draft version. Optionally derive from another via <code>from_version</code> or <code>from_alias</code> (copies items). If <code>version</code> is omitted the next <code>v{n}</code> name is assigned.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}</code></td><td>Get one version's metadata (status, item count, content hash, aliases, run count).</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions/{version_ref}:publish</code></td><td>Publish a draft. Rejects an empty version with <code>400 Cannot publish an empty dataset version</code> and duplicate item ids with <code>409 Duplicate item_id: &lt;id&gt;</code>. Optional body <code>set_alias</code> points an alias at it on publish.</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/aliases/{alias_name}</code></td><td>Point an alias at a published version. Body: <code>version</code>. Returns <code>409 Aliases can only point to published versions</code> otherwise.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/lineage</code></td><td>Versions plus the change log (created / published / alias_set / uploaded events).</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}:compare</code></td><td>Diff two versions. Required query <code>base</code>; optional <code>include_diffs=1</code> to include full before/after item payloads. Summary counts <code>added / removed / changed / unchanged</code>.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/runs</code></td><td>Runs that used this dataset, with per-run <code>eval_score</code>, <code>version_label</code>, and <code>items_count</code>. Query <code>version</code>, <code>limit</code> (default 50, 1&ndash;500), <code>offset</code>.</td></tr>
+  </tbody>
+</table>
+
+<h3>Items</h3>
+<p>Item edits require the target version to be a <code>DRAFT</code>, otherwise <code>409 Only draft dataset versions can be edited</code>.</p>
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items</code></td><td>List items. Query: <code>limit</code> (default 100, max 1000), <code>offset</code>, <code>search</code>, <code>sort</code> (<code>index_asc</code> default / <code>index_desc</code> / <code>updated_desc</code> / <code>item_id</code>), <code>label</code>. Returns <code>items</code>, <code>total</code>, and a <code>next_offset</code> cursor.</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions/{version_ref}/items</code></td><td>Create one item. Body: <code>input</code> (required, any JSON), <code>expected_output</code>, <code>metadata</code>, <code>labels[]</code>, optional <code>item_id</code>. <code>409 Dataset item ID already exists in this version</code> on collision.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}</code></td><td>Get one item plus its <code>run_count</code>.</td></tr>
+    <tr><td><code>PATCH /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}</code></td><td>Replace an item's fields.</td></tr>
+    <tr><td><code>DELETE /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}</code></td><td>Delete one item.</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions/{version_ref}/items:bulk</code></td><td>Batch <code>upserts[]</code> and <code>deletes[]</code> in one call. Returns a <code>summary</code> with <code>created / updated / deleted</code> counts.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/runs</code></td><td>Runs that exercised this specific item.</td></tr>
+    <tr><td><code>GET /api/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/revisions</code></td><td>Per-item edit history (note: this one is under <code>/api</code>).</td></tr>
+  </tbody>
+</table>
+
+<h3>Upload &amp; download</h3>
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /v1/datasets:upload</code></td><td>Create-or-append a version from an uploaded file (multipart). Filenames ending <code>.jsonl</code> are parsed as JSONL; everything else is parsed as CSV. See column mapping below.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}:download</code></td><td>Download a version as JSONL (<code>application/x-ndjson</code>), one object per line with <code>item_id / input / expected_output / metadata / labels</code>.</td></tr>
+  </tbody>
+</table>
+<p>Upload form fields (all <code>Form</code> values): <code>name</code> (required), <code>file</code> (required), <code>project_slug</code>, <code>version</code> (default <code>v1</code>), <code>description</code>, <code>tags</code>, <code>labels</code>, <code>publish</code> (default false), <code>set_alias</code>. CSV column mapping uses either the single-column <code>input_col</code> (default <code>input</code>) / <code>expected_col</code> (default <code>expected_output</code>), or the multi-column <code>input_cols</code> / <code>expected_cols</code> (comma-separated; an empty <code>expected_cols</code> genuinely means "no expected output"), plus <code>id_col</code>, <code>metadata_cols</code>, and <code>label_cols</code>. A missing referenced column returns <code>400 Missing column: &lt;col&gt;</code>; CSV with no input column returns <code>400 At least one input column is required</code>.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Cell parsing rule.</span> In CSV cells, only values whose first non-whitespace character is <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string. JSONL lines must each be a JSON object &mdash; a non-object line returns <code>400 JSONL line &lt;n&gt; must be an object</code> and invalid JSON returns <code>400 Invalid JSONL at line &lt;n&gt;: ...</code>. This matches the SDK's local <a href="#get-started/datasets">dataset</a> parsing.</p></div>
+
+<pre data-lang="bash"># Upload a CSV and publish it as v1, pointing the production alias at it
+curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
+  -H "Authorization: Bearer $QYM_API_KEY" \
+  -F "name=Support QA" \
+  -F "version=v1" \
+  -F "publish=true" \
+  -F "set_alias=production" \
+  -F "input_col=question" \
+  -F "expected_col=answer" \
+  -F "file=@qa.csv"</pre>
+
+<h2>Projects, members &amp; API keys</h2>
+<p>Project, member, and key management endpoints are under <code>/v1/projects</code> and require a <strong>UI session</strong> (<code>require_ui_principal</code>) &mdash; they are not callable with a Bearer key. Member and key mutations additionally require manager (or admin) rights.</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /v1/projects</code></td><td>Projects visible to the caller (all projects for an admin; member projects otherwise).</td></tr>
+    <tr><td><code>POST /v1/projects</code></td><td>Create a project. Body: <code>name</code>, optional <code>slug</code> / <code>description</code>. The creator becomes a manager. Only admins and existing managers may create; otherwise <code>403 Only admins and project managers can create projects</code>. Duplicate slug &rarr; <code>400 Project slug already exists</code>.</td></tr>
+    <tr><td><code>GET /v1/projects/{project_id}</code></td><td>Get one project (with <code>member_count</code>, <code>run_count</code>, caller <code>role</code>).</td></tr>
+    <tr><td><code>GET /v1/projects/by-slug/{project_slug}</code></td><td>Resolve a project by slug.</td></tr>
+    <tr><td><code>GET /v1/projects/{project_id}/members</code></td><td>List members with roles.</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/members</code></td><td>Add a member. Body: <code>user_id</code>, <code>role</code> (default <code>member</code>). Manager only. <code>400 User is already a member of this project</code> on duplicate.</td></tr>
+    <tr><td><code>PATCH /v1/projects/{project_id}/members/{user_id}</code></td><td>Change a member's role. Cannot demote the last manager (<code>400 Project must retain at least one manager</code>).</td></tr>
+    <tr><td><code>DELETE /v1/projects/{project_id}/members/{user_id}</code></td><td>Remove a member (same last-manager guard).</td></tr>
+    <tr><td><code>GET /v1/projects/{project_id}/api-keys</code></td><td>List the project's API keys (prefix + creator + scopes; never the raw token).</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/api-keys</code></td><td>Create a key. Returns <code>{"id", "prefix", "token"}</code> &mdash; the raw <code>token</code> is shown <strong>once</strong>. Body: <code>name</code> (default <code>default</code>).</td></tr>
+    <tr><td><code>DELETE /v1/projects/{project_id}/api-keys/{key_id}</code></td><td>Revoke a key (owner, manager, or admin). Already-revoked &rarr; <code>400 API key already revoked</code>.</td></tr>
+  </tbody>
+</table>
+
+<p>The token returned by key creation is a <code>secrets.token_urlsafe(32)</code> string with <strong>no</strong> <code>qym_</code> prefix; pass it as <code>Authorization: Bearer &lt;token&gt;</code>. See <a href="#developer/auth">Authentication</a> for the full lifecycle.</p>
+
+<h3>Project LLM connections</h3>
+<p>Used by the platform's analysis feature to call a model on your behalf. UI session, project access required.</p>
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /v1/projects/{project_id}/llm-connections</code></td><td>List connections (key never returned; only a <code>••••last4</code> hint).</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/llm-connections</code></td><td>Create one. Body: <code>name</code>, <code>llm_base_url</code> (default <code>https://api.openai.com/v1</code>), <code>llm_model</code> (default <code>gpt-4o-mini</code>), <code>llm_api_key</code>. First connection becomes the default. Requires encryption configured, else <code>400 LLM config encryption is not configured</code>.</td></tr>
+    <tr><td><code>PUT /v1/projects/{project_id}/llm-connections/{connection_id}</code></td><td>Update. Send <code>llm_api_key="__KEEP__"</code> to preserve the stored key, or <code>""</code> to clear it.</td></tr>
+    <tr><td><code>DELETE /v1/projects/{project_id}/llm-connections/{connection_id}</code></td><td>Delete (promotes the oldest remaining connection to default).</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/llm-connections/{connection_id}/set-default</code></td><td>Make this connection the project default.</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/llm-connections/{connection_id}/test</code></td><td>Send a one-token probe to verify the connection.</td></tr>
+  </tbody>
+</table>
+
+<h3>Admin project operations</h3>
+<p>Under <code>/v1/admin</code>, admin only (<code>403 Admin only</code>).</p>
+<ul>
+  <li><code>POST /v1/admin/projects</code> &mdash; create a project as admin.</li>
+  <li><code>PATCH /v1/admin/projects/{project_id}</code> &mdash; rename / re-slug / toggle <code>is_active</code>.</li>
+  <li><code>DELETE /v1/admin/projects/{project_id}</code> &mdash; archive if the project has runs (<code>is_active=false</code>), otherwise hard-delete.</li>
+  <li><code>GET /v1/admin/users</code>, <code>PATCH /v1/admin/users/{user_id}</code> &mdash; user administration.</li>
+  <li><code>GET /v1/admin/settings</code>, <code>PUT /v1/admin/settings</code> &mdash; platform settings.</li>
+  <li>Org tree / teams / units under <code>/v1/admin/org/...</code>.</li>
+</ul>
+
+<h2>Run review workflow</h2>
+<p>Review actions are under <code>/v1/runs/{run_id}/...</code> and require a <strong>UI session</strong> &mdash; they cannot be driven with a Bearer key. The workflow advances a run's <code>status</code> through the states described in <a href="#developer/endpoints">Run status values</a> below.</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose &amp; guard</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /v1/runs/{run_id}/submit</code></td><td>Owner submits a run for review. Allowed only from <code>COMPLETED</code>, <code>FAILED</code>, or <code>REJECTED</code>, else <code>400 Run not submittable from status=...</code>. Non-owner &rarr; <code>403 Only owner can submit</code>. Moves status to <code>SUBMITTED</code>.</td></tr>
+    <tr><td><code>POST /v1/runs/{run_id}/approve</code></td><td>Manager/admin approves a <code>SUBMITTED</code> run. Body: optional <code>comment</code>. Wrong state &rarr; <code>400 Run not submitted</code>; insufficient rights &rarr; <code>403 Only a project manager or admin can approve</code>. Moves to <code>APPROVED</code>.</td></tr>
+    <tr><td><code>POST /v1/runs/{run_id}/reject</code></td><td>Manager/admin rejects a <code>SUBMITTED</code> run. Body: optional <code>comment</code>. Moves to <code>REJECTED</code>.</td></tr>
+    <tr><td><code>POST /v1/runs/{run_id}/unapprove</code></td><td>Revert an <code>APPROVED</code> run back to <code>COMPLETED</code>. Wrong state &rarr; <code>400 Run not approved</code>.</td></tr>
+    <tr><td><code>POST /v1/runs/{run_id}/unreject</code></td><td>Revert a <code>REJECTED</code> run back to <code>COMPLETED</code>. Wrong state &rarr; <code>400 Run not rejected</code>.</td></tr>
+  </tbody>
+</table>
+
+<p>Run mutation endpoints (also UI session) live under <code>/api/runs</code>:</p>
+<ul>
+  <li><code>POST /api/runs/update_metric</code> &mdash; override one metric score on one item. Requires <code>file_path</code> (the run id), <code>row_index</code>, <code>metric_name</code>, <code>new_score</code>; else <code>400 file_path, row_index, and metric_name required</code>.</li>
+  <li><code>POST /api/runs/update_root_cause</code> &mdash; set <code>root_cause</code> / <code>root_cause_detail</code> / <code>root_cause_note</code> / <code>solution</code> / <code>solution_note</code> on an item. Requires <code>item_id</code> and <code>run_id</code>.</li>
+  <li><code>POST /api/runs/delete</code> &mdash; soft-delete a run (<code>file_path</code> = run id).</li>
+  <li><code>POST /api/runs/restore</code> &mdash; restore a soft-deleted run. Admin only.</li>
+</ul>
+
+<h3>Run status values</h3>
+<p>The workflow status enum (<code>RunWorkflowStatus</code>) is exactly:</p>
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>DRAFT</code></td><td>Created but not yet started.</td></tr>
+    <tr><td><code>PENDING</code></td><td>Queued / live, awaiting first events (treated as a live status).</td></tr>
+    <tr><td><code>RUNNING</code></td><td>Actively ingesting events (a live status).</td></tr>
+    <tr><td><code>COMPLETED</code></td><td>Finished successfully.</td></tr>
+    <tr><td><code>FAILED</code></td><td>Finished with failure.</td></tr>
+    <tr><td><code>STOPPED</code></td><td>Stopped (e.g. a product eval stop request).</td></tr>
+    <tr><td><code>SUBMITTED</code></td><td>Submitted for review.</td></tr>
+    <tr><td><code>APPROVED</code></td><td>Review approved.</td></tr>
+    <tr><td><code>REJECTED</code></td><td>Review rejected.</td></tr>
+  </tbody>
+</table>
+<p><code>RUNNING</code> and <code>PENDING</code> are the two "live" statuses; <code>GET /api/runs/live</code> filters on exactly these. An invalid value in the <code>status</code> filter on <code>GET /api/runs</code> returns <code>400 Invalid run status: &lt;value&gt;</code>.</p>
+
+<h2>Analysis &amp; corrections</h2>
+<p>The analysis and correction-bank endpoints are under <code>/api</code> and require a UI session. Analysis uses a project LLM connection to cluster and explain failures; corrections feed approved explanations back as few-shot examples.</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /api/runs/{run_id}/analyze</code></td><td>Trigger root-cause analysis for selected items. Requires modify rights (<code>403 Access denied</code> otherwise). Body filters: <code>metric</code>, <code>max_score</code>, <code>item_filter</code> (<code>all</code>/<code>failed</code>/<code>passed</code>/<code>errors</code>), <code>threshold</code> (default 0.8), <code>only_unanalyzed</code> (default true), <code>item_ids[]</code>, <code>concurrency</code> (default 20, 1&ndash;20), <code>connection_id</code>. Returns <code>{total_analyzed, results, errors}</code>.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze-stream</code></td><td>Same, streamed as progress events.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze-preview</code></td><td>Preview which items the filter would select, without calling the model.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze-test</code></td><td>Dry-run the analyzer prompt against a sample.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/corrections</code></td><td>Approved correction-bank entries for this run's task (up to 20).</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-config</code></td><td>Analysis configuration for the run.</td></tr>
+    <tr><td><code>GET /api/corrections</code></td><td>List corrections with filters: <code>project_slug</code>, <code>task</code>, <code>dataset</code>, <code>model</code>, <code>run_name</code>, <code>source</code>, <code>conf_min</code>/<code>conf_max</code> (0&ndash;100), <code>status</code>, <code>search</code>, <code>limit</code> (1&ndash;500).</td></tr>
+    <tr><td><code>GET /api/corrections/{correction_id}</code></td><td>One correction.</td></tr>
+    <tr><td><code>PUT /api/corrections/{correction_id}</code></td><td>Edit a correction.</td></tr>
+    <tr><td><code>POST /api/corrections/{correction_id}/approve</code></td><td>Approve (feeds few-shot examples). Body: optional <code>comment</code>. Reviewer rights enforced.</td></tr>
+    <tr><td><code>POST /api/corrections/{correction_id}/reject</code></td><td>Reject. Body: optional <code>comment</code>.</td></tr>
+    <tr><td><code>POST /api/corrections/{correction_id}/reset</code></td><td>Reset to pending.</td></tr>
+    <tr><td><code>POST /api/corrections/bulk</code></td><td>Bulk approve/reject/reset across corrections.</td></tr>
+    <tr><td><code>DELETE /api/corrections/{correction_id}</code></td><td>Delete a correction.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Corrections live only under <code>/api/corrections</code>.</span> There is no <code>/v1</code> equivalent. These are review tooling, not part of the ingestion contract.</p></div>
+
+<h2>Product evals</h2>
+<p>The product-eval API is under <code>/v1/product-evals</code> and is the one place that requires a <strong>Bearer API key bound to a project</strong> (<code>require_api_key_principal</code>); a key not bound to a project returns <code>403 API key is not bound to a project</code>. It launches preset, server-side evaluations of a product (the default preset is <code>insightor</code>) and returns a unified envelope <code>{"ok", "data", "error"}</code>.</p>
+
+<table>
+  <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /v1/product-evals</code></td><td>Submit a product eval. Returns <code>202</code> with the job payload (including <code>eval_id</code>, <code>status</code>, per-attempt <code>runs[]</code>). Body: <code>preset</code> (default <code>insightor</code>), <code>dataset</code>, <code>run_name</code>, <code>task_name</code>, <code>model</code>, runtime inputs (<code>insightor_url</code>, <code>refresh_token</code>, <code>agent_version</code>, <code>image_version</code>, <code>kb_version</code>), <code>metadata</code>. A <code>config</code> field is rejected with <code>400 config is not accepted on this endpoint...</code>; any other unknown field &rarr; <code>400 Unsupported field(s): ...</code>; a full queue &rarr; <code>429 queue_full</code> with <code>Retry-After: 30</code>.</td></tr>
+    <tr><td><code>GET /v1/product-evals/{identifier}</code></td><td>Fetch status by <code>eval_id</code> (prefixed <code>eval_</code>) <strong>or</strong> by qym run id. Optional <code>include_items=true</code> returns per-item rows for a run. Unknown id &rarr; <code>404 not_found</code>.</td></tr>
+    <tr><td><code>POST /v1/product-evals/{identifier}/stop</code></td><td>Stop by <code>eval_id</code> or run id. Returns the job/run payload with <code>stopped_qym_runs</code>.</td></tr>
+    <tr><td><code>GET /v1/product-evals/jobs/{job_id}</code></td><td>Fetch a live job by its job id.</td></tr>
+    <tr><td><code>POST /v1/product-evals/jobs/{job_id}/stop</code></td><td>Stop a live job by job id.</td></tr>
+  </tbody>
+</table>
+<p>An <code>identifier</code> starting with <code>eval_</code> is treated as an eval id; otherwise it is treated as a run id (dual support). When an eval has <code>COMPLETED</code>, the payload includes a compact <code>group_analysis</code> block (Pass@K / Avg@K / consistency / reliability over the attempts) and a <code>qym_compare_url</code> when there are two or more runs.</p>
+
+<pre data-lang="bash"># Submit a product eval and read its id
+curl -s -X POST "https://qym.example.com/v1/product-evals" \
+  -H "Authorization: Bearer $QYM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"preset": "insightor", "run_name": "nightly", "dataset": "support-qa"}'
+
+# Poll its status (eval id is prefixed eval_)
+curl -s "https://qym.example.com/v1/product-evals/eval_abc123?include_items=true" \
+  -H "Authorization: Bearer $QYM_API_KEY"</pre>
+
+<h2>Errors at a glance</h2>
+<p>Status codes used across these endpoints (exact detail strings vary per endpoint, examples in the tables above):</p>
+<table>
+  <thead><tr><th>Code</th><th>When</th></tr></thead>
+  <tbody>
+    <tr><td><code>400</code></td><td>Bad input: missing required field, invalid status filter, empty dataset publish, unsupported product-eval field, missing CSV column.</td></tr>
+    <tr><td><code>401</code></td><td>Missing or invalid Bearer key on a key-authenticated endpoint (<code>Invalid API key</code>, <code>Missing Bearer API key</code>).</td></tr>
+    <tr><td><code>403</code></td><td>Authenticated but not allowed: cross-project key, non-owner submit, non-manager member/key mutation, admin-only endpoint, disabled user.</td></tr>
+    <tr><td><code>404</code></td><td>Resource not found (run, dataset, version, item, project, member, correction, key, eval).</td></tr>
+    <tr><td><code>409</code></td><td>Conflict: duplicate slug or item id, editing a non-draft version, aliasing a non-published version.</td></tr>
+    <tr><td><code>429</code></td><td>Product-eval queue full (with a <code>Retry-After</code> header).</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Next steps.</span> See <a href="#developer/auth">Authentication</a> for the key lifecycle and auth modes, and <a href="#developer/api-overview">API overview &amp; conventions</a> for the surface split. To ingest runs (create + stream events + upload) prefer the SDK, which handles event order, retries, final status, heartbeats, traces, and local artifacts for you.</p></div>

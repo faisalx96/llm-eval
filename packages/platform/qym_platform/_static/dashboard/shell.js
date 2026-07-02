@@ -102,6 +102,7 @@
     if (pathname.endsWith('/admin')) return { projectSlug: null, page: 'admin', subId: null };
     if (pathname.endsWith('/profile')) return { projectSlug: null, page: 'profile', subId: null };
     if (pathname.endsWith('/trash')) return { projectSlug: null, page: 'trash', subId: null };
+    if (pathname.endsWith('/docs-guide')) return { projectSlug: null, page: 'docs', subId: null };
 
     // Compare and reviews without project prefix — keep project context
     if (pathname.endsWith('/compare')) return { projectSlug: lastSlug, page: 'compare', subId: null };
@@ -368,7 +369,7 @@
       + '<nav class="sidebar-nav">'
       +   '<div class="global-nav-items">'
       +     buildNavItem('Projects', 'projects', 'project', { href: root })
-      +     buildNavItem('Docs', 'docs', 'docs', { href: root + 'docs/' })
+      +     buildNavItem('Docs', 'docs', 'docs', { href: root + 'docs-guide' })
       +   '</div>'
       +   '<div class="project-nav-items">' + projectNav + '</div>'
       +   '<div class="nav-section-label nav-section-role-admin">Platform</div>'
@@ -440,6 +441,7 @@
     trash: 'Deleted Runs',
     profile: 'Profile',
     compare: 'Compare',
+    docs: 'Docs',
   };
 
   function computeBreadcrumbs(ctx) {

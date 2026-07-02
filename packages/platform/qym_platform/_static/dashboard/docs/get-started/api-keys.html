@@ -1,0 +1,210 @@
+<p class="docs-eyebrow">Get started</p>
+<h1>Link your repo &amp; create API keys</h1>
+<p class="docs-lead">Point the SDK at your qym platform with two environment variables, then mint a project-scoped API key so your evaluation runs stream into the dashboard for shared review.</p>
+
+<p>Everything in qym runs locally without any credentials &mdash; see <a href="#get-started/first-run">Your first run</a>. You only need to do the setup on this page when you want a run to show up in the platform: live progress, run history, comparisons, traces, and team review. Connecting is two pieces of configuration:</p>
+
+<ol>
+  <li><strong><code>QYM_BASE_URL</code></strong> &mdash; the URL of your qym platform deployment.</li>
+  <li><strong><code>QYM_API_KEY</code></strong> &mdash; a project-scoped key you create once in the platform UI.</li>
+</ol>
+
+<p>When both are present, the SDK creates a platform run at the start of <code>run()</code> and streams events to it; the run's live URL is attached to the result as <code>result.html_url</code>. Without a key, the SDK runs entirely offline and writes artifacts to <code>qym_results/</code>.</p>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">There is nothing to "link" at the repo level.</span> qym does not connect to GitHub or any version-control host. Git branch and commit are auto-detected per run from your working directory and recorded for version leaderboards &mdash; no integration or OAuth required. "Linking your repo" here simply means setting the two environment variables in the project you run evaluations from.</p></div>
+
+<h2>The two environment variables</h2>
+
+<p>Set these wherever you run evaluations &mdash; your shell, a <code>.env</code> file in the working directory, or your CI configuration.</p>
+
+<pre data-lang="bash"># The qym platform deployment to stream runs to.
+QYM_BASE_URL=https://qym.example.com
+
+# A project-scoped API key (created in the steps below).
+QYM_API_KEY=your-project-api-key</pre>
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Required for streaming</th><th>Default</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>QYM_BASE_URL</code></td>
+      <td>Yes</td>
+      <td><code>http://localhost:8000</code></td>
+      <td>Public base URL of your platform. The SDK strips a trailing slash automatically, so <code>https://qym.example.com/</code> and <code>https://qym.example.com</code> behave identically.</td>
+    </tr>
+    <tr>
+      <td><code>QYM_API_KEY</code></td>
+      <td>Yes</td>
+      <td><em>none</em></td>
+      <td>The raw token returned when you create a project key. Platform streaming activates only when this is set.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Streaming is opt-out by default but key-gated.</span> The SDK config field <code>live_mode</code> defaults to <code>'platform'</code>, but live UI/streaming only actually turns on when an API key is present (from <code>QYM_API_KEY</code> or <code>config.platform_api_key</code>). No key means no platform run is created &mdash; the evaluation still completes locally.</p></div>
+
+<h3>Loading a .env file</h3>
+
+<p>The SDK loads a <code>.env</code> file only from the current working directory, and only if you have <code>python-dotenv</code> installed. It deliberately does <em>not</em> walk parent directories, so it will never pick up an unrelated <code>.env</code> from a sibling repo or from <code>site-packages</code>. Keep your <code>.env</code> in the directory you launch evaluations from.</p>
+
+<h2>Create a project-scoped API key</h2>
+
+<p>API keys in qym are <strong>always bound to exactly one project</strong>. They are created from a logged-in browser session in the platform UI &mdash; a key cannot create another key, so the very first key always comes from the UI.</p>
+
+<h3>Step 1 &mdash; Pick or create a project</h3>
+
+<p>In the platform, open the project you want runs to land in (or create one). Each project has its own runs, datasets, members, and keys. The key you make next can only ever write to this project.</p>
+
+<h3>Step 2 &mdash; Generate the key</h3>
+
+<p>From the project's settings, create a new API key. Behind the UI this is a single authenticated request:</p>
+
+<pre data-lang="bash">POST /v1/projects/{project_id}/api-keys
+Content-Type: application/json
+
+{"name": "ci-runner"}</pre>
+
+<p>The request body is optional. If you omit <code>name</code>, the key is named <code>default</code>. The response returns the new key, with the raw token shown <strong>exactly once</strong>:</p>
+
+<pre data-lang="json">{
+  "id": "key_...",
+  "prefix": "AbCdEfGh",
+  "token": "AbCdEfGh...the-full-secret..."
+}</pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>What it is</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>token</code></td><td>The full secret. This is the value you set as <code>QYM_API_KEY</code>. It is never returned again &mdash; only its hash is stored.</td></tr>
+    <tr><td><code>prefix</code></td><td>The first 8 characters of the token, kept for display and lookup in the keys list. Not secret on its own.</td></tr>
+    <tr><td><code>id</code></td><td>The key's database identifier, used to revoke it later.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">Copy the token immediately.</span> The raw token is generated with <code>secrets.token_urlsafe(32)</code> (a ~43-character URL-safe string with <strong>no <code>qym_</code> prefix</strong>) and is shown only in this one response. The platform stores a PBKDF2-SHA256 hash, not the token, so it cannot show it to you again. If you lose it, revoke the key and create a new one.</p></div>
+
+<h3>Step 3 &mdash; Set it in your environment</h3>
+
+<p>Copy the <code>token</code> value into your environment, alongside the base URL:</p>
+
+<pre data-lang="bash">export QYM_BASE_URL=https://qym.example.com
+export QYM_API_KEY=AbCdEfGh...the-full-secret...</pre>
+
+<h3>Step 4 &mdash; Verify the connection</h3>
+
+<p>The CLI ships a connectivity check that confirms the SDK can reach the platform and authenticate:</p>
+
+<pre data-lang="bash">qym config check</pre>
+
+<p>Or confirm from Python by running any evaluation &mdash; when a key is configured, the result carries the live run URL:</p>
+
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+result = Evaluator(
+    task=my_task,
+    dataset=CsvDataset("qa.csv", input_col="question", expected_col="answer"),
+    metrics=["exact_match"],
+).run(show_tui=False)
+
+print(result.html_url)  # https://qym.example.com/projects/<slug>/runs/<run_id></pre>
+
+<p>A populated <code>result.html_url</code> means the run reached the platform. See <a href="#get-started/first-run">Your first run</a> for the full task/dataset/metrics walkthrough.</p>
+
+<h2>How keys authenticate</h2>
+
+<p>The SDK sends every ingestion request with the token as a bearer credential:</p>
+
+<pre data-lang="text">Authorization: Bearer &lt;token&gt;</pre>
+
+<p>The platform looks the key up by its 8-character prefix, then verifies the full token against the stored PBKDF2 hash. The principal it builds is bound to the key's project, so a run created with this key always writes into that one project.</p>
+
+<table>
+  <thead>
+    <tr><th>Situation</th><th>HTTP status</th><th>Detail message</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>No <code>Authorization: Bearer</code> header</td><td>401</td><td><code>Missing Bearer API key</code></td></tr>
+    <tr><td>Unknown or revoked token</td><td>401</td><td><code>Invalid API key</code></td></tr>
+    <tr><td>The key's user is disabled</td><td>403</td><td><code>User disabled</code></td></tr>
+    <tr><td>Key not bound to a project (during run create)</td><td>403</td><td><code>API key is not bound to a project</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Per-key "scopes" are not access control.</span> When a key is created the platform records a default scope set (such as <code>runs:write</code>, <code>datasets:read</code>), but scope enforcement is intentionally disabled: any valid, non-revoked key has full access to its project. Treat a key as all-or-nothing for its project &mdash; do not rely on scopes to restrict what a key can do.</p></div>
+
+<h3>Key management actions</h3>
+
+<table>
+  <thead>
+    <tr><th>Action</th><th>Endpoint</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Create a key</td><td><code>POST /v1/projects/{project_id}/api-keys</code></td></tr>
+    <tr><td>List a project's keys (prefixes only)</td><td><code>GET /v1/projects/{project_id}/api-keys</code></td></tr>
+    <tr><td>Revoke a key</td><td><code>DELETE /v1/projects/{project_id}/api-keys/{key_id}</code></td></tr>
+  </tbody>
+</table>
+
+<p>These endpoints all require a logged-in UI session (not a bearer key). Listing shows each key's <code>prefix</code>, name, creator, and scopes &mdash; never the secret. Revoking sets a <code>revoked_at</code> timestamp; a revoked key immediately fails authentication with <code>Invalid API key</code>.</p>
+
+<h2>Self-signed or internal certificates</h2>
+
+<p>If your platform is served over HTTPS with an internal or self-signed certificate, point the SDK at the issuing CA so streaming and <code>qym config check</code> can verify the connection:</p>
+
+<pre data-lang="bash"># Trust an internal CA bundle (PEM).
+QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem</pre>
+
+<p>For local troubleshooting only, you can disable certificate verification entirely:</p>
+
+<pre data-lang="bash"># Local/dev only — do not use in production.
+QYM_PLATFORM_SSL_VERIFY=false</pre>
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Effect</th><th>Fallback variable</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>QYM_PLATFORM_CA_BUNDLE</code></td><td>Path to a PEM CA bundle used to verify the platform's certificate.</td><td><code>QYM_CA_BUNDLE</code></td></tr>
+    <tr><td><code>QYM_PLATFORM_SSL_VERIFY</code></td><td>Set to a falsey value (<code>0</code>, <code>false</code>, <code>no</code>, <code>off</code>) to skip verification.</td><td><code>QYM_SSL_VERIFY</code></td></tr>
+  </tbody>
+</table>
+
+<p>The platform-specific variable wins when both are set; otherwise the SDK falls back to the generic name. With neither set, Python's default verified TLS context is used (including standard variables such as <code>SSL_CERT_FILE</code>).</p>
+
+<h2>One key, two superpowers</h2>
+
+<p>The same <code>QYM_BASE_URL</code> + <code>QYM_API_KEY</code> pair does double duty:</p>
+
+<div class="docs-cards">
+  <div class="docs-card">
+    <h3>Stream runs to the platform</h3>
+    <p>With a key set, every <code>run()</code> creates a platform run and streams progress, items, metrics, and traces for shared review &mdash; no code changes beyond the environment variables.</p>
+  </div>
+  <div class="docs-card">
+    <h3>Resolve platform datasets</h3>
+    <p>A bare dataset string that is not a local <code>.csv</code>/<code>.jsonl</code> file is resolved as a platform dataset using the same base URL and key. Without credentials it raises <code>DatasetNotFoundError</code>. See <a href="#get-started/datasets">Using datasets</a>.</p>
+  </div>
+</div>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Judge metrics use a separate key.</span> LLM-as-judge metrics authenticate to your model provider with <code>QYM_JUDGE_API_KEY</code> (falling back to <code>OPENAI_API_KEY</code>) &mdash; not <code>QYM_API_KEY</code>. The platform key only governs streaming and platform datasets. See <a href="#sdk-guide/judges">LLM-as-judge metrics</a>.</p></div>
+
+<h2>Keeping keys safe</h2>
+
+<ul>
+  <li><strong>Never commit a token.</strong> Keep it in an untracked <code>.env</code> file or your secrets manager, and reference it via the environment.</li>
+  <li><strong>Use a distinct key per environment.</strong> A separate key for local, CI, and each service makes revocation surgical &mdash; revoke one without disrupting the others.</li>
+  <li><strong>Rotate by create-then-revoke.</strong> Create the replacement key, deploy it, then revoke the old one so there is no gap.</li>
+  <li><strong>Keep keys out of metadata.</strong> Do not put secrets in run metadata or task metadata &mdash; that data is stored and displayed in the platform.</li>
+</ul>
+
+<h2>Next steps</h2>
+
+<ul>
+  <li><a href="#get-started/first-run">Your first run</a> &mdash; write a task, choose a dataset, and run with metrics.</li>
+  <li><a href="#get-started/datasets">Using datasets</a> &mdash; local files and platform datasets, including the string-resolution rule.</li>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> &mdash; the full <code>EvaluatorConfig</code> reference, including <code>platform_url</code>, <code>platform_api_key</code>, and <code>live_mode</code>.</li>
+</ul>

@@ -1,0 +1,237 @@
+<p class="docs-eyebrow">SDK guide</p>
+<h1>Ways to evaluate</h1>
+<p class="docs-lead">qym has one evaluation pipeline and several interchangeable ways to score the output it produces — deterministic code, your own Python, an LLM judge, pairwise comparison, or statistics across repeated runs. They all plug into the same seam, so adding a new method is additive, not a rewrite.</p>
+
+<h2>The invariant pipeline</h2>
+<p>Every evaluation in qym — no matter how outputs are scored — follows the same shape. A <strong>way to evaluate</strong> is just the step that turns an output into a score; everything around it stays fixed.</p>
+<pre data-lang="text">dataset item            task                    metric(s)              result
+┌──────────────┐    ┌──────────────┐       ┌──────────────┐     ┌──────────────┐
+│ id           │    │              │       │ how do we    │     │ scores       │
+│ input        │──▶ │ your system  │──out─▶ │ score this   │──▶  │ + metadata   │
+│ expected_*   │    │ under test   │       │ output?      │     │ + artifacts  │
+│ metadata     │    └──────────────┘       └──────────────┘     │ (+ platform) │
+└──────────────┘                                                └──────────────┘</pre>
+<p>The task is called once per item and returns an output. One or more metrics then score that output. Each metric ultimately produces a <strong>numeric score in <code>[0.0, 1.0]</code></strong> (booleans become <code>1.0</code>/<code>0.0</code>; richer returns carry a <code>label</code>, <code>explanation</code>, and <code>metadata</code> alongside the score). That uniform score contract is what lets every method below be swapped in or combined freely.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Where a method's score comes from.</span> A metric's raw return is normalized by <code>MetricResult.from_raw</code>: <code>bool</code> &rarr; <code>1.0</code>/<code>0.0</code>; <code>int</code>/<code>float</code> &rarr; that value; a dict with a <code>score</code> key &rarr; that score (plus optional <code>label</code>/<code>explanation</code>/<code>metadata</code>); a dict containing an <code>error</code> key &rarr; score <code>0.0</code>. Any other return type scores <code>0.0</code>.</p>
+</div>
+
+<h2>How to read the methods below</h2>
+<p>Each way to evaluate is described with the <strong>same six headings</strong> so you can compare them directly:</p>
+<ul>
+  <li><strong>What it is</strong> — the one-line idea.</li>
+  <li><strong>When to use it</strong> — the situation it fits.</li>
+  <li><strong>Inputs it needs</strong> — which item fields it reads.</li>
+  <li><strong>How scores are produced</strong> — what turns into <code>[0.0, 1.0]</code>.</li>
+  <li><strong>Code shape</strong> — the minimal way to wire it up.</li>
+  <li><strong>Limitations</strong> — the honest caveats.</li>
+</ul>
+<p>All five methods are passed through the same <code>metrics=[...]</code> argument on <a href="#sdk-guide/config">the evaluator</a> (group analysis is the exception — it runs <em>after</em> the runs, over their results).</p>
+
+<h2>Deterministic code metrics</h2>
+<p><strong>What it is.</strong> Built-in, dependency-light functions that compare the output to the expected value with fixed rules. They ship with the base package — no extras, no network, no keys.</p>
+<p><strong>When to use it.</strong> Start here. Use them for smoke tests, regression gates, and any task where the expected output is well-defined (exact strings, substrings, QA answers). They are fast, free, and perfectly reproducible.</p>
+<p><strong>Inputs they need.</strong> Most read the task <code>output</code> and the item's <code>expected_output</code>. <code>faithfulness</code> additionally reads a <code>context</code> field from the item input. <code>response_time</code> and <code>token_count</code> read only the output.</p>
+<p><strong>How scores are produced.</strong> By name in the registry (verified in <code>qym/metrics/__init__.py</code>). The seven code metrics available without any extra:</p>
+<table>
+  <thead><tr><th>Name</th><th>What it computes</th><th>Score</th></tr></thead>
+  <tbody>
+    <tr><td><code>exact_match</code></td><td>Stripped string equality of output vs expected.</td><td><code>1.0</code> if equal, else <code>0.0</code></td></tr>
+    <tr><td><code>contains</code></td><td>Case-insensitive substring: is <code>expected</code> inside <code>output</code>?</td><td><code>1.0</code> / <code>0.0</code></td></tr>
+    <tr><td><code>fuzzy_match</code></td><td>Sequence similarity via <code>difflib.SequenceMatcher(...).ratio()</code>.</td><td>continuous <code>0.0</code>&ndash;<code>1.0</code></td></tr>
+    <tr><td><code>correctness</code></td><td>SQuAD-style token-level F1 of output vs expected (lowercased, articles &amp; punctuation removed).</td><td>continuous <code>0.0</code>&ndash;<code>1.0</code></td></tr>
+    <tr><td><code>faithfulness</code></td><td>Fraction of meaningful output tokens (non-stopword, &gt;1 char) that also appear in the input <code>context</code>.</td><td>continuous <code>0.0</code>&ndash;<code>1.0</code></td></tr>
+    <tr><td><code>response_time</code></td><td>Placeholder — actual timing is handled by the evaluator.</td><td>always <code>1.0</code></td></tr>
+    <tr><td><code>token_count</code></td><td>Rough estimate: word count &times; 1.3.</td><td>integer (token estimate)</td></tr>
+  </tbody>
+</table>
+<p><strong>Code shape.</strong></p>
+<pre data-lang="python">from qym import Evaluator, CsvDataset
+
+result = Evaluator(
+    task,
+    CsvDataset("qa.csv"),
+    metrics=["exact_match", "contains", "fuzzy_match"],
+).run(show_tui=False)</pre>
+<p><strong>Limitations.</strong> Purely lexical — they cannot judge meaning, so a correct paraphrase scores poorly on <code>exact_match</code>. <code>fuzzy_match</code>'s <code>threshold</code> argument is documented but <strong>not used in the score</strong> (it always returns the raw ratio). <code>response_time</code> is a placeholder that always returns <code>1.0</code>, and <code>token_count</code> is a word-count approximation, not a real tokenizer.</p>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Two naming gotchas.</span> The registry name is <code>contains</code> (not <code>contains_expected</code>). And <code>faithfulness</code> is the <em>code</em> token-overlap heuristic — the LLM version is a separate metric named <code>faithfulness_llm</code> (judges section below).</p>
+</div>
+
+<h2>Custom metric callables</h2>
+<p><strong>What it is.</strong> Any Python function you pass directly in <code>metrics=[...]</code>. This is the escape hatch for structured or domain-specific scoring (parse JSON, run a SQL query, check a regex, call your own validator).</p>
+<p><strong>When to use it.</strong> When no built-in fits — the output is structured, or "correct" requires logic only you know. Keep them deterministic and side-effect-free where you can.</p>
+<p><strong>Inputs they need.</strong> qym resolves arguments by <strong>parameter name</strong> when your names are drawn from the recognized set: <code>output</code>, <code>expected</code>, <code>input_data</code>, <code>metadata</code>, <code>item_metadata</code> (<code>metadata</code> and <code>item_metadata</code> both receive the item's metadata). Declare only the ones you use. If your parameter names fall outside that set, qym falls back to <strong>positional</strong> order: <code>(output, expected, input_data, item_metadata)</code> — so positional order is load-bearing there.</p>
+<p><strong>How scores are produced.</strong> Return a <code>bool</code>, a number, a <code>{"score": ...}</code> dict (optionally with <code>label</code>, <code>explanation</code>, <code>metadata</code>), or a <code>MetricResult</code>. A returned dict containing an <code>error</code> key scores <code>0.0</code> and records the error.</p>
+<p><strong>Code shape.</strong></p>
+<pre data-lang="python">import json
+
+def valid_json(output, expected=None):
+    """Score 1.0 if the output parses as JSON."""
+    try:
+        json.loads(str(output))
+        return 1.0
+    except Exception:
+        return 0.0
+
+# Or return rich structure with metadata:
+def has_citation(output, expected=None):
+    cited = "[" in str(output) and "]" in str(output)
+    return {"score": 1.0 if cited else 0.0,
+            "label": "cited" if cited else "uncited"}
+
+result = Evaluator(task, dataset, metrics=[valid_json, has_citation]).run(show_tui=False)</pre>
+<p>To reference a custom metric by string later (e.g. so it appears in group analysis under a stable name), register it:</p>
+<pre data-lang="python">from qym.metrics.registry import register_metric
+
+register_metric("valid_json", valid_json)
+# now usable as metrics=["valid_json"]; custom names shadow built-ins of the same name</pre>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Metrics are keyed by name.</span> Internally a metric callable is keyed by its <code>__name__</code>. Two callables with the same <code>__name__</code> (two <code>create_judge(name="x", ...)</code> with the same <code>name</code>, or two bare <code>lambda</code>s, both named <code>&lt;lambda&gt;</code>) collide — only the last survives. Give each custom metric a distinct name.</p>
+</div>
+<p><strong>Limitations.</strong> You own correctness and robustness — a custom metric should tolerate <code>None</code> and unexpected types. If your task returns the envelope <code>{"output": ..., "metadata": {...}}</code>, a custom metric receives the <strong>whole envelope</strong> as <code>output</code> (built-ins auto-unwrap it; yours should read <code>output["output"]</code> if needed). See <a href="#sdk-guide/metrics">Metrics</a> for the full contract.</p>
+
+<h2>LLM-as-judge</h2>
+<p><strong>What it is.</strong> An LLM scores a single output against criteria expressed in a prompt, returning a verdict that maps to a number. Use the seven prebuilt judges or build your own with <code>create_judge</code>.</p>
+<p><strong>When to use it.</strong> When "good" is semantic and no deterministic rule captures it — relevance, faithfulness, tone, helpfulness. Add judges <em>after</em> the deterministic loop already works, since they are slower, cost money, and are non-deterministic.</p>
+<p><strong>Inputs they need.</strong> Judges require the optional <code>openai</code> extra and judge credentials (see callout). The prebuilt judges read these item fields via their prompt templates:</p>
+<table>
+  <thead><tr><th>Judge</th><th>Reads</th><th>Labels &rarr; score</th></tr></thead>
+  <tbody>
+    <tr><td><code>relevance</code></td><td><code>question</code>, output</td><td>relevant <code>1.0</code> / irrelevant <code>0.0</code></td></tr>
+    <tr><td><code>correctness_llm</code></td><td><code>question</code>, <code>expected</code>, output</td><td>correct <code>1.0</code> / incorrect <code>0.0</code></td></tr>
+    <tr><td><code>faithfulness_llm</code></td><td><code>context</code>, <code>question</code>, output</td><td>faithful <code>1.0</code> / unfaithful <code>0.0</code></td></tr>
+    <tr><td><code>hallucination</code></td><td><code>context</code>, output</td><td>grounded <code>1.0</code> / hallucinated <code>0.0</code></td></tr>
+    <tr><td><code>conciseness</code></td><td><code>question</code>, output</td><td>concise <code>1.0</code> / verbose <code>0.0</code></td></tr>
+    <tr><td><code>toxicity</code></td><td>output only</td><td>non-toxic <code>1.0</code> / toxic <code>0.0</code></td></tr>
+    <tr><td><code>tool_calling</code></td><td><code>question</code>, <code>tool_definitions</code>, <code>tool_calls</code></td><td>correct <code>1.0</code> / incorrect <code>0.0</code></td></tr>
+  </tbody>
+</table>
+<p>"Reads <code>x</code>" means the prompt has a <code>{x}</code> placeholder filled from a matching key in the item input dict (plus <code>{output}</code>, <code>{expected}</code>, <code>{input}</code> always available).</p>
+<p><strong>How scores are produced.</strong> The judge calls an OpenAI-compatible chat API with <code>response_format={"type": "json_object"}</code>, expecting <code>{"verdict": &lt;label&gt;, "explanation": ...}</code>. The verdict is matched to one of the declared <code>choices</code> and that choice's number becomes the score; the explanation is carried in metadata. If the model returns invalid JSON, qym retries once with a stricter nudge, then falls back to fuzzy label extraction (<code>snap_to_rail</code>); if it still cannot parse, the result scores <code>0.0</code> with an <code>error</code> in metadata.</p>
+<p><strong>Code shape.</strong></p>
+<pre data-lang="bash">export QYM_JUDGE_MODEL=gpt-4o-mini
+export QYM_JUDGE_API_KEY=sk-...        # falls back to OPENAI_API_KEY
+# optional: QYM_JUDGE_BASE_URL (falls back to OPENAI_BASE_URL) for vLLM / proxies</pre>
+<pre data-lang="python">from qym import Evaluator
+from qym.metrics.judges import create_judge
+
+# Prebuilt judges by name:
+result = Evaluator(task, dataset, metrics=["relevance", "correctness_llm"]).run(show_tui=False)
+
+# Custom judge: a prompt template + a label-to-score map
+helpfulness = create_judge(
+    name="helpfulness",
+    prompt="Question: {question}\nAnswer: {output}\nIs the answer helpful or unhelpful?",
+    choices={"helpful": 1.0, "unhelpful": 0.0},
+)
+result = Evaluator(task, dataset, metrics=[helpfulness]).run(show_tui=False)</pre>
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Setup &amp; template footguns.</span> Judges need <code>pip install qym[judges]</code> (missing &rarr; <code>ImportError</code>). The judge config <code>validate()</code> raises <code>RuntimeError</code> if the model or API key is missing — there is no default model. A prompt placeholder with no matching key (e.g. <code>{context}</code> when the item has no <code>context</code>) is left as <strong>literal text</strong> — it does not error — so confirm your dataset actually carries the fields a judge reads.</p>
+</div>
+<p><strong>Limitations.</strong> Cost, latency, and non-determinism (even at temperature 0). A judge is only as good as its prompt and label set, and can be miscalibrated or biased. Treat judge scores as evidence to review, not ground truth. Full details in <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>.</p>
+
+<h2>Pairwise / comparative judging</h2>
+<p><strong>What it is.</strong> Instead of scoring one output in isolation, the judge is shown <strong>two</strong> outputs (A and B) for the same item and decides which is better. Research consistently finds relative comparison more reliable than absolute scoring.</p>
+<p><strong>When to use it.</strong> A/B'ing two prompts, two models, or a candidate against a reference answer — when "which is better" is a more meaningful question than "score this from 0 to 1."</p>
+<p><strong>Inputs it needs.</strong> The two outputs: <code>{output_a}</code> is the task output being evaluated; <code>{output_b}</code> is taken from <code>input_data["output_b"]</code> if present, otherwise from the item's <code>expected</code>. The prompt may also reference <code>{expected}</code>, <code>{input}</code>, and any key in the item input dict.</p>
+<p><strong>How scores are produced.</strong> <code>create_pairwise_judge</code> uses a <strong>fixed</strong> choice map (you cannot override it): <code>{"A": 1.0, "B": 0.0, "tie": 0.5}</code>. The judge returns <code>{"verdict": "A"|"B"|"tie", "explanation": ...}</code>; A winning scores <code>1.0</code>, B winning <code>0.0</code>, a tie <code>0.5</code>. Label and explanation are carried in metadata.</p>
+<p><strong>Code shape.</strong></p>
+<pre data-lang="python">from qym.metrics.judges import create_pairwise_judge
+
+vs_reference = create_pairwise_judge(
+    name="vs_reference",
+    prompt=(
+        "Question: {question}\n"
+        "Response A: {output_a}\n"
+        "Response B: {output_b}\n"
+        "Which response better answers the question?"
+    ),
+)
+# output_b defaults to the item's `expected`; the verdict maps A=1.0 / B=0.0 / tie=0.5
+result = Evaluator(task, dataset, metrics=[vs_reference]).run(show_tui=False)</pre>
+<p><strong>Limitations.</strong> A single A/B call can have position bias (which answer is shown first), and a per-item pairwise score is not a calibrated quality number — it only says A beat B on this item. It needs both outputs available at scoring time. Like all judges, it requires the <code>[judges]</code> extra and judge credentials.</p>
+
+<h2>Multi-run / group analysis (Pass@K)</h2>
+<p><strong>What it is.</strong> A <em>statistical</em> way to evaluate: run the same dataset multiple times (e.g. a non-deterministic system K times), then aggregate per-item scores across runs to measure not just average quality but <strong>consistency</strong> and <strong>reliability</strong>. This is the only method that operates on a group of results rather than a single output.</p>
+<p><strong>When to use it.</strong> When run-to-run variance matters: stochastic agents, retried tool use, "does it pass at least once / does it pass every time." Also for comparing two cohorts of runs (e.g. before vs after a change).</p>
+<p><strong>Inputs it needs.</strong> A sequence of <code>EvaluationResult</code> objects (the same items, scored on the same <code>metric</code>), plus a <code>threshold</code> (default <code>0.8</code>) that defines a per-attempt "pass."</p>
+<p><strong>How scores are produced.</strong> Items are unioned across runs; null/missing scores are excluded, error rows count as <code>0.0</code>. For each item with K attempts, <code>pass_count</code> is the number of attempts <code>&gt;= threshold</code>. The aggregate (verified in <code>qym/core/group_analysis.py</code>):</p>
+<table>
+  <thead><tr><th>Metric</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>pass_at_k</code></td><td>Fraction of items that pass at least once (<code>pass_count &gt; 0</code>).</td></tr>
+    <tr><td><code>pass_hat_k</code></td><td>Fraction of items that pass on <em>every</em> attempt (<code>pass_count == score_count</code>).</td></tr>
+    <tr><td><code>avg_at_k</code> / <code>avg_score</code></td><td>Mean of all per-attempt scores.</td></tr>
+    <tr><td><code>max_at_k</code></td><td>Mean across items of each item's best attempt.</td></tr>
+    <tr><td><code>consistency</code></td><td>Per item (with &gt;1 attempt): <code>2 &times; max(pass, fail) / count &minus; 1</code>, averaged. <code>1.0</code> = always agrees with itself.</td></tr>
+    <tr><td><code>reliability</code></td><td>For items that pass at least once: <code>pass_count / count</code>, averaged.</td></tr>
+  </tbody>
+</table>
+<p><strong>Code shape.</strong> Produce the runs (multi-model returns a list; <code>run_parallel</code> runs several specs), then analyze:</p>
+<pre data-lang="python">from qym import Evaluator, analyze_group_runs, compare_group_runs
+
+# K runs of the same eval (a multi-model run returns a LIST of EvaluationResult)
+runs = Evaluator(task, dataset, metrics=["correctness"],
+                 model=["gpt-4o-mini", "gpt-4o-mini", "gpt-4o-mini"]).run(show_tui=False)
+
+stats = analyze_group_runs(runs, metric="correctness", threshold=0.8)
+print(stats["pass_at_k"], stats["pass_hat_k"], stats["consistency"])
+
+# Compare two cohorts (e.g. old prompt vs new prompt):
+diff = compare_group_runs(old_runs, new_runs, metric="correctness", threshold=0.8)
+print(diff["deltas"]["pass_at_k"])</pre>
+<pre data-lang="python"># Or run several explicit run specs at once (run_parallel is a staticmethod):
+results = Evaluator.run_parallel(
+    runs=[
+        {"task": task, "dataset": dataset, "metrics": ["correctness"], "run_name": "a"},
+        {"task": task, "dataset": dataset, "metrics": ["correctness"], "run_name": "b"},
+    ],
+    show_tui=False,
+)</pre>
+<p>Both functions are top-level exports (<code>from qym import analyze_group_runs, compare_group_runs</code>); <code>GroupRunAnalysis</code> wraps the same logic with <code>.metric(...)</code> / <code>.compare_to(...)</code>.</p>
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">It mirrors the platform.</span> These helpers reproduce the platform dashboard's group-metric semantics in pure Python, so you can compute Pass@K, consistency, and reliability locally without uploading runs.</p>
+</div>
+<p><strong>Limitations.</strong> Meaningful only with K &gt; 1 runs (<code>consistency</code>/<code>reliability</code> are <code>None</code> for single-attempt items). It re-uses an underlying per-item metric, so it inherits that metric's quality. <code>compare_group_runs</code> uses strict cohort semantics: an item is only counted when it has a non-null score in <strong>every</strong> run on both sides. See <a href="#sdk-guide/multi-model">Multi-model, multi-run &amp; group analysis</a>.</p>
+
+<h2>At a glance</h2>
+<table>
+  <thead><tr><th>Method</th><th>Needs LLM?</th><th>Deterministic?</th><th>Reads</th><th>Passed via</th></tr></thead>
+  <tbody>
+    <tr><td>Code metrics</td><td>No</td><td>Yes</td><td>output, expected (+ context)</td><td><code>metrics=["name"]</code></td></tr>
+    <tr><td>Custom callables</td><td>Your choice</td><td>Your choice</td><td>whatever you declare</td><td><code>metrics=[fn]</code></td></tr>
+    <tr><td>LLM-as-judge</td><td>Yes (<code>[judges]</code>)</td><td>No</td><td>output + named fields</td><td><code>metrics=["relevance"]</code> / <code>create_judge</code></td></tr>
+    <tr><td>Pairwise judging</td><td>Yes (<code>[judges]</code>)</td><td>No</td><td>output_a + output_b</td><td><code>create_pairwise_judge</code></td></tr>
+    <tr><td>Group analysis</td><td>No (post-hoc)</td><td>Yes</td><td>a list of results</td><td><code>analyze_group_runs(...)</code></td></tr>
+  </tbody>
+</table>
+
+<h2>Adding a new evaluation method</h2>
+<p>The point of this abstraction is that new methods slot in <strong>additively</strong> — no surrounding code changes. A new method (say, ELO ratings, an embedding-similarity metric, or a tournament) just has to satisfy the same score contract every method here already meets:</p>
+<ol>
+  <li><strong>Produce a normalizable score.</strong> Return a <code>bool</code>, a number, a <code>{"score": ...}</code> dict (optionally with <code>label</code>, <code>explanation</code>, <code>metadata</code>), or a <code>MetricResult</code>. <code>MetricResult.from_raw</code> turns it into a <code>[0.0, 1.0]</code> score; a dict with an <code>error</code> key scores <code>0.0</code>. Anything else scores <code>0.0</code>.</li>
+  <li><strong>Be a callable with recognized parameters.</strong> Accept some subset of <code>output</code>, <code>expected</code>, <code>input_data</code>, <code>metadata</code> / <code>item_metadata</code> by name (or rely on the positional order <code>output, expected, input_data, item_metadata</code>). Sync or async both work. Declare exactly the item fields you read.</li>
+  <li><strong>Be referenceable.</strong> Pass the callable directly in <code>metrics=[...]</code>, or give it a stable name with <code>register_metric(name, fn)</code> so it can be used as a string and shows up in artifacts and group analysis under that name. Ensure the callable's <code>__name__</code> is unique.</li>
+</ol>
+<p>Methods that need more than a single output (pairwise needs two; ELO and tournaments need cross-item or cross-run state) follow the same pattern as <code>create_pairwise_judge</code> and the group-analysis helpers: a <strong>factory</strong> that closes over the extra inputs and returns a callable obeying the score contract, or a <strong>post-hoc analyzer</strong> over a list of <code>EvaluationResult</code>. Either way the run pipeline, the dataset, the task, and every other page stay untouched — which is exactly why a new way to evaluate is a new card here, not a rewrite of the SDK.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Good first set.</span> Use one deterministic metric and at most one judge until you can tell a good item from a bad one by eye. Scale the dataset and the method count only once the loop is trustworthy.</p>
+</div>
+
+<h2>Where to go next</h2>
+<ul>
+  <li><a href="#sdk-guide/metrics">Metrics</a> — return-type contract, full built-in signatures, async metrics, timeouts.</li>
+  <li><a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a> — prompt templates, judge config, debugging.</li>
+  <li><a href="#sdk-guide/multi-model">Multi-model, multi-run &amp; group analysis</a> — running K times and comparing cohorts.</li>
+  <li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>metric_timeout</code>, concurrency, and the evaluator surface.</li>
+</ul>

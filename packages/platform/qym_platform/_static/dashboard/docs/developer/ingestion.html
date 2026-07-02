@@ -1,0 +1,367 @@
+<p class="docs-eyebrow">Developer / API</p>
+<h1>Run ingestion</h1>
+<p class="docs-lead">Push evaluation runs into the platform over HTTP &mdash; either by streaming live events as work happens, or by uploading a finished results file. This is the wire protocol the Python SDK uses internally, documented here for non-Python clients and custom harnesses.</p>
+
+<p>If your evaluation runs in an environment where the qym SDK can execute, <strong>prefer the SDK</strong>: it already handles run creation, retries, heartbeats, final status, OpenTelemetry spans, and local artifacts. Reach for this HTTP API when you are evaluating from a language the SDK does not cover, or when you have results produced by another tool that you want to land in the platform for review and comparison.</p>
+
+<p>Every endpoint on this page lives under the <code>/v1</code> prefix and requires a project-scoped API key. Set up a key first &mdash; see <a href="#get-started/api-keys">Link your repo &amp; create API keys</a>.</p>
+
+<h2>Two ingestion paths</h2>
+
+<p>There are two ways to get a run into the platform, and which one you use depends only on whether the run is live or already finished.</p>
+
+<table>
+  <thead>
+    <tr><th>Path</th><th>Endpoints</th><th>Use when</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Stream events</strong></td>
+      <td><code>POST /v1/runs</code> then <code>POST /v1/runs/{run_id}/events</code></td>
+      <td>You want a live run in the platform while work executes &mdash; incremental items, metric scores, traces, and heartbeats. This is what the SDK uses.</td>
+    </tr>
+    <tr>
+      <td><strong>Upload artifact</strong></td>
+      <td><code>POST /v1/runs:upload</code></td>
+      <td>The run already finished elsewhere or ran offline, and you have a saved <code>.csv</code> or <code>.json</code> results file to ingest after the fact.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Authentication</h2>
+
+<p>All ingestion requests authenticate with a project-scoped API key passed as a bearer token:</p>
+
+<pre data-lang="text">Authorization: Bearer &lt;token&gt;</pre>
+
+<p>The token is the raw secret returned once when you create a key. It has <strong>no <code>qym_</code> prefix</strong> &mdash; it is a ~43-character URL-safe string. The platform looks up the key by its 8-character prefix and verifies the full token against a stored hash, then binds the request to exactly one project.</p>
+
+<table>
+  <thead>
+    <tr><th>Situation</th><th>HTTP status</th><th>Detail message</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>No <code>Authorization: Bearer</code> header</td><td>401</td><td><code>Missing Bearer API key</code></td></tr>
+    <tr><td>Unknown or revoked token</td><td>401</td><td><code>Invalid API key</code></td></tr>
+    <tr><td>The key's user is disabled</td><td>403</td><td><code>User disabled</code></td></tr>
+    <tr><td>Key not bound to a project</td><td>403</td><td><code>API key is not bound to a project</code></td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Keys are always project-bound.</span> A run created with a key always writes into that key's project. Per-key "scopes" are stored but not enforced &mdash; treat any valid key as full access to its one project. See <a href="#get-started/api-keys">API keys</a> for the full key lifecycle.</p></div>
+
+<h2>Step 1 &mdash; Create the run</h2>
+
+<p>Start by creating the run record. This returns the <code>run_id</code> you address all subsequent events to, and a <code>live_url</code> for the run in the dashboard.</p>
+
+<pre data-lang="text">POST /v1/runs
+Authorization: Bearer &lt;token&gt;
+Content-Type: application/json</pre>
+
+<p>Request body (<code>CreateRunRequest</code>). Only <code>task</code> and <code>dataset</code> are required; everything else is optional.</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>task</code></td><td>string</td><td>Yes</td><td>Name of the task being evaluated.</td></tr>
+    <tr><td><code>dataset</code></td><td>string</td><td>Yes</td><td>Dataset name or label shown for the run.</td></tr>
+    <tr><td><code>external_run_id</code></td><td>string</td><td>No</td><td>Your own stable identifier for the run (e.g. a CI build id).</td></tr>
+    <tr><td><code>model</code></td><td>string</td><td>No</td><td>Model identifier under evaluation.</td></tr>
+    <tr><td><code>metrics</code></td><td>string[]</td><td>No</td><td>Metric names recorded for the run. Defaults to <code>[]</code>.</td></tr>
+    <tr><td><code>dataset_id</code></td><td>string</td><td>No</td><td>Link the run to a platform dataset by id.</td></tr>
+    <tr><td><code>dataset_version_id</code></td><td>string</td><td>No</td><td>Pin to a specific dataset version. Takes precedence over <code>dataset_alias</code>.</td></tr>
+    <tr><td><code>dataset_alias</code></td><td>string</td><td>No</td><td>Resolve a dataset version by alias. Defaults to <code>production</code> when a dataset is found but no version is pinned.</td></tr>
+    <tr><td><code>run_metadata</code></td><td>object</td><td>No</td><td>Arbitrary JSON metadata for the run. Defaults to <code>{}</code>.</td></tr>
+    <tr><td><code>run_config</code></td><td>object</td><td>No</td><td>Arbitrary JSON config snapshot for the run. Defaults to <code>{}</code>.</td></tr>
+  </tbody>
+</table>
+
+<pre data-lang="json">{
+  "external_run_id": "qa-smoke-001",
+  "task": "qa_task",
+  "dataset": "qa.csv",
+  "model": "gpt-4o-mini",
+  "metrics": ["exact_match"],
+  "run_metadata": {"team": "search"},
+  "run_config": {"max_concurrency": 10}
+}</pre>
+
+<p>The response is the run id and its dashboard URL:</p>
+
+<pre data-lang="json">{
+  "run_id": "2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3",
+  "live_url": "https://qym.example.com/projects/search-team/runs/2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3"
+}</pre>
+
+<p>The run is created immediately in <code>RUNNING</code> status. The shape of <code>live_url</code> depends on the project:</p>
+
+<ul>
+  <li>When the project has a slug: <code>{base_url}/projects/{slug}/runs/{run_id}</code></li>
+  <li>Otherwise: <code>{base_url}/run/{run_id}</code></li>
+</ul>
+
+<p>Here <code>base_url</code> is the platform's configured public URL (server setting, default <code>http://localhost:8000</code>; a trailing slash is stripped). If you passed <code>dataset_id</code> or <code>dataset_alias</code> and a matching platform dataset exists, the run is linked to the resolved dataset version at this point.</p>
+
+<h2>Step 2 &mdash; Stream events as NDJSON</h2>
+
+<p>Once you have a <code>run_id</code>, post events to it. The body is <strong>newline-delimited JSON</strong> (NDJSON): one complete JSON object per line. It is <strong>not</strong> a JSON array &mdash; do not wrap the lines in <code>[ ]</code>.</p>
+
+<pre data-lang="text">POST /v1/runs/{run_id}/events
+Authorization: Bearer &lt;token&gt;
+Content-Type: application/x-ndjson</pre>
+
+<p>Each line is a complete event envelope. You can send one event per request or batch many lines into a single request &mdash; the platform processes them in order, line by line.</p>
+
+<pre data-lang="json">{"schema_version":1,"event_id":"5d8f7d2e-7a9f-4e3a-8b15-0b4f9c2b4c0e","sequence":1,"sent_at":"2026-06-21T12:00:00Z","type":"run_started","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"task":"qa_task","dataset":"qa.csv","model":"gpt-4o-mini","metrics":["exact_match"],"started_at":"2026-06-21T12:00:00Z"}}</pre>
+
+<h3>Response: applied vs skipped</h3>
+
+<p>The endpoint always returns <code>200</code> with a summary of what it did with the batch:</p>
+
+<pre data-lang="json">{"ok": true, "applied": 5, "skipped": 1}</pre>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>applied</code></td><td>Events that were stored and had their side-effects applied (new or updated items, scores, spans, status changes).</td></tr>
+    <tr><td><code>skipped</code></td><td>Events whose <code>(run_id, event_id)</code> was already seen &mdash; deduplicated, no double-apply.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Malformed lines are silently dropped.</span> A line that is not valid JSON, fails schema validation, or carries a <code>run_id</code> that does not match the URL is logged and skipped &mdash; it is counted in neither <code>applied</code> nor <code>skipped</code>, and it does not fail the rest of the batch. This is deliberate: one bad <code>span_completed</code> must never take down a valid <code>item_completed</code> in the same request. Validate your events before sending; the response counts are your only signal, so a missing count means a dropped line.</p></div>
+
+<h3>Run not found / forbidden / deleted</h3>
+
+<table>
+  <thead>
+    <tr><th>Situation</th><th>HTTP status</th><th>Detail</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>No run with that <code>run_id</code></td><td>404</td><td><code>Run not found</code></td></tr>
+    <tr><td>Run was soft-deleted</td><td>410</td><td><code>Run was deleted on &lt;timestamp&gt;</code></td></tr>
+    <tr><td>Run owned by a different user, or in a different project than your key</td><td>403</td><td><code>Forbidden</code></td></tr>
+    <tr><td>Request body is not valid UTF-8</td><td>400</td><td><code>Invalid encoding</code></td></tr>
+  </tbody>
+</table>
+
+<h2>The event envelope</h2>
+
+<p>Every event &mdash; regardless of type &mdash; is a JSON object with the same seven top-level fields, validated by the <code>RunEventV1</code> model. Type-specific data goes in <code>payload</code>.</p>
+
+<table>
+  <thead>
+    <tr><th>Field</th><th>Type</th><th>Rule</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>schema_version</code></td><td>integer</td><td>Must be <code>1</code>.</td></tr>
+    <tr><td><code>event_id</code></td><td>UUID string</td><td>Globally unique. This is the idempotency key.</td></tr>
+    <tr><td><code>sequence</code></td><td>integer</td><td>&ge; 1, strictly increasing per run.</td></tr>
+    <tr><td><code>sent_at</code></td><td>RFC 3339 timestamp</td><td>Client send time. Informational; used to advance the run's last-event clock.</td></tr>
+    <tr><td><code>type</code></td><td>string enum</td><td>One of the 11 event types below.</td></tr>
+    <tr><td><code>run_id</code></td><td>UUID string</td><td>Must match the <code>{run_id}</code> in the URL, or the event is dropped.</td></tr>
+    <tr><td><code>payload</code></td><td>object</td><td>Type-specific. Schema is selected by <code>type</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">These are the platform wire events.</span> Do not confuse them with the local SDK progress events (<code>run_start</code>, <code>item_start</code>, <code>metric_result</code>, <code>item_complete</code>, <code>run_complete</code>) surfaced to in-process observers. Those never leave the SDK; the events on this page are the HTTP protocol. See <a href="#sdk-guide/observers">Progress &amp; observers</a> for the local vocabulary.</p></div>
+
+<h2>Event types</h2>
+
+<p>There are 11 event types. A typical streamed run uses a subset &mdash; <code>run_started</code>, per-item lifecycle events, <code>metric_scored</code>, and <code>run_completed</code>. The rest cover retries, traces, heartbeats, and mid-flight metadata.</p>
+
+<table>
+  <thead>
+    <tr><th>Type</th><th>When to emit</th><th>Key payload fields</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>run_started</code></td><td>Once, at run start.</td><td><code>task</code>, <code>dataset</code>, <code>metrics</code>, <code>started_at</code>; optional <code>model</code>, <code>external_run_id</code>, <code>total_items</code>, <code>run_metadata</code>, <code>run_config</code>, <code>dataset_id</code>/<code>dataset_version_id</code>/<code>dataset_alias</code>.</td></tr>
+    <tr><td><code>item_started</code></td><td>When processing of a dataset item begins.</td><td><code>item_id</code>, <code>index</code> (&ge; 0), <code>input</code>; optional <code>expected</code>, <code>item_metadata</code>, <code>dataset_item_pk</code>.</td></tr>
+    <tr><td><code>item_attempt_started</code></td><td>At the start of each attempt (for retried items).</td><td><code>item_id</code>, <code>attempt_number</code> (&ge; 1); optional <code>index</code>, <code>trace_id</code>, <code>trace_url</code>, <code>task_started_at_ms</code>.</td></tr>
+    <tr><td><code>item_attempt_finished</code></td><td>At the end of each attempt.</td><td><code>item_id</code>, <code>attempt_number</code>, <code>status</code> (<code>completed</code> or <code>failed</code>); optional <code>latency_ms</code>, <code>error</code>, <code>trace_id</code>/<code>trace_url</code>, <code>is_last_attempt</code>.</td></tr>
+    <tr><td><code>metric_scored</code></td><td>Once per metric per item.</td><td><code>item_id</code>, <code>metric_name</code>; optional <code>score_numeric</code>, <code>score_raw</code>, <code>meta</code>, <code>label</code>, <code>explanation</code>.</td></tr>
+    <tr><td><code>item_completed</code></td><td>When an item finishes successfully.</td><td><code>item_id</code>, <code>output</code>, <code>latency_ms</code>; optional <code>index</code>, <code>item_metadata</code>, <code>task_metadata</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
+    <tr><td><code>item_failed</code></td><td>When an item fails terminally.</td><td><code>item_id</code>, <code>error</code>; optional <code>index</code>, <code>latency_ms</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
+    <tr><td><code>run_completed</code></td><td>Once, at the very end.</td><td><code>ended_at</code>, <code>final_status</code> (<code>COMPLETED</code> / <code>FAILED</code> / <code>STOPPED</code>); optional <code>summary</code>.</td></tr>
+    <tr><td><code>run_heartbeat</code></td><td>Periodically during long runs.</td><td><code>heartbeat_at</code>.</td></tr>
+    <tr><td><code>metadata_update</code></td><td>To merge metadata mid-flight.</td><td><code>extra</code> (merged into run metadata); plus optional <code>langfuse_url</code>, <code>langfuse_dataset_id</code>, <code>langfuse_run_id</code>.</td></tr>
+    <tr><td><code>span_completed</code></td><td>Per OpenTelemetry span, for native trace viewing.</td><td><code>trace_id</code>, <code>span_id</code>, <code>name</code>; optional <code>parent_span_id</code>, <code>kind</code>, <code>duration_ms</code>, <code>status</code>, <code>attributes</code>, <code>events</code>, <code>links</code>, timing fields.</td></tr>
+  </tbody>
+</table>
+
+<h3>Recommended event order</h3>
+
+<p>A minimal, correct stream for a single successful item looks like this:</p>
+
+<pre data-lang="text">run_started
+item_started
+item_attempt_started     (optional — only if you model attempts/retries)
+item_attempt_finished    (optional)
+metric_scored            (one per metric)
+item_completed
+run_completed</pre>
+
+<p>For an item that fails, emit <code>item_failed</code> in place of <code>item_completed</code>. For long-running work, interleave <code>run_heartbeat</code> events. Emit <code>span_completed</code> events whenever a trace span closes if you want native trace data in the dashboard.</p>
+
+<h3>Resilient ingestion</h3>
+
+<p>The platform is forgiving about missing lifecycle events so a dropped or out-of-order event does not corrupt the run:</p>
+
+<ul>
+  <li>If <code>item_completed</code> or <code>item_failed</code> arrives for an item that never had an <code>item_started</code>, the item is created from the completion event (using its <code>index</code> if provided, else <code>0</code>).</li>
+  <li><code>item_completed</code> clears any prior error on the item; <code>item_failed</code> records the error string.</li>
+  <li>Any of the item or metric events will mark the run <code>RUNNING</code> again if it was prematurely marked terminal.</li>
+  <li>When the task returned an output envelope <code>{"output": ..., "metadata": ...}</code>, send the envelope's metadata as <code>task_metadata</code>; the platform nests it under <code>item_metadata.task_metadata</code>.</li>
+</ul>
+
+<h2>A complete NDJSON example</h2>
+
+<p>Five lines covering one item end to end &mdash; run start, item start, a metric score, item completion, and run completion:</p>
+
+<pre data-lang="json">{"schema_version":1,"event_id":"5d8f7d2e-7a9f-4e3a-8b15-0b4f9c2b4c0e","sequence":1,"sent_at":"2026-06-21T12:00:00Z","type":"run_started","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"task":"qa_task","dataset":"qa.csv","model":"gpt-4o-mini","metrics":["exact_match"],"run_metadata":{"team":"search"},"run_config":{"max_concurrency":10},"started_at":"2026-06-21T12:00:00Z"}}
+{"schema_version":1,"event_id":"b8c2f55a-1a62-4ef1-a91e-5f5c7b2d0b3f","sequence":2,"sent_at":"2026-06-21T12:00:01Z","type":"item_started","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"item_id":"row_000001","index":0,"input":"What is X?","expected":"X is ...","item_metadata":{"difficulty":"easy"}}}
+{"schema_version":1,"event_id":"2f83f9a4-8f2c-4bde-9c2e-0c2a6e1f1e2a","sequence":3,"sent_at":"2026-06-21T12:00:02Z","type":"metric_scored","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"item_id":"row_000001","metric_name":"exact_match","score_numeric":1,"score_raw":true,"meta":{}}}
+{"schema_version":1,"event_id":"d7c8b1d0-3f4a-4e5f-9a0b-1c2d3e4f5a6b","sequence":4,"sent_at":"2026-06-21T12:00:02Z","type":"item_completed","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"item_id":"row_000001","output":"X is ...","latency_ms":412,"trace_id":null,"trace_url":null}}
+{"schema_version":1,"event_id":"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d","sequence":5,"sent_at":"2026-06-21T12:00:03Z","type":"run_completed","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"ended_at":"2026-06-21T12:00:03Z","final_status":"COMPLETED","summary":{"total_items":1,"success_count":1,"error_count":0}}}</pre>
+
+<h2>Idempotency &amp; ordering</h2>
+
+<p>The protocol is designed so a client can retry safely after a network error without duplicating data.</p>
+
+<h3>Idempotency</h3>
+
+<ul>
+  <li>Generate a fresh <code>event_id</code> (UUID) for every <strong>distinct</strong> event.</li>
+  <li>On retry of the <em>same</em> event after a failure, reuse the same <code>event_id</code> &mdash; the platform deduplicates on <code>(run_id, event_id)</code> and counts the repeat as <code>skipped</code>.</li>
+  <li>Re-sending an event with a new <code>event_id</code> would create a duplicate; never reuse an <code>event_id</code> for a <em>different</em> event.</li>
+</ul>
+
+<h3>Ordering</h3>
+
+<ul>
+  <li><code>sequence</code> must increase per run, starting at 1. Do not reset it mid-run.</li>
+  <li>The platform applies events line by line in the order received and is tolerant of minor reordering for live UI; the deduplication key, not <code>sequence</code>, is what prevents double-application.</li>
+</ul>
+
+<h2>Heartbeats &amp; long runs</h2>
+
+<p>For runs that take a while between item updates, emit <code>run_heartbeat</code> so the platform can tell an active-but-quiet run apart from an abandoned one:</p>
+
+<pre data-lang="json">{"schema_version":1,"event_id":"...","sequence":42,"sent_at":"2026-06-21T12:01:00Z","type":"run_heartbeat","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"heartbeat_at":"2026-06-21T12:01:00Z"}}</pre>
+
+<p>A heartbeat keeps the run in <code>RUNNING</code> and advances its last-event clock, which the platform's stale-run recovery uses to decide whether a run that never finalized has gone silent.</p>
+
+<h2>Finalizing the run</h2>
+
+<p>Always send exactly one <code>run_completed</code> to close the run. Its <code>final_status</code> maps directly to a stored run status:</p>
+
+<table>
+  <thead>
+    <tr><th><code>final_status</code></th><th>Stored status</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>COMPLETED</code></td><td><code>COMPLETED</code></td><td>The run finished normally.</td></tr>
+    <tr><td><code>FAILED</code></td><td><code>FAILED</code></td><td>The run ended in failure.</td></tr>
+    <tr><td><code>STOPPED</code></td><td><code>STOPPED</code></td><td>The run was deliberately stopped.</td></tr>
+  </tbody>
+</table>
+
+<p>Any <code>final_status</code> value outside this set is stored as <code>FAILED</code>. On a successful finalize, the platform also computes and persists trace statistics from any <code>span_completed</code> events received for the run. You can attach last-minute run metadata by putting a <code>run_metadata</code> object inside the <code>summary</code> payload &mdash; it is merged into the run's metadata.</p>
+
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">No finalize means a stuck run.</span> If you never send <code>run_completed</code>, the run stays <code>RUNNING</code> until the platform's stale-run recovery intervenes. Always finalize, even on failure paths &mdash; send <code>run_completed</code> with <code>FAILED</code>.</p></div>
+
+<h2>Uploading a finished run</h2>
+
+<p>If a run already completed elsewhere, skip the streaming protocol and upload its saved results file. This creates a run in <code>COMPLETED</code> status and ingests every item and score in one request.</p>
+
+<pre data-lang="text">POST /v1/runs:upload
+Authorization: Bearer &lt;token&gt;
+Content-Type: multipart/form-data</pre>
+
+<p>Send the file plus a few form fields:</p>
+
+<table>
+  <thead>
+    <tr><th>Form field</th><th>Required</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>file</code></td><td>Yes</td><td>The results file. Must be <code>.csv</code> or <code>.json</code>.</td></tr>
+    <tr><td><code>task</code></td><td>Yes</td><td>Task name for the run.</td></tr>
+    <tr><td><code>dataset</code></td><td>Yes</td><td>Dataset name for the run.</td></tr>
+    <tr><td><code>model</code></td><td>No</td><td>Model identifier.</td></tr>
+    <tr><td><code>external_run_id</code></td><td>No</td><td>Your stable run identifier.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout danger"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p><span class="docs-callout-title">Only <code>.csv</code> and <code>.json</code> are accepted.</span> The file type is decided by the filename extension. Any other extension &mdash; including <code>.xlsx</code> &mdash; is rejected with <code>400 Unsupported file type (use .csv or .json)</code>. An empty file is rejected with <code>400 Empty upload</code>. To upload spreadsheet results, export them to CSV or JSON first.</p></div>
+
+<h3>JSON upload shape</h3>
+
+<p>A JSON upload mirrors the SDK's saved-results structure: top-level <code>metrics</code>, <code>dataset_name</code>, and parallel maps keyed by item id.</p>
+
+<pre data-lang="json">{
+  "dataset_name": "qa.csv",
+  "metrics": ["exact_match"],
+  "inputs": {"row_000001": "What is X?"},
+  "metadatas": {"row_000001": {"difficulty": "easy"}},
+  "results": {
+    "row_000001": {
+      "output": "X is ...",
+      "expected": "X is ...",
+      "time": 0.412,
+      "trace_id": null,
+      "scores": {"exact_match": 1.0}
+    }
+  },
+  "errors": {}
+}</pre>
+
+<ul>
+  <li>Each <code>results</code> entry becomes a successful item. <code>time</code> is seconds and is stored as <code>latency_ms</code> (multiplied by 1000).</li>
+  <li>A score may be a scalar (stored as the numeric score) or an object with <code>score</code> and optional <code>metadata</code>.</li>
+  <li>Each <code>errors</code> entry becomes a failed item; its <code>error</code> string is recorded.</li>
+</ul>
+
+<h3>CSV upload shape</h3>
+
+<p>A CSV upload is the same artifact the SDK writes to <code>qym_results/</code>. The platform infers metrics from column names and reconstructs items row by row.</p>
+
+<ul>
+  <li>Metric columns are named <code>&lt;metric&gt;_score</code>; the metric list is derived from those headers (ignoring <code>__meta__</code> columns).</li>
+  <li>Per-metric metadata columns are <code>&lt;metric&gt;__meta__&lt;key&gt;</code>. A <code>__meta__json</code> column is parsed as a JSON object and merged.</li>
+  <li>An <code>output</code> cell beginning with <code>ERROR:</code> marks the row as a failed item; the text after <code>ERROR:</code> becomes the error, and that metric's score defaults to <code>0.0</code>. A score cell of <code>N/A</code> or empty is treated as no numeric score.</li>
+  <li>Run-level columns on the first row are honored: <code>run_name</code> (used as <code>external_run_id</code> if not supplied), <code>dataset_name</code>, and JSON-encoded <code>run_metadata</code> / <code>run_config</code>.</li>
+  <li>Stable item ids come from the <code>item_id</code> column; positional-looking ids are replaced with a content fingerprint so re-uploads line up across runs.</li>
+</ul>
+
+<p>Both upload formats return the same shape as a streamed run create:</p>
+
+<pre data-lang="json">{"run_id": "...", "live_url": "https://qym.example.com/run/..."}</pre>
+
+<h2>Common mistakes</h2>
+
+<table>
+  <thead>
+    <tr><th>Mistake</th><th>Impact</th><th>Fix</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Sending item events before creating the run</td><td><code>404 Run not found</code></td><td>Call <code>POST /v1/runs</code> first and use the returned <code>run_id</code>.</td></tr>
+    <tr><td>Wrapping NDJSON lines in a JSON array</td><td>The whole body fails to parse as line-delimited objects</td><td>One JSON object per line, no array, no commas between lines.</td></tr>
+    <tr><td>Reusing an <code>event_id</code> across different events</td><td>Later events deduped away as <code>skipped</code></td><td>New UUID per distinct event; same id only on retry of the same event.</td></tr>
+    <tr><td>Never sending <code>run_completed</code></td><td>Run stays <code>RUNNING</code></td><td>Always finalize &mdash; <code>COMPLETED</code>, <code>FAILED</code>, or <code>STOPPED</code>.</td></tr>
+    <tr><td>Emitting scores inconsistently</td><td>Metrics look incomplete in the UI</td><td>Emit one <code>metric_scored</code> per metric per item.</td></tr>
+    <tr><td>Uploading <code>.xlsx</code></td><td><code>400 Unsupported file type</code></td><td>Export to <code>.csv</code> or <code>.json</code> first.</td></tr>
+    <tr><td>Assuming a dropped malformed line errors the request</td><td>Silent data loss</td><td>Validate before sending; reconcile <code>applied</code> against your sent count.</td></tr>
+  </tbody>
+</table>
+
+<h2>Related</h2>
+
+<ul>
+  <li><a href="#get-started/api-keys">Link your repo &amp; create API keys</a> &mdash; create the project-scoped key these endpoints require.</li>
+  <li><a href="#sdk-guide/observers">Progress &amp; observers</a> &mdash; the local, in-process SDK event vocabulary, distinct from the wire events here.</li>
+  <li><a href="#get-started/datasets">Using datasets</a> &mdash; how dataset names and aliases resolve to platform datasets.</li>
+</ul>

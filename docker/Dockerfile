@@ -34,25 +34,6 @@ EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
 
 
-FROM dev AS docs-gen
-
-COPY examples /app/examples
-COPY docs_portal /app/docs_portal
-
-RUN python -m tools.docs
-
-
-FROM node:22-slim AS docs-build
-
-WORKDIR /src/docs_portal
-
-COPY --from=docs-gen /app/docs_portal /src/docs_portal
-
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
-RUN npm run build
-
-
 FROM python-base AS runtime-base
 
 COPY packages/sdk /app/packages/sdk
@@ -70,15 +51,6 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
-
-
-FROM runtime-base AS final-with-docs
-
-COPY docs_portal /app/docs_portal
-
-RUN python -m tools.docs
-
-COPY --from=docs-build /src/docs_portal/build /app/docs_portal/build
 
 
 FROM runtime-base AS final

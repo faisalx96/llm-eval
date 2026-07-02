@@ -1343,9 +1343,7 @@ def launch_eval(job):
 
 ## Related Docs
 
-- [Python API](docs_portal/docs/sdk/python-api.mdx)
-- [SDK Configuration](docs_portal/docs/sdk/configuration.mdx)
-- [Dataset Authoring](docs_portal/docs/sdk/dataset-authoring.mdx)
-- [Progress, Observers, And Wrappers](docs_portal/docs/sdk/progress-observers-wrappers.mdx)
-- [Platform Streaming](docs_portal/docs/sdk/platform-streaming.mdx)
-- [Run Artifacts](docs_portal/docs/sdk/run-artifacts.mdx)
+Full documentation is served natively by the platform at `/docs-guide` (Docs in the dashboard sidebar). Relevant sections:
+
+- SDK Guide: structure, ways to evaluate, metrics, custom metrics, judges, multi-model, observers, results, config
+- Get Started: install, first run, datasets, task & metric IO, built-in metrics, API keys, errors

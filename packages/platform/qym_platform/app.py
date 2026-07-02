@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -17,7 +17,6 @@ from qym_platform.api.ingest import router as ingest_router
 from qym_platform.api.analysis import router as analysis_router
 from qym_platform.api.product_evals import router as product_evals_router
 from qym_platform.api.datasets import router as datasets_router
-from qym_platform.docs_site import docs_available, docs_file_response
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
@@ -76,21 +75,6 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     # Per-run UI (live/historical run detail)
     if ui_dir.exists():
         app.mount("/ui", StaticFiles(directory=str(ui_dir)), name="run_ui_static")
-
-    if docs_available():
-        @app.get("/docs", response_model=None)
-        async def docs_index_no_slash(request: Request):
-            return RedirectResponse(str(request.url.replace(path=request.url.path + "/")), status_code=307)
-
-        @app.get("/docs/", response_model=None)
-        async def docs_index(request: Request):
-            return docs_file_response(request, "")
-
-        @app.get("/docs/{path:path}", response_model=None)
-        async def docs_catchall(path: str, request: Request):
-            if not request.url.path.endswith("/") and "." not in Path(path).name:
-                return RedirectResponse(str(request.url.replace(path=request.url.path + "/")), status_code=307)
-            return docs_file_response(request, path)
 
     app.include_router(auth_router)
     app.include_router(web_router)
