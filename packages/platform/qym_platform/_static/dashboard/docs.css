@@ -4,7 +4,10 @@
 
 .docs-page {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr) 208px;
+  /* Fixed rails around a capped content column, centered as a unit so wide
+     screens get symmetric margins instead of a dead gap before the TOC. */
+  grid-template-columns: 264px minmax(0, 780px) 220px;
+  justify-content: center;
   align-items: start;
   width: 100%;
   color: var(--text-secondary);
@@ -76,7 +79,6 @@
 .docs-main {
   padding: 30px 40px 80px;
   min-width: 0;
-  max-width: 840px;
 }
 
 .docs-eyebrow {
@@ -84,19 +86,29 @@
   color: var(--accent-primary);
   margin: 0 0 8px;
 }
-.docs-main h1 { font-size: 27px; font-weight: 600; color: var(--text-primary); margin: 0 0 10px; line-height: 1.2; }
-.docs-lead { font-size: 15px; line-height: 1.65; color: var(--text-secondary); margin: 0 0 26px; }
+/* Reading copy sits between --text-secondary (too dim for long-form prose)
+   and --text-primary (reserved for headings/emphasis so hierarchy survives). */
+.docs-main { --docs-body: #d3d3df; }
+.docs-main h1 { font-size: 28px; font-weight: 600; color: var(--text-primary); margin: 0 0 10px; line-height: 1.2; }
+.docs-lead { font-size: 16px; line-height: 1.65; color: var(--text-secondary); margin: 0 0 26px; }
 .docs-main h2 {
-  font-size: 19px; font-weight: 600; color: var(--text-primary);
-  margin: 36px 0 12px; padding-top: 6px; scroll-margin-top: 16px;
+  font-size: 20px; font-weight: 600; color: var(--text-primary);
+  margin: 40px 0 12px; padding-top: 6px; scroll-margin-top: 16px;
 }
 .docs-main h3 {
-  font-size: 15px; font-weight: 600; color: var(--text-primary);
-  margin: 24px 0 8px; scroll-margin-top: 16px;
+  font-size: 16px; font-weight: 600; color: var(--text-primary);
+  margin: 26px 0 8px; scroll-margin-top: 16px;
 }
-.docs-main p { font-size: 14px; line-height: 1.72; color: var(--text-secondary); margin: 0 0 14px; }
+.docs-main p { font-size: 15px; line-height: 1.75; color: var(--docs-body); margin: 0 0 14px; }
 .docs-main ul, .docs-main ol { margin: 0 0 14px; padding-left: 22px; }
-.docs-main li { font-size: 14px; line-height: 1.72; color: var(--text-secondary); margin: 5px 0; }
+.docs-main li { font-size: 15px; line-height: 1.75; color: var(--docs-body); margin: 5px 0; }
+.docs-anchor {
+  margin-left: 8px; font-size: 0.8em; font-weight: 500;
+  color: var(--text-dim); text-decoration: none;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.docs-main h2:hover .docs-anchor, .docs-main h3:hover .docs-anchor { opacity: 1; }
+.docs-anchor:hover { color: var(--accent-primary); text-decoration: none; }
 .docs-main li > strong:first-child { color: var(--text-primary); }
 .docs-main a { color: var(--accent-primary); text-decoration: none; }
 .docs-main a:hover { text-decoration: underline; }
@@ -105,7 +117,7 @@
 
 .docs-main :not(pre) > code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 13px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
@@ -129,20 +141,33 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 .docs-codeblock-lang { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
-.docs-codeblock pre { margin: 0; padding: 13px 14px; overflow-x: auto; scrollbar-width: thin; }
+.docs-codeblock pre { margin: 0; padding: 16px 18px; overflow-x: auto; scrollbar-width: thin; }
 .docs-codeblock pre, .docs-codeblock code {
-  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
   color: var(--text-primary); white-space: pre; background: none; border: none; padding: 0;
 }
+/* Icon-only ghost button — same treatment as copy buttons elsewhere in the app
+   (.tv-copy-btn in the trace viewer, COPY_ICON in run/compare pages). */
 .docs-copy-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  background: none; border: 1px solid var(--border-default); border-radius: 5px;
-  color: var(--text-muted); font-family: var(--font-sans); font-size: 11px;
-  padding: 3px 8px; cursor: pointer; transition: all 0.12s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 5px;
+  color: var(--text-dim); opacity: 0.6;
+  padding: 4px; cursor: pointer; transition: opacity 0.15s ease, color 0.15s ease;
 }
-.docs-copy-btn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--bg-hover); }
-.docs-copy-btn.copied { color: var(--accent-primary); border-color: var(--accent-primary); }
-.docs-copy-btn svg { width: 13px; height: 13px; }
+.docs-copy-btn:hover { opacity: 1; color: var(--accent-primary); background: var(--bg-hover); }
+.docs-copy-btn.copied { opacity: 1; color: var(--accent-primary); }
+.docs-copy-btn svg { width: 14px; height: 14px; }
+
+/* ── Syntax highlighting (highlight.js classes, mapped to the dark palette) ── */
+.docs-codeblock .hljs-comment, .docs-codeblock .hljs-quote { color: #6b6b80; font-style: italic; }
+.docs-codeblock .hljs-keyword, .docs-codeblock .hljs-selector-tag { color: #c792ea; }
+.docs-codeblock .hljs-string, .docs-codeblock .hljs-regexp { color: #98c379; }
+.docs-codeblock .hljs-number, .docs-codeblock .hljs-literal { color: #d19a66; }
+.docs-codeblock .hljs-built_in, .docs-codeblock .hljs-title.function_, .docs-codeblock .hljs-title.function_.invoke__ { color: #61afef; }
+.docs-codeblock .hljs-title.class_, .docs-codeblock .hljs-type { color: #e5c07b; }
+.docs-codeblock .hljs-attr, .docs-codeblock .hljs-property, .docs-codeblock .hljs-variable { color: #d19a66; }
+.docs-codeblock .hljs-meta, .docs-codeblock .hljs-params { color: var(--text-secondary); }
+.docs-codeblock .hljs-subst { color: var(--text-primary); }
 
 /* ── Callouts ── */
 .docs-callout {
@@ -165,6 +190,8 @@
 .docs-callout-title { font-weight: 600; color: var(--text-primary); }
 
 /* ── Tables ── */
+.docs-table-wrap { overflow-x: auto; margin: 0 0 18px; scrollbar-width: thin; }
+.docs-table-wrap table { margin: 0; }
 .docs-main table { width: 100%; border-collapse: collapse; margin: 0 0 18px; }
 .docs-main th {
   text-align: left; padding: 8px 10px; background: var(--bg-elevated);
@@ -174,7 +201,7 @@
 }
 .docs-main td {
   padding: 8px 10px; border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary); font-size: 13px; line-height: 1.55; vertical-align: top;
+  color: var(--docs-body); font-size: 13.5px; line-height: 1.55; vertical-align: top;
 }
 .docs-main tr:last-child td { border-bottom: none; }
 .docs-main table code { font-size: 12px; }
@@ -218,20 +245,20 @@
 }
 .docs-toc-title { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
 .docs-toc a {
-  display: block; padding: 3px 10px; font-size: 12px; line-height: 1.45;
-  color: var(--text-muted); text-decoration: none;
+  display: block; padding: 4px 10px; font-size: 12.5px; line-height: 1.5;
+  color: var(--text-secondary); text-decoration: none;
   border-left: 2px solid transparent;
 }
-.docs-toc a:hover { color: var(--text-secondary); }
-.docs-toc a.active { color: var(--text-primary); border-left-color: var(--accent-primary); }
-.docs-toc a.lvl-3 { padding-left: 20px; font-size: 11.5px; }
+.docs-toc a:hover { color: var(--text-primary); }
+.docs-toc a.active { color: var(--accent-primary); border-left-color: var(--accent-primary); font-weight: 500; }
+.docs-toc a.lvl-3 { padding-left: 20px; font-size: 12px; }
 .docs-toc-empty { font-size: 11px; color: var(--text-dim); }
 
 .docs-loading { padding: 40px 0; color: var(--text-dim); font-size: 13px; }
 
 /* ── Responsive ── */
 @media (max-width: 1100px) {
-  .docs-page { grid-template-columns: 240px minmax(0, 1fr); }
+  .docs-page { grid-template-columns: 240px minmax(0, 780px); }
   .docs-toc { display: none; }
 }
 @media (max-width: 780px) {

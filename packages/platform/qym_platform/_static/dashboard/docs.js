@@ -68,6 +68,16 @@
   var els = {};
   var partialCache = {};
   var tocObserver = null;
+  var currentKey = null;
+
+  // data-lang values (or filenames) → highlight.js language ids
+  function hljsLang(label) {
+    var l = String(label || '').toLowerCase();
+    if (l === 'python' || /\.py$/.test(l)) return 'python';
+    if (l === 'bash' || l === 'shell' || l === 'sh' || /\.(sh|bash)$/.test(l)) return 'bash';
+    if (l === 'json' || /\.json$/.test(l)) return 'json';
+    return null; // text / csv / pipeline diagrams stay plain
+  }
 
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
@@ -88,7 +98,15 @@
     if (!h) return null;
     var parts = h.split('/');
     if (parts.length < 2) return null;
-    return { section: parts[0], page: parts[1] };
+    return { section: parts[0], page: parts[1], heading: parts[2] || null };
+  }
+
+  function scrollToHeading(id, smooth) {
+    if (!id) return false;
+    var target = document.getElementById(id);
+    if (!target) return false;
+    target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+    return true;
   }
 
   // ── Section nav ──
@@ -108,7 +126,25 @@
     els.subnav.innerHTML = html;
 
     var input = document.getElementById('docs-search-input');
-    if (input) input.addEventListener('input', function () { filterNav(input.value); });
+    if (input) {
+      input.addEventListener('input', function () { filterNav(input.value); });
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          var first = els.subnav.querySelector('.docs-nav-link:not([style*="none"])');
+          if (first) { location.hash = first.getAttribute('href'); input.blur(); }
+        } else if (e.key === 'Escape') {
+          input.value = ''; filterNav(''); input.blur();
+        }
+      });
+      // "/" focuses search from anywhere on the page
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        var t = document.activeElement;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        e.preventDefault();
+        input.focus();
+      });
+    }
   }
 
   function filterNav(query) {
@@ -135,33 +171,48 @@
     });
   }
 
-  // ── Code block enhancement (copy buttons) ──
+  // ── Code block enhancement (copy buttons + syntax highlighting) ──
   function enhanceCode() {
     els.content.querySelectorAll('pre').forEach(function (pre) {
       if (pre.closest('.docs-codeblock')) return;
       var lang = pre.getAttribute('data-lang') || 'code';
+      var text = pre.innerText;
+
+      var hl = hljsLang(lang);
+      if (hl && window.hljs) {
+        try { pre.innerHTML = window.hljs.highlight(text, { language: hl, ignoreIllegals: true }).value; } catch (e) {}
+      }
+
       var wrap = document.createElement('div');
       wrap.className = 'docs-codeblock';
       var head = document.createElement('div');
       head.className = 'docs-codeblock-head';
       head.innerHTML = '<span class="docs-codeblock-lang">' + esc(lang) + '</span>'
-        + '<button class="docs-copy-btn" type="button">' + ICON_COPY + '<span>Copy</span></button>';
+        + '<button class="docs-copy-btn" type="button" title="Copy" aria-label="Copy code">' + ICON_COPY + '</button>';
       pre.parentNode.insertBefore(wrap, pre);
       wrap.appendChild(head);
       wrap.appendChild(pre);
       var btn = head.querySelector('.docs-copy-btn');
       btn.addEventListener('click', function () {
-        var text = pre.innerText;
         var done = function () {
           btn.classList.add('copied');
-          btn.innerHTML = ICON_CHECK + '<span>Copied</span>';
+          btn.innerHTML = ICON_CHECK;
           if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Copied to clipboard', 'success');
-          setTimeout(function () { btn.classList.remove('copied'); btn.innerHTML = ICON_COPY + '<span>Copy</span>'; }, 1800);
+          setTimeout(function () { btn.classList.remove('copied'); btn.innerHTML = ICON_COPY; }, 1800);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).then(done).catch(function () { fallbackCopy(text); done(); });
         } else { fallbackCopy(text); done(); }
       });
+    });
+
+    // Wide tables scroll inside their own container instead of breaking the column
+    els.content.querySelectorAll('table').forEach(function (table) {
+      if (table.closest('.docs-table-wrap')) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'docs-table-wrap';
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
     });
   }
 
@@ -173,8 +224,8 @@
     ta.remove();
   }
 
-  // ── Table of contents + scroll-spy ──
-  function buildTOC() {
+  // ── Table of contents + scroll-spy + heading anchors ──
+  function buildTOC(key) {
     if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
     var headings = Array.prototype.slice.call(els.content.querySelectorAll('h2, h3'));
     if (!headings.length) { els.toc.innerHTML = '<div class="docs-toc-empty">—</div>'; return; }
@@ -186,10 +237,20 @@
     });
     els.toc.innerHTML = html;
 
+    // Hover anchors make every heading shareable (#section/page/heading)
+    headings.forEach(function (h) {
+      var a = document.createElement('a');
+      a.className = 'docs-anchor';
+      a.href = '#' + key + '/' + h.id;
+      a.textContent = '#';
+      a.title = 'Link to this section';
+      h.appendChild(a);
+    });
+
     els.toc.querySelectorAll('.docs-toc-link').forEach(function (a) {
       a.addEventListener('click', function () {
-        var target = document.getElementById(a.getAttribute('data-target'));
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var id = a.getAttribute('data-target');
+        if (scrollToHeading(id, true)) history.replaceState(null, '', '#' + key + '/' + id);
       });
     });
 
@@ -224,10 +285,11 @@
   }
 
   // ── Page loading ──
-  function loadPage(sectionId, pageId) {
+  function loadPage(sectionId, pageId, heading) {
     var found = findPage(sectionId, pageId);
     if (!found) { found = findPage(FLAT[0].section, FLAT[0].page); sectionId = FLAT[0].section; pageId = FLAT[0].page; }
     var key = sectionId + '/' + pageId;
+    currentKey = key;
     setActiveNav(key);
     document.title = 'قيِّم • ' + found.page.title;
     els.content.innerHTML = '<div class="docs-loading">Loading…</div>';
@@ -235,8 +297,9 @@
     var render = function (htmlText) {
       els.content.innerHTML = htmlText;
       enhanceCode();
-      buildTOC();
+      buildTOC(key);
       buildPager(key);
+      if (heading && scrollToHeading(heading, false)) return;
       var scroller = document.getElementById('shell-content');
       if (scroller) scroller.scrollTop = 0;
     };
@@ -264,7 +327,12 @@
       loadPage(first.section, first.page);
       return;
     }
-    loadPage(r.section, r.page);
+    // Same page, new heading (in-page anchor click): scroll without re-rendering
+    if ((r.section + '/' + r.page) === currentKey) {
+      if (r.heading) scrollToHeading(r.heading, true);
+      return;
+    }
+    loadPage(r.section, r.page, r.heading);
   }
 
   function start() {
