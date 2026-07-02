@@ -22,7 +22,7 @@ class TestEvaluator:
                 handler(signal.SIGTERM, None)
         assert signal.getsignal(signal.SIGTERM) == previous
 
-    def test_init(self, mock_task, mock_langfuse, mock_dataset):
+    def test_init(self, mock_task, mock_dataset):
         """Test basic initialization of Evaluator with DI."""
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
@@ -30,18 +30,17 @@ class TestEvaluator:
                 dataset=mock_dataset,  # Injected dataset
                 metrics=["exact_match"],
                 config={"run_name": "test-run"},
-                langfuse_client=mock_langfuse,  # Injected client
             )
 
             assert evaluator.dataset == mock_dataset
-            assert evaluator.client == mock_langfuse
             # Evaluator appends a timestamp suffix for uniqueness
             assert evaluator.run_name.startswith("test-run")
             assert "exact_match" in evaluator.metrics
 
-    @pytest.mark.asyncio
-    async def test_evaluate_item_success(self, mock_task, mock_langfuse, mock_dataset):
-        """Test _evaluate_item method success path."""
+    def test_init_ignores_deprecated_langfuse_client(
+        self, mock_task, mock_langfuse, mock_dataset
+    ):
+        """langfuse_client is deprecated: accepted for compatibility but ignored."""
         with patch("qym.core.evaluator.auto_detect_task"):
             evaluator = Evaluator(
                 task=mock_task,
@@ -51,17 +50,29 @@ class TestEvaluator:
                 langfuse_client=mock_langfuse,
             )
 
+        assert evaluator.client is None
+        assert evaluator.langfuse_enabled is False
+
+    @pytest.mark.asyncio
+    async def test_evaluate_item_success(self, mock_task, mock_dataset):
+        """Test _evaluate_item method success path."""
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "test-run"},
+            )
+
             # Mock internal components
             evaluator.task_adapter = MagicMock()
             evaluator.task_adapter.arun = AsyncMock(return_value="test_output")
             evaluator._notify_observer = MagicMock()
-            evaluator._compute_metric = AsyncMock(return_value=1.0)
             evaluator.model_name = "test-model"
 
             # Mock item
             item = MagicMock()
             item.input = "test_input"
-            item.run.return_value.__enter__.return_value = MagicMock()
 
             tracker = MagicMock()
 
@@ -70,7 +81,10 @@ class TestEvaluator:
             assert result["success"] is True
             assert result["output"] == "test_output"
             tracker.start_item.assert_called_once_with(0)
-            tracker.complete_item.assert_called_once_with(0)
+            tracker.complete_item.assert_called_once()
+            complete_args, complete_kwargs = tracker.complete_item.call_args
+            assert complete_args == (0,)
+            assert complete_kwargs["elapsed_time"] >= 0
 
     @pytest.mark.asyncio
     async def test_task_output_envelope_passes_metadata_to_metric_and_platform(
@@ -425,6 +439,7 @@ class TestEvaluator:
                 metrics=[],
                 config={
                     "run_name": "sync-advisory",
+                    "task_name": "mock_task",
                     "max_concurrency": 5,
                     "otel_enabled": False,
                 },
@@ -525,6 +540,7 @@ class TestEvaluator:
                 metrics=[],
                 config={
                     "run_name": "sync-advisory-one",
+                    "task_name": "mock_task",
                     "max_concurrency": 5,
                     "otel_enabled": False,
                 },
@@ -535,6 +551,7 @@ class TestEvaluator:
                 metrics=[],
                 config={
                     "run_name": "sync-advisory-two",
+                    "task_name": "mock_task",
                     "max_concurrency": 5,
                     "otel_enabled": False,
                 },
@@ -606,7 +623,10 @@ class TestEvaluator:
 
         evaluator_one._notify_observer.assert_called_once()
         evaluator_two._notify_observer.assert_called_once()
-        assert advisory_registry == {"task_one", "task_two"}
+        # Task names are derived from __qualname__, so the two local
+        # functions must register as two distinct advisory entries.
+        assert advisory_registry == {task_one.__qualname__, task_two.__qualname__}
+        assert len(advisory_registry) == 2
 
     def test_sync_threadpool_advisory_stays_in_tui_when_dashboard_observer_attached(
         self, tmp_path, mock_task, monkeypatch
@@ -732,6 +752,8 @@ class TestEvaluator:
             metrics=[],
             config={
                 "run_name": "async-cancel",
+                "task_name": "slow_task",
+                "output_dir": str(tmp_path / "results"),
                 "max_concurrency": 1,
                 "otel_enabled": False,
                 "platform_api_key": "test-key",
@@ -810,6 +832,8 @@ class TestEvaluator:
             metrics=[],
             config={
                 "run_name": "stop-before",
+                "task_name": "stop_before_task",
+                "output_dir": str(tmp_path / "results"),
                 "max_concurrency": 2,
                 "otel_enabled": False,
                 "platform_api_key": "test-key",
@@ -863,6 +887,8 @@ class TestEvaluator:
             metrics=[],
             config={
                 "run_name": "stop-mid-run",
+                "task_name": "stop_mid_run_task",
+                "output_dir": str(tmp_path / "results"),
                 "max_concurrency": 1,
                 "otel_enabled": False,
                 "should_stop": lambda: stop,
@@ -921,6 +947,8 @@ class TestEvaluator:
             metrics=[],
             config={
                 "run_name": "url-start",
+                "task_name": "echo_task",
+                "output_dir": str(tmp_path / "results"),
                 "otel_enabled": False,
                 "platform_api_key": "test-key",
                 "platform_url": "http://example",
@@ -965,6 +993,8 @@ class TestEvaluator:
             metrics=[],
             config={
                 "run_name": "platform-timeout",
+                "task_name": "echo_task",
+                "output_dir": str(tmp_path / "results"),
                 "otel_enabled": False,
                 "platform_api_key": "test-key",
                 "platform_url": "http://example",
@@ -1005,7 +1035,12 @@ class TestEvaluator:
             task=lambda input_data: input_data,
             dataset=ds,
             metrics=[exact],
-            config={"run_name": "observer-timings", "otel_enabled": False},
+            config={
+                "run_name": "observer-timings",
+                "task_name": "echo_task",
+                "output_dir": str(tmp_path / "results"),
+                "otel_enabled": False,
+            },
             progress_callback=snapshots.append,
         )
 

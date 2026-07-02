@@ -29,8 +29,9 @@ from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
     CorrectionStatus,
-    OrgUnit,
-    OrgUnitType,
+    Project,
+    ProjectMembership,
+    ProjectRole,
     ReviewCorrection,
     Run,
     RunItem,
@@ -82,7 +83,7 @@ def client(session_factory):
 
 
 def _headers(email: str) -> dict[str, str]:
-    return {"X-User-Email": email}
+    return {"X-User-Email": email, "Origin": "http://localhost:8000"}
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -90,17 +91,25 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 def _seed_platform_data(session: Session) -> None:
-    team_a = OrgUnit(id="team-a", name="Team A", type=OrgUnitType.TEAM, manager_user_id="manager-a")
-    team_b = OrgUnit(id="team-b", name="Team B", type=OrgUnitType.TEAM, manager_user_id="manager-b")
-    manager_a = User(id="manager-a", email="manager-a@example.com", role=UserRole.MANAGER, team_unit_id=team_a.id)
-    manager_b = User(id="manager-b", email="manager-b@example.com", role=UserRole.MANAGER, team_unit_id=team_b.id)
-    owner = User(id="owner-1", email="owner@example.com", role=UserRole.EMPLOYEE, team_unit_id=team_a.id)
-    other = User(id="other-1", email="other@example.com", role=UserRole.EMPLOYEE, team_unit_id=team_b.id)
-    gm = User(id="gm-1", email="gm@example.com", role=UserRole.GM)
+    manager_a = User(id="manager-a", email="manager-a@example.com", role=UserRole.MEMBER)
+    manager_b = User(id="manager-b", email="manager-b@example.com", role=UserRole.MEMBER)
+    owner = User(id="owner-1", email="owner@example.com", role=UserRole.MEMBER)
+    other = User(id="other-1", email="other@example.com", role=UserRole.MEMBER)
+    nonmember = User(id="nonmember-1", email="nonmember@example.com", role=UserRole.MEMBER)
     admin = User(id="admin-1", email="admin@example.com", role=UserRole.ADMIN)
+
+    project_a = Project(id="project-a", name="Project A", slug="project-a", created_by_user_id=admin.id)
+    project_b = Project(id="project-b", name="Project B", slug="project-b", created_by_user_id=admin.id)
+    memberships = [
+        ProjectMembership(project_id=project_a.id, user_id=manager_a.id, role=ProjectRole.MANAGER, added_by_user_id=admin.id),
+        ProjectMembership(project_id=project_a.id, user_id=owner.id, role=ProjectRole.MEMBER, added_by_user_id=admin.id),
+        ProjectMembership(project_id=project_b.id, user_id=manager_b.id, role=ProjectRole.MANAGER, added_by_user_id=admin.id),
+        ProjectMembership(project_id=project_b.id, user_id=other.id, role=ProjectRole.MEMBER, added_by_user_id=admin.id),
+    ]
 
     run = Run(
         id="run-1",
+        project_id=project_a.id,
         created_by_user_id=owner.id,
         owner_user_id=owner.id,
         task="task-1",
@@ -142,21 +151,36 @@ def _seed_platform_data(session: Session) -> None:
         status=CorrectionStatus.PENDING,
         is_active=True,
     )
-    session.add_all([team_a, team_b, manager_a, manager_b, owner, other, gm, admin, run, item, score, correction])
+    session.add_all([manager_a, manager_b, owner, other, nonmember, admin, project_a, project_b])
+    session.add_all(memberships)
+    session.add_all([run, item, score, correction])
     session.commit()
 
 
 def _seed_api_key(session: Session, *, token: str, scopes: list[str]) -> None:
-    user = User(id=f"user-{token}", email=f"{token}@example.com", role=UserRole.EMPLOYEE)
+    user = User(id=f"user-{token}", email=f"{token}@example.com", role=UserRole.MEMBER)
+    project = Project(
+        id=f"project-{token}",
+        name=f"Project {token}",
+        slug=f"project-{token}",
+        created_by_user_id=user.id,
+    )
+    membership = ProjectMembership(
+        project_id=project.id,
+        user_id=user.id,
+        role=ProjectRole.MEMBER,
+        added_by_user_id=user.id,
+    )
     api_key = ApiKey(
         id=f"key-{token}",
         user_id=user.id,
+        project_id=project.id,
         name=token,
         prefix=api_key_prefix(token),
         key_hash=hash_api_key(token),
         scopes=scopes,
     )
-    session.add_all([user, api_key])
+    session.add_all([user, project, membership, api_key])
     session.commit()
 
 
@@ -167,7 +191,7 @@ def test_proxy_headers_auto_provisions_new_user(client, session_factory):
     with session_factory() as session:
         user = session.query(User).filter(User.email == "new.user@example.com").first()
         assert user is not None
-        assert user.role == UserRole.EMPLOYEE
+        assert user.role == UserRole.MEMBER
         assert user.display_name == "New User"
 
 
@@ -196,12 +220,12 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert other_metric.status_code == 403
 
-    gm_root_cause = client.post(
+    nonmember_root_cause = client.post(
         "/api/runs/update_root_cause",
-        headers=_headers("gm@example.com"),
+        headers=_headers("nonmember@example.com"),
         json={"run_id": "run-1", "item_id": "item-1", "root_cause": "Hallucination"},
     )
-    assert gm_root_cause.status_code == 403
+    assert nonmember_root_cause.status_code == 403
 
     denied_analyze = client.post(
         "/api/runs/run-1/analyze",
@@ -219,16 +243,16 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
     assert manager_list.status_code == 200
     assert len(manager_list.json()["corrections"]) == 1
 
-    employee_list = client.get("/api/corrections", headers=_headers("owner@example.com"))
-    assert employee_list.status_code == 200
-    assert employee_list.json()["corrections"] == []
+    outsider_list = client.get("/api/corrections", headers=_headers("other@example.com"))
+    assert outsider_list.status_code == 200
+    assert outsider_list.json()["corrections"] == []
 
-    denied_get = client.get("/api/corrections/1", headers=_headers("owner@example.com"))
+    denied_get = client.get("/api/corrections/1", headers=_headers("other@example.com"))
     assert denied_get.status_code == 403
 
     denied_update = client.put(
         "/api/corrections/1",
-        headers=_headers("owner@example.com"),
+        headers=_headers("other@example.com"),
         json={"human_root_cause_note": "should fail"},
     )
     assert denied_update.status_code == 403

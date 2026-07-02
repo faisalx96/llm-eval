@@ -152,7 +152,7 @@ def _make_single_item_csv() -> str:
 
 
 @pytest.mark.asyncio
-async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score():
+async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(tmp_path):
     """Mix a hung metric and a fast metric on a single item and assert that
     (a) the whole eval finishes within ``metric_timeout + 5s``,
     (b) the hung metric gets score=0 with label="timeout",
@@ -169,7 +169,8 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
         return {"score": 1.0}
 
     async def dummy_task(question: str):
-        return {"answer": "42"}
+        # bare dicts are no longer valid task outputs (envelope required)
+        return "42"
 
     csv_path = _make_single_item_csv()
     try:
@@ -184,6 +185,10 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
                 "metric_timeout": 1.5,
                 "live_mode": "local",
                 "otel_enabled": False,
+                # short name + tmp dir: the derived checkpoint path would
+                # otherwise exceed Windows' 260-char limit
+                "task_name": "t12_task",
+                "output_dir": str(tmp_path / "results"),
             },
         )
 
@@ -222,7 +227,7 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
 
 
 @pytest.mark.asyncio
-async def test_t13_cancel_mid_finalize_does_not_emit_item_failed():
+async def test_t13_cancel_mid_finalize_does_not_emit_item_failed(tmp_path):
     """Cancel the eval while the finalizer is running and verify:
       * ``_emit_item_completed`` still fires (shielded)
       * the finally block does NOT emit ``item_failed``
@@ -237,7 +242,8 @@ async def test_t13_cancel_mid_finalize_does_not_emit_item_failed():
         return {"score": 1.0}
 
     async def dummy_task(question: str):
-        return {"answer": "42"}
+        # bare dicts are no longer valid task outputs (envelope required)
+        return "42"
 
     csv_path = _make_single_item_csv()
     try:
@@ -251,6 +257,10 @@ async def test_t13_cancel_mid_finalize_does_not_emit_item_failed():
                 "metric_timeout": 10.0,
                 "live_mode": "local",
                 "otel_enabled": False,
+                # short name + tmp dir: the derived checkpoint path would
+                # otherwise exceed Windows' 260-char limit
+                "task_name": "t13_task",
+                "output_dir": str(tmp_path / "results"),
             },
         )
 

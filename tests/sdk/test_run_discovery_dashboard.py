@@ -3,7 +3,6 @@ from pathlib import Path
 
 from qym.core.checkpoint import build_checkpoint_header, serialize_checkpoint_row
 from qym.core.run_discovery import RunDiscovery
-from qym.server.dashboard_server import rebuild_langfuse_urls
 
 
 def _write_checkpoint_rows(path: Path, metrics, rows):
@@ -97,44 +96,6 @@ def test_run_discovery_uses_declared_total_for_completion(tmp_path):
     assert run["model_name"] == "model-a"
     completion = (run["success_count"] + run["error_count"]) / run["total_items"]
     assert completion == 0.4
-
-
-def test_dashboard_api_rebuilds_nested_langfuse_urls(tmp_path):
-    results_dir = tmp_path / "qym_results"
-    csv_path = (
-        results_dir
-        / "task_alpha"
-        / "provider-model"
-        / "2025-01-01"
-        / "run-250101-0101.csv"
-    )
-
-    rows = [
-        _build_row(
-            run_metadata={
-                "model": "provider/model-a",
-                "total_items": 5,
-                "langfuse_dataset_id": "dataset-123",
-                "langfuse_run_id": "run-123",
-            },
-            item_id="item_0",
-            output="ok",
-            score=1.0,
-        )
-    ]
-    _write_checkpoint_rows(csv_path, ["accuracy"], rows)
-
-    payload = RunDiscovery(str(results_dir)).scan(force_refresh=True).to_dict()
-    rebuild_langfuse_urls(
-        payload,
-        langfuse_host="https://cloud.langfuse.com",
-        langfuse_project_id="project-123",
-    )
-
-    run = _first_run_payload(payload)
-    assert run["langfuse_url"] == (
-        "https://cloud.langfuse.com/project/project-123/datasets/dataset-123/runs/run-123"
-    )
 
 
 def test_run_discovery_builds_compare_ids_from_legacy_positional_item_ids(tmp_path):

@@ -13,15 +13,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
-os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("QYM_AUTH_MODE", "oidc")
-os.environ.setdefault("QYM_AUTH_SESSION_SECRET", "test-session-secret")
-os.environ.setdefault("QYM_BASE_URL", "http://testserver")
-os.environ.setdefault("QYM_AUTH_GOOGLE_CLIENT_ID", "google-client")
-os.environ.setdefault("QYM_AUTH_GOOGLE_CLIENT_SECRET", "google-secret")
-os.environ.setdefault("QYM_AUTH_GITHUB_CLIENT_ID", "github-client")
-os.environ.setdefault("QYM_AUTH_GITHUB_CLIENT_SECRET", "github-secret")
-os.environ.setdefault("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+# NOTE: no module-level os.environ writes here — they execute at collection
+# time and leak into every other test file in the run (e.g. QYM_BASE_URL
+# breaking same-origin checks elsewhere). The session_factory fixture
+# monkeypatches everything these tests need.
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"

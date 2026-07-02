@@ -5,13 +5,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
-os.environ["QYM_AUTH_MODE"] = "proxy_headers"
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 if str(PLATFORM_SRC) not in sys.path:
@@ -35,6 +35,13 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+
+
+@pytest.fixture(autouse=True)
+def _auth_mode(monkeypatch):
+    # scoped replacement for a module-level os.environ write that leaked
+    # into every other test file in the run
+    monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
 
 
 def _auth_headers(token: str) -> dict[str, str]:

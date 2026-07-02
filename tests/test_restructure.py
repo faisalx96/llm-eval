@@ -81,10 +81,9 @@ class TestDirectoryStructure:
         assert (utils / "errors.py").exists()
         assert (utils / "text.py").exists()
 
-    def test_sdk_static_dashboard(self):
-        d = SDK_ROOT / "qym" / "_static" / "dashboard"
-        assert d.exists()
-        assert (d / "index.html").exists()
+    def test_sdk_static_dashboard_removed(self):
+        """The dashboard static bundle is platform-only; the SDK ships only the ui bundle."""
+        assert not (SDK_ROOT / "qym" / "_static" / "dashboard").exists()
 
     def test_sdk_static_ui(self):
         u = SDK_ROOT / "qym" / "_static" / "ui"
@@ -96,7 +95,11 @@ class TestDirectoryStructure:
         assert not (SDK_ROOT / "qym" / "_static" / "dashboard" / "profile.html").exists()
 
     def test_sdk_cli(self):
-        assert (SDK_ROOT / "qym" / "cli.py").exists()
+        """The CLI is a subpackage (qym/cli/), not a single module."""
+        cli = SDK_ROOT / "qym" / "cli"
+        assert (cli / "__init__.py").exists()
+        assert (cli / "app.py").exists()
+        assert (cli / "run.py").exists()
 
     # ── Platform package ───────────────────────────────────────────────
 
@@ -118,8 +121,10 @@ class TestDirectoryStructure:
         assert (api / "__init__.py").exists()
         assert (api / "ingest.py").exists()
         assert (api / "runs.py").exists()
-        assert (api / "org.py").exists()
         assert (api / "web.py").exists()
+        assert (api / "datasets.py").exists()
+        assert (api / "projects.py").exists()
+        assert (api / "auth.py").exists()
 
     def test_platform_db(self):
         db = PLATFORM_ROOT / "qym_platform" / "db"
@@ -299,12 +304,14 @@ class TestPlatformImports:
     def test_import_db_models(self):
         from qym_platform.db.models import (
             User, UserRole, Run, RunItem, RunItemScore,
-            RunWorkflowStatus, OrgUnit, OrgUnitType,
-            OrgUnitClosure, PlatformSetting,
+            RunWorkflowStatus, Project, ProjectMembership,
+            ProjectRole, Dataset, DatasetVersion, PlatformSetting,
         )
         assert User is not None
         assert RunWorkflowStatus.DRAFT is not None
         assert UserRole.ADMIN is not None
+        assert Project is not None
+        assert Dataset is not None
 
     def test_import_app_factory(self):
         from qym_platform.app import create_app
@@ -314,11 +321,13 @@ class TestPlatformImports:
         from qym_platform.api.web import router as web_router
         from qym_platform.api.runs import router as runs_router
         from qym_platform.api.ingest import router as ingest_router
-        from qym_platform.api.org import router as org_router
+        from qym_platform.api.datasets import router as datasets_router
+        from qym_platform.api.projects import router as projects_router
         assert web_router is not None
         assert runs_router is not None
         assert ingest_router is not None
-        assert org_router is not None
+        assert datasets_router is not None
+        assert projects_router is not None
 
     def test_import_auth(self):
         from qym_platform.auth import Principal
@@ -337,8 +346,9 @@ def _collect_source_files(root: Path, exts: tuple = (".py", ".toml", ".yml", ".y
     """Collect all text source files under root, skipping hidden/vendored dirs."""
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        # Skip hidden dirs, __pycache__, node_modules, .git
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git", "dist", "build", "*.egg-info")]
+        # Skip hidden dirs, __pycache__, node_modules, .git, and scratch/build
+        # output (tmp/ is gitignored preview/build artifacts, not source).
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git", "dist", "build", "tmp", "*.egg-info")]
         for fn in filenames:
             if any(fn.endswith(ext) for ext in exts):
                 files.append(Path(dirpath) / fn)
@@ -513,10 +523,11 @@ class TestDockerFiles:
         assert "LLM_EVAL_" not in text
 
     def test_compose_postgres_creds(self):
+        """Postgres credentials come from env interpolation, not hardcoded values."""
         text = (REPO / "docker" / "docker-compose.yml").read_text()
-        assert "POSTGRES_USER: qym" in text
-        assert "POSTGRES_PASSWORD: qym" in text
-        assert "POSTGRES_DB: qym" in text
+        assert "POSTGRES_USER: ${POSTGRES_USER}" in text
+        assert "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}" in text
+        assert "POSTGRES_DB: ${POSTGRES_DB}" in text
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -552,8 +563,9 @@ class TestEnvVarPrefix:
 class TestStaticAssets:
     """Verify both packages own appropriate static assets."""
 
-    def test_sdk_dashboard_has_index(self):
-        assert (SDK_ROOT / "qym" / "_static" / "dashboard" / "index.html").exists()
+    def test_dashboard_not_in_sdk(self):
+        """The dashboard static bundle lives only in the platform package."""
+        assert not (SDK_ROOT / "qym" / "_static" / "dashboard").exists()
 
     def test_sdk_ui_has_index(self):
         assert (SDK_ROOT / "qym" / "_static" / "ui" / "index.html").exists()

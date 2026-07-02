@@ -59,12 +59,20 @@ class TestSnapToRail:
 
 class TestJudgeConfig:
     def test_defaults(self):
+        # No built-in defaults: without env vars the config is empty and
+        # validate() must fail loudly, naming the missing settings.
         with patch.dict(os.environ, {}, clear=True):
             cfg = JudgeConfig()
-            assert cfg.model == "gpt-4o-mini"
+            assert cfg.model == ""
             assert cfg.base_url is None
             assert cfg.api_key is None
             assert cfg.temperature == 0.0
+
+            with pytest.raises(RuntimeError) as exc_info:
+                cfg.validate()
+            assert "LLM judge metrics require configuration" in str(exc_info.value)
+            assert "QYM_JUDGE_MODEL" in str(exc_info.value)
+            assert "QYM_JUDGE_API_KEY (or OPENAI_API_KEY)" in str(exc_info.value)
 
     def test_env_vars(self):
         with patch.dict(os.environ, {
@@ -127,6 +135,21 @@ def _make_mock_client(response_content: str):
 
 
 class TestCreateJudge:
+    @pytest.fixture(autouse=True)
+    def _fake_judge_config(self, monkeypatch):
+        """Provide fake judge config for these tests (LLM calls are mocked).
+
+        monkeypatch reverts both the env vars and the cached global config
+        after each test, so nothing leaks into other test files.
+        """
+        import qym.metrics.judge_config as judge_config_module
+
+        monkeypatch.setenv("QYM_JUDGE_MODEL", "gpt-4o-mini")
+        monkeypatch.setenv("QYM_JUDGE_API_KEY", "test-key")
+        # Reset the lazily-cached default so it is rebuilt from the env vars
+        # above (and restored to its previous value afterwards).
+        monkeypatch.setattr(judge_config_module, "_default_config", None)
+
     @pytest.mark.asyncio
     async def test_basic_judge(self):
         content = json.dumps({"verdict": "faithful", "explanation": "The response is grounded."})

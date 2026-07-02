@@ -26,7 +26,7 @@ def test_load_cwd_dotenv_only_reads_exact_cwd_file(tmp_path, monkeypatch):
     assert os.getenv("DOTENV_SCOPE") is None
 
 
-def test_evaluator_loads_langfuse_credentials_from_cwd_dotenv(tmp_path, monkeypatch):
+def test_evaluator_loads_cwd_dotenv_and_ignores_langfuse_client(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     monkeypatch.chdir(workspace)
@@ -41,22 +41,23 @@ def test_evaluator_loads_langfuse_credentials_from_cwd_dotenv(tmp_path, monkeypa
     csv_path = workspace / "qa.csv"
     csv_path.write_text("q,a\nhello,world\n", encoding="utf-8")
     dataset = CsvDataset(csv_path, input_col="q", expected_col="a")
-    sentinel_client = object()
 
-    with patch("qym.core.evaluator.auto_detect_task"), patch.object(
-        Evaluator, "_init_langfuse", autospec=True, return_value=sentinel_client
-    ) as init_langfuse:
+    with patch("qym.core.evaluator.auto_detect_task"):
         evaluator = Evaluator(
             task=lambda x: x,
             dataset=dataset,
             metrics=[],
             config={"run_name": "dotenv-langfuse", "otel_enabled": False},
-            langfuse_client=None,
+            langfuse_client=object(),
         )
 
-    assert evaluator.client is sentinel_client
-    assert evaluator.langfuse_enabled is True
-    init_langfuse.assert_called_once()
+    # The constructor loads the caller's cwd .env before config/env detection.
+    assert os.getenv("LANGFUSE_PUBLIC_KEY") == "pk-test"
+    assert os.getenv("LANGFUSE_SECRET_KEY") == "sk-test"
+    # Langfuse client initialization was removed: langfuse_client is
+    # deprecated and ignored, and no client is created from credentials.
+    assert evaluator.client is None
+    assert evaluator.langfuse_enabled is False
 
 
 def test_langfuse_base_url_alias_is_used_for_host(tmp_path, monkeypatch):

@@ -907,5 +907,6 @@ def _sanitize_path_component(value: str) -> str:
     """Basic filesystem-safe component."""
     if not value:
         return "unknown"
-    cleaned = value.replace(os.sep, "_").replace("\\", "_")
+    # Windows rejects < > : " | ? * and control chars in addition to separators
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
     return cleaned.strip() or "unknown"

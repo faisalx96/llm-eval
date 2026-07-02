@@ -23,6 +23,9 @@ from qym_platform.auth import Principal
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     CorrectionStatus,
+    Project,
+    ProjectMembership,
+    ProjectRole,
     ReviewCorrection,
     RootCauseRevision,
     Run,
@@ -50,8 +53,17 @@ def db_session() -> Session:
 def _seed_run(session: Session) -> tuple[User, User, Run, RunItem]:
     actor = User(id="user-1", email="user1@example.com")
     reviewer = User(id="user-2", email="user2@example.com")
+    project = Project(
+        id="project-1",
+        name="Project One",
+        slug="project-one",
+        description="Test project",
+        created_by_user_id=actor.id,
+        is_active=True,
+    )
     run = Run(
         id="run-1",
+        project_id=project.id,
         created_by_user_id=actor.id,
         owner_user_id=actor.id,
         task="insightor_api",
@@ -75,7 +87,21 @@ def _seed_run(session: Session) -> tuple[User, User, Run, RunItem]:
         score_numeric=0.1,
         meta={"reason": "wrong answer"},
     )
-    session.add_all([actor, reviewer, run, item, score])
+    memberships = [
+        ProjectMembership(
+            project_id=project.id,
+            user_id=actor.id,
+            role=ProjectRole.MEMBER,
+            added_by_user_id=actor.id,
+        ),
+        ProjectMembership(
+            project_id=project.id,
+            user_id=reviewer.id,
+            role=ProjectRole.MANAGER,
+            added_by_user_id=actor.id,
+        ),
+    ]
+    session.add_all([actor, reviewer, project, run, item, score, *memberships])
     session.commit()
     return actor, reviewer, run, item
 
@@ -140,10 +166,12 @@ def test_assign_then_clear_withdraws_active_candidate(db_session: Session) -> No
     assert item.item_metadata.get("root_cause") is None
     assert _latest_active_candidate(db_session, run.id, item.item_id) is None
 
+    # The AI change snapshots its own review candidate (superseded by the
+    # human confirmation); the human candidate is withdrawn by the clear.
     historical = db_session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).all()
-    assert len(historical) == 1
-    assert historical[0].status == CorrectionStatus.WITHDRAWN
-    assert historical[0].is_active is False
+    assert len(historical) == 2
+    assert {c.status for c in historical} == {CorrectionStatus.SUPERSEDED, CorrectionStatus.WITHDRAWN}
+    assert all(c.is_active is False for c in historical)
 
     revisions = (
         db_session.query(RootCauseRevision)
@@ -357,7 +385,12 @@ def test_delete_active_approved_candidate_clears_run_item_state(db_session: Sess
     assert item.item_metadata.get("root_cause_note") is None
     assert item.item_metadata.get("root_cause_source") is None
     assert _latest_active_candidate(db_session, run.id, item.item_id) is None
-    assert db_session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).count() == 0
+    # Only the deleted (active) candidate is removed; the superseded AI
+    # snapshot is retained as history.
+    remaining = db_session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run.id).all()
+    assert len(remaining) == 1
+    assert remaining[0].status == CorrectionStatus.SUPERSEDED
+    assert remaining[0].is_active is False
 
     revisions = (
         db_session.query(RootCauseRevision)
@@ -449,7 +482,9 @@ def test_follow_up_human_edit_preserves_original_ai_snapshot(db_session: Session
         ),
     )
     db_session.commit()
-    assert ai_change.candidate is None
+    # AI changes now enter the review queue as pending candidates
+    assert ai_change.candidate is not None
+    assert ai_change.candidate.status == CorrectionStatus.PENDING
 
     first_human_change = apply_root_cause_change(
         db_session,
@@ -638,6 +673,7 @@ def test_get_few_shot_examples_without_limit_returns_all_active_approved_example
 
     second_run = Run(
         id="run-2",
+        project_id=run.project_id,
         created_by_user_id=actor.id,
         owner_user_id=actor.id,
         task=run.task,
@@ -978,7 +1014,8 @@ def test_task_root_cause_catalog_includes_defaults_and_task_history(db_session: 
 
     assert "Hallucination" in categories
     assert "Reasoning Error" in categories
-    assert "Join mismatch" in details
+    # details are grouped per category
+    assert "Join mismatch" in details.get("Reasoning Error", [])
 
 
 def test_approve_correction_promotes_active_candidate_when_given_stale_id(db_session: Session) -> None:
