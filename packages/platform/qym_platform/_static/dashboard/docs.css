@@ -141,11 +141,13 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 .docs-codeblock-lang { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
-.docs-codeblock pre { margin: 0; padding: 16px 18px; overflow-x: auto; scrollbar-width: thin; }
+.docs-codeblock pre { margin: 0; padding: 16px 18px; overflow-x: auto; scrollbar-width: thin; background: none; border: none; }
 .docs-codeblock pre, .docs-codeblock code {
   font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
-  color: var(--text-primary); white-space: pre; background: none; border: none; padding: 0;
+  color: var(--text-primary); white-space: pre;
 }
+/* reset only inner <code> — resetting the <pre> here would kill its padding */
+.docs-codeblock code { background: none; border: none; padding: 0; }
 /* Icon-only ghost button — same treatment as copy buttons elsewhere in the app
    (.tv-copy-btn in the trace viewer, COPY_ICON in run/compare pages). */
 .docs-copy-btn {
