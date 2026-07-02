@@ -125,6 +125,113 @@ html {
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* QymDataTable: shared dense, sortable, resizable table surface.
+   Pages can layer page-specific column widths/classes on top. */
+.qdt-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.qdt-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-default);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 650;
+}
+
+.qdt-table tbody td {
+  padding: 5px 9px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qdt-table tbody tr {
+  cursor: pointer;
+  transition: background .1s ease;
+}
+
+.qdt-table tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+.qdt-table th.sortable {
+  cursor: pointer;
+}
+
+.qdt-table .qdt-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: inherit;
+  pointer-events: none;
+}
+
+.qdt-table .qdt-sort-btn[aria-sort="ascending"],
+.qdt-table .qdt-sort-btn[aria-sort="descending"] {
+  color: var(--accent-primary);
+}
+
+.qdt-table .qdt-sort-arrow {
+  width: 9px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.qdt-table .qdt-sort-btn[aria-sort="ascending"] .qdt-sort-arrow,
+.qdt-table .qdt-sort-btn[aria-sort="descending"] .qdt-sort-arrow {
+  color: currentColor;
+}
+
+.qdt-table .qdt-col-resize {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  width: 13px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 8;
+  touch-action: none;
+}
+
+.qdt-table .qdt-col-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 5px;
+  background: var(--accent-primary);
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+
+.qdt-table th:hover .qdt-col-resize::after,
+.qdt-table th.resizing .qdt-col-resize::after {
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════
    STATS BAR (Top Header)
    ═══════════════════════════════════════════════════ */

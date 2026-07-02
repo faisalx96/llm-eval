@@ -9,6 +9,9 @@
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
+  <script src="/static/qym_table.js"></script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/trace_viewer.js"></script>
   <style>
     /* ============================================================
        Datasets page — dsx-* design system (uses platform tokens only)
@@ -16,20 +19,21 @@
 
     .dsx-page { min-height: 100%; display: flex; flex-direction: column; background: var(--bg-base); }
 
-    /* HERO + condensed sticky header */
+    /* HERO + detail header */
     .dsx-hero {
       position: relative;
-      padding: var(--space-lg) var(--space-xl);
-      background: linear-gradient(180deg, rgba(0,212,170,0.045) 0%, var(--bg-surface) 100%);
+      padding: var(--space-md);
+      background: linear-gradient(180deg, rgba(0,212,170,0.035) 0%, var(--bg-surface) 100%);
       border-bottom: 1px solid var(--border-subtle);
     }
     .dsx-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); flex-wrap: wrap; }
-    .dsx-hero-id { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 0; flex: 1 1 320px; }
-    .dsx-hero-name { font-size: 22px; font-weight: 650; color: var(--text-primary); margin: 0; letter-spacing: -0.01em; display: inline-flex; align-items: center; gap: 10px; }
+    .dsx-hero-id { min-width: 0; display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
+    .dsx-hero-title-row { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+    .dsx-hero-name { font-size: 22px; font-weight: 650; color: var(--text-primary); margin: 0; letter-spacing: 0; display: inline-flex; align-items: center; gap: 8px; line-height: 1.2; }
     .dsx-hero-name .dsx-name-edit { opacity: 0; transition: opacity .15s ease; cursor: pointer; color: var(--text-dim); font-size: 13px; padding: 2px 4px; border-radius: 4px; }
     .dsx-hero-name:hover .dsx-name-edit { opacity: 1; }
     .dsx-hero-name .dsx-name-edit:hover { color: var(--accent-primary); background: rgba(0,212,170,0.08); }
-    .dsx-hero-desc { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin: 0; max-width: 760px; }
+    .dsx-hero-desc { color: var(--text-muted); font-size: 12px; line-height: 1.35; margin: 0; max-width: 760px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dsx-hero-desc.empty { color: var(--text-dim); font-style: italic; }
     .dsx-hero-add-desc {
       align-self: flex-start; background: transparent; border: 1px dashed var(--border-default);
@@ -37,22 +41,25 @@
       padding: 3px 8px; border-radius: 6px; transition: all .12s ease;
     }
     .dsx-hero-add-desc:hover { color: var(--accent-primary); border-color: rgba(0,212,170,0.45); background: rgba(0,212,170,0.05); }
-    .dsx-hero-meta { display: flex; align-items: center; gap: var(--space-md); font-size: 12px; color: var(--text-muted); flex-wrap: wrap; margin-top: 2px; }
+    .dsx-hero-meta { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-muted); overflow: visible; max-width: 100%; flex-wrap: wrap; min-width: 0; }
+    .dsx-hero-meta-row { display: contents; }
+    .dsx-hero-meta-label { display: none; }
+    .dsx-hero-meta-row > * { flex: 0 0 auto; }
     .dsx-hero-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
     .dsx-hero-actions {
-      --dsx-action-h: 30px;
+      --dsx-action-h: 28px;
       --dsx-action-radius: 7px;
-      --dsx-action-pad-x: 11px;
+      --dsx-action-pad-x: 10px;
       --dsx-action-bg: var(--bg-elevated);
       --dsx-action-border: var(--border-default);
       --dsx-action-text: var(--text-primary);
-      display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; justify-content: flex-end;
+      display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end; flex: 0 0 auto;
     }
     .dsx-hero-actions .shell-btn,
     .dsx-version-pill {
       height: var(--dsx-action-h); min-height: var(--dsx-action-h); box-sizing: border-box;
       border-radius: var(--dsx-action-radius); border: 1px solid var(--dsx-action-border);
-      font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: 0;
+      font-size: 11.5px; font-weight: 600; line-height: 1; letter-spacing: 0;
       background: var(--dsx-action-bg); color: var(--dsx-action-text);
     }
     .dsx-hero-actions .shell-btn {
@@ -136,15 +143,15 @@
     .dsx-table .status-badge { text-transform: uppercase; }
 
     /* TABS */
-    .dsx-tabs { display: flex; gap: 2px; padding: 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); position: sticky; top: 0; z-index: 15; }
-    .dsx-tab { border: 0; background: transparent; color: var(--text-muted); padding: 12px 14px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: color .12s ease, border-color .12s ease; }
+    .dsx-tabs { display: flex; gap: 2px; padding: 0; min-height: 36px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
+    .dsx-tab { border: 0; background: transparent; color: var(--text-muted); padding: 8px 14px; font-size: 13px; font-weight: 650; cursor: pointer; border-bottom: 2px solid transparent; transition: color .12s ease, border-color .12s ease; }
     .dsx-tab:hover { color: var(--text-primary); }
     .dsx-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
     .dsx-tab .count { color: var(--text-dim); font-weight: 500; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
     /* CONTENT */
     .dsx-content { padding: var(--space-lg) var(--space-xl); flex: 1; min-height: 0; overflow: auto; }
-    .dsx-content.tight { padding: 0; }
+    .dsx-content.tight { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 
     /* CATALOG */
     .dsx-catalog-hero {
@@ -217,65 +224,62 @@
     .dsx-items-toolbar .left { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 260px; flex-wrap: wrap; }
     .dsx-items-toolbar .right { display: flex; gap: 8px; align-items: center; }
     .dsx-itemsearch { width: 100%; }
-    .dsx-bulk-bar { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(0,212,170,0.10); border: 1px solid rgba(0,212,170,0.35); border-radius: 8px; color: var(--accent-primary); font-size: 12px; font-weight: 600; }
-    .dsx-bulk-bar .sep { width: 1px; height: 14px; background: rgba(0,212,170,0.35); }
-    .dsx-bulk-bar button { background: transparent; border: 0; color: var(--accent-primary); font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-    .dsx-bulk-bar button:hover { background: rgba(0,212,170,0.18); }
-    .dsx-bulk-bar button.danger { color: var(--error); }
-
-    .dsx-table-wrap { background: var(--bg-surface); border-top: 1px solid var(--border-subtle); }
-    .dsx-table-wrap.paged { padding-bottom: 48px; }
+    .dsx-table-wrap { background: var(--bg-surface); border-top: 1px solid var(--border-subtle); overflow-x: auto; min-width: 0; max-width: 100%; }
+    .dsx-table-wrap.paged { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 0; margin-bottom: 48px; scrollbar-gutter: stable both-edges; }
     .dsx-table-wrap.flush { border-top: 0; }
-    .dsx-table { width: 100%; border-collapse: collapse; }
+    .dsx-table { width: 100%; min-width: 1420px; border-collapse: collapse; table-layout: fixed; }
     .dsx-table thead th {
-      text-align: left; padding: 8px 12px; font-size: 11px; color: var(--text-dim);
+      text-align: left; padding: 6px 10px; font-size: 10.5px; color: var(--text-dim);
       background: var(--bg-elevated); border-bottom: 1px solid var(--border-default);
       text-transform: uppercase; letter-spacing: 0.05em; font-weight: 650;
       position: sticky; top: 0; z-index: 5;
     }
-    .dsx-table tbody td { padding: 10px 12px; font-size: 13px; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+    .dsx-table tbody td { padding: 5px 9px; font-size: 11px; line-height: 1.35; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .dsx-table tbody tr { cursor: pointer; transition: background .1s ease; }
     .dsx-table tbody tr:hover td { background: var(--bg-hover); }
-    .dsx-table tbody tr.selected td { background: rgba(0,212,170,0.06); }
     .dsx-table tbody tr.editing td { background: rgba(99,102,241,0.05); }
-    .dsx-table .col-check { width: 40px; padding-left: 0; padding-right: 0; text-align: center; }
-    .dsx-table tbody .col-check { vertical-align: top; }
-    /* Fully custom dark-theme checkbox — the native control renders as a stark white box on
-       the dark surface. appearance:none + a drawn check keeps it on-brand and consistent with
-       the rest of the platform. */
-    .dsx-table input[type="checkbox"] {
-      appearance: none; -webkit-appearance: none; -moz-appearance: none;
-      width: 16px; height: 16px; margin: 0; flex: none; position: relative; top: 1px;
-      border: 1px solid var(--border-strong); border-radius: 4px;
-      background: var(--bg-elevated); cursor: pointer; vertical-align: top;
-      transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+    .dsx-table th.sortable { cursor: pointer; }
+    .dsx-table .sort-btn { display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 0; padding: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: inherit; pointer-events: none; }
+    .dsx-table .sort-btn:hover,
+    .dsx-table .sort-btn[aria-sort="ascending"],
+    .dsx-table .sort-btn[aria-sort="descending"] { color: var(--accent-primary); }
+    .dsx-table .sort-arrow { width: 9px; color: var(--text-dim); font-size: 10px; }
+    .dsx-table .sort-btn[aria-sort="ascending"] .sort-arrow,
+    .dsx-table .sort-btn[aria-sort="descending"] .sort-arrow { color: currentColor; }
+    .dsx-table .col-resize {
+      position: absolute; top: 0; right: -6px; width: 13px; height: 100%;
+      cursor: col-resize; z-index: 8; touch-action: none;
     }
-    .dsx-table input[type="checkbox"]:hover { border-color: var(--accent-primary); }
-    .dsx-table input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0,212,170,0.25); }
-    .dsx-table input[type="checkbox"]:checked,
-    .dsx-table input[type="checkbox"]:indeterminate { background: var(--accent-primary); border-color: var(--accent-primary); }
-    .dsx-table input[type="checkbox"]:checked::after {
-      content: ''; position: absolute; left: 5px; top: 2px; width: 3px; height: 7px;
-      border: solid var(--bg-void); border-width: 0 2px 2px 0; transform: rotate(45deg);
+    .dsx-table .col-resize::after {
+      content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 5px;
+      background: var(--accent-primary); opacity: 0; transition: opacity .12s ease;
     }
-    .dsx-table input[type="checkbox"]:indeterminate::after {
-      content: ''; position: absolute; left: 3px; top: 6px; width: 8px; height: 2px;
-      background: var(--bg-void); border-radius: 1px;
-    }
-    .dsx-table .col-idx { width: 48px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 12px; }
-    .dsx-table .col-id { width: 180px; }
-    .dsx-table tbody .col-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+    .dsx-table th:hover .col-resize::after,
+    .dsx-table th.resizing .col-resize::after { opacity: 1; }
+    .dsx-table .col-idx { width: 48px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 11px; }
+    .dsx-table .col-id { width: 150px; }
+    .dsx-table tbody .col-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-primary); }
     .dsx-table .col-id .copy { opacity: 0; margin-left: 4px; cursor: pointer; font-size: 10px; color: var(--text-dim); }
     .dsx-table tbody tr:hover .col-id .copy { opacity: 1; }
-    .dsx-table .col-runs { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
-    .dsx-table .col-updated { width: 110px; }
-    .dsx-table tbody .col-updated { color: var(--text-muted); font-size: 12px; }
+    .dsx-table .col-input { width: 425px; }
+    .dsx-table .col-expected { width: 340px; }
+    .dsx-table .col-metadata { width: 220px; }
+    .dsx-table .col-runs { width: 72px; font-variant-numeric: tabular-nums; }
+    .dsx-table .col-edits { width: 72px; font-variant-numeric: tabular-nums; }
+    .dsx-table .col-metric { width: 104px; font-variant-numeric: tabular-nums; }
+    .dsx-table .col-latency { width: 90px; font-variant-numeric: tabular-nums; }
     .dsx-table .col-actions { width: 44px; text-align: right; }
+    .dsx-table .run-link,
+    .dsx-table .run-name { cursor: pointer; color: var(--text-primary); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; background: transparent; border: 0; padding: 0; margin: 0; text-align: left; font: inherit; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dsx-table .run-link:hover,
+    .dsx-table .run-link:focus-visible,
+    .dsx-table .run-name:hover,
+    .dsx-table .run-name:focus-visible { color: var(--accent-primary); text-decoration-color: currentColor; outline: none; }
     .dsx-preview {
-      max-width: 360px; max-height: 60px; overflow: hidden;
-      font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); line-height: 1.5;
-      white-space: pre-wrap; word-break: break-word;
-      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      max-width: none; max-height: 15px; overflow: hidden; text-overflow: ellipsis;
+      font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); line-height: 1.4;
+      white-space: nowrap; word-break: normal;
+      display: block;
     }
     .dsx-preview.muted { color: var(--text-dim); font-style: italic; }
     .dsx-preview .tok-key { color: var(--accent-secondary); }
@@ -283,6 +287,12 @@
     .dsx-preview .tok-num { color: #facc15; }
     .dsx-preview .tok-bool { color: #f87171; }
     .dsx-preview .tok-null { color: var(--text-dim); }
+    .dsx-preview-popover {
+      position: fixed; z-index: 120; max-width: min(720px, calc(100vw - 28px)); max-height: min(420px, calc(100vh - 28px));
+      overflow: auto; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: 7px;
+      background: var(--bg-surface); color: var(--text-primary); box-shadow: 0 14px 36px rgba(0,0,0,0.50);
+      font-family: var(--font-mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+    }
 
     /* INLINE EDIT CELL */
     .dsx-cell-edit {
@@ -315,6 +325,7 @@
     .dsx-pager-controls .table-page-btn { border: 0; border-right: 1px solid var(--border-subtle); background: transparent; height: 28px; padding: 0 12px; border-radius: 0; }
     .dsx-pager-controls .table-page-btn:last-child { border-right: 0; border-left: 1px solid var(--border-subtle); }
     .dsx-pager-page { display: inline-flex; align-items: center; justify-content: center; height: 28px; width: 112px; padding: 0 12px; color: var(--text-secondary); background: rgba(255,255,255,0.015); }
+    .dsx-pager-size { height: 28px; min-width: 86px; border: 0; border-right: 1px solid var(--border-subtle); border-radius: 0; background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--font-sm); padding: 0 8px; outline: none; }
 
     /* DRAWER body styles (drawer chrome lives in shell.css) */
     /* The item drawer owns its own internal padding (tab bar + section), so strip the shared
@@ -390,6 +401,80 @@
     .dsx-run-row:hover { border-color: var(--border-strong); }
     .dsx-run-row .id { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
     .dsx-run-row .meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; }
+    .dsx-result-cell { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+    .dsx-result-cell .muted { color: var(--text-dim); }
+    .dsx-result-chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--border-subtle); background: var(--bg-elevated); border-radius: 999px; padding: 1px 6px; font-size: 10.5px; font-family: var(--font-mono); color: var(--text-secondary); }
+    .dsx-result-chip.score { color: var(--accent-primary); border-color: rgba(0,212,170,0.32); background: rgba(0,212,170,0.08); }
+    .dsx-result-chip.error { color: var(--error); border-color: rgba(239,68,68,0.32); background: rgba(239,68,68,0.08); }
+    .dsx-run-aggregate { display: grid; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); gap: 8px; }
+    .dsx-run-aggregate .tile { border: 1px solid var(--border-subtle); background: var(--bg-elevated); border-radius: 6px; padding: 8px 10px; }
+    .dsx-run-aggregate .value { color: var(--text-primary); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .dsx-run-aggregate .value .metric-score { font-size: inherit; font-weight: inherit; }
+    .dsx-run-aggregate .value .metric-na { font-size: inherit; }
+    .dsx-run-aggregate .label { color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+    .dsx-drawer-section.runs-compact { padding: 10px 12px; gap: 10px; }
+    .runs-compact .dsx-run-aggregate { grid-template-columns: repeat(auto-fit, minmax(76px, 1fr)); gap: 6px; }
+    .runs-compact .dsx-run-aggregate .tile { padding: 6px 8px; border-radius: 5px; }
+    .runs-compact .dsx-run-aggregate .value { font-size: 13px; }
+    .runs-compact .dsx-run-aggregate .label { font-size: 9px; margin-top: 1px; }
+    .dsx-run-result-table { width: 100%; border-collapse: collapse; }
+    .dsx-run-result-table th, .dsx-run-result-table td { border-bottom: 1px solid var(--border-subtle); padding: 7px 8px; text-align: left; vertical-align: top; font-size: 11.5px; }
+    .dsx-run-result-table th { color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; background: var(--bg-elevated); }
+    .runs-compact .dsx-run-result-table th,
+    .runs-compact .dsx-run-result-table td { padding: 5px 7px; font-size: 10.8px; vertical-align: middle; }
+    .runs-compact .dsx-run-result-table th { font-size: 9.5px; letter-spacing: 0.045em; }
+    .runs-compact .dsx-run-result-table .id { font-size: 11px; line-height: 1.3; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runs-compact .dsx-run-result-table .run-link { cursor: pointer; color: var(--text-primary); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; background: transparent; border: 0; padding: 0; margin: 0; text-align: left; font: inherit; }
+    .runs-compact .dsx-run-result-table .run-link:hover,
+    .runs-compact .dsx-run-result-table .run-link:focus-visible { color: var(--accent-primary); text-decoration-color: currentColor; outline: none; }
+    .dsx-run-output { max-width: 220px; max-height: 74px; overflow: hidden; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); color: var(--text-secondary); }
+
+    /* ITEM PAGE */
+    .dsx-item-page { min-height: 100%; background: var(--bg-base); }
+    .dsx-item-header { padding: var(--space-md); background: linear-gradient(180deg, rgba(0,212,170,0.035) 0%, var(--bg-surface) 100%); border-bottom: 1px solid var(--border-subtle); }
+    .dsx-item-head-main { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); flex-wrap: wrap; }
+    .dsx-item-title-wrap { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .dsx-item-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; }
+    .dsx-item-title-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+    .dsx-item-title-line .tv-copy-btn { margin-left: 0; opacity: 0.55; flex: none; }
+    .dsx-item-title { margin: 0; color: var(--text-primary); font-size: 22px; font-weight: 650; letter-spacing: 0; }
+    .dsx-item-meta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; color: var(--text-muted); font-size: 12px; }
+    .dsx-item-meta .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
+    .dsx-item-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .dsx-item-tabs { display: flex; gap: 2px; padding: 0; min-height: 36px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
+    .dsx-item-tab { border: 0; background: transparent; color: var(--text-muted); padding: 8px 14px; font-size: 13px; font-weight: 650; cursor: pointer; border-bottom: 2px solid transparent; }
+    .dsx-item-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+    .dsx-item-content { padding: var(--space-md); }
+    .dsx-item-details-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr); gap: var(--space-md); align-items: start; }
+    .dsx-item-field-stack { display: flex; flex-direction: column; gap: var(--space-md); min-width: 0; }
+    .dsx-item-side { display: flex; flex-direction: column; gap: var(--space-md); min-width: 0; }
+    .dsx-item-panel { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 8px; overflow: hidden; }
+    .dsx-item-panel-body { padding: var(--space-md); }
+    .dsx-item-panel-title { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; font-weight: 650; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .dsx-item-panel-title .tv-inline-actions { margin-left: 0; }
+    .dsx-item-runs-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface); }
+    .dsx-item-runs-table .run-name { color: var(--text-primary); font-weight: 600; background: transparent; border: 0; padding: 0; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+    .dsx-item-runs-table .run-name:hover,
+    .dsx-item-runs-table .run-name:focus-visible { color: var(--accent-primary); text-decoration-color: currentColor; outline: none; }
+    .dsx-table .col-run-name { width: 230px; }
+    .dsx-table .col-run-date { width: 150px; }
+    .dsx-table .col-run-model { width: 130px; }
+    .dsx-table .col-run-output { width: 255px; }
+    .dsx-table .col-run-trace { width: 54px; text-align: center; }
+    .dsx-item-runs-table tbody tr.output-expanded td { vertical-align: top; }
+    .dsx-item-runs-table th.col-run-output { padding-right: 32px; }
+    .dsx-item-runs-table tbody td.col-run-output { overflow: hidden; position: relative; z-index: 3; }
+    .dsx-run-output-body { min-width: 0; }
+    .dsx-item-run-output { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); color: var(--text-secondary); min-width: 0; }
+    .dsx-item-run-output.expanded { max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; text-overflow: clip; padding-right: 4px; }
+    .dsx-output-expand-btn { position: absolute; top: 50%; right: 13px; transform: translateY(-50%); margin-left: 0; opacity: 0.8; z-index: 20; width: 22px; height: 22px; border-radius: 5px; background: var(--bg-elevated); box-shadow: 0 0 0 1px var(--border-subtle); }
+    .dsx-output-expand-btn:hover { opacity: 1; }
+    .dsx-trace-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 24px; border: 0; border-radius: 5px; background: var(--bg-elevated); color: var(--text-muted); cursor: pointer; padding: 0; }
+    .dsx-trace-icon-btn:hover { background: var(--bg-hover); color: var(--accent-secondary); }
+    .dsx-trace-icon-btn svg { width: 14px; height: 14px; }
+    @media (max-width: 980px) {
+      .dsx-item-details-grid { grid-template-columns: 1fr; }
+    }
 
     /* LINEAGE */
     .dsx-lineage { padding: var(--space-md); display: flex; flex-direction: column; gap: 10px; font-family: var(--font-mono); font-size: 13px; }
@@ -410,6 +495,15 @@
     .dsx-lineage-change .ctype { font-weight: 600; color: var(--text-primary); }
     .dsx-lineage-change .cdetail { color: var(--text-secondary); }
     .dsx-lineage-change .cwhen { margin-left: auto; color: var(--text-dim); font-size: 11px; padding-left: 8px; }
+    .dsx-lineage-meta { color: var(--text-dim); font-size: 11px; }
+    .dsx-lineage-user-wrap { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+    .dsx-lineage-user.owner-name { font-size: 11px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 7px 2px 3px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-elevated); }
+    .dsx-lineage-deltas { display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+    .dsx-lineage-node .actions { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+    .dsx-lineage-node .mini-action { border: 1px solid var(--border-default); background: var(--bg-elevated); color: var(--text-muted); border-radius: 5px; padding: 2px 6px; font-size: 10.5px; cursor: pointer; }
+    .dsx-lineage-node .mini-action:hover { color: var(--accent-primary); border-color: rgba(0,212,170,0.35); }
+    .dsx-lineage-times { display: inline-flex; gap: 6px; align-items: center; color: var(--text-dim); font-size: 10.5px; padding-left: 8px; white-space: nowrap; }
+    .dsx-lineage-times .sep { color: var(--border-strong); }
 
     /* SETTINGS */
     .dsx-settings { max-width: 640px; display: flex; flex-direction: column; gap: var(--space-lg); }
@@ -433,10 +527,16 @@
     .dsx-compare-tabs { display: flex; gap: 2px; padding: 0 var(--space-xl); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface); }
     .dsx-compare-list { padding: var(--space-md) var(--space-xl); display: flex; flex-direction: column; gap: 6px; }
     .dsx-diff-row { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden; }
-    .dsx-diff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; cursor: pointer; background: var(--bg-surface); }
+    .dsx-diff-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; cursor: pointer; background: var(--bg-surface); }
     .dsx-diff-head:hover { background: var(--bg-hover); }
+    .dsx-diff-title { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .dsx-diff-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .dsx-diff-idline { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+    .dsx-diff-idlabel { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
     .dsx-diff-head .id { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); }
-    .dsx-diff-head .fields { font-size: 11px; color: var(--text-muted); }
+    .dsx-diff-head .copy { color: var(--text-dim); font-size: 11px; cursor: pointer; padding: 1px 4px; border-radius: 4px; }
+    .dsx-diff-head .copy:hover { color: var(--accent-primary); background: rgba(0,212,170,0.08); }
+    .dsx-diff-head .fields { font-size: 11px; color: var(--text-muted); flex: 0 0 auto; }
     .dsx-diff-body { display: none; border-top: 1px solid var(--border-subtle); padding: var(--space-md); flex-direction: column; gap: var(--space-sm); }
     .dsx-diff-row.expanded .dsx-diff-body { display: flex; }
     .dsx-diff-field { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 10px; font-family: var(--font-mono); font-size: 12px; }
@@ -529,7 +629,7 @@
       datasetRef: null,    // dataset slug from URL
       tab: 'items',        // 'items' | 'versions' | 'runs' | 'lineage' | 'settings'
       versionLabel: null,  // version label (or alias) currently active
-      itemId: null,        // for drawer open via URL
+      itemId: null,        // full item page via URL
       baseVersion: null,   // compare base
       headVersion: null,   // compare head
       q: '',               // catalog search
@@ -550,10 +650,13 @@
       // drawer
       drawerApi: null,
       itemRowMap: new Map(),
-      selection: new Set(),
+      itemRunSort: 'created_desc',
+      itemRunOutputsExpanded: false,
+      datasetRunSort: 'created_desc',
       // ui ephemeral
       versionPopoverOpen: false,
     };
+    let itemPageRenderSeq = 0;
 
     // ============================================================
     // API
@@ -615,6 +718,10 @@
     }
     // Inline icons (currentColor) so buttons inherit theme colors and stay crisp at any zoom.
     const ICON_DOTS = '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="13" r="1.4"/></svg>';
+    const ICON_COPY = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>';
+    const ICON_EXPAND = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3H3v3"/><path d="M10 3h3v3"/><path d="M13 10v3h-3"/><path d="M3 10v3h3"/><path d="M3 6l4-4"/><path d="M13 6L9 2"/><path d="M3 10l4 4"/><path d="M13 10l-4 4"/></svg>';
+    const ICON_TRACE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>';
+    const ICON_EXTERNAL = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>';
     function relTime(iso){
       if (!iso) return '—';
       const d = new Date(iso); if (isNaN(d.getTime())) return '—';
@@ -625,6 +732,16 @@
       const da = Math.floor(h/24); if (da < 30) return da+'d ago';
       const mo = Math.floor(da/30); if (mo < 12) return mo+'mo ago';
       return Math.floor(mo/12)+'y ago';
+    }
+    function fullDate(iso){
+      if (!iso) return '—';
+      const d = new Date(iso); if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+    function fullDateTime(iso){
+      if (!iso) return '—';
+      const d = new Date(iso); if (isNaN(d.getTime())) return '—';
+      return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
     function prettyJSON(v){
       if (v == null) return '';
@@ -704,6 +821,184 @@
     function runDetailUrl(runId){
       return apiUrl('/projects/' + encodeURIComponent(state.slug) + '/runs/' + encodeURIComponent(runId));
     }
+    function userDisplay(user){
+      if (!user) return '';
+      return user.display_name || user.email || user.id || '';
+    }
+    function userTitle(user){
+      if (!user) return '';
+      return [user.display_name, user.email, user.id].filter(Boolean).join(' · ');
+    }
+    function getInitials(label){
+      const text = String(label || '').trim();
+      if (!text) return '?';
+      const parts = text.replace(/@.*/, '').split(/[\s._-]+/).filter(Boolean);
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return text.slice(0, 2).toUpperCase();
+    }
+    function userPill(user, titlePrefix){
+      const label = userDisplay(user);
+      if (!label) return null;
+      return el('span', { className: 'owner-name dsx-lineage-user', title: (titlePrefix ? titlePrefix + ': ' : '') + userTitle(user) }, [
+        el('span', { className: 'owner-avatar' }, getInitials(label)),
+        document.createTextNode(label),
+      ]);
+    }
+    function userLabelPill(labelText, user, titlePrefix){
+      const pill = userPill(user, titlePrefix || labelText);
+      if (!pill) return null;
+      return el('span', { className: 'dsx-lineage-user-wrap' }, [
+        document.createTextNode(labelText + ':'),
+        pill,
+      ]);
+    }
+    function displayItemId(itemId){
+      const text = String(itemId || '');
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)) {
+        return text.slice(0, 8) + '...' + text.slice(-4);
+      }
+      return text;
+    }
+    function isUuidLike(value){
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+    }
+    function compareItemIdentity(row, fallbackIndex){
+      const itemId = row && (row.item_id || row);
+      const index = row && (row.target_index != null ? row.target_index : row.index);
+      const displayIndex = index != null ? index : fallbackIndex;
+      if (isUuidLike(itemId)) {
+        const number = displayIndex != null ? Number(displayIndex) + 1 : null;
+        return {
+          label: 'Item',
+          value: number != null && Number.isFinite(number) ? '#' + number : 'changed item',
+          title: (number != null && Number.isFinite(number) ? 'Item index ' + number + '. ' : '') + 'Full identifier: ' + itemId,
+          copyValue: itemId,
+        };
+      }
+      return {
+        label: 'Item ID',
+        value: displayItemId(itemId),
+        title: String(itemId || ''),
+        copyValue: itemId,
+      };
+    }
+    function hasUserProvidedItemId(itemId){
+      const text = String(itemId || '').trim();
+      if (!text) return false;
+      if (isUuidLike(text)) return false;
+      if (/^item-\d+$/i.test(text)) return false;
+      if (/^ds_[0-9a-f]{64}__\d{4}$/i.test(text)) return false;
+      return true;
+    }
+    function compactItemPreview(v){
+      if (v == null || v === '') return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      if (Array.isArray(v)) {
+        try { return JSON.stringify(v); } catch(_) { return String(v); }
+      }
+      if (typeof v === 'object') {
+        const preferred = ['question', 'query', 'prompt', 'input', 'text', 'context'];
+        const parts = [];
+        preferred.forEach(key => {
+          if (Object.prototype.hasOwnProperty.call(v, key) && v[key] != null && v[key] !== '') {
+            const raw = typeof v[key] === 'string' ? v[key] : fullPreview(v[key]);
+            parts.push(key + ': ' + raw);
+          }
+        });
+        if (parts.length) return parts.join('\n');
+        try { return JSON.stringify(v); } catch(_) { return String(v); }
+      }
+      return String(v);
+    }
+    function rawItemPreview(v){
+      if (v == null || v === '') return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      try { return JSON.stringify(v); } catch(_) { return String(v); }
+    }
+    function showPreviewPopover(anchor, text){
+      hidePreviewPopover();
+      if (!text) return;
+      const pop = el('div', { className: 'dsx-preview-popover' });
+      pop.textContent = text;
+      document.body.appendChild(pop);
+      const rect = anchor.getBoundingClientRect();
+      const margin = 10;
+      const popRect = pop.getBoundingClientRect();
+      let left = Math.min(rect.left, window.innerWidth - popRect.width - margin);
+      left = Math.max(margin, left);
+      let top = rect.bottom + 8;
+      if (top + popRect.height > window.innerHeight - margin) top = Math.max(margin, rect.top - popRect.height - 8);
+      pop.style.left = left + 'px';
+      pop.style.top = top + 'px';
+      state._previewPopover = pop;
+    }
+    function schedulePreviewPopover(anchor, text){
+      clearPreviewPopoverTimer();
+      state._previewPopoverTimer = setTimeout(() => showPreviewPopover(anchor, text), 700);
+    }
+    function clearPreviewPopoverTimer(){
+      if (state._previewPopoverTimer) {
+        clearTimeout(state._previewPopoverTimer);
+        state._previewPopoverTimer = null;
+      }
+    }
+    function hidePreviewPopover(){
+      clearPreviewPopoverTimer();
+      if (state._previewPopover) {
+        state._previewPopover.remove();
+        state._previewPopover = null;
+      }
+    }
+    function publishedByUser(version){
+      const status = String((version && version.status) || '').toLowerCase();
+      if (!version || status === 'draft') return null;
+      return version.published_by || version.created_by || null;
+    }
+    function fmtScore(v){
+      if (v == null || v === '') return '—';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      return Math.abs(n) >= 10 ? n.toFixed(1) : n.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    }
+    function metricScoreNode(value, peerValues){
+      if (value == null || value === '') return el('span', { className: 'metric-na' }, '—');
+      const parsed = window.QymMetrics && window.QymMetrics.parseScoreValue
+        ? window.QymMetrics.parseScoreValue(value)
+        : (Number.isFinite(Number(value)) ? Number(value) : null);
+      if (parsed == null) return el('span', { className: 'metric-score' }, fmtScore(value));
+      const metricType = window.QymMetrics && window.QymMetrics.detectMetricTypeFromAvg
+        ? window.QymMetrics.detectMetricTypeFromAvg(parsed)
+        : (parsed > 1 || parsed < 0 ? 'numeric' : 'score');
+      const cls = window.QymMetrics && window.QymMetrics.getMetricColorClass
+        ? window.QymMetrics.getMetricColorClass(parsed, metricType)
+        : '';
+      const parsedPeers = Array.isArray(peerValues) && window.QymMetrics && window.QymMetrics.parseScoreValue
+        ? peerValues.map(v => window.QymMetrics.parseScoreValue(v)).filter(v => v != null)
+        : [];
+      const display = window.QymMetrics && window.QymMetrics.formatMetricValueSmart
+        ? window.QymMetrics.formatMetricValueSmart(parsed, metricType, parsedPeers)
+        : fmtScore(parsed);
+      return el('span', { className: ['metric-score', cls].filter(Boolean).join(' ') }, display);
+    }
+    function renderResultSummary(summary){
+      const wrap = el('div', { className: 'dsx-result-cell' });
+      const runs = summary && Number(summary.run_count || 0);
+      if (!runs) {
+        wrap.appendChild(el('span', { className: 'muted' }, '—'));
+        return wrap;
+      }
+      wrap.appendChild(el('span', { className: 'dsx-result-chip' }, runs + ' run' + (runs === 1 ? '' : 's')));
+      return wrap;
+    }
+    function fmtSeconds(ms){
+      if (ms == null || ms === '') return '—';
+      const n = Number(ms);
+      if (!Number.isFinite(n)) return '—';
+      const seconds = n / 1000;
+      return seconds >= 10 ? seconds.toFixed(1) + 's' : seconds.toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + 's';
+    }
 
     // ============================================================
     // URL ROUTING
@@ -747,10 +1042,12 @@
       const params = new URLSearchParams();
       const set = (k, v) => { if (v != null && v !== '' && v !== false) params.set(k, v); };
       if (mode === 'detail') {
-        set('tab', overrides.tab !== undefined ? overrides.tab : state.tab);
+        const nextTab = overrides.tab !== undefined ? overrides.tab : state.tab;
+        const nextItem = overrides.item !== undefined ? overrides.item : state.itemId;
+        set('tab', nextTab);
         set('v', overrides.v !== undefined ? overrides.v : state.versionLabel);
-        set('item', overrides.item !== undefined ? overrides.item : state.itemId);
-        if ((overrides.tab !== undefined ? overrides.tab : state.tab) === 'items') {
+        set('item', nextItem);
+        if (nextTab === 'items' || nextItem) {
           const pg = overrides.page !== undefined ? overrides.page : state.page;
           if (pg) set('page', pg);
           set('search', overrides.search !== undefined ? overrides.search : state.search);
@@ -786,7 +1083,7 @@
         && state.mode === 'detail'
         && p.slug === state.slug
         && p.ref === state.datasetRef
-        && !!document.getElementById('dsx-tab-content');
+        && !!(document.getElementById('dsx-tab-content') || document.querySelector('.dsx-item-page'));
     }
     function navigate(overrides, opts){
       opts = opts || {};
@@ -904,11 +1201,19 @@
         state.activeVersion = resolveActiveVersion();
       }
       normalizeActiveVersionUrl();
+      if (state.itemId) {
+        await renderItemPage();
+        return;
+      }
+      itemPageRenderSeq++;
+      if (!document.getElementById('dsx-tab-content')) {
+        await renderDetail();
+        return;
+      }
       const nextVersion = state.activeVersion && state.activeVersion.version;
       refreshDetailChrome({ tabOnly: !opts.forceReload && prevVersion === nextVersion });
       const host = document.getElementById('dsx-tab-content');
       if (host) renderTabContent(host);
-      if (state.itemId && state.tab === 'items') openItemDrawer(state.itemId);
     }
 
     async function refreshDetailView(opts){
@@ -922,6 +1227,7 @@
     }
 
     async function renderCatalog(){
+      itemPageRenderSeq++;
       const root = document.getElementById('dsx-root');
       root.innerHTML = '';
       Shell.setBreadcrumbs([
@@ -932,7 +1238,7 @@
     }
     async function renderDetail(){
       const root = document.getElementById('dsx-root');
-      root.innerHTML = '';
+      if (!root.children.length) root.innerHTML = '';
       const ok = await ensureDatasetDetailLoaded();
       if (!ok) {
         root.innerHTML = '<div class="dsx-empty"><h3>Dataset not found</h3></div>';
@@ -944,13 +1250,16 @@
         { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
         { label: state.dataset.name },
       ]);
-      root.appendChild(detailView());
-      // Open drawer if URL has ?item=
-      if (state.itemId && state.tab === 'items') openItemDrawer(state.itemId);
+      if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: false });
+      if (state.itemId) {
+        return renderItemPage();
+      }
+      itemPageRenderSeq++;
+      root.replaceChildren(detailView());
     }
     async function renderCompare(){
+      itemPageRenderSeq++;
       const root = document.getElementById('dsx-root');
-      root.innerHTML = '';
       try {
         const dr = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug));
         state.dataset = dr.dataset || dr;
@@ -963,7 +1272,7 @@
         { label: state.dataset.name, href: '/projects/' + state.slug + '/datasets/' + encodeURIComponent(state.datasetRef) },
         { label: 'Compare' },
       ]);
-      root.appendChild(compareView());
+      root.replaceChildren(compareView());
     }
 
     function resolveActiveVersion(){
@@ -996,14 +1305,6 @@
       sub.id = 'dsx-catalog-sub';
       sub.textContent = 'Curated examples you version, compare, and run against any model.';
       hero.appendChild(sub);
-      const actions = el('div', { className: 'dsx-catalog-hero-actions' });
-      const newBtn = el('button', { className: 'shell-btn shell-btn-primary' }, '+ New dataset ▾');
-      newBtn.addEventListener('click', e => { e.stopPropagation(); openContextMenu(newBtn, [
-        { label: 'Start blank', onClick: openNewDatasetWizard },
-        { label: 'Import CSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
-      ]); });
-      actions.appendChild(newBtn);
-      hero.appendChild(actions);
       container.appendChild(hero);
 
       // Toolbar
@@ -1013,8 +1314,14 @@
       [['updated_desc', 'Last updated'], ['name_asc', 'Name A→Z'], ['items_desc', 'Items (most)'], ['runs_desc', 'Runs (most)']].forEach(([v, l]) => {
         const opt = el('option', { value: v }, l); if (v === (state._catalogSort || 'updated_desc')) opt.selected = true; sortSel.appendChild(opt);
       });
+      const newBtn = el('button', { className: 'shell-btn shell-btn-primary', style: { flex: 'none' } }, '+ New dataset ▾');
+      newBtn.addEventListener('click', e => { e.stopPropagation(); openContextMenu(newBtn, [
+        { label: 'Start blank', onClick: openNewDatasetWizard },
+        { label: 'Import CSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
+      ]); });
       toolbar.appendChild(el('div', { className: 'grow' }, dsxSearchControl(search)));
       toolbar.appendChild(sortSel);
+      toolbar.appendChild(newBtn);
       container.appendChild(toolbar);
 
       const grid = el('div', { className: 'dsx-grid', id: 'dsx-catalog-grid' });
@@ -1039,7 +1346,6 @@
         // First-run: let the empty-state CTA be the single focal point — the hero buttons
         // and the search/sort toolbar are noise when there's nothing to act on yet.
         const isEmpty = totalCount === 0;
-        actions.style.display = isEmpty ? 'none' : '';
         toolbar.style.display = isEmpty ? 'none' : '';
         sub.textContent = isEmpty
           ? 'Curated examples you version, compare, and run against any model.'
@@ -1117,7 +1423,8 @@
         const stats = el('div', { className: 'dsx-card-stats' });
         stats.appendChild(el('span', { className: 'stat', html: '<strong>' + itemCount + '</strong> items' }));
         stats.appendChild(el('span', { className: 'stat', html: '<strong>' + (d.run_count || 0) + '</strong> runs' }));
-        if (d.updated_at) stats.appendChild(el('span', { className: 'stat', style: { marginLeft: 'auto' } }, 'updated ' + relTime(d.updated_at)));
+        if (d.created_at) stats.appendChild(el('span', { className: 'stat', style: { marginLeft: 'auto' } }, 'created ' + fullDate(d.created_at)));
+        if (d.updated_at) stats.appendChild(el('span', { className: 'stat' }, 'updated ' + relTime(d.updated_at)));
         card.appendChild(stats);
         return card;
       }
@@ -1602,18 +1909,15 @@
 
     function fillHeroMeta(meta){
       meta.innerHTML = '';
-      meta.appendChild(el('span', null, pluralize(state.dataset.item_count || (state.activeVersion && state.activeVersion.item_count) || 0, 'item')));
-      meta.appendChild(el('span', { className: 'dot' }));
       meta.appendChild(el('span', null, pluralize((state.versions || []).length, 'version')));
       meta.appendChild(el('span', { className: 'dot' }));
       meta.appendChild(el('span', null, pluralize(state.dataset.run_count || 0, 'run')));
-      if (state.dataset.updated_at) {
-        meta.appendChild(el('span', { className: 'dot' }));
-        meta.appendChild(el('span', null, 'updated ' + relTime(state.dataset.updated_at)));
-      }
+
       // Lineage, in context: where the active version came from. The full tree lives on the Lineage tab.
       const av = state.activeVersion;
       if (av) {
+        meta.appendChild(el('span', { className: 'dot' }));
+        meta.appendChild(el('span', null, pluralize(av.item_count || 0, 'item')));
         const parent = av.parent_version_id && (state.versions || []).find(x => x.id === av.parent_version_id);
         if (parent) {
           meta.appendChild(el('span', { className: 'dot' }));
@@ -1624,6 +1928,20 @@
           meta.appendChild(el('span', { className: 'dot' }));
           meta.appendChild(el('span', null, 'source: ' + av.source_type));
         }
+        const publisherPill = userLabelPill('Published By', publishedByUser(av));
+        if (publisherPill) {
+          meta.appendChild(el('span', { className: 'dot' }));
+          meta.appendChild(publisherPill);
+        }
+        const creatorPill = userLabelPill('Drafted By', av.created_by);
+        if (creatorPill) {
+          meta.appendChild(el('span', { className: 'dot' }));
+          meta.appendChild(creatorPill);
+        }
+      }
+      if (state.dataset.updated_at) {
+        meta.appendChild(el('span', { className: 'dot' }));
+        meta.appendChild(el('span', null, 'updated ' + relTime(state.dataset.updated_at)));
       }
     }
 
@@ -1722,11 +2040,13 @@
       const hero = el('div', { className: 'dsx-hero' });
       const top = el('div', { className: 'dsx-hero-top' });
       const idCol = el('div', { className: 'dsx-hero-id' });
+      const titleRow = el('div', { className: 'dsx-hero-title-row' });
 
       const nameEl = el('h1', { className: 'dsx-hero-name' });
       nameEl.appendChild(document.createTextNode(state.dataset.name));
       nameEl.appendChild(el('span', { className: 'dsx-name-edit', title: 'Rename', onclick: renameDatasetFlow }, '✎'));
-      idCol.appendChild(nameEl);
+      titleRow.appendChild(nameEl);
+      idCol.appendChild(titleRow);
 
       if (state.dataset.description) {
         const descEl = el('p', { className: 'dsx-hero-desc', title: 'Click to edit description', style: { cursor: 'pointer' } });
@@ -1826,7 +2146,7 @@
       row.appendChild(el('span', { className: 'vlabel' }, v.version));
       row.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
       const when = relTime(v.published_at || v.created_at);
-      row.appendChild(el('div', { className: 'vmeta' }, pluralize(v.item_count || 0, 'item') + ' · ' + when));
+      row.appendChild(el('div', { className: 'vmeta' }, pluralize(v.item_count || 0, 'item') + ' · ' + pluralize(v.run_count || 0, 'run') + ' · ' + when));
       return row;
     }
 
@@ -1874,17 +2194,11 @@
       }
 
       const isDraft = v.status === 'draft';
-      state.selection = new Set();
 
       const toolbar = el('div', { className: 'dsx-items-toolbar' });
       const left = el('div', { className: 'left' });
       const searchInput = el('input', { className: 'dsx-itemsearch', type: 'text', placeholder: 'Search items...', value: state.search });
       left.appendChild(dsxSearchControl(searchInput));
-      const sortSel = el('select', { className: 'filter-select' });
-      [['index_asc', 'Index ↑'], ['index_desc', 'Index ↓'], ['updated_desc', 'Updated ↓'], ['item_id', 'ID'] ].forEach(([val, lbl]) => {
-        const opt = el('option', { value: val }, lbl); if (val === state.sort) opt.selected = true; sortSel.appendChild(opt);
-      });
-      left.appendChild(sortSel);
       if (state.label) {
         const labelChip = el('span', { className: 'dsx-pill info' });
         labelChip.textContent = 'label: ' + state.label;
@@ -1892,15 +2206,7 @@
         labelChip.appendChild(x);
         left.appendChild(labelChip);
       }
-      const bulkHost = el('span', { id: 'dsx-bulk-host' });
-      left.appendChild(bulkHost);
       toolbar.appendChild(left);
-
-      const right = el('div', { className: 'right' });
-      const pageSel = el('select', { className: 'filter-select', style: { minWidth: '92px' } });
-      [25, 50, 100, 250].forEach(n => { const opt = el('option', { value: n }, n + '/page'); if (n === state.pageSize) opt.selected = true; pageSel.appendChild(opt); });
-      right.appendChild(pageSel);
-      toolbar.appendChild(right);
       host.appendChild(toolbar);
 
       const tableWrap = el('div', { className: 'dsx-table-wrap paged', id: 'dsx-table-wrap' });
@@ -1911,12 +2217,10 @@
 
       const debouncedSearch = debounce(() => { state.search = searchInput.value; state.page = 0; navigate({ search: state.search, page: 0 }, { replace: true, silent: true }); loadItems(); }, 200);
       searchInput.addEventListener('input', debouncedSearch);
-      sortSel.addEventListener('change', () => { state.sort = sortSel.value; navigate({ sort: state.sort }, { replace: true, silent: true }); loadItems(); });
-      pageSel.addEventListener('change', () => { state.pageSize = parseInt(pageSel.value, 10); state.page = 0; navigate({ page: 0 }, { replace: true, silent: true }); loadItems(); });
 
       loadItems();
 
-      // Allow the item drawer (a separate closure) to refresh a single row in
+      // Allow the item page/editor flows to refresh a single row in
       // place after an edit, so the table reflects changes without a reload.
       state.refreshItemRow = function(updated){
         if (!updated || updated.id == null) return false;
@@ -1927,18 +2231,25 @@
         list[idx] = Object.assign({}, list[idx], updated);
         const oldTr = state.itemRowMap.get(updated.id);
         if (!oldTr || !oldTr.isConnected) return false;
-        const newTr = renderItemRow(list[idx], isDraft);
+        const showIdColumn = list.some(item => hasUserProvidedItemId(item.item_id));
+        const newTr = renderItemRow(list[idx], isDraft, showIdColumn, (state.itemsList && state.itemsList.metricNames) || []);
         state.itemRowMap.set(updated.id, newTr);
         oldTr.replaceWith(newTr);
         return true;
       };
 
-      async function loadItems(){
-        tableWrap.innerHTML = '';
-        for (let i = 0; i < 5; i++) {
-          const r = el('div', { className: 'dsx-skel-row' });
-          ['40%','15%','25%','30%','10%'].forEach(w => r.appendChild(el('div', { className: 'dsx-skeleton', style: { width: w } })));
-          tableWrap.appendChild(r);
+      async function loadItems(options){
+        const keepTable = !!(options && options.keepTable);
+        const scrollLeft = tableWrap.scrollLeft;
+        if (keepTable) {
+          tableWrap.setAttribute('aria-busy', 'true');
+        } else {
+          tableWrap.innerHTML = '';
+          for (let i = 0; i < 5; i++) {
+            const r = el('div', { className: 'dsx-skel-row' });
+            ['40%','15%','25%','30%','10%'].forEach(w => r.appendChild(el('div', { className: 'dsx-skeleton', style: { width: w } })));
+            tableWrap.appendChild(r);
+          }
         }
         try {
           const params = new URLSearchParams();
@@ -1949,13 +2260,23 @@
           if (state.sort) params.set('sort', state.sort);
           if (state.label) params.set('label', state.label);
           const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items?' + params.toString());
-          state.itemsList = { items: resp.items || [], total: resp.total || 0 };
-          renderItemsTable();
+          const items = resp.items || [];
+          const metricNames = (resp.metric_names && resp.metric_names.length)
+            ? resp.metric_names
+            : Array.from(new Set(items.flatMap(item => Object.keys(((item.result_summary || {}).metrics) || {})))).sort();
+          state.itemsList = { items, total: resp.total || 0, metricNames };
+          renderItemsTable({ scrollLeft: keepTable ? scrollLeft : null });
           renderPager();
-        } catch(e) { Shell.toast(e.message || 'Failed to load items', 'error'); tableWrap.innerHTML = ''; }
+        } catch(e) {
+          Shell.toast(e.message || 'Failed to load items', 'error');
+          if (!keepTable) tableWrap.innerHTML = '';
+        } finally {
+          tableWrap.removeAttribute('aria-busy');
+        }
       }
 
-      function renderItemsTable(){
+      function renderItemsTable(options){
+        hidePreviewPopover();
         tableWrap.innerHTML = '';
         const items = state.itemsList.items;
         if (items.length === 0) {
@@ -1971,29 +2292,61 @@
           tableWrap.appendChild(e);
           return;
         }
-        const table = el('table', { className: 'dsx-table' });
-        const thead = el('thead');
-        const trh = el('tr');
-        const headerCheck = el('input', { type: 'checkbox', title: 'Select all' });
-        const selectedOnPage = items.filter(i => state.selection.has(i.id)).length;
-        headerCheck.checked = selectedOnPage > 0 && selectedOnPage === items.length;
-        headerCheck.indeterminate = selectedOnPage > 0 && selectedOnPage < items.length;
-        headerCheck.addEventListener('change', () => {
-          state.selection = headerCheck.checked ? new Set(items.map(i => i.id)) : new Set();
-          renderItemsTable(); updateBulkBar();
-        });
-        trh.appendChild(el('th', { className: 'col-check' }, headerCheck));
-        ['#', 'ID', 'Input', 'Expected', 'Runs', 'Updated', ''].forEach((h, i) => trh.appendChild(el('th', { className: ['col-idx','col-id','','','col-runs','col-updated','col-actions'][i] || '' }, h)));
-        thead.appendChild(trh); table.appendChild(thead);
-        const tbody = el('tbody');
+        const showIdColumn = items.some(item => hasUserProvidedItemId(item.item_id));
+        const metricNames = state.itemsList.metricNames || [];
+        const columnDefs = [
+          { id: 'index', label: '#', className: 'col-idx', sortKey: 'index', width: 48, minWidth: 40, resizable: true },
+        ];
+        if (showIdColumn) columnDefs.push({ id: 'item_id', label: 'ID', className: 'col-id', sortKey: 'item_id', width: 150, minWidth: 96, resizable: true });
+        columnDefs.push(
+          { id: 'input', label: 'Input', className: 'col-input', sortKey: 'input', width: 425, minWidth: 180, resizable: true },
+          { id: 'expected', label: 'Expected', className: 'col-expected', sortKey: 'expected', width: 340, minWidth: 160, resizable: true },
+          { id: 'metadata', label: 'Metadata', className: 'col-metadata', sortKey: 'metadata', width: 220, minWidth: 120, resizable: true },
+          { id: 'runs', label: 'Runs', className: 'col-runs', sortKey: 'runs', width: 72, minWidth: 56, resizable: true },
+        );
+        metricNames.forEach(metric => columnDefs.push({ id: 'metric:' + metric, label: metric, className: 'col-metric', sortKey: 'metric:' + metric, width: 104, minWidth: 72, resizable: true }));
+        columnDefs.push(
+          { id: 'latency', label: 'Latency', className: 'col-latency', sortKey: 'latency', width: 90, minWidth: 72, resizable: true },
+          { id: 'edits', label: 'Edits', className: 'col-edits', sortKey: 'edits', width: 72, minWidth: 56, resizable: true },
+          { id: 'actions', label: '', className: 'col-actions', width: 44, minWidth: 44, resizable: false },
+        );
+        function sortStateFor(key){
+          if (String(state.sort || '') === key + '_asc') return 'ascending';
+          if (String(state.sort || '') === key + '_desc') return 'descending';
+          if (key.startsWith('metric:')) {
+            if (String(state.sort || '') === key + ':asc') return 'ascending';
+            if (String(state.sort || '') === key + ':desc') return 'descending';
+          }
+          if (key === 'index' && (!state.sort || state.sort === 'index_asc')) return 'ascending';
+          if (key === 'item_id' && state.sort === 'item_id') return 'ascending';
+          return 'none';
+        }
+        function sortValueFor(key, nextDir){
+          if (key.startsWith('metric:')) return key + ':' + nextDir;
+          return key + '_' + nextDir;
+        }
         state.itemRowMap = new Map();
-        items.forEach(item => {
-          const tr = renderItemRow(item, isDraft);
-          state.itemRowMap.set(item.id, tr);
-          tbody.appendChild(tr);
+        window.QymDataTable.render({
+          host: tableWrap,
+          tableClass: 'dsx-table',
+          storageKey: 'datasets.items',
+          minWidth: 1420,
+          scrollLeft: options && options.scrollLeft != null ? options.scrollLeft : null,
+          columns: columnDefs,
+          rows: items,
+          sortState: sortStateFor,
+          onSort: (_column, nextDir, sortKey) => {
+            state.sort = sortValueFor(sortKey, nextDir);
+            state.page = 0;
+            navigate({ sort: state.sort, page: 0 }, { replace: true, silent: true });
+            loadItems({ keepTable: true });
+          },
+          renderRow: item => {
+            const tr = renderItemRow(item, isDraft, showIdColumn, metricNames);
+            state.itemRowMap.set(item.id, tr);
+            return tr;
+          },
         });
-        table.appendChild(tbody);
-        tableWrap.appendChild(table);
 
         if (isDraft) {
           const addBtn = el('button', { className: 'dsx-addrow', onclick: () => openNewItemFlow() }, '+ Add new item');
@@ -2001,66 +2354,35 @@
           ftr.appendChild(addBtn);
           tableWrap.appendChild(ftr);
         }
-        updateBulkBar();
       }
 
-      function updateBulkBar(){
-        bulkHost.innerHTML = '';
-        if (state.selection.size === 0) return;
-        const bar = el('span', { className: 'dsx-bulk-bar' });
-        bar.appendChild(document.createTextNode(state.selection.size + ' selected'));
-        bar.appendChild(el('span', { className: 'sep' }));
-        if (isDraft) bar.appendChild(el('button', { className: 'danger', onclick: deleteSelected }, 'Delete'));
-        bar.appendChild(el('button', { onclick: copySelectionJSONL }, 'Copy as JSONL'));
-        bar.appendChild(el('button', { onclick: () => { state.selection = new Set(); renderItemsTable(); updateBulkBar(); } }, 'Clear'));
-        bulkHost.appendChild(bar);
-      }
-
-      async function deleteSelected(){
-        const ids = Array.from(state.selection);
-        const confirmed = await Shell.openConfirmDialog({
-          title: 'Delete ' + pluralize(ids.length, 'item') + '?',
-          description: 'This cannot be undone. The items will be removed from this draft.',
-          confirmLabel: 'Delete',
-          danger: true,
-        });
-        if (!confirmed || !confirmed.confirmed) return;
-        const itemIds = ids.map(pk => (state.itemsList.items.find(i => i.id === pk) || {}).item_id).filter(Boolean);
-        try {
-          await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items:bulk?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body: { deletes: itemIds } });
-          Shell.toast(pluralize(ids.length, 'item') + ' deleted', 'success');
-          state.selection = new Set();
-          refreshDetailView({ force: true });
-        } catch(e) { Shell.toast(e.message || 'Delete failed', 'error'); }
-      }
-
-      function copySelectionJSONL(){
-        const lines = state.itemsList.items.filter(i => state.selection.has(i.id)).map(i => JSON.stringify({ item_id: i.item_id, input: i.input, expected_output: i.expected_output, metadata: i.metadata, labels: i.labels }));
-        copyToClipboard(lines.join('\n'));
-      }
-
-      function renderItemRow(item, isDraft){
+      function renderItemRow(item, isDraft, showIdColumn, metricNames){
         const tr = el('tr', { dataset: { itemPk: item.id, itemId: item.item_id } });
-        if (state.selection.has(item.id)) tr.classList.add('selected');
-        const checkTd = el('td', { className: 'col-check' });
-        const cb = el('input', { type: 'checkbox' });
-        cb.checked = state.selection.has(item.id);
-        cb.addEventListener('click', e => e.stopPropagation());
-        cb.addEventListener('change', () => { if (cb.checked) state.selection.add(item.id); else state.selection.delete(item.id); tr.classList.toggle('selected', cb.checked); updateBulkBar(); });
-        checkTd.appendChild(cb);
-        tr.appendChild(checkTd);
         tr.appendChild(el('td', { className: 'col-idx' }, String(item.index)));
-        const idTd = el('td', { className: 'col-id' });
-        const idSpan = el('span', null, item.item_id);
-        idTd.appendChild(idSpan);
-        const copyBtn = el('span', { className: 'copy', title: 'Copy', onclick: e => { e.stopPropagation(); copyToClipboard(item.item_id); } }, '⧉');
-        idTd.appendChild(copyBtn);
-        tr.appendChild(idTd);
+        if (showIdColumn) {
+          const idTd = el('td', { className: 'col-id' });
+          if (hasUserProvidedItemId(item.item_id)) {
+            const idSpan = el('span', null, item.item_id);
+            idTd.appendChild(idSpan);
+            const copyBtn = el('span', { className: 'copy', title: 'Copy', onclick: e => { e.stopPropagation(); copyToClipboard(item.item_id); } }, '⧉');
+            idTd.appendChild(copyBtn);
+          }
+          tr.appendChild(idTd);
+        }
 
         tr.appendChild(makePreviewCell(item, 'input', isDraft));
         tr.appendChild(makePreviewCell(item, 'expected_output', isDraft));
-        tr.appendChild(el('td', { className: 'col-runs' }, item.run_count ? String(item.run_count) : '—'));
-        tr.appendChild(el('td', { className: 'col-updated' }, relTime(item.updated_at)));
+        tr.appendChild(makePreviewCell(item, 'metadata', isDraft));
+        const summary = item.result_summary || {};
+        tr.appendChild(el('td', { className: 'col-runs' }, String(summary.run_count || item.run_count || 0)));
+        const metrics = summary.metrics || {};
+        (metricNames || []).forEach(metric => {
+          const value = (metrics[metric] || {}).avg;
+          const peers = ((state.itemsList && state.itemsList.items) || []).map(i => (((i.result_summary || {}).metrics || {})[metric] || {}).avg);
+          tr.appendChild(el('td', { className: 'col-metric' }, metricScoreNode(value, peers)));
+        });
+        tr.appendChild(el('td', { className: 'col-latency' }, fmtSeconds(summary.avg_latency_ms)));
+        tr.appendChild(el('td', { className: 'col-edits' }, String(item.edit_count || 0)));
 
         const actTd = el('td', { className: 'col-actions' });
         const menuBtn = el('button', { className: 'actions-trigger', type: 'button', title: 'Actions', 'aria-label': 'Row actions', html: ICON_DOTS });
@@ -2069,22 +2391,30 @@
         tr.appendChild(actTd);
 
         tr.addEventListener('click', e => {
-          if (e.target.closest('input,button,textarea,.dsx-cell-edit,.col-check')) return;
-          openItemDrawer(item.item_id);
+          if (e.target.closest('input,button,textarea,.dsx-cell-edit')) return;
+          navigate({ item: item.item_id, tab: 'details' });
         });
         return tr;
       }
 
       function makePreviewCell(item, field, isDraft){
-        const td = el('td');
+        const td = el('td', { className: field === 'input' ? 'col-input' : (field === 'metadata' ? 'col-metadata' : 'col-expected') });
         const val = item[field];
         const preview = el('div', { className: 'dsx-preview' + ((val == null || val === '') ? ' muted' : '') });
         if (val == null || val === '') preview.textContent = '—';
-        else if (typeof val === 'string') preview.textContent = val;
-        else { try { preview.innerHTML = tokenize(val); } catch(_) { preview.textContent = fullPreview(val); } }
+        else preview.textContent = (field === 'input' || field === 'metadata') ? rawItemPreview(val) : compactItemPreview(val);
+        const fullText = fullPreview(val);
+        if (fullText) {
+          preview.setAttribute('tabindex', '0');
+          preview.setAttribute('aria-label', 'Full value preview');
+          preview.addEventListener('mouseenter', () => schedulePreviewPopover(preview, fullText));
+          preview.addEventListener('mouseleave', hidePreviewPopover);
+          preview.addEventListener('focus', () => showPreviewPopover(preview, fullText));
+          preview.addEventListener('blur', hidePreviewPopover);
+        }
         td.appendChild(preview);
         if (isDraft) {
-          // Row is clickable (opens the drawer), so keep the pointer cursor it inherits from <tr>.
+          // Row is clickable (opens the item page), so keep the pointer cursor it inherits from <tr>.
           // Double-click still enters inline edit — it just isn't advertised with a text caret.
           td.title = 'Click to open · double-click to edit';
           td.addEventListener('dblclick', e => { e.stopPropagation(); enterEditMode(td, item, field); });
@@ -2167,7 +2497,7 @@
       }
 
       function rowMenuItems(item, isDraft){
-        // Opening the drawer (click the row) and copying the ID (hover ⧉) are already one
+        // Opening the item page (click the row) and copying the ID (hover ⧉) are already one
         // click away, so the menu only carries actions that aren't directly on the row.
         const items = [
           { label: 'Copy as JSON', onClick: () => copyToClipboard(JSON.stringify({ item_id: item.item_id, input: item.input, expected_output: item.expected_output, metadata: item.metadata, labels: item.labels }, null, 2)) },
@@ -2192,13 +2522,504 @@
         const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
         pager.appendChild(el('div', { className: 'dsx-pager-info' }, total ? ('Showing ' + start + '-' + end + ' of ' + total + ' items') : 'Showing 0-0 of 0 items'));
         const controls = el('div', { className: 'dsx-pager-controls' });
+        const pageSel = el('select', { className: 'dsx-pager-size', title: 'Items per page', 'aria-label': 'Items per page' });
+        [25, 50, 100, 250].forEach(n => {
+          const opt = el('option', { value: n }, n + '/page');
+          if (n === state.pageSize) opt.selected = true;
+          pageSel.appendChild(opt);
+        });
+        pageSel.addEventListener('change', () => {
+          state.pageSize = parseInt(pageSel.value, 10);
+          state.page = 0;
+          navigate({ page: 0 }, { replace: true, silent: true });
+          loadItems();
+        });
         const prev = el('button', { className: 'table-page-btn', onclick: () => { if (state.page > 0) { state.page--; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, 'Previous');
         prev.disabled = state.page === 0;
         const pageInfo = el('span', { className: 'dsx-pager-page' }, 'Page ' + (total === 0 ? 0 : state.page + 1) + ' of ' + totalPages);
         const next = el('button', { className: 'table-page-btn', onclick: () => { if ((state.page + 1) * state.pageSize < total) { state.page++; navigate({ page: state.page }, { replace: true, silent: true }); loadItems(); } } }, 'Next');
         next.disabled = (state.page + 1) * state.pageSize >= total;
-        controls.appendChild(prev); controls.appendChild(pageInfo); controls.appendChild(next);
+        controls.appendChild(pageSel); controls.appendChild(prev); controls.appendChild(pageInfo); controls.appendChild(next);
         pager.appendChild(controls);
+      }
+    }
+
+    // Build a stacked before->after diff for item history fields.
+    const HISTORY_DIFF_FIELDS = [['input', 'input'], ['expected_output', 'expected'], ['metadata', 'metadata'], ['labels', 'labels']];
+    function historyDiffBody(before, after){
+      before = before || {}; after = after || {};
+      const wrap = el('div', { className: 'dsx-hist-diff' });
+      let changed = 0;
+      HISTORY_DIFF_FIELDS.forEach(([key, label]) => {
+        const b = before[key], a = after[key];
+        const beforeStr = b == null ? '' : (typeof b === 'string' ? b : prettyJSON(b));
+        const afterStr = a == null ? '' : (typeof a === 'string' ? a : prettyJSON(a));
+        if (beforeStr === afterStr) return;
+        changed++;
+        const field = el('div', { className: 'dsx-hist-diff-field' });
+        field.appendChild(el('div', { className: 'name' }, label));
+        if (beforeStr !== '') field.appendChild(el('div', { className: 'dsx-hist-diff-pane before', html: '<span class="label">before</span>' + highlightDiff(beforeStr, afterStr, 'before') }));
+        if (afterStr !== '') field.appendChild(el('div', { className: 'dsx-hist-diff-pane after', html: '<span class="label">after</span>' + highlightDiff(beforeStr, afterStr, 'after') }));
+        wrap.appendChild(field);
+      });
+      if (!changed) wrap.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'No field changes recorded.'));
+      return wrap;
+    }
+
+    // -------------------------------------------------------------
+    // ITEM PAGE
+    // -------------------------------------------------------------
+    async function renderItemPage(){
+      const root = document.getElementById('dsx-root');
+      const renderSeq = ++itemPageRenderSeq;
+      const hadContent = !!root.children.length;
+      if (!hadContent) {
+        root.appendChild(el('div', { className: 'dsx-page' }, [
+          el('div', { className: 'dsx-skel-row' }, [el('div', { className: 'dsx-skeleton', style: { width: '70%' } })]),
+        ]));
+      }
+      const ok = await ensureDatasetDetailLoaded();
+      if (renderSeq !== itemPageRenderSeq) return;
+      if (!ok) {
+        root.innerHTML = '<div class="dsx-empty"><h3>Dataset not found</h3></div>';
+        return;
+      }
+      normalizeActiveVersionUrl();
+      const v = state.activeVersion;
+      if (!v || !state.itemId) {
+        navigate({ item: null, tab: 'items' }, { replace: true });
+        return;
+      }
+      if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: false });
+
+      let item;
+      try {
+        const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(state.itemId) + '?project_slug=' + encodeURIComponent(state.slug));
+        if (renderSeq !== itemPageRenderSeq) return;
+        item = resp.item;
+      } catch(e) {
+        if (renderSeq !== itemPageRenderSeq) return;
+        Shell.toast(e.message || 'Failed to load item', 'error');
+        root.innerHTML = '<div class="dsx-empty"><h3>Item not found</h3></div>';
+        return;
+      }
+
+      const itemTab = ['details', 'runs', 'history'].includes(state.tab) ? state.tab : 'details';
+      const datasetHref = '/projects/' + encodeURIComponent(state.slug) + '/datasets/' + encodeURIComponent(state.datasetRef) + '?tab=items&v=' + encodeURIComponent(v.version);
+      const itemTitle = hasUserProvidedItemId(item.item_id) ? item.item_id : ('Item #' + item.index);
+      Shell.setBreadcrumbs([
+        { label: state.project.name || state.slug, href: '/projects/' + state.slug },
+        { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
+        { label: state.dataset.name, href: datasetHref },
+        { label: itemTitle },
+      ]);
+
+      root.innerHTML = '';
+      const page = el('div', { className: 'dsx-item-page' });
+      const header = el('div', { className: 'dsx-item-header' });
+      const main = el('div', { className: 'dsx-item-head-main' });
+      const titleWrap = el('div', { className: 'dsx-item-title-wrap' });
+      titleWrap.appendChild(el('div', { className: 'dsx-item-title-line' }, [
+        el('h1', { className: 'dsx-item-title' }, itemTitle),
+        el('button', { className: 'tv-copy-btn', type: 'button', title: 'Copy item ID', 'aria-label': 'Copy item ID', onclick: () => copyToClipboard(item.item_id), html: ICON_COPY }),
+      ]));
+      const meta = el('div', { className: 'dsx-item-meta' }, [
+        el('span', null, 'index ' + item.index),
+        el('span', { className: 'dot' }),
+        el('span', null, 'updated ' + relTime(item.updated_at)),
+        el('span', { className: 'dot' }),
+        el('span', null, 'created ' + fullDate(item.created_at)),
+      ]);
+      if (hasUserProvidedItemId(item.item_id)) {
+        meta.appendChild(el('span', { className: 'dot' }));
+        meta.appendChild(el('span', null, 'id ' + item.item_id));
+      }
+      titleWrap.appendChild(meta);
+      main.appendChild(titleWrap);
+
+      const actions = el('div', { className: 'dsx-item-actions' });
+      if (v.status !== 'draft') {
+        actions.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => createDraftFromVersionFlow(v.version, { itemId: item.item_id }) }, 'Create draft to edit'));
+      }
+      actions.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', title: 'Previous item', onclick: () => navigateItemPage(item, -1) }, 'Previous'));
+      actions.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', title: 'Next item', onclick: () => navigateItemPage(item, 1) }, 'Next'));
+      main.appendChild(actions);
+      header.appendChild(main);
+      page.appendChild(header);
+
+      const tabs = el('div', { className: 'dsx-item-tabs' });
+      [['details', 'Details'], ['runs', 'Runs'], ['history', 'History']].forEach(([key, label]) => {
+        tabs.appendChild(el('button', { className: 'dsx-item-tab' + (itemTab === key ? ' active' : ''), onclick: () => navigate({ tab: key, item: item.item_id }) }, label));
+      });
+      page.appendChild(tabs);
+
+      const content = el('div', { className: 'dsx-item-content' });
+      page.appendChild(content);
+      root.replaceChildren(page);
+
+      if (itemTab === 'runs') renderItemPageRuns(content, item, v);
+      else if (itemTab === 'history') renderItemPageHistory(content, item, v);
+      else renderItemPageDetails(content, item, v);
+    }
+
+    async function navigateItemPage(item, delta){
+      const v = state.activeVersion;
+      if (!v || !item) return;
+      try {
+        const params = new URLSearchParams();
+        params.set('project_slug', state.slug);
+        if (state.search) params.set('search', state.search);
+        if (state.sort) params.set('sort', state.sort);
+        if (state.label) params.set('label', state.label);
+        const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/neighbors?' + params.toString());
+        const target = delta < 0 ? resp.previous : resp.next;
+        if (!target) {
+          Shell.toast(delta < 0 ? 'Already at first item' : 'Already at last item', 'info');
+          return;
+        }
+        navigate({ item: target.item_id, tab: state.tab === 'runs' || state.tab === 'history' ? state.tab : 'details' });
+      } catch(e) {
+        Shell.toast(e.message || 'Could not navigate item', 'error');
+      }
+    }
+
+    function renderItemPageDetails(host, item, v){
+      const isDraft = v.status === 'draft';
+      const grid = el('div', { className: 'dsx-item-details-grid' });
+      const main = el('div', { className: 'dsx-item-field-stack' });
+      const side = el('div', { className: 'dsx-item-side' });
+      main.appendChild(itemPageJSONPanel('Input', 'input', item, isDraft));
+      main.appendChild(itemPageJSONPanel('Expected output', 'expected_output', item, isDraft));
+      side.appendChild(itemPageJSONPanel('Metadata', 'metadata', item, isDraft));
+      if (isDraft) {
+        const actions = el('div', { className: 'dsx-item-panel' });
+        const body = el('div', { className: 'dsx-item-panel-body', style: { display: 'flex', gap: '8px', justifyContent: 'space-between', flexWrap: 'wrap' } });
+        body.appendChild(el('button', { className: 'shell-btn shell-btn-danger', onclick: () => deleteItemPageItem(item, v) }, 'Delete'));
+        body.appendChild(el('button', { className: 'shell-btn shell-btn-primary', onclick: () => saveItemPageItem(item, v) }, 'Save changes'));
+        actions.appendChild(body);
+        side.appendChild(actions);
+      }
+      grid.appendChild(main);
+      grid.appendChild(side);
+      host.appendChild(grid);
+    }
+
+    function itemPageJSONPanel(label, key, item, isDraft){
+      const panel = el('div', { className: 'dsx-item-panel' });
+      const title = el('div', { className: 'dsx-item-panel-title' });
+      title.appendChild(el('span', null, label));
+      const actions = el('span', { className: 'tv-inline-actions' });
+      title.appendChild(actions);
+      panel.appendChild(title);
+      const body = el('div', { className: 'dsx-item-panel-body' });
+      const raw = fullPreview(item[key]);
+      let expanded = false;
+      const expandBtn = el('button', { className: 'tv-expand-btn', type: 'button', title: 'Expand', 'aria-label': 'Expand', html: ICON_EXPAND });
+      const copyBtn = el('button', { className: 'tv-copy-btn', type: 'button', title: 'Copy', 'aria-label': 'Copy', onclick: () => copyToClipboard(raw), html: ICON_COPY });
+      actions.appendChild(expandBtn);
+      actions.appendChild(copyBtn);
+
+      if (!isDraft) {
+        const view = el('pre', { className: 'dsx-json-view' + (raw === '' ? ' empty' : '') });
+        if (raw === '') view.textContent = '(empty)';
+        else view.innerHTML = highlightJSONHtml(raw);
+        expandBtn.addEventListener('click', () => {
+          expanded = !expanded;
+          view.classList.toggle('expanded', expanded);
+          expandBtn.setAttribute('title', expanded ? 'Collapse' : 'Expand');
+          expandBtn.setAttribute('aria-label', expanded ? 'Collapse' : 'Expand');
+        });
+        body.appendChild(view);
+      } else {
+        const code = el('div', { className: 'dsx-code' });
+        const hl = el('pre', { className: 'dsx-code-hl' });
+        const ed = el('textarea', { className: 'dsx-code-input', spellcheck: 'false', dataset: { field: key } });
+        ed.value = raw;
+        code.appendChild(hl);
+        code.appendChild(ed);
+        const dot = el('div', { style: { textAlign: 'right', fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px' } });
+        function sync(){ hl.innerHTML = highlightJSONHtml(ed.value) + '\n'; hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; }
+        function validate(){
+          const res = coerceCellValue(ed.value, key === 'metadata' ? 'metadata' : key, false);
+          code.classList.toggle('invalid', !res.ok);
+          dot.innerHTML = '<span class="dsx-json-dot' + (res.ok ? '' : ' invalid') + '"></span> ' + (res.ok ? (typeof res.value === 'string' ? 'string' : (res.value === null ? 'empty' : 'valid JSON')) : (res.error || 'invalid'));
+        }
+        function autoGrow(){
+          ed.style.height = 'auto';
+          const cap = expanded ? Infinity : Math.round(window.innerHeight * 0.62);
+          ed.style.height = Math.max(120, Math.min(ed.scrollHeight, cap)) + 'px';
+        }
+        expandBtn.addEventListener('click', () => {
+          expanded = !expanded;
+          code.classList.toggle('expanded', expanded);
+          expandBtn.setAttribute('title', expanded ? 'Collapse' : 'Expand');
+          expandBtn.setAttribute('aria-label', expanded ? 'Collapse' : 'Expand');
+          autoGrow();
+        });
+        ed.addEventListener('input', () => { sync(); validate(); autoGrow(); });
+        ed.addEventListener('scroll', () => { hl.scrollTop = ed.scrollTop; hl.scrollLeft = ed.scrollLeft; });
+        sync(); validate(); requestAnimationFrame(autoGrow);
+        body.appendChild(code);
+        body.appendChild(dot);
+      }
+      panel.appendChild(body);
+      return panel;
+    }
+
+    function collectItemPageValues(){
+      const body = {};
+      document.querySelectorAll('.dsx-item-page textarea[data-field]').forEach(ed => {
+        const key = ed.dataset.field;
+        const res = coerceCellValue(ed.value, key === 'metadata' ? 'metadata' : key, false);
+        if (!res.ok) throw new Error(res.error || ('Invalid value for ' + key));
+        body[key] = res.value;
+      });
+      return body;
+    }
+
+    async function saveItemPageItem(item, v){
+      try {
+        const body = collectItemPageValues();
+        const upd = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'PATCH', body });
+        Shell.toast('Saved', 'success');
+        state.itemId = upd.item.item_id;
+        renderItemPage();
+      } catch(e) {
+        Shell.toast(e.message || 'Save failed', 'error');
+      }
+    }
+
+    async function deleteItemPageItem(item, v){
+      const ok = await Shell.openConfirmDialog({ title: 'Delete item?', description: 'This will remove "' + item.item_id + '" from this draft.', confirmLabel: 'Delete', danger: true });
+      if (!ok || !ok.confirmed) return;
+      try {
+        await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'DELETE' });
+        Shell.toast('Item deleted', 'success');
+        navigate({ item: null, tab: 'items' }, { forceReload: true });
+      } catch(e) {
+        Shell.toast(e.message || 'Delete failed', 'error');
+      }
+    }
+
+    async function renderItemPageRuns(host, item, v){
+      host.innerHTML = '<div class="dsx-skel-row"><div class="dsx-skeleton" style="width:80%"></div></div>';
+      try {
+        const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/runs?project_slug=' + encodeURIComponent(state.slug));
+        host.innerHTML = '';
+        const runs = resp.runs || [];
+        if (!runs.length) {
+          host.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No runs yet'), el('p', null, 'This item has not been used in any run.')])); return;
+        }
+        const agg = resp.aggregates || {};
+        const aggWrap = el('div', { className: 'dsx-run-aggregate', style: { marginBottom: '12px' } });
+        [['Runs', agg.run_count], ['Errors', agg.error_count || 0], ['Avg latency', fmtSeconds(agg.avg_latency_ms)]].forEach(([label, value]) => {
+          aggWrap.appendChild(el('div', { className: 'tile' }, [el('div', { className: 'value' }, String(value == null ? '—' : value)), el('div', { className: 'label' }, label)]));
+        });
+        Object.keys(agg.metrics || {}).sort().forEach(metric => {
+          const m = agg.metrics[metric] || {};
+          aggWrap.appendChild(el('div', { className: 'tile' }, [el('div', { className: 'value' }, metricScoreNode(m.avg)), el('div', { className: 'label' }, metric)]));
+        });
+        host.appendChild(aggWrap);
+
+        const wrap = el('div', { className: 'dsx-item-runs-wrap' });
+        host.appendChild(wrap);
+
+        function runScoreByMetric(run){
+          const out = {};
+          (run.scores || []).forEach(score => { out[score.metric_name] = score; });
+          return out;
+        }
+        const metricNames = Array.from(new Set(runs.flatMap(r => (r.scores || []).map(s => s.metric_name)))).sort();
+        function currentSort(){
+          const raw = state.itemRunSort || 'created_desc';
+          if (raw.startsWith('metric:')) {
+            const parts = raw.split(':');
+            return { key: 'metric:' + (parts[1] || ''), dir: parts[2] === 'asc' ? 'asc' : 'desc' };
+          }
+          const idx = raw.lastIndexOf('_');
+          return idx > 0 ? { key: raw.slice(0, idx), dir: raw.slice(idx + 1) === 'asc' ? 'asc' : 'desc' } : { key: 'created', dir: 'desc' };
+        }
+        function sortValue(run, key){
+          const runName = run.run_name || run.external_run_id || run.run_id || '';
+          if (key === 'run_name') return runName.toLowerCase();
+          if (key === 'created') return new Date(run.created_at || run.started_at || 0).getTime();
+          if (key === 'model') return String(run.model || '').toLowerCase();
+          if (key === 'output') return String(run.error ? ('ERROR: ' + run.error) : fullPreview(run.output)).toLowerCase();
+          if (key === 'latency') return run.latency_ms == null ? null : Number(run.latency_ms);
+          if (key.startsWith('metric:')) {
+            const metric = key.slice('metric:'.length);
+            const score = runScoreByMetric(run)[metric];
+            if (!score) return null;
+            if (score.score_numeric != null) return Number(score.score_numeric);
+            return score.score_raw == null ? null : String(score.score_raw).toLowerCase();
+          }
+          return runName.toLowerCase();
+        }
+        function sortedRuns(){
+          const sort = currentSort();
+          return runs.slice().sort((a, b) => {
+            const av = sortValue(a, sort.key);
+            const bv = sortValue(b, sort.key);
+            const am = av == null || av === '';
+            const bm = bv == null || bv === '';
+            if (am !== bm) return am ? 1 : -1;
+            let cmp = 0;
+            if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+            else cmp = String(av).localeCompare(String(bv));
+            if (cmp === 0) cmp = String(a.run_id || '').localeCompare(String(b.run_id || ''));
+            return sort.dir === 'desc' ? -cmp : cmp;
+          });
+        }
+        function sortStateFor(key){
+          const sort = currentSort();
+          return sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+        }
+        function sortValueFor(key, nextDir){
+          if (key.startsWith('metric:')) return key + ':' + nextDir;
+          return key + '_' + nextDir;
+        }
+        function runTableColumns(){
+          const columns = [
+            { id: 'run_name', label: 'Run name', className: 'col-run-name', sortKey: 'run_name', width: 230, minWidth: 150 },
+            { id: 'created', label: 'Run date', className: 'col-run-date', sortKey: 'created', width: 150, minWidth: 120 },
+            { id: 'model', label: 'Model', className: 'col-run-model', sortKey: 'model', width: 130, minWidth: 96 },
+            { id: 'output', label: 'Output', className: 'col-run-output', sortKey: 'output', width: 255, minWidth: 170 },
+            { id: 'latency', label: 'Latency', className: 'col-latency', sortKey: 'latency', width: 90, minWidth: 72 },
+          ];
+          metricNames.forEach(metric => columns.push({ id: 'metric:' + metric, label: metric, className: 'col-metric', sortKey: 'metric:' + metric, width: 104, minWidth: 72 }));
+          columns.push({ id: 'trace', label: 'Trace', className: 'col-run-trace', width: 54, minWidth: 44, resizable: false });
+          return columns;
+        }
+        function renderRunRow(r){
+          const row = el('tr');
+          const runName = r.run_name || r.external_run_id || r.run_id;
+          const runBtn = el('button', { className: 'run-name', type: 'button', onclick: e => { e.stopPropagation(); navigateToApp(runDetailUrl(r.run_id)); } }, runName);
+          row.appendChild(el('td', { className: 'col-run-name' }, runBtn));
+          row.appendChild(el('td', { className: 'col-run-date' }, fullDateTime(r.created_at || r.started_at)));
+          row.appendChild(el('td', { className: 'col-run-model' }, r.model || '—'));
+          const outputText = r.error ? ('ERROR: ' + r.error) : fullPreview(r.output);
+          const outputWrap = el('div', { className: 'dsx-run-output-body' });
+          const output = el('div', { className: 'dsx-item-run-output' }, outputText || '—');
+          if (state.itemRunOutputsExpanded && outputText) {
+            output.classList.add('expanded');
+            row.classList.add('output-expanded');
+          }
+          outputWrap.appendChild(output);
+          row.appendChild(el('td', { className: 'col-run-output' }, outputWrap));
+          row.appendChild(el('td', { className: 'col-latency', style: { fontFamily: 'var(--font-mono)' } }, fmtSeconds(r.latency_ms)));
+          const scoresByMetric = runScoreByMetric(r);
+          metricNames.forEach(metric => {
+            const score = scoresByMetric[metric];
+            const value = score ? (score.score_numeric != null ? score.score_numeric : score.score_raw) : null;
+            const peers = runs.map(run => {
+              const peerScore = runScoreByMetric(run)[metric];
+              return peerScore ? (peerScore.score_numeric != null ? peerScore.score_numeric : peerScore.score_raw) : null;
+            });
+            row.appendChild(el('td', { className: 'col-metric', title: score ? (score.explanation || score.label || '') : '' }, metricScoreNode(value, peers)));
+          });
+          const traceEndpoint = apiUrl('/api/runs/' + encodeURIComponent(r.run_id) + '/items/' + encodeURIComponent(r.item_id) + '/trace');
+          row.appendChild(el('td', { className: 'col-run-trace' }, el('button', {
+            className: 'dsx-trace-icon-btn trace-drawer-btn',
+            type: 'button',
+            title: 'Open trace viewer',
+            'aria-label': 'Open trace viewer',
+            'data-trace-endpoint': traceEndpoint,
+            'data-trace-item-label': runName + ' · ' + r.item_id,
+            'data-trace-id': r.trace_id || '',
+            'data-trace-url': r.trace_url || '',
+            html: ICON_TRACE,
+          })));
+          return row;
+        }
+        function renderRunsTable(){
+          const scrollLeft = wrap.scrollLeft;
+          const columns = runTableColumns();
+          const minTableWidth = columns.reduce((sum, column) => sum + (column.width || column.minWidth || 44), 0);
+          window.QymDataTable.render({
+            host: wrap,
+            tableClass: 'dsx-table dsx-item-runs-table',
+            storageKey: 'datasets.item.runs.v3',
+            minWidth: Math.max(1120, minTableWidth),
+            scrollLeft,
+            columns,
+            rows: sortedRuns(),
+            sortState: sortStateFor,
+            onSort: (_column, nextDir, sortKey) => {
+              state.itemRunSort = sortValueFor(sortKey, nextDir);
+              renderRunsTable();
+            },
+            renderRow: renderRunRow,
+          });
+          const outputHeader = wrap.querySelector('th.col-run-output');
+          if (outputHeader) {
+            const expanded = !!state.itemRunOutputsExpanded;
+            const toggle = el('button', {
+              className: 'tv-expand-btn dsx-output-expand-btn',
+              type: 'button',
+              title: expanded ? 'Collapse outputs' : 'Expand outputs',
+              'aria-label': expanded ? 'Collapse outputs' : 'Expand outputs',
+              html: ICON_EXPAND,
+            });
+            toggle.addEventListener('click', e => {
+              e.preventDefault();
+              e.stopPropagation();
+              state.itemRunOutputsExpanded = !state.itemRunOutputsExpanded;
+              renderRunsTable();
+            });
+            outputHeader.appendChild(toggle);
+          }
+        }
+        renderRunsTable();
+      } catch(e) {
+        host.innerHTML = '<div class="dsx-empty"><p>' + escapeHtml(e.message || 'Failed to load runs') + '</p></div>';
+      }
+    }
+
+    async function renderItemPageHistory(host, item, v){
+      host.innerHTML = '<div class="dsx-skel-row"><div class="dsx-skeleton" style="width:80%"></div></div>';
+      try {
+        const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/lineage?project_slug=' + encodeURIComponent(state.slug));
+        host.innerHTML = '';
+        const lineage = resp.lineage || [];
+        if (!lineage.length) {
+          host.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No lineage recorded for this item.')]));
+          return;
+        }
+        const list = el('div', { className: 'dsx-drawer-section', style: { padding: 0 } });
+        lineage.forEach(node => {
+          const version = node.version || {};
+          const entry = el('div', { className: 'dsx-history-entry' });
+          const head = el('div', { className: 'dsx-history-head' });
+          head.appendChild(el('span', null, [
+            el('span', { className: 'dsx-pill ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
+            document.createTextNode(' '),
+            userLabelPill('Drafted By', version.created_by) || el('span', { className: 'actor' }, 'unknown'),
+          ]));
+          head.appendChild(el('span', { className: 'when' }, fullDateTime(version.created_at)));
+          entry.appendChild(head);
+          const revs = node.revisions || [];
+          if (!node.item) entry.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'Item is not present in this version.'));
+          else if (!revs.length) entry.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'No direct edits recorded in this version.'));
+          list.appendChild(entry);
+          revs.slice().reverse().forEach(r => {
+            const rev = el('div', { className: 'dsx-history-entry', style: { marginLeft: '14px' } });
+            const rh = el('div', { className: 'dsx-history-head' });
+            rh.appendChild(el('span', null, [
+              el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+              document.createTextNode(' '),
+              el('span', { className: 'rev' }, '#' + r.revision_number),
+              document.createTextNode(' '),
+              userLabelPill('Edited By', r.actor) || el('span', { className: 'actor' }, 'system'),
+            ]));
+            rh.appendChild(el('span', { className: 'when' }, fullDateTime(r.created_at)));
+            rev.appendChild(rh);
+            rev.appendChild(historyDiffBody(r.before, r.after));
+            list.appendChild(rev);
+          });
+        });
+        host.appendChild(list);
+      } catch(e) {
+        host.innerHTML = '<div class="dsx-empty"><p>' + escapeHtml(e.message || 'Failed to load history') + '</p></div>';
       }
     }
 
@@ -2243,10 +3064,11 @@
         const tabs = el('div', { className: 'dsx-drawer-tabs' });
         ['details', 'runs', 'history'].forEach(t => {
           const b = el('button', { className: 'dsx-drawer-tab' + (ddTab.current === t ? ' active' : ''), onclick: () => { ddTab.current = t; render(host); } }, t[0].toUpperCase() + t.slice(1));
-          tabs.appendChild(b);
+        tabs.appendChild(b);
         });
         host.appendChild(tabs);
         const body = el('div', { className: 'dsx-drawer-section' });
+        if (ddTab.current === 'runs') body.classList.add('runs-compact');
         if (ddTab.current === 'details') renderDetails(body);
         else if (ddTab.current === 'runs') renderRuns(body);
         else renderHistory(body);
@@ -2263,7 +3085,6 @@
         body.appendChild(buildJSONField('Input', 'input'));
         body.appendChild(buildJSONField('Expected output', 'expected_output'));
         body.appendChild(buildJSONField('Metadata', 'metadata'));
-        body.appendChild(buildLabelsField());
 
         if (isDraft) {
           const footer = el('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '12px' } });
@@ -2346,31 +3167,6 @@
         wrap._editor = ed;
         return wrap;
       }
-      function buildLabelsField(){
-        const wrap = el('div');
-        const lbl = el('div', { className: 'field-label' }); lbl.appendChild(el('span', null, 'Labels'));
-        wrap.appendChild(lbl);
-        const chipIn = el('div', { className: 'dsx-chipinput' });
-        const labels = Array.isArray(item.labels) ? item.labels.slice() : [];
-        function render(){
-          chipIn.innerHTML = '';
-          labels.forEach((l, i) => {
-            const c = el('span', { className: 'dsx-chip-item' });
-            c.appendChild(document.createTextNode(l));
-            if (isDraft) c.appendChild(el('button', { onclick: () => { labels.splice(i, 1); render(); } }, '×'));
-            chipIn.appendChild(c);
-          });
-          if (isDraft) {
-            const inp = el('input', { placeholder: 'add label and press Enter' });
-            inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.value.trim()) { labels.push(inp.value.trim()); inp.value = ''; render(); inp.focus(); } });
-            chipIn.appendChild(inp);
-          }
-        }
-        render();
-        wrap.appendChild(chipIn);
-        wrap._labels = labels;
-        return wrap;
-      }
       function collectValues(host){
         const body = {};
         const fields = host.querySelectorAll('.dsx-drawer-section > div');
@@ -2382,7 +3178,6 @@
             if (!res.ok) throw new Error(res.error || ('Invalid value for ' + key));
             body[key] = res.value;
           }
-          if (f._labels) body.labels = f._labels;
         });
         return body;
       }
@@ -2415,13 +3210,55 @@
           body.innerHTML = '';
           const runs = resp.runs || [];
           if (runs.length === 0) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No runs yet'), el('p', null, 'This item has not been used in any run.')])); return; }
-          const list = el('div', { className: 'dsx-runs-list' });
-          runs.forEach(r => {
-            const row = el('div', { className: 'dsx-run-row', onclick: () => navigateToApp(runDetailUrl(r.run_id)) });
-            row.appendChild(el('div', null, [el('div', { className: 'id' }, r.run_id), el('div', { className: 'meta' }, [el('span', { className: 'dsx-pill ' + (r.status === 'completed' ? 'success' : r.status === 'failed' ? 'remove' : 'info') }, r.status || '—'), el('span', null, r.task || ''), el('span', null, relTime(r.started_at || r.created_at))])]));
-            list.appendChild(row);
+          const agg = resp.aggregates || {};
+          const aggWrap = el('div', { className: 'dsx-run-aggregate' });
+          const aggTiles = [
+            ['Runs', agg.run_count],
+            ['Errors', agg.error_count || 0],
+            ['Avg latency', fmtSeconds(agg.avg_latency_ms)],
+          ];
+          Object.keys(agg.metrics || {}).sort().forEach(metric => {
+            const m = agg.metrics[metric] || {};
+            aggTiles.push(['Avg ' + metric, metricScoreNode(m.avg)]);
           });
-          body.appendChild(list);
+          aggTiles.forEach(([label, value]) => {
+            aggWrap.appendChild(el('div', { className: 'tile' }, [
+              el('div', { className: 'value' }, value == null ? '—' : value),
+              el('div', { className: 'label' }, label),
+            ]));
+          });
+          body.appendChild(aggWrap);
+
+          const table = el('table', { className: 'dsx-run-result-table' });
+          const thead = el('thead');
+          const trh = el('tr');
+          const metricNames = Array.from(new Set(runs.flatMap(r => (r.scores || []).map(s => s.metric_name)))).sort();
+          ['Run name'].concat(metricNames).concat(['Latency']).forEach(h => trh.appendChild(el('th', null, h)));
+          thead.appendChild(trh);
+          table.appendChild(thead);
+          const tbody = el('tbody');
+          runs.forEach(r => {
+            const row = el('tr');
+            const runName = r.run_name || r.external_run_id || r.run_id;
+            const runLink = el('button', { className: 'id run-link', type: 'button', onclick: e => { e.stopPropagation(); navigateToApp(runDetailUrl(r.run_id)); } }, runName);
+            runLink.addEventListener('mouseenter', () => schedulePreviewPopover(runLink, runName));
+            runLink.addEventListener('mouseleave', hidePreviewPopover);
+            runLink.addEventListener('focus', () => showPreviewPopover(runLink, runName));
+            runLink.addEventListener('blur', hidePreviewPopover);
+            row.appendChild(el('td', null, [
+              runLink,
+            ]));
+            const scoresByMetric = {};
+            (r.scores || []).forEach(s => { scoresByMetric[s.metric_name] = s; });
+            metricNames.forEach(metric => {
+              const score = scoresByMetric[metric];
+              row.appendChild(el('td', { style: { fontFamily: 'var(--font-mono)' } }, metricScoreNode(score ? (score.score_numeric != null ? score.score_numeric : score.score_raw) : null)));
+            });
+            row.appendChild(el('td', { style: { fontFamily: 'var(--font-mono)' } }, fmtSeconds(r.latency_ms)));
+            tbody.appendChild(row);
+          });
+          table.appendChild(tbody);
+          body.appendChild(table);
         } catch(e) { body.innerHTML = '<div class="dsx-empty"><p>'+escapeHtml(e.message || 'Failed to load runs')+'</p></div>'; }
       }
 
@@ -2465,43 +3302,72 @@
       async function renderHistory(body){
         body.innerHTML = '<div class="dsx-skel-row"><div class="dsx-skeleton" style="width:80%"></div></div>';
         try {
-          const resp = await apiFetch('/api/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/revisions?project_slug=' + encodeURIComponent(state.slug));
+          const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/lineage?project_slug=' + encodeURIComponent(state.slug));
           body.innerHTML = '';
-          const revs = resp.revisions || [];
-          if (revs.length === 0) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No revisions recorded.')])); return; }
-          revs.forEach((r, idx) => {
-            const entry = el('div', { className: 'dsx-history-entry' });
-            const head = el('div', { className: 'dsx-history-head' });
-            const actor = r.actor_name || r.actor_email || r.actor_user_id || 'system';
-            head.appendChild(el('span', null, [
-              el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+          const lineage = resp.lineage || [];
+          const hasAny = lineage.some(node => (node.revisions || []).length || node.item);
+          if (!hasAny) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No lineage recorded for this item.')])); return; }
+          lineage.forEach(node => {
+            const version = node.version || {};
+            const versionEntry = el('div', { className: 'dsx-history-entry' });
+            const versionHead = el('div', { className: 'dsx-history-head' });
+            versionHead.appendChild(el('span', null, [
+              el('span', { className: 'dsx-pill ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
               document.createTextNode(' '),
-              el('span', { className: 'rev' }, '#' + r.revision_number),
-              document.createTextNode(' '),
-              el('span', { className: 'actor', title: r.actor_email || r.actor_user_id || '' }, actor),
+              userLabelPill('Drafted By', version.created_by) || el('span', { className: 'actor' }, 'unknown'),
             ]));
-            head.appendChild(el('span', { className: 'when' }, relTime(r.created_at)));
-            entry.appendChild(head);
-            entry.appendChild(historyDiffBody(r.before, r.after));
-            // The newest revision (idx 0) is the current state, so reverting to it is a no-op.
-            if (isDraft && idx > 0) {
-              const actions = el('div', { className: 'dsx-history-actions' });
-              actions.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', style: { padding: '4px 10px', fontSize: '11px' }, onclick: () => revertToRevision(r, body) }, '↩ Revert to this'));
-              entry.appendChild(actions);
+            versionHead.appendChild(el('span', { className: 'when' }, relTime(version.published_at || version.created_at)));
+            versionEntry.appendChild(versionHead);
+            const revs = node.revisions || [];
+            if (!node.item) {
+              versionEntry.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'Item is not present in this version.'));
+            } else if (revs.length === 0) {
+              versionEntry.appendChild(el('div', { className: 'dsx-history-unchanged' }, 'No direct edits recorded in this version.'));
             }
-            body.appendChild(entry);
+            body.appendChild(versionEntry);
+
+            revs.slice().reverse().forEach(r => {
+              const entry = el('div', { className: 'dsx-history-entry', style: { marginLeft: '14px' } });
+              const head = el('div', { className: 'dsx-history-head' });
+              head.appendChild(el('span', null, [
+                el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+                document.createTextNode(' '),
+                el('span', { className: 'rev' }, '#' + r.revision_number),
+                document.createTextNode(' '),
+                userLabelPill('Edited By', r.actor) || el('span', { className: 'actor', title: r.actor_email || r.actor_user_id || '' }, r.actor_name || r.actor_email || r.actor_user_id || 'system'),
+              ]));
+              head.appendChild(el('span', { className: 'when' }, relTime(r.created_at)));
+              entry.appendChild(head);
+              entry.appendChild(historyDiffBody(r.before, r.after));
+              if (isDraft) {
+                const actions = el('div', { className: 'dsx-history-actions' });
+                actions.appendChild(el('button', { className: 'shell-btn shell-btn-secondary', style: { padding: '4px 10px', fontSize: '11px' }, onclick: () => revertToRevision(r, body) }, '↩ Revert to this'));
+                entry.appendChild(actions);
+              }
+              body.appendChild(entry);
+            });
           });
         } catch(e) { body.innerHTML = '<div class="dsx-empty"><p>'+escapeHtml(e.message || 'Failed to load history')+'</p></div>'; }
       }
 
-      function navigateItem(delta){
-        const items = state.itemsList.items;
-        if (!items.length) return;
-        const idx = items.findIndex(i => i.item_id === item.item_id);
-        if (idx === -1) return;
-        const next = items[idx + delta]; if (!next) return;
-        drawer.close();
-        openItemDrawer(next.item_id);
+      async function navigateItem(delta){
+        try {
+          const params = new URLSearchParams();
+          params.set('project_slug', state.slug);
+          if (state.search) params.set('search', state.search);
+          if (state.sort) params.set('sort', state.sort);
+          if (state.label) params.set('label', state.label);
+          const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions/' + encodeURIComponent(v.version) + '/items/' + encodeURIComponent(item.item_id) + '/neighbors?' + params.toString());
+          const target = delta < 0 ? resp.previous : resp.next;
+          if (!target) {
+            Shell.toast(delta < 0 ? 'Already at first item' : 'Already at last item', 'info');
+            return;
+          }
+          drawer.close();
+          openItemDrawer(target.item_id);
+        } catch(e) {
+          Shell.toast(e.message || 'Could not navigate item', 'error');
+        }
       }
     }
 
@@ -2526,7 +3392,7 @@
           if (activeLabel) params.set('version', activeLabel);
           const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/runs?' + params.toString());
           listHost.innerHTML = '';
-          const runs = resp.runs || [];
+          const runs = (resp.runs || []).filter(r => !activeLabel || r.version_label === activeLabel);
           if (runs.length === 0) {
             const empty = el('div', { className: 'dsx-empty' }, [
               el('div', { className: 'icon' }, '▷'),
@@ -2542,28 +3408,107 @@
             return;
           }
           const tableWrap = el('div', { className: 'dsx-table-wrap flush' });
-          const table = el('table', { className: 'dsx-table' });
-          const thead = el('thead'); const trh = el('tr');
-          ['Run', 'Version', 'Task', 'Model', 'Status', 'Score', 'Items', 'Started', ''].forEach(h => trh.appendChild(el('th', null, h)));
-          thead.appendChild(trh); table.appendChild(thead);
-          const tbody = el('tbody');
-          runs.forEach(r => {
+          const metricNames = (resp.metric_names && resp.metric_names.length)
+            ? resp.metric_names
+            : Array.from(new Set(runs.flatMap(r => Object.keys(r.metric_averages || {})))).sort();
+          const columns = [
+            { id: 'run_name', label: 'Run name', className: 'col-run-name', sortKey: 'run_name', width: 230, minWidth: 150 },
+            { id: 'status', label: 'Status', className: 'col-run-status', sortKey: 'status', width: 118, minWidth: 92 },
+            { id: 'created', label: 'Run date', className: 'col-run-date', sortKey: 'created', width: 150, minWidth: 120 },
+            { id: 'model', label: 'Model', className: 'col-run-model', sortKey: 'model', width: 150, minWidth: 110 },
+            { id: 'latency', label: 'Latency', className: 'col-latency', sortKey: 'latency', width: 90, minWidth: 72 },
+          ];
+          metricNames.forEach(metric => columns.push({ id: 'metric:' + metric, label: metric, className: 'col-metric', sortKey: 'metric:' + metric, width: 104, minWidth: 72 }));
+          columns.push({ id: 'actions', label: '', className: 'col-actions', width: 44, minWidth: 44, resizable: false });
+          function currentSort(){
+            const raw = state.datasetRunSort || 'created_desc';
+            if (raw.startsWith('metric:')) {
+              const parts = raw.split(':');
+              return { key: 'metric:' + (parts[1] || ''), dir: parts[2] === 'asc' ? 'asc' : 'desc' };
+            }
+            const idx = raw.lastIndexOf('_');
+            return idx > 0 ? { key: raw.slice(0, idx), dir: raw.slice(idx + 1) === 'asc' ? 'asc' : 'desc' } : { key: 'created', dir: 'desc' };
+          }
+          function sortStateFor(key){
+            const sort = currentSort();
+            return sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+          }
+          function sortValue(r, key){
+            const runName = r.run_name || r.external_run_id || r.id || '';
+            if (key === 'run_name') return String(runName).toLowerCase();
+            if (key === 'created') return new Date(r.started_at || r.completed_at || 0).getTime() || 0;
+            if (key === 'model') return String(r.model || '').toLowerCase();
+            if (key === 'status') return String(r.status || '').toLowerCase();
+            if (key === 'latency') return r.avg_latency_ms == null ? null : Number(r.avg_latency_ms);
+            if (key.startsWith('metric:')) {
+              const metric = key.slice('metric:'.length);
+              const value = (r.metric_averages || {})[metric];
+              return value == null ? null : Number(value);
+            }
+            return String(runName).toLowerCase();
+          }
+          function sortedRuns(){
+            const sort = currentSort();
+            return runs.slice().sort((a, b) => {
+              const av = sortValue(a, sort.key);
+              const bv = sortValue(b, sort.key);
+              const am = av == null || av === '';
+              const bm = bv == null || bv === '';
+              if (am !== bm) return am ? 1 : -1;
+              let cmp = 0;
+              if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+              else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+              if (cmp === 0) cmp = String(a.id || '').localeCompare(String(b.id || ''));
+              return sort.dir === 'desc' ? -cmp : cmp;
+            });
+          }
+          function sortValueFor(key, nextDir){
+            if (key.startsWith('metric:')) return key + ':' + nextDir;
+            return key + '_' + nextDir;
+          }
+          function renderRunsTable(){
+            const scrollLeft = tableWrap.scrollLeft;
+            const minTableWidth = columns.reduce((sum, column) => sum + (column.width || column.minWidth || 44), 0);
+            window.QymDataTable.render({
+              host: tableWrap,
+              tableClass: 'dsx-table',
+              storageKey: 'datasets.runs',
+              minWidth: Math.max(736, minTableWidth),
+              scrollLeft,
+              columns,
+              rows: sortedRuns(),
+              sortState: sortStateFor,
+              onSort: (_column, nextDir, sortKey) => {
+                state.datasetRunSort = sortValueFor(sortKey, nextDir);
+                renderRunsTable();
+              },
+              renderRow: renderRunRow,
+            });
+          }
+          function renderRunRow(r){
             const status = String(r.status || '—').toUpperCase();
+            const runName = r.run_name || r.external_run_id || r.id;
             const tr = el('tr', { onclick: () => navigateToApp(runDetailUrl(r.id)) });
-            tr.appendChild(el('td', { className: 'col-id' }, r.external_run_id || r.id));
-            tr.appendChild(el('td', null, r.version_label || '—'));
-            tr.appendChild(el('td', null, r.task || '—'));
-            tr.appendChild(el('td', null, r.model || '—'));
-            tr.appendChild(el('td', null, [el('span', { className: 'status-badge status-' + status, title: status }, status)]));
-            tr.appendChild(el('td', null, r.eval_score != null ? String(r.eval_score) : '—'));
-            tr.appendChild(el('td', null, String(r.items_count || 0)));
-            tr.appendChild(el('td', { className: 'col-updated' }, relTime(r.started_at || r.completed_at)));
+            tr.appendChild(el('td', { className: 'col-run-name' }, el('button', {
+              className: 'run-name',
+              type: 'button',
+              title: runName,
+              onclick: e => { e.stopPropagation(); navigateToApp(runDetailUrl(r.id)); },
+            }, runName)));
+            tr.appendChild(el('td', { className: 'col-run-status' }, [el('span', { className: 'status-badge status-' + status, title: status }, status)]));
+            tr.appendChild(el('td', { className: 'col-run-date' }, fullDateTime(r.started_at || r.completed_at)));
+            tr.appendChild(el('td', { className: 'col-run-model' }, r.model || '—'));
+            tr.appendChild(el('td', { className: 'col-latency', style: { fontFamily: 'var(--font-mono)' } }, fmtSeconds(r.avg_latency_ms)));
+            metricNames.forEach(metric => {
+              const value = (r.metric_averages || {})[metric];
+              const peers = runs.map(candidate => (candidate.metric_averages || {})[metric]);
+              tr.appendChild(el('td', { className: 'col-metric' }, metricScoreNode(value, peers)));
+            });
             tr.appendChild(el('td', { className: 'col-actions' }, '→'));
-            tbody.appendChild(tr);
-          });
-          table.appendChild(tbody);
-          tableWrap.appendChild(table);
+            return tr;
+          }
           listHost.appendChild(tableWrap);
+          renderRunsTable();
         } catch(e) { listHost.innerHTML = ''; listHost.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, e.message || 'Failed to load runs')])); }
       }
       load();
@@ -2620,14 +3565,10 @@
         const resp = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/lineage?project_slug=' + encodeURIComponent(state.slug));
         wrap.removeChild(skel);
         const versions = resp.versions || [];
-        const changes = resp.changes || [];
         if (versions.length === 0) { wrap.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No lineage data yet.')])); return; }
 
-        // Index versions and group their change events (oldest first).
+        // Index versions and render the parent/child tree.
         const byId = {}; versions.forEach(v => byId[v.id] = v);
-        const changesByVersion = {};
-        changes.forEach(c => { (changesByVersion[c.dataset_version_id] = changesByVersion[c.dataset_version_id] || []).push(c); });
-        Object.keys(changesByVersion).forEach(k => changesByVersion[k].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)));
 
         const lineage = el('div', { className: 'dsx-lineage' });
         const seen = new Set();
@@ -2647,17 +3588,39 @@
           row.appendChild(el('span', { style: { fontWeight: 650 } }, v.version));
           row.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'published') }, v.status));
           (v.aliases || []).forEach(a => row.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
-          row.appendChild(el('span', { style: { color: 'var(--text-dim)' } }, '· ' + pluralize(v.item_count || 0, 'item')));
-          row.appendChild(el('span', { className: 'dsx-lineage-when' }, relTime(v.published_at || v.created_at)));
+          row.appendChild(el('span', { className: 'dsx-lineage-meta' }, '· ' + pluralize(v.item_count || 0, 'item') + ' · ' + pluralize(v.run_count || 0, 'run')));
+          const deltas = v.change_counts || {};
+          const deltaWrap = el('span', { className: 'dsx-lineage-deltas' });
+          const added = Number(deltas.added || 0);
+          const deleted = Number(deltas.deleted || 0);
+          const modified = Number(deltas.modified || 0);
+          if (added) deltaWrap.appendChild(el('span', { className: 'dsx-pill add', title: 'Questions added relative to parent' }, '+' + added));
+          if (deleted) deltaWrap.appendChild(el('span', { className: 'dsx-pill remove', title: 'Questions deleted relative to parent' }, '-' + deleted));
+          if (modified) deltaWrap.appendChild(el('span', { className: 'dsx-pill warning', title: 'Questions modified relative to parent' }, '~' + modified));
+          if (deltaWrap.childNodes.length) row.appendChild(deltaWrap);
+          const publisherPill = userLabelPill('Published By', publishedByUser(v));
+          if (publisherPill) row.appendChild(publisherPill);
+          const creatorPill = userLabelPill('Drafted By', v.created_by);
+          if (creatorPill) row.appendChild(creatorPill);
+          const actions = el('span', { className: 'actions' });
+          const parent = v.parent_version_id && byId[v.parent_version_id];
+          if (parent) {
+            actions.appendChild(el('button', {
+              className: 'mini-action',
+              onclick: e => {
+                e.stopPropagation();
+                navigate({ mode: 'compare', base: parent.version, head: v.version, item: null });
+              }
+            }, 'Compare'));
+          }
+          const times = el('span', { className: 'dsx-lineage-times' });
+          if (v.created_at) times.appendChild(el('span', null, 'created ' + fullDate(v.created_at)));
+          if (v.created_at && v.updated_at) times.appendChild(el('span', { className: 'sep' }, '·'));
+          if (v.updated_at) times.appendChild(el('span', null, 'updated ' + relTime(v.updated_at)));
+          actions.appendChild(times);
+          row.appendChild(actions);
           row.addEventListener('click', () => navigate({ tab: 'lineage', v: v.version, item: null }));
           node.appendChild(row);
-
-          const log = changesByVersion[v.id] || [];
-          if (log.length) {
-            const logWrap = el('div', { className: 'dsx-lineage-changes' });
-            log.forEach(c => logWrap.appendChild(renderChangeEntry(c, byId)));
-            node.appendChild(logWrap);
-          }
 
           if (children.length) {
             const childWrap = el('div', { className: 'dsx-lineage-children' });
@@ -2765,7 +3728,7 @@
       try { await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '?project_slug=' + encodeURIComponent(state.slug), { method: 'DELETE' }); Shell.toast('Dataset deleted', 'success'); navigate({ mode: 'catalog', ref: null }); }
       catch(e) { Shell.toast(e.message || 'Delete failed', 'error'); }
     }
-    async function createDraftFromVersionFlow(fromVersion){
+    async function createDraftFromVersionFlow(fromVersion, options){
       const fromOpts = [
         { value: '', label: '(blank)' },
         ...state.versions.map(v => ({ value: v.version, label: v.version + (v.status === 'draft' ? ' (draft)' : '') + ((v.aliases || []).length ? ' [' + v.aliases.join(', ') + ']' : '') })),
@@ -2785,7 +3748,8 @@
         if (res.values.from) body.from_version = res.values.from;
         const created = await apiFetch('/v1/datasets/' + encodeURIComponent(state.datasetRef) + '/versions?project_slug=' + encodeURIComponent(state.slug), { method: 'POST', body });
         Shell.toast('Draft "' + created.version.version + '" created', 'success');
-        navigate({ v: created.version.version, tab: 'items', item: null }, { forceReload: true });
+        if (options && options.itemId) navigate({ v: created.version.version, tab: 'details', item: options.itemId }, { forceReload: true });
+        else navigate({ v: created.version.version, tab: 'items', item: null }, { forceReload: true });
       } catch(e) { Shell.toast(e.message || 'Create failed', 'error'); }
     }
     function suggestNextVersion(){
@@ -2998,7 +3962,7 @@
         } else if (tabKey === 'changed') {
           const diffs = resp.field_diffs || [];
           if (diffs.length === 0) listEl.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, 'No item-level changes.')]));
-          diffs.forEach(d => listEl.appendChild(diffRow(d)));
+          diffs.forEach((d, idx) => listEl.appendChild(diffRow(d, idx)));
         } else {
           // unchanged: just count summary; rendering N items is heavy. Show a small note.
           listEl.appendChild(el('div', { className: 'dsx-empty' }, [el('p', null, pluralize(s.unchanged || 0, 'item') + ' unchanged between these versions.')]));
@@ -3008,7 +3972,14 @@
       function plainItemRow(it, kind){
         const row = el('div', { className: 'dsx-diff-row' });
         const head = el('div', { className: 'dsx-diff-head' });
-        head.appendChild(el('span', null, [el('span', { className: 'dsx-pill ' + kind }, kind === 'add' ? '+ added' : '− removed'), document.createTextNode(' '), el('span', { className: 'id' }, it.item_id || it)]));
+        const ident = compareItemIdentity(it);
+        head.appendChild(el('span', null, [
+          el('span', { className: 'dsx-pill ' + kind }, kind === 'add' ? '+ added' : '− removed'),
+          document.createTextNode(' '),
+          el('span', { className: 'dsx-diff-idlabel' }, ident.label),
+          document.createTextNode(' '),
+          el('span', { className: 'id', title: ident.title }, ident.value),
+        ]));
         row.appendChild(head);
         row.addEventListener('click', () => row.classList.toggle('expanded'));
         const body = el('div', { className: 'dsx-diff-body' });
@@ -3018,10 +3989,22 @@
         return row;
       }
 
-      function diffRow(d){
+      function diffRow(d, rowIndex){
         const row = el('div', { className: 'dsx-diff-row' });
         const head = el('div', { className: 'dsx-diff-head', onclick: () => row.classList.toggle('expanded') });
-        head.appendChild(el('span', { className: 'id' }, d.item_id));
+        const left = el('div', { className: 'dsx-diff-title' });
+        const ident = compareItemIdentity(d, rowIndex);
+        left.appendChild(el('div', { className: 'dsx-diff-idline' }, [
+          el('span', { className: 'dsx-diff-idlabel' }, ident.label),
+          el('span', { className: 'id', title: ident.title }, ident.value),
+          el('span', { className: 'copy', title: 'Copy full identifier', onclick: e => { e.stopPropagation(); copyToClipboard(ident.copyValue); } }, 'copy'),
+        ]));
+        const fallbackEditor = (lastCompareResp && lastCompareResp.target)
+          ? (lastCompareResp.target.created_by || lastCompareResp.target.published_by)
+          : null;
+        const editor = userLabelPill('Edited By', d.edited_by || fallbackEditor);
+        if (editor) left.appendChild(el('div', { className: 'dsx-diff-meta' }, editor));
+        head.appendChild(left);
         head.appendChild(el('span', { className: 'fields' }, 'fields changed: ' + (d.fields || []).join(', ')));
         row.appendChild(head);
         const body = el('div', { className: 'dsx-diff-body' });
@@ -3080,11 +4063,11 @@
       return out.reverse();
     }
 
-    // Bind the drawer opener for use across the IIFE
+    // Keep the legacy drawer opener available only for local debugging.
     const openItemDrawer = openItemDrawerImpl;
 
     // Expose for debugging / other scripts
-    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, route, switchDetailTabFromRoute, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemDrawer: (id) => openItemDrawer(id) };
+    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, route, switchDetailTabFromRoute, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemPage: (id) => navigate({ item: id, tab: 'details' }), openItemDrawer: (id) => openItemDrawer(id) };
 
     // ============================================================
     // BOOT

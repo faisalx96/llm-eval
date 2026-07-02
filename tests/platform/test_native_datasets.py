@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -90,7 +90,7 @@ def _bearer() -> dict[str, str]:
 def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_session, tmp_path):
     client, SessionLocal = client_and_session
     csv_path = tmp_path / "qa.csv"
-    csv_path.write_text("input,expected_output,topic\nhello,world,greeting\n", encoding="utf-8")
+    csv_path.write_text("id,input,expected_output,topic\ncase-1,hello,world,greeting\n", encoding="utf-8")
 
     with csv_path.open("rb") as fh:
         upload = client.post(
@@ -101,6 +101,7 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
                 "version": "v1",
                 "publish": "true",
                 "set_alias": "production",
+                "id_col": "id",
                 "metadata_cols": "topic",
             },
             files={"file": ("qa.csv", fh, "text/csv")},
@@ -109,6 +110,8 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
     body = upload.json()
     assert body["version"]["status"] == "published"
     assert "production" in body["version"]["aliases"]
+    assert body["version"]["created_by"]["display_name"] == "Dev"
+    assert body["version"]["published_by"]["email"] == "dev@local"
 
     items = client.get("/v1/datasets/qa/versions/production/items", headers=_bearer())
     assert items.status_code == 200
@@ -160,6 +163,16 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
     assert compare.json()["summary"]["changed"] == 1
     assert compare.json()["summary"]["added"] == 1
 
+    lineage = client.get("/v1/datasets/qa/lineage", headers=_bearer())
+    assert lineage.status_code == 200
+    versions_by_label = {v["version"]: v for v in lineage.json()["versions"]}
+    assert versions_by_label["v1"]["created_by"]["display_name"] == "Dev"
+    assert versions_by_label["v1"]["published_by"]["email"] == "dev@local"
+    assert versions_by_label["v1"]["change_counts"] == {"added": 1, "modified": 0, "deleted": 0, "unchanged": 0}
+    assert versions_by_label["v2"]["change_counts"]["added"] == 1
+    assert versions_by_label["v2"]["change_counts"]["modified"] == 1
+    assert versions_by_label["v2"]["change_counts"]["deleted"] == 0
+
     with SessionLocal() as session:
         version_id = published.json()["version"]["id"]
         run = Run(
@@ -171,19 +184,89 @@ def test_dataset_upload_publish_alias_draft_compare_and_item_runs(client_and_ses
             dataset="QA",
             dataset_id=body["dataset"]["id"],
             dataset_version_id=version_id,
-            metrics=[],
+            metrics=["exact", "raw_quality"],
             run_metadata={},
-            run_config={},
+            run_config={"run_name": "qa-eval"},
         )
         session.add(run)
         session.flush()
         dataset_item_pk = edited.json()["item"]["id"]
-        session.add(RunItem(run_id=run.id, item_id=item["item_id"], dataset_item_pk=dataset_item_pk, index=0, input="hello", expected="WORLD", item_metadata={}))
+        session.add(
+            RunItem(
+                run_id=run.id,
+                item_id=item["item_id"],
+                dataset_item_pk=dataset_item_pk,
+                index=0,
+                input="hello",
+                expected="WORLD",
+                output="WORLD",
+                latency_ms=123.4,
+                item_metadata={},
+            )
+        )
+        session.add(RunItemScore(run_id=run.id, item_id=item["item_id"], metric_name="exact", score_numeric=1.0, label="pass"))
+        session.add(RunItemScore(run_id=run.id, item_id=item["item_id"], metric_name="raw_quality", score_raw="0.25"))
         session.commit()
 
     runs = client.get(f"/v1/datasets/qa/versions/v2/items/{item['item_id']}/runs", headers=_bearer())
     assert runs.status_code == 200
-    assert runs.json()["runs"][0]["run_id"] == "run-1"
+    run_payload = runs.json()
+    assert run_payload["aggregates"]["run_count"] == 1
+    assert run_payload["aggregates"]["avg_score"] == 0.625
+    assert run_payload["aggregates"]["metrics"]["exact"]["avg"] == 1.0
+    assert run_payload["aggregates"]["metrics"]["raw_quality"]["avg"] == 0.25
+    assert run_payload["runs"][0]["run_id"] == "run-1"
+    assert run_payload["runs"][0]["run_name"] == "qa-eval"
+    assert run_payload["runs"][0]["output"] == "WORLD"
+    assert run_payload["runs"][0]["scores"][0]["metric_name"] == "exact"
+
+    items_after_run = client.get("/v1/datasets/qa/versions/v2/items?sort=metric:exact:desc", headers=_bearer())
+    assert items_after_run.status_code == 200
+    items_payload = items_after_run.json()
+    assert items_payload["metric_names"] == ["exact", "raw_quality"]
+    scored_item = next(row for row in items_payload["items"] if row["item_id"] == item["item_id"])
+    assert scored_item["result_summary"]["metrics"]["exact"]["avg"] == 1.0
+    assert scored_item["result_summary"]["metrics"]["raw_quality"]["avg"] == 0.25
+    assert scored_item["edit_count"] == 1
+
+    empty_page = client.get("/v1/datasets/qa/versions/v2/items?offset=100", headers=_bearer())
+    assert empty_page.status_code == 200
+    assert empty_page.json()["metric_names"] == ["exact", "raw_quality"]
+
+    versions_after_run = client.get("/v1/datasets/qa/versions", headers=_bearer())
+    assert versions_after_run.status_code == 200
+    v2_payload = next(v for v in versions_after_run.json()["versions"] if v["version"] == "v2")
+    assert v2_payload["run_count"] == 1
+
+    item_history = client.get(f"/v1/datasets/qa/versions/v2/items/{item['item_id']}/lineage", headers=_bearer())
+    assert item_history.status_code == 200
+    lineage_rows = item_history.json()["lineage"]
+    assert [row["version"]["version"] for row in lineage_rows] == ["v1", "v2"]
+    assert lineage_rows[0]["item"]["item_id"] == item["item_id"]
+    v2_revisions = lineage_rows[1]["revisions"]
+    assert any(rev["change_type"] == "updated" and rev["actor"]["display_name"] == "Dev" for rev in v2_revisions)
+
+    imported_path = tmp_path / "qa_v3.csv"
+    imported_path.write_text("id,input,expected_output,topic\ncase-1,hello,yoyo,greeting\n", encoding="utf-8")
+    with imported_path.open("rb") as fh:
+        imported = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "QA",
+                "version": "v3",
+                "id_col": "id",
+                "metadata_cols": "topic",
+            },
+            files={"file": ("qa_v3.csv", fh, "text/csv")},
+        )
+    assert imported.status_code == 200
+    imported_compare = client.get("/v1/datasets/qa/versions/v3:compare?base=v1&include_diffs=1", headers=_bearer())
+    assert imported_compare.status_code == 200
+    imported_diff = imported_compare.json()["field_diffs"][0]
+    assert imported_diff["item_id"] == "case-1"
+    assert imported_diff["target_index"] == 0
+    assert imported_diff["edited_by"]["display_name"] == "Dev"
 
 
 def test_csv_upload_multi_column_input_combines_into_json(client_and_session, tmp_path):
@@ -248,6 +331,50 @@ def test_csv_upload_single_column_input_stays_scalar(client_and_session, tmp_pat
     row = items.json()["items"][0]
     assert row["input"] == "hi"
     assert row["expected_output"] is None
+
+
+def test_generated_item_edit_count_follows_index_across_lineage(client_and_session):
+    client, _ = client_and_session
+
+    created = client.post(
+        "/v1/datasets",
+        headers=_bearer(),
+        json={"name": "Generated Edits", "slug": "generated-edits"},
+    )
+    assert created.status_code == 200
+    version = client.post("/v1/datasets/generated-edits/versions", headers=_bearer(), json={"version": "v1"})
+    assert version.status_code == 200
+    item = client.post(
+        "/v1/datasets/generated-edits/versions/v1/items",
+        headers=_bearer(),
+        json={"input": "q", "expected_output": "a"},
+    )
+    assert item.status_code == 200
+    assert item.json()["item"]["item_id"] == "item-1"
+    first_edit = client.patch(
+        "/v1/datasets/generated-edits/versions/v1/items/item-1",
+        headers=_bearer(),
+        json={"input": "q1", "expected_output": "a1"},
+    )
+    assert first_edit.status_code == 200
+    published = client.post("/v1/datasets/generated-edits/versions/v1:publish", headers=_bearer(), json={})
+    assert published.status_code == 200
+    draft = client.post(
+        "/v1/datasets/generated-edits/versions",
+        headers=_bearer(),
+        json={"version": "v2", "from_version": "v1"},
+    )
+    assert draft.status_code == 200
+    second_edit = client.patch(
+        "/v1/datasets/generated-edits/versions/v2/items/item-1",
+        headers=_bearer(),
+        json={"input": "q2", "expected_output": "a2"},
+    )
+    assert second_edit.status_code == 200
+
+    items = client.get("/v1/datasets/generated-edits/versions/v2/items", headers=_bearer())
+    assert items.status_code == 200
+    assert items.json()["items"][0]["edit_count"] == 2
 
 
 def test_recreate_dataset_after_soft_delete_reuses_slug(client_and_session, tmp_path):
@@ -381,8 +508,8 @@ def test_dataset_runs_endpoint(client_and_session):
         )
         session.add(run)
         session.flush()
-        session.add(RunItem(run_id=run.id, item_id="case-1", index=0, input="q", expected="a", item_metadata={}))
-        session.add(RunItem(run_id=run.id, item_id="case-2", index=1, input="q2", expected="a2", item_metadata={}))
+        session.add(RunItem(run_id=run.id, item_id="case-1", index=0, input="q", expected="a", item_metadata={}, latency_ms=100.0))
+        session.add(RunItem(run_id=run.id, item_id="case-2", index=1, input="q2", expected="a2", item_metadata={}, latency_ms=300.0))
         session.add(RunItemScore(run_id=run.id, item_id="case-1", metric_name="accuracy", score_numeric=1.0))
         session.add(RunItemScore(run_id=run.id, item_id="case-2", metric_name="accuracy", score_numeric=0.0))
         session.commit()
@@ -397,6 +524,9 @@ def test_dataset_runs_endpoint(client_and_session):
     assert row["model"] == "gpt-test"
     assert row["items_count"] == 2
     assert row["eval_score"] == 0.5
+    assert row["avg_latency_ms"] == 200.0
+    assert row["metric_averages"] == {"accuracy": 0.5}
+    assert payload["metric_names"] == ["accuracy"]
 
     # Version filter that matches the run.
     filtered = client.get("/v1/datasets/runs-ds/runs?version=v1", headers=_bearer())
@@ -489,6 +619,14 @@ def test_items_search_sort_label_and_bulk_endpoint_and_compare_diffs(client_and_
     assert "beta-1" not in ids
     assert any(it.startswith("item-") or it == "alpha-1" or it == "gamma-1" for it in ids)
 
+    neighbors = client.get(
+        "/v1/datasets/search-test/versions/v1/items/alpha-1/neighbors?sort=item_id",
+        headers=_bearer(),
+    )
+    assert neighbors.status_code == 200
+    assert neighbors.json()["previous"] is None
+    assert neighbors.json()["next"]["item_id"] != "alpha-1"
+
     publish_v1 = client.post(
         "/v1/datasets/search-test/versions/v1:publish",
         headers=_bearer(),
@@ -518,5 +656,77 @@ def test_items_search_sort_label_and_bulk_endpoint_and_compare_diffs(client_and_
     payload = compare.json()
     assert "field_diffs" in payload
     assert any(d["item_id"] == "alpha-1" for d in payload["field_diffs"])
+    alpha_diff = next(d for d in payload["field_diffs"] if d["item_id"] == "alpha-1")
+    assert alpha_diff["target_index"] == 0
+    assert alpha_diff["edited_by"]["display_name"] == "Dev"
     assert "added_items" in payload
     assert "removed_items" in payload
+
+
+def test_delete_item_detaches_revision_foreign_keys(client_and_session):
+    client, SessionLocal = client_and_session
+
+    with SessionLocal() as session:
+        session.execute(text("PRAGMA foreign_keys=ON"))
+        session.commit()
+
+    created = client.post(
+        "/v1/datasets",
+        headers=_bearer(),
+        json={"name": "Delete Revisions", "slug": "delete-revisions"},
+    )
+    assert created.status_code == 200
+    version_created = client.post("/v1/datasets/delete-revisions/versions", headers=_bearer(), json={"version": "v1"})
+    assert version_created.status_code == 200
+    item = client.post(
+        "/v1/datasets/delete-revisions/versions/v1/items",
+        headers=_bearer(),
+        json={"item_id": "case-1", "input": "q", "expected_output": "a"},
+    )
+    assert item.status_code == 200
+    edited = client.patch(
+        "/v1/datasets/delete-revisions/versions/v1/items/case-1",
+        headers=_bearer(),
+        json={"input": "q2", "expected_output": "a2"},
+    )
+    assert edited.status_code == 200
+    with SessionLocal() as session:
+        dataset_version_id = version_created.json()["version"]["id"]
+        run = Run(
+            id="delete-run-1",
+            project_id="project-1",
+            created_by_user_id="user-1",
+            owner_user_id="user-1",
+            task="task",
+            dataset="delete-revisions",
+            dataset_id=created.json()["dataset"]["id"],
+            dataset_version_id=dataset_version_id,
+            metrics=[],
+            run_metadata={},
+            run_config={},
+        )
+        session.add(run)
+        session.flush()
+        session.add(
+            RunItem(
+                run_id=run.id,
+                item_id="case-1",
+                dataset_item_pk=item.json()["item"]["id"],
+                index=0,
+                input="q2",
+                expected="a2",
+                item_metadata={},
+            )
+        )
+        session.commit()
+
+    deleted = client.delete("/v1/datasets/delete-revisions/versions/v1/items/case-1", headers=_bearer())
+    assert deleted.status_code == 200, deleted.text
+
+    history = client.get("/v1/datasets/delete-revisions/versions/v1/items/case-1/lineage", headers=_bearer())
+    assert history.status_code == 200
+    revisions = history.json()["lineage"][0]["revisions"]
+    assert any(rev["change_type"] == "deleted" for rev in revisions)
+    with SessionLocal() as session:
+        run_item = session.query(RunItem).filter(RunItem.run_id == "delete-run-1", RunItem.item_id == "case-1").one()
+        assert run_item.dataset_item_pk is None
