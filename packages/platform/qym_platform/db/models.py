@@ -288,6 +288,8 @@ class DatasetVersion(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id"), index=True)
     version: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Optional human-friendly label shown alongside the immutable vN identifier.
+    name: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[DatasetVersionStatus] = mapped_column(
         Enum(DatasetVersionStatus, values_callable=lambda e: [x.value for x in e]),

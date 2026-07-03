@@ -271,6 +271,7 @@ def _version_payload(db: Session, version: DatasetVersion, *, include_aliases: b
         "id": version.id,
         "dataset_id": version.dataset_id,
         "version": version.version,
+        "name": version.name or "",
         "description": version.description,
         "status": version.status.value if hasattr(version.status, "value") else str(version.status),
         "source_type": version.source_type,
@@ -318,6 +319,7 @@ def _dataset_payload(db: Session, dataset: Dataset) -> Dict[str, Any]:
         "description": dataset.description,
         "tags": dataset.tags or [],
         "created_by_user_id": dataset.created_by_user_id,
+        "created_by": _user_payload(_user_map(db, [dataset.created_by_user_id]).get(dataset.created_by_user_id)),
         "created_at": to_api_timestamp(dataset.created_at),
         "updated_at": to_api_timestamp(dataset.updated_at),
         "production_version": _version_payload(db, production, include_aliases=False) if production else None,
@@ -774,10 +776,16 @@ class UpdateDatasetRequest(BaseModel):
 
 class CreateVersionRequest(BaseModel):
     version: Optional[str] = None
+    name: str = ""
     description: str = ""
     labels: list[str] = Field(default_factory=list)
     from_version: Optional[str] = None
     from_alias: Optional[str] = None
+
+
+class UpdateVersionRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class PublishVersionRequest(BaseModel):
@@ -1050,11 +1058,12 @@ def create_version(
     dataset = _get_dataset(db, project, dataset_ref)
     source_ref = req.from_version or req.from_alias
     parent = _resolve_version(db, dataset, source_ref) if source_ref else None
-    version_name = (req.version or "").strip() or _next_version_name(db, dataset)
+    version_name, display_name = _version_identity(db, dataset, req.version, req.name)
     version = DatasetVersion(
         id=str(uuid4()),
         dataset_id=dataset.id,
         version=version_name,
+        name=display_name,
         description=req.description,
         status=DatasetVersionStatus.DRAFT,
         source_type="derived" if parent else "api",
@@ -1123,6 +1132,29 @@ def publish_version(
     return {"version": _version_payload(db, version)}
 
 
+@router.patch("/v1/datasets/{dataset_ref}/versions/{version_ref}")
+def update_version(
+    dataset_ref: str,
+    version_ref: str,
+    req: UpdateVersionRequest,
+    project_slug: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(dataset_principal),
+) -> Dict[str, Any]:
+    """Edit version metadata. The vN identifier itself is immutable."""
+    _require_scope(principal, "datasets:write")
+    project = _project_for_request(db, principal, project_slug)
+    dataset = _get_dataset(db, project, dataset_ref)
+    version = _resolve_version(db, dataset, version_ref)
+    if req.name is not None:
+        version.name = req.name.strip()
+    if req.description is not None:
+        version.description = req.description
+    version.updated_at = utc_now_naive()
+    db.commit()
+    return {"version": _version_payload(db, version)}
+
+
 def _set_alias(db: Session, dataset: Dataset, alias_name: str, version: DatasetVersion, user_id: str) -> DatasetAlias:
     status = version.status.value if hasattr(version.status, "value") else str(version.status)
     if status != DatasetVersionStatus.PUBLISHED.value:
@@ -1151,6 +1183,28 @@ def _next_version_name(db: Session, dataset: Dataset) -> str:
         if match:
             highest = max(highest, int(match.group(1)))
     return f"v{highest + 1}"
+
+
+def _version_identity(db: Session, dataset: Dataset, requested_version: Optional[str], requested_name: str = "") -> tuple[str, str]:
+    """Version identifiers are always sequential ``vN``; free text becomes the name.
+
+    An explicitly requested ``vN`` that is still free is honored. Anything else
+    (custom labels from older callers, or a collision) falls through to
+    auto-numbering, preserving the free text as the display name.
+    """
+    requested = (requested_version or "").strip()
+    name = (requested_name or "").strip()
+    if re.fullmatch(r"v\d+", requested):
+        taken = (
+            db.query(DatasetVersion.id)
+            .filter(DatasetVersion.dataset_id == dataset.id, DatasetVersion.version == requested)
+            .first()
+        )
+        if not taken:
+            return requested, name
+    elif requested and not name:
+        name = requested
+    return _next_version_name(db, dataset), name
 
 
 @router.post("/v1/datasets/{dataset_ref}/aliases/{alias_name}")
@@ -1975,7 +2029,8 @@ def compare_versions(
 async def upload_dataset(
     name: str = Form(...),
     project_slug: Optional[str] = Form(default=None),
-    version: str = Form(default="v1"),
+    version: str = Form(default=""),
+    version_name: str = Form(default=""),
     description: str = Form(default=""),
     tags: str = Form(default=""),
     labels: str = Form(default=""),
@@ -2029,10 +2084,12 @@ async def upload_dataset(
             metadata_cols=_labels(metadata_cols),
             label_cols=_labels(label_cols),
         )
+    version_label, display_name = _version_identity(db, dataset, version, version_name)
     version_row = DatasetVersion(
         id=str(uuid4()),
         dataset_id=dataset.id,
-        version=version,
+        version=version_label,
+        name=display_name,
         description=description,
         status=DatasetVersionStatus.DRAFT,
         source_type=source_type,

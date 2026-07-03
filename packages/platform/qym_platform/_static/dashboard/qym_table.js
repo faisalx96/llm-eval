@@ -55,6 +55,11 @@
     return Number.isFinite(stored) && stored > 0 ? Math.max(minWidth, stored) : fallback;
   }
 
+  function columnFlex(column) {
+    const flex = Number(column.flex);
+    return Number.isFinite(flex) && flex > 0 ? flex : 0;
+  }
+
   function sortArrow(state) {
     if (state === 'ascending') return '↑';
     if (state === 'descending') return '↓';
@@ -75,23 +80,62 @@
 
     const table = el('table', { className: ['qdt-table', options.tableClass || ''].filter(Boolean).join(' ') });
     const colRefs = new Map();
+    const effectiveWidths = new Map();
     const widthFor = column => columnWidth(widths, column);
-    const contentWidth = () => columns.reduce((sum, column) => sum + widthFor(column), 0);
+    // Leftover host space is handed to flex columns explicitly (instead of
+    // letting the browser silently redistribute it across every column), so
+    // the rendered width of each column always matches what we track here.
     const applyTableWidth = () => {
-      const width = Math.max(options.minWidth || 0, host.clientWidth || 0, contentWidth());
-      table.style.width = width + 'px';
-      table.style.minWidth = width + 'px';
+      const bases = columns.map(widthFor);
+      const content = bases.reduce((sum, w) => sum + w, 0);
+      const target = Math.max(options.minWidth || 0, host.clientWidth || 0, content);
+      const extra = Math.max(0, target - content);
+      const shares = new Map();
+      // Columns the user resized keep their exact width; the remaining flex
+      // columns absorb the leftover proportionally to their flex weight. If
+      // the user has sized every flex column, the table stops stretching.
+      const recipients = columns.filter(column => columnFlex(column) && widths[column.id] == null);
+      const totalFlex = recipients.reduce((sum, column) => sum + columnFlex(column), 0);
+      if (extra > 0 && totalFlex > 0) {
+        let assigned = 0;
+        recipients.forEach((column, index) => {
+          const share = index === recipients.length - 1
+            ? extra - assigned
+            : Math.floor(extra * columnFlex(column) / totalFlex);
+          assigned += share;
+          shares.set(column.id, share);
+        });
+      }
+      let total = 0;
+      columns.forEach((column, index) => {
+        const width = bases[index] + (shares.get(column.id) || 0);
+        effectiveWidths.set(column.id, width);
+        const col = colRefs.get(column.id);
+        if (col) col.style.width = width + 'px';
+        total += width;
+      });
+      table.style.width = total + 'px';
+      table.style.minWidth = total + 'px';
     };
 
     const colgroup = el('colgroup');
     columns.forEach(column => {
       const col = el('col');
-      col.style.width = widthFor(column) + 'px';
       colgroup.appendChild(col);
       colRefs.set(column.id, col);
     });
     table.appendChild(colgroup);
     applyTableWidth();
+
+    if (host.__qdtResizeObserver) host.__qdtResizeObserver.disconnect();
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => {
+        if (!host.contains(table)) { observer.disconnect(); return; }
+        applyTableWidth();
+      });
+      observer.observe(host);
+      host.__qdtResizeObserver = observer;
+    }
 
     function startResize(column, th, event) {
       event.preventDefault();
@@ -100,7 +144,9 @@
       const col = colRefs.get(column.id);
       if (!col) return;
       const startX = event.clientX;
-      const startWidth = widthFor(column);
+      // Start from the rendered width (base + flex share), not the stored
+      // width — otherwise the column snaps the moment the drag begins.
+      const startWidth = effectiveWidths.get(column.id) || widthFor(column);
       const prevCursor = document.body.style.cursor;
       const prevUserSelect = document.body.style.userSelect;
       document.body.style.cursor = 'col-resize';
@@ -110,7 +156,6 @@
       function onMove(moveEvent) {
         const nextWidth = Math.max(Number(column.minWidth || column.min || 44), Math.round(startWidth + moveEvent.clientX - startX));
         widths[column.id] = nextWidth;
-        col.style.width = nextWidth + 'px';
         applyTableWidth();
       }
 
@@ -150,11 +195,12 @@
           }
         });
         th.appendChild(el('button', { className: 'sort-btn qdt-sort-btn', type: 'button', 'aria-sort': current, tabindex: '-1' }, [
-          el('span', null, column.label || ''),
+          el('span', { title: column.label || null }, column.label || ''),
           el('span', { className: 'sort-arrow qdt-sort-arrow' }, sortArrow(current)),
         ]));
       } else {
         th.textContent = column.label || '';
+        if (column.label) th.title = column.label;
       }
       if (column.resizable !== false) {
         const resizeHandle = el('span', {

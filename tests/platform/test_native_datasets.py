@@ -730,3 +730,55 @@ def test_delete_item_detaches_revision_foreign_keys(client_and_session):
     with SessionLocal() as session:
         run_item = session.query(RunItem).filter(RunItem.run_id == "delete-run-1", RunItem.item_id == "case-1").one()
         assert run_item.dataset_item_pk is None
+
+
+def test_version_identifiers_are_always_vn_and_names_stay_separate(client_and_session):
+    client, _ = client_and_session
+    created = client.post("/v1/datasets", headers=_bearer(), json={"name": "Version Names", "slug": "version-names"})
+    assert created.status_code == 200
+
+    # Free-text "version" from older callers becomes the display name; the identifier is auto vN.
+    legacy = client.post("/v1/datasets/version-names/versions", headers=_bearer(), json={"version": "test"})
+    assert legacy.status_code == 200
+    payload = legacy.json()["version"]
+    assert payload["version"] == "v1"
+    assert payload["name"] == "test"
+
+    # The explicit name field pairs with the next auto-assigned identifier.
+    named = client.post("/v1/datasets/version-names/versions", headers=_bearer(), json={"name": "hard negatives"})
+    assert named.status_code == 200
+    payload = named.json()["version"]
+    assert payload["version"] == "v2"
+    assert payload["name"] == "hard negatives"
+
+    # Requesting an already-taken vN falls through to the next free number.
+    collision = client.post("/v1/datasets/version-names/versions", headers=_bearer(), json={"version": "v1"})
+    assert collision.status_code == 200
+    payload = collision.json()["version"]
+    assert payload["version"] == "v3"
+    assert payload["name"] == ""
+
+    # Renaming touches only the name; the vN identifier is immutable.
+    patched = client.patch("/v1/datasets/version-names/versions/v1", headers=_bearer(), json={"name": "smoke"})
+    assert patched.status_code == 200
+    payload = patched.json()["version"]
+    assert payload["version"] == "v1"
+    assert payload["name"] == "smoke"
+
+    listed = client.get("/v1/datasets/version-names/versions", headers=_bearer())
+    assert listed.status_code == 200
+    by_version = {v["version"]: v for v in listed.json()["versions"]}
+    assert set(by_version) == {"v1", "v2", "v3"}
+    assert by_version["v1"]["name"] == "smoke"
+
+    # Uploads follow the same rule: free-text version becomes the name.
+    upload = client.post(
+        "/v1/datasets:upload",
+        headers=_bearer(),
+        data={"name": "Version Names", "version": "my import", "version_name": ""},
+        files={"file": ("qa.csv", b"input,expected_output\nq,a\n", "text/csv")},
+    )
+    assert upload.status_code == 200
+    payload = upload.json()["version"]
+    assert payload["version"] == "v4"
+    assert payload["name"] == "my import"
