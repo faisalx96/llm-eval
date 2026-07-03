@@ -56,6 +56,13 @@ qym --task-file examples/example.py \
 - Modules/files: `snake_case.py`; classes: `PascalCase`; functions/vars: `snake_case`.
 - Keep public APIs minimal; avoid editing generated folders.
 
+## UI & Design Work (mandatory)
+Any change to `packages/platform/qym_platform/_static/` must follow
+**`docs/DESIGN_LANGUAGE.md`** — the single source of truth for design tokens,
+the type scale and its roles, text-color usage, mono-vs-sans policy, and
+component recipes. Read it before styling anything. Rules are enforced by
+`tests/platform/test_design_language.py`; run it after any UI change.
+
 ## Testing Guidelines
 - Framework: `pytest` with `pytest-asyncio` for async paths.
 - Place SDK tests in `tests/sdk/` and platform tests in `tests/platform/`.
