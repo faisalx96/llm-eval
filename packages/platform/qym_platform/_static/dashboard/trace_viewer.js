@@ -1973,7 +1973,7 @@
             "&": { fontSize: "12px", background: "var(--bg-void)", color: "var(--text-secondary)" },
             ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-mono)" },
             ".cm-gutters": { background: "var(--bg-void)", border: "none", minWidth: "auto" },
-            ".cm-lineNumbers .cm-gutterElement": { color: "#50505e", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
+            ".cm-lineNumbers .cm-gutterElement": { color: "#6b6b80", minWidth: "1.8em", padding: "0 4px 0 4px", fontSize: "11px" },
             ".cm-line": { padding: "0 8px" },
             ".cm-activeLine": { background: "rgba(255,255,255,.03)" },
             ".cm-activeLineGutter": { background: "rgba(255,255,255,.03)" },
@@ -1989,7 +1989,7 @@
             cm.langJson.json(),
             cm.view.keymap.of(cm.language.foldKeymap),
             cm.view.EditorView.theme({
-              ".cm-foldGutter .cm-gutterElement": { color: "#7a7a90", padding: "0 2px 0 0", width: "12px" },
+              ".cm-foldGutter .cm-gutterElement": { color: "#9a9ab2", padding: "0 2px 0 0", width: "12px" },
               ".cm-matchingBracket": { background: "rgba(0,212,170,.15)", outline: "1px solid rgba(0,212,170,.3)" },
             }, { dark: true }),
             cm.language.syntaxHighlighting(cm.language.HighlightStyle.define([
@@ -1997,10 +1997,10 @@
               { tag: cm.highlight.tags.string, color: "#00d4aa" },
               { tag: cm.highlight.tags.number, color: "#a855f7" },
               { tag: cm.highlight.tags.bool, color: "#00a8ff" },
-              { tag: cm.highlight.tags.null, color: "#50505e" },
-              { tag: cm.highlight.tags.punctuation, color: "#7a7a90" },
-              { tag: cm.highlight.tags.brace, color: "#7a7a90" },
-              { tag: cm.highlight.tags.squareBracket, color: "#7a7a90" },
+              { tag: cm.highlight.tags.null, color: "#6b6b80" },
+              { tag: cm.highlight.tags.punctuation, color: "#9a9ab2" },
+              { tag: cm.highlight.tags.brace, color: "#9a9ab2" },
+              { tag: cm.highlight.tags.squareBracket, color: "#9a9ab2" },
             ]))
           );
         }

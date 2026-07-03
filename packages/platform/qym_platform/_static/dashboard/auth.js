@@ -87,9 +87,9 @@
       <div style="display:flex;flex:1;width:100%;align-items:center;justify-content:center;min-height:calc(100vh - 100px);">
         <div style="text-align:center;max-width:360px;padding:40px;">
           <img src="${withPrefix('/static/qym_icon.png')}" alt="قيِّم" style="height:64px;margin-bottom:24px;" />
-          <h1 style="font-size:24px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">${title}</h1>
+          <h1 style="font-size:var(--font-title);font-weight:600;color:var(--text-primary);margin-bottom:8px;">${title}</h1>
           <p style="color:var(--text-muted);margin-bottom:32px;">${message}</p>
-          <a href="${loginUrl()}" style="display:inline-flex;width:100%;padding:12px 24px;background:var(--accent-primary);color:var(--bg-base);border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
+          <a href="${loginUrl()}" style="display:inline-flex;width:100%;padding:12px 24px;background:var(--accent-primary);color:var(--bg-base);border:none;border-radius:6px;font-size:var(--font-md);font-weight:500;cursor:pointer;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
             Sign in
           </a>
         </div>

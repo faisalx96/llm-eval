@@ -10,6 +10,7 @@
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
   <style>
+    /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* ═══════════════════════════════════════════════════
        REVIEWS PAGE — Correction Bank Management
        ═══════════════════════════════════════════════════ */
@@ -57,7 +58,7 @@
     }
 
     .stat-card .stat-num {
-      font-size: 22px;
+      font-size: var(--font-stat);
       font-weight: 700;
       font-family: var(--font-mono);
       line-height: 1;
@@ -173,7 +174,7 @@
     .multi-select-option .option-count {
       margin-left: auto;
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       font-family: var(--font-mono);
     }
 
@@ -215,7 +216,7 @@
       align-items: center;
       gap: 4px;
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       background: var(--bg-elevated);
       border: 1px solid var(--border-default);
       border-radius: 4px;
@@ -377,7 +378,7 @@
     .card-id {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       flex-shrink: 0;
     }
 
@@ -395,7 +396,7 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -433,7 +434,7 @@
 
     .card-provenance {
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-left: auto;
       flex-shrink: 0;
       white-space: nowrap;
@@ -473,7 +474,7 @@
     }
 
     .diff-source-tag {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -494,7 +495,7 @@
     .diff-confidence {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
     }
 
     .diff-field {
@@ -502,11 +503,11 @@
     }
 
     .diff-label {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-bottom: 2px;
     }
 
@@ -557,7 +558,7 @@
       border-top: 1px solid var(--border-subtle);
       background: rgba(0, 0, 0, 0.1);
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
     }
 
     .card-footer .review-info {
@@ -597,11 +598,11 @@
     }
 
     .context-chip strong {
-      color: var(--text-dim);
+      color: var(--text-muted);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.4px;
-      font-size: 10px;
+      font-size: var(--font-xs);
     }
 
     .context-chip span:last-child {
@@ -642,7 +643,7 @@
 
     .detail-snapshot {
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: var(--font-base);
       color: var(--text-secondary);
       background: var(--bg-void);
       border: 1px solid var(--border-subtle);
@@ -668,11 +669,11 @@
     }
 
     .snapshot-key {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.7px;
-      color: var(--text-dim);
+      color: var(--text-muted);
     }
 
     .snapshot-link {
@@ -754,7 +755,7 @@
     .history-time,
     .history-review-status {
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
     }
 
     .history-review-status {
@@ -788,7 +789,7 @@
     }
 
     .history-empty {
-      color: var(--text-dim);
+      color: var(--text-muted);
       font-size: var(--font-sm);
     }
 
@@ -799,11 +800,11 @@
     }
 
     .edit-field label {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-bottom: 2px;
       display: block;
     }
@@ -866,7 +867,7 @@
 
     .empty-state .empty-desc {
       font-size: var(--font-sm);
-      color: var(--text-dim);
+      color: var(--text-muted);
       text-align: center;
       max-width: 400px;
       line-height: 1.5;
@@ -1043,7 +1044,7 @@
       color: var(--text-dim);
       cursor: pointer;
       padding: 2px 6px;
-      font-size: 12px;
+      font-size: var(--font-base);
       border-radius: 3px;
       transition: all 0.15s;
       display: flex;
@@ -1081,7 +1082,7 @@
     }
 
     .filter-chip {
-      font-size: 11px;
+      font-size: var(--font-sm);
       padding: 3px 8px;
       border-radius: 4px;
       border: 1px solid var(--border-default);
@@ -1105,10 +1106,10 @@
     }
 
     .filter-group-label {
-      font-size: 10px;
+      font-size: var(--font-sm);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       flex-shrink: 0;
       padding-right: 2px;
     }
@@ -1128,8 +1129,8 @@
     }
 
     .conf-slider-wrap .conf-label {
-      font-size: 10px;
-      color: var(--text-dim);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.3px;
       flex-shrink: 0;
@@ -1286,7 +1287,7 @@
 
       <div class="toolbar-right">
         <button class="btn-clear-filters" id="clear-filters" title="Clear all filters">&times; Clear filters</button>
-        <span style="font-size: var(--font-xs); color: var(--text-dim);" id="result-count"></span>
+        <span style="font-size: var(--font-sm); color: var(--text-muted);" id="result-count"></span>
       </div>
     </div>
 

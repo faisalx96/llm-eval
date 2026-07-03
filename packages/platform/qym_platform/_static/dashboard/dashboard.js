@@ -3554,7 +3554,7 @@
                   <div class="timeline-info">
                     <span class="tag task">${run.task_name}</span>
                     <span class="tag model" title="${run.model_name}">${renderModelLabelForRun(run)}</span>
-                    <span style="color:var(--text-muted);font-size:11px;">${run.total_items} items</span>
+                    <span style="color:var(--text-muted);font-size:var(--font-sm);">${run.total_items} items</span>
                   </div>
                   <span class="timeline-success ${successClass}">${formatPercent(run.success_rate)}</span>
                 </div>
@@ -4502,7 +4502,7 @@
     for (const [groupKey, groupRuns] of Object.entries(configGroups)) {
       if (hasMultipleGroups && groupKey !== '__ungrouped__') {
         const groupLabel = getRunDisplayName(groupRuns[0]) || `Config ${Object.keys(configGroups).indexOf(groupKey) + 1}`;
-        runListHtml += `<div style="padding:6px 8px;font-size:10px;color:var(--accent-primary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-default);">${escapeHtml(groupLabel)} (${groupRuns.length} runs)</div>`;
+        runListHtml += `<div style="padding:6px 8px;font-size:var(--font-sm);color:var(--accent-primary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid var(--border-default);">${escapeHtml(groupLabel)} (${groupRuns.length} runs)</div>`;
       }
       for (const run of groupRuns) {
         const idx = runFlatIdx++;
@@ -4534,7 +4534,7 @@
     listEl.innerHTML = `
       <div class="run-selection-header">
         <span class="selection-counter"><span id="selection-count">0</span> / ${globalK} selected</span>
-        ${hasMultipleGroups ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px;">${Object.keys(configGroups).length} config groups</span>` : ''}
+        ${hasMultipleGroups ? `<span style="font-size:var(--font-sm);color:var(--text-muted);margin-left:8px;">${Object.keys(configGroups).length} config groups</span>` : ''}
       </div>
       <div class="run-selection-items">
         ${runListHtml}
@@ -5471,10 +5471,10 @@
     main.innerHTML = `
       <div style="max-width:640px;margin:56px auto;padding:0 20px;">
         <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px;padding:28px 24px;">
-          <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>
-          <h1 style="margin:0 0 10px 0;font-size:28px;line-height:1.2;color:var(--text-primary);">Project not found</h1>
-          <p style="margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>
-          ${slug ? `<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">Slug: ${escapeHtml(slug)}</div>` : ''}
+          <div style="font-size:var(--font-sm);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>
+          <h1 style="margin:0 0 10px 0;font-size:var(--font-title);line-height:1.2;color:var(--text-primary);">Project not found</h1>
+          <p style="margin:0;color:var(--text-secondary);font-size:var(--font-md);line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>
+          ${slug ? `<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--font-base);color:var(--text-muted);">Slug: ${escapeHtml(slug)}</div>` : ''}
           <div style="margin-top:20px;"><a href="/" class="btn btn-primary" style="display:inline-flex;text-decoration:none;">Back to Projects</a></div>
         </div>
       </div>

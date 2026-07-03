@@ -13,6 +13,7 @@
   <script src="/static/trace_viewer.js"></script>
   <script src="/static/playground.js?v=variable-mapping-20260510"></script>
   <style>
+    /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     .run-container {
       padding: var(--space-lg);
       overflow-y: auto;
@@ -121,7 +122,7 @@
     }
     .hero-run-name {
       font-family: var(--font-mono);
-      font-size: 17px;
+      font-size: var(--font-title);
       font-weight: 600;
       color: var(--text-primary);
       word-break: break-all;
@@ -131,7 +132,7 @@
     .hero-run-id {
       font-family: var(--font-mono);
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-top: 4px;
       letter-spacing: 0.2px;
     }
@@ -234,7 +235,7 @@
       gap: 2px;
     }
     .config-cell-key {
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.6px;
@@ -264,11 +265,11 @@
       min-width: 0;
     }
     .hero-eyebrow {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 1.1px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-bottom: 4px;
     }
     .hero-headline {
@@ -279,7 +280,7 @@
     }
     .hero-run-name {
       font-family: var(--font-mono);
-      font-size: 16px;
+      font-size: var(--font-title);
       font-weight: 600;
       color: var(--text-primary);
       word-break: break-word;
@@ -376,10 +377,10 @@
       max-width: min(420px, 100%);
     }
     .hero-id-pill-label {
-      color: var(--text-dim);
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-family: var(--font-sans);
       font-weight: 600;
       flex-shrink: 0;
@@ -401,15 +402,15 @@
       padding: 0;
     }
     .hero-meta-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.7px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-bottom: 2px;
     }
     .hero-meta-value {
-      font-size: 13px;
+      font-size: var(--font-md);
       font-weight: 500;
       color: var(--text-primary);
       line-height: 1.25;
@@ -471,8 +472,8 @@
       font-size: var(--font-sm);
     }
     .context-section-hint {
-      font-size: 11px;
-      color: var(--text-dim);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
     }
     .context-section-caret {
       color: var(--text-muted);
@@ -514,7 +515,7 @@
       gap: 3px;
     }
     .context-cell-key {
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.6px;
@@ -523,7 +524,7 @@
     }
     .context-cell-val {
       font-family: var(--font-mono);
-      font-size: 13px;
+      font-size: var(--font-md);
       color: var(--text-primary);
       font-weight: 500;
       overflow: hidden;
@@ -534,7 +535,7 @@
     .context-section-empty {
       padding: 0 16px 12px;
       color: var(--text-muted);
-      font-size: 13px;
+      font-size: var(--font-md);
     }
 
     /* Stats section */
@@ -591,7 +592,7 @@
       font-size: 10px;
       font-weight: 700;
       font-style: italic;
-      font-family: Georgia, serif;
+      font-family: var(--font-sans);
       cursor: help;
       position: relative;
       text-transform: lowercase;
@@ -671,7 +672,7 @@
     .dist-chart-col:hover { opacity: 0.8; }
     .dist-chart-col .bar-count {
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
       color: var(--text-secondary);
       line-height: 1;
@@ -681,7 +682,7 @@
       border-radius: 4px 4px 1px 1px;
     }
     .dist-chart-col .bar-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
       color: var(--text-secondary);
       text-align: center;
@@ -705,7 +706,7 @@
     }
     .dist-summary-stat .dst-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.4px;
@@ -754,7 +755,7 @@
     }
     .overview-header-hint {
       font-size: var(--font-xs);
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-top: 3px;
       letter-spacing: 0.2px;
     }
@@ -817,7 +818,7 @@
     }
     .overview-summary-value {
       font-family: var(--font-mono);
-      font-size: 13px;
+      font-size: var(--font-md);
       font-weight: 600;
       line-height: 1;
       color: var(--text-primary);
@@ -829,9 +830,9 @@
     .overview-summary-value.score-2 { color: var(--score-2); }
     .overview-summary-value.score-1 { color: var(--score-1); }
     .overview-summary-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
-      color: var(--text-dim);
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       white-space: nowrap;
@@ -841,11 +842,11 @@
       margin-bottom: var(--space-xl);
     }
     .system-metrics-label {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 1.2px;
-      color: var(--text-dim);
+      color: var(--text-muted);
       margin-bottom: var(--space-sm);
       padding-bottom: var(--space-sm);
     }
@@ -967,7 +968,7 @@
       min-width: 0;
     }
     .trace-pill-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -978,7 +979,7 @@
     }
     .trace-pill-val {
       font-family: var(--font-mono);
-      font-size: 17px;
+      font-size: var(--font-xl);
       font-weight: 700;
       line-height: 1;
     }
@@ -1088,7 +1089,7 @@
     }
     .metric-card-value {
       font-family: var(--font-mono);
-      font-size: 22px;
+      font-size: var(--font-stat);
       font-weight: 700;
       line-height: 1;
     }
@@ -1121,7 +1122,7 @@
     }
     .metric-num-stat:last-child { border-right: none; }
     .metric-num-stat-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -1130,7 +1131,7 @@
     }
     .metric-num-stat-value {
       font-family: var(--font-mono);
-      font-size: 14px;
+      font-size: var(--font-md);
       font-weight: 700;
       color: var(--text-primary);
     }
@@ -1153,7 +1154,7 @@
       align-items: center;
       justify-content: center;
       font-family: var(--font-mono);
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       cursor: pointer;
       transition: flex 0.3s ease, opacity 0.15s ease, filter 0.15s ease;
@@ -1171,7 +1172,7 @@
       display: flex;
       justify-content: space-between;
       margin-top: 6px;
-      font-size: 11px;
+      font-size: var(--font-sm);
       color: var(--text-secondary);
     }
     .metric-bool-legend-item {
@@ -1187,7 +1188,7 @@
     .metric-bool-dot.pass { background: var(--success); }
     .metric-bool-dot.fail { background: var(--error); }
     .metric-card-badge {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-family: var(--font-mono);
       color: var(--text-muted);
       background: var(--bg-elevated);
@@ -1213,14 +1214,14 @@
     }
     .latency-p50-val {
       font-family: var(--font-mono);
-      font-size: 28px;
+      font-size: var(--font-stat);
       font-weight: 700;
       color: var(--accent-secondary);
       line-height: 1;
       letter-spacing: -0.5px;
     }
     .latency-p50-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.8px;
@@ -1268,7 +1269,7 @@
       white-space: nowrap;
       text-align: center;
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: var(--font-xs);
       line-height: 1.3;
       color: var(--text-muted);
       font-weight: 500;
@@ -1277,7 +1278,7 @@
       display: block;
       color: var(--text-secondary);
       font-weight: 600;
-      font-size: 10px;
+      font-size: var(--font-xs);
     }
 
     /* ── Trace Stats Card ── */
@@ -1320,7 +1321,7 @@
     .trace-stat-icon.tool   { background: rgba(245, 158, 11, 0.1); }
     .trace-stat-icon.success { background: rgba(16, 185, 129, 0.1); }
     .trace-stat-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -1328,7 +1329,7 @@
     }
     .trace-stat-val {
       font-family: var(--font-mono);
-      font-size: 18px;
+      font-size: var(--font-xl);
       font-weight: 700;
       color: var(--text-primary);
       line-height: 1;
@@ -1439,7 +1440,7 @@
       color: var(--bg-void) !important;
     }
     .category-chip .chip-count {
-      font-size: 10px;
+      font-size: var(--font-xs);
       opacity: 0.7;
       font-family: var(--font-sans);
       font-weight: 500;
@@ -1626,7 +1627,7 @@
     .trace-error-group .error-card-count { color: var(--warning); }
     .error-card-count-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 600;
       letter-spacing: 0.4px;
       text-transform: uppercase;
@@ -1664,7 +1665,7 @@
       min-width: 0;
     }
     .rc-category-pill-count {
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       padding: 1px 7px;
       border-radius: 10px;
@@ -1699,7 +1700,7 @@
     .rc-subcause-count {
       font-weight: 600;
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: var(--font-sm);
       margin-left: 8px;
       flex-shrink: 0;
     }
@@ -1783,7 +1784,7 @@
     }
     .breakdown-card-scores .score-col-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.4px;
@@ -1803,7 +1804,7 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-family: var(--font-mono);
       color: var(--text-muted);
       background: var(--bg-elevated);
@@ -1839,7 +1840,7 @@
     }
     .breakdown-detail-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.4px;
@@ -1868,7 +1869,7 @@
       min-width: 0;
     }
     .fp-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-family: var(--font-sans);
       color: var(--text-muted);
       text-transform: uppercase;
@@ -1989,7 +1990,7 @@
       background: rgba(239, 68, 68, 0.2);
       color: #fca5a5;
       border-radius: 8px;
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       line-height: 1;
     }
@@ -2244,7 +2245,7 @@
       background: var(--bg-surface);
       color: var(--text-muted);
       font-family: var(--font-sans);
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 500;
       letter-spacing: 0.01em;
       cursor: pointer;
@@ -2338,7 +2339,7 @@
       background: rgba(34,197,94,0.15);
       color: var(--success);
       border-radius: 3px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
     }
     .metric-edit-badge::before { content: "\25CF"; font-size: 7px; margin-right: 4px; }
@@ -2349,7 +2350,7 @@
       border-radius: 6px;
       padding: 2px 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: var(--font-base);
       margin-left: 6px;
       line-height: 1;
       opacity: 0.95;
@@ -2380,7 +2381,7 @@
     .metric-score-name { font-size: var(--font-xs); color: var(--text-muted); }
     .metric-score-value { font-family: var(--font-mono); font-size: var(--font-sm); font-weight: 600; }
     .passfail-badge {
-      font-size: 10px;
+      font-size: var(--font-xs);
       padding: 1px 6px;
       border-radius: 3px;
       font-weight: 600;
@@ -2399,7 +2400,7 @@
     }
     .rc-sol-label {
       display: block;
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 1px;
       margin-bottom: 6px;
@@ -3257,7 +3258,7 @@
         gap: 5px;
         padding: 2px 8px;
         border-radius: 999px;
-        font-size: 10px;
+        font-size: var(--font-xs);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.8px;
@@ -3291,7 +3292,7 @@
         border: 1px solid rgba(16, 185, 129, 0.7);
         background: linear-gradient(180deg, #1ecf93, #12a874);
         color: #071b15;
-        font-size: 11px;
+        font-size: var(--font-sm);
         font-weight: 700;
         cursor: pointer;
         box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
@@ -3410,7 +3411,7 @@
       min-width: 0;
     }
     .sankey-node-count {
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       padding: 1px 7px;
       border-radius: 10px;
@@ -4407,7 +4408,7 @@
 
         const metaHtml = [
           metaItem('Task', taskName),
-          metaItem('Dataset', run.dataset_name || '—', { html: escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
+          metaItem('Dataset', run.dataset_name || '—', { html: (window.QymShell && run.dataset_name ? QymShell.identiconHTML(run.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
           metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(run.trace_stats)), nowrap: true }),
           metaItem('Owner', ownerLabel === '—' ? '' : ownerLabel),
           metaItem('Project', projectName === '—' ? '' : projectName),

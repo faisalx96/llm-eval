@@ -731,7 +731,7 @@ window.QymPlayground = (function () {
 
     // ── Prompt Preview ──
     var previewBody = '';
-    previewBody += '<div id="pg-preview-loading" style="display:none;padding:8px 14px;font-size:12px;color:#a855f7;background:rgba(168,85,247,0.06);border-bottom:1px solid rgba(168,85,247,0.15);">Generating preview\u2026</div>';
+    previewBody += '<div id="pg-preview-loading" style="display:none;padding:8px 14px;font-size:var(--font-base);color:var(--accent-tertiary);background:rgba(168,85,247,0.06);border-bottom:1px solid rgba(168,85,247,0.15);">Generating preview\u2026</div>';
     previewBody += '<div id="pg-preview-content" class="pg-prompt-preview-content">Loading prompt preview\u2026</div>';
     previewBody += '<div class="pg-preview-actions">' +
       '<button class="pg-toggle-expand" id="pg-preview-toggle" style="display:none;">Expand</button>' +
@@ -1560,7 +1560,7 @@ window.QymPlayground = (function () {
     var RC_COLORS = {
       'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
       'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
-      'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
+      'Reasoning Error': 'var(--accent-tertiary)', 'Tool Use Error': '#ec4899',
       'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
     };
     container.innerHTML = _testResults.map(function (r) {
@@ -1619,7 +1619,7 @@ window.QymPlayground = (function () {
                   var correctMatch = ex.match(/CORRECT root_cause:\s*(.+)/);
                   var correctLabel = correctMatch ? correctMatch[1].trim() : 'Example ' + (i + 1);
                   return '<div class="pg-fewshot-example">' +
-                    '<div class="pg-fewshot-header">Example ' + (i + 1) + ' \u2014 <span style="color:#c084fc;">' + _esc(correctLabel) + '</span></div>' +
+                    '<div class="pg-fewshot-header">Example ' + (i + 1) + ' \u2014 <span style="color:var(--accent-tertiary-soft);">' + _esc(correctLabel) + '</span></div>' +
                     '<pre class="pg-fewshot-content">' + _esc(ex) + '</pre>' +
                   '</div>';
                 }).join('') +
@@ -1634,7 +1634,7 @@ window.QymPlayground = (function () {
           '<span class="pg-result-item-id">' + _esc(r.item_id.slice(0, 24)) + '</span>' +
         '</div>' +
         (r.root_cause_detail ? '<div class="pg-result-rc" style="color:var(--text-primary, #eee);">' + _esc(r.root_cause_detail) + '</div>' : '') +
-        '<div class="pg-result-rc" style="color:' + color + ';' + (r.root_cause_detail ? 'font-size:12px;opacity:0.8;margin-top:2px;' : '') + '">' + _esc(r.root_cause) + '</div>' +
+        '<div class="pg-result-rc" style="color:' + color + ';' + (r.root_cause_detail ? 'font-size:var(--font-base);opacity:0.8;margin-top:2px;' : '') + '">' + _esc(r.root_cause) + '</div>' +
         '<div class="pg-confidence-row">' +
           '<div class="pg-confidence-bar"><div class="pg-confidence-fill" style="width:' + confPct + '%;background:' + color + ';"></div></div>' +
           '<span class="pg-confidence-val">' + (r.confidence != null ? r.confidence.toFixed(2) : '?') + '</span>' +

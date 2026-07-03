@@ -1,12 +1,20 @@
 /* قيِّم Shell — Sidebar + Topbar Navigation
    Single source of truth for all navigation chrome.
    Injected by shell.js into every page.
+   Design rules: docs/DESIGN_LANGUAGE.md (tokens only; chrome uses --shell-font-*).
 */
 
 :root {
   --sidebar-w: 192px;
   --sidebar-collapsed-w: 56px;
   --topbar-h: 50px;
+  /* Shell chrome (sidebar/topbar) runs 2px larger than the page type scale.
+     Explicit tokens so --font-* never means two sizes on one page. */
+  --shell-font-xs: 12px;
+  --shell-font-sm: 13px;
+  --shell-font-base: 14px;
+  --shell-font-md: 15px;
+  --shell-font-lg: 17px;
 }
 
 /* ════════════════════════════════════════════════
@@ -31,12 +39,6 @@
   z-index: 200;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  /* Keep shell chrome at original font sizes */
-  --font-xs: 12px;
-  --font-sm: 13px;
-  --font-base: 14px;
-  --font-md: 15px;
-  --font-lg: 17px;
 }
 
 .sidebar.collapsed { width: var(--sidebar-collapsed-w); }
@@ -83,7 +85,7 @@
 .breadcrumbs {
   display: flex;
   align-items: center;
-  font-size: var(--font-sm);
+  font-size: var(--shell-font-sm);
   min-width: 0;
   gap: 0;
 }
@@ -100,7 +102,7 @@
 .breadcrumb-item:hover { color: var(--text-primary); background: var(--bg-hover); }
 .breadcrumb-item.current { color: var(--text-primary); font-weight: 500; cursor: default; }
 .breadcrumb-item.current:hover { background: transparent; }
-.breadcrumb-sep { color: var(--text-dim); margin: 0 4px; font-size: var(--font-sm); user-select: none; }
+.breadcrumb-sep { color: var(--text-dim); margin: 0 4px; font-size: var(--shell-font-sm); user-select: none; }
 
 /* ── Project Switcher (embedded in breadcrumbs) ── */
 .breadcrumb-project {
@@ -117,7 +119,7 @@
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: var(--font-md);
+  font-size: var(--shell-font-md);
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-sans);
@@ -138,10 +140,11 @@
 
 .project-trigger-icon {
   width: 20px; height: 20px; border-radius: 5px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.project-trigger-icon svg { color: var(--bg-void); }
+.project-trigger-icon svg { color: var(--text-muted); }
 
 .project-trigger-text { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-trigger-chevron { color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s ease; }
@@ -170,7 +173,7 @@
 .popover-search { padding: var(--space-sm); border-bottom: 1px solid var(--border-subtle); }
 .popover-search input {
   width: 100%; background: var(--bg-surface); border: 1px solid var(--border-subtle);
-  border-radius: 5px; padding: 6px 10px; font-size: var(--font-sm); color: var(--text-primary);
+  border-radius: 5px; padding: 6px 10px; font-size: var(--shell-font-sm); color: var(--text-primary);
   font-family: var(--font-sans); outline: none; transition: border-color 0.15s;
 }
 .popover-search input::placeholder { color: var(--text-dim); }
@@ -179,7 +182,7 @@
 .popover-list { max-height: 200px; overflow-y: auto; padding: var(--space-xs); }
 .popover-item {
   display: flex; align-items: center; gap: var(--space-sm);
-  padding: 7px 10px; border-radius: 5px; font-size: var(--font-sm);
+  padding: 7px 10px; border-radius: 5px; font-size: var(--shell-font-sm);
   color: var(--text-secondary); cursor: pointer; transition: all 0.1s ease;
 }
 .popover-item:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -197,7 +200,7 @@
 .popover-footer { border-top: 1px solid var(--border-subtle); padding: var(--space-xs); }
 .popover-footer-btn {
   display: flex; align-items: center; gap: var(--space-sm); width: 100%;
-  padding: 7px 10px; border-radius: 5px; font-size: var(--font-sm);
+  padding: 7px 10px; border-radius: 5px; font-size: var(--shell-font-sm);
   color: var(--text-muted); background: none; border: none; cursor: pointer;
   font-family: var(--font-sans); transition: all 0.1s ease;
 }
@@ -211,7 +214,7 @@
 .sidebar.collapsed .sidebar-nav { padding: var(--space-sm) var(--space-xs); align-items: center; }
 
 .nav-section-label {
-  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.8px;
   padding: var(--space-md) 10px var(--space-xs);
   white-space: nowrap; overflow: hidden;
@@ -225,7 +228,7 @@
 
 .nav-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: 6px; font-size: var(--font-sm);
+  padding: 7px 10px; border-radius: 6px; font-size: var(--shell-font-sm);
   color: var(--text-secondary); text-decoration: none; cursor: pointer;
   transition: all 0.12s ease; position: relative;
   border: none; background: none; width: 100%; font-family: var(--font-sans);
@@ -268,7 +271,7 @@
   content: attr(data-tooltip);
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
   background: var(--bg-elevated); border: 1px solid var(--border-default);
-  color: var(--text-primary); font-size: var(--font-xs); font-weight: 500;
+  color: var(--text-primary); font-size: var(--shell-font-xs); font-weight: 500;
   padding: 4px 10px; border-radius: 5px; white-space: nowrap;
   pointer-events: none; opacity: 0; transition: opacity 0.12s ease;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 250;
@@ -315,7 +318,7 @@
 }
 
 .user-info { flex: 1; min-width: 0; text-align: left; }
-.user-name { font-size: var(--font-sm); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-name { font-size: var(--shell-font-sm); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-email { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .user-trigger-dots { color: var(--text-dim); flex-shrink: 0; }
 .sidebar.collapsed .user-info,
@@ -338,7 +341,7 @@
   display: flex; align-items: center; gap: 10px;
 }
 .user-popover-header .user-avatar { width: 34px; height: 34px; font-size: 12px; }
-.user-popover-header .user-name { font-size: var(--font-base); }
+.user-popover-header .user-name { font-size: var(--shell-font-base); }
 .user-popover-header .user-role {
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--accent-primary); background: rgba(0,212,170,0.1);
@@ -349,7 +352,7 @@
 .user-popover-list { padding: var(--space-xs); }
 .user-popover-item {
   display: flex; align-items: center; gap: var(--space-sm);
-  padding: 7px 10px; border-radius: 5px; font-size: var(--font-sm);
+  padding: 7px 10px; border-radius: 5px; font-size: var(--shell-font-sm);
   color: var(--text-secondary); cursor: pointer; transition: all 0.1s ease;
   text-decoration: none;
 }
@@ -372,21 +375,15 @@
   border-bottom: 1px solid var(--border-subtle);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 var(--space-lg) 0 var(--space-md); flex-shrink: 0;
-  font-size: var(--font-md);
-  /* Keep shell chrome at original font sizes */
-  --font-xs: 12px;
-  --font-sm: 13px;
-  --font-base: 14px;
-  --font-md: 15px;
-  --font-lg: 17px;
+  font-size: var(--shell-font-md);
 }
 
 .topbar-left { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; }
 
 
 .topbar-stats { display: flex; align-items: center; gap: var(--space-lg); }
-.topbar-stat { display: flex; align-items: center; gap: 6px; font-size: var(--font-sm); color: var(--text-muted); }
-.topbar-stat-value { font-family: var(--font-mono); font-weight: 600; font-size: var(--font-md); color: var(--text-secondary); }
+.topbar-stat { display: flex; align-items: center; gap: 6px; font-size: var(--shell-font-sm); color: var(--text-muted); }
+.topbar-stat-value { font-family: var(--font-mono); font-weight: 600; font-size: var(--shell-font-md); color: var(--text-secondary); }
 .topbar-stat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
 /* ════════════════════════════════════════════════
@@ -703,7 +700,7 @@
 .ds-version, .ds-alias {
   margin-left: 6px; padding-left: 6px;
   border-left: 1px solid var(--border-strong);
-  font-size: 10px; line-height: 1.4; color: var(--text-dim); vertical-align: baseline;
+  font-size: var(--font-xs); line-height: 1.4; color: var(--text-muted); vertical-align: baseline;
 }
 .ds-version { font-family: var(--font-mono); }
 .ds-alias { font-weight: 600; letter-spacing: 0.02em; }
@@ -737,4 +734,14 @@
 
 @media (max-width: 800px) {
   .shell-drawer { width: 100vw !important; }
+}
+
+/* ══ Entity identicon (QymShell.identicon) ══ */
+.qym-identicon { display: inline-grid; flex: none; }
+.qym-identicon i { background: var(--bg-elevated); }
+.qym-identicon-chip {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  border-radius: 5px; background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  vertical-align: middle; margin-right: 7px; margin-top: -2px;
 }

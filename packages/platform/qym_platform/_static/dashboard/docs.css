@@ -1,12 +1,20 @@
 /* قيِّم Docs — native in-dashboard documentation
    Three-column layout (section nav · content · table of contents),
-   styled with the dashboard design tokens (dashboard.css :root). */
+   styled with the dashboard design tokens (dashboard.css :root).
+   Design rules: docs/DESIGN_LANGUAGE.md — docs keep a larger prose scale
+   (sanctioned exception) but share the color ramp. */
 
 .docs-page {
-  /* Small uppercase labels: --text-dim (#50505e) is ~2.3:1 on these darks —
-     unreadable. One step brighter than --text-muted keeps the same family
-     while clearing 4.5:1 on every docs surface. */
-  --docs-label: #8a8a9e;
+  /* Small uppercase labels use --text-muted: dim is decorative-only and
+     muted clears 4.5:1 on every docs surface (see docs/DESIGN_LANGUAGE.md). */
+  --docs-label: var(--text-muted);
+  /* Code syntax palette (highlight.js) */
+  --code-comment: #8a8aa0;
+  --code-keyword: #c792ea;
+  --code-string: #98c379;
+  --code-number: #d19a66;
+  --code-builtin: #61afef;
+  --code-class: #e5c07b;
   display: grid;
   /* Fixed rails around a capped content column, centered as a unit so wide
      screens get symmetric margins instead of a dead gap before the TOC. */
@@ -167,13 +175,13 @@
 .docs-copy-btn svg { width: 14px; height: 14px; }
 
 /* ── Syntax highlighting (highlight.js classes, mapped to the dark palette) ── */
-.docs-codeblock .hljs-comment, .docs-codeblock .hljs-quote { color: #8a8aa0; font-style: italic; }
-.docs-codeblock .hljs-keyword, .docs-codeblock .hljs-selector-tag { color: #c792ea; }
-.docs-codeblock .hljs-string, .docs-codeblock .hljs-regexp { color: #98c379; }
-.docs-codeblock .hljs-number, .docs-codeblock .hljs-literal { color: #d19a66; }
-.docs-codeblock .hljs-built_in, .docs-codeblock .hljs-title.function_, .docs-codeblock .hljs-title.function_.invoke__ { color: #61afef; }
-.docs-codeblock .hljs-title.class_, .docs-codeblock .hljs-type { color: #e5c07b; }
-.docs-codeblock .hljs-attr, .docs-codeblock .hljs-property, .docs-codeblock .hljs-variable { color: #d19a66; }
+.docs-codeblock .hljs-comment, .docs-codeblock .hljs-quote { color: var(--code-comment); font-style: italic; }
+.docs-codeblock .hljs-keyword, .docs-codeblock .hljs-selector-tag { color: var(--code-keyword); }
+.docs-codeblock .hljs-string, .docs-codeblock .hljs-regexp { color: var(--code-string); }
+.docs-codeblock .hljs-number, .docs-codeblock .hljs-literal { color: var(--code-number); }
+.docs-codeblock .hljs-built_in, .docs-codeblock .hljs-title.function_, .docs-codeblock .hljs-title.function_.invoke__ { color: var(--code-builtin); }
+.docs-codeblock .hljs-title.class_, .docs-codeblock .hljs-type { color: var(--code-class); }
+.docs-codeblock .hljs-attr, .docs-codeblock .hljs-property, .docs-codeblock .hljs-variable { color: var(--code-number); }
 .docs-codeblock .hljs-meta, .docs-codeblock .hljs-params { color: var(--text-secondary); }
 .docs-codeblock .hljs-subst { color: var(--text-primary); }
 
@@ -187,7 +195,7 @@
   margin: 0 0 16px;
   background: var(--bg-surface);
 }
-.docs-callout p { margin: 0; font-size: 13.5px; line-height: 1.6; }
+.docs-callout p { margin: 0; font-size: 13px; line-height: 1.6; }
 .docs-callout .docs-callout-icon { flex-shrink: 0; width: 16px; height: 16px; margin-top: 2px; }
 .docs-callout.tip { border-left-color: var(--accent-primary); }
 .docs-callout.tip .docs-callout-icon { color: var(--accent-primary); }
@@ -209,7 +217,7 @@
 }
 .docs-main td {
   padding: 8px 10px; border-bottom: 1px solid var(--border-subtle);
-  color: var(--docs-body); font-size: 13.5px; line-height: 1.55; vertical-align: top;
+  color: var(--docs-body); font-size: 13px; line-height: 1.55; vertical-align: top;
 }
 .docs-main tr:last-child td { border-bottom: none; }
 /* identifiers in tables must not split mid-word; the wrapper scrolls instead */
@@ -255,7 +263,7 @@
 }
 .docs-toc-title { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--docs-label); margin-bottom: 8px; }
 .docs-toc a {
-  display: block; padding: 4px 10px; font-size: 12.5px; line-height: 1.5;
+  display: block; padding: 4px 10px; font-size: 12px; line-height: 1.5;
   color: var(--text-secondary); text-decoration: none;
   border-left: 2px solid transparent;
 }

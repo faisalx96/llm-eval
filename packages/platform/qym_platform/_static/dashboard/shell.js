@@ -237,11 +237,11 @@
     content.innerHTML = ''
       + '<div style="max-width:640px;margin:56px auto;padding:0 20px;">'
       +   '<div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:12px;padding:28px 24px;">'
-      +     '<div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>'
-      +     '<h1 style="margin:0 0 10px 0;font-size:28px;line-height:1.2;color:var(--text-primary);">Project not found</h1>'
-      +     '<p style="margin:0;color:var(--text-secondary);font-size:14px;line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>'
+      +     '<div style="font-size:var(--font-sm);font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--error);margin-bottom:12px;">Missing Project</div>'
+      +     '<h1 style="margin:0 0 10px 0;font-size:var(--font-title);line-height:1.2;color:var(--text-primary);">Project not found</h1>'
+      +     '<p style="margin:0;color:var(--text-secondary);font-size:var(--font-md);line-height:1.6;">The requested project does not exist, is archived, or you no longer have access to it.</p>'
       +     (projectSlug
-              ? '<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">Slug: ' + esc(projectSlug) + '</div>'
+              ? '<div style="margin-top:16px;padding:10px 12px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--font-base);color:var(--text-muted);">Slug: ' + esc(projectSlug) + '</div>'
               : '')
       +     '<div style="margin-top:20px;"><a href="' + getAppRootPath() + '" class="shell-btn shell-btn-primary" style="display:inline-flex;text-decoration:none;">Back to Projects</a></div>'
       +   '</div>'
@@ -480,7 +480,11 @@
         // Embedded project switcher as breadcrumb segment
         html += '<div class="breadcrumb-project" id="breadcrumb-project">'
           + '<button class="breadcrumb-project-btn" id="shell-project-trigger">'
-          +   '<span class="project-trigger-icon">' + iconRaw('project', 10, 10) + '</span>'
+          +   '<span class="project-trigger-icon">'
+          +     (_currentProject && _currentProject.slug
+                  ? identiconHTML(_currentProject.slug, { cell: 2, gap: 1, showEmpty: false })
+                  : iconRaw('project', 10, 10))
+          +   '</span>'
           +   '<span class="project-trigger-text">' + esc(c.label) + '</span>'
           +   '<span class="project-trigger-chevron">' + iconRaw('chevronDown', 10, 10) + '</span>'
           + '</button>'
@@ -539,14 +543,13 @@
     var html = '';
     filtered.forEach(function (p) {
       var isActive = _currentProject && _currentProject.slug === p.slug;
-      var initials = p.name.split(/\s+/).map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
       html += '<a class="popover-item' + (isActive ? ' active' : '') + '" data-slug="' + esc(p.slug) + '" href="' + projectUrl(p.slug) + '">'
-        + '<span class="popover-item-icon">' + esc(initials) + '</span>'
+        + '<span class="popover-item-icon">' + identiconHTML(p.slug, { cell: 2, gap: 1, showEmpty: false }) + '</span>'
         + '<span>' + esc(p.name) + '</span>'
         + (isActive ? '<span class="popover-item-check">' + iconRaw('check', 14, 14) + '</span>' : '')
         + '</a>';
     });
-    if (!filtered.length) html = '<div style="padding:8px 10px;font-size:12px;color:var(--text-dim)">No projects found</div>';
+    if (!filtered.length) html = '<div style="padding:8px 10px;font-size:var(--font-base);color:var(--text-muted)">No projects found</div>';
     list.innerHTML = html;
 
     // Bind click handlers
@@ -648,7 +651,7 @@
       +     '</div>'
       +     '<div class="shell-form-group">'
       +       '<label class="shell-form-label">Slug</label>'
-      +       '<input class="shell-form-input" id="shell-new-project-slug" type="text" placeholder="my-project" style="font-family:var(--font-mono);font-size:12px" />'
+      +       '<input class="shell-form-input" id="shell-new-project-slug" type="text" placeholder="my-project" style="font-family:var(--font-mono);font-size:var(--font-base)" />'
       +     '</div>'
       +     '<div class="shell-form-group">'
       +       '<label class="shell-form-label">Description (optional)</label>'
@@ -1525,6 +1528,66 @@
   // PUBLIC API
   // ══════════════════════════════════════════════════
 
+  // Deterministic entity identicon (datasets, projects, ...): an FNV-1a hash
+  // of the seed picks a hue (continuous, 0-360 — quantized palettes made
+  // unrelated entities share colors) and a horizontally symmetric 5x5 fill
+  // pattern, so the same seed renders the same mark on every page and two
+  // different seeds practically never render the same one.
+  function identiconHTML(seed, opts) {
+    opts = opts || {};
+    var cell = opts.cell || 10;
+    var gap = opts.gap != null ? opts.gap : 3;
+    var s = String(seed || '');
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    h >>>= 0;
+    var hue = h % 360;
+    var palette = ['hsl(' + hue + ', 66%, 58%)', 'hsl(' + hue + ', 70%, 40%)'];
+    var halves = [];
+    var bits = h, filled = 0;
+    for (var row = 0; row < 5; row++) {
+      halves.push([null, null, null]);
+      for (var col = 0; col < 3; col++) {
+        bits = Math.imul(bits ^ (row * 3 + col + 0x9e3779b9), 16777619) >>> 0;
+        bits = (bits ^ (bits >>> 13)) >>> 0;
+        var v = bits % 4;
+        halves[row][col] = v >= 2 ? palette[v - 2] : null;
+        if (halves[row][col]) filled++;
+      }
+    }
+    // Very sparse patterns read as near-identical specks — densify from the
+    // same full-entropy stream (position AND shade) until the mark has body.
+    for (var k = 0; filled < 4 && k < 30; k++) {
+      bits = Math.imul(bits ^ (k + 0x85ebca6b), 16777619) >>> 0;
+      bits = (bits ^ (bits >>> 13)) >>> 0;
+      var at = bits % 15;
+      var fr = (at / 3) | 0, fc = at % 3;
+      if (!halves[fr][fc]) { halves[fr][fc] = palette[bits % 2]; filled++; }
+    }
+    var rows = halves.map(function (half) { return [half[0], half[1], half[2], half[1], half[0]]; });
+    var radius = Math.max(1, Math.round(cell / 5));
+    var cells = '';
+    rows.forEach(function (cols) {
+      cols.forEach(function (color) {
+        var bg = color ? ';background:' + color : (opts.showEmpty === false ? ';background:transparent' : '');
+        cells += '<i style="border-radius:' + radius + 'px' + bg + '"></i>';
+      });
+    });
+    var style = 'grid-template-columns:repeat(5,' + cell + 'px);grid-auto-rows:' + cell + 'px;gap:' + gap + 'px';
+    var cls = 'qym-identicon' + (opts.className ? ' ' + esc(opts.className) : '');
+    var mark = '<span class="' + cls + '" aria-hidden="true" style="' + style + '">' + cells + '</span>';
+    if (!opts.chip) return mark;
+    // Small rounded container for inline/text contexts where a bare mark
+    // reads as noise (run meta lines, pickers, ...).
+    var size = 5 * cell + 4 * gap + 6;
+    return '<span class="qym-identicon-chip" aria-hidden="true" style="width:' + size + 'px;height:' + size + 'px">' + mark + '</span>';
+  }
+  function identicon(seed, opts) {
+    var host = document.createElement('span');
+    host.innerHTML = identiconHTML(seed, opts);
+    return host.firstChild;
+  }
+
   // The resolved version label, meant to sit INSIDE the dataset-name block — a divider +
   // muted mono style makes it visually distinct from the name. Empty for ad-hoc/CSV runs.
   function datasetVersionInline(version) {
@@ -1545,6 +1608,8 @@
 
   window.QymShell = {
     init: init,
+    identicon: identicon,
+    identiconHTML: identiconHTML,
     datasetVersionInline: datasetVersionInline,
     datasetAliasTags: datasetAliasTags,
     getUser: function () { return _user; },

@@ -13,6 +13,7 @@
   <script src="./static/trace_viewer.js"></script>
   <script src="./static/playground.js?v=variable-mapping-20260510"></script>
   <style>
+    /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* Compare-specific styles */
     .compare-container {
       padding: var(--space-lg);
@@ -80,7 +81,7 @@
     }
 
     .compare-cohort-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -105,14 +106,14 @@
       border: 1px solid var(--border-default);
       background: var(--bg-elevated);
       color: var(--text-primary);
-      font-size: 12px;
+      font-size: var(--font-base);
       font-weight: 600;
       cursor: text;
     }
 
     .compare-cohort-pill .cohort-key {
       flex: 0 0 auto;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -130,7 +131,7 @@
     .compare-cohort-pill .cohort-meta {
       flex: 0 0 auto;
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 600;
       white-space: nowrap;
     }
@@ -144,7 +145,7 @@
     }
 
     .compare-title {
-      font-size: var(--font-lg);
+      font-size: var(--font-title);
       font-weight: 600;
       color: var(--text-primary);
     }
@@ -170,13 +171,13 @@
     }
 
     .sweep-title {
-      font-size: 15px;
+      font-size: var(--font-title);
       font-weight: 600;
       color: var(--text-primary);
     }
 
     .sweep-subtitle {
-      font-size: 11px;
+      font-size: var(--font-sm);
       color: var(--text-muted);
       margin-top: 4px;
     }
@@ -207,7 +208,7 @@
     }
 
     .sweep-filter-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -221,7 +222,7 @@
       min-height: 35px;
       padding: 0 2px;
       color: var(--text-primary);
-      font-size: 12px;
+      font-size: var(--font-base);
       font-weight: 500;
       user-select: none;
     }
@@ -246,7 +247,7 @@
       border: 1px solid var(--border-default);
       background: var(--bg-elevated);
       color: var(--text-primary);
-      font-size: 12px;
+      font-size: var(--font-base);
       outline: none;
     }
 
@@ -262,11 +263,11 @@
     .sweep-reverse-btn {
       min-height: 33px;
       padding: 6px 10px;
-      font-size: 12px;
+      font-size: var(--font-base);
     }
 
     .sweep-section-title {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -314,7 +315,7 @@
     }
 
     .sweep-stat-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -331,9 +332,9 @@
     }
 
     .sweep-stat-from {
-      font-size: 12px;
+      font-size: var(--font-base);
       font-weight: 700;
-      color: var(--text-dim);
+      color: var(--text-muted);
       font-family: var(--font-mono);
     }
 
@@ -343,7 +344,7 @@
     }
 
     .sweep-stat-to {
-      font-size: 16px;
+      font-size: var(--font-xl);
       font-weight: 700;
       color: var(--text-primary);
       font-family: var(--font-mono);
@@ -356,7 +357,7 @@
       gap: 4px;
       padding: 4px 8px;
       border-radius: 999px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       font-family: var(--font-mono);
       width: fit-content;
@@ -392,7 +393,7 @@
 
     .sweep-outcome-value {
       font-family: var(--font-mono);
-      font-size: 16px;
+      font-size: var(--font-xl);
       font-weight: 700;
       line-height: 1;
     }
@@ -403,7 +404,7 @@
     .sweep-outcome-value.accent { color: var(--accent-secondary); }
 
     .sweep-outcome-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -429,7 +430,7 @@
     }
 
     .sweep-table th {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
@@ -503,7 +504,7 @@
     }
 
     .sweep-issue-id {
-      font-size: 13px;
+      font-size: var(--font-md);
       font-weight: 700;
       color: var(--text-primary);
       font-family: var(--font-mono);
@@ -547,7 +548,7 @@
 
     .sweep-pass-count {
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: var(--font-base);
       font-weight: 700;
       color: var(--text-primary);
       white-space: nowrap;
@@ -560,7 +561,7 @@
       min-width: 42px;
       padding: 4px 8px;
       border-radius: 999px;
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       font-family: var(--font-mono);
     }
@@ -629,7 +630,7 @@
 
     .item-comparison-modal-title {
       min-width: 0;
-      font-size: 14px;
+      font-size: var(--font-xl);
       font-weight: 700;
       color: var(--text-primary);
       overflow: hidden;
@@ -696,7 +697,7 @@
     }
 
     .sweep-metadata-table th {
-      font-size: 10px;
+      font-size: var(--font-sm);
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -728,7 +729,7 @@
     }
 
     .sweep-metadata-value {
-      font-size: 12px;
+      font-size: var(--font-base);
       font-weight: 600;
       color: var(--text-primary);
       white-space: nowrap;
@@ -736,8 +737,8 @@
 
     .sweep-metadata-count {
       font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--text-dim);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
       white-space: nowrap;
     }
 
@@ -746,12 +747,12 @@
       align-items: baseline;
       gap: 5px;
       font-family: var(--font-mono);
-      font-size: 11px;
+      font-size: var(--font-sm);
       white-space: nowrap;
     }
 
     .sweep-metadata-metric .from {
-      color: var(--text-dim);
+      color: var(--text-muted);
     }
 
     .sweep-metadata-metric .arrow {
@@ -771,7 +772,7 @@
       padding: 3px 7px;
       border-radius: 999px;
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       white-space: nowrap;
     }
@@ -794,8 +795,8 @@
     .sweep-section-subtitle {
       margin-top: -2px;
       margin-bottom: 8px;
-      font-size: 11px;
-      color: var(--text-dim);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
     }
 
     .back-link {
@@ -895,7 +896,7 @@
 
     .compare-run-title {
       font-family: var(--font-mono);
-      font-size: 15px;
+      font-size: var(--font-title);
       font-weight: 600;
       line-height: 1.3;
       color: var(--text-primary);
@@ -917,7 +918,7 @@
       gap: 6px;
       padding: 5px 10px;
       border-radius: 999px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 0.9px;
       text-transform: uppercase;
@@ -1001,7 +1002,7 @@
     }
 
     .compare-run-meta-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
       text-transform: uppercase;
       letter-spacing: 0.8px;
@@ -1088,7 +1089,7 @@
 
     .compare-run-summary-value {
       font-family: var(--font-mono);
-      font-size: 13px;
+      font-size: var(--font-md);
       font-weight: 600;
       line-height: 1;
       color: var(--text-primary);
@@ -1096,9 +1097,9 @@
     }
 
     .compare-run-summary-label {
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 600;
-      color: var(--text-dim);
+      color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       white-space: nowrap;
@@ -1144,7 +1145,7 @@
     }
 
     .compare-run-card .context-cell-key {
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.55px;
@@ -1279,7 +1280,7 @@
       font-size: 10px;
       font-weight: 700;
       font-style: italic;
-      font-family: Georgia, serif;
+      font-family: var(--font-sans);
       cursor: help;
       position: relative;
       text-transform: lowercase;
@@ -1398,7 +1399,7 @@
       color: var(--bg-void) !important;
     }
     .category-chip .chip-count {
-      font-size: 10px;
+      font-size: var(--font-xs);
       opacity: 0.7;
       font-family: var(--font-sans);
       font-weight: 500;
@@ -1642,7 +1643,7 @@
     .trace-error-group .error-card-count { color: var(--warning); }
     .error-card-count-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 600;
       letter-spacing: 0.4px;
       text-transform: uppercase;
@@ -1695,7 +1696,7 @@
     }
     .breakdown-card-scores .score-col-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.4px;
@@ -1716,7 +1717,7 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-family: var(--font-mono);
       color: var(--text-muted);
       background: var(--bg-elevated);
@@ -1772,7 +1773,7 @@
 
     .breakdown-detail-label {
       font-family: var(--font-sans);
-      font-size: 9px;
+      font-size: var(--font-xs);
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.4px;
@@ -1860,7 +1861,7 @@
     }
 
     .dist-segment .dist-count {
-      font-size: 10px;
+      font-size: var(--font-xs);
       opacity: 0.9;
     }
 
@@ -2011,7 +2012,7 @@
     }
 
     .fp-label {
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-family: var(--font-sans);
       color: var(--text-muted);
       text-transform: uppercase;
@@ -2287,7 +2288,7 @@
       background: rgba(239, 68, 68, 0.2);
       color: #fca5a5;
       border-radius: 8px;
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       line-height: 1;
     }
@@ -2580,7 +2581,7 @@
       background: var(--bg-surface);
       color: var(--text-muted);
       font-family: var(--font-sans);
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 500;
       letter-spacing: 0.01em;
       cursor: pointer;
@@ -2692,7 +2693,7 @@
       background: rgba(34,197,94,0.15);
       color: var(--success);
       border-radius: 3px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
     }
     .metric-edit-badge::before {
@@ -2707,7 +2708,7 @@
       border-radius: 6px;
       padding: 2px 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: var(--font-base);
       margin-left: 6px;
       line-height: 1;
       opacity: 0.95;
@@ -3213,12 +3214,12 @@
       background: rgba(234, 179, 8, 0.2);
       color: #f59e0b;
       border-radius: 3px;
-      font-size: 10px;
+      font-size: var(--font-xs);
       font-weight: 500;
     }
 
     .passfail-badge {
-      font-size: 10px;
+      font-size: var(--font-xs);
       padding: 1px 6px;
       border-radius: 3px;
       font-weight: 600;
@@ -3424,7 +3425,7 @@
     }
     .rc-badge-label {
       display: block;
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 1px;
       margin-bottom: 6px;
@@ -3572,7 +3573,7 @@
     }
     .rc-sol-label {
       display: block;
-      font-size: 9px;
+      font-size: var(--font-xs);
       font-weight: 700;
       letter-spacing: 1px;
       margin-bottom: 6px;
@@ -3672,7 +3673,7 @@
       min-width: 0;
     }
     .sankey-node-count {
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       padding: 1px 7px;
       border-radius: 10px;
@@ -3709,7 +3710,7 @@
       min-width: 0;
     }
     .rc-category-pill-count {
-      font-size: 11px;
+      font-size: var(--font-sm);
       font-weight: 700;
       padding: 1px 7px;
       border-radius: 10px;
@@ -3744,7 +3745,7 @@
     .rc-subcause-count {
       font-weight: 600;
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: var(--font-sm);
       margin-left: 8px;
       flex-shrink: 0;
     }
@@ -4160,7 +4161,7 @@
         gap: 5px;
         padding: 2px 8px;
         border-radius: 999px;
-        font-size: 10px;
+        font-size: var(--font-xs);
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.8px;
@@ -4194,7 +4195,7 @@
         border: 1px solid rgba(16, 185, 129, 0.7);
         background: linear-gradient(180deg, #1ecf93, #12a874);
         color: #071b15;
-        font-size: 11px;
+        font-size: var(--font-sm);
         font-weight: 700;
         cursor: pointer;
         box-shadow: 0 8px 18px rgba(16, 185, 129, 0.18);
@@ -7784,7 +7785,7 @@
 
           const metaHtml = [
             metaItem('Task', taskName),
-            metaItem('Dataset', info.dataset_name || '—', { html: escapeHtml(info.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(info.dataset_version) + QymShell.datasetAliasTags(info.dataset_aliases) : '') }),
+            metaItem('Dataset', info.dataset_name || '—', { html: (window.QymShell && info.dataset_name ? QymShell.identiconHTML(info.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(info.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(info.dataset_version) + QymShell.datasetAliasTags(info.dataset_aliases) : '') }),
             metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(info.trace_stats)) }),
             metaItem('Owner', ownerLabel),
             metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),
