@@ -1,0 +1,88 @@
+<p class="docs-eyebrow">SDK GUIDE</p>
+<h1>Repeat runs &amp; pass@k</h1>
+<p class="docs-lead">LLMs are stochastic &mdash; the same item can pass on one try and fail on the next, so a single run tells you very little about consistency. <code>samples=k</code> evaluates every dataset item <strong>k times inside ONE run</strong> and reports the group metrics (<code>Pass@k</code>, <code>Pass^k</code>, <code>Avg@k</code>, <code>Max@k</code>, Consistency, Reliability) automatically, with confidence intervals on every mean.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">One parameter, one run.</span> Before <code>samples=</code>, pass@k meant launching k duplicate runs and grouping them afterwards. That pattern is now deprecated &mdash; the SDK warns when it detects duplicate run specs. One <code>samples=k</code> run produces one dashboard row, one checkpoint file, and every group metric.</p>
+</div>
+
+<h2>Quick start</h2>
+
+<pre data-lang="python">from qym import Evaluator
+
+result = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["correctness"],
+    samples=8,                    # evaluate every item 8 times
+).run()
+
+stats = result.get_metric_stats("correctness")
+print(stats["mean"])                          # 0.61 - mean score per attempt
+print(stats["ci_low"], stats["ci_high"])      # 0.55 0.67 - bootstrap 95% CI
+
+print(result.group_stats())
+# {"k": 8, "pass_at_k": 0.93, "pass_hat_k": 0.34, "avg_at_k": 0.61,
+#  "max_at_k": 0.78, "consistency": 0.71, "reliability": 0.68, ...}
+
+print(result.pass_at(3))                      # 0.84 - ANY of 3 tries passes
+print(result.pass_hat(3))                     # 0.41 - ALL 3 tries pass</pre>
+
+<p>Also available on the CLI (<code>--samples 8</code>) and as a <code>"samples": 8</code> key on multi-run config entries.</p>
+
+<h2>How it executes</h2>
+
+<p>The dataset runs as <strong>k sequential passes</strong>: every item completes pass 1, then pass 1's metrics are final, then pass 2 starts &mdash; the same progressive rhythm as watching a group of runs finish, inside one run. The terminal dashboard shows <code>pass 2/8</code> progress, and the checkpoint stores one CSV row per item &times; pass, so an interrupted run resumes exactly where it stopped (mid-pass).</p>
+
+<p>Retries are unchanged: <code>max_retries</code> still recovers failures <em>within</em> a pass. A pass that exhausts its retries scores <code>0</code> for that pass &mdash; which is exactly what makes <code>Pass^k</code> an honest reliability number.</p>
+
+<h2>The group metrics</h2>
+
+<p>Same names and formulas as the platform's group analysis, with k = samples. Pass/fail uses the standard threshold <code>score &gt;= 0.8</code> (override per call).</p>
+
+<table>
+  <thead><tr><th>Metric</th><th>Question it answers</th></tr></thead>
+  <tbody>
+    <tr><td><code>Pass@k</code></td><td>Did <strong>at least one</strong> of the k passes succeed? (capability &mdash; "can it ever?")</td></tr>
+    <tr><td><code>Pass^k</code></td><td>Did <strong>all</strong> k passes succeed? (reliability &mdash; "will it every time?")</td></tr>
+    <tr><td><code>Avg@k</code></td><td>Mean score over every pass.</td></tr>
+    <tr><td><code>Max@k</code></td><td>Mean of each item's best pass.</td></tr>
+    <tr><td>Consistency</td><td>Do the k passes agree with each other?</td></tr>
+    <tr><td>Reliability</td><td>For solvable items, how often do they pass?</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">Read both Pass@k and Pass^k.</span> They diverge hard: at a 70% per-try pass rate, <code>Pass@3 &asymp; 0.97</code> but <code>Pass^3 &asymp; 0.34</code>. Showing only Pass@k flatters a flaky system; Pass^k is the production number.</p>
+</div>
+
+<h2>Any k, after the fact</h2>
+
+<p>All passes are stored, so <code>result.pass_at(k)</code> / <code>result.pass_hat(k)</code> work for <strong>any k &le; samples</strong> without re-running &mdash; one <code>samples=10</code> run yields the entire accuracy-vs-k curve. For k &lt; samples these use the unbiased combinatorial estimator (<code>1 - C(n-c,k)/C(n,k)</code>, the Codex/HumanEval standard); at k = samples they equal the observed group metrics.</p>
+
+<pre data-lang="python">result = Evaluator(task, dataset, metrics=["correctness"], samples=10).run()
+
+for k in range(1, 11):
+    print(k, round(result.pass_at(k), 3))     # the whole curve, one run</pre>
+
+<h2>Requirements &amp; caveats</h2>
+
+<ul>
+  <li><strong>Temperature must be &gt; 0.</strong> A deterministic task returns the same output every pass; qym detects byte-identical passes and warns that repeat metrics measure nothing.</li>
+  <li><strong>Stable item IDs</strong> matter as always &mdash; passes align by item identity.</li>
+  <li><strong>Cost scales with k</strong>: <code>samples=8</code> means 8&times; the task calls (metrics run per pass too).</li>
+</ul>
+
+<h2>When to use what</h2>
+
+<table>
+  <thead><tr><th>You want</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td>Same task repeated k times (stability, pass@k)</td><td><code>samples=k</code></td></tr>
+    <tr><td>Same task, different models</td><td><code>model=["gpt-4", "claude-3"]</code></td></tr>
+    <tr><td>Genuinely different runs (prompts, datasets)</td><td><code>Evaluator.run_parallel([...])</code></td></tr>
+    <tr><td>Post-hoc stats over separate existing runs</td><td><code>analyze_group_runs(...)</code> &mdash; see <a href="#sdk-guide/multi-model">Multi-model &amp; group analysis</a></td></tr>
+  </tbody>
+</table>

@@ -33,15 +33,15 @@
       <td><code>list[EvaluationResult]</code></td>
     </tr>
     <tr>
-      <td><strong>Repeated single config</strong> (for Pass@K)</td>
-      <td>Same exact config run K times to measure stability/flakiness.</td>
-      <td>Call <code>.run()</code> K times, or list the same model K times.</td>
-      <td><code>list[EvaluationResult]</code></td>
+      <td><strong>Repeat run</strong> (for Pass@k)</td>
+      <td>Same exact config run k times to measure stability/flakiness.</td>
+      <td><code>Evaluator(..., samples=k).run()</code> &mdash; see <a href="#sdk-guide/repeats">Repeat runs &amp; pass@k</a>. Duplicating the same spec k times is deprecated (the SDK warns).</td>
+      <td><code>EvaluationResult</code> (one logical run)</td>
     </tr>
   </tbody>
 </table>
 
-<p>All three produce a <strong>list of <code>EvaluationResult</code></strong>, which is exactly the input the group-analysis helpers expect.</p>
+<p>The first two produce a <strong>list of <code>EvaluationResult</code></strong>, which is exactly the input the group-analysis helpers expect. A repeat run (<code>samples=k</code>) reports its group metrics directly via <code>result.group_stats()</code> &mdash; no post-hoc grouping needed.</p>
 
 <h2>Multi-model runs</h2>
 

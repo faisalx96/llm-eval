@@ -35,6 +35,7 @@ print(result.get_metric_stats("exact_match"))</pre>
     <tr><td><code>metadatas</code></td><td>dict</td><td><code>item_id -&gt; metadata</code> dict.</td></tr>
     <tr><td><code>results</code></td><td>dict</td><td><code>item_id -&gt; per-item result dict</code> for <strong>successful</strong> items only.</td></tr>
     <tr><td><code>errors</code></td><td>dict</td><td><code>item_id -&gt; {error, trace_id, task_started_at_ms, time}</code> for <strong>failed</strong> items.</td></tr>
+    <tr><td><code>samples</code> / <code>passes</code></td><td>int / dict</td><td>Repeat runs (<code>samples=k</code>): the pass count and <code>item_id -&gt; {pass_number -&gt; per-pass result}</code>. Empty on single runs. See <a href="#sdk-guide/repeats">Repeat runs &amp; pass@k</a>.</td></tr>
     <tr><td><code>last_saved_path</code></td><td>Optional[str]</td><td>Path of the most recently written artifact. Use this instead of reconstructing paths by hand.</td></tr>
     <tr><td><code>html_url</code></td><td>str</td><td>Platform run URL — present only when the run streamed to the platform.</td></tr>
     <tr><td><code>interrupted</code></td><td>bool</td><td><code>True</code> if the run was stopped early (Ctrl+C / stop signal).</td></tr>
@@ -57,7 +58,9 @@ print(result.get_metric_stats("exact_match"))</pre>
 <table>
   <thead><tr><th>Method</th><th>Returns</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td><code>get_metric_stats(metric_name)</code></td><td>dict</td><td>Aggregates one metric across successful items: <code>{mean, std, min, max, success_rate}</code>.</td></tr>
+    <tr><td><code>get_metric_stats(metric_name)</code></td><td>dict</td><td>Aggregates one metric across successful items: <code>{mean, std, min, max, success_rate}</code>. For repeat runs (<code>samples&gt;1</code>) the stats cover every pass (mean per attempt) and gain <code>ci_low</code>/<code>ci_high</code> (bootstrap 95% CI).</td></tr>
+    <tr><td><code>group_stats(metric=None, threshold=0.8)</code></td><td>dict</td><td>Repeat runs: the group set <code>{pass_at_k, pass_hat_k, avg_at_k, max_at_k, consistency, reliability, k}</code> with k = samples.</td></tr>
+    <tr><td><code>pass_at(k)</code> / <code>pass_hat(k)</code></td><td>float</td><td>Repeat runs: unbiased Pass@k / Pass^k for <strong>any k &le; samples</strong>, computed from the stored passes — no re-running.</td></tr>
     <tr><td><code>get_timing_stats()</code></td><td>dict</td><td>Task-duration aggregates across successful items: <code>{mean, std, min, max, total}</code>.</td></tr>
     <tr><td><code>successful_items()</code></td><td>List[str]</td><td>Item IDs that succeeded (the keys of <code>results</code>).</td></tr>
     <tr><td><code>failed_items()</code></td><td>List[str]</td><td>Item IDs that failed (the keys of <code>errors</code>).</td></tr>

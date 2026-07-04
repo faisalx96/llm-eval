@@ -34,6 +34,7 @@
         { id: 'judges', title: 'LLM-as-judge & pairwise' },
         { id: 'config', title: 'Configs & options' },
         { id: 'multi-model', title: 'Multi-model & group analysis' },
+        { id: 'repeats', title: 'Repeat runs & pass@k' },
         { id: 'observers', title: 'Progress & observers' },
         { id: 'results', title: 'Results, artifacts & tracing' }
       ]

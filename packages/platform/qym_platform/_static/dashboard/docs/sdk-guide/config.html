@@ -75,6 +75,7 @@ result = Evaluator(
     <tr><td><code>timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>300</code></td><td>Wall-clock cap per task item, in seconds. Set <code>None</code> only when you trust the task never to hang.</td></tr>
     <tr><td><code>metric_timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>60.0</code></td><td>Hard wall-clock cap per metric call. A metric that exceeds it is cancelled and recorded as score <code>0</code> with a timeout label, so one hung metric (e.g. an LLM judge that never returns) cannot hold an item hostage. Set <code>None</code> to disable.</td></tr>
     <tr><td><code>max_retries</code></td><td><code>int</code> (≥0)</td><td><code>2</code></td><td>Retries on task failure. Use <code>0</code> for deterministic smoke tests and debugging.</td></tr>
+    <tr><td><code>samples</code></td><td><code>int</code> (≥1)</td><td><code>1</code></td><td>Repeat runs: evaluate every item k times (k sequential passes) as ONE run and report <code>Pass@k</code>/<code>Pass^k</code>/Consistency/Reliability. See <a href="#sdk-guide/repeats">Repeat runs &amp; pass@k</a>.</td></tr>
     <tr><td><code>interrupt_grace_seconds</code></td><td><code>float</code></td><td><code>2.0</code></td><td>Grace window for cleanup and final-status emission when a run is interrupted.</td></tr>
   </tbody>
 </table>
