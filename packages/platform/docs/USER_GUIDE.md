@@ -75,7 +75,7 @@ Open `http://<platform>/` to view all evaluation runs.
 
 ### Run Listing
 
-- **Smart grouping** — runs with identical configurations are grouped with collapsible sections and a "Compare All" shortcut
+- **Smart grouping** — runs with identical configurations are grouped with collapsible sections and a "Compare All" shortcut. Repeat runs (`samples=k`) are **one row**, not a group: they carry a `×k` pill, an `±CI` beside each metric mean, and an expand arrow that reveals the per-pass slices plus the group set (`Pass@k · Pass^k · Avg@k · Max@k · Consistency · Reliability`). Legacy timestamp-grouped runs keep the old behavior.
 - **Paginated loading** — the first page renders immediately, then remaining pages fetch in the background and merge without discarding visible data
 - **Owner column** with color-coded avatars — see who ran what at a glance
 - **Readable run names** instead of cryptic IDs
@@ -120,6 +120,15 @@ The single run view shows detailed results for one evaluation run.
 - **Pass/Fail badges** — clear green Pass or red Fail indicator based on the selected metric's threshold
 - **Tabular data rendering** — list-of-lists in metric metadata render as HTML tables
 
+### Samples Analysis (repeat runs)
+
+Runs executed with `samples=k` (every item evaluated k times as one run) get extra views:
+
+- **Samples analysis card** — the group set (`Pass@k`, `Pass^k`, `Avg@k`, `Max@k`, Consistency, Reliability) as stat cards, plus an **accuracy-vs-k curve**: Pass@k (capability) against Pass^k (reliability) for *every* k ≤ samples, computed on demand from the stored passes — no re-running
+- **Per-pass table** — each pass's mean score, latency, and status (passes complete sequentially, so during a live run finished passes are final while the current one streams)
+- **Pass-dot strips** — each item row shows one dot per pass (green pass / red fail at the current threshold) next to its Pass/Fail badge; hover for the raw per-pass scores
+- The hero header shows `Samples ×k` and, while running, the live `pass j/k` cursor
+
 ### Root Cause Analysis
 
 Each item can have a **root cause category**, **detail**, **note**, **solution**, and **solution note** — assigned by AI or a human reviewer. AI-suggested values show a robot prefix with confidence; human-confirmed ones show a checkmark. See [AI Root Cause Analysis](#ai-root-cause-analysis).
@@ -154,6 +163,8 @@ Select multiple runs and open the compare view to analyze differences.
 | **Avg Latency** | Mean response time |
 
 Each metric has an info icon (i) with a detailed tooltip. For continuous metrics (0-100), a "Pass if ≥" slider lets you define the passing threshold (default: 80%). Boolean metrics (0/1) automatically use 100%.
+
+> **Repeat runs pool their attempts.** When a selection includes a `samples=k` run, that run contributes its k per-pass scores to the pool (the attempt is the atomic unit), so Pass@K math runs over all attempts — never "pass@k of pass@k".
 
 ### Item Comparison
 

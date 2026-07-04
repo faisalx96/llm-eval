@@ -8,6 +8,16 @@ The entries below cover every commit after `e2fda02`, in chronological order (th
 
 ---
 
+### `d226993` — Repeat runs: samples=k, pass@k, and per-pass views *(July 2026)*
+
+- 🔁 **Native repeat runs** — `Evaluator(..., samples=8)` (or `qym run create --samples 8`) evaluates every dataset item 8 times as **one logical run**: k sequential passes with progressive per-pass metrics in the live TUI, per-(item, pass) checkpointing and resume, and the group set — **Pass@k, Pass^k, Avg@k, Max@k, Consistency, Reliability** — reported automatically
+- 🎯 **Any k after the fact** — all passes are stored, so `result.pass_at(3)` / `result.pass_hat(3)` compute unbiased Pass@k/Pass^k for any k ≤ samples without re-running; `get_metric_stats()` gains bootstrap 95% CIs when sampling
+- 🗄️ **Pass-aware platform storage** — migration `0023_repeat_runs` adds `runs.samples`, pass-scoped attempts (with per-pass outputs), and the `run_item_pass_scores` table; `run_item_scores` keeps one reduced-mean row per item/metric so every existing view keeps working, and old SDKs ingest unchanged
+- 📊 **Repeat-run UI** — runs list shows one row per repeat run with a `×k` pill, `±CI` beside metric means, live `pass j/k` badges, and an expandable per-pass breakdown; run detail gains a **Samples analysis** card with an accuracy-vs-k curve (Pass@k vs Pass^k), a per-pass table, and per-item pass-dot strips; models-view group analysis pools attempts across selected runs
+- 🧹 **Duct-tape retired** — duplicating a run spec k times for pass@k is deprecated (the SDK warns "did you mean samples=k?"), the timestamp grouping heuristic is gated to legacy runs, and product-eval presets now run one `samples=k` run instead of k parallel runs (API contract unchanged)
+
+---
+
 ### `bd7759a` — AI evaluator playground
 
 - 🤖 Added an **AI Evaluator Playground** modal to single-run and compare views, opened from **Auto-Analyze**, with filter-aware matched-item previews, pagination, live prompt preview, debounced auto-refresh, and one-click test runs on matched items

@@ -4,7 +4,7 @@ This API lets an external application trigger a predefined qym evaluation over H
 
 The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
 
-For the `insightor` preset, the API mirrors the existing script behavior: it starts three qym runs through `Evaluator.run_parallel(...)`. Runtime limits such as concurrency and parallel attempts are controlled by `QYM_PRODUCT_EVAL_*` environment variables on the platform. When those runs finish, the API returns the grouped Pass@3, Avg@3, consistency, reliability, and latency metrics, and the platform compare view shows the same cross-run result.
+For the `insightor` preset, the API runs **one qym run with `samples=3`** (native repeat runs): every dataset item is evaluated three times inside a single run, producing one dashboard row with per-pass detail instead of three separate runs. Runtime limits such as concurrency are controlled by `QYM_PRODUCT_EVAL_*` environment variables on the platform. When the run finishes, the API returns the same grouped Pass@3, Avg@3, consistency, reliability, and latency metrics as before (the response contract is unchanged), and the run's own "Samples analysis" view shows the per-pass breakdown.
 
 ## Authentication
 

@@ -8,6 +8,7 @@
 
 ## 🌟 Major Highlights
 
+- 🔁 **Repeat runs & pass@k** *(July 2026)* — `samples=8` evaluates every item 8× as ONE run with Pass@k/Pass^k/Consistency/Reliability, confidence intervals, per-pass storage end-to-end, an accuracy-vs-k curve, and repeat-run UI (×k pills, pass expansion, dot strips); replaces the duplicate-spec duct-tape and the timestamp grouping heuristic
 - 🤖 **AI Evaluator Playground** — preview, test, and run AI analysis with editable prompts, variable mapping, additional instructions, reusable category/detail catalogs, and visible few-shot examples before launching analysis
 - 🧠 **Structured analysis workflow** — root-cause analysis expanded from a single label into **category + detail + note + solution + solution note**, with inline editing across run and compare views
 - ✅ **Corrections review system** — a dedicated review queue now supports approval states, inline edits, bulk moderation, immutable revision history, and approved-example curation for the analyzer
