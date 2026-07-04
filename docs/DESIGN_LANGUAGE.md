@@ -181,8 +181,9 @@ values inside must be tokens. Prefix page-local classes (`.dsx-`, `.pg-`, `.tv-`
 - **`_static/ui/` (SDK-local run UI)**: a separate mini-app with its own theme
   (`app.css`), including a light mode. Do not import dashboard tokens there or
   vice versa.
-- **`mock_navigation*.html`, `mocks/`**: design scratch files, exempt from all
-  rules and from CI.
+- **`tmp/mockups/` (gitignored)**: design scratch files and mocks live here,
+  outside the shipped package, so they are exempt from all rules and from CI.
+  Do not add scratch mocks under `_static/` — they get served and shipped.
 
 ---
 

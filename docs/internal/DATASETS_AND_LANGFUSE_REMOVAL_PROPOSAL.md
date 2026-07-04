@@ -1,5 +1,10 @@
 # First-Class Datasets And Langfuse Removal
 
+> **Status (2026-07-04): in-progress proposal — not fully implemented.** Langfuse
+> metadata still flows through `qym_platform/api/ingest.py` and `api/runs.py`, and
+> `.env.template` still lists LANGFUSE_* variables. Treat this as a plan, not as
+> documentation of current behavior.
+
 ## Summary
 
 qym should make datasets a native platform concept and remove Langfuse from the SDK runtime path. Today Langfuse is used for two separate concerns:

@@ -39,12 +39,14 @@ wheels/
 *.swp
 *.swo
 *~
+*.code-workspace
 
-# Claude Code settings (keep local only)
+# AI assistant settings (keep local only)
 .claude/
-
-# Codex settings (keep local only)
 .codex/
+.cursor/
+CLAUDE.md
+AIR_GAPPED_GUIDE.md
 
 # DeepEval cache
 .deepeval/
@@ -79,37 +81,22 @@ Thumbs.db
 .dmypy.json
 dmypy.json
 
-# Guides
-CLAUDE.md
-AIR_GAPPED_GUIDE.md
+# Node (no JS toolchain in this repo)
+node_modules/
 
-# Agents
-AGENTS.md
-
-# Results
-qym_results/*.json
+# Results / generated outputs
+qym_results/
+outputs/
 *.csv
 *.xlsx
-
-# Cursor
-.cursor/
-
-# Results
-qym_results/
+/results
 
 # Backups
 docker/backups/
 
 # Builds
 builds/
-
 build-image.sh
 
 # Scratch / prototypes
 tmp/
-
-# IDE workspace files
-*.code-workspace
-
-# Border test
-/results

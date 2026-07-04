@@ -15,9 +15,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 DASHBOARD_DIR = REPO / "packages" / "platform" / "qym_platform" / "_static" / "dashboard"
 
-# Design scratch files exempt from all rules (see DESIGN_LANGUAGE.md §5).
+# Vendored files exempt from all rules (see DESIGN_LANGUAGE.md §5).
+# Design scratch mocks live in tmp/mockups/ (gitignored), outside this dir.
 EXEMPT = {"docs-hljs.min.js"}
-EXEMPT_PREFIXES = ("mock_navigation",)
+EXEMPT_PREFIXES = ()
 
 FONT_SIZE_CSS = re.compile(r"font-size:\s*([\d.]+)px")
 FONT_SIZE_JS = re.compile(r"fontSize:\s*['\"]([\d.]+)px['\"]")

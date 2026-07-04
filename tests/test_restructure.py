@@ -395,15 +395,20 @@ class TestNoStaleReferences:
         Exceptions:
         - pyproject.toml entry point alias (backward-compat CLI)
         - Generic phrase 'LLM evaluation' / 'LLM Evaluation' (domain term)
+        - Release history (ANNOUNCEMENTS.md, RELEASE_NOTES*.md) — pre-rename
+          releases keep their original 'llm-eval X.Y' titles
         - This test file itself
         """
         # Match 'llm-eval' but NOT 'LLM evaluation' (word boundary)
         pattern = re.compile(r"\bllm-eval\b", re.IGNORECASE)
         generic_domain = re.compile(r"llm.evaluation", re.IGNORECASE)
+        history_files = {"ANNOUNCEMENTS.md", "RELEASE_NOTES.md", "RELEASE_NOTES_SUMMARY.md"}
         violations = []
         for f in source_files:
             # Skip this test file itself
             if f.name == "test_restructure.py":
+                continue
+            if f.name in history_files:
                 continue
             text = f.read_text(errors="replace")
             for i, line in enumerate(text.splitlines(), 1):
