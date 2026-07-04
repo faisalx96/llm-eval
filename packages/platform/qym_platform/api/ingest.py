@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import (
@@ -50,7 +51,7 @@ from qym_platform.db.models import (
     RunWorkflowStatus,
     Span,
 )
-from qym_platform.db.models import RunItemAttempt
+from qym_platform.db.models import RunItemAttempt, RunItemPassScore
 from qym_platform.deps import get_db
 from qym_platform.events import (
     ItemAttemptStartedPayload,
@@ -60,6 +61,7 @@ from qym_platform.events import (
     ItemStartedPayload,
     MetadataUpdatePayload,
     MetricScoredPayload,
+    PassCompletedPayload,
     RunCompletedPayload,
     RunHeartbeatPayload,
     RunEventV1,
@@ -692,6 +694,7 @@ _PAYLOAD_TYPE = {
     "metric_scored": MetricScoredPayload,
     "item_completed": ItemCompletedPayload,
     "item_failed": ItemFailedPayload,
+    "pass_completed": PassCompletedPayload,
     "run_completed": RunCompletedPayload,
     "run_heartbeat": RunHeartbeatPayload,
     "metadata_update": MetadataUpdatePayload,
@@ -706,6 +709,14 @@ def _build_item_meta(ts_ms, retry_count=0):
     if retry_count > 0:
         md["retry_count"] = retry_count
     return md
+
+
+def _samples_from_config(run_config: Optional[Dict[str, Any]]) -> int:
+    """Repeat runs: read samples=k from the run config (1 = classic run)."""
+    try:
+        return max(1, int((run_config or {}).get("samples") or 1))
+    except (TypeError, ValueError):
+        return 1
 
 
 @router.post("/runs")
@@ -749,6 +760,7 @@ def create_run(
         metrics=req.metrics,
         run_metadata=req.run_metadata,
         run_config=req.run_config,
+        samples=_samples_from_config(req.run_config),
         status=RunWorkflowStatus.RUNNING,
         started_at=utc_now_naive(),
         last_event_at=utc_now_naive(),
@@ -764,7 +776,9 @@ def create_run(
     else:
         live_path = f"/run/{run.id}"
     live_url = f"{settings.base_url.rstrip('/')}{live_path}"
-    return {"run_id": run.id, "live_url": live_url}
+    # supports_pass_events: capability flag for repeat runs (samples=k) — new
+    # SDKs check it before streaming pass-aware events to old platforms.
+    return {"run_id": run.id, "live_url": live_url, "supports_pass_events": True}
 
 
 @router.post("/runs/{run_id}/events")
@@ -788,8 +802,9 @@ async def ingest_events(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     item_cache: Dict[str, Optional[RunItem]] = {}
-    attempt_cache: Dict[tuple[str, int], Optional[RunItemAttempt]] = {}
+    attempt_cache: Dict[tuple[str, int, int], Optional[RunItemAttempt]] = {}
     score_cache: Dict[tuple[str, str], Optional[RunItemScore]] = {}
+    pass_score_cache: Dict[tuple[str, str, int], Optional[RunItemPassScore]] = {}
 
     def _get_item(item_id: str) -> Optional[RunItem]:
         if item_id in item_cache:
@@ -826,8 +841,10 @@ async def ingest_events(
         score_cache[(score.item_id, score.metric_name)] = score
         return score
 
-    def _get_attempt(item_id: str, attempt_number: int) -> Optional[RunItemAttempt]:
-        key = (item_id, attempt_number)
+    def _get_attempt(
+        item_id: str, pass_number: int, attempt_number: int
+    ) -> Optional[RunItemAttempt]:
+        key = (item_id, pass_number, attempt_number)
         if key in attempt_cache:
             return attempt_cache[key]
         attempt = (
@@ -835,6 +852,7 @@ async def ingest_events(
             .filter(
                 RunItemAttempt.run_id == run_id,
                 RunItemAttempt.item_id == item_id,
+                RunItemAttempt.pass_number == pass_number,
                 RunItemAttempt.attempt_number == attempt_number,
             )
             .first()
@@ -843,8 +861,29 @@ async def ingest_events(
         return attempt
 
     def _remember_attempt(attempt: RunItemAttempt) -> RunItemAttempt:
-        attempt_cache[(attempt.item_id, attempt.attempt_number)] = attempt
+        attempt_cache[
+            (attempt.item_id, attempt.pass_number, attempt.attempt_number)
+        ] = attempt
         return attempt
+
+    def _get_pass_score(
+        item_id: str, metric_name: str, pass_number: int
+    ) -> Optional[RunItemPassScore]:
+        key = (item_id, metric_name, pass_number)
+        if key in pass_score_cache:
+            return pass_score_cache[key]
+        row = (
+            db.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == run_id,
+                RunItemPassScore.item_id == item_id,
+                RunItemPassScore.metric_name == metric_name,
+                RunItemPassScore.pass_number == pass_number,
+            )
+            .first()
+        )
+        pass_score_cache[key] = row
+        return row
 
     # Read NDJSON stream
     body = await request.body()
@@ -923,6 +962,7 @@ async def ingest_events(
                 md["total_items"] = int(payload.total_items)
             run.run_metadata = md
             run.run_config = _sanitize_for_json(payload.run_config)
+            run.samples = _samples_from_config(payload.run_config)
             run.started_at = to_storage_utc(payload.started_at)
             mark_run_running(run)
             logger.debug("Run %s status -> RUNNING", run_id)
@@ -1004,12 +1044,15 @@ async def ingest_events(
 
         elif isinstance(payload, ItemAttemptFinishedPayload):
             mark_run_running(run)
-            attempt = _get_attempt(payload.item_id, payload.attempt_number)
+            attempt = _get_attempt(
+                payload.item_id, payload.pass_number, payload.attempt_number
+            )
             if not attempt:
                 attempt = _remember_attempt(
                     RunItemAttempt(
                         run_id=run_id,
                         item_id=payload.item_id,
+                        pass_number=payload.pass_number,
                         attempt_number=payload.attempt_number,
                         status=payload.status,
                         latency_ms=payload.latency_ms,
@@ -1030,11 +1073,14 @@ async def ingest_events(
                 attempt.error = payload.error
                 attempt.is_last_attempt = payload.is_last_attempt
             if payload.is_last_attempt:
+                # is_last_attempt is exclusive WITHIN a pass (repeat runs keep
+                # one final attempt per pass).
                 (
                     db.query(RunItemAttempt)
                     .filter(
                         RunItemAttempt.run_id == run_id,
                         RunItemAttempt.item_id == payload.item_id,
+                        RunItemAttempt.pass_number == payload.pass_number,
                         RunItemAttempt.attempt_number != payload.attempt_number,
                         RunItemAttempt.is_last_attempt.is_(True),
                     )
@@ -1043,6 +1089,44 @@ async def ingest_events(
 
         elif isinstance(payload, MetricScoredPayload):
             mark_run_running(run)
+            reduced_numeric = payload.score_numeric
+            if run.samples > 1:
+                # Repeat runs: record the per-pass score, then reduce
+                # run_item_scores to the mean over the passes seen so far —
+                # its one-row-per-(item, metric) contract stays intact.
+                pass_score = _get_pass_score(
+                    payload.item_id, payload.metric_name, payload.pass_number
+                )
+                if not pass_score:
+                    pass_score = RunItemPassScore(
+                        run_id=run_id,
+                        item_id=payload.item_id,
+                        metric_name=payload.metric_name,
+                        pass_number=payload.pass_number,
+                        score_numeric=payload.score_numeric,
+                        label=payload.label,
+                    )
+                    pass_score_cache[
+                        (payload.item_id, payload.metric_name, payload.pass_number)
+                    ] = pass_score
+                    db.add(pass_score)
+                else:
+                    pass_score.score_numeric = payload.score_numeric
+                    pass_score.label = payload.label
+                db.flush()
+                reduced_numeric = (
+                    db.query(func.avg(RunItemPassScore.score_numeric))
+                    .filter(
+                        RunItemPassScore.run_id == run_id,
+                        RunItemPassScore.item_id == payload.item_id,
+                        RunItemPassScore.metric_name == payload.metric_name,
+                        RunItemPassScore.score_numeric.isnot(None),
+                    )
+                    .scalar()
+                )
+                if reduced_numeric is None:
+                    reduced_numeric = payload.score_numeric
+
             score = _get_score(payload.item_id, payload.metric_name)
             if not score:
                 score = _remember_score(
@@ -1050,7 +1134,7 @@ async def ingest_events(
                         run_id=run_id,
                         item_id=payload.item_id,
                         metric_name=payload.metric_name,
-                        score_numeric=payload.score_numeric,
+                        score_numeric=reduced_numeric,
                         score_raw=_sanitize_for_json(payload.score_raw),
                         meta=_sanitize_for_json(payload.meta),
                         label=payload.label,
@@ -1059,7 +1143,7 @@ async def ingest_events(
                 )
                 db.add(score)
             else:
-                score.score_numeric = payload.score_numeric
+                score.score_numeric = reduced_numeric
                 score.score_raw = _sanitize_for_json(payload.score_raw)
                 score.meta = _sanitize_for_json(payload.meta)
                 score.label = payload.label
@@ -1125,6 +1209,24 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
+            if run.samples > 1:
+                # Repeat runs: keep this pass's output on its final attempt
+                # row so the UI can show every pass's output (RunItem keeps
+                # only the latest pass as the representative row).
+                (
+                    db.query(RunItemAttempt)
+                    .filter(
+                        RunItemAttempt.run_id == run_id,
+                        RunItemAttempt.item_id == payload.item_id,
+                        RunItemAttempt.pass_number == payload.pass_number,
+                        RunItemAttempt.is_last_attempt.is_(True),
+                    )
+                    .update(
+                        {"output": _sanitize_for_json(payload.output)},
+                        synchronize_session=False,
+                    )
+                )
+                attempt_cache.clear()
             try:
                 _refresh_live_trace_stats(db, run)
             except Exception:
@@ -1133,6 +1235,14 @@ async def ingest_events(
                     run_id,
                     exc_info=True,
                 )
+
+        elif isinstance(payload, PassCompletedPayload):
+            mark_run_running(run)
+            # Track the latest completed pass for live "pass j/k" displays.
+            md = dict(run.run_metadata or {})
+            md["last_completed_pass"] = int(payload.pass_number)
+            md["samples"] = int(payload.samples)
+            run.run_metadata = _sanitize_for_json(md)
 
         elif isinstance(payload, ItemFailedPayload):
             mark_run_running(run)
@@ -1175,6 +1285,58 @@ async def ingest_events(
                     md.pop("retry_count", None)
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
+            if run.samples > 1:
+                # A failed pass scores 0 for every metric (mirrors the SDK's
+                # reduction rule) so Pass^k and the reduced mean stay honest.
+                for metric_name in list(run.metrics or []):
+                    pass_score = _get_pass_score(
+                        payload.item_id, metric_name, payload.pass_number
+                    )
+                    if not pass_score:
+                        pass_score = RunItemPassScore(
+                            run_id=run_id,
+                            item_id=payload.item_id,
+                            metric_name=metric_name,
+                            pass_number=payload.pass_number,
+                            score_numeric=0.0,
+                            label="error",
+                        )
+                        pass_score_cache[
+                            (payload.item_id, metric_name, payload.pass_number)
+                        ] = pass_score
+                        db.add(pass_score)
+                    else:
+                        pass_score.score_numeric = 0.0
+                        pass_score.label = "error"
+                    db.flush()
+                    reduced = (
+                        db.query(func.avg(RunItemPassScore.score_numeric))
+                        .filter(
+                            RunItemPassScore.run_id == run_id,
+                            RunItemPassScore.item_id == payload.item_id,
+                            RunItemPassScore.metric_name == metric_name,
+                            RunItemPassScore.score_numeric.isnot(None),
+                        )
+                        .scalar()
+                    )
+                    score = _get_score(payload.item_id, metric_name)
+                    if score:
+                        score.score_numeric = reduced
+                    elif reduced is not None:
+                        db.add(
+                            _remember_score(
+                                RunItemScore(
+                                    run_id=run_id,
+                                    item_id=payload.item_id,
+                                    metric_name=metric_name,
+                                    score_numeric=reduced,
+                                    score_raw=None,
+                                    meta={},
+                                    label="error",
+                                    explanation=None,
+                                )
+                            )
+                        )
             try:
                 _refresh_live_trace_stats(db, run)
             except Exception:

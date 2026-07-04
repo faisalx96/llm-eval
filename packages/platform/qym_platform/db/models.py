@@ -196,6 +196,8 @@ class Run(Base):
     metrics: Mapped[list[str]] = mapped_column(JSON, default=list)
     run_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     run_config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Repeat runs: how many passes evaluate each item (1 = classic run).
+    samples: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     status: Mapped[RunWorkflowStatus] = mapped_column(Enum(RunWorkflowStatus), default=RunWorkflowStatus.DRAFT, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -387,6 +389,8 @@ class RunItemAttempt(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
     item_id: Mapped[str] = mapped_column(String(200), index=True)
+    # Repeat runs: which pass this attempt belongs to (1 = classic run).
+    pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     attempt_number: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="FAILED")
     latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -395,9 +399,18 @@ class RunItemAttempt(Base):
     trace_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_last_attempt: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The pass's output — populated on the final attempt of each pass so the
+    # UI can show per-pass outputs without bloating every retry row.
+    output: Mapped[Any] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("run_id", "item_id", "attempt_number", name="uq_run_item_attempt"),
+        UniqueConstraint(
+            "run_id",
+            "item_id",
+            "pass_number",
+            "attempt_number",
+            name="uq_run_item_pass_attempt",
+        ),
         Index("ix_run_item_attempt_run_item", "run_id", "item_id"),
     )
 
@@ -416,6 +429,36 @@ class RunItemScore(Base):
     explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (UniqueConstraint("run_id", "item_id", "metric_name", name="uq_run_item_metric"),)
+
+
+class RunItemPassScore(Base):
+    """One numeric score per (run, item, metric, pass) for repeat runs.
+
+    ``RunItemScore`` keeps its one-row-per-(run, item, metric) contract and
+    holds the REDUCED mean over passes — this narrow table carries the
+    per-pass detail (accuracy-vs-k, attempt pooling) without JSON parsing.
+    """
+
+    __tablename__ = "run_item_pass_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    item_id: Mapped[str] = mapped_column(String(200))
+    metric_name: Mapped[str] = mapped_column(String(200))
+    pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    score_numeric: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "item_id",
+            "metric_name",
+            "pass_number",
+            name="uq_run_item_metric_pass",
+        ),
+        Index("ix_run_item_pass_scores_run_metric", "run_id", "metric_name"),
+    )
 
 
 class Approval(Base):

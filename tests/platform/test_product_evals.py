@@ -841,9 +841,10 @@ def test_run_v2_async_preset_is_removed(client, session_factory) -> None:
     assert "Unknown product eval preset" in envelope["error"]["message"]
 
 
-def test_insightor_preset_uses_three_run_parallel_attempts(
+def test_insightor_preset_uses_samples_repeat_run(
     monkeypatch, tmp_path
 ) -> None:
+    """run_count>1 now runs ONE Evaluator with samples=k (native repeat runs)."""
     script = tmp_path / "insightor_eval.py"
     script.write_text(
         "\n".join(
@@ -867,50 +868,48 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_RETRIES", "1")
     monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "3")
 
+    import types
+
     import qym
     from qym.core.results import EvaluationResult
 
     captured: dict[str, object] = {}
 
-    def result_for_run(name: str, scores: list[float]) -> EvaluationResult:
-        result = EvaluationResult("dataset-1", name, ["accuracy"])
-        for index, score in enumerate(scores, start=1):
-            result.add_result(
-                f"item-{index}",
-                {
-                    "scores": {"accuracy": score},
-                    "latency_ms": 100.0,
-                    "retry_count": 0,
-                },
-            )
+    def sampled_result() -> EvaluationResult:
+        # item-1 passes only on pass 1; item-2 never passes — same outcome
+        # matrix the old three-run version produced.
+        result = EvaluationResult("dataset-1", "external-run", ["accuracy"])
+        result.samples = 3
+        pass_scores = {"item-1": [1.0, 0.0, 0.0], "item-2": [0.0, 0.0, 0.0]}
+        for item_id, scores in pass_scores.items():
+            for pass_number, score in enumerate(scores, start=1):
+                result.add_pass_result(
+                    item_id,
+                    pass_number,
+                    {"scores": {"accuracy": score}, "time": 0.1, "retry_count": 0},
+                )
         return result
 
     class FakeEvaluator:
-        @staticmethod
-        def run_parallel(**kwargs):
+        def __init__(self, **kwargs):
             captured.update(kwargs)
-            observer = kwargs["observer"]
-            matrix = [
-                {"index": attempt - 1, "run_id": f"sdk-run-{attempt}"}
-                for attempt in range(1, 4)
-            ]
-            observer.on_run_matrix(matrix_id="matrix-1", runs=matrix, total_runs=3)
-            for attempt in range(1, 4):
-                observer.on_run_start(
-                    run_id=f"sdk-run-{attempt}",
-                    run_info={"platform_run_id": f"qym-run-{attempt}"},
-                    total_items=1,
-                    metrics=["accuracy"],
+
+        def run(self, show_tui=True, auto_save=True, **kwargs):
+            captured["show_tui"] = show_tui
+            captured["auto_save"] = auto_save
+            progress = captured.get("progress_callback")
+            if callable(progress):
+                progress(
+                    types.SimpleNamespace(
+                        event="run_start",
+                        run_id="sdk-run-1",
+                        run_info={"platform_run_id": "qym-run-1"},
+                    )
                 )
-                observer.on_run_complete(
-                    run_id=f"sdk-run-{attempt}",
-                    result_summary={},
+                progress(
+                    types.SimpleNamespace(event="run_complete", run_id="sdk-run-1")
                 )
-            return [
-                result_for_run("attempt-1", [1.0, 0.0]),
-                result_for_run("attempt-2", [0.0, 0.0]),
-                result_for_run("attempt-3", [0.0, 0.0]),
-            ]
+            return sampled_result()
 
     monkeypatch.setattr(qym, "Evaluator", FakeEvaluator)
 
@@ -935,45 +934,34 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert job._future is not None
     job._future.result(timeout=5)
 
-    assert captured["max_parallel_runs"] == 3
     assert captured["show_tui"] is False
     assert captured["auto_save"] is False
-    runs = captured["runs"]
-    assert len(runs) == 3
-    assert [run["name"] for run in runs] == ["external-run"] * 3
-    assert [run["model"] for run in runs] == ["model-1"] * 3
-    assert [run["dataset"] for run in runs] == ["playground_set_v2"] * 3
-    assert [run["config"]["max_concurrency"] for run in runs] == [6] * 3
-    assert [run["config"]["timeout"] for run in runs] == [30] * 3
-    assert [run["config"]["max_retries"] for run in runs] == [1] * 3
-    assert "max_parallel_runs" not in runs[0]["config"]
-    assert [run["config"]["metric_timeout"] for run in runs] == [300] * 3
-    assert [run["config"]["checkpoint_enabled"] for run in runs] == [False] * 3
-    runtime = runs[0]["task"].__globals__["RUNTIME"]
+    config = captured["config"]
+    assert config["samples"] == 3  # ONE run with k passes, not k runs
+    assert callable(config["should_stop"])
+    assert captured["model"] == "model-1"
+    assert captured["dataset"] == "playground_set_v2"
+    assert config["run_name"] == "external-run"
+    assert config["max_concurrency"] == 6
+    assert config["timeout"] == 30
+    assert config["max_retries"] == 1
+    assert "max_parallel_runs" not in config
+    assert config["metric_timeout"] == 300
+    assert config["checkpoint_enabled"] is False
+    runtime = captured["task"].__globals__["RUNTIME"]
     assert runtime["INSIGHTOR_URL"] == "https://insightor.example.com"
     assert runtime["REFRESH_TOKEN"] == "refresh-token-1"
     assert runtime["AGENT_VERSION"] == "agent-v1"
     assert runtime["IMAGE_VERSION"] == "image-v1"
     assert runtime["KB_VERSION"] == "kb-v1"
-    assert [
-        run["config"]["run_metadata"]["product_eval"]["attempt"] for run in runs
-    ] == [1, 2, 3]
-    assert [
-        run["config"]["run_metadata"]["product_eval"]["attempts"] for run in runs
-    ] == [3, 3, 3]
+    assert config["run_metadata"]["product_eval"]["attempt"] == 1
+    assert config["run_metadata"]["product_eval"]["attempts"] == 3
     assert job.eval_id.startswith("eval_")
-    assert [
-        run["config"]["run_metadata"]["product_eval"]["eval_id"] for run in runs
-    ] == [job.eval_id, job.eval_id, job.eval_id]
-    assert "job_id" not in runs[0]["config"]["run_metadata"]["product_eval"]
-    assert "product_eval_id" not in runs[0]["config"]["run_metadata"]["product_eval"]
+    assert config["run_metadata"]["product_eval"]["eval_id"] == job.eval_id
+    assert "job_id" not in config["run_metadata"]["product_eval"]
+    assert "product_eval_id" not in config["run_metadata"]["product_eval"]
     assert job.status == "COMPLETED"
     assert job.run_id == "qym-run-1"
-    assert [row["qym_run_id"] for row in job.runs] == [
-        "qym-run-1",
-        "qym-run-2",
-        "qym-run-3",
-    ]
     assert job.group_analysis is not None
     assert job.group_analysis["pass_at_3"] == pytest.approx(0.5)
     assert job.group_analysis["avg_at_3"] == pytest.approx(1 / 6)
@@ -982,9 +970,10 @@ def test_insightor_preset_uses_three_run_parallel_attempts(
     assert job.group_analysis["avg_latency_ms"] == pytest.approx(100.0)
 
 
-def test_insightor_stop_does_not_start_later_attempts(
+def test_insightor_stop_reaches_sampled_run_mid_flight(
     monkeypatch, tmp_path
 ) -> None:
+    """Stop requests wire into the samples=k run via config.should_stop."""
     script = tmp_path / "insightor_eval.py"
     script.write_text(
         "\n".join(
@@ -1003,10 +992,12 @@ def test_insightor_stop_does_not_start_later_attempts(
     monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
     monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "1")
 
+    import types
+
     import qym
     from qym.core.results import EvaluationResult
 
-    calls: list[list[dict[str, object]]] = []
+    calls: list[dict[str, object]] = []
     job = ProductEvalJob(
         job_id="eval_stop_batches",
         preset="insightor",
@@ -1015,36 +1006,37 @@ def test_insightor_stop_does_not_start_later_attempts(
     preset = get_preset("insightor")
 
     class FakeEvaluator:
-        @staticmethod
-        def run_parallel(**kwargs):
-            batch = list(kwargs["runs"])
-            calls.append(batch)
-            observer = kwargs["observer"]
-            attempt = len(calls)
-            sdk_run_id = f"sdk-run-{attempt}"
-            observer.on_run_matrix(
-                matrix_id=f"matrix-{attempt}",
-                runs=[{"index": 0, "run_id": sdk_run_id}],
-                total_runs=1,
-            )
-            observer.on_run_start(
-                run_id=sdk_run_id,
-                run_info={"platform_run_id": f"qym-run-{attempt}"},
-                total_items=1,
-                metrics=["accuracy"],
-            )
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            calls.append(kwargs)
+
+        def run(self, show_tui=True, auto_save=True, **kwargs):
+            progress = self.kwargs.get("progress_callback")
+            if callable(progress):
+                progress(
+                    types.SimpleNamespace(
+                        event="run_start",
+                        run_id="sdk-run-1",
+                        run_info={"platform_run_id": "qym-run-1"},
+                    )
+                )
+            # A stop request mid-run must be visible to the evaluator via
+            # config.should_stop (the SDK checks it between items/passes).
             job.request_stop()
-            observer.on_run_complete(run_id=sdk_run_id, result_summary={})
-            result = EvaluationResult("dataset-1", f"attempt-{attempt}", ["accuracy"])
-            result.add_result(
+            assert self.kwargs["config"]["should_stop"]() is True
+            if callable(progress):
+                progress(
+                    types.SimpleNamespace(event="run_complete", run_id="sdk-run-1")
+                )
+            result = EvaluationResult("dataset-1", "attempt-1", ["accuracy"])
+            result.samples = 3
+            result.interrupted = True
+            result.add_pass_result(
                 "item-1",
-                {
-                    "scores": {"accuracy": 1.0},
-                    "latency_ms": 100.0,
-                    "retry_count": 0,
-                },
+                1,
+                {"scores": {"accuracy": 1.0}, "time": 0.1, "retry_count": 0},
             )
-            return [result]
+            return result
 
     monkeypatch.setattr(qym, "Evaluator", FakeEvaluator)
 
@@ -1065,25 +1057,15 @@ def test_insightor_stop_does_not_start_later_attempts(
         "http://testserver",
     )
 
-    assert len(calls) == 1
+    assert len(calls) == 1  # ONE Evaluator for all k passes
     assert job.status == "STOPPED"
-    assert [row["status"] for row in job.runs] == [
-        "STOPPED",
-        "STOPPED",
-        "STOPPED",
-    ]
-    assert [row["qym_run_id"] for row in job.runs] == [
-        "qym-run-1",
-        None,
-        None,
-    ]
     assert job.group_analysis is None
-    first_attempt = calls[0][0]
-    assert first_attempt["config"]["should_stop"] == job.stop_requested
-    assert first_attempt["config"]["should_stop"]() is True
-    assert first_attempt["config"]["checkpoint_enabled"] is False
-    assert first_attempt["task"]("value") == "value"
-    assert first_attempt["metrics"][0]("output", "expected") is True
+    first = calls[0]
+    assert first["config"]["samples"] == 3
+    assert first["config"]["should_stop"] == job.stop_requested
+    assert first["config"]["checkpoint_enabled"] is False
+    assert first["task"]("value") == "value"
+    assert first["metrics"][0]("output", "expected") is True
 
 
 def test_submit_allows_any_valid_key(client, session_factory) -> None:

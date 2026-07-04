@@ -415,6 +415,50 @@ def _compact_group_analysis(analysis: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _compact_from_sampled_result(
+    result: Any,
+    *,
+    metric_name: str,
+    threshold: float = 0.8,
+) -> Optional[Dict[str, Any]]:
+    """Compact group analysis from ONE samples=k run (native repeat runs).
+
+    Emits the exact shape `_compact_group_analysis` produces from k separate
+    runs, so the product-eval API response contract stays unchanged.
+    """
+    try:
+        stats = result.group_stats(metric=metric_name, threshold=threshold)
+        items_scores = result.item_pass_scores(metric_name)
+        total_score_count = sum(len(v) for v in items_scores.values())
+        failed_count = sum(
+            1
+            for entries in getattr(result, "passes", {}).values()
+            for entry in entries.values()
+            if isinstance(entry, dict) and "error" in entry
+        )
+        timing = result.get_timing_stats()
+        avg_latency_ms = float(timing.get("mean") or 0.0) * 1000.0
+        k = int(stats.get("k") or 0)
+        return {
+            "metric": metric_name,
+            "threshold": threshold,
+            "k": k,
+            "total_items": stats.get("total_items"),
+            "total_score_count": total_score_count,
+            "failed_count": failed_count,
+            f"pass_at_{k}": stats.get("pass_at_k"),
+            f"avg_at_{k}": stats.get("avg_at_k"),
+            "consistency": stats.get("consistency"),
+            "reliability": stats.get("reliability"),
+            "avg_latency_ms": avg_latency_ms,
+        }
+    except Exception as exc:
+        logger.warning(
+            "Product eval sampled group analysis failed: %s", _safe_error(exc)
+        )
+        return None
+
+
 def _analyze_completed_group_results(
     results: Any,
     *,
@@ -675,6 +719,9 @@ class ProductEvalJobManager:
                     )
 
             if preset.run_count > 1:
+                # Repeat runs are native now: ONE run with samples=k replaces
+                # the old k-RunSpec fan-out (one dashboard row, per-pass
+                # storage, group metrics computed by the run itself).
                 base_name = (
                     run_name
                     or getattr(module, "DEFAULT_RUN_NAME", None)
@@ -689,42 +736,27 @@ class ProductEvalJobManager:
                     )
                     or preset.task_name
                 )
-                runs = []
-                for attempt in range(1, preset.run_count + 1):
-                    attempt_config = {
-                        **evaluator_config,
-                        "run_metadata": build_run_metadata(attempt),
-                        "run_name": base_name,
-                    }
-                    runs.append(
-                        {
-                            "name": base_name,
-                            "task": task,
-                            "dataset": dataset,
-                            "metrics": [metric],
-                            "model": resolved_model,
-                            "config": attempt_config,
-                        }
-                    )
-                results = []
-                batch_size = max(1, int(resolved_max_parallel_runs or 1))
-                for batch_start in range(0, len(runs), batch_size):
-                    if job.stop_requested():
-                        break
-                    current_batch_start = batch_start
-                    batch = runs[batch_start : batch_start + batch_size]
-                    results.extend(
-                        Evaluator.run_parallel(
-                            runs=batch,
-                            show_tui=False,
-                            auto_save=False,
-                            max_parallel_runs=len(batch),
-                            observer=ProgressCallbackObserver(on_progress),
-                        )
-                    )
+                sampled_config = {
+                    **evaluator_config,
+                    "run_metadata": build_run_metadata(1),
+                    "run_name": base_name,
+                    "samples": int(preset.run_count),
+                    # Stop requests take effect mid-run (the old batch loop
+                    # checked between run_parallel batches).
+                    "should_stop": job.stop_requested,
+                }
+                evaluator = Evaluator(
+                    task=task,
+                    dataset=dataset,
+                    metrics=[metric],
+                    model=resolved_model,
+                    config=sampled_config,
+                    progress_callback=on_progress,
+                )
+                result = evaluator.run(show_tui=False, auto_save=False)
                 if not job.stop_requested():
-                    group_analysis = _analyze_completed_group_results(
-                        results,
+                    group_analysis = _compact_from_sampled_result(
+                        result,
                         metric_name=preset.metric_name,
                     )
                     if group_analysis:

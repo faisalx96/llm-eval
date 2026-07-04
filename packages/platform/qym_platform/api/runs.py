@@ -600,6 +600,12 @@ def _live_run_summary(
         "progress_pct": (completed_count / expected_total) if expected_total else None,
         "total_items": int(item_agg.get("total") or 0),
         "error_count": int(item_agg.get("error_count") or 0),
+        "samples": int(getattr(run, "samples", 1) or 1),
+        "last_completed_pass": (
+            run.run_metadata.get("last_completed_pass")
+            if isinstance(run.run_metadata, dict)
+            else None
+        ),
         "owner": owner_info,
         "project": project_info,
     }
@@ -1110,6 +1116,12 @@ def legacy_list_runs(
             "langfuse_run_id": r.run_metadata.get("langfuse_run_id") if isinstance(r.run_metadata, dict) else None,
             "status": r.status,
             "run_config": {},  # Omit full config from list view for payload size
+            "samples": int(getattr(r, "samples", 1) or 1),
+            "last_completed_pass": (
+                r.run_metadata.get("last_completed_pass")
+                if isinstance(r.run_metadata, dict)
+                else None
+            ),
             "git_branch": r.run_config.get("git_branch") if isinstance(r.run_config, dict) else None,
             "git_commit": r.run_config.get("git_commit") if isinstance(r.run_config, dict) else None,
             "owner": owner_info,
@@ -1480,6 +1492,21 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     for s in scores:
         by_item.setdefault(s.item_id, {})[s.metric_name] = s
 
+    # Repeat runs: per-pass scores power the dot strips in the items table.
+    run_samples = int(getattr(run, "samples", 1) or 1)
+    pass_scores_by_item: Dict[str, Dict[str, Dict[int, Optional[float]]]] = {}
+    if run_samples > 1:
+        from qym_platform.db.models import RunItemPassScore
+
+        for ps in (
+            db.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == run.id)
+            .all()
+        ):
+            pass_scores_by_item.setdefault(ps.item_id, {}).setdefault(
+                ps.metric_name, {}
+            )[int(ps.pass_number)] = ps.score_numeric
+
     # Fallback timestamps: for items missing task_started_at_ms in item_metadata,
     # look up the item_started event's sent_at timestamp as an approximation.
     _item_start_ts: Dict[str, int] = {}
@@ -1574,6 +1601,20 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                     corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
                 ),
                 "trace_stats": item_metadata.get("trace_stats") if isinstance(item_metadata, dict) else None,
+                # Repeat runs: metric -> [score per pass, index 0 = pass 1]
+                "pass_scores": (
+                    {
+                        m: [
+                            by_pass.get(p)
+                            for p in range(1, run_samples + 1)
+                        ]
+                        for m, by_pass in (
+                            pass_scores_by_item.get(it.item_id) or {}
+                        ).items()
+                    }
+                    if run_samples > 1
+                    else None
+                ),
             }
         )
 
@@ -1635,6 +1676,12 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "langfuse_host": lf_host,
             "langfuse_project_id": lf_project_id,
             "trace_stats": run_trace_stats,
+            "samples": run_samples,
+            "last_completed_pass": (
+                run_metadata.get("last_completed_pass")
+                if isinstance(run_metadata, dict)
+                else None
+            ),
         },
         "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
     })
@@ -1786,6 +1833,158 @@ def list_deleted_runs(
             "created_at": to_api_timestamp(r.created_at),
         })
     return result
+
+
+@router.get("/api/runs/{run_id}/passes")
+def run_passes(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Repeat runs: per-pass slice aggregates (lazy-loaded on runs-list expand)."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        return {"error": "Run not found"}
+    if not can_view_run(db, principal, run):
+        return {"error": "Access denied"}
+
+    from qym_platform.db.models import RunItemAttempt, RunItemPassScore
+
+    samples = int(getattr(run, "samples", 1) or 1)
+    metrics = list(run.metrics or [])
+
+    # Per-pass mean per metric.
+    score_rows = (
+        db.query(
+            RunItemPassScore.pass_number,
+            RunItemPassScore.metric_name,
+            func.avg(RunItemPassScore.score_numeric),
+            func.count(RunItemPassScore.id),
+        )
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.score_numeric.isnot(None),
+        )
+        .group_by(RunItemPassScore.pass_number, RunItemPassScore.metric_name)
+        .all()
+    )
+    metric_means: Dict[int, Dict[str, float]] = {}
+    counts: Dict[int, int] = {}
+    for pass_number, metric_name, avg_val, cnt in score_rows:
+        metric_means.setdefault(int(pass_number), {})[metric_name] = (
+            float(avg_val) if avg_val is not None else None
+        )
+        counts[int(pass_number)] = max(counts.get(int(pass_number), 0), int(cnt or 0))
+
+    # Per-pass latency over final attempts.
+    latency_rows = (
+        db.query(
+            RunItemAttempt.pass_number,
+            func.avg(RunItemAttempt.latency_ms),
+            func.count(RunItemAttempt.id),
+        )
+        .filter(
+            RunItemAttempt.run_id == run.id,
+            RunItemAttempt.is_last_attempt.is_(True),
+            RunItemAttempt.latency_ms.isnot(None),
+        )
+        .group_by(RunItemAttempt.pass_number)
+        .all()
+    )
+    latency_by_pass = {int(p): float(avg) for p, avg, _ in latency_rows if avg is not None}
+
+    last_completed = 0
+    if isinstance(run.run_metadata, dict):
+        try:
+            last_completed = int(run.run_metadata.get("last_completed_pass") or 0)
+        except (TypeError, ValueError):
+            last_completed = 0
+
+    passes = []
+    for p in range(1, samples + 1):
+        has_data = p in metric_means or p in latency_by_pass
+        if p <= last_completed:
+            status = "completed"
+        elif has_data:
+            status = "running"
+        else:
+            status = "pending"
+        passes.append(
+            {
+                "pass_number": p,
+                "status": status,
+                "metric_means": metric_means.get(p, {}),
+                "items_scored": counts.get(p, 0),
+                "avg_latency_ms": latency_by_pass.get(p),
+            }
+        )
+    return {"run_id": run.id, "samples": samples, "metrics": metrics, "passes": passes}
+
+
+@router.get("/api/runs/{run_id}/group-metrics")
+def run_group_metrics(
+    run_id: str,
+    metric: Optional[str] = Query(None),
+    threshold: float = Query(0.8),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Repeat runs: the group set (k = samples) plus the full accuracy-vs-k band.
+
+    All passes are stored, so any pass@k / pass^k for k <= samples is computed
+    on demand — reduction is a display concern, never a data commitment.
+    """
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        return {"error": "Run not found"}
+    if not can_view_run(db, principal, run):
+        return {"error": "Access denied"}
+
+    from qym.core.reducers import estimate_pass_at, estimate_pass_hat, group_stats
+
+    from qym_platform.db.models import RunItemPassScore
+
+    samples = int(getattr(run, "samples", 1) or 1)
+    metric_name = metric or (run.metrics[0] if run.metrics else None)
+    if not metric_name:
+        return {"error": "Run has no metrics"}
+
+    items_scores: Dict[str, list] = {}
+    rows = (
+        db.query(
+            RunItemPassScore.item_id,
+            RunItemPassScore.pass_number,
+            RunItemPassScore.score_numeric,
+        )
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.metric_name == metric_name,
+        )
+        .order_by(RunItemPassScore.item_id, RunItemPassScore.pass_number)
+        .all()
+    )
+    for item_id, _pass_number, score_numeric in rows:
+        items_scores.setdefault(item_id, []).append(
+            float(score_numeric) if score_numeric is not None else 0.0
+        )
+
+    stats = group_stats(items_scores, threshold=threshold, k=samples)
+    max_k = max((len(v) for v in items_scores.values()), default=0)
+    band = {
+        k: {
+            "pass_at_k": estimate_pass_at(items_scores, k, threshold=threshold),
+            "pass_hat_k": estimate_pass_hat(items_scores, k, threshold=threshold),
+        }
+        for k in range(1, max_k + 1)
+    }
+    return {
+        "run_id": run.id,
+        "metric": metric_name,
+        "threshold": threshold,
+        "samples": samples,
+        "group": stats,
+        "band": band,
+    }
 
 
 @router.get("/api/runs/{run_id}")

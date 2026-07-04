@@ -15,6 +15,7 @@ RunEventType = Literal[
     "metric_scored",
     "item_completed",
     "item_failed",
+    "pass_completed",
     "run_completed",
     "run_heartbeat",
     "metadata_update",
@@ -41,6 +42,8 @@ class RunStartedPayload(BaseModel):
 class ItemStartedPayload(BaseModel):
     item_id: str
     index: int = Field(ge=0)
+    # Repeat runs (samples=k): 1-based pass index; old SDKs omit it (=1).
+    pass_number: int = Field(default=1, ge=1)
     input: Any
     expected: Any = None
     item_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -49,6 +52,7 @@ class ItemStartedPayload(BaseModel):
 
 class MetricScoredPayload(BaseModel):
     item_id: str
+    pass_number: int = Field(default=1, ge=1)
     metric_name: str
     score_numeric: Optional[float] = None
     score_raw: Any = None
@@ -60,6 +64,7 @@ class MetricScoredPayload(BaseModel):
 class ItemAttemptStartedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None
+    pass_number: int = Field(default=1, ge=1)
     attempt_number: int = Field(ge=1)
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None
@@ -69,6 +74,7 @@ class ItemAttemptStartedPayload(BaseModel):
 class ItemAttemptFinishedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None
+    pass_number: int = Field(default=1, ge=1)
     attempt_number: int = Field(ge=1)
     status: Literal["completed", "failed"]
     trace_id: Optional[str] = None
@@ -82,6 +88,8 @@ class ItemAttemptFinishedPayload(BaseModel):
 class ItemCompletedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None  # Item index for fallback when item_started was missed
+    pass_number: int = Field(default=1, ge=1)
+    is_final_pass: bool = True
     output: Any
     item_metadata: Dict[str, Any] = Field(default_factory=dict)
     task_metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -95,12 +103,21 @@ class ItemCompletedPayload(BaseModel):
 class ItemFailedPayload(BaseModel):
     item_id: str
     index: Optional[int] = None  # Item index for fallback when item_started was missed
+    pass_number: int = Field(default=1, ge=1)
     error: str
     latency_ms: Optional[float] = Field(default=None, ge=0)
     trace_id: Optional[str] = None
     trace_url: Optional[str] = None
     task_started_at_ms: Optional[int] = None
     retry_count: int = 0
+
+
+class PassCompletedPayload(BaseModel):
+    """Repeat runs: a pass barrier finished; its slice metrics are final."""
+
+    pass_number: int = Field(ge=1)
+    samples: int = Field(ge=1)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RunCompletedPayload(BaseModel):
@@ -146,6 +163,7 @@ RunEventPayload = Union[
     MetricScoredPayload,
     ItemCompletedPayload,
     ItemFailedPayload,
+    PassCompletedPayload,
     RunCompletedPayload,
     RunHeartbeatPayload,
     MetadataUpdatePayload,
