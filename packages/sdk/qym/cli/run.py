@@ -39,6 +39,7 @@ def run_create(
     csv_id_col: Optional[str] = typer.Option(None, "--csv-id-col", help="CSV column for item ID"),
     csv_metadata_cols: Optional[str] = typer.Option(None, "--csv-metadata-cols", help="Comma-separated CSV metadata columns"),
     model: Optional[str] = typer.Option(None, "--model", help="Model name(s), comma-separated"),
+    samples: int = typer.Option(1, "--samples", min=1, help="Evaluate every item k times (k sequential passes) as one run; reports Pass@k, Pass^k, etc."),
     task_name: Optional[str] = typer.Option(None, "--task-name", help="Override auto-derived task name"),
     config_json: Optional[str] = typer.Option(None, "--config", help="JSON configuration string"),
     no_ui: bool = typer.Option(False, "--no-ui", help="Disable local web UI"),
@@ -174,6 +175,8 @@ def run_create(
             pass
 
         config["ui_port"] = ui_port
+        if samples and samples > 1:
+            config["samples"] = samples
         if task_name:
             config["task_name"] = task_name
         if platform_url:

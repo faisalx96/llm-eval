@@ -51,6 +51,15 @@ class EvaluationResult:
         self.results = {}  # item_id -> result dict
         self.errors = {}   # item_id -> {"error": str, "trace_id": Optional[str], "task_started_at_ms": Optional[int]}
 
+        # Repeat runs (samples=k): number of passes and the per-pass results.
+        # passes[item_id][pass_number] -> per-pass result dict (same shape as
+        # a `results` entry, or {"error": ...} for a failed pass). When
+        # samples > 1, `results[item_id]` holds the REDUCED view (last
+        # successful pass's fields with per-metric scores replaced by the
+        # mean over passes) so every existing consumer keeps working.
+        self.samples: int = 1
+        self.passes: Dict[str, Dict[int, Dict[str, Any]]] = {}
+
     def add_input(self, item_id: str, task_input: Any):
         """Add input data for an item."""
         self.inputs[item_id] = task_input
@@ -79,6 +88,165 @@ class EvaluationResult:
             "time": time_seconds,
         }
     
+    # ── Repeat runs (samples=k) ──────────────────────────────────────
+
+    @staticmethod
+    def _main_numeric_score(score: Any) -> Optional[float]:
+        """Extract the numeric main score from a stored metric value."""
+        if isinstance(score, dict):
+            if "error" in score:
+                return 0.0
+            score = score.get("score")
+        if isinstance(score, bool):
+            return 1.0 if score else 0.0
+        if isinstance(score, (int, float)):
+            return float(score)
+        return None
+
+    def add_pass_result(self, item_id: str, pass_number: int, result: Dict[str, Any]):
+        """Record one pass's successful result and refresh the reduced view."""
+        self.passes.setdefault(item_id, {})[int(pass_number)] = result
+        self._reduce_item(item_id)
+
+    def add_pass_error(
+        self,
+        item_id: str,
+        pass_number: int,
+        error: str,
+        trace_id: Optional[str] = None,
+        task_started_at_ms: Optional[int] = None,
+        time_seconds: Optional[float] = None,
+    ):
+        """Record one pass's failure (scores 0 in reductions) and refresh."""
+        self.passes.setdefault(item_id, {})[int(pass_number)] = {
+            "error": error,
+            "trace_id": trace_id,
+            "task_started_at_ms": task_started_at_ms,
+            "time": time_seconds,
+        }
+        self._reduce_item(item_id)
+
+    def _reduce_item(self, item_id: str) -> None:
+        """Rebuild the reduced per-item view from its recorded passes."""
+        entries = self.passes.get(item_id) or {}
+        ordered = [entries[p] for p in sorted(entries)]
+        successes = [e for e in ordered if "error" not in e]
+        if not successes:
+            last = ordered[-1] if ordered else {"error": "error"}
+            self.results.pop(item_id, None)
+            self.errors[item_id] = {
+                "error": str(last.get("error", "error")),
+                "trace_id": last.get("trace_id"),
+                "task_started_at_ms": last.get("task_started_at_ms"),
+                "time": last.get("time"),
+            }
+            return
+
+        reduced = dict(successes[-1])  # representative fields: last success
+        mean_scores: Dict[str, Any] = {}
+        for metric in self.metrics:
+            values: List[float] = []
+            for entry in ordered:
+                if "error" in entry:
+                    values.append(0.0)  # failed pass scores 0 (platform rule)
+                    continue
+                val = self._main_numeric_score(
+                    (entry.get("scores") or {}).get(metric)
+                )
+                if val is not None:
+                    values.append(val)
+            if values:
+                mean_scores[metric] = sum(values) / len(values)
+            else:
+                original = (successes[-1].get("scores") or {}).get(metric)
+                if original is not None:
+                    mean_scores[metric] = original
+        reduced["scores"] = mean_scores
+        times = [
+            float(e.get("time") or 0.0) for e in successes if e.get("time") is not None
+        ]
+        if times:
+            reduced["time"] = sum(times) / len(times)
+        reduced["pass_count"] = len(ordered)
+        self.errors.pop(item_id, None)
+        self.results[item_id] = reduced
+
+    def item_pass_scores(
+        self, metric_name: Optional[str] = None
+    ) -> Dict[str, List[float]]:
+        """Per-item list of numeric per-pass scores (failed pass -> 0.0)."""
+        metric = metric_name or (self.metrics[0] if self.metrics else None)
+        if metric is None:
+            return {}
+        out: Dict[str, List[float]] = {}
+        if self.passes:
+            for item_id, entries in self.passes.items():
+                scores: List[float] = []
+                for p in sorted(entries):
+                    entry = entries[p]
+                    if "error" in entry:
+                        scores.append(0.0)
+                        continue
+                    val = self._main_numeric_score(
+                        (entry.get("scores") or {}).get(metric)
+                    )
+                    scores.append(val if val is not None else 0.0)
+                if scores:
+                    out[item_id] = scores
+            return out
+        # Single runs: one score per item; errors score 0.
+        for item_id, result in self.results.items():
+            val = self._main_numeric_score((result.get("scores") or {}).get(metric))
+            out[item_id] = [val if val is not None else 0.0]
+        for item_id in self.errors:
+            out.setdefault(item_id, [0.0])
+        return out
+
+    def pass_at(
+        self,
+        k: int,
+        metric: Optional[str] = None,
+        threshold: float = 0.8,
+    ) -> float:
+        """Unbiased Pass@k over the stored passes (any k <= samples)."""
+        from .reducers import estimate_pass_at
+
+        if k > max(self.samples, 1):
+            raise ValueError(f"k ({k}) cannot exceed samples ({self.samples})")
+        return estimate_pass_at(
+            self.item_pass_scores(metric), k, threshold=threshold
+        )
+
+    def pass_hat(
+        self,
+        k: int,
+        metric: Optional[str] = None,
+        threshold: float = 0.8,
+    ) -> float:
+        """Unbiased Pass^k (all k pass) over the stored passes."""
+        from .reducers import estimate_pass_hat
+
+        if k > max(self.samples, 1):
+            raise ValueError(f"k ({k}) cannot exceed samples ({self.samples})")
+        return estimate_pass_hat(
+            self.item_pass_scores(metric), k, threshold=threshold
+        )
+
+    def group_stats(
+        self,
+        metric: Optional[str] = None,
+        threshold: float = 0.8,
+    ) -> Dict[str, Optional[float]]:
+        """The reported group set (Pass@k, Pass^k, Avg@k, Max@k, Consistency,
+        Reliability) with k = samples. Key names match analyze_group_runs."""
+        from .reducers import group_stats as _group_stats
+
+        return _group_stats(
+            self.item_pass_scores(metric),
+            threshold=threshold,
+            k=max(self.samples, 1),
+        )
+
     def finish(self):
         """Mark evaluation as finished."""
         self.end_time = datetime.now()
@@ -105,12 +273,39 @@ class EvaluationResult:
     def get_metric_stats(self, metric_name: str) -> Dict[str, float]:
         """
         Get statistics for a specific metric.
-        
-        Returns dict with: mean, std, min, max, success_rate
+
+        Returns dict with: mean, std, min, max, success_rate.
+        For repeat runs (samples > 1) the stats are computed over ALL
+        per-pass scores (failed pass -> 0.0) — "mean per attempt" — and the
+        dict gains ci_low/ci_high (bootstrap 95% CI on the mean).
         """
+        if self.samples > 1 and self.passes:
+            from .reducers import mean_ci
+
+            flat = [
+                score
+                for scores_list in self.item_pass_scores(metric_name).values()
+                for score in scores_list
+            ]
+            if not flat:
+                return {
+                    'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
+                    'success_rate': 0.0, 'ci_low': 0.0, 'ci_high': 0.0,
+                }
+            ci = mean_ci(flat)
+            return {
+                'mean': ci['mean'],
+                'std': statistics.stdev(flat) if len(flat) > 1 else 0.0,
+                'min': min(flat),
+                'max': max(flat),
+                'success_rate': self.success_rate,
+                'ci_low': ci['ci_low'],
+                'ci_high': ci['ci_high'],
+            }
+
         scores = []
         errors = 0
-        
+
         for result in self.results.values():
             if 'scores' in result and metric_name in result['scores']:
                 score = result['scores'][metric_name]
@@ -792,9 +987,26 @@ def _build_metric_section(results: Sequence[EvaluationResult]):
                 )
 
         panel_title = f"{result.run_name} Metrics" if len(results) > 1 else "Metric Details"
+        panel_body: Any = metric_table
+        if getattr(result, "samples", 1) > 1 and getattr(result, "passes", None):
+            gs = result.group_stats()
+            k = gs.get("k") or result.samples
+            parts = [
+                f"Pass@{k} {gs['pass_at_k']:.2f}",
+                f"Pass^{k} {gs['pass_hat_k']:.2f}",
+                f"Avg@{k} {gs['avg_at_k']:.2f}",
+                f"Max@{k} {gs['max_at_k']:.2f}",
+            ]
+            if gs.get("consistency") is not None:
+                parts.append(f"Consistency {gs['consistency']:.2f}")
+            if gs.get("reliability") is not None:
+                parts.append(f"Reliability {gs['reliability']:.2f}")
+            group_line = Text(" · ".join(parts), style="bold")
+            group_line = Align.center(group_line)
+            panel_body = Group(metric_table, Rule(style="dim"), group_line)
         metric_panels.append(
             Panel(
-                metric_table,
+                panel_body,
                 title=panel_title,
                 border_style="cyan",
                 padding=(0, 1),

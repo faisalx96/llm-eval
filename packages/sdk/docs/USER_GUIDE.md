@@ -10,7 +10,7 @@ A step-by-step guide to evaluating your LLM applications. Follow this guide care
 4. [Using Metrics](#4-using-metrics)
 5. [Setting Up Your Dataset](#5-setting-up-your-dataset)
 6. [Running Your First Evaluation](#6-running-your-first-evaluation)
-7. [Multi-Model Comparison](#7-multi-model-comparison)
+7. [Multi-Model Comparison](#7-multi-model-comparison) · [Repeat Runs (samples & pass@k)](#repeat-runs-samples--passk)
 8. [Command Line Interface](#8-command-line-interface)
 9. [Auto-Instrumentation & Tracing](#9-auto-instrumentation--tracing)
 10. [Dashboard & Web UI](#10-dashboard--web-ui)
@@ -1031,6 +1031,71 @@ my_task(question, model_name="claude-3")
 
 Make sure your task accepts `model_name` or `model` parameter!
 
+### Repeat Runs (samples & pass@k)
+
+LLMs are stochastic — the same item can pass on one try and fail on the next.
+`samples=k` evaluates **every item k times inside ONE run** (k sequential
+passes over the dataset) and reports how consistent your system really is:
+
+```python
+from qym import Evaluator
+
+result = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["correctness"],
+    samples=8,                     # <- the only new parameter
+).run()
+
+stats = result.get_metric_stats("correctness")
+print(stats["mean"])               # 0.61  — mean score per attempt
+print(stats["ci_low"], stats["ci_high"])   # 0.55 0.67 — bootstrap 95% CI
+
+print(result.group_stats())
+# {"k": 8, "pass_at_k": 0.93, "pass_hat_k": 0.34, "avg_at_k": 0.61,
+#  "max_at_k": 0.78, "consistency": 0.71, "reliability": 0.68, ...}
+
+print(result.pass_at(3))           # 0.84 — ANY of 3 tries would pass
+print(result.pass_hat(3))          # 0.41 — ALL 3 tries would pass
+```
+
+What the group metrics mean (same names and formulas as the platform's
+group analysis, with k = samples):
+
+| Metric | Question it answers |
+| --- | --- |
+| `Pass@k` | Did **at least one** of the k passes succeed? (capability) |
+| `Pass^k` | Did **all** k passes succeed? (reliability — the production number) |
+| `Avg@k` | Mean score over every pass |
+| `Max@k` | Mean of each item's best pass |
+| `Consistency` | Do the k passes agree with each other? |
+| `Reliability` | For solvable items, how often do they pass? |
+
+Notes:
+
+- **One logical run** — one dashboard row, one checkpoint file (one CSV row
+  per item × pass), the live TUI shows `pass 2/8` progress and per-pass
+  metrics as each pass finishes.
+- **`result.pass_at(k)` works for any k ≤ samples** — all passes are stored,
+  so you can compute the whole accuracy-vs-k curve from a single run without
+  re-running.
+- **Pass/fail threshold** defaults to `score >= 0.8` (same as group
+  analysis); override per call: `result.pass_at(3, threshold=0.5)`.
+- **Temperature must be > 0** — with a deterministic task every pass returns
+  the same output and qym warns that repeat metrics measure nothing.
+- **Failed passes score 0** — a pass that errors after retries counts as a
+  failing pass (this is what makes `Pass^k` an honest reliability number).
+- Resume works per pass: an interrupted `samples=8` run picks up exactly
+  where it stopped.
+
+**When to use what:**
+
+| You want | Use |
+| --- | --- |
+| Same task repeated k times | `samples=k` |
+| Same task, different models | `model=["gpt-4", "claude-3"]` |
+| Genuinely different runs | `Evaluator.run_parallel([...])` |
+
 ---
 
 ## 8. Command Line Interface
@@ -1059,6 +1124,7 @@ qym run create \
     --dataset qa-dataset \             # Langfuse dataset name
     --metrics exact_match,fuzzy_match \ # Comma-separated metrics
     --model gpt-4 \                    # Optional: tag with model name
+    --samples 8 \                      # Repeat every item 8x as ONE run (pass@k)
     --concurrency 10 \                 # Max parallel items (default: 10)
     --output results.csv \             # Custom output path
     --no-tui \                         # Disable terminal dashboard
@@ -1130,6 +1196,21 @@ Run all experiments:
 ```bash
 qym run create --runs-config experiments.json
 ```
+
+Each run entry also accepts a top-level `"samples": 8` key (shorthand for
+`config.samples`) to make that run a repeat run.
+
+> **Deprecated: duplicating a spec for repeats.** Listing the same run k
+> times to fake pass@k is no longer needed — use `samples=k` instead, which
+> runs everything as ONE run with `Pass@k`/`Pass^k` reported natively (see
+> [Repeat Runs](#repeat-runs-samples--passk)). The SDK warns when it detects
+> duplicate specs.
+>
+> ```json
+> // OLD (deprecated): the same spec 3 times          // NEW: one spec
+> [ {"name": "qa-1", ...}, {"name": "qa-2", ...},     [ {"name": "qa",
+>   {"name": "qa-3", ...} ]                               "samples": 3, ...} ]
+> ```
 
 ### Resume a Partial Run
 
@@ -1414,6 +1495,7 @@ evaluator = Evaluator(
         "max_concurrency": 10,     # Parallel items (default: 10)
         "timeout": 300.0,          # Seconds per item (default: 300)
         "max_retries": 2,          # Retry failed items (default: 2, exponential backoff + jitter)
+        "samples": 1,              # Repeat every item k times as ONE run; reports Pass@k/Pass^k (see Repeat Runs)
 
         # Naming
         "run_name": "experiment-1", # Custom run name
@@ -1589,6 +1671,16 @@ evaluator = Evaluator(
     config={"max_concurrency": 5},
 )
 results = evaluator.run()
+
+# Repeat run (pass@k) example — every item runs 8x as ONE run
+result = Evaluator(
+    task=my_task,
+    dataset="my-dataset",
+    metrics=["correctness"],
+    samples=8,
+).run()
+result.group_stats()   # Pass@8, Pass^8, Avg@8, Max@8, Consistency, Reliability
+result.pass_at(3)      # any k <= 8, computed from the stored passes
 
 # Parallel runs example
 results = Evaluator.run_parallel(

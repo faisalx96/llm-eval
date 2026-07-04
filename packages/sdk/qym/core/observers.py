@@ -68,6 +68,15 @@ class EvaluationObserver:
     ) -> None:
         """Called when a performance warning is detected."""
 
+    def on_pass_completed(
+        self,
+        run_id: str,
+        pass_number: int,
+        samples: int,
+        metrics: Dict[str, Any],
+    ) -> None:
+        """Called after each pass barrier in a repeat run (samples > 1)."""
+
     def on_run_complete(
         self,
         run_id: str,
@@ -338,6 +347,9 @@ class CompositeEvaluationObserver(EvaluationObserver):
 
     def on_warning(self, **kwargs: Any) -> None:
         self._call("on_warning", **kwargs)
+
+    def on_pass_completed(self, **kwargs: Any) -> None:
+        self._call("on_pass_completed", **kwargs)
 
     def on_run_complete(self, **kwargs: Any) -> None:
         self._call("on_run_complete", **kwargs)

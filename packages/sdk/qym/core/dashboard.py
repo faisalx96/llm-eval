@@ -54,6 +54,9 @@ class RunVisualState:
     status: str = "pending"
     last_update: Optional[float] = None
     last_error: Optional[str] = None
+    # Repeat runs (samples=k): pass cursor for the "pass j/k" status text.
+    samples: int = 1
+    current_pass: int = 1
 
     def success_rate(self) -> float:
         if not self.total_items:
@@ -153,6 +156,7 @@ class RunDashboard:
             return
         state.run_info = dict(run_info or {})
         state.total_items = total_items
+        state.samples = max(1, int((run_info or {}).get("samples") or 1))
         state.metrics = list(metrics)
         state.metric_totals = {m: 0.0 for m in metrics}
         state.metric_counts = {m: 0 for m in metrics}
@@ -235,6 +239,15 @@ class RunDashboard:
             state.metric_counts[metric_name] = state.metric_counts.get(metric_name, 0) + 1
         if state.status == "pending":
             state.status = "running"
+        state.touch()
+        self.refresh()
+
+    def record_pass_complete(self, run_id: str, pass_number: int) -> None:
+        """Advance the pass cursor after a pass barrier (repeat runs)."""
+        state = self.states.get(run_id)
+        if not state:
+            return
+        state.current_pass = min(int(pass_number) + 1, max(state.samples, 1))
         state.touch()
         self.refresh()
 
@@ -626,7 +639,14 @@ class RunDashboard:
 
     def _render_status_icon(self, state: RunVisualState) -> RenderableType:
         if state.status == "running":
-            status_display: RenderableType = Spinner("dots", style="cyan", text="Running")
+            running_text = (
+                f"pass {state.current_pass}/{state.samples}"
+                if state.samples > 1
+                else "Running"
+            )
+            status_display: RenderableType = Spinner(
+                "dots", style="cyan", text=running_text
+            )
         elif state.status == "error":
             status_display = Text("❌ Error", style="red bold")
         elif state.status == "completed":
@@ -735,6 +755,11 @@ class _DashboardObserver(EvaluationObserver):
         message = kwargs.get("message", "")
         if message:
             self.dashboard.add_warning(message)
+
+    def on_pass_completed(self, **kwargs: Any) -> None:
+        pass_number = kwargs.get("pass_number")
+        if pass_number is not None:
+            self.dashboard.record_pass_complete(self.run_id, int(pass_number))
 
     def on_run_complete(self, **kwargs: Any) -> None:
         self.dashboard.mark_run_complete(self.run_id)

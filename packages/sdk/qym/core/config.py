@@ -20,6 +20,12 @@ class EvaluatorConfig(BaseModel):
     # set to None to disable.
     metric_timeout: Optional[float] = Field(default=60.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
+    # Repeat runs: evaluate every dataset item `samples` times (k sequential
+    # passes over the dataset) inside ONE logical run. Per-pass scores are
+    # kept; the run-level number is the mean per pass, and the group metrics
+    # (Pass@k, Pass^k, Avg@k, Max@k, Consistency, Reliability) are reported
+    # with k = samples. See qym.core.reducers.
+    samples: int = Field(default=1, ge=1)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     should_stop: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
     git_branch: Optional[str] = None   # Override auto-detected git branch

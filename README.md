@@ -95,6 +95,9 @@ results = Evaluator(
     dataset="my-dataset",
     metrics=["exact_match", "contains"],
 ).run()
+
+# Stochastic task? Add samples=8 to run every item 8x as ONE run and get
+# Pass@k / Pass^k consistency metrics — see "Repeat Runs" in the SDK guide.
 ```
 
 Tasks can also return hidden metadata for custom metrics:

@@ -48,12 +48,25 @@ Payload:
 - `run_config`: object (JSON)
 - `started_at`: RFC3339 timestamp
 
+### Repeat runs (`samples=k`) — `pass_number`
+
+When a run is created with `samples=k` (repeat runs), the SDK evaluates every
+item k times as k sequential dataset passes inside ONE run. All item-scoped
+events then carry:
+
+- `pass_number`: integer (1-based; defaults to `1` when absent, so pre-samples
+  SDKs and single runs are unchanged)
+
+`item_completed` additionally carries `is_final_pass: boolean`, and a new
+`pass_completed` event fires at each pass barrier (see below).
+
 ### `item_started`
 Sent when processing begins for an item.
 
 Payload:
 - `item_id`: string
 - `index`: integer (0-based)
+- `pass_number`: integer (see Repeat runs)
 - `input`: any JSON
 - `expected`: any JSON (nullable)
 - `item_metadata`: object (JSON)
@@ -63,6 +76,7 @@ Sent when a metric is computed for an item. May be repeated (one per metric).
 
 Payload:
 - `item_id`: string
+- `pass_number`: integer (see Repeat runs)
 - `metric_name`: string
 - `score_numeric`: number|null (if meaningful numeric score)
 - `score_raw`: any JSON (preserve original)
@@ -73,6 +87,8 @@ Sent when item completes successfully.
 
 Payload:
 - `item_id`: string
+- `pass_number`: integer (see Repeat runs)
+- `is_final_pass`: boolean (true on the last pass; always true when samples=1)
 - `output`: any JSON
 - `item_metadata`: object (JSON), including `task_metadata` when the task returned `{"output": ..., "metadata": ...}`
 - `task_metadata`: object (JSON), task-return metadata convenience field
@@ -85,9 +101,20 @@ Sent when item fails.
 
 Payload:
 - `item_id`: string
+- `pass_number`: integer (see Repeat runs)
 - `error`: string
 - `trace_id`: string|null
 - `trace_url`: string|null
+
+### `pass_completed`
+Repeat runs only: sent at each pass barrier, after every item has finished
+pass `pass_number` and before pass `pass_number + 1` starts. The pass's slice
+metrics are final at this point (this powers the progressive per-pass UI).
+
+Payload:
+- `pass_number`: integer (1-based)
+- `samples`: integer (total passes, k)
+- `metrics`: object (JSON) — metric name -> mean score over this pass's items
 
 ### `run_completed`
 Sent once at end.

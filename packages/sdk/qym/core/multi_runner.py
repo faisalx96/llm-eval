@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
+import logging
 from uuid import uuid4
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+logger = logging.getLogger(__name__)
 
 from rich.console import Console
 from rich.live import Live
@@ -42,6 +46,29 @@ class MultiModelRunner:
         """Create a runner from a list of run definitions (dicts or RunSpecs)."""
         if not runs:
             raise ValueError("runs must contain at least one configuration")
+
+        # Repeat-run guidance: duplicating the same spec k times was the old
+        # way to get pass@k. samples=k is the native primitive now.
+        seen_signatures: Dict[Tuple, int] = {}
+        for definition in runs:
+            if isinstance(definition, dict):
+                sig = (
+                    str(definition.get("task")),
+                    str(definition.get("task_file")),
+                    str(definition.get("task_function")),
+                    str(definition.get("dataset")),
+                    str(definition.get("model") or definition.get("models")),
+                    json.dumps(definition.get("config") or {}, sort_keys=True, default=str),
+                )
+                seen_signatures[sig] = seen_signatures.get(sig, 0) + 1
+        dup_count = max(seen_signatures.values(), default=0)
+        if dup_count > 1:
+            logger.warning(
+                "Detected %d identical run specs — did you mean samples=%d? "
+                "Repeat runs are native now: Evaluator(..., samples=%d) runs "
+                "every item %d times as ONE run with Pass@k/Pass^k reported.",
+                dup_count, dup_count, dup_count, dup_count,
+            )
 
         specs: List[RunSpec] = []
 

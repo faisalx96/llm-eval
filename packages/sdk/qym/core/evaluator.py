@@ -426,6 +426,7 @@ class Evaluator:
         config: Optional[Union[Dict[str, Any], EvaluatorConfig]] = None,
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
+        samples: Optional[int] = None,
         langfuse_client: Optional[Any] = None,
         progress_callback: Optional[Callable[[ProgressSnapshot], None]] = None,
     ):
@@ -439,6 +440,9 @@ class Evaluator:
             config: Optional evaluator configuration.
             observer: Optional lifecycle observer for advanced integrations.
             model: Optional model override or list of models.
+            samples: Evaluate every item this many times (k sequential passes)
+                as ONE logical run; group metrics (Pass@k, Pass^k, ...) are
+                reported with k = samples. Overrides ``config.samples``.
             langfuse_client: Deprecated and ignored.
             progress_callback: Optional callback receiving ProgressSnapshot updates.
         """
@@ -458,6 +462,12 @@ class Evaluator:
             else:
                 self.config.models = list(model)
                 self.config.model = model[0] if model else None
+
+        # Override samples if provided explicitly (kwarg wins over config)
+        if samples is not None:
+            if not isinstance(samples, int) or samples < 1:
+                raise ValueError("samples must be an integer >= 1")
+            self.config.samples = samples
 
         self.task = task
         self._raw_metrics = list(metrics)
@@ -507,6 +517,11 @@ class Evaluator:
         self.timeout = self.config.timeout
         self.metric_timeout = self.config.metric_timeout
         self.max_retries = self.config.max_retries
+        self.samples = self.config.samples
+        # Passes execute strictly sequentially, so a single instance-level
+        # cursor is safe: every emit during pass j reads j here.
+        self._current_pass: int = 1
+        self._samples_warned: bool = False
 
         # Model handling - strip provider prefix once, keep full name for user's task
         # e.g., "qwen/qwen3-235b" -> model_name="qwen3-235b", model_name_full="qwen/qwen3-235b"
@@ -924,8 +939,10 @@ class Evaluator:
                 "max_metric_concurrency": self.max_metric_concurrency,
                 "timeout": self.timeout,
                 "user_provided_run_name": bool(self.config.run_name),
+                "samples": self.samples,
             },
         )
+        result.samples = self.samples
 
         items = self.dataset.get_items()
         if not items:
@@ -1117,6 +1134,7 @@ class Evaluator:
         checkpoint_path = None
         checkpoint_writer = None
         completed_item_ids: Set[str] = set()
+        completed_pairs: Set[Tuple[str, int]] = set()
         checkpoint_rows: List[Dict[str, Any]] = []
         resume_completed = 0
         resume_failed = 0
@@ -1149,6 +1167,7 @@ class Evaluator:
                         "resume_rerun_errors is not supported when appending to the same run file."
                     )
                 completed_item_ids = set(checkpoint_state.completed_item_ids)
+                completed_pairs = set(checkpoint_state.completed_pairs)
                 resume_failed = len(checkpoint_state.error_item_ids)
                 resume_completed = max(0, len(completed_item_ids) - resume_failed)
                 for row in iter_checkpoint_rows(checkpoint_path):
@@ -1163,22 +1182,40 @@ class Evaluator:
                     )
                     if not item_id:
                         continue
+                    row_pass = int(row_result.get("pass_number") or 1)
                     if is_error:
                         error_output = str(row_result.get("output", "") or "")
                         error_msg = (
                             error_output.replace("ERROR:", "").strip() or "error"
                         )
-                        result.add_error(
-                            item_id,
-                            error_msg,
-                            row_result.get("trace_id"),
-                            task_started_at_ms=row_result.get("task_started_at_ms"),
-                            time_seconds=row_result.get("time"),
-                        )
+                        if self.samples > 1:
+                            result.add_pass_error(
+                                item_id,
+                                row_pass,
+                                error_msg,
+                                row_result.get("trace_id"),
+                                task_started_at_ms=row_result.get(
+                                    "task_started_at_ms"
+                                ),
+                                time_seconds=row_result.get("time"),
+                            )
+                        else:
+                            result.add_error(
+                                item_id,
+                                error_msg,
+                                row_result.get("trace_id"),
+                                task_started_at_ms=row_result.get(
+                                    "task_started_at_ms"
+                                ),
+                                time_seconds=row_result.get("time"),
+                            )
                     else:
                         if isinstance(row_result.get("item_metadata"), dict):
                             result.add_metadata(item_id, row_result["item_metadata"])
-                        result.add_result(item_id, row_result)
+                        if self.samples > 1:
+                            result.add_pass_result(item_id, row_pass, row_result)
+                        else:
+                            result.add_result(item_id, row_result)
 
             checkpoint_writer = CheckpointWriter(
                 checkpoint_path,
@@ -1194,6 +1231,7 @@ class Evaluator:
             "resume_failed": resume_failed,
             "resume_metric_totals": resume_metric_totals,
             "resume_metric_counts": resume_metric_counts,
+            "samples": self.samples,
         }
         run_info.setdefault("trace", {})
         run_info["trace"].setdefault("destinations", {})
@@ -1202,7 +1240,8 @@ class Evaluator:
         self._notify_observer(
             "on_run_start",
             run_info=run_info or {},
-            total_items=len(items),
+            # Repeat runs: the progress bar spans all passes (items x samples).
+            total_items=len(items) * self.samples,
             metrics=list(self.metrics.keys()),
         )
 
@@ -1224,7 +1263,16 @@ class Evaluator:
             item_id = fallback_id if use_fallback_ids or not primary_id else primary_id
             result.add_input(item_id, item.input)
             result.add_metadata(item_id, getattr(item, "metadata", {}))
-            if (
+            if self.samples > 1:
+                # Repeat runs: skip only when EVERY pass already has a row;
+                # partially-sampled items re-enter and the per-pass filter at
+                # enqueue time skips the passes that are done.
+                if all(
+                    (item_id, p) in completed_pairs
+                    for p in range(1, self.samples + 1)
+                ):
+                    continue
+            elif (
                 item_id in completed_item_ids
                 or fallback_id in completed_item_ids
                 or (primary_id in completed_item_ids if primary_id else False)
@@ -1276,7 +1324,7 @@ class Evaluator:
                     if entry is None:
                         work_queue.task_done()
                         break
-                    idx, item_id, item = entry
+                    idx, item_id, item, pass_number = entry
                     if self._should_stop_requested():
                         interrupted = True
                         work_queue.task_done()
@@ -1295,6 +1343,7 @@ class Evaluator:
                                     {
                                         "item_id": str(item_id),
                                         "index": int(idx),
+                                        "pass_number": pass_number,
                                         "error": str(e),
                                     },
                                 )
@@ -1303,8 +1352,14 @@ class Evaluator:
 
                     if isinstance(eval_result, Exception):
                         error_msg = str(eval_result)
-                        result.add_error(item_id, error_msg, time_seconds=0.0)
+                        if self.samples > 1:
+                            result.add_pass_error(
+                                item_id, pass_number, error_msg, time_seconds=0.0
+                            )
+                        else:
+                            result.add_error(item_id, error_msg, time_seconds=0.0)
                         row = serialize_checkpoint_row(
+                            pass_number=pass_number,
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
@@ -1326,14 +1381,29 @@ class Evaluator:
                         )
                     elif isinstance(eval_result, dict) and "_error" in eval_result:
                         error_msg = str(eval_result.get("_error", "error"))
-                        result.add_error(
-                            item_id,
-                            error_msg,
-                            eval_result.get("_trace_id"),
-                            task_started_at_ms=eval_result.get("task_started_at_ms"),
-                            time_seconds=eval_result.get("time"),
-                        )
+                        if self.samples > 1:
+                            result.add_pass_error(
+                                item_id,
+                                pass_number,
+                                error_msg,
+                                eval_result.get("_trace_id"),
+                                task_started_at_ms=eval_result.get(
+                                    "task_started_at_ms"
+                                ),
+                                time_seconds=eval_result.get("time"),
+                            )
+                        else:
+                            result.add_error(
+                                item_id,
+                                error_msg,
+                                eval_result.get("_trace_id"),
+                                task_started_at_ms=eval_result.get(
+                                    "task_started_at_ms"
+                                ),
+                                time_seconds=eval_result.get("time"),
+                            )
                         row = serialize_checkpoint_row(
+                            pass_number=pass_number,
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
@@ -1356,7 +1426,11 @@ class Evaluator:
                     else:
                         if isinstance(eval_result.get("item_metadata"), dict):
                             result.add_metadata(item_id, eval_result["item_metadata"])
-                        result.add_result(item_id, eval_result)
+                        if self.samples > 1:
+                            eval_result["pass_number"] = pass_number
+                            result.add_pass_result(item_id, pass_number, eval_result)
+                        else:
+                            result.add_result(item_id, eval_result)
                         scores = eval_result.get("scores", {})
                         metric_meta: Dict[str, Dict[str, Any]] = {}
                         score_row: Dict[str, Any] = {}
@@ -1368,6 +1442,7 @@ class Evaluator:
                             ):
                                 metric_meta[m] = sc["metadata"]
                         row = serialize_checkpoint_row(
+                            pass_number=pass_number,
                             dataset_name=self.dataset_name,
                             run_name=self.run_name,
                             run_metadata=_checkpoint_run_metadata(),
@@ -1395,21 +1470,102 @@ class Evaluator:
                         await write_queue.put(row)
                     work_queue.task_done()
 
-            if pending_entries:
-                for entry in pending_entries:
-                    await work_queue.put(entry)
-            for _ in range(self.max_concurrency):
-                await work_queue.put(None)
-
             writer_task = (
                 asyncio.create_task(_write_loop()) if checkpoint_writer else None
             )
-            worker_tasks = [
-                asyncio.create_task(_worker()) for _ in range(self.max_concurrency)
-            ]
+            # Repeat runs execute as k sequential passes over the dataset.
+            # Each pass gets its own worker set; gathering them is the pass
+            # barrier (pass j's slice metrics are final before pass j+1
+            # starts). worker_tasks always holds the CURRENT pass's workers so
+            # the interrupt handler below drains the right tasks.
+            worker_tasks: List[asyncio.Task] = []
+
+            def _emit_pass_completed(pass_number: int) -> None:
+                if self.samples <= 1:
+                    return
+                try:
+                    slice_stats: Dict[str, Any] = {}
+                    for m in metric_names:
+                        values: List[float] = []
+                        for entries_by_pass in result.passes.values():
+                            entry = entries_by_pass.get(pass_number)
+                            if entry is None:
+                                continue
+                            if "error" in entry:
+                                values.append(0.0)
+                                continue
+                            val = result._main_numeric_score(
+                                (entry.get("scores") or {}).get(m)
+                            )
+                            values.append(val if val is not None else 0.0)
+                        if values:
+                            slice_stats[m] = sum(values) / len(values)
+                    payload = {
+                        "pass_number": pass_number,
+                        "samples": self.samples,
+                        "metrics": slice_stats,
+                    }
+                    ps = getattr(self, "_platform_stream", None)
+                    if ps is not None:
+                        ps.emit("pass_completed", payload)
+                    self._notify_observer("on_pass_completed", **payload)
+
+                    # Sampling sanity check: if pass 2 reproduced pass 1's
+                    # outputs byte-for-byte, the task is deterministic
+                    # (temperature=0 or a provider cache) and samples>1 is
+                    # measuring nothing.
+                    if pass_number == 2 and not self._samples_warned:
+                        identical = True
+                        compared = 0
+                        for entries_by_pass in result.passes.values():
+                            first = entries_by_pass.get(1)
+                            second = entries_by_pass.get(2)
+                            if not first or not second:
+                                continue
+                            compared += 1
+                            if str(first.get("output")) != str(second.get("output")):
+                                identical = False
+                                break
+                        if compared > 0 and identical:
+                            self._samples_warned = True
+                            self._notify_observer(
+                                "on_warning",
+                                message=(
+                                    "samples>1 but every pass-2 output is identical "
+                                    "to pass 1 — is the task deterministic "
+                                    "(temperature=0 or cached)? Repeat metrics "
+                                    "won't measure variability."
+                                ),
+                            )
+                except Exception:
+                    pass
+
+            async def _run_pass(pass_number: int) -> None:
+                self._current_pass = pass_number
+                entries = [
+                    (idx, item_id, item, pass_number)
+                    for idx, item_id, item in pending_entries
+                    if (item_id, pass_number) not in completed_pairs
+                ]
+                for entry in entries:
+                    await work_queue.put(entry)
+                for _ in range(self.max_concurrency):
+                    await work_queue.put(None)
+                pass_workers = [
+                    asyncio.create_task(_worker())
+                    for _ in range(self.max_concurrency)
+                ]
+                worker_tasks.clear()
+                worker_tasks.extend(pass_workers)
+                await asyncio.gather(*pass_workers)
 
             try:
-                await asyncio.gather(*worker_tasks)
+                for _pass_number in range(1, self.samples + 1):
+                    await _run_pass(_pass_number)
+                    if interrupted or self._should_stop_requested():
+                        interrupted = True
+                        break
+                    _emit_pass_completed(_pass_number)
             except (KeyboardInterrupt, asyncio.CancelledError) as exc:
                 interrupted = True
                 cancel_exc = exc
@@ -1847,6 +2003,7 @@ class Evaluator:
                     {
                         "item_id": str(item_id),
                         "index": int(index),
+                        "pass_number": self._current_pass,
                         "input": item.input,
                         "expected": getattr(item, "expected_output", None),
                         "item_metadata": getattr(item, "metadata", {}) or {},
@@ -2193,6 +2350,7 @@ class Evaluator:
                         "metric_scored",
                         {
                             "item_id": str(item_id),
+                            "pass_number": self._current_pass,
                             "metric_name": str(m_name),
                             "score_numeric": result.score,
                             "score_raw": result.to_legacy_dict(),
@@ -2282,6 +2440,7 @@ class Evaluator:
                 {
                     "item_id": str(item_id),
                     "index": int(index),
+                    "pass_number": self._current_pass,
                     "attempt_number": attempt.attempt_number,
                     "status": attempt.status,
                     "trace_id": attempt.spans.trace_id,
@@ -2325,6 +2484,8 @@ class Evaluator:
                     {
                         "item_id": str(item_id),
                         "index": int(index),
+                        "pass_number": self._current_pass,
+                        "is_final_pass": self._current_pass >= self.samples,
                         "output": output,
                         "item_metadata": _item_metadata_with_task_metadata(
                             getattr(item, "metadata", {}) or {}, task_metadata
@@ -2398,6 +2559,7 @@ class Evaluator:
                     {
                         "item_id": str(item_id),
                         "index": int(index),
+                        "pass_number": self._current_pass,
                         "error": error_str,
                         "latency_ms": latency_ms,
                         "trace_id": trace_id,
@@ -2529,6 +2691,7 @@ class Evaluator:
                     "task_started_at_ms": last_attempt.task_started_at_ms
                     if last_attempt
                     else None,
+                    "pass_number": self._current_pass,
                 }
 
             active_spans = success_attempt.spans
@@ -2597,6 +2760,7 @@ class Evaluator:
                 "time": success_attempt.latency_s,
                 "task_started_at_ms": success_attempt.task_started_at_ms,
                 "retry_count": retry_count,
+                "pass_number": self._current_pass,
                 "success": True,
             }
 
@@ -2633,6 +2797,7 @@ class Evaluator:
                             {
                                 "item_id": str(item_id),
                                 "index": int(index),
+                                "pass_number": self._current_pass,
                                 "error": "Cancelled",
                                 "latency_ms": None,
                                 "trace_id": active_spans.trace_id,

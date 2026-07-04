@@ -16,6 +16,9 @@ BASE_FIELDS = [
     "run_config",
     "trace_id",
     "item_id",
+    # Repeat runs (samples=k): 1-based pass index. Single runs write "1";
+    # legacy files without the column parse as pass 1.
+    "pass_number",
     "input",
     "item_metadata",
     "output",
@@ -23,6 +26,13 @@ BASE_FIELDS = [
     "time",
     "task_started_at_ms",
 ]
+
+
+def _parse_pass_number(value: Any) -> int:
+    try:
+        return max(1, int(float(value)))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _is_error_row(row: Dict[str, Any], metrics: Sequence[str]) -> bool:
@@ -93,6 +103,7 @@ def serialize_checkpoint_row(
     task_started_at_ms: Optional[int],
     scores: Dict[str, Any],
     metric_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+    pass_number: int = 1,
 ) -> Dict[str, Any]:
     row: Dict[str, Any] = {
         "dataset_name": dataset_name,
@@ -101,6 +112,7 @@ def serialize_checkpoint_row(
         "run_config": json.dumps(run_config, ensure_ascii=False),
         "trace_id": trace_id or "",
         "item_id": item_id,
+        "pass_number": int(pass_number),
         "input": item_input,
         "item_metadata": json.dumps(item_metadata, ensure_ascii=False)
         if isinstance(item_metadata, dict)
@@ -127,6 +139,13 @@ class CheckpointState:
     metrics: List[str]
     completed_item_ids: Set[str]
     error_item_ids: Set[str]
+    # Repeat runs: every (item_id, pass_number) pair that already has a row.
+    # Legacy files (no pass_number column) map every row to pass 1.
+    completed_pairs: Set[Tuple[str, int]] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.completed_pairs is None:
+            self.completed_pairs = {(item_id, 1) for item_id in self.completed_item_ids}
 
 
 class CheckpointWriter:
@@ -147,11 +166,21 @@ class CheckpointWriter:
 
     def open(self) -> None:
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        file_exists = os.path.exists(self.path)
-        self._file = open(self.path, "a", newline="", encoding="utf-8")
+        file_exists = os.path.exists(self.path) and os.path.getsize(self.path) > 0
         header = build_checkpoint_header(self.metrics)
-        self._writer = csv.DictWriter(self._file, fieldnames=header)
-        if not file_exists or os.path.getsize(self.path) == 0:
+        if file_exists:
+            # Appending (resume): reuse the file's existing header so rows stay
+            # aligned — a legacy file without pass_number keeps its old format
+            # (extra keys such as pass_number are dropped via extrasaction).
+            with open(self.path, "r", newline="", encoding="utf-8") as existing:
+                existing_header = next(csv.reader(existing), None)
+            if existing_header:
+                header = existing_header
+        self._file = open(self.path, "a", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(
+            self._file, fieldnames=header, extrasaction="ignore"
+        )
+        if not file_exists:
             self._writer.writeheader()
             self._flush()
 
@@ -204,6 +233,7 @@ def load_checkpoint_state(path: str) -> Optional[CheckpointState]:
             }
         )
         completed: Set[str] = set()
+        completed_pairs: Set[Tuple[str, int]] = set()
         error_ids: Set[str] = set()
         dataset_name: Optional[str] = None
         run_name: Optional[str] = None
@@ -218,6 +248,7 @@ def load_checkpoint_state(path: str) -> Optional[CheckpointState]:
             if not item_id:
                 continue
             completed.add(item_id)
+            completed_pairs.add((item_id, _parse_pass_number(row.get("pass_number"))))
             if _is_error_row(row, metrics):
                 error_ids.add(item_id)
         return CheckpointState(
@@ -227,6 +258,7 @@ def load_checkpoint_state(path: str) -> Optional[CheckpointState]:
             metrics=metrics,
             completed_item_ids=completed,
             error_item_ids=error_ids,
+            completed_pairs=completed_pairs,
         )
 
 
@@ -251,6 +283,7 @@ def parse_checkpoint_row(
         "expected": row.get("expected_output", ""),
         "trace_id": row.get("trace_id", ""),
         "time": float(row.get("time") or 0.0),
+        "pass_number": _parse_pass_number(row.get("pass_number")),
     }
     raw_item_metadata = row.get("item_metadata", "")
     if raw_item_metadata:

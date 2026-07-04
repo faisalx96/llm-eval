@@ -36,6 +36,7 @@ The SDK supports [Langfuse](https://langfuse.com) datasets with tracing or local
 - **Simple API** — Get started in minutes with a clean, Pythonic interface
 - **Async & Parallel** — Evaluate hundreds of items concurrently with 90%+ efficiency
 - **Multi-Model Support** — Compare GPT-4, Claude, Llama side-by-side in one run
+- **Repeat Runs & Pass@k** — `samples=8` evaluates every item 8× as ONE run; Pass@k, Pass^k, Consistency, and Reliability computed automatically with confidence intervals
 - **LLM-as-Judge Metrics** — Built-in judges for relevance, faithfulness, correctness, hallucination, toxicity, conciseness, and tool calling, plus a `create_judge()` factory for custom judges
 - **Auto-Instrumentation** — Instrumentation support is included in the base install so supported LLM calls can be traced without a separate extra
 - **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, AI root cause analysis, and corrections review

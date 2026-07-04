@@ -103,6 +103,11 @@ def load_multi_run_specs(config_path: Path) -> List[RunSpec]:
             raise ValueError(f"Run #{idx} metrics must be a list or comma-separated string")
 
         config_template = dict(entry.get("config") or {})
+        # Repeat runs: accept a top-level "samples" key on the run entry
+        # (shorthand for config.samples).
+        entry_samples = entry.get("samples")
+        if entry_samples is not None:
+            config_template.setdefault("samples", int(entry_samples))
         metadata_template = dict(entry.get("metadata") or {})
         resolved_dataset: Any
         if dataset_csv:
