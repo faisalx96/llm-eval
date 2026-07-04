@@ -2944,41 +2944,69 @@
     return out;
   }
 
-  // Repeat runs: markup for the expanded per-pass slices + group-metric set.
+  // Repeat runs: markup for the expanded two-zone instrument panel —
+  // pass ledger (score-colored numbers + meters, dot statuses) on the left,
+  // the group-metric verdict tiles on the right.
   function renderSamplesDetail(passes, group) {
     const metricNames = (passes && passes.metrics) || [];
-    const rows = ((passes && passes.passes) || []).map(p => {
-      const means = metricNames.map(m => {
-        const v = (p.metric_means || {})[m];
-        return `<td class="samples-pass-num">${typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—'}</td>`;
-      }).join('');
+    const primaryMetric = metricNames[0];
+    const allPasses = (passes && passes.passes) || [];
+    const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
+    const scoreClass = v => {
+      if (typeof v !== 'number') return '';
+      const cls = window.QymMetrics.getMetricColorClass(v, 'score');
+      return cls ? cls.replace('score-', 'sc-') : '';
+    };
+
+    // Pending passes collapse into one line instead of a stack of empty rows.
+    const visible = allPasses.filter(p => p.status !== 'pending');
+    const queued = allPasses.length - visible.length;
+    const ledgerRows = visible.map(p => {
+      const v = primaryMetric ? (p.metric_means || {})[primaryMetric] : undefined;
+      const cls = scoreClass(v);
+      const pct = (typeof v === 'number') ? Math.round(Math.max(0, Math.min(1, v)) * 100) : 0;
       const lat = (typeof p.avg_latency_ms === 'number') ? formatLatency(p.avg_latency_ms) : '—';
-      return `<tr>
-        <td class="samples-pass-label">pass ${p.pass_number}/${passes.samples}</td>
-        <td><span class="status-badge status-${(p.status || 'pending').toUpperCase()}">${escapeHtml(p.status || 'pending')}</span></td>
-        ${means}
-        <td class="samples-pass-num">${lat}</td>
-        <td class="samples-pass-num">${p.items_scored || 0}</td>
-      </tr>`;
+      return `<div class="sp-row">
+        <span class="sp-label">pass ${p.pass_number}/${passes.samples}</span>
+        <span class="sp-dot ${escapeHtml(p.status || '')}"></span>
+        <span class="sp-score ${cls || 'empty'}">${typeof v === 'number' ? fmt(v) : '—'}</span>
+        <span class="sp-meter ${cls}"><i style="width:${pct}%"></i></span>
+        <span class="sp-latency">${lat}</span>
+        <span class="sp-items">${p.items_scored || 0}</span>
+      </div>`;
     }).join('');
+    const queuedLine = queued > 0
+      ? `<div class="sp-queued">${queued === 1
+          ? `pass ${allPasses.length}/${passes.samples} queued`
+          : `passes ${allPasses.length - queued + 1}–${allPasses.length}/${passes.samples} queued`}</div>`
+      : '';
 
     const g = (group && group.group) || {};
     const k = g.k || (passes && passes.samples) || 0;
-    const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
-    const groupParts = [
-      `Pass@${k} <b>${fmt(g.pass_at_k)}</b>`,
-      `Pass^${k} <b>${fmt(g.pass_hat_k)}</b>`,
-      `Avg@${k} <b>${fmt(g.avg_at_k)}</b>`,
-      `Max@${k} <b>${fmt(g.max_at_k)}</b>`,
-    ];
-    if (typeof g.consistency === 'number') groupParts.push(`Consistency <b>${fmt(g.consistency)}</b>`);
-    if (typeof g.reliability === 'number') groupParts.push(`Reliability <b>${fmt(g.reliability)}</b>`);
+    const tile = (label, value, mods) =>
+      `<div class="sv-tile ${mods || ''}">
+        <div class="sv-label">${label}</div>
+        <div class="sv-value ${scoreClass(value) || 'empty'}">${fmt(value)}</div>
+      </div>`;
+    const tiles = [
+      tile(`Pass@${k}`, g.pass_at_k, 'hero'),
+      tile(`Pass^${k}`, g.pass_hat_k, 'hero-warn'),
+      tile(`Avg@${k}`, g.avg_at_k),
+      tile(`Max@${k}`, g.max_at_k),
+      tile('Consist.', g.consistency),
+      tile('Reliab.', g.reliability),
+    ].join('');
 
-    return `<table class="samples-pass-table">
-        <thead><tr><th>Pass</th><th>Status</th>${metricNames.map(m => `<th>${escapeHtml(m)}</th>`).join('')}<th>Avg latency</th><th>Items</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <div class="samples-group-line">${groupParts.join(' · ')}</div>`;
+    return `<div class="samples-panel">
+        <div class="samples-passes">
+          <div class="samples-zone-title">Passes <span class="mono-note">· ${escapeHtml(primaryMetric || '')}</span></div>
+          ${ledgerRows}${queuedLine}
+        </div>
+        <div class="samples-verdict">
+          <div class="samples-zone-title">Group metrics <span class="mono-note">· k=${k} · threshold ${group && group.threshold != null ? group.threshold : 0.8}</span></div>
+          <div class="sv-grid">${tiles}</div>
+        </div>
+      </div>`;
   }
 
   function extractRunTimestampGroup(run) {

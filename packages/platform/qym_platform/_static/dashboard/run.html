@@ -3421,20 +3421,36 @@
     }
     .sankey-dimmed { opacity: 0.15; }
     .sankey-highlighted { opacity: 1; }
-    /* ─── Repeat runs (samples=k) ─── */
+    /* ─── Repeat runs (samples=k) ───
+       Reuses the .sp-* / .sv-* / .sc-* primitives from dashboard.css. */
     .samples-analysis-card {
+      position: relative;
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
       border-radius: 10px;
       padding: var(--space-lg);
       margin-bottom: var(--space-lg);
+      overflow: hidden;
+    }
+    .samples-analysis-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-primary), rgba(0, 212, 170, 0));
+      pointer-events: none;
     }
     .samples-analysis-header {
       display: flex;
-      align-items: center;
+      align-items: baseline;
       justify-content: space-between;
       gap: var(--space-md);
       margin-bottom: var(--space-md);
+    }
+    .samples-analysis-meta {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      color: var(--text-muted);
     }
     .samples-pill-inline {
       font-size: var(--font-xs);
@@ -3447,66 +3463,84 @@
       vertical-align: middle;
       margin-left: var(--space-sm);
     }
+    /* Stat strip: compact fixed-width tiles, hero accents tie to the curve */
     .samples-stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: var(--space-md);
-      margin-bottom: var(--space-md);
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-lg);
     }
     .samples-stat {
+      flex: 0 1 132px;
+      min-width: 108px;
       background: var(--bg-elevated);
       border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: var(--space-sm) var(--space-md);
+      border-top: 2px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 7px 12px 8px;
     }
+    .samples-stat.hero { border-top-color: var(--accent-primary); }
+    .samples-stat.hero-warn { border-top-color: var(--warning); }
     .samples-stat-label {
       font-size: var(--font-sm);
-      font-weight: 600;
+      font-weight: 650;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       font-family: var(--font-mono);
+      white-space: nowrap;
     }
     .samples-stat-value {
-      font-size: var(--font-xl);
+      font-size: var(--font-xl); /* mid-tier stat per design language */
       font-weight: 700;
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
       color: var(--text-primary);
       margin-top: 2px;
+      line-height: 1.2;
     }
-    .samples-curve-wrap { max-width: 620px; margin-bottom: var(--space-md); }
-    .samples-curve { width: 100%; height: auto; }
+    .samples-stat-hint {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+    /* Main zone: curve + per-pass ledger side by side, no dead space */
+    .samples-main {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) minmax(280px, 400px);
+      gap: var(--space-xl);
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .samples-main { grid-template-columns: 1fr; gap: var(--space-md); }
+    }
+    .samples-curve-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .samples-legend { display: flex; gap: var(--space-md); }
+    .samples-legend-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      font-weight: 650;
+      color: var(--text-secondary);
+    }
+    .samples-legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
+    .samples-legend-swatch.at { background: var(--accent-primary); }
+    .samples-legend-swatch.hat {
+      background: repeating-linear-gradient(90deg, var(--warning) 0 4px, transparent 4px 7px);
+    }
+    .samples-curve { width: 100%; max-width: 680px; height: auto; display: block; }
     .samples-curve-axis {
       font-size: var(--font-sm);
       font-family: var(--font-mono);
       fill: var(--text-muted);
-    }
-    .samples-curve-label {
-      font-size: var(--font-sm);
-      font-family: var(--font-mono);
-      font-weight: 650;
-    }
-    .samples-pass-detail { border-collapse: collapse; }
-    .samples-pass-detail th {
-      font-size: var(--font-sm);
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 650;
-      text-align: left;
-      padding: 4px 16px 4px 0;
-    }
-    .samples-pass-detail td {
-      font-size: var(--font-base);
-      color: var(--text-secondary);
-      padding: 4px 16px 4px 0;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .samples-pass-detail tr:last-child td { border-bottom: none; }
-    .samples-pass-detail .mono-cell {
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
     }
     /* Per-item pass dots in the items table */
     .pass-dots {
@@ -4584,77 +4618,108 @@
 
         const g = group.group;
         const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
-        const statCard = (label, value) =>
-          '<div class="samples-stat"><div class="samples-stat-label">' + label + '</div>' +
-          '<div class="samples-stat-value">' + fmt(value) + '</div></div>';
+        const scoreClass = v => {
+          if (typeof v !== 'number') return '';
+          const cls = window.QymMetrics.getMetricColorClass(v, 'score');
+          return cls ? cls.replace('score-', 'sc-') : '';
+        };
+        const statCard = (label, value, hint, mods) =>
+          '<div class="samples-stat ' + (mods || '') + '">' +
+            '<div class="samples-stat-label">' + label + '</div>' +
+            '<div class="samples-stat-value ' + scoreClass(value) + '">' + fmt(value) + '</div>' +
+            '<div class="samples-stat-hint">' + hint + '</div>' +
+          '</div>';
         const statsHtml = [
-          statCard('Pass@' + g.k, g.pass_at_k),
-          statCard('Pass^' + g.k, g.pass_hat_k),
-          statCard('Avg@' + g.k, g.avg_at_k),
-          statCard('Max@' + g.k, g.max_at_k),
-          statCard('Consistency', g.consistency),
-          statCard('Reliability', g.reliability),
+          statCard('Pass@' + g.k, g.pass_at_k, 'any pass passes', 'hero'),
+          statCard('Pass^' + g.k, g.pass_hat_k, 'every pass passes', 'hero-warn'),
+          statCard('Avg@' + g.k, g.avg_at_k, 'mean per attempt'),
+          statCard('Max@' + g.k, g.max_at_k, 'best pass per item'),
+          statCard('Consist.', g.consistency, 'passes agree'),
+          statCard('Reliab.', g.reliability, 'solvable items'),
         ].join('');
 
         // Accuracy-vs-k curve: pass@k (capability) vs pass^k (reliability),
         // every k computed on demand from the stored passes.
         const band = group.band || {};
         const ks = Object.keys(band).map(Number).sort((a, b) => a - b);
-        let svgHtml = '';
+        let curveHtml = '';
         if (ks.length > 1) {
-          const W = 560, H = 200, PADX = 46, PADY = 18;
-          const x = k => PADX + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADX - 16);
-          const y = v => (H - PADY) - Math.max(0, Math.min(1, v)) * (H - 2 * PADY);
-          const line = key => ks.map((k, i) => (i === 0 ? 'M' : 'L') + x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1)).join(' ');
-          const dots = key => ks.map(k =>
-            '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(band[k][key]).toFixed(1) + '" r="3.5"></circle>'
+          const W = 620, H = 230, PADL = 40, PADR = 14, PADT = 14, PADB = 26;
+          const x = k => PADL + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADL - PADR);
+          const y = v => (H - PADB) - Math.max(0, Math.min(1, v)) * (H - PADT - PADB);
+          const pts = key => ks.map(k => x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1));
+          const line = key => pts(key).map((p, i) => (i === 0 ? 'M' : 'L') + p).join(' ');
+          const area = 'M' + pts('pass_at_k').join(' L') +
+            ' L' + x(ks[ks.length - 1]).toFixed(1) + ' ' + (H - PADB) +
+            ' L' + x(ks[0]).toFixed(1) + ' ' + (H - PADB) + ' Z';
+          const dots = (key, color) => ks.map(k =>
+            '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(band[k][key]).toFixed(1) + '" r="4.5" fill="var(--bg-surface)" stroke="' + color + '" stroke-width="2"></circle>'
           ).join('');
-          svgHtml =
+          const gridline = (v, label) =>
+            '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (W - PADR) + '" y2="' + y(v) + '" stroke="var(--border-subtle)"' + (v !== 0 ? ' stroke-dasharray="3 5"' : '') + '/>' +
+            '<text x="' + (PADL - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="samples-curve-axis">' + label + '</text>';
+          curveHtml =
+            '<div class="samples-curve-head">' +
+              '<div class="samples-zone-title">Accuracy vs k</div>' +
+              '<div class="samples-legend">' +
+                '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>Pass@k</span>' +
+                '<span class="samples-legend-chip"><span class="samples-legend-swatch hat"></span>Pass^k</span>' +
+              '</div>' +
+            '</div>' +
             '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="Accuracy versus k">' +
-              '<line x1="' + PADX + '" y1="' + PADY + '" x2="' + PADX + '" y2="' + (H - PADY) + '" stroke="var(--border-default)"/>' +
-              '<line x1="' + PADX + '" y1="' + (H - PADY) + '" x2="' + (W - 10) + '" y2="' + (H - PADY) + '" stroke="var(--border-default)"/>' +
-              '<text x="8" y="' + (PADY + 4) + '" class="samples-curve-axis">1.0</text>' +
-              '<text x="8" y="' + (H - PADY + 4) + '" class="samples-curve-axis">0.0</text>' +
-              ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 2) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
-              '<g stroke="var(--accent-primary)" fill="none" stroke-width="2"><path d="' + line('pass_at_k') + '"/></g>' +
-              '<g fill="var(--accent-primary)">' + dots('pass_at_k') + '</g>' +
-              '<g stroke="var(--warning)" fill="none" stroke-width="1.6" stroke-dasharray="5 4"><path d="' + line('pass_hat_k') + '"/></g>' +
-              '<g fill="var(--warning)">' + dots('pass_hat_k') + '</g>' +
-              '<text x="' + (W - 12) + '" y="' + (y(band[ks[ks.length - 1]].pass_at_k) - 8) + '" text-anchor="end" class="samples-curve-label" fill="var(--accent-primary)">Pass@k</text>' +
-              '<text x="' + (W - 12) + '" y="' + (y(band[ks[ks.length - 1]].pass_hat_k) + 14) + '" text-anchor="end" class="samples-curve-label" fill="var(--warning)">Pass^k</text>' +
+              [[1.0, '1.0'], [0.75, '0.75'], [0.5, '0.5'], [0.25, '0.25'], [0.0, '0.0']].map(pair => gridline(pair[0], pair[1])).join('') +
+              '<path d="' + area + '" fill="rgba(0, 212, 170, 0.07)"/>' +
+              '<g stroke="var(--warning)" fill="none" stroke-width="1.8" stroke-dasharray="5 4" stroke-linecap="round"><path d="' + line('pass_hat_k') + '"/></g>' +
+              '<g stroke="var(--accent-primary)" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="' + line('pass_at_k') + '"/></g>' +
+              dots('pass_hat_k', 'var(--warning)') +
+              dots('pass_at_k', 'var(--accent-primary)') +
+              ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
             '</svg>';
         }
 
-        let passRowsHtml = '';
+        // Per-pass ledger (shared .sp-* primitives from dashboard.css).
+        let ledgerHtml = '';
         if (passes && Array.isArray(passes.passes)) {
-          const metricCols = (passes.metrics || []);
-          passRowsHtml =
-            '<table class="samples-pass-detail">' +
-              '<thead><tr><th>Pass</th><th>Status</th>' + metricCols.map(m => '<th>' + escapeHtml(m) + '</th>').join('') + '<th>Avg latency</th><th>Items</th></tr></thead>' +
-              '<tbody>' + passes.passes.map(p =>
-                '<tr>' +
-                  '<td class="mono-cell">pass ' + p.pass_number + '/' + passes.samples + '</td>' +
-                  '<td>' + escapeHtml(p.status || '') + '</td>' +
-                  metricCols.map(m => {
-                    const v = (p.metric_means || {})[m];
-                    return '<td class="mono-cell">' + (typeof v === 'number' ? fmt(v) : '—') + '</td>';
-                  }).join('') +
-                  '<td class="mono-cell">' + (typeof p.avg_latency_ms === 'number' ? (p.avg_latency_ms / 1000).toFixed(2) + 's' : '—') + '</td>' +
-                  '<td class="mono-cell">' + (p.items_scored || 0) + '</td>' +
-                '</tr>'
-              ).join('') + '</tbody>' +
-            '</table>';
+          const primaryMetric = (passes.metrics || [])[0];
+          const visible = passes.passes.filter(p => p.status !== 'pending');
+          const queued = passes.passes.length - visible.length;
+          const rows = visible.map(p => {
+            const v = primaryMetric ? (p.metric_means || {})[primaryMetric] : undefined;
+            const cls = scoreClass(v);
+            const pct = (typeof v === 'number') ? Math.round(Math.max(0, Math.min(1, v)) * 100) : 0;
+            const lat = (typeof p.avg_latency_ms === 'number') ? (p.avg_latency_ms / 1000).toFixed(2) + 's' : '—';
+            return '<div class="sp-row">' +
+              '<span class="sp-label">pass ' + p.pass_number + '/' + passes.samples + '</span>' +
+              '<span class="sp-dot ' + escapeHtml(p.status || '') + '"></span>' +
+              '<span class="sp-score ' + (cls || 'empty') + '">' + (typeof v === 'number' ? fmt(v) : '—') + '</span>' +
+              '<span class="sp-meter ' + cls + '"><i style="width:' + pct + '%"></i></span>' +
+              '<span class="sp-latency">' + lat + '</span>' +
+              '<span class="sp-items">' + (p.items_scored || 0) + '</span>' +
+            '</div>';
+          }).join('');
+          const queuedLine = queued > 0
+            ? '<div class="sp-queued">' + (queued === 1
+                ? 'pass ' + passes.passes.length + '/' + passes.samples + ' queued'
+                : 'passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + '/' + passes.samples + ' queued') + '</div>'
+            : '';
+          ledgerHtml =
+            '<div>' +
+              '<div class="samples-zone-title">Passes <span class="mono-note">· ' + escapeHtml(primaryMetric || '') + '</span></div>' +
+              rows + queuedLine +
+            '</div>';
         }
 
         container.innerHTML =
           '<div class="samples-analysis-card">' +
             '<div class="samples-analysis-header">' +
               '<h3 class="section-title" style="margin:0">Samples analysis <span class="samples-pill-inline">×' + samplesCount + '</span></h3>' +
-              '<span style="color:var(--text-muted);font-size:var(--font-sm)">' + escapeHtml(group.metric || '') + ' · threshold ' + (group.threshold != null ? group.threshold : 0.8) + '</span>' +
+              '<span class="samples-analysis-meta">' + escapeHtml(group.metric || '') + ' · threshold ' + (group.threshold != null ? group.threshold : 0.8) + '</span>' +
             '</div>' +
             '<div class="samples-stat-grid">' + statsHtml + '</div>' +
-            (svgHtml ? '<div class="samples-curve-wrap">' + svgHtml + '</div>' : '') +
-            passRowsHtml +
+            '<div class="samples-main">' +
+              '<div>' + curveHtml + '</div>' +
+              ledgerHtml +
+            '</div>' +
           '</div>';
       }
 
