@@ -193,11 +193,16 @@
       }
 
       function progressLabel(run) {
+        // Repeat runs: lead with the pass cursor (pass j/k).
+        const samples = parseInt(run.samples, 10) || 1;
+        const passPrefix = samples > 1
+          ? 'pass ' + Math.min((parseInt(run.last_completed_pass, 10) || 0) + 1, samples) + '/' + samples + ' · '
+          : '';
         if (run.progress_total) {
-          return String(run.progress_completed || 0) + '/' + String(run.progress_total);
+          return passPrefix + String(run.progress_completed || 0) + '/' + String(run.progress_total);
         }
-        if (run.total_items) return String(run.progress_completed || 0) + '/' + String(run.total_items);
-        return run.progress_completed ? String(run.progress_completed) : '—';
+        if (run.total_items) return passPrefix + String(run.progress_completed || 0) + '/' + String(run.total_items);
+        return run.progress_completed ? passPrefix + String(run.progress_completed) : (passPrefix || '—');
       }
 
       function statusBadge(status) {

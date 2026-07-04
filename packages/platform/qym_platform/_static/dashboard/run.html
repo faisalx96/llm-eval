@@ -3421,6 +3421,109 @@
     }
     .sankey-dimmed { opacity: 0.15; }
     .sankey-highlighted { opacity: 1; }
+    /* ─── Repeat runs (samples=k) ─── */
+    .samples-analysis-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: var(--space-lg);
+      margin-bottom: var(--space-lg);
+    }
+    .samples-analysis-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+    .samples-pill-inline {
+      font-size: var(--font-xs);
+      font-weight: 650;
+      font-family: var(--font-mono);
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--accent-primary);
+      color: var(--accent-primary);
+      vertical-align: middle;
+      margin-left: var(--space-sm);
+    }
+    .samples-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+    .samples-stat {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: var(--space-sm) var(--space-md);
+    }
+    .samples-stat-label {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-family: var(--font-mono);
+    }
+    .samples-stat-value {
+      font-size: var(--font-xl);
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      margin-top: 2px;
+    }
+    .samples-curve-wrap { max-width: 620px; margin-bottom: var(--space-md); }
+    .samples-curve { width: 100%; height: auto; }
+    .samples-curve-axis {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      fill: var(--text-muted);
+    }
+    .samples-curve-label {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      font-weight: 650;
+    }
+    .samples-pass-detail { border-collapse: collapse; }
+    .samples-pass-detail th {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 650;
+      text-align: left;
+      padding: 4px 16px 4px 0;
+    }
+    .samples-pass-detail td {
+      font-size: var(--font-base);
+      color: var(--text-secondary);
+      padding: 4px 16px 4px 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .samples-pass-detail tr:last-child td { border-bottom: none; }
+    .samples-pass-detail .mono-cell {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    /* Per-item pass dots in the items table */
+    .pass-dots {
+      display: inline-flex;
+      gap: 3px;
+      vertical-align: middle;
+      margin-left: var(--space-sm);
+    }
+    .pass-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      display: inline-block;
+      background: var(--bg-active);
+    }
+    .pass-dot.pass { background: var(--score-5); }
+    .pass-dot.fail { background: var(--score-1); opacity: 0.65; }
   </style>
 </head>
 <body>
@@ -3448,6 +3551,8 @@
       <div class="run-summary" id="run-summary"></div>
 
       <div id="overview-section"></div>
+
+      <div id="samples-analysis-section"></div>
 
       <div id="metadata-breakdown"></div>
 
@@ -4344,6 +4449,7 @@
         wireTopActions();
         populateMetricSelectors();
         renderOverview();
+        renderSamplesAnalysis();
         buildCategoryDropdowns();
         populateMetadataFieldsDropdown();
         populateMetricMetaFieldsDropdown();
@@ -4406,7 +4512,9 @@
           actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="hero-link-btn langfuse">Langfuse &#8599;</a>';
         }
 
+        const samplesCount = parseInt(run.samples, 10) || 1;
         const metaHtml = [
+          metaItem('Samples', samplesCount > 1 ? '×' + samplesCount + ' per item' : '', { mono: true, nowrap: true }),
           metaItem('Task', taskName),
           metaItem('Dataset', run.dataset_name || '—', { html: (window.QymShell && run.dataset_name ? QymShell.identiconHTML(run.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
           metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(run.trace_stats)), nowrap: true }),
@@ -4427,13 +4535,127 @@
               '</div>' +
             '</div>' +
             '<div class="hero-right">' +
-              '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText + '</div>' +
+              '<div class="hero-status ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText +
+                ((samplesCount > 1 && (statusClass === 'running' || statusClass === 'pending'))
+                  ? ' • pass ' + Math.min((parseInt(run.last_completed_pass, 10) || 0) + 1, samplesCount) + '/' + samplesCount
+                  : '') +
+              '</div>' +
               '<div class="hero-actions">' + actionsHtml + '</div>' +
             '</div>' +
           '</div>' +
           '<div class="hero-meta-grid">' + metaHtml + '</div>' +
           executionContextHtml +
         '</div>';
+      }
+
+      // ── Repeat runs: "Samples analysis" section (only when samples > 1) ──
+      async function renderSamplesAnalysis() {
+        const container = el('samples-analysis-section');
+        if (!container) return;
+        const run = state.run || {};
+        const samplesCount = parseInt(run.samples, 10) || 1;
+        if (samplesCount <= 1 || IS_EXPORT) { container.innerHTML = ''; return; }
+
+        const metricName = state.selectedMetric || state.allMetrics[0] || '';
+        container.innerHTML =
+          '<div class="samples-analysis-card">' +
+            '<div class="samples-analysis-header">' +
+              '<h3 class="section-title" style="margin:0">Samples analysis <span class="samples-pill-inline">×' + samplesCount + '</span></h3>' +
+              '<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading…</span>' +
+            '</div>' +
+          '</div>';
+
+        let group, passes;
+        try {
+          const [groupRes, passesRes] = await Promise.all([
+            fetch(apiUrl('api/runs/' + RUN_ID + '/group-metrics' + (metricName ? '?metric=' + encodeURIComponent(metricName) : ''))),
+            fetch(apiUrl('api/runs/' + RUN_ID + '/passes')),
+          ]);
+          group = await groupRes.json();
+          passes = await passesRes.json();
+        } catch (err) {
+          container.querySelector('.samples-analysis-header span').textContent = 'Failed to load pass data';
+          return;
+        }
+        if (!group || group.error || !group.group) {
+          container.querySelector('.samples-analysis-header span').textContent = '';
+          return;
+        }
+
+        const g = group.group;
+        const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
+        const statCard = (label, value) =>
+          '<div class="samples-stat"><div class="samples-stat-label">' + label + '</div>' +
+          '<div class="samples-stat-value">' + fmt(value) + '</div></div>';
+        const statsHtml = [
+          statCard('Pass@' + g.k, g.pass_at_k),
+          statCard('Pass^' + g.k, g.pass_hat_k),
+          statCard('Avg@' + g.k, g.avg_at_k),
+          statCard('Max@' + g.k, g.max_at_k),
+          statCard('Consistency', g.consistency),
+          statCard('Reliability', g.reliability),
+        ].join('');
+
+        // Accuracy-vs-k curve: pass@k (capability) vs pass^k (reliability),
+        // every k computed on demand from the stored passes.
+        const band = group.band || {};
+        const ks = Object.keys(band).map(Number).sort((a, b) => a - b);
+        let svgHtml = '';
+        if (ks.length > 1) {
+          const W = 560, H = 200, PADX = 46, PADY = 18;
+          const x = k => PADX + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADX - 16);
+          const y = v => (H - PADY) - Math.max(0, Math.min(1, v)) * (H - 2 * PADY);
+          const line = key => ks.map((k, i) => (i === 0 ? 'M' : 'L') + x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1)).join(' ');
+          const dots = key => ks.map(k =>
+            '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(band[k][key]).toFixed(1) + '" r="3.5"></circle>'
+          ).join('');
+          svgHtml =
+            '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="Accuracy versus k">' +
+              '<line x1="' + PADX + '" y1="' + PADY + '" x2="' + PADX + '" y2="' + (H - PADY) + '" stroke="var(--border-default)"/>' +
+              '<line x1="' + PADX + '" y1="' + (H - PADY) + '" x2="' + (W - 10) + '" y2="' + (H - PADY) + '" stroke="var(--border-default)"/>' +
+              '<text x="8" y="' + (PADY + 4) + '" class="samples-curve-axis">1.0</text>' +
+              '<text x="8" y="' + (H - PADY + 4) + '" class="samples-curve-axis">0.0</text>' +
+              ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 2) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
+              '<g stroke="var(--accent-primary)" fill="none" stroke-width="2"><path d="' + line('pass_at_k') + '"/></g>' +
+              '<g fill="var(--accent-primary)">' + dots('pass_at_k') + '</g>' +
+              '<g stroke="var(--warning)" fill="none" stroke-width="1.6" stroke-dasharray="5 4"><path d="' + line('pass_hat_k') + '"/></g>' +
+              '<g fill="var(--warning)">' + dots('pass_hat_k') + '</g>' +
+              '<text x="' + (W - 12) + '" y="' + (y(band[ks[ks.length - 1]].pass_at_k) - 8) + '" text-anchor="end" class="samples-curve-label" fill="var(--accent-primary)">Pass@k</text>' +
+              '<text x="' + (W - 12) + '" y="' + (y(band[ks[ks.length - 1]].pass_hat_k) + 14) + '" text-anchor="end" class="samples-curve-label" fill="var(--warning)">Pass^k</text>' +
+            '</svg>';
+        }
+
+        let passRowsHtml = '';
+        if (passes && Array.isArray(passes.passes)) {
+          const metricCols = (passes.metrics || []);
+          passRowsHtml =
+            '<table class="samples-pass-detail">' +
+              '<thead><tr><th>Pass</th><th>Status</th>' + metricCols.map(m => '<th>' + escapeHtml(m) + '</th>').join('') + '<th>Avg latency</th><th>Items</th></tr></thead>' +
+              '<tbody>' + passes.passes.map(p =>
+                '<tr>' +
+                  '<td class="mono-cell">pass ' + p.pass_number + '/' + passes.samples + '</td>' +
+                  '<td>' + escapeHtml(p.status || '') + '</td>' +
+                  metricCols.map(m => {
+                    const v = (p.metric_means || {})[m];
+                    return '<td class="mono-cell">' + (typeof v === 'number' ? fmt(v) : '—') + '</td>';
+                  }).join('') +
+                  '<td class="mono-cell">' + (typeof p.avg_latency_ms === 'number' ? (p.avg_latency_ms / 1000).toFixed(2) + 's' : '—') + '</td>' +
+                  '<td class="mono-cell">' + (p.items_scored || 0) + '</td>' +
+                '</tr>'
+              ).join('') + '</tbody>' +
+            '</table>';
+        }
+
+        container.innerHTML =
+          '<div class="samples-analysis-card">' +
+            '<div class="samples-analysis-header">' +
+              '<h3 class="section-title" style="margin:0">Samples analysis <span class="samples-pill-inline">×' + samplesCount + '</span></h3>' +
+              '<span style="color:var(--text-muted);font-size:var(--font-sm)">' + escapeHtml(group.metric || '') + ' · threshold ' + (group.threshold != null ? group.threshold : 0.8) + '</span>' +
+            '</div>' +
+            '<div class="samples-stat-grid">' + statsHtml + '</div>' +
+            (svgHtml ? '<div class="samples-curve-wrap">' + svgHtml + '</div>' : '') +
+            passRowsHtml +
+          '</div>';
       }
 
       function wireTopActions() {
@@ -6095,6 +6317,17 @@
           }
           if (pfClass) {
             statusIndicator = '<div class="status-indicator"><div class="status-dot ' + pfClass + '"></div><span class="status-label ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span></div>';
+          }
+
+          // Repeat runs: per-pass dot strip for the selected metric.
+          const rowPassScores = (row.pass_scores && metric) ? row.pass_scores[metric] : null;
+          if (Array.isArray(rowPassScores) && rowPassScores.length > 1) {
+            const dotTitle = 'Per-pass scores: ' + rowPassScores.map(v => (v == null ? '—' : v)).join(', ');
+            const dots = rowPassScores.map(v => {
+              if (v == null) return '<span class="pass-dot"></span>';
+              return '<span class="pass-dot ' + (v >= threshold ? 'pass' : 'fail') + '"></span>';
+            }).join('');
+            statusIndicator += '<span class="pass-dots" title="' + escapeAttr(dotTitle) + '">' + dots + '</span>';
           }
 
           // Root cause + Solution (side by side for failed items)

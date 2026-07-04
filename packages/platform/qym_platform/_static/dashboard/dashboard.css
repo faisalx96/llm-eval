@@ -8046,3 +8046,84 @@ td.col-trace-metric-value {
   .tv-wf { display: none; }
   .tv-inline-model, .tv-inline-tokens { display: none; }
 }
+
+/* ═══ Repeat runs (samples=k) ═══ */
+/* Pill on the RUN cell marking a multi-sample run. Badge recipe. */
+.samples-pill {
+  font-size: var(--font-xs);
+  font-weight: 650;
+  font-family: var(--font-mono);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  background: transparent;
+  margin-left: var(--space-sm);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+/* Disclosure arrow (decorative glyph) for the per-pass expansion. */
+.samples-toggle {
+  display: inline-block;
+  width: 16px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  margin-right: var(--space-xs);
+}
+.samples-toggle:hover { color: var(--text-secondary); }
+/* ±CI half-width beside a metric mean — the multi-sample marker. */
+.metric-ci {
+  font-size: var(--font-sm);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  margin-left: var(--space-xs);
+  white-space: nowrap;
+}
+/* Expanded detail row: per-pass slices + the group-metric line. */
+.samples-detail-cell {
+  background: var(--bg-base);
+  padding: var(--space-sm) var(--space-lg) var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+}
+.samples-pass-table {
+  width: auto;
+  min-width: 480px;
+  border-collapse: collapse;
+}
+.samples-pass-table th {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 650;
+  text-align: left;
+  padding: 4px 14px 4px 0;
+}
+.samples-pass-table td {
+  font-size: var(--font-base);
+  color: var(--text-secondary);
+  padding: 4px 14px 4px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.samples-pass-table tr:last-child td { border-bottom: none; }
+.samples-pass-label {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.samples-pass-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.samples-group-line {
+  margin-top: var(--space-sm);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+.samples-group-line b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-weight: 650;
+}

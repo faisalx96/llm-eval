@@ -2918,7 +2918,73 @@
   // #7: Extract base timestamp from run name/id for grouping.
   // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
   // Runs with the same task + base timestamp belong together.
+  // Repeat runs: expand each ×k run into k per-pass pseudo-runs so group
+  // analysis pools attempts (the attempt is the atomic unit). Runs without
+  // pass data flow through unchanged (each = 1 attempt, today's semantics).
+  function expandSampledRunsData(runsData) {
+    const out = [];
+    (runsData || []).forEach(rd => {
+      const samples = parseInt(rd?.run?.samples, 10) || 1;
+      const rows = rd?.snapshot?.rows || [];
+      const hasPassData = samples > 1 && rows.some(r => r && r.pass_scores);
+      if (!hasPassData) { out.push(rd); return; }
+      const metricNames = rd.snapshot.metric_names || rd.run.metric_names || [];
+      for (let p = 0; p < samples; p++) {
+        const passRows = rows.map(row => {
+          const mv = metricNames.map((m, i) => {
+            const ps = row.pass_scores ? row.pass_scores[m] : null;
+            if (Array.isArray(ps)) return (ps[p] == null ? '' : ps[p]);
+            return row.metric_values ? row.metric_values[i] : '';
+          });
+          return Object.assign({}, row, { metric_values: mv });
+        });
+        out.push({ run: rd.run, snapshot: Object.assign({}, rd.snapshot, { rows: passRows }) });
+      }
+    });
+    return out;
+  }
+
+  // Repeat runs: markup for the expanded per-pass slices + group-metric set.
+  function renderSamplesDetail(passes, group) {
+    const metricNames = (passes && passes.metrics) || [];
+    const rows = ((passes && passes.passes) || []).map(p => {
+      const means = metricNames.map(m => {
+        const v = (p.metric_means || {})[m];
+        return `<td class="samples-pass-num">${typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—'}</td>`;
+      }).join('');
+      const lat = (typeof p.avg_latency_ms === 'number') ? formatLatency(p.avg_latency_ms) : '—';
+      return `<tr>
+        <td class="samples-pass-label">pass ${p.pass_number}/${passes.samples}</td>
+        <td><span class="status-badge status-${(p.status || 'pending').toUpperCase()}">${escapeHtml(p.status || 'pending')}</span></td>
+        ${means}
+        <td class="samples-pass-num">${lat}</td>
+        <td class="samples-pass-num">${p.items_scored || 0}</td>
+      </tr>`;
+    }).join('');
+
+    const g = (group && group.group) || {};
+    const k = g.k || (passes && passes.samples) || 0;
+    const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
+    const groupParts = [
+      `Pass@${k} <b>${fmt(g.pass_at_k)}</b>`,
+      `Pass^${k} <b>${fmt(g.pass_hat_k)}</b>`,
+      `Avg@${k} <b>${fmt(g.avg_at_k)}</b>`,
+      `Max@${k} <b>${fmt(g.max_at_k)}</b>`,
+    ];
+    if (typeof g.consistency === 'number') groupParts.push(`Consistency <b>${fmt(g.consistency)}</b>`);
+    if (typeof g.reliability === 'number') groupParts.push(`Reliability <b>${fmt(g.reliability)}</b>`);
+
+    return `<table class="samples-pass-table">
+        <thead><tr><th>Pass</th><th>Status</th>${metricNames.map(m => `<th>${escapeHtml(m)}</th>`).join('')}<th>Avg latency</th><th>Items</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="samples-group-line">${groupParts.join(' · ')}</div>`;
+  }
+
   function extractRunTimestampGroup(run) {
+    // Repeat runs are ONE logical run — never glue them into legacy
+    // timestamp groups (runs.samples replaced the heuristic for new runs).
+    if (run.samples > 1) return null;
     const productEval = run.product_eval || {};
     if (productEval && productEval.eval_id) {
       return `${run.task_name}|||product_eval:${productEval.eval_id}`;
@@ -3128,7 +3194,13 @@
         const metricClass = window.QymMetrics.getMetricColorClass(value, mType);
         const peerValues = getRunComboPeerValues(allRuns, run, candidate => candidate.metric_averages?.[metric]);
         const display = window.QymMetrics.formatMetricValueSmart(value, mType, peerValues);
-        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span></td>`;
+        // Repeat runs: the ±CI half-width is the visual marker that this
+        // value is a mean over samples passes.
+        const ciHalf = (run.samples > 1 && run.metric_cis) ? run.metric_cis[metric] : null;
+        const ciHtml = (typeof ciHalf === 'number')
+          ? `<span class="metric-ci" title="95% CI over ${run.samples} passes">±${window.QymMetrics.formatNumericValue(ciHalf)}</span>`
+          : '';
+        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${ciHtml}</td>`;
       }).join('');
 
       const status = run.status || '';
@@ -3150,6 +3222,10 @@
       const progressPctText = (status === 'RUNNING' && typeof run.progress_pct === 'number')
         ? `${Math.round(run.progress_pct * 100)}%`
         : '';
+      // Repeat runs: show which pass is executing while live.
+      const passText = (run.samples > 1 && (status === 'RUNNING' || status === 'PENDING'))
+        ? ` • pass ${Math.min((run.last_completed_pass || 0) + 1, run.samples)}/${run.samples}`
+        : '';
 
       // Build status tooltip with approval info
       let statusTooltip = status;
@@ -3170,10 +3246,10 @@
             </label>
           </td>
           <td class="col-status">
-            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
+            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-run">
-            <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
+            ${run.samples > 1 ? `<span class="samples-toggle" data-run-id="${run.run_id}" title="Show per-pass results" onclick="event.stopPropagation()">▶</span>` : ''}<span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>${run.samples > 1 ? `<span class="samples-pill" title="Repeat run: every item evaluated ${run.samples} times">×${run.samples}</span>` : ''}
           </td>
           <td class="col-task">
             <span class="tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
@@ -3423,6 +3499,78 @@
         tbody.querySelectorAll(`tr[data-member-of="${groupKey}"]`).forEach(row => {
           row.style.display = nowExpanded ? '' : 'none';
         });
+      });
+    });
+
+    // Repeat runs: expand a ×k row into its per-pass slices + group metrics.
+    // Data is lazy-loaded on first expand (/passes + /group-metrics); expansion
+    // state + fetched markup survive the live-polling re-renders.
+    state._samplesExpanded = state._samplesExpanded || {};
+    state._samplesDetailHtml = state._samplesDetailHtml || {};
+
+    function insertSamplesDetail(runId, row, html) {
+      const detail = document.createElement('tr');
+      detail.className = 'samples-detail-row';
+      detail.dataset.samplesFor = runId;
+      detail.innerHTML = `<td colspan="${row.children.length}" class="samples-detail-cell">${html}</td>`;
+      row.insertAdjacentElement('afterend', detail);
+      return detail;
+    }
+
+    async function loadSamplesDetail(runId, detail) {
+      try {
+        const [passesRes, groupRes] = await Promise.all([
+          fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/passes`)),
+          fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/group-metrics`)),
+        ]);
+        const passes = await passesRes.json();
+        const group = await groupRes.json();
+        const html = renderSamplesDetail(passes, group);
+        state._samplesDetailHtml[runId] = html;
+        if (detail.isConnected) detail.querySelector('td').innerHTML = html;
+      } catch (err) {
+        if (detail.isConnected) {
+          detail.querySelector('td').innerHTML =
+            `<span style="color:var(--error);font-size:var(--font-sm)">Failed to load pass data</span>`;
+        }
+      }
+    }
+
+    tbody.querySelectorAll('.samples-toggle').forEach(toggle => {
+      const runId = toggle.dataset.runId;
+      // Restore expansions the re-render just wiped.
+      if (runId && state._samplesExpanded[runId]) {
+        const row = toggle.closest('tr');
+        if (row && !tbody.querySelector(`tr.samples-detail-row[data-samples-for="${runId}"]`)) {
+          toggle.textContent = '▼';
+          const cached = state._samplesDetailHtml[runId];
+          const detail = insertSamplesDetail(
+            runId, row,
+            cached || `<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading passes…</span>`
+          );
+          // Live runs: refresh the pass data on every re-render pass.
+          loadSamplesDetail(runId, detail);
+        }
+      }
+      toggle.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const row = toggle.closest('tr');
+        if (!runId || !row) return;
+        const existing = tbody.querySelector(`tr.samples-detail-row[data-samples-for="${runId}"]`);
+        if (existing) {
+          const hidden = existing.style.display === 'none';
+          existing.style.display = hidden ? '' : 'none';
+          toggle.textContent = hidden ? '▼' : '▶';
+          state._samplesExpanded[runId] = hidden;
+          return;
+        }
+        toggle.textContent = '▼';
+        state._samplesExpanded[runId] = true;
+        const detail = insertSamplesDetail(
+          runId, row,
+          `<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading passes…</span>`
+        );
+        await loadSamplesDetail(runId, detail);
       });
     });
 
@@ -4152,9 +4300,11 @@
 
     const effectiveThreshold = isBoolean ? 0.9999 : threshold;
 
-    // Use shared metrics calculation
+    // Use shared metrics calculation. Repeat runs pool their ATTEMPTS: a ×k
+    // run contributes k per-pass entries, so Pass@K math runs over the pooled
+    // attempt set — never pass@k of pass@k.
     const metrics = window.QymMetrics.calculateItemLevelMetrics({
-      runsData,
+      runsData: expandSampledRunsData(runsData),
       metricName,
       threshold: effectiveThreshold,
       getMetricIndex: (runData) => {
