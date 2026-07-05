@@ -1912,22 +1912,40 @@ def run_passes(
         )
         counts[int(pass_number)] = max(counts.get(int(pass_number), 0), int(cnt or 0))
 
-    # Per-pass latency over final attempts.
-    latency_rows = (
+    # Per-pass latency stats + error counts over final attempts.
+    attempt_rows = (
         db.query(
             RunItemAttempt.pass_number,
-            func.avg(RunItemAttempt.latency_ms),
-            func.count(RunItemAttempt.id),
+            RunItemAttempt.latency_ms,
+            RunItemAttempt.status,
         )
         .filter(
             RunItemAttempt.run_id == run.id,
             RunItemAttempt.is_last_attempt.is_(True),
-            RunItemAttempt.latency_ms.isnot(None),
         )
-        .group_by(RunItemAttempt.pass_number)
         .all()
     )
-    latency_by_pass = {int(p): float(avg) for p, avg, _ in latency_rows if avg is not None}
+    latencies_by_pass: Dict[int, List[float]] = {}
+    errors_by_pass: Dict[int, int] = {}
+    for pass_number, latency_ms, status in attempt_rows:
+        p = int(pass_number)
+        if latency_ms is not None:
+            latencies_by_pass.setdefault(p, []).append(float(latency_ms))
+        if str(status or "").lower() == "failed":
+            errors_by_pass[p] = errors_by_pass.get(p, 0) + 1
+
+    def _lat_stats(values: Optional[List[float]]) -> Dict[str, Optional[float]]:
+        if not values:
+            return {"avg": None, "median": None, "p95": None}
+        ordered = sorted(values)
+        n = len(ordered)
+        median = (
+            ordered[n // 2]
+            if n % 2
+            else (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
+        )
+        p95 = ordered[min(n - 1, max(0, int(round(0.95 * n)) - 1))]
+        return {"avg": sum(ordered) / n, "median": median, "p95": p95}
 
     last_completed = 0
     if isinstance(run.run_metadata, dict):
@@ -1938,20 +1956,24 @@ def run_passes(
 
     passes = []
     for p in range(1, samples + 1):
-        has_data = p in metric_means or p in latency_by_pass
+        has_data = p in metric_means or p in latencies_by_pass
         if p <= last_completed:
             status = "completed"
         elif has_data:
             status = "running"
         else:
             status = "pending"
+        lat = _lat_stats(latencies_by_pass.get(p))
         passes.append(
             {
                 "pass_number": p,
                 "status": status,
                 "metric_means": metric_means.get(p, {}),
                 "items_scored": counts.get(p, 0),
-                "avg_latency_ms": latency_by_pass.get(p),
+                "error_count": errors_by_pass.get(p, 0),
+                "avg_latency_ms": lat["avg"],
+                "median_latency_ms": lat["median"],
+                "p95_latency_ms": lat["p95"],
             }
         )
     return {"run_id": run.id, "samples": samples, "metrics": metrics, "passes": passes}

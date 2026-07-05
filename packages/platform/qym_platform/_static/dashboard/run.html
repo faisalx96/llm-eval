@@ -3505,16 +3505,83 @@
       margin-top: 1px;
       white-space: nowrap;
     }
-    /* Main zone: curve + per-pass ledger side by side, no dead space */
-    .samples-main {
-      display: grid;
-      grid-template-columns: minmax(360px, 1fr) minmax(280px, 400px);
-      gap: var(--space-xl);
-      align-items: start;
+    /* Pass sweep: the first-class per-pass table (all metrics + latencies) */
+    .samples-sweep-wrap {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: var(--space-lg);
     }
-    @media (max-width: 980px) {
-      .samples-main { grid-template-columns: 1fr; gap: var(--space-md); }
+    .samples-sweep {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 640px;
     }
+    .samples-sweep thead th {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 650;
+      text-align: left;
+      padding: 7px 14px;
+      white-space: nowrap;
+    }
+    .samples-sweep thead th.sw-num-h { text-align: right; }
+    .samples-sweep tbody td {
+      padding: 8px 14px;
+      border-top: 1px solid var(--border-subtle);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .samples-sweep tbody tr:hover td { background: var(--bg-hover); }
+    .sw-pass {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+    }
+    .sw-status { width: 22px; text-align: center; }
+    .sw-num { text-align: right; }
+    .sw-val {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: var(--font-md);
+      display: block;
+    }
+    .sw-val.empty { color: var(--text-muted); font-weight: 400; }
+    .sw-meter {
+      display: block;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--bg-active);
+      overflow: hidden;
+      margin-top: 3px;
+      margin-left: auto;
+      width: 72px;
+    }
+    .sw-meter i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
+    .sw-dim {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: var(--font-base);
+      color: var(--text-muted);
+    }
+    .sw-err {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--error);
+    }
+    .sw-queued {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .samples-curve-block { max-width: 720px; }
     .samples-curve-head {
       display: flex;
       align-items: center;
@@ -3584,9 +3651,10 @@
     <div id="run-content" style="display:none;">
       <div class="run-summary" id="run-summary"></div>
 
-      <div id="overview-section"></div>
-
+      <!-- Repeat runs lead with the pass-centric view; empty for classic runs -->
       <div id="samples-analysis-section"></div>
+
+      <div id="overview-section"></div>
 
       <div id="metadata-breakdown"></div>
 
@@ -4677,35 +4745,51 @@
             '</svg>';
         }
 
-        // Per-pass ledger (shared .sp-* primitives from dashboard.css).
-        let ledgerHtml = '';
+        // Pass sweep: the first-class per-pass table — every metric,
+        // latency stats, errors, items. This is what the old ad-hoc
+        // group-of-runs view showed per run, now per pass.
+        let sweepHtml = '';
         if (passes && Array.isArray(passes.passes)) {
-          const primaryMetric = (passes.metrics || [])[0];
+          const metricCols = passes.metrics || [];
           const visible = passes.passes.filter(p => p.status !== 'pending');
           const queued = passes.passes.length - visible.length;
-          const rows = visible.map(p => {
-            const v = primaryMetric ? (p.metric_means || {})[primaryMetric] : undefined;
-            const cls = scoreClass(v);
-            const pct = (typeof v === 'number') ? Math.round(Math.max(0, Math.min(1, v)) * 100) : 0;
-            const lat = (typeof p.avg_latency_ms === 'number') ? (p.avg_latency_ms / 1000).toFixed(2) + 's' : '—';
-            return '<div class="sp-row">' +
-              '<span class="sp-label">pass ' + p.pass_number + '/' + passes.samples + '</span>' +
-              '<span class="sp-dot ' + escapeHtml(p.status || '') + '"></span>' +
-              '<span class="sp-score ' + (cls || 'empty') + '">' + (typeof v === 'number' ? fmt(v) : '—') + '</span>' +
-              '<span class="sp-meter ' + cls + '"><i style="width:' + pct + '%"></i></span>' +
-              '<span class="sp-latency">' + lat + '</span>' +
-              '<span class="sp-items">' + (p.items_scored || 0) + '</span>' +
-            '</div>';
+          const latCell = v => (typeof v === 'number' ? (v / 1000).toFixed(2) + 's' : '—');
+          const bodyRows = visible.map(p => {
+            const metricCells = metricCols.map(m => {
+              const v = (p.metric_means || {})[m];
+              if (typeof v !== 'number') return '<td class="sw-num"><span class="sw-val empty">—</span></td>';
+              const cls = scoreClass(v);
+              const pct = Math.round(Math.max(0, Math.min(1, v)) * 100);
+              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmt(v) + '</span>' +
+                '<span class="sw-meter ' + cls + '"><i style="width:' + pct + '%"></i></span></td>';
+            }).join('');
+            const errs = p.error_count || 0;
+            return '<tr>' +
+              '<td class="sw-pass">pass ' + p.pass_number + '/' + passes.samples + '</td>' +
+              '<td class="sw-status"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span></td>' +
+              metricCells +
+              '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
+              '<td class="sw-num sw-dim">' + latCell(p.median_latency_ms) + '</td>' +
+              '<td class="sw-num sw-dim">' + latCell(p.p95_latency_ms) + '</td>' +
+              '<td class="sw-num ' + (errs > 0 ? 'sw-err' : 'sw-dim') + '">' + errs + '</td>' +
+              '<td class="sw-num sw-dim">' + (p.items_scored || 0) + '</td>' +
+            '</tr>';
           }).join('');
-          const queuedLine = queued > 0
-            ? '<div class="sp-queued">' + (queued === 1
+          const queuedRow = queued > 0
+            ? '<tr><td colspan="' + (7 + metricCols.length) + '" class="sw-queued">' + (queued === 1
                 ? 'pass ' + passes.passes.length + '/' + passes.samples + ' queued'
-                : 'passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + '/' + passes.samples + ' queued') + '</div>'
+                : 'passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + '/' + passes.samples + ' queued') + '</td></tr>'
             : '';
-          ledgerHtml =
-            '<div>' +
-              '<div class="samples-zone-title">Passes <span class="mono-note">· ' + escapeHtml(primaryMetric || '') + '</span></div>' +
-              rows + queuedLine +
+          sweepHtml =
+            '<div class="samples-sweep-wrap">' +
+              '<table class="samples-sweep">' +
+                '<thead><tr>' +
+                  '<th>Pass</th><th></th>' +
+                  metricCols.map(m => '<th class="sw-num-h">' + escapeHtml(m) + '</th>').join('') +
+                  '<th class="sw-num-h">Avg lat</th><th class="sw-num-h">Median</th><th class="sw-num-h">P95</th><th class="sw-num-h">Err</th><th class="sw-num-h">Items</th>' +
+                '</tr></thead>' +
+                '<tbody>' + bodyRows + queuedRow + '</tbody>' +
+              '</table>' +
             '</div>';
         }
 
@@ -4716,10 +4800,8 @@
               '<span class="samples-analysis-meta">' + escapeHtml(group.metric || '') + ' · threshold ' + (group.threshold != null ? group.threshold : 0.8) + '</span>' +
             '</div>' +
             '<div class="samples-stat-grid">' + statsHtml + '</div>' +
-            '<div class="samples-main">' +
-              '<div>' + curveHtml + '</div>' +
-              ledgerHtml +
-            '</div>' +
+            sweepHtml +
+            '<div class="samples-curve-block">' + curveHtml + '</div>' +
           '</div>';
       }
 
