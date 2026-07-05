@@ -8110,20 +8110,56 @@ td.col-trace-metric-value {
   letter-spacing: 0;
   font-weight: 400;
 }
-/* Pass ledger rows: label · status dot · score · meter · latency · items */
-.sp-row {
-  display: grid;
-  grid-template-columns: 68px 12px 40px minmax(70px, 150px) 58px 34px;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+/* Pass ledger: one block per pass; every metric + internal metric gets its
+   own sub-row under the pass header. */
+.sp-pass-block {
+  padding: 6px 0 7px;
   border-bottom: 1px solid var(--border-subtle);
 }
-.sp-row:last-of-type { border-bottom: none; }
+.sp-pass-block:last-of-type { border-bottom: none; }
+.sp-pass-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 3px;
+}
+.sp-pass-head .sp-head-meta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.sp-pass-head .sp-head-meta .err { color: var(--error); font-weight: 700; }
+.sp-sub {
+  display: grid;
+  grid-template-columns: minmax(96px, 130px) 44px minmax(70px, 140px);
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 2px 17px;
+}
+.sp-sub-name {
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-sub.internal .sp-sub-name { color: var(--text-muted); font-family: var(--font-mono); }
+.sp-sub-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+.sp-sub.internal .sp-sub-value { font-weight: 400; color: var(--text-secondary); }
 .sp-label {
   font-family: var(--font-mono);
   font-size: var(--font-sm);
-  color: var(--text-muted);
+  font-weight: 650;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .sp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bg-active); justify-self: center; }
@@ -8173,14 +8209,14 @@ td.col-trace-metric-value {
 /* Verdict zone: the reduced group metrics as compact tiles */
 .samples-verdict {
   flex: 1;
-  min-width: 300px;
-  max-width: 460px;
+  min-width: 420px;
+  max-width: 720px;
   border-left: 1px solid var(--border-subtle);
   padding-left: var(--space-xl);
 }
 .sv-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(88px, 1fr));
+  grid-template-columns: repeat(5, minmax(88px, 1fr));
   grid-auto-rows: min-content;
   align-content: start;
   gap: var(--space-sm);

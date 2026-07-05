@@ -2961,18 +2961,37 @@
     // Pending passes collapse into one line instead of a stack of empty rows.
     const visible = allPasses.filter(p => p.status !== 'pending');
     const queued = allPasses.length - visible.length;
-    const ledgerRows = visible.map(p => {
-      const v = primaryMetric ? (p.metric_means || {})[primaryMetric] : undefined;
+    const metricSub = (name, v) => {
       const cls = scoreClass(v);
       const pct = (typeof v === 'number') ? Math.round(Math.max(0, Math.min(1, v)) * 100) : 0;
-      const lat = (typeof p.avg_latency_ms === 'number') ? formatLatency(p.avg_latency_ms) : '—';
-      return `<div class="sp-row">
-        <span class="sp-label">pass ${p.pass_number}/${passes.samples}</span>
-        <span class="sp-dot ${escapeHtml(p.status || '')}"></span>
-        <span class="sp-score ${cls || 'empty'}">${typeof v === 'number' ? fmt(v) : '—'}</span>
+      return `<div class="sp-sub">
+        <span class="sp-sub-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+        <span class="sp-sub-value ${cls || 'empty'}">${typeof v === 'number' ? fmt(v) : '—'}</span>
         <span class="sp-meter ${cls}"><i style="width:${pct}%"></i></span>
-        <span class="sp-latency">${lat}</span>
-        <span class="sp-items">${p.items_scored || 0}</span>
+      </div>`;
+    };
+    const internalSub = (name, text) =>
+      `<div class="sp-sub internal">
+        <span class="sp-sub-name">${name}</span>
+        <span class="sp-sub-value">${text}</span>
+        <span></span>
+      </div>`;
+    const latText = v => (typeof v === 'number' ? formatLatency(v) : '—');
+    const ledgerRows = visible.map(p => {
+      const errs = p.error_count || 0;
+      const metricSubs = metricNames.map(m => metricSub(m, (p.metric_means || {})[m])).join('');
+      const internalSubs = [
+        internalSub('avg latency', latText(p.avg_latency_ms)),
+        internalSub('median latency', latText(p.median_latency_ms)),
+        internalSub('p95 latency', latText(p.p95_latency_ms)),
+      ].join('');
+      return `<div class="sp-pass-block">
+        <div class="sp-pass-head">
+          <span class="sp-dot ${escapeHtml(p.status || '')}"></span>
+          <span class="sp-label">pass ${p.pass_number}/${passes.samples}</span>
+          <span class="sp-head-meta">${errs > 0 ? `<span class="err">${errs} err</span> · ` : ''}${p.items_scored || 0} items</span>
+        </div>
+        ${metricSubs}${internalSubs}
       </div>`;
     }).join('');
     const queuedLine = queued > 0
@@ -2992,14 +3011,13 @@
       tile(`Pass@${k}`, g.pass_at_k, 'hero'),
       tile(`Pass^${k}`, g.pass_hat_k, 'hero-warn'),
       tile(`Avg@${k}`, g.avg_at_k),
-      tile(`Max@${k}`, g.max_at_k),
-      tile('Consist.', g.consistency),
-      tile('Reliab.', g.reliability),
+      tile('Consistency', g.consistency),
+      tile('Reliability', g.reliability),
     ].join('');
 
     return `<div class="samples-panel">
         <div class="samples-passes">
-          <div class="samples-zone-title">Passes <span class="mono-note">· ${escapeHtml(primaryMetric || '')}</span></div>
+          <div class="samples-zone-title">Passes</div>
           ${ledgerRows}${queuedLine}
         </div>
         <div class="samples-verdict">

@@ -4701,9 +4701,8 @@
           statCard('Pass@' + g.k, g.pass_at_k, 'any pass passes', 'hero'),
           statCard('Pass^' + g.k, g.pass_hat_k, 'every pass passes', 'hero-warn'),
           statCard('Avg@' + g.k, g.avg_at_k, 'mean per attempt'),
-          statCard('Max@' + g.k, g.max_at_k, 'best pass per item'),
-          statCard('Consist.', g.consistency, 'passes agree'),
-          statCard('Reliab.', g.reliability, 'solvable items'),
+          statCard('Consistency', g.consistency, 'passes agree'),
+          statCard('Reliability', g.reliability, 'solvable items'),
         ].join('');
 
         // Accuracy-vs-k curve: pass@k (capability) vs pass^k (reliability),
