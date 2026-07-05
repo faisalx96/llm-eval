@@ -999,6 +999,41 @@ def legacy_list_runs(
             "count": float(row.score_count or 0),
         }
 
+    # --- Batch query: per-pass score spread for repeat runs (samples > 1) ---
+    # Normal-approximation 95% CI half-width over all per-pass scores; the
+    # ±CI in the metric cell is the visual marker of a multi-sample run.
+    sampled_run_ids = [r.id for r in runs if int(getattr(r, "samples", 1) or 1) > 1]
+    ci_map: Dict[str, Dict[str, float]] = {}
+    if sampled_run_ids:
+        from qym_platform.db.models import RunItemPassScore
+
+        spread_rows = (
+            db.query(
+                RunItemPassScore.run_id,
+                RunItemPassScore.metric_name,
+                func.avg(RunItemPassScore.score_numeric).label("mean"),
+                func.count(RunItemPassScore.score_numeric).label("n"),
+                (
+                    func.avg(
+                        RunItemPassScore.score_numeric * RunItemPassScore.score_numeric
+                    )
+                ).label("mean_sq"),
+            )
+            .filter(
+                RunItemPassScore.run_id.in_(sampled_run_ids),
+                RunItemPassScore.score_numeric.isnot(None),
+            )
+            .group_by(RunItemPassScore.run_id, RunItemPassScore.metric_name)
+            .all()
+        )
+        for row in spread_rows:
+            n = int(row.n or 0)
+            if n < 2 or row.mean is None or row.mean_sq is None:
+                continue
+            variance = max(0.0, float(row.mean_sq) - float(row.mean) ** 2)
+            half_width = 1.96 * (variance ** 0.5) / (n ** 0.5)
+            ci_map.setdefault(row.run_id, {})[row.metric_name] = half_width
+
     # --- Batch query: approvals ---
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
     approval_map = {a.run_id: a for a in approvals}
@@ -1117,6 +1152,7 @@ def legacy_list_runs(
             "status": r.status,
             "run_config": {},  # Omit full config from list view for payload size
             "samples": int(getattr(r, "samples", 1) or 1),
+            "metric_cis": ci_map.get(r.id) or None,
             "last_completed_pass": (
                 r.run_metadata.get("last_completed_pass")
                 if isinstance(r.run_metadata, dict)
