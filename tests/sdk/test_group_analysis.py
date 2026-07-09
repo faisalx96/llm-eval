@@ -144,3 +144,19 @@ def test_compare_group_runs_uses_strict_eligibility_and_buckets():
     assert comparison["buckets"]["both_pass"]["count"] == 1
     assert comparison["buckets"]["both_fail"]["count"] == 1
     assert "i6" not in {item["item_id"] for item in comparison["items"]}
+
+
+def test_analyze_group_runs_tolerates_non_dict_item_metadata():
+    # Langfuse/JSONL/custom datasets can attach non-dict metadata to items;
+    # group analysis must not die on them (it previously raised in dict()).
+    result = _result("run-1", {"i1": 1.0}, errors={"i2": "boom"})
+    result.metadatas["i1"] = ["tag-a", "tag-b"]
+    result.metadatas["i2"] = "free-form note"
+
+    analysis = analyze_group_runs([result], metric="accuracy", threshold=0.8)
+
+    assert analysis["total_items"] == 2
+    assert analysis["failed_count"] == 1
+    items = {item["item_id"]: item for item in analysis["items"]}
+    assert items["i1"]["metadata"] == {}
+    assert items["i2"]["metadata"] == {}

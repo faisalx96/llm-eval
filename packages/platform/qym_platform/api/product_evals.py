@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlencode
 
@@ -32,6 +33,8 @@ from qym_platform.services.product_evals import (
 )
 from qym_platform.settings import PlatformSettings
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/product-evals", tags=["product-evals"])
 job_manager = ProductEvalJobManager()
@@ -255,6 +258,7 @@ def _group_analysis_from_db_runs(
         from qym.core.group_analysis import analyze_group_runs
         from qym.core.results import EvaluationResult
     except Exception:
+        logger.warning("Product eval group analysis unavailable: qym SDK import failed", exc_info=True)
         return None
 
     results = []
@@ -312,6 +316,11 @@ def _group_analysis_from_db_runs(
             )
         )
     except Exception:
+        logger.warning(
+            "Product eval group analysis from DB runs failed for runs %s",
+            [run.id for run in runs],
+            exc_info=True,
+        )
         return None
 
 

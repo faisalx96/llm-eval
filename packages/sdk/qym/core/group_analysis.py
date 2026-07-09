@@ -388,6 +388,13 @@ class GroupRunAnalysis:
         )
 
 
+def _item_metadata(result: EvaluationResult, item_id: str) -> Dict[str, Any]:
+    # Item metadata comes from arbitrary dataset sources (JSONL, custom
+    # datasets) and is not guaranteed to be a dict.
+    metadata = (result.metadatas or {}).get(item_id)
+    return dict(metadata) if isinstance(metadata, dict) else {}
+
+
 def _rows_for_result(result: EvaluationResult, metric: str) -> _RunRows:
     rows: Dict[str, _ScoreRow] = {}
     metric_names = set(result.metrics or [])
@@ -401,7 +408,7 @@ def _rows_for_result(result: EvaluationResult, metric: str) -> _RunRows:
             is_error=False,
             latency_ms=_latency_ms(item_result),
             attempts=_attempts(item_result),
-            metadata=dict((result.metadatas or {}).get(item_id, {}) or {}),
+            metadata=_item_metadata(result, item_id),
         )
 
     if metric in metric_names:
@@ -414,7 +421,7 @@ def _rows_for_result(result: EvaluationResult, metric: str) -> _RunRows:
                 is_error=True,
                 latency_ms=_error_latency_ms(error_info),
                 attempts=_error_attempts(error_info),
-                metadata=dict((result.metadatas or {}).get(item_id, {}) or {}),
+                metadata=_item_metadata(result, item_id),
             )
 
     return _RunRows(run_name=result.run_name, rows=rows)
