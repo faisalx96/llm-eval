@@ -1074,3 +1074,34 @@ class TestEvaluator:
             <= item_complete.result["item_completed_at_ms"]
         )
         assert item_complete.result["scores"]
+
+
+class TestSyncMetricOffloading:
+    @pytest.mark.asyncio
+    async def test_sync_metric_runs_off_the_event_loop_thread(
+        self, mock_task, mock_dataset
+    ):
+        """Sync metrics must run in the thread pool: calling them inline blocks
+        the event loop and inflates the measured task latency of every other
+        in-flight item."""
+        import threading
+
+        loop_thread = threading.get_ident()
+        metric_thread = {}
+
+        def slow_sync_metric(output, expected):
+            metric_thread["ident"] = threading.get_ident()
+            return 1.0
+
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[slow_sync_metric],
+                config={"run_name": "test-run"},
+            )
+
+        result = await evaluator._compute_metric(slow_sync_metric, "out", "exp")
+
+        assert result == 1.0
+        assert metric_thread["ident"] != loop_thread

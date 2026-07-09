@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import contextvars
 import inspect
 import json as _json
 import os
@@ -1865,7 +1866,15 @@ class Evaluator:
         if inspect.iscoroutinefunction(metric):
             result = await metric(*args, **kwargs)
         else:
-            result = metric(*args, **kwargs)
+            # Run sync metrics in the thread pool, same as sync tasks. Calling
+            # them inline blocks the event loop, which freezes all in-flight
+            # items and inflates their measured task latency by the metric's
+            # runtime.
+            ctx = contextvars.copy_context()
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, lambda: ctx.run(metric, *args, **kwargs)
+            )
         return result
 
     def _get_score_type(self, score: Any) -> str:
