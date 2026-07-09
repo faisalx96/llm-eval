@@ -202,6 +202,43 @@
       50% { opacity: 0.4; transform: scale(0.6); }
     }
 
+    /* Incomplete-ingest warning: shown when the run completed but fewer
+       items reached the platform than the client reported. */
+    .ingest-warning-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 12px 0 2px;
+      padding: 10px 14px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 8px;
+      background: rgba(245, 158, 11, 0.07);
+    }
+    .ingest-warning-icon {
+      flex-shrink: 0;
+      margin-top: 1px;
+      color: var(--warning);
+    }
+    .ingest-warning-title {
+      font-size: var(--font-sm);
+      font-weight: 650;
+      color: var(--warning);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .ingest-warning-body {
+      font-size: var(--font-base);
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .ingest-warning-body .ingest-count {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
     /* Config strip */
     .hero-config {
       display: grid;
@@ -4845,6 +4882,27 @@
           actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="hero-link-btn langfuse">Langfuse &#8599;</a>';
         }
 
+        let ingestWarningHtml = '';
+        const ingestIncomplete = metadata.ingest_incomplete;
+        if (ingestIncomplete && ingestIncomplete.expected_items != null) {
+          const expected = parseInt(ingestIncomplete.expected_items, 10) || 0;
+          const received = parseInt(ingestIncomplete.received_items, 10) || 0;
+          const missing = Math.max(expected - received, 0);
+          ingestWarningHtml =
+            '<div class="ingest-warning-banner">' +
+              '<svg class="ingest-warning-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+              '<div>' +
+                '<div class="ingest-warning-title">Incomplete data</div>' +
+                '<div class="ingest-warning-body">' +
+                  'The evaluation reported <span class="ingest-count">' + expected + '</span> items, but only ' +
+                  '<span class="ingest-count">' + received + '</span> reached the platform ' +
+                  '(<span class="ingest-count">' + missing + '</span> missing). ' +
+                  'The rows and metrics below cover the received items only — check the eval client’s upload warnings for the rest.' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+        }
+
         const samplesCount = parseInt(run.samples, 10) || 1;
         const metaHtml = [
           metaItem('Samples', samplesCount > 1 ? '×' + samplesCount + ' per item' : '', { mono: true, nowrap: true }),
@@ -4876,6 +4934,7 @@
               '<div class="hero-actions">' + actionsHtml + '</div>' +
             '</div>' +
           '</div>' +
+          ingestWarningHtml +
           '<div class="hero-meta-grid">' + metaHtml + '</div>' +
           executionContextHtml +
         '</div>';
@@ -5185,7 +5244,7 @@
           'langfuse_url', 'langfuse_host', 'langfuse_project_id', 'trace_stats',
           'snapshot', 'rows', 'metric_names', 'task_name', 'model',
           'model_name', 'dataset', 'dataset_name', 'total_items',
-          'git_branch', 'git_commit'
+          'git_branch', 'git_commit', 'ingest_incomplete'
         ]);
         const colors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
         const entries = [];

@@ -1494,6 +1494,334 @@ def test_live_trace_stats_switch_to_new_attempt_trace():
         engine.dispose()
 
 
+def test_live_trace_stats_use_cached_aggregates_across_batches():
+    """Traces from earlier batches must not be rebuilt from spans.
+
+    Batch 1 ingests trace-1; its spans are then deleted straight from the DB
+    (a probe: if the second refresh reloaded every span, trace-1's stats would
+    vanish). Batch 2 ingests trace-2 for a second item — trace-1's
+    contribution must survive via its RunTraceAggregate raw bucket, including
+    latency, which the scalar aggregate columns cannot express.
+    """
+    run_id = "00000000-0000-0000-0000-000000000104"
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    app = create_app()
+
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    def _span_event(event_id: str, seq: int, trace_id: str, span_id: str, tokens: int, duration_ms: float) -> str:
+        return (
+            f'{{"schema_version":1,"event_id":"{event_id}",'
+            f'"sequence":{seq},"sent_at":"2026-04-10T00:00:0{seq}Z","type":"span_completed",'
+            f'"run_id":"{run_id}","payload":{{"trace_id":"{trace_id}","span_id":"{span_id}","parent_span_id":null,'
+            f'"name":"openai.chat","kind":"CLIENT","start_time_ns":1,"end_time_ns":2,"duration_ms":{duration_ms},'
+            f'"status":"OK","attributes":{{"openinference.span.kind":"LLM","llm.token_count.total":{tokens}}},'
+            '"events":[],"links":[]}}'
+        )
+
+    def _item_events(event_prefix: str, seq: int, item_id: str, index: int, trace_id: str) -> list[str]:
+        return [
+            (
+                f'{{"schema_version":1,"event_id":"{event_prefix}1",'
+                f'"sequence":{seq},"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
+                f'"run_id":"{run_id}","payload":{{"item_id":"{item_id}","index":{index},"input":{{"prompt":"hi"}},'
+                '"expected":null,"item_metadata":{}}}'
+            ),
+            (
+                f'{{"schema_version":1,"event_id":"{event_prefix}2",'
+                f'"sequence":{seq + 1},"sent_at":"2026-04-10T00:00:00Z","type":"item_attempt_started",'
+                f'"run_id":"{run_id}","payload":{{"item_id":"{item_id}","index":{index},"attempt_number":1,'
+                f'"trace_id":"{trace_id}","trace_url":"https://langfuse.example/{trace_id}","task_started_at_ms":1000}}}}'
+            ),
+        ]
+
+    try:
+        with SessionLocal() as session:
+            _seed_owner_and_run(session, token="cache-token", run_id=run_id)
+
+        batch_1 = (
+            "\n".join(
+                _item_events("00000000-0000-0000-0000-00000000004", 1, "item-1", 0, "trace-1")
+                + [_span_event("00000000-0000-0000-0000-000000000043", 3, "trace-1", "span-1", 120, 90.0)]
+            )
+            + "\n"
+        )
+        batch_2 = (
+            "\n".join(
+                _item_events("00000000-0000-0000-0000-00000000005", 4, "item-2", 1, "trace-2")
+                + [_span_event("00000000-0000-0000-0000-000000000053", 6, "trace-2", "span-2", 30, 30.0)]
+            )
+            + "\n"
+        )
+
+        with TestClient(app) as client:
+            response_1 = client.post(
+                f"/v1/runs/{run_id}/events",
+                headers={
+                    **_auth_headers("cache-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
+                content=batch_1,
+            )
+            assert response_1.status_code == 200
+
+            # Probe: remove trace-1's spans so only the aggregate cache can
+            # keep its stats alive through the next refresh.
+            with SessionLocal() as session:
+                session.query(Span).filter(
+                    Span.run_id == run_id, Span.trace_id == "trace-1"
+                ).delete(synchronize_session=False)
+                session.commit()
+
+            response_2 = client.post(
+                f"/v1/runs/{run_id}/events",
+                headers={
+                    **_auth_headers("cache-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
+                content=batch_2,
+            )
+            assert response_2.status_code == 200
+
+        with SessionLocal() as session:
+            run = session.query(Run).filter(Run.id == run_id).first()
+            item_1 = (
+                session.query(RunItem)
+                .filter(RunItem.run_id == run_id, RunItem.item_id == "item-1")
+                .first()
+            )
+
+            assert run is not None
+            assert item_1 is not None
+            trace_stats = run.run_metadata["trace_stats"]
+            assert trace_stats["avg_tokens"] == 75  # (120 + 30) / 2
+            assert trace_stats["avg_llm_ms"] == 60.0  # (90 + 30) / 2 spans
+            assert item_1.item_metadata["trace_stats"]["tokens"] == 120
+            assert item_1.item_metadata["trace_stats"]["avg_llm_ms"] == 90.0
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def _run_completed_event(run_id: str, event_id: str, seq: int, total_items: int) -> str:
+    return (
+        f'{{"schema_version":1,"event_id":"{event_id}",'
+        f'"sequence":{seq},"sent_at":"2026-04-10T00:01:00Z","type":"run_completed",'
+        f'"run_id":"{run_id}","payload":{{"ended_at":"2026-04-10T00:01:00Z","final_status":"COMPLETED",'
+        f'"summary":{{"total_items":{total_items},"success_count":{total_items},"error_count":0}}}}}}'
+    )
+
+
+def _item_started_event(run_id: str, event_id: str, seq: int, item_id: str, index: int) -> str:
+    return (
+        f'{{"schema_version":1,"event_id":"{event_id}",'
+        f'"sequence":{seq},"sent_at":"2026-04-10T00:00:00Z","type":"item_started",'
+        f'"run_id":"{run_id}","payload":{{"item_id":"{item_id}","index":{index},"input":{{"prompt":"hi"}},'
+        '"expected":null,"item_metadata":{}}}'
+    )
+
+
+def test_run_completed_flags_incomplete_ingest():
+    run_id = "00000000-0000-0000-0000-000000000105"
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    app = create_app()
+
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with SessionLocal() as session:
+            _seed_owner_and_run(session, token="short-token", run_id=run_id)
+
+        body = (
+            "\n".join(
+                [
+                    _item_started_event(run_id, "00000000-0000-0000-0000-000000000061", 1, "item-1", 0),
+                    _item_started_event(run_id, "00000000-0000-0000-0000-000000000062", 2, "item-2", 1),
+                    _run_completed_event(run_id, "00000000-0000-0000-0000-000000000063", 3, 5),
+                ]
+            )
+            + "\n"
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/v1/runs/{run_id}/events",
+                headers={
+                    **_auth_headers("short-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
+                content=body,
+            )
+            assert response.status_code == 200
+
+        with SessionLocal() as session:
+            run = session.query(Run).filter(Run.id == run_id).first()
+            assert run is not None
+            assert run.run_metadata["ingest_incomplete"] == {
+                "expected_items": 5,
+                "received_items": 2,
+            }
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_run_completed_clears_incomplete_flag_when_all_items_arrive():
+    run_id = "00000000-0000-0000-0000-000000000106"
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    app = create_app()
+
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with SessionLocal() as session:
+            _seed_owner_and_run(session, token="full-token", run_id=run_id)
+            run = session.query(Run).filter(Run.id == run_id).first()
+            # Simulate a stale flag from an earlier (retried) completion.
+            run.run_metadata = {
+                "ingest_incomplete": {"expected_items": 2, "received_items": 1}
+            }
+            session.commit()
+
+        body = (
+            "\n".join(
+                [
+                    _item_started_event(run_id, "00000000-0000-0000-0000-000000000071", 1, "item-1", 0),
+                    _item_started_event(run_id, "00000000-0000-0000-0000-000000000072", 2, "item-2", 1),
+                    _run_completed_event(run_id, "00000000-0000-0000-0000-000000000073", 3, 2),
+                ]
+            )
+            + "\n"
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/v1/runs/{run_id}/events",
+                headers={
+                    **_auth_headers("full-token"),
+                    "Content-Type": "application/x-ndjson",
+                },
+                content=body,
+            )
+            assert response.status_code == 200
+
+        with SessionLocal() as session:
+            run = session.query(Run).filter(Run.id == run_id).first()
+            assert run is not None
+            assert "ingest_incomplete" not in run.run_metadata
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
+def test_late_item_events_reconcile_incomplete_flag():
+    """Retried item events landing after run_completed clear a stale flag."""
+    run_id = "00000000-0000-0000-0000-000000000107"
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    app = create_app()
+
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        with SessionLocal() as session:
+            _seed_owner_and_run(session, token="late-token", run_id=run_id)
+
+        batch_1 = (
+            "\n".join(
+                [
+                    _item_started_event(run_id, "00000000-0000-0000-0000-000000000081", 1, "item-1", 0),
+                    _run_completed_event(run_id, "00000000-0000-0000-0000-000000000082", 2, 2),
+                ]
+            )
+            + "\n"
+        )
+        # The missing item's event arrives in a later (retried) batch.
+        batch_2 = (
+            _item_started_event(run_id, "00000000-0000-0000-0000-000000000083", 3, "item-2", 1)
+            + "\n"
+        )
+
+        with TestClient(app) as client:
+            headers = {
+                **_auth_headers("late-token"),
+                "Content-Type": "application/x-ndjson",
+            }
+            assert client.post(f"/v1/runs/{run_id}/events", headers=headers, content=batch_1).status_code == 200
+
+            with SessionLocal() as session:
+                run = session.query(Run).filter(Run.id == run_id).first()
+                assert run.run_metadata["ingest_incomplete"] == {
+                    "expected_items": 2,
+                    "received_items": 1,
+                }
+
+            assert client.post(f"/v1/runs/{run_id}/events", headers=headers, content=batch_2).status_code == 200
+
+        with SessionLocal() as session:
+            run = session.query(Run).filter(Run.id == run_id).first()
+            assert run is not None
+            assert "ingest_incomplete" not in run.run_metadata
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+
 def test_duplicate_span_event_does_not_double_count_live_trace_stats():
     run_id = "00000000-0000-0000-0000-000000000103"
     engine = create_engine(

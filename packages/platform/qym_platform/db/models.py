@@ -546,6 +546,9 @@ class RunTraceAggregate(Base):
     has_reasoning: Mapped[bool] = mapped_column(Boolean, default=False)
     has_reasoning_tokens: Mapped[bool] = mapped_column(Boolean, default=False)
     reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # Full span-derived bucket (incl. latency totals/counts) so live trace
+    # stats can be rebuilt without reloading every span of the run.
+    raw_bucket: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         Index("ix_run_trace_aggregate_run_trace", "run_id", "trace_id"),

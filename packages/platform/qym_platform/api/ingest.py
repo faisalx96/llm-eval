@@ -335,6 +335,13 @@ def _apply_response_classification(
 
 
 def _trace_bucket_from_aggregate(agg: RunTraceAggregate) -> Dict[str, Any]:
+    raw = getattr(agg, "raw_bucket", None)
+    if isinstance(raw, dict) and raw:
+        # Full fidelity: the stored bucket keeps latency totals/counts and
+        # named outer-scope buckets that the scalar columns cannot express.
+        bucket = _empty_trace_bucket()
+        bucket.update(raw)
+        return bucket
     bucket = {
         "span_count": int(agg.span_count or 0),
         "tokens": int(agg.tokens or 0),
@@ -539,18 +546,49 @@ def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]
     return trace_stats
 
 
-def _refresh_live_trace_stats(db: Session, run: Run) -> None:
+def _refresh_live_trace_stats(
+    db: Session, run: Run, touched_trace_ids: Optional[set[str]] = None
+) -> None:
+    """Refresh per-item and run-level trace stats while a run is live.
+
+    When ``touched_trace_ids`` is given, only those traces are rebuilt from
+    their spans (and their aggregates re-cached); every other trace is
+    restored from its RunTraceAggregate raw bucket. Passing ``None`` rebuilds
+    every trace referenced by an item — the pre-batching behavior.
+    """
     db.flush()
     items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
-    trace_ids = sorted({item.trace_id for item in items if item.trace_id})
+    item_trace_ids = {item.trace_id for item in items if item.trace_id}
+    if touched_trace_ids is None:
+        rebuild_ids = sorted(item_trace_ids)
+    else:
+        rebuild_ids = sorted(touched_trace_ids)
+
     trace_buckets: Dict[str, Dict[str, Any]] = {}
-    if trace_ids:
+    if rebuild_ids:
         spans = (
             db.query(Span)
-            .filter(Span.run_id == run.id, Span.trace_id.in_(trace_ids))
+            .filter(Span.run_id == run.id, Span.trace_id.in_(rebuild_ids))
             .all()
         )
         trace_buckets = _build_trace_buckets_from_spans(spans)
+        for trace_id in rebuild_ids:
+            _upsert_trace_aggregate(
+                db, run.id, trace_id, trace_buckets.get(trace_id) or _empty_trace_bucket()
+            )
+
+    cached_ids = sorted(item_trace_ids - set(trace_buckets.keys()))
+    if cached_ids:
+        aggregates = (
+            db.query(RunTraceAggregate)
+            .filter(
+                RunTraceAggregate.run_id == run.id,
+                RunTraceAggregate.trace_id.in_(cached_ids),
+            )
+            .all()
+        )
+        for agg in aggregates:
+            trace_buckets[agg.trace_id] = _trace_bucket_from_aggregate(agg)
 
     item_buckets: list[dict[str, Any]] = []
     for item in items:
@@ -570,29 +608,21 @@ def _refresh_live_trace_stats(db: Session, run: Run) -> None:
 
 
 def _upsert_trace_aggregate(
-    db: Session, run_id: str, payload: SpanCompletedPayload
+    db: Session, run_id: str, trace_id: str, bucket: Dict[str, Any]
 ) -> None:
     agg = (
         db.query(RunTraceAggregate)
         .filter(
             RunTraceAggregate.run_id == run_id,
-            RunTraceAggregate.trace_id == payload.trace_id,
+            RunTraceAggregate.trace_id == trace_id,
         )
         .first()
     )
     if not agg:
-        agg = RunTraceAggregate(run_id=run_id, trace_id=payload.trace_id)
+        agg = RunTraceAggregate(run_id=run_id, trace_id=trace_id)
         db.add(agg)
         db.flush()
 
-    spans = (
-        db.query(Span)
-        .filter(Span.run_id == run_id, Span.trace_id == payload.trace_id)
-        .all()
-    )
-    bucket = _build_trace_buckets_from_spans(spans).get(
-        payload.trace_id, _empty_trace_bucket()
-    )
     agg.span_count = int(bucket["span_count"])
     agg.tokens = int(bucket["tokens"])
     agg.cost = float(bucket["cost"])
@@ -605,6 +635,7 @@ def _upsert_trace_aggregate(
     agg.has_reasoning = bool(bucket["has_reasoning"])
     agg.has_reasoning_tokens = bool(bucket["has_reasoning_tokens"])
     agg.reasoning_tokens = int(bucket["reasoning_tokens"])
+    agg.raw_bucket = _sanitize_for_json(bucket)
 
 
 def _store_trace_stats(db: Session, run: Run) -> None:
@@ -650,6 +681,7 @@ def _store_trace_stats(db: Session, run: Run) -> None:
                 has_reasoning=bool(bucket["has_reasoning"]),
                 has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
                 reasoning_tokens=int(bucket["reasoning_tokens"]),
+                raw_bucket=_sanitize_for_json(bucket),
             )
         )
 
@@ -700,6 +732,14 @@ _PAYLOAD_TYPE = {
     "metadata_update": MetadataUpdatePayload,
     "span_completed": SpanCompletedPayload,
 }
+
+
+def _int_or_none(value: Any) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
 
 
 def _build_item_meta(ts_ms, retry_count=0):
@@ -894,6 +934,11 @@ async def ingest_events(
 
     applied = 0
     skipped = 0
+    # Live trace stats are refreshed once per batch (after the loop), not per
+    # event — per-event refreshes made ingest quadratic in run size and the
+    # resulting slowdown caused client-side event loss on large runs.
+    trace_stats_dirty = False
+    touched_trace_ids: set[str] = set()
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -1033,14 +1078,8 @@ async def ingest_events(
                     md["task_started_at_ms"] = payload.task_started_at_ms
                 if md != (item.item_metadata or {}):
                     item.item_metadata = _sanitize_for_json(md)
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            # Item -> trace mapping changed; refresh stats once after the loop.
+            trace_stats_dirty = True
 
         elif isinstance(payload, ItemAttemptFinishedPayload):
             mark_run_running(run)
@@ -1227,14 +1266,7 @@ async def ingest_events(
                     )
                 )
                 attempt_cache.clear()
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            trace_stats_dirty = True
 
         elif isinstance(payload, PassCompletedPayload):
             mark_run_running(run)
@@ -1337,14 +1369,7 @@ async def ingest_events(
                                 )
                             )
                         )
-            try:
-                _refresh_live_trace_stats(db, run)
-            except Exception:
-                logger.warning(
-                    "Failed to refresh live trace stats for run %s",
-                    run_id,
-                    exc_info=True,
-                )
+            trace_stats_dirty = True
 
         elif isinstance(payload, RunCompletedPayload):
             _FINAL_STATUS = {
@@ -1377,9 +1402,57 @@ async def ingest_events(
             try:
                 db.flush()  # ensure all spans from this batch are visible
                 _store_trace_stats(db, run)
+                # The final span-derived stats are authoritative; drop any
+                # pending live refresh from earlier events in this batch.
+                trace_stats_dirty = False
+                touched_trace_ids.clear()
             except Exception:
                 logger.warning(
                     "Failed to compute trace stats for run %s", run_id, exc_info=True
+                )
+
+            # Safety net: the summary says how many items the run produced.
+            # If fewer item rows made it through the event stream, flag the
+            # run so the UI can say "incomplete data" instead of quietly
+            # presenting a partial run as the whole thing.
+            try:
+                db.flush()
+                expected = None
+                if isinstance(payload.summary, dict):
+                    expected = _int_or_none(payload.summary.get("total_items"))
+                if expected is None and isinstance(run.run_metadata, dict):
+                    expected = _int_or_none(run.run_metadata.get("total_items"))
+                if expected is not None and expected > 0:
+                    received = (
+                        db.query(func.count(RunItem.item_id))
+                        .filter(RunItem.run_id == run_id)
+                        .scalar()
+                        or 0
+                    )
+                    current = (
+                        dict(run.run_metadata)
+                        if isinstance(run.run_metadata, dict)
+                        else {}
+                    )
+                    if received < expected:
+                        current["ingest_incomplete"] = {
+                            "expected_items": expected,
+                            "received_items": int(received),
+                        }
+                        logger.warning(
+                            "Run %s completed with incomplete ingest: %d/%d items",
+                            run_id,
+                            received,
+                            expected,
+                        )
+                    else:
+                        current.pop("ingest_incomplete", None)
+                    run.run_metadata = _sanitize_for_json(current)
+            except Exception:
+                logger.warning(
+                    "Failed to check ingest completeness for run %s",
+                    run_id,
+                    exc_info=True,
                 )
 
         elif isinstance(payload, MetadataUpdatePayload):
@@ -1435,18 +1508,54 @@ async def ingest_events(
                 nested.commit()
             except Exception as e:
                 logger.warning("Span storage failed for run %s: %s", run_id, e)
-            if span_inserted:
-                try:
-                    nested = db.begin_nested()
-                    _upsert_trace_aggregate(db, run_id, payload)
-                    _refresh_live_trace_stats(db, run)
-                    nested.commit()
-                except Exception as e:
-                    logger.warning(
-                        "Live trace aggregation failed for run %s: %s", run_id, e
-                    )
+            if span_inserted and payload.trace_id:
+                touched_trace_ids.add(payload.trace_id)
+                trace_stats_dirty = True
 
         applied += 1
+
+    # Late-arriving item events (e.g. a retried batch landing after
+    # run_completed was already applied) must keep the incomplete-ingest
+    # flag honest — a re-sent run_completed would be deduped by event_id.
+    current_md = run.run_metadata if isinstance(run.run_metadata, dict) else {}
+    stale_flag = current_md.get("ingest_incomplete")
+    if isinstance(stale_flag, dict):
+        expected = _int_or_none(stale_flag.get("expected_items"))
+        if expected is not None and expected > 0:
+            try:
+                db.flush()
+                received = (
+                    db.query(func.count(RunItem.item_id))
+                    .filter(RunItem.run_id == run_id)
+                    .scalar()
+                    or 0
+                )
+                if received != _int_or_none(stale_flag.get("received_items")):
+                    updated = dict(current_md)
+                    if received >= expected:
+                        updated.pop("ingest_incomplete", None)
+                    else:
+                        updated["ingest_incomplete"] = {
+                            "expected_items": expected,
+                            "received_items": int(received),
+                        }
+                    run.run_metadata = _sanitize_for_json(updated)
+            except Exception:
+                logger.warning(
+                    "Failed to update ingest completeness for run %s",
+                    run_id,
+                    exc_info=True,
+                )
+
+    if trace_stats_dirty:
+        # One refresh per batch. Wrapped in a savepoint so a stats failure
+        # (e.g. pending migration) never rolls back the items and scores.
+        try:
+            nested = db.begin_nested()
+            _refresh_live_trace_stats(db, run, touched_trace_ids=touched_trace_ids)
+            nested.commit()
+        except Exception as e:
+            logger.warning("Live trace aggregation failed for run %s: %s", run_id, e)
 
     db.commit()
     return JSONResponse({"ok": True, "applied": applied, "skipped": skipped})
