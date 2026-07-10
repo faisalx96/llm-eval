@@ -28,12 +28,37 @@ For the long-form archive, see [RELEASE_NOTES.md](RELEASE_NOTES.md).
 7. If a line needs a comma, it's two lines (slashes for action sets are fine:
    "Stop / Trash / Restore Runs"). If it needs explaining, it's a docs link,
    not an announcement line.
-8. Append the new block to the top of this file in the same commit as the
-   version bump.
+8. Append the new block to the top of this file. Version numbers here are
+   **announcement groupings, not package versions**: group features by when
+   they landed on main and the area of the repo they touched — one coherent
+   wave of work per block.
 
 ---
 
-## v1.2 — DRAFT (unreleased, on main)
+## v1.3 — DRAFT (unreleased, on main)
+
+```
+qym 1.3: The Repeat
+
+🔁 Run Every Item k Times
+🎯 Pass@k & Pass^k Metrics
+🗺️ Quality–Stability Map
+🧭 Quality–Latency Frontier
+🎚️ Threshold Explorer
+🔮 Score Estimates by Pass Count
+🔥 Item × Pass Heatmap
+🧩 Metric Correlation Charts
+📈 Accuracy vs k Chart
+🪗 Drill into Any Pass or Attempt
+✏️ Edit Scores per Pass
+📊 Score Confidence Intervals
+📡 Reliable Result Uploads
+🔧 UI Polish & Fixes
+```
+
+---
+
+## v1.2 — July 2026
 
 ```
 qym 1.2: The Library
@@ -42,10 +67,10 @@ qym 1.2: The Library
 📊 Run Aggregates per Dataset
 📖 Docs Inside the Dashboard
 🏷️ Dataset Version Names
-🔤 One Font System Everywhere
-♿ Sharper Text Contrast
 🧷 Metrics From Task Metadata
 ✅ Task Output Validation
+🔤 One Font System Everywhere
+♿ Sharper Text Contrast
 🔧 UI Polish & Fixes
 ```
 
