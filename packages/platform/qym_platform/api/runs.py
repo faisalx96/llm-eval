@@ -2202,11 +2202,16 @@ def update_metric(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update a single metric score for a run item."""
+    """Update a single metric score for a run item.
+
+    With ``pass_number`` (repeat runs), the edit targets that pass's score and
+    the run-level score is re-reduced as the mean over passes.
+    """
     file_path = request.get("file_path")
     row_index = request.get("row_index")
     metric_name = request.get("metric_name")
     new_score = request.get("new_score")
+    pass_number = request.get("pass_number")
 
     if not file_path or metric_name is None or row_index is None:
         raise HTTPException(status_code=400, detail="file_path, row_index, and metric_name required")
@@ -2216,6 +2221,15 @@ def update_metric(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_modify_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+
+    run_samples = int(run.samples or 1)
+    if pass_number is not None:
+        try:
+            pass_number = int(pass_number)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="pass_number must be an integer")
+        if run_samples <= 1 or pass_number < 1 or pass_number > run_samples:
+            raise HTTPException(status_code=400, detail="pass_number out of range for this run")
 
     # Find the item by index
     item = (
@@ -2251,17 +2265,60 @@ def update_metric(
     if "original_score" not in meta:
         meta["original_score"] = score_record.score_raw if score_record.score_raw is not None else score_record.score_numeric
     meta["modified"] = "true"
+
+    if pass_number is not None:
+        from qym_platform.db.models import RunItemPassScore
+
+        try:
+            numeric_val = float(new_score)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Pass scores must be numeric")
+
+        pass_record = (
+            db.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == run.id,
+                RunItemPassScore.item_id == item.item_id,
+                RunItemPassScore.metric_name == metric_name,
+                RunItemPassScore.pass_number == pass_number,
+            )
+            .first()
+        )
+        if not pass_record:
+            pass_record = RunItemPassScore(
+                run_id=run.id,
+                item_id=item.item_id,
+                metric_name=metric_name,
+                pass_number=pass_number,
+            )
+            db.add(pass_record)
+        meta.setdefault(f"pass_{pass_number}_original", pass_record.score_numeric)
+        pass_record.score_numeric = numeric_val
+
+        # Re-reduce: run-level score = mean over all stored passes
+        siblings = (
+            db.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == run.id,
+                RunItemPassScore.item_id == item.item_id,
+                RunItemPassScore.metric_name == metric_name,
+            )
+            .all()
+        )
+        numerics = [p.score_numeric for p in siblings if p.score_numeric is not None]
+        reduced = round(sum(numerics) / len(numerics), 6) if numerics else None
+        score_record.score_numeric = reduced
+        score_record.score_raw = reduced
+    else:
+        try:
+            numeric_val = float(new_score)
+            score_record.score_numeric = numeric_val
+            score_record.score_raw = numeric_val
+        except (ValueError, TypeError):
+            score_record.score_numeric = None
+            score_record.score_raw = new_score
+
     score_record.meta = meta
-
-    # Update the score
-    try:
-        numeric_val = float(new_score)
-        score_record.score_numeric = numeric_val
-        score_record.score_raw = numeric_val
-    except (ValueError, TypeError):
-        score_record.score_numeric = None
-        score_record.score_raw = new_score
-
     db.commit()
 
     # Build the updated row response matching the compare API format
@@ -2284,6 +2341,49 @@ def update_metric(
         metric_values.append(val)
         if sc.meta:
             metric_meta[m] = sc.meta
+
+    # Repeat runs: ship pass_scores/pass_attempts so the client row keeps its
+    # per-pass detail (and pass-scoped pages can re-apply their lens).
+    pass_scores: Optional[Dict[str, list]] = None
+    pass_attempts: Optional[list] = None
+    if run_samples > 1:
+        from qym_platform.db.models import RunItemAttempt, RunItemPassScore
+
+        by_metric: Dict[str, Dict[int, Optional[float]]] = {}
+        for ps in (
+            db.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == run.id, RunItemPassScore.item_id == item.item_id)
+            .all()
+        ):
+            by_metric.setdefault(ps.metric_name, {})[int(ps.pass_number)] = ps.score_numeric
+        pass_scores = {
+            m: [by_pass.get(p) for p in range(1, run_samples + 1)]
+            for m, by_pass in by_metric.items()
+        }
+        attempts_by_pass: Dict[int, Dict[str, Any]] = {}
+        for att in (
+            db.query(RunItemAttempt)
+            .filter(
+                RunItemAttempt.run_id == run.id,
+                RunItemAttempt.item_id == item.item_id,
+                RunItemAttempt.is_last_attempt.is_(True),
+            )
+            .all()
+        ):
+            att_error = att.error or ""
+            is_failed = str(att.status or "").lower() == "failed"
+            attempts_by_pass[int(att.pass_number)] = {
+                "pass_number": int(att.pass_number),
+                "status": "error" if is_failed else "completed",
+                "output": (
+                    f"ERROR: {att_error}" if is_failed and att_error else _stringify(att.output)
+                ),
+                "error": att_error,
+                "latency_ms": att.latency_ms,
+                "trace_id": att.trace_id or "",
+                "trace_url": att.trace_url or "",
+            }
+        pass_attempts = [attempts_by_pass.get(p) for p in range(1, run_samples + 1)]
 
     is_error = bool(item.error)
     status = "error" if is_error else "completed"
@@ -2325,6 +2425,8 @@ def update_metric(
         "metric_values": metric_values,
         "metric_meta": metric_meta,
         "item_metadata": item.item_metadata if isinstance(item.item_metadata, dict) else {},
+        "pass_scores": pass_scores,
+        "pass_attempts": pass_attempts,
     }
 
     return {"ok": True, "row": row}

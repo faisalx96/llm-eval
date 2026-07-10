@@ -28,6 +28,7 @@ from qym_platform.api.runs import (
     legacy_list_runs,
     run_group_metrics,
     run_passes,
+    update_metric,
 )
 from qym_platform.auth import Principal
 from qym_platform.db.base import Base
@@ -285,6 +286,79 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert set(gm["band"].keys()) == {1, 2, 3}
         assert gm["band"][1]["pass_at_k"] == pytest.approx(1.0 / 3.0)
         assert gm["band"][3]["pass_at_k"] == pytest.approx(1.0)
+
+
+def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
+    """Editing from a ?pass=N page targets that pass's score; the run-level
+    score becomes the mean over passes again. The response row carries
+    pass_scores/pass_attempts so the client keeps its per-pass detail."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+
+        # pass scores start at [1.0, 0.0, 0.0], reduced mean 1/3
+        result = update_metric(
+            request={
+                "file_path": RUN_ID,
+                "row_index": 0,
+                "metric_name": "accuracy",
+                "new_score": "1.0",
+                "pass_number": 2,
+            },
+            db=session,
+            principal=principal,
+        )
+
+        pass_two = (
+            session.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == RUN_ID,
+                RunItemPassScore.pass_number == 2,
+            )
+            .one()
+        )
+        assert pass_two.score_numeric == pytest.approx(1.0)
+
+        reduced = (
+            session.query(RunItemScore).filter(RunItemScore.run_id == RUN_ID).one()
+        )
+        assert reduced.score_numeric == pytest.approx(2.0 / 3.0)
+        assert reduced.meta["modified"] == "true"
+        assert reduced.meta["original_score"] == pytest.approx(1.0 / 3.0)
+        assert reduced.meta["pass_2_original"] == pytest.approx(0.0)
+
+        row = result["row"]
+        assert row["pass_scores"]["accuracy"] == [1.0, 1.0, 0.0]
+        assert [a and a["status"] for a in row["pass_attempts"]] == [
+            "completed",
+            "completed",
+            None,
+        ]
+        assert row["metric_values"] == [pytest.approx(2.0 / 3.0)]
+
+        # out-of-range pass rejected
+        with pytest.raises(Exception) as exc:
+            update_metric(
+                request={
+                    "file_path": RUN_ID,
+                    "row_index": 0,
+                    "metric_name": "accuracy",
+                    "new_score": "1.0",
+                    "pass_number": 4,
+                },
+                db=session,
+                principal=principal,
+            )
+        assert getattr(exc.value, "status_code", None) == 400
 
 
 def test_runs_list_payload_includes_pass_summaries_for_dot_strip():

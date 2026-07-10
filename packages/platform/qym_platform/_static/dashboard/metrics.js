@@ -589,9 +589,10 @@ function formatPercent(value, decimals = 1) {
 function formatLatency(ms) {
   if (!ms || ms <= 0) return '—';
   if (ms >= 60000) {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = (ms % 60000) / 1000;
-    return `${minutes}m ${seconds.toFixed(0)}s`;
+    const totalSeconds = Math.round(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
   } else if (ms >= 1000) {
     return `${(ms / 1000).toFixed(1)}s`;
   } else {

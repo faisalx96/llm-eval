@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_JS = ROOT / "packages" / "platform" / "qym_platform" / "_static" / "dashboard" / "dashboard.js"
 DASHBOARD_DIR = ROOT / "packages" / "platform" / "qym_platform" / "_static" / "dashboard"
+METRICS_JS = DASHBOARD_DIR / "metrics.js"
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
 
 
@@ -137,58 +138,146 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
 
 def test_run_page_supports_single_pass_scope() -> None:
     """?pass=N scopes the run page to one pass: metric values swap to that
-    pass's scores at load time (so filters/overview/charts follow), a banner
-    says so, score edits are disabled, and the sweep table marks the pass."""
+    pass's scores at load time (so filters/overview/charts follow), the
+    headline pill names the pass and links back to all passes, the cross-pass group
+    section is hidden, and score edits target that pass (the run-level score
+    is re-reduced server-side)."""
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
 
     assert "const VIEW_PASS = (() => {" in source
     assert "new URLSearchParams(window.location.search).get('pass')" in source
     assert "scores[state.viewPass - 1]" in source
-    assert 'class="pass-scope-banner"' in source
-    assert "View all passes" in source
-    assert "body.pass-scoped .metric-edit-open { display: none; }" in source
-    assert "state.viewPass === p.pass_number ? ' class=\"sw-current\"'" in source
-    assert ".samples-sweep tr.sw-current td" in source
+    # no banner — the headline pill carries the pass label and the way back
+    assert "pass-scope-banner" not in source
+    assert "Return to all passes." in source
+    # pass pages read as a single run: no group tiles/sweep/curve, no
+    # Repeat Stability chart panels, no per-pass dot strips on item cards
+    assert "if (samplesCount <= 1 || IS_EXPORT || state.viewPass)" in source
+    assert source.count("const repeatSeries = state.viewPass ? [] :") == 2
+    assert "(!state.viewPass && row.pass_scores && metric)" in source
+    # edits are allowed and routed to the viewed pass
+    assert "updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass)" in source
+    assert "...(passNumber ? { pass_number: passNumber } : {})," in source
+    # applying the server row keeps per-pass fields and re-applies the lens
+    assert "let next = { ...rows[pos], ...updatedRow };" in source
+    assert "next.pass_attempts[state.viewPass - 1]" in source
+    assert 'class="hero-samples-pill"' in source
+    assert "samplesCount > 1 && !state.viewPass" in source
+    assert 'class="hero-pass-pill"' in source
+    # text-only pills — no decorative dot
+    assert "hero-pass-dot" not in source
+    assert '<div class="hero-eyebrow">Run Detail</div>' in source
+    assert "passEyebrowHtml" not in source
+    assert "<strong>x' + samplesCount + '</strong> PASSES" in source
+    assert "metaItem('Samples'" not in source
+    assert "'samples',\n          'max_metric_concurrency'" in source
 
     # pass scope swaps outputs/latency/traces too, from per-pass attempts
     assert "row.pass_attempts[state.viewPass - 1]" in source
 
-    # every item card offers an attempt switcher (Summary or any pass);
+    # the compact output-header switcher offers Summary or any pass;
     # lensed cards hide score edits (edits apply to the reduced score)
-    assert 'class="attempt-switch"' in source
+    assert 'class="attempt-switch"' not in source
     assert 'data-pass="' in source
     assert "state.itemPassLens" in source
+    assert 'class="pass-dot pass-dot-switch' in source
+    assert "pass-dot-summary" in source
+    assert "View all-pass summary" in source
+    assert ">All</button>" in source
+    assert "output from latest available pass" in source
+    assert "const outputLabel = shownOutputPass ? 'OUTPUT · PASS '" in source
+    assert "+ passNumber + '</button>'" in source
+    assert 'aria-pressed="' in source
+    assert "querySelectorAll('.pass-dot-switch')" in source
+    assert ".pass-dot-switch.active" in source
+    assert "var(--warning) 45%" in source
+    assert "0 0 9px color-mix(in srgb, var(--warning) 55%" in source
     assert ".item-card.pass-lensed .metric-edit-open { display: none; }" in source
 
-    # the API ships per-pass attempts on run-detail rows
+    # the API ships per-pass attempts on run-detail rows, and update_metric
+    # accepts a pass_number and re-reduces the run-level mean
     api = RUNS_API.read_text(encoding="utf-8")
     assert '"pass_attempts": (' in api
     assert "RunItemAttempt.is_last_attempt.is_(True)" in api
+    assert 'pass_number = request.get("pass_number")' in api
+    assert "Re-reduce: run-level score = mean over all stored passes" in api
 
 
 def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    repeat_analysis = source.split("async function renderSamplesAnalysis()", 1)[1].split("function wireTopActions", 1)[0]
 
     assert 'class="model-stat-box"' in source
-    assert 'class="distribution-bar samples-dist-bar"' in source
+    assert 'class="samples-correct-chart"' in source
+    assert "if (samplesCount <= 10)" in source
+    assert "Array.from({ length: 11 }" in source
     assert 'class="samples-metric-tabs" role="tablist"' in source
     assert "state.samplesMetric = nextMetric;" in source
+    assert 'class="threshold-control samples-repeat-threshold"' in source
+    assert "justify-content: flex-start;" in _rule(source, ".samples-metric-row {")
+    assert ".samples-repeat-threshold {" not in source
+    assert 'data-samples-threshold min="0" max="100" step="5"' in source
+    assert "!isBooleanMetric && metricType !== 'numeric'" in source
+    assert "'&threshold=' + encodeURIComponent(requestedThreshold)" in source
+    assert "state.metricThresholds[groupMetric] = value / 100;" in source
+    assert 'class="samples-metric-threshold"' not in source
     assert "window.QymMetrics.getMetricColorClass(v, mTypeOf(m))" in source
-    assert "mType === 'numeric' ? ''" in source
     assert "statTile('Max@' + samplesCount" not in source
     assert "statTile('Avg Score'" in source
+
+    # sweep rows deep-link to that pass's page (cmd/ctrl-click opens a tab)
+    assert "'<tr data-sw-pass=\"' + p.pass_number + '\"" in source
+    assert "window.location.pathname + '?pass=' + tr.dataset.swPass" in source
+    assert ".samples-sweep tbody tr[data-sw-pass] { cursor: pointer; }" in source
+
+    # the curve draws at the measured box size (no fixed-viewBox letterboxing)
+    assert "function curveChartHtml(W = 620, H = 230)" in source
+    assert "function fitCurveChart()" in source
+    assert "requestAnimationFrame(fitCurveChart)" in source
+    assert "flex: 1 1 auto;" in _rule(source, ".samples-curve {")
     assert "statTile('Errors'" in source
     assert "statTile('Avg Latency'" in source
-    assert source.index("statTile('Errors'") < source.index("statTile('Avg Latency'")
+    assert source.index("statTile('Avg Latency'") < source.index("statTile('Errors'")
     assert "escapeHtml(groupMetricLabel) + ' vs k</div>'" in source
+    assert "Probability that at least one or all selected attempts pass." in repeat_analysis
+    assert "Items by exact correct-pass count." in repeat_analysis
+    assert 'fill="var(--success-dim)"' not in repeat_analysis
+    shared_box_rule = _rule(source, ".metric-card,")
+    assert ".samples-chart-block," in shared_box_rule
+    assert "background: var(--bg-surface);" in shared_box_rule
+    assert "border: 1px solid var(--border-default);" in shared_box_rule
+    assert "border-radius: 10px;" in shared_box_rule
     assert "⚡ Avg Latency" in source
     assert "⚡ Median Latency" in source
-    assert "P95 Latency" in source
+    assert "P95 Latency" not in repeat_analysis
+    assert "p.p95_latency_ms" not in repeat_analysis
+    assert "sw-meter" not in repeat_analysis
+    assert "<span>Pass ' + p.pass_number + '</span>" in repeat_analysis
     assert ">Errors</th>" in source
     assert ">Avg lat</th>" not in source
     assert ">Err</th>" not in source
-    assert ".samples-dist-col" not in source
-    assert "height: 180px;" in source
+    assert ".samples-correct-col" in source
+    assert "height: 230px;" in _rule(source, ".samples-curve {")
+    assert "height: 230px;" in _rule(source, ".samples-correct-chart {")
+    assert "border-bottom:" not in _rule(source, ".samples-correct-chart {")
+    assert "const paddedSpan = Math.max(0.2, observedSpan * 1.4);" in repeat_analysis
+    assert "const yTicks = Array.from({ length: 5 }" in repeat_analysis
+    assert "with y-axis from" in repeat_analysis
+    assert "samples-curve-value" in repeat_analysis
+    assert "ri-point-value" in source
+    assert "formatPercent(value, 0)" in source
+    assert "labelOffset: 14" in source
+    paired_chart_rule = _rule(source, ".samples-charts-row > .samples-chart-block {")
+    assert "align-self: stretch;" in paired_chart_rule
+    assert "height: 100%;" in paired_chart_rule
+
+
+def test_shared_latency_formatter_normalizes_minute_rollover() -> None:
+    source = METRICS_JS.read_text(encoding="utf-8")
+
+    assert "const totalSeconds = Math.round(ms / 1000);" in source
+    assert "const seconds = totalSeconds % 60;" in source
+    assert "return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;" in source
 
 
 def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
@@ -201,12 +290,44 @@ def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     assert "Metric Relationship" in active
     assert "Quality and Latency" in active
     assert "Quality–Latency Frontier" in active
+    assert "Fast + strong zone" in active
+    assert "Slow + weak zone" in active
+    assert "Dot size = retries" in active
+    assert "ri-frontier-line p95" in active
+    assert "p95 latency" in active
+    assert "Latency median" in active
+    assert "medianQuality" in active
+    assert "ri-frontier-outlier" in active
+    assert "outlierItems" in active
+    assert "const p95X = plotRight - outlierBandWidth;" in active
+    assert "Dashed = medians · dotted = p95 latency" not in active
+    assert 'r="3.5" fill="var(--chart-1)"' in active
+    assert "const radius = 3.5 + Math.min(2" in active
+    assert 'stroke-width="1.5"' in active
     assert "Repeat Stability" in active
     assert "Quality–Stability Map" in active
     assert "Threshold Explorer" in active
     assert "Score Estimate by Pass Count" in active
     assert "ri-x-axis" in active
     assert "ri-y-axis" in active
+    assert "repeatAnalysisMetric" in source
+    assert "repeatStabilityHiddenMetrics" in source
+    assert "data-ri-repeat-metric" in active
+    assert "data-ri-stability-metric" in active
+    assert "ri-legend-toggle" in active
+    assert "if (visibleCount <= 1) return;" in source
+    assert "const thresholdMetric = repeatMetric;" in active
+    assert "state.repeatAnalysisMetric = select.value;" in source
+    assert "rotateMatrixLabels" in active
+    assert "const rotateMatrixLabels = series.length > 4;" in active
+    assert "truncateMatrixLabel" in active
+    assert "const top = series.length <= 4 ? 42 : 58;" in active
+    assert 'text-anchor="middle" class="ri-label"' in active
+    shared_box_rule = _rule(source, ".metric-card,")
+    assert ".samples-group-tiles .model-stat-box," in shared_box_rule
+    assert ".ri-panel," in shared_box_rule
+    assert ".breakdown-card" in shared_box_rule
+    assert "background: var(--bg-surface);" in _rule(source, ".ri-axis-select {")
     assert "Item Performance Matrix" not in active
     assert "Observed Performance by Pass" not in active
     assert "intelligenceCharts +" in source
@@ -218,6 +339,9 @@ def test_run_item_detail_offers_virtualized_repeat_heatmap() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
 
     assert "itemDetailView: 'cards'" in source
+    assert "itemsViewToggle.hidden = samplesTotal <= 1" in source
+    assert "if (samplesTotal <= 1) state.itemDetailView = 'cards';" in source
+    assert ".items-view-toggle[hidden] { display: none; }" in source
     assert 'data-items-view="cards"' in source
     assert 'data-items-view="heatmap"' in source
     assert "function renderItemsHeatmap(container, items, metric, metricIndex)" in source
@@ -235,7 +359,11 @@ def test_run_category_breakdown_keeps_cards_and_adds_repeat_aware_compare_view()
     assert "if (!state.viewPass" in source
     assert 'data-category-view="cards"' in source
     assert 'data-category-view="compare"' in source
-    assert 'class="breakdown-pass-summary"' in source
+    assert 'class="category-breakdown-context"' not in source
+    assert 'id="category-breakdown-sort"' not in source
+    assert 'class="score-col-performance"' in source
+    assert "performanceLabel = sameDisplay ? 'Avg · pass rate' : 'Avg / pass rate';" in source
+    assert 'class="breakdown-pass-summary"' not in source
     assert 'class="category-pass-track' in source
     assert 'class="category-compare-row"' in source
     assert "Run pass rate &middot;" in source

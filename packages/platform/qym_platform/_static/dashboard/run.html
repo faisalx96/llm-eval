@@ -311,7 +311,7 @@
     }
     .hero-headline {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: var(--space-sm);
       flex-wrap: wrap;
     }
@@ -324,6 +324,32 @@
       line-height: 1.25;
       letter-spacing: -0.2px;
       min-width: 0;
+    }
+    .hero-pass-pill,
+    .hero-samples-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      flex: 0 0 auto;
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--accent-primary);
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      color: var(--accent-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .hero-pass-pill:hover { background: var(--bg-hover); }
+    .hero-samples-pill strong {
+      color: inherit;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      text-transform: none;
     }
     .hero-right {
       display: flex;
@@ -1066,9 +1092,6 @@
       to   { opacity: 1; transform: translateY(0); }
     }
     .metric-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 10px;
       padding: var(--space-lg);
       display: flex;
       flex-direction: column;
@@ -1372,88 +1395,9 @@
       line-height: 1;
     }
 
-    /* ?pass=N scope: banner in the hero card; score edits are disabled
-       because edits apply to the reduced score, not the viewed pass. */
-    .pass-scope-banner {
-      display: flex;
-      align-items: baseline;
-      gap: var(--space-sm);
-      flex-wrap: wrap;
-      margin-top: var(--space-md);
-      padding: var(--space-sm) var(--space-md);
-      background: rgba(0, 212, 170, 0.06);
-      border: 1px solid rgba(0, 212, 170, 0.25);
-      border-left: 3px solid var(--accent-primary);
-      border-radius: 6px;
-      color: var(--text-secondary);
-      font-size: var(--font-md);
-    }
-    .pass-scope-banner strong {
-      color: var(--accent-primary);
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .pass-scope-banner a {
-      margin-left: auto;
-      color: var(--accent-secondary);
-      text-decoration: none;
-      white-space: nowrap;
-    }
-    .pass-scope-banner a:hover { text-decoration: underline; }
-    body.pass-scoped .metric-edit-open { display: none; }
-    .samples-sweep tr.sw-current td { background: var(--bg-active); }
-
-    /* Per-card attempt switcher: Summary or any individual pass. Edits are
-       hidden while a card is lensed — they apply to the reduced score. */
+    /* Score edits apply to the reduced score, so hide them while a card is
+       showing one pass through the compact output-header switcher. */
     .item-card.pass-lensed .metric-edit-open { display: none; }
-    .attempt-switch {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-wrap: wrap;
-      margin-top: var(--space-sm);
-    }
-    .attempt-switch-label {
-      margin-right: var(--space-xs);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      font-weight: 650;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .attempt-chip {
-      min-width: 22px;
-      padding: 1px 7px;
-      border: 1px solid var(--border-default);
-      border-radius: 999px;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
-      font-weight: 650;
-      line-height: 1.5;
-      cursor: pointer;
-    }
-    .attempt-chip:hover {
-      color: var(--text-primary);
-      border-color: var(--border-strong);
-      background: var(--bg-hover);
-    }
-    .attempt-chip:focus-visible {
-      outline: 2px solid var(--accent-primary);
-      outline-offset: 2px;
-    }
-    .attempt-chip.active {
-      color: var(--accent-primary);
-      border-color: var(--accent-primary);
-      background: rgba(0, 212, 170, 0.1);
-    }
-    .attempt-chip.err { color: var(--error); border-color: rgba(239, 68, 68, 0.45); }
-    .attempt-chip.err.active {
-      color: var(--error);
-      border-color: var(--error);
-      background: rgba(239, 68, 68, 0.1);
-    }
 
     .threshold-control {
       display: flex;
@@ -1586,29 +1530,6 @@
       justify-content: flex-end;
       gap: var(--space-sm);
       flex-wrap: wrap;
-    }
-    .category-breakdown-context {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      white-space: nowrap;
-    }
-    .category-breakdown-context strong {
-      color: var(--text-secondary);
-      font-family: var(--font-mono);
-      font-weight: 600;
-    }
-    .category-breakdown-sort {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-xs);
-    }
-    .category-breakdown-sort label {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .category-breakdown-sort .filter-select {
-      min-width: 112px;
-      max-width: 132px;
     }
     .category-breakdown-view-toggle {
       flex-shrink: 0;
@@ -1780,13 +1701,10 @@
     .breakdown-domain .breakdown-header { color: #60a5fa; }
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header { color: var(--text-primary); }
-    .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
     .breakdown-errors.task-error-group .breakdown-icon,
     .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
     .breakdown-errors.trace-error-group .breakdown-icon,
     .breakdown-errors.trace-error-group .breakdown-header { color: var(--warning); }
-    .breakdown-errors.task-error-group .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
-    .breakdown-errors.trace-error-group .breakdown-card { border-left: 3px solid rgba(245, 158, 11, 0.42); }
     .breakdown-errors.task-error-group .breakdown-card:hover {
       border-color: var(--border-default);
       border-left-color: rgba(239, 68, 68, 0.35);
@@ -1993,13 +1911,10 @@
       gap: var(--space-sm);
     }
     .breakdown-card {
-      background: var(--bg-elevated);
-      border-radius: 6px;
       padding: 10px 12px;
       display: flex;
       flex-direction: column;
       gap: 2px;
-      border: 1px solid var(--border-subtle);
       transition: border-color 0.15s;
       flex: 0 1 auto;
       width: fit-content;
@@ -2008,19 +1923,12 @@
       min-height: 0;
     }
     .breakdown-card:hover { border-color: var(--border-default); }
-    .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(251, 191, 36, 0.3); }
-    .breakdown-complexity .breakdown-card.complexity-easy { border-left-color: rgba(34, 197, 94, 0.5); }
     .breakdown-complexity .breakdown-card.complexity-easy .breakdown-card-label { color: #4ade80; }
-    .breakdown-complexity .breakdown-card.complexity-medium { border-left-color: rgba(234, 179, 8, 0.5); }
     .breakdown-complexity .breakdown-card.complexity-medium .breakdown-card-label { color: #facc15; }
-    .breakdown-complexity .breakdown-card.complexity-hard { border-left-color: rgba(239, 68, 68, 0.5); }
     .breakdown-complexity .breakdown-card.complexity-hard .breakdown-card-label { color: #f87171; }
-    .breakdown-complexity .breakdown-card.complexity-expert { border-left-color: rgba(168, 85, 247, 0.5); }
     .breakdown-complexity .breakdown-card.complexity-expert .breakdown-card-label { color: #c084fc; }
-    .breakdown-domain .breakdown-card { border-left: 3px solid rgba(96, 165, 250, 0.3); }
     .breakdown-custom .breakdown-icon,
     .breakdown-custom .breakdown-header { color: #a78bfa; }
-    .breakdown-custom .breakdown-card { border-left: 3px solid rgba(167, 139, 250, 0.3); }
     .breakdown-card-top {
       display: flex;
       align-items: baseline;
@@ -2072,25 +1980,24 @@
     .breakdown-card-scores .score-col-value.score-3 { color: var(--score-3); }
     .breakdown-card-scores .score-col-value.score-2 { color: var(--score-2); }
     .breakdown-card-scores .score-col-value.score-1 { color: var(--score-1); }
-    .breakdown-pass-summary {
+    .score-col-performance {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-sm);
-      margin-top: var(--space-sm);
-      padding-top: var(--space-sm);
-      border-top: 1px solid var(--border-subtle);
+      align-items: baseline;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+    }
+    .score-col-performance-separator {
       color: var(--text-muted);
       font-size: var(--font-sm);
     }
-    .breakdown-pass-summary strong {
-      color: var(--text-secondary);
+    .score-col-performance-delta {
       font-family: var(--font-mono);
+      font-size: var(--font-sm);
       font-weight: 600;
       white-space: nowrap;
     }
-    .breakdown-pass-summary .positive { color: var(--success); }
-    .breakdown-pass-summary .negative { color: var(--error); }
+    .score-col-performance-delta.positive { color: var(--success); }
+    .score-col-performance-delta.negative { color: var(--error); }
     .category-pass-track {
       position: relative;
       height: 7px;
@@ -3852,7 +3759,7 @@
     .samples-metric-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: var(--space-lg);
       margin-bottom: var(--space-md);
       flex-wrap: wrap;
@@ -3886,21 +3793,6 @@
       background: var(--bg-surface);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
-    .samples-metric-threshold {
-      display: flex;
-      align-items: baseline;
-      gap: var(--space-sm);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 600;
-    }
-    .samples-metric-threshold strong {
-      color: var(--accent-primary);
-      font-family: var(--font-mono);
-      font-weight: 700;
-    }
     /* Chart/Table view toggle (accent-active segmented buttons) */
     .samples-curve-controls {
       display: flex;
@@ -3913,6 +3805,7 @@
       border-radius: 6px;
       overflow: hidden;
     }
+    .items-view-toggle[hidden] { display: none; }
     .samples-view-btn {
       appearance: none;
       border: none;
@@ -3935,6 +3828,7 @@
     .samples-sweep-wrap {
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
+      background: var(--bg-surface);
       overflow-x: auto;
       margin-bottom: var(--space-lg);
     }
@@ -3958,10 +3852,14 @@
     .samples-sweep tbody td {
       padding: 8px 14px;
       border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
       white-space: nowrap;
       vertical-align: middle;
     }
     .samples-sweep tbody tr:hover td { background: var(--bg-hover); }
+    .samples-sweep tbody tr[data-sw-pass] { cursor: pointer; }
+    .samples-sweep tbody tr[data-sw-pass]:hover .sw-pass span:last-child { color: var(--accent-primary); }
     .sw-pass {
       font-family: var(--font-mono);
       font-size: var(--font-sm);
@@ -3980,23 +3878,12 @@
       font-size: var(--font-md);
       display: block;
     }
-    .sw-val.score-5, .sw-meter.score-5 { color: var(--score-5); }
-    .sw-val.score-4, .sw-meter.score-4 { color: var(--score-4); }
-    .sw-val.score-3, .sw-meter.score-3 { color: var(--score-3); }
-    .sw-val.score-2, .sw-meter.score-2 { color: var(--score-2); }
-    .sw-val.score-1, .sw-meter.score-1 { color: var(--score-1); }
+    .sw-val.score-5 { color: var(--score-5); }
+    .sw-val.score-4 { color: var(--score-4); }
+    .sw-val.score-3 { color: var(--score-3); }
+    .sw-val.score-2 { color: var(--score-2); }
+    .sw-val.score-1 { color: var(--score-1); }
     .sw-val.empty { color: var(--text-muted); font-weight: 400; }
-    .sw-meter {
-      display: block;
-      height: 3px;
-      border-radius: 2px;
-      background: var(--bg-active);
-      overflow: hidden;
-      margin-top: 3px;
-      margin-left: auto;
-      width: 72px;
-    }
-    .sw-meter i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
     .sw-dim {
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
@@ -4021,31 +3908,54 @@
       display: grid;
       grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
       gap: var(--space-lg);
-      align-items: start;
+      align-items: stretch;
       margin-bottom: var(--space-lg);
     }
     .samples-charts-row .samples-sweep-wrap { margin-bottom: 0; }
-    .samples-chart-block { padding: 0; }
-    .samples-chart-body { padding: 0 var(--space-lg) var(--space-md); }
+    .samples-charts-row > .samples-chart-block {
+      align-self: stretch;
+      height: 100%;
+    }
+    .samples-chart-block {
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .samples-chart-body {
+      padding: 0 var(--space-md) var(--space-md);
+      background: inherit;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
     .samples-curve-head {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: var(--space-md);
       min-height: 30px;
-      padding: var(--space-md) var(--space-lg) 0;
-      margin-bottom: var(--space-sm);
+      padding: var(--space-md);
+      margin-bottom: 0;
+    }
+    .samples-chart-heading {
+      min-width: 0;
     }
     .samples-zone-title {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: var(--font-sm);
-      font-weight: 650;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
       white-space: nowrap;
+    }
+    .samples-zone-copy {
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.45;
     }
     .samples-legend { display: flex; gap: var(--space-md); }
     .samples-legend-chip {
@@ -4064,7 +3974,8 @@
     }
     .samples-curve {
       width: 100%;
-      height: 180px;
+      flex: 1 1 auto;
+      min-height: 230px;
       display: block;
     }
     .samples-curve-axis {
@@ -4072,48 +3983,65 @@
       font-family: var(--font-mono);
       fill: var(--text-muted);
     }
-    /* Correct distribution reuses the horizontal bar from Models/Compare;
-       the labeled breakdown keeps small and zero-count buckets readable. */
-    .samples-dist-bar { margin: var(--space-md) 0; }
-    .samples-dist-bar .dist-label,
-    .samples-dist-bar .dist-count { font-size: var(--font-sm); }
-    .samples-dist-breakdown {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: var(--space-sm);
-    }
-    .samples-dist-item {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      align-items: center;
-      column-gap: var(--space-sm);
-      row-gap: var(--space-xs);
-      padding: var(--space-sm);
-      border: 1px solid var(--border-subtle);
-      border-radius: 6px;
-      background: var(--bg-elevated);
-    }
-    .samples-dist-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 2px;
-      grid-row: 1 / span 2;
-    }
-    .samples-dist-dot.dist-zero { background: var(--error); }
-    .samples-dist-dot.dist-partial { background: var(--warning); }
-    .samples-dist-dot.dist-all { background: var(--success); }
-    .samples-dist-label {
-      color: var(--text-secondary);
+    .samples-curve-value,
+    .ri-point-value {
       font-size: var(--font-sm);
-      font-weight: 600;
+      font-family: var(--font-mono);
+      font-weight: 650;
+      paint-order: stroke;
+      stroke: var(--bg-surface);
+      stroke-width: 3px;
+      stroke-linejoin: round;
     }
-    .samples-dist-value {
-      color: var(--text-muted);
+    /* Correct distribution: vertical histogram; runs above 10 passes are
+       grouped into percentage bands so the chart stays readable as k grows. */
+    .samples-correct-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: var(--space-sm);
+      height: 230px;
+      margin-top: var(--space-md);
+      padding: 0 var(--space-sm) 30px;
+    }
+    .samples-correct-col {
+      position: relative;
+      display: flex;
+      flex: 1;
+      align-items: flex-end;
+      justify-content: center;
+      height: 100%;
+      min-width: 24px;
+    }
+    .samples-correct-bar {
+      position: relative;
+      width: min(42px, 82%);
+      height: var(--samples-correct-height);
+      min-height: 3px;
+      border-radius: 4px 4px 0 0;
+      background: var(--warning);
+    }
+    .samples-correct-bar.zero { background: var(--error); }
+    .samples-correct-bar.all { background: var(--success); }
+    .samples-correct-count {
+      position: absolute;
+      bottom: calc(100% + var(--space-xs));
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--text-secondary);
       font-family: var(--font-mono);
       font-size: var(--font-sm);
       font-variant-numeric: tabular-nums;
     }
-    .samples-dist-item.empty { opacity: 0.55; }
+    .samples-correct-label {
+      position: absolute;
+      top: calc(100% + var(--space-sm));
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      white-space: nowrap;
+    }
     @media (max-width: 900px) {
       .samples-charts-row { grid-template-columns: 1fr; }
     }
@@ -4171,11 +4099,29 @@
       grid-column: span 4;
       min-width: 0;
       padding: var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      background: var(--bg-surface);
       overflow: hidden;
     }
+    /* One shared box recipe for overview metrics and newer analysis surfaces. */
+    .metric-card,
+    .samples-group-tiles .model-stat-box,
+    .samples-chart-block,
+    .ri-panel,
+    .breakdown-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+    }
+    /* Category color remains an accent; the box itself keeps the shared border. */
+    .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
+    .breakdown-errors.task-error-group .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
+    .breakdown-errors.trace-error-group .breakdown-card { border-left: 3px solid rgba(245, 158, 11, 0.42); }
+    .breakdown-complexity .breakdown-card { border-left: 3px solid rgba(251, 191, 36, 0.3); }
+    .breakdown-complexity .breakdown-card.complexity-easy { border-left-color: rgba(34, 197, 94, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-medium { border-left-color: rgba(234, 179, 8, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-hard { border-left-color: rgba(239, 68, 68, 0.5); }
+    .breakdown-complexity .breakdown-card.complexity-expert { border-left-color: rgba(168, 85, 247, 0.5); }
+    .breakdown-domain .breakdown-card { border-left: 3px solid rgba(96, 165, 250, 0.3); }
+    .breakdown-custom .breakdown-card { border-left: 3px solid rgba(167, 139, 250, 0.3); }
     .ri-panel.wide { grid-column: 1 / -1; }
     .ri-panel.half { grid-column: span 6; }
     .ri-panel.matrix { grid-column: span 8; }
@@ -4227,6 +4173,12 @@
     .ri-axis-select {
       min-width: 108px;
       max-width: 150px;
+      background: var(--bg-surface);
+    }
+    .ri-repeat-metric-control { margin-left: auto; }
+    .ri-repeat-metric-select {
+      min-width: 140px;
+      background: var(--bg-surface);
     }
     .ri-chart-scroll { overflow-x: auto; }
     .ri-chart {
@@ -4276,12 +4228,76 @@
       font-family: var(--font-mono);
       font-size: var(--font-sm);
     }
+    .ri-legend-toggle {
+      appearance: none;
+      padding: var(--space-xs) var(--space-sm);
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .ri-legend-toggle:hover { background: var(--bg-hover); }
+    .ri-legend-toggle:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+    }
+    .ri-legend-toggle.off { opacity: 0.35; }
     .ri-legend-swatch {
       width: 16px;
       height: 3px;
       border-radius: 2px;
       background: var(--ri-color);
     }
+    .ri-frontier-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      margin: var(--space-sm) 0 var(--space-xs);
+    }
+    .ri-frontier-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .ri-frontier-zone {
+      width: 16px;
+      height: 10px;
+      border: 1px solid var(--border-default);
+      border-radius: 2px;
+    }
+    .ri-frontier-zone.good { background: var(--success-dim); border-color: var(--success); }
+    .ri-frontier-zone.weak { background: var(--error-dim); border-color: var(--error); }
+    .ri-frontier-outlier {
+      width: 16px;
+      height: 10px;
+      border: 1px solid var(--border-default);
+      border-radius: 2px;
+      background: var(--bg-elevated);
+    }
+    .ri-frontier-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      height: 12px;
+    }
+    .ri-frontier-dot {
+      display: block;
+      border-radius: 50%;
+      background: var(--chart-1);
+    }
+    .ri-frontier-dot.one { width: 5px; height: 5px; }
+    .ri-frontier-dot.two { width: 7px; height: 7px; }
+    .ri-frontier-dot.three { width: 9px; height: 9px; }
+    .ri-frontier-line {
+      width: 22px;
+      height: 0;
+      border-top: 2px dashed var(--border-strong);
+    }
+    .ri-frontier-line.p95 { border-top-style: dotted; }
     .ri-note-row {
       display: flex;
       justify-content: space-between;
@@ -4290,12 +4306,6 @@
       margin-top: var(--space-sm);
       color: var(--text-muted);
       font-size: var(--font-sm);
-    }
-    .ri-zone-label {
-      fill: var(--text-secondary);
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-weight: 600;
     }
     @media (max-width: 1350px) {
       .ri-panel { grid-column: span 6; }
@@ -4323,14 +4333,47 @@
       margin-left: var(--space-sm);
     }
     .pass-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 2px;
-      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: var(--bg-active);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
     .pass-dot.pass { background: var(--score-5); }
     .pass-dot.fail { background: var(--score-1); opacity: 0.65; }
+    .pass-dot-switch {
+      appearance: none;
+      padding: 0;
+      border: 0;
+      cursor: pointer;
+      transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
+    }
+    .pass-dot-switch:hover { transform: scale(1.06); opacity: 1; }
+    .pass-dot-switch:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+    }
+    .pass-dot-switch.active {
+      outline: none;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 45%, transparent), 0 0 9px color-mix(in srgb, var(--warning) 55%, transparent);
+      opacity: 1;
+      transform: none;
+    }
+    .pass-dot-switch.active:hover { transform: none; }
+    .pass-dot-summary {
+      width: auto;
+      min-width: 28px;
+      padding: 0 var(--space-xs);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -4595,6 +4638,8 @@
         expandedCategoryGroups: new Set(),
         relationshipX: null,
         relationshipY: null,
+        repeatAnalysisMetric: null,
+        repeatStabilityHiddenMetrics: [],
         itemDetailView: 'cards',
         visibleMetadataFields: {},
         visibleMetricMetaFields: {},
@@ -5174,6 +5219,9 @@
         // all downstream consumers follow.
         const samplesTotal = parseInt(run.samples, 10) || 1;
         state.viewPass = (VIEW_PASS && samplesTotal > 1 && VIEW_PASS <= samplesTotal) ? VIEW_PASS : null;
+        const itemsViewToggle = document.querySelector('.items-view-toggle');
+        if (itemsViewToggle) itemsViewToggle.hidden = samplesTotal <= 1;
+        if (samplesTotal <= 1) state.itemDetailView = 'cards';
         if (state.viewPass) {
           const metricNames = state.allMetrics;
           snap.rows = (snap.rows || []).map(row => {
@@ -5199,7 +5247,6 @@
               } : {}),
             };
           });
-          document.body.classList.add('pass-scoped');
         }
         if (state.allMetrics.length > 0 && !state.selectedMetric) {
           state.selectedMetric = state.allMetrics[0];
@@ -5397,8 +5444,10 @@
         }
 
         const samplesCount = parseInt(run.samples, 10) || 1;
+        const samplesPillHtml = samplesCount > 1 && !state.viewPass
+          ? '<div class="hero-samples-pill" title="' + samplesCount + ' passes per item"><strong>x' + samplesCount + '</strong> PASSES</div>'
+          : '';
         const metaHtml = [
-          metaItem('Samples', samplesCount > 1 ? '×' + samplesCount + ' per item' : '', { mono: true, nowrap: true }),
           metaItem('Task', taskName),
           metaItem('Dataset', run.dataset_name || '—', { html: (window.QymShell && run.dataset_name ? QymShell.identiconHTML(run.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
           metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(run.trace_stats)), nowrap: true }),
@@ -5410,24 +5459,18 @@
         ].filter(Boolean).join('');
         const executionContextHtml = buildExecutionContextSectionHtml();
 
-        const hasPassAttempts = (state.snapshot.rows || [])
-          .some(r => Array.isArray(r.pass_attempts) && r.pass_attempts.some(Boolean));
-        const passNoticeHtml = state.viewPass
-          ? '<div class="pass-scope-banner">' +
-              '<strong>Pass ' + state.viewPass + ' of ' + samplesCount + '</strong>' +
-              '<span>' + (hasPassAttempts
-                ? 'Everything on this page — scores, outputs, latency, traces — is from this pass.'
-                : 'Scores on this page are from this pass only. Outputs, latency, and traces show each item’s final attempt.') + '</span>' +
-              '<a href="' + escapeAttr(window.location.pathname) + '">View all passes →</a>' +
-            '</div>'
+        const passPillHtml = state.viewPass
+          ? '<a class="hero-pass-pill" href="' + escapeAttr(window.location.pathname) + '" title="Viewing pass ' + state.viewPass + ' of ' + samplesCount + '. Return to all passes.">Pass ' + state.viewPass + '/' + samplesCount + '</a>'
           : '';
 
         el('run-summary').innerHTML = '<div class="run-summary-card">' +
           '<div class="hero-top">' +
             '<div class="hero-identity">' +
-              '<div class="hero-eyebrow">Run Detail' + (state.viewPass ? ' · Pass ' + state.viewPass + '/' + samplesCount : '') + '</div>' +
+              '<div class="hero-eyebrow">Run Detail</div>' +
               '<div class="hero-headline">' +
                 '<div class="hero-run-name">' + escapeHtml(run.run_name || runId || '—') + '</div>' +
+                passPillHtml +
+                samplesPillHtml +
               '</div>' +
             '</div>' +
             '<div class="hero-right">' +
@@ -5440,7 +5483,6 @@
             '</div>' +
           '</div>' +
           ingestWarningHtml +
-          passNoticeHtml +
           '<div class="hero-meta-grid">' + metaHtml + '</div>' +
           executionContextHtml +
         '</div>';
@@ -5455,14 +5497,23 @@
         if (!container) return;
         const run = state.run || {};
         const samplesCount = parseInt(run.samples, 10) || 1;
-        if (samplesCount <= 1 || IS_EXPORT) { container.innerHTML = ''; return; }
+        // Pass-scoped pages read as a single run: no cross-pass group section.
+        if (samplesCount <= 1 || IS_EXPORT || state.viewPass) { container.innerHTML = ''; return; }
 
         const metricName = state.samplesMetric || state.selectedMetric || state.allMetrics[0] || '';
+        const metricType = state.metricTypes?.[metricName] || 'score';
+        const isBooleanMetric = !!state.metricIsBoolean[metricName];
+        const supportsThreshold = !!metricName && !isBooleanMetric && metricType !== 'numeric';
+        const requestedThreshold = isBooleanMetric
+          ? 0.9999
+          : (state.metricThresholds[metricName] ?? 0.8);
 
         let group, passes;
         try {
           const [groupRes, passesRes] = await Promise.all([
-            fetch(apiUrl('api/runs/' + RUN_ID + '/group-metrics' + (metricName ? '?metric=' + encodeURIComponent(metricName) : ''))),
+            fetch(apiUrl('api/runs/' + RUN_ID + '/group-metrics' + (metricName
+              ? '?metric=' + encodeURIComponent(metricName) + '&threshold=' + encodeURIComponent(requestedThreshold)
+              : ''))),
             fetch(apiUrl('api/runs/' + RUN_ID + '/passes')),
           ]);
           group = await groupRes.json();
@@ -5515,14 +5566,14 @@
             scoreEncoded: groupMetricType !== 'numeric',
             format: v => fmtMetric(v, groupMetric),
           }),
+          statTile('Avg Latency', aggregateAvgLatency, tooltips.avgLatency, {
+            scoreEncoded: false,
+            format: v => formatLatency(v),
+          }),
           statTile('Errors', aggregateErrors, 'Number of item evaluations that returned an error across all passes.', {
             scoreEncoded: false,
             valueClass: aggregateErrors > 0 ? 'failed-count' : '',
             format: v => String(v || 0),
-          }),
-          statTile('Avg Latency', aggregateAvgLatency, tooltips.avgLatency, {
-            scoreEncoded: false,
-            format: v => formatLatency(v),
           }),
         ].join('');
 
@@ -5530,6 +5581,13 @@
           '<button type="button" role="tab" class="samples-metric-tab' + (m === groupMetric ? ' active' : '') + '" ' +
             'data-samples-metric="' + escapeAttr(m) + '" aria-selected="' + (m === groupMetric) + '">' + escapeHtml(m) + '</button>'
         ).join('');
+        const thresholdControlHtml = supportsThreshold
+          ? '<div class="threshold-control samples-repeat-threshold">' +
+              '<span class="threshold-label">Pass if &ge;</span>' +
+              '<input type="range" class="threshold-slider" data-samples-threshold min="0" max="100" step="5" value="' + thresholdPct + '" aria-label="Pass threshold for ' + escapeAttr(groupMetric) + '">' +
+              '<span class="threshold-value" data-samples-threshold-value>' + thresholdPct + '%</span>' +
+            '</div>'
+          : '';
 
         const ratioColorCls = v => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, 'score') : '');
         const metricColorCls = (v, m) => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, mTypeOf(m)) : '');
@@ -5545,25 +5603,21 @@
             const metricCells = metricCols.map(m => {
               const v = (p.metric_means || {})[m];
               if (typeof v !== 'number') return '<td class="sw-num"><span class="sw-val empty">—</span></td>';
-              const mType = mTypeOf(m);
               const cls = metricColorCls(v, m);
-              const pct = Math.round(Math.max(0, Math.min(1, v)) * 100);
-              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmtMetric(v, m) + '</span>' +
-                (mType === 'numeric' ? '' : '<span class="sw-meter ' + cls + '"><i style="width:' + pct + '%"></i></span>') + '</td>';
+              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmtMetric(v, m) + '</span></td>';
             }).join('');
             const errs = p.error_count || 0;
-            return '<tr' + (state.viewPass === p.pass_number ? ' class="sw-current"' : '') + '>' +
-              '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + ' of ' + passes.samples + '</span></td>' +
+            return '<tr data-sw-pass="' + p.pass_number + '" title="View pass ' + p.pass_number + '">' +
+              '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + '</span></td>' +
               metricCells +
               '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
               '<td class="sw-num sw-dim">' + latCell(p.median_latency_ms) + '</td>' +
-              '<td class="sw-num sw-dim">' + latCell(p.p95_latency_ms) + '</td>' +
               '<td class="sw-num ' + (errs > 0 ? 'sw-err' : 'sw-dim') + '">' + errs + '</td>' +
               '<td class="sw-num sw-dim">' + (p.items_scored || 0) + '</td>' +
             '</tr>';
           }).join('');
           const queuedRow = queued > 0
-            ? '<tr><td colspan="' + (6 + metricCols.length) + '" class="sw-queued">' + (queued === 1
+            ? '<tr><td colspan="' + (5 + metricCols.length) + '" class="sw-queued">' + (queued === 1
                 ? 'Pass ' + passes.passes.length + ' of ' + passes.samples + ' queued'
                 : 'Passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + ' of ' + passes.samples + ' queued') + '</td></tr>'
             : '';
@@ -5573,7 +5627,7 @@
                 '<thead><tr>' +
                   '<th>Pass</th>' +
                   metricCols.map(m => '<th class="sw-num-h">' + escapeHtml(m) + '</th>').join('') +
-                  '<th class="sw-num-h">⚡ Avg Latency</th><th class="sw-num-h">⚡ Median Latency</th><th class="sw-num-h">P95 Latency</th><th class="sw-num-h">Errors</th><th class="sw-num-h">Items</th>' +
+                  '<th class="sw-num-h">⚡ Avg Latency</th><th class="sw-num-h">⚡ Median Latency</th><th class="sw-num-h">Errors</th><th class="sw-num-h">Items</th>' +
                 '</tr></thead>' +
                 '<tbody>' + bodyRows + queuedRow + '</tbody>' +
               '</table>' +
@@ -5584,29 +5638,49 @@
         // on demand from the stored passes.
         const band = group.band || {};
         const ks = Object.keys(band).map(Number).sort((a, b) => a - b);
-        function curveChartHtml() {
+        // Drawn at the box's own size (1 SVG unit = 1px): the panel stretches
+        // to match its sibling, so a fixed viewBox would letterbox vertically.
+        // fitCurveChart re-renders after layout with the measured dimensions.
+        function curveChartHtml(W = 620, H = 230) {
           if (ks.length < 2) return '';
-          const W = 620, H = 180, PADL = 44, PADR = 14, PADT = 10, PADB = 26;
-          const x = k => PADL + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADL - PADR);
-          const y = v => (H - PADB) - Math.max(0, Math.min(1, v)) * (H - PADT - PADB);
+          const PADL = 52, PADR = 24, PADT = 14, PADB = 26, DATA_INSET = 12;
+          const curveValues = ks.flatMap(k => [band[k].pass_at_k, band[k].pass_hat_k]).filter(Number.isFinite);
+          const observedMin = curveValues.length ? Math.min(...curveValues) : 0;
+          const observedMax = curveValues.length ? Math.max(...curveValues) : 1;
+          const observedSpan = Math.max(0, observedMax - observedMin);
+          const paddedSpan = Math.max(0.2, observedSpan * 1.4);
+          const center = (observedMin + observedMax) / 2;
+          let yMin = Math.max(0, center - paddedSpan / 2);
+          let yMax = Math.min(1, center + paddedSpan / 2);
+          if (yMin === 0) yMax = Math.min(1, Math.max(yMax, 0.2));
+          if (yMax === 1) yMin = Math.max(0, Math.min(yMin, 0.8));
+          yMin = Math.max(0, Math.floor(yMin * 20) / 20);
+          yMax = Math.min(1, Math.ceil(yMax * 20) / 20);
+          if (yMax <= yMin) yMax = Math.min(1, yMin + 0.2);
+          const x = k => (PADL + DATA_INSET) + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADL - PADR - DATA_INSET * 2);
+          const y = v => {
+            const clamped = Math.max(yMin, Math.min(yMax, v));
+            return (H - PADB) - ((clamped - yMin) / (yMax - yMin)) * (H - PADT - PADB);
+          };
           const pts = key => ks.map(k => x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1));
           const line = key => pts(key).map((p, i) => (i === 0 ? 'M' : 'L') + p).join(' ');
-          const area = 'M' + pts('pass_at_k').join(' L') +
-            ' L' + x(ks[ks.length - 1]).toFixed(1) + ' ' + (H - PADB) +
-            ' L' + x(ks[0]).toFixed(1) + ' ' + (H - PADB) + ' Z';
-          const dots = (key, color) => ks.map(k =>
-            '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(band[k][key]).toFixed(1) + '" r="4.5" fill="var(--bg-surface)" stroke="' + color + '" stroke-width="2"></circle>'
-          ).join('');
+          const dots = (key, color, labelOffset) => ks.map(k => {
+            const value = band[k][key];
+            const markerY = y(value);
+            const labelY = Math.max(PADT + 9, Math.min(H - PADB - 5, markerY + labelOffset));
+            return '<circle cx="' + x(k).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + color + '" stroke-width="2"><title>' + Math.round(value * 100) + '%</title></circle>' +
+              '<text x="' + x(k).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="samples-curve-value" fill="' + color + '">' + Math.round(value * 100) + '%</text>';
+          }).join('');
           const gridline = (v, label) =>
-            '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (W - PADR) + '" y2="' + y(v) + '" stroke="var(--border-subtle)"' + (v !== 0 ? ' stroke-dasharray="3 5"' : '') + '/>' +
+            '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (W - PADR) + '" y2="' + y(v) + '" stroke="var(--border-subtle)"' + (v !== yMin ? ' stroke-dasharray="3 5"' : '') + '/>' +
             '<text x="' + (PADL - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="samples-curve-axis">' + label + '</text>';
-          return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="' + escapeAttr(groupMetricLabel) + ' versus k">' +
-              [[1.0, '100%'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%'], [0.0, '0%']].map(p => gridline(p[0], p[1])).join('') +
-              '<path d="' + area + '" fill="var(--success-dim)"/>' +
+          const yTicks = Array.from({ length: 5 }, (_, index) => yMin + (yMax - yMin) * index / 4);
+          return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="' + escapeAttr(groupMetricLabel) + ' versus k with y-axis from ' + Math.round(yMin * 100) + '% to ' + Math.round(yMax * 100) + '%">' +
+              yTicks.slice().reverse().map(value => gridline(value, Math.round(value * 100) + '%')).join('') +
               '<g stroke="var(--warning)" fill="none" stroke-width="1.8" stroke-dasharray="5 4" stroke-linecap="round"><path d="' + line('pass_hat_k') + '"/></g>' +
               '<g stroke="var(--accent-primary)" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="' + line('pass_at_k') + '"/></g>' +
-              dots('pass_hat_k', 'var(--warning)') +
-              dots('pass_at_k', 'var(--accent-primary)') +
+              dots('pass_hat_k', 'var(--warning)', 17) +
+              dots('pass_at_k', 'var(--accent-primary)', -12) +
               ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
             '</svg>';
         }
@@ -5634,7 +5708,10 @@
               '</div>'
             : '';
           return '<div class="samples-curve-head">' +
-              '<div class="samples-zone-title">' + escapeHtml(groupMetricLabel) + ' vs k</div>' +
+              '<div class="samples-chart-heading">' +
+                '<div class="samples-zone-title">' + escapeHtml(groupMetricLabel) + ' vs k</div>' +
+                '<div class="samples-zone-copy">Probability that at least one or all selected attempts pass.</div>' +
+              '</div>' +
               '<div class="samples-curve-controls">' + legend +
                 '<div class="samples-view-toggle">' +
                   '<button type="button" class="samples-view-btn' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
@@ -5651,32 +5728,34 @@
         // Models/Compare, with an explicit breakdown for small/empty buckets.
         const dist = Array.isArray(group.distribution) ? group.distribution : null;
         function distChartHtml() {
-          const total = dist.reduce((a, b) => a + b, 0) || 1;
-          const segments = dist.map((count, n) => {
-            if (count === 0) return '';
-            const cls = n === 0 ? 'dist-zero' : (n === dist.length - 1 ? 'dist-all' : 'dist-partial');
-            const pct = Math.round((count / total) * 100);
-            return '<div class="dist-segment ' + cls + '" style="flex:' + count + '" title="' + n + ' of ' + samplesCount + ' passes correct: ' + count + ' items (' + pct + '%)">' +
-              '<span class="dist-label">' + n + '/' + samplesCount + '</span>' +
-              '<span class="dist-count">' + count + '</span>' +
-            '</div>';
-          }).join('');
-          const breakdown = dist.map((count, n) => {
-            const cls = n === 0 ? 'dist-zero' : (n === dist.length - 1 ? 'dist-all' : 'dist-partial');
-            const pct = Math.round((count / total) * 100);
-            return '<div class="samples-dist-item' + (count === 0 ? ' empty' : '') + '">' +
-              '<span class="samples-dist-dot ' + cls + '"></span>' +
-              '<span class="samples-dist-label">' + n + ' of ' + samplesCount + ' correct</span>' +
-              '<span class="samples-dist-value">' + count + ' ' + (count === 1 ? 'item' : 'items') + ' · ' + pct + '%</span>' +
-            '</div>';
-          }).join('');
-          return '<div class="distribution-bar samples-dist-bar" aria-label="Distribution of items by correct passes">' + segments + '</div>' +
-            '<div class="samples-dist-breakdown">' + breakdown + '</div>';
+          let buckets;
+          if (samplesCount <= 10) {
+            buckets = dist.map((count, correct) => ({ count, correct, label: correct + '/' + samplesCount }));
+          } else {
+            const grouped = Array.from({ length: 11 }, (_, index) => ({ count: 0, correct: index, label: index === 10 ? '100%' : (index * 10) + '\u2013' + (index * 10 + 9) + '%' }));
+            dist.forEach((count, correct) => {
+              const band = correct === samplesCount ? 10 : Math.min(9, Math.floor((correct / samplesCount) * 10));
+              grouped[band].count += count;
+            });
+            buckets = grouped;
+          }
+          const maximum = Math.max(1, ...buckets.map(bucket => bucket.count));
+          return '<div class="samples-correct-chart" role="img" aria-label="Distribution of items by correct passes">' + buckets.map((bucket, index) => {
+            const edgeClass = index === 0 ? ' zero' : (index === buckets.length - 1 ? ' all' : '');
+            const height = Math.max(bucket.count ? 3 : 0, Math.round((bucket.count / maximum) * 100));
+            const title = samplesCount <= 10
+              ? bucket.correct + ' of ' + samplesCount + ' passes correct: ' + bucket.count + ' items'
+              : bucket.label + ' correct passes: ' + bucket.count + ' items';
+            return '<div class="samples-correct-col"><div class="samples-correct-bar' + edgeClass + '" style="--samples-correct-height:' + height + '%" title="' + escapeAttr(title) + '"><span class="samples-correct-count">' + bucket.count + '</span><span class="samples-correct-label">' + bucket.label + '</span></div></div>';
+          }).join('') + '</div>';
         }
         const distBlockHtml = (dist && dist.length > 1)
           ? '<div class="samples-chart-block samples-sweep-wrap">' +
               '<div class="samples-curve-head">' +
-                '<div class="samples-zone-title">Correct Distribution ' + infoIcon('How many of the ' + samplesCount + ' passes got each item correct (score ' + (isBool ? '= 100%' : '&ge;' + thresholdPct + '%') + '). Items at 0 never passed, items at ' + samplesCount + ' always passed — columns in between are flaky items. Same distribution as the Compare and Models views.') + '</div>' +
+                '<div class="samples-chart-heading">' +
+                  '<div class="samples-zone-title">Correct Distribution</div>' +
+                  '<div class="samples-zone-copy">Items by exact correct-pass count. Runs above 10 passes are grouped into percentage bins.</div>' +
+                '</div>' +
               '</div>' +
               '<div class="samples-chart-body">' + distChartHtml() + '</div>' +
             '</div>'
@@ -5689,7 +5768,7 @@
           '</div>' +
           '<div class="samples-metric-row">' +
             '<div class="samples-metric-tabs" role="tablist" aria-label="Repeat run aggregate metric">' + metricTabsHtml + '</div>' +
-            '<div class="samples-metric-threshold"><span>Pass threshold</span><strong>&ge;' + thresholdPct + '%</strong></div>' +
+            thresholdControlHtml +
           '</div>' +
           '<div class="samples-group-tiles">' + tilesHtml + '</div>' +
           sweepHtml +
@@ -5699,6 +5778,13 @@
           '</div>';
 
         const blockEl = el('samples-curve-block');
+        container.querySelectorAll('tr[data-sw-pass]').forEach(tr => {
+          tr.addEventListener('click', event => {
+            const url = window.location.pathname + '?pass=' + tr.dataset.swPass;
+            if (event.metaKey || event.ctrlKey) window.open(url, '_blank');
+            else window.location.href = url;
+          });
+        });
         container.querySelectorAll('.samples-metric-tab').forEach(btn => {
           btn.addEventListener('click', () => {
             const nextMetric = btn.dataset.samplesMetric;
@@ -5707,16 +5793,58 @@
             renderSamplesAnalysis();
           });
         });
+        const samplesThreshold = container.querySelector('[data-samples-threshold]');
+        const samplesThresholdValue = container.querySelector('[data-samples-threshold-value]');
+        if (samplesThreshold) {
+          samplesThreshold.addEventListener('input', event => {
+            if (samplesThresholdValue) samplesThresholdValue.textContent = event.target.value + '%';
+          });
+          samplesThreshold.addEventListener('change', event => {
+            const value = parseFloat(event.target.value);
+            if (isNaN(value) || value < 0 || value > 100) return;
+            state.metricThresholds[groupMetric] = value / 100;
+            if (state.selectedMetric === groupMetric) {
+              updateThresholdControl();
+              state.page = 1;
+              renderItems();
+            }
+            renderSamplesAnalysis();
+          });
+        }
+        function fitCurveChart() {
+          const svg = blockEl && blockEl.querySelector('.samples-curve');
+          if (!svg) return;
+          const w = Math.round(svg.clientWidth);
+          const h = Math.round(svg.clientHeight);
+          if (!w || !h) return;
+          const box = (svg.getAttribute('viewBox') || '').split(' ');
+          if (Math.abs((+box[2] || 0) - w) < 2 && Math.abs((+box[3] || 0) - h) < 2) return;
+          svg.outerHTML = curveChartHtml(w, h);
+        }
         function wireCurveToggle() {
           blockEl.querySelectorAll('.samples-view-btn').forEach(btn => {
             btn.addEventListener('click', () => {
               state.samplesCurveView = btn.dataset.view;
               blockEl.innerHTML = curveBlock();
               wireCurveToggle();
+              requestAnimationFrame(fitCurveChart);
             });
           });
         }
-        if (blockEl) wireCurveToggle();
+        if (blockEl) {
+          wireCurveToggle();
+          requestAnimationFrame(fitCurveChart);
+          state._samplesCurveRefit = fitCurveChart;
+          if (!state._samplesCurveResizeWired) {
+            state._samplesCurveResizeWired = true;
+            window.addEventListener('resize', () => {
+              clearTimeout(state._samplesCurveResizeTimer);
+              state._samplesCurveResizeTimer = setTimeout(() => {
+                if (state._samplesCurveRefit) state._samplesCurveRefit();
+              }, 150);
+            });
+          }
+        }
       }
 
       function wireTopActions() {
@@ -5744,6 +5872,7 @@
         const hiddenConfigKeys = new Set([
           'run_name', 'task_name', 'task', 'git_branch', 'git_commit',
           'model', 'model_name', 'dataset', 'dataset_name',
+          'samples',
           'max_metric_concurrency', 'MAX_METRIC_CONCURRENCY'
         ]);
         const hiddenMetadataKeys = new Set([
@@ -5807,6 +5936,8 @@
               renderOverview();
               state.page = 1;
               renderItems();
+              const samplesMetric = state.samplesMetric || state.selectedMetric || state.allMetrics[0] || '';
+              if (samplesMetric === state.selectedMetric) renderSamplesAnalysis();
             }
           });
         }
@@ -6107,7 +6238,9 @@
           }
         }
 
-        const repeatSeries = series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => point.row.pass_scores && Array.isArray(point.row.pass_scores[metric.name]) && point.row.pass_scores[metric.name].length > 1));
+        // Cross-pass panels have no place on a ?pass=N page (rows keep their
+        // pass_scores there, so gate on the view, not the data).
+        const repeatSeries = state.viewPass ? [] : series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => point.row.pass_scores && Array.isArray(point.row.pass_scores[metric.name]) && point.row.pass_scores[metric.name].length > 1));
 
         // Quality-latency frontier: one item per point using normalized composite quality.
         {
@@ -6164,8 +6297,8 @@
           let passTrendPanel = '';
           const maxPass = Math.max(...repeatSeries.flatMap(metric => metric.points.map(point => (point.row.pass_scores[metric.name] || []).length)));
           if (maxPass > 1) {
-            const W = 1000, H = 350, L = 46, R = 16, T = 16, B = 36;
-            const x = pass => riScale(pass, 1, maxPass, L, W - R);
+            const W = 1000, H = 350, L = 46, R = 16, T = 16, B = 36, DATA_INSET = 12;
+            const x = pass => riScale(pass, 1, maxPass, L + DATA_INSET, W - R - DATA_INSET);
             const y = value => riScale(value, 0, 1, H - B, T);
             let svg = '';
             [0, 0.25, 0.5, 0.75, 1].forEach(value => {
@@ -6265,14 +6398,27 @@
 
         const relationshipPanels = [];
         if (series.length > 1) {
-          const W = 620, H = 250, left = 112, top = 58, right = 18, bottom = 18;
+          const W = 620, H = 250, right = 18, bottom = 18;
+          const longestMetricName = Math.max(...series.map(metric => metric.name.length));
+          const left = Math.min(180, Math.max(112, 28 + longestMetricName * 6.4));
+          const top = series.length <= 4 ? 42 : 58;
           const cellW = (W - left - right) / series.length;
           const cellH = (H - top - bottom) / series.length;
+          const rotateMatrixLabels = series.length > 4;
+          const truncateMatrixLabel = (name, availableWidth) => {
+            const maxChars = Math.max(8, Math.floor(availableWidth / 6.4));
+            return name.length > maxChars ? name.slice(0, Math.max(1, maxChars - 1)) + '…' : name;
+          };
           let matrix = '';
           series.forEach((metric, index) => {
             const x = left + index * cellW + cellW / 2;
-            matrix += '<text x="' + x.toFixed(1) + '" y="' + (top - 12) + '" text-anchor="end" transform="rotate(-38 ' + x.toFixed(1) + ' ' + (top - 12) + ')" class="ri-label">' + escapeHtml(metric.name) + '</text>' +
-              '<text x="' + (left - 10) + '" y="' + (top + index * cellH + cellH / 2 + 4).toFixed(1) + '" text-anchor="end" class="ri-label">' + escapeHtml(metric.name) + '</text>';
+            const columnText = rotateMatrixLabels ? metric.name : truncateMatrixLabel(metric.name, cellW - 8);
+            const rowText = truncateMatrixLabel(metric.name, left - 18);
+            const columnLabel = rotateMatrixLabels
+              ? '<text x="' + x.toFixed(1) + '" y="' + (top - 12) + '" text-anchor="end" transform="rotate(-38 ' + x.toFixed(1) + ' ' + (top - 12) + ')" class="ri-label">' + escapeHtml(metric.name) + '</text>'
+              : '<text x="' + x.toFixed(1) + '" y="' + (top - 12) + '" text-anchor="middle" class="ri-label"><title>' + escapeHtml(metric.name) + '</title>' + escapeHtml(columnText) + '</text>';
+            matrix += columnLabel +
+              '<text x="' + (left - 10) + '" y="' + (top + index * cellH + cellH / 2 + 4).toFixed(1) + '" text-anchor="end" class="ri-label"><title>' + escapeHtml(metric.name) + '</title>' + escapeHtml(rowText) + '</text>';
           });
           series.forEach((rowMetric, rowIndex) => {
             const rowMap = new Map(rowMetric.points.map(point => [point.rowIndex, point.value]));
@@ -6312,7 +6458,7 @@
               '<text x="' + (SL - 9) + '" y="' + (sy(yValue) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + escapeHtml(riMetricValue(yMetric, yValue)) + '</text>';
           }
           matched.forEach(point => {
-            scatter += '<circle cx="' + sx(point.x).toFixed(1) + '" cy="' + sy(point.y).toFixed(1) + '" r="4.5" fill="var(--chart-1)" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + xMetric.name + ' ' + riMetricValue(xMetric, point.x) + ' · ' + yMetric.name + ' ' + riMetricValue(yMetric, point.y)) + '</title></circle>';
+            scatter += '<circle cx="' + sx(point.x).toFixed(1) + '" cy="' + sy(point.y).toFixed(1) + '" r="3.5" fill="var(--chart-1)" stroke="var(--bg-surface)" stroke-width="1.5"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + xMetric.name + ' ' + riMetricValue(xMetric, point.x) + ' · ' + yMetric.name + ' ' + riMetricValue(yMetric, point.y)) + '</title></circle>';
           });
           scatter += '<text x="' + ((SL + SW - SR) / 2) + '" y="' + (SH - 8) + '" text-anchor="middle" class="ri-label">' + escapeHtml(xMetric.name) + '</text>' +
             '<text x="16" y="' + ((ST + SH - SB) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((ST + SH - SB) / 2) + ')" class="ri-label">' + escapeHtml(yMetric.name) + '</text>';
@@ -6336,37 +6482,85 @@
           const medianLatency = riQuantile(latencies, 0.5);
           const p95Latency = riQuantile(latencies, 0.95);
           const medianQuality = riQuantile(qualities, 0.5);
-          const x = value => riScale(value, latMin, latMax, L, W - R);
+          const plotRight = W - R;
+          const outlierItems = qualityItems.filter(item => item.latency > p95Latency);
+          const hasOutliers = outlierItems.length > 0;
+          const outlierBandWidth = hasOutliers ? Math.min(110, (plotRight - L) * 0.14) : 0;
+          const p95X = plotRight - outlierBandWidth;
+          const mainLatencyMax = Math.max(p95Latency, latMin + 1);
+          const x = value => {
+            if (!hasOutliers || value <= p95Latency) return riScale(value, latMin, mainLatencyMax, L, p95X);
+            return riScale(value, p95Latency, latMax, p95X + 12, plotRight);
+          };
           const y = value => riScale(value, 0, 1, H - B, T);
-          const zoneX = x(p95Latency), zoneY = y(medianQuality);
-          let frontier = '<rect x="' + zoneX.toFixed(1) + '" y="' + zoneY.toFixed(1) + '" width="' + (W - R - zoneX).toFixed(1) + '" height="' + (H - B - zoneY).toFixed(1) + '" fill="var(--error)" opacity="0.10"/>' +
-            '<text x="' + (W - R - 8) + '" y="' + (H - B - 10) + '" text-anchor="end" class="ri-zone-label">slow + weak</text>' +
-            '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>' +
-            '<line x1="' + x(medianLatency).toFixed(1) + '" y1="' + T + '" x2="' + x(medianLatency).toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
-            '<line x1="' + L + '" y1="' + y(medianQuality).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(medianQuality).toFixed(1) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
-            '<line x1="' + x(p95Latency).toFixed(1) + '" y1="' + T + '" x2="' + x(p95Latency).toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="2 3"/>';
+          const medianX = x(medianLatency), zoneY = y(medianQuality);
+          let frontier = (hasOutliers ? '<rect x="' + p95X.toFixed(1) + '" y="' + T + '" width="' + outlierBandWidth.toFixed(1) + '" height="' + (H - B - T) + '" fill="var(--bg-elevated)" opacity="0.55"/>' : '') +
+            '<rect x="' + L + '" y="' + T + '" width="' + (medianX - L).toFixed(1) + '" height="' + (zoneY - T).toFixed(1) + '" fill="var(--success)" opacity="0.10"/>' +
+            '<rect x="' + p95X.toFixed(1) + '" y="' + zoneY.toFixed(1) + '" width="' + (plotRight - p95X).toFixed(1) + '" height="' + (H - B - zoneY).toFixed(1) + '" fill="var(--error)" opacity="0.10"/>' +
+            '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + plotRight + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+            '<line x1="' + medianX.toFixed(1) + '" y1="' + T + '" x2="' + medianX.toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
+            '<line x1="' + L + '" y1="' + y(medianQuality).toFixed(1) + '" x2="' + plotRight + '" y2="' + y(medianQuality).toFixed(1) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
+            '<line x1="' + p95X.toFixed(1) + '" y1="' + T + '" x2="' + p95X.toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="2 3"/>';
+          if (hasOutliers) {
+            frontier += '<text x="' + (p95X + outlierBandWidth / 2).toFixed(1) + '" y="' + (T + 12) + '" text-anchor="middle" class="ri-data-label">&gt;p95</text>';
+          }
           [0, 0.5, 1].forEach(value => {
             frontier += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
           });
-          [latMin, (latMin + latMax) / 2, latMax].forEach(value => {
+          [latMin, medianLatency, p95Latency].forEach(value => {
             frontier += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(formatLatency(value)) + '</text>';
           });
           qualityItems.forEach(item => {
-            const radius = 4 + Math.min(2, Number(item.row.retry_count || 0));
-            frontier += '<circle cx="' + x(item.latency).toFixed(1) + '" cy="' + y(item.quality).toFixed(1) + '" r="' + radius + '" fill="' + riScoreColor(item.quality) + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((item.row.item_id || ('Item ' + (item.rowIndex + 1))) + ' · ' + qualityMetric.name + ' ' + riMetricValue(qualityMetric, item.quality) + ' · latency ' + formatLatency(item.latency)) + '</title></circle>';
+            const radius = 3.5 + Math.min(2, Number(item.row.retry_count || 0));
+            frontier += '<circle cx="' + x(item.latency).toFixed(1) + '" cy="' + y(item.quality).toFixed(1) + '" r="' + radius + '" fill="' + riScoreColor(item.quality) + '" stroke="var(--bg-surface)" stroke-width="1.5"><title>' + escapeHtml((item.row.item_id || ('Item ' + (item.rowIndex + 1))) + ' · ' + qualityMetric.name + ' ' + riMetricValue(qualityMetric, item.quality) + ' · latency ' + formatLatency(item.latency)) + '</title></circle>';
           });
           frontier += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Average latency</text>' +
             '<text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Mean ' + escapeHtml(qualityMetric.name) + '</text>';
-          frontierPanel = '<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item. Point size increases with retries; reference lines show run medians.</div></div></div>' +
+          const frontierLegend = '<div class="ri-frontier-legend" aria-label="Chart legend">' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-zone good"></span>Fast + strong zone</span>' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-zone weak"></span>Slow + weak zone</span>' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-dots"><i class="ri-frontier-dot one"></i><i class="ri-frontier-dot two"></i><i class="ri-frontier-dot three"></i></span>Dot size = retries</span>' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-line"></span>Latency median</span>' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-line"></span>' + escapeHtml(qualityMetric.name) + ' median</span>' +
+            '<span class="ri-frontier-legend-item"><span class="ri-frontier-line p95"></span>p95 latency</span>' +
+            (hasOutliers ? '<span class="ri-frontier-legend-item"><span class="ri-frontier-outlier"></span>&gt;p95 outliers</span>' : '') +
+          '</div>';
+          frontierPanel = '<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item, positioned by quality and response time.</div></div></div>' +
+            frontierLegend +
             '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Quality versus latency by item">' + frontier + '</svg>' +
-            '<div class="ri-note-row"><span>Dot size = retries</span><span>Dashed = medians · dotted = p95 latency</span></div></div>';
+          '</div>';
         }
 
-        const repeatSeries = series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => Array.isArray(point.row.pass_scores?.[metric.name]) && point.row.pass_scores[metric.name].length > 1));
+        // Cross-pass panels have no place on a ?pass=N page (rows keep their
+        // pass_scores there, so gate on the view, not the data).
+        const repeatSeries = state.viewPass ? [] : series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => Array.isArray(point.row.pass_scores?.[metric.name]) && point.row.pass_scores[metric.name].length > 1));
         const repeatPanels = [];
+        let repeatMetricControlHtml = '';
         if (repeatSeries.length) {
+          if (!repeatSeries.some(metric => metric.name === state.repeatAnalysisMetric)) {
+            state.repeatAnalysisMetric = repeatSeries.some(metric => metric.name === state.selectedMetric)
+              ? state.selectedMetric
+              : repeatSeries[0].name;
+          }
+          const repeatMetric = repeatSeries.find(metric => metric.name === state.repeatAnalysisMetric) || repeatSeries[0];
+          const repeatMetricNames = new Set(repeatSeries.map(metric => metric.name));
+          state.repeatStabilityHiddenMetrics = (state.repeatStabilityHiddenMetrics || []).filter(name => repeatMetricNames.has(name));
+          const hiddenStabilityMetrics = new Set(state.repeatStabilityHiddenMetrics);
+          let visibleStabilitySeries = repeatSeries.filter(metric => !hiddenStabilityMetrics.has(metric.name));
+          if (!visibleStabilitySeries.length) {
+            state.repeatStabilityHiddenMetrics = [];
+            hiddenStabilityMetrics.clear();
+            visibleStabilitySeries = repeatSeries;
+          }
+          if (repeatSeries.length > 1) {
+            repeatMetricControlHtml = '<span class="ri-axis-control ri-repeat-metric-control"><label for="ri-repeat-metric">Metric</label>' +
+              '<select class="filter-select ri-repeat-metric-select" id="ri-repeat-metric" data-ri-repeat-metric>' +
+                repeatSeries.map(metric => '<option value="' + escapeAttr(metric.name) + '"' + (metric.name === repeatMetric.name ? ' selected' : '') + '>' + escapeHtml(metric.name) + '</option>').join('') +
+              '</select></span>';
+          }
           const volatility = [];
-          repeatSeries.forEach((metric, metricIndex) => {
+          visibleStabilitySeries.forEach(metric => {
+            const metricIndex = repeatSeries.indexOf(metric);
             metric.points.forEach(point => {
               const values = (point.row.pass_scores?.[metric.name] || []).map(Number).filter(Number.isFinite);
               if (values.length > 1) volatility.push({ metric, metricIndex, row: point.row, rowIndex: point.rowIndex, mean: riMean(values), stddev: riStdDev(values) });
@@ -6381,14 +6575,17 @@
             [0, 0.5, 1].forEach(value => stability += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
             [0, maxStd / 2, maxStd].forEach(value => stability += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
             volatility.forEach(point => {
-              stability += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="4.5" fill="' + chartColors[point.metricIndex % chartColors.length] + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + point.metric.name + ' · mean ' + formatPercent(point.mean) + ' · standard deviation ' + formatPercent(point.stddev)) + '</title></circle>';
+              stability += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="3.5" fill="' + chartColors[point.metricIndex % chartColors.length] + '" stroke="var(--bg-surface)" stroke-width="1.5"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + point.metric.name + ' · mean ' + formatPercent(point.mean) + ' · standard deviation ' + formatPercent(point.stddev)) + '</title></circle>';
             });
             stability += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Mean score</text><text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Pass-to-pass standard deviation</text>';
-            const legend = repeatSeries.map((metric, index) => '<span class="ri-legend-item" style="--ri-color:' + chartColors[index % chartColors.length] + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</span>').join('');
+            const legend = repeatSeries.map((metric, index) => {
+              const isVisible = !hiddenStabilityMetrics.has(metric.name);
+              return '<button type="button" class="ri-legend-item ri-legend-toggle' + (isVisible ? '' : ' off') + '" style="--ri-color:' + chartColors[index % chartColors.length] + '" data-ri-stability-metric="' + escapeAttr(metric.name) + '" aria-pressed="' + isVisible + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</button>';
+            }).join('');
             repeatPanels.push('<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Stability Map</div><div class="ri-panel-copy">Mean score versus pass-to-pass standard deviation, one point per item and metric.</div></div></div><div class="ri-legend">' + legend + '</div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Mean score versus repeat stability">' + stability + '</svg></div>');
           }
 
-          const thresholdMetric = qualityMetric;
+          const thresholdMetric = repeatMetric;
           const valuesByItem = thresholdMetric.points.map(point => (point.row.pass_scores?.[thresholdMetric.name] || [point.value]).map(Number).filter(Number.isFinite)).filter(values => values.length);
           const thresholds = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
           const passRates = thresholds.map(threshold => {
@@ -6400,20 +6597,25 @@
             return passes > 0 && passes < values.length;
           }).length / valuesByItem.length : 0);
           const lineChart = (lines, labels, ariaLabel) => {
-            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38;
-            const x = index => riScale(index, 0, labels.length - 1, L, W - R);
+            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38, DATA_INSET = 12;
+            const x = index => riScale(index, 0, labels.length - 1, L + DATA_INSET, W - R - DATA_INSET);
             const y = value => riScale(value, 0, 1, H - B, T);
             let svg = '';
             [0, 0.25, 0.5, 0.75, 1].forEach(value => svg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
             lines.forEach(line => {
               svg += '<path d="' + line.values.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="' + line.color + '" stroke-width="2.5"' + (line.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
-              line.values.forEach((value, index) => svg += '<circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + line.color + '" stroke-width="2"><title>' + escapeHtml(labels[index] + ': ' + formatPercent(value)) + '</title></circle>');
+              line.values.forEach((value, index) => {
+                const markerY = y(value);
+                const labelY = Math.max(T + 9, Math.min(H - B - 5, markerY + (line.labelOffset || -9)));
+                svg += '<circle cx="' + x(index).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + line.color + '" stroke-width="2"><title>' + escapeHtml(labels[index] + ': ' + formatPercent(value)) + '</title></circle>' +
+                  '<text x="' + x(index).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="ri-point-value" fill="' + line.color + '">' + escapeHtml(formatPercent(value, 0)) + '</text>';
+              });
             });
             labels.forEach((label, index) => svg += '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(label) + '</text>');
             return '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(ariaLabel) + '">' + svg + '</svg>';
           };
-          repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Threshold Explorer</div><div class="ri-panel-copy">Pass rate and partial-pass items at several thresholds.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-1)"><span class="ri-legend-swatch"></span>pass rate</span><span class="ri-legend-item" style="--ri-color:var(--chart-5)"><span class="ri-legend-swatch"></span>partial-pass items</span></div>' +
-            lineChart([{ values: passRates, color: 'var(--chart-1)' }, { values: partialRates, color: 'var(--chart-5)', dash: true }], thresholds.map(value => '\u2265' + Math.round(value * 100) + '%'), 'Pass rate and partial-pass items by threshold') + '</div>');
+          repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Threshold Explorer</div><div class="ri-panel-copy">Pass rate and partial-pass items for ' + escapeHtml(thresholdMetric.name) + ' at several thresholds.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-1)"><span class="ri-legend-swatch"></span>pass rate</span><span class="ri-legend-item" style="--ri-color:var(--chart-5)"><span class="ri-legend-swatch"></span>partial-pass items</span></div>' +
+            lineChart([{ values: passRates, color: 'var(--chart-1)', labelOffset: -9 }, { values: partialRates, color: 'var(--chart-5)', dash: true, labelOffset: 14 }], thresholds.map(value => '\u2265' + Math.round(value * 100) + '%'), thresholdMetric.name + ' pass rate and partial-pass items by threshold') + '</div>');
 
           const maxPass = Math.max(...valuesByItem.map(values => values.length));
           const estimates = [], lowerBounds = [], upperBounds = [];
@@ -6432,8 +6634,8 @@
             upperBounds.push(riQuantile(bootstrap, 0.975));
           }
           {
-            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38;
-            const x = index => riScale(index, 0, Math.max(1, estimates.length - 1), L, W - R);
+            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38, DATA_INSET = 12;
+            const x = index => riScale(index, 0, Math.max(1, estimates.length - 1), L + DATA_INSET, W - R - DATA_INSET);
             const y = value => riScale(value, 0, 1, H - B, T);
             let estimateSvg = '';
             [0, 0.25, 0.5, 0.75, 1].forEach(value => estimateSvg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
@@ -6441,16 +6643,19 @@
             const lower = lowerBounds.map((value, index) => x(index).toFixed(1) + ' ' + y(value).toFixed(1)).reverse();
             estimateSvg += '<path d="M' + upper.join(' L') + ' L' + lower.join(' L') + ' Z" fill="var(--chart-2)" opacity="0.12"/><path d="' + estimates.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="var(--chart-2)" stroke-width="2.5"/>';
             estimates.forEach((value, index) => {
-              estimateSvg += '<line x1="' + x(index).toFixed(1) + '" y1="' + y(lowerBounds[index]).toFixed(1) + '" x2="' + x(index).toFixed(1) + '" y2="' + y(upperBounds[index]).toFixed(1) + '" stroke="var(--border-strong)"/><circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="var(--chart-2)" stroke-width="2"><title>' + (index + 1) + ' passes: ' + escapeHtml(formatPercent(value)) + '</title></circle><text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + (index + 1) + '</text>';
+              const valueLabelY = Math.max(T + 9, y(upperBounds[index]) - 7);
+              estimateSvg += '<line x1="' + x(index).toFixed(1) + '" y1="' + y(lowerBounds[index]).toFixed(1) + '" x2="' + x(index).toFixed(1) + '" y2="' + y(upperBounds[index]).toFixed(1) + '" stroke="var(--border-strong)"/><circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="var(--chart-2)" stroke-width="2"><title>' + (index + 1) + ' passes: ' + escapeHtml(formatPercent(value)) + '</title></circle>' +
+                '<text x="' + x(index).toFixed(1) + '" y="' + valueLabelY.toFixed(1) + '" text-anchor="middle" class="ri-point-value" fill="var(--chart-2)">' + escapeHtml(formatPercent(value, 0)) + '</text>' +
+                '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + (index + 1) + '</text>';
             });
-            repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Score Estimate by Pass Count</div><div class="ri-panel-copy">Cumulative mean and item-level bootstrap interval as passes are added.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-2)"><span class="ri-legend-swatch"></span>cumulative mean</span><span class="ri-legend-item" style="--ri-color:var(--border-strong)"><span class="ri-legend-swatch"></span>95% interval</span></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Score estimate by pass count">' + estimateSvg + '</svg></div>');
+            repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Score Estimate by Pass Count</div><div class="ri-panel-copy">Cumulative ' + escapeHtml(thresholdMetric.name) + ' mean and item-level bootstrap interval as passes are added.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-2)"><span class="ri-legend-swatch"></span>cumulative mean</span><span class="ri-legend-item" style="--ri-color:var(--border-strong)"><span class="ri-legend-swatch"></span>95% interval</span></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(thresholdMetric.name) + ' score estimate by pass count">' + estimateSvg + '</svg></div>');
           }
         }
 
         let html = '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore metric relationships, quality and latency, and repeat stability.</div></div></div>';
         if (relationshipPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-primary)"><div class="ri-subhead"><h4>Metric Relationships</h4><span>Compare how evaluation metrics move together across the same items.</span></div><div class="ri-grid">' + relationshipPanels.join('') + '</div></div>';
         if (frontierPanel) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--warning)"><div class="ri-subhead"><h4>Quality and Latency</h4><span>View item-level quality alongside response time.</span></div><div class="ri-grid">' + frontierPanel + '</div></div>';
-        if (repeatPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-tertiary)"><div class="ri-subhead"><h4>Repeat Stability</h4><span>Compare score levels, variation, thresholds, and pass-count estimates.</span></div><div class="ri-grid">' + repeatPanels.join('') + '</div></div>';
+        if (repeatPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-tertiary)"><div class="ri-subhead"><h4>Repeat Stability</h4><span>Compare score levels, variation, thresholds, and pass-count estimates.</span>' + repeatMetricControlHtml + '</div><div class="ri-grid">' + repeatPanels.join('') + '</div></div>';
         return html + '</div>';
       }
 
@@ -6827,6 +7032,30 @@
               if (next === state.relationshipX) state.relationshipX = previous;
               state.relationshipY = next;
             }
+            renderOverview(getFilteredItems());
+          });
+        });
+
+        grid.querySelectorAll('[data-ri-repeat-metric]').forEach(select => {
+          select.addEventListener('change', () => {
+            state.repeatAnalysisMetric = select.value;
+            renderOverview(getFilteredItems());
+          });
+        });
+
+        grid.querySelectorAll('[data-ri-stability-metric]').forEach(button => {
+          button.addEventListener('click', () => {
+            const controls = Array.from(grid.querySelectorAll('[data-ri-stability-metric]'));
+            const visibleCount = controls.filter(control => control.getAttribute('aria-pressed') === 'true').length;
+            const metric = button.dataset.riStabilityMetric;
+            if (!metric) return;
+            const hidden = new Set(state.repeatStabilityHiddenMetrics || []);
+            if (hidden.has(metric)) hidden.delete(metric);
+            else {
+              if (visibleCount <= 1) return;
+              hidden.add(metric);
+            }
+            state.repeatStabilityHiddenMetrics = Array.from(hidden);
             renderOverview(getFilteredItems());
           });
         });
@@ -7257,15 +7486,6 @@
         }
         html += '</div>';
         html += '<div class="category-breakdown-controls">' +
-          '<span class="category-breakdown-context">Metric <strong>' + escapeHtml(metric) + '</strong>' +
-            (supportsPassRate ? ' &middot; Pass <strong>&ge;' + escapeHtml(formatPercent(threshold)) + '</strong>' : ' &middot; Numeric metric') + '</span>' +
-          '<span class="category-breakdown-sort"><label for="category-breakdown-sort">Sort</label>' +
-            '<select class="filter-select" id="category-breakdown-sort">' +
-              '<option value="default"' + (state.categoryBreakdownSort === 'default' ? ' selected' : '') + '>Default</option>' +
-              '<option value="name"' + (state.categoryBreakdownSort === 'name' ? ' selected' : '') + '>Name</option>' +
-              '<option value="rate"' + (state.categoryBreakdownSort === 'rate' ? ' selected' : '') + (supportsPassRate ? '' : ' disabled') + '>Pass rate</option>' +
-              '<option value="delta"' + (state.categoryBreakdownSort === 'delta' ? ' selected' : '') + (supportsPassRate ? '' : ' disabled') + '>Delta</option>' +
-            '</select></span>' +
           '<span class="samples-view-toggle category-breakdown-view-toggle" role="group" aria-label="Category view">' +
             '<button type="button" class="samples-view-btn category-breakdown-view-btn' + (state.categoryBreakdownView === 'cards' ? ' active' : '') + '" data-category-view="cards" aria-pressed="' + (state.categoryBreakdownView === 'cards') + '">Cards</button>' +
             '<button type="button" class="samples-view-btn category-breakdown-view-btn' + (state.categoryBreakdownView === 'compare' ? ' active' : '') + '" data-category-view="compare" aria-pressed="' + (state.categoryBreakdownView === 'compare') + '">Compare</button>' +
@@ -7336,10 +7556,21 @@
               const colorClassName = window.QymMetrics.getMetricColorClass(group.avgScore, metricType);
               const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
               const deltaClass = categoryDeltaClass(group.passRate, overallPassRate);
+              let performanceLabel = 'Average';
+              let performanceValueHtml = '<span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span>';
+              if (supportsPassRate) {
+                const passDisplay = formatPercent(group.passRate);
+                const sameDisplay = Math.abs(group.passRate - group.avgScore) < 0.0005;
+                const passColorClassName = window.QymMetrics.getMetricColorClass(group.passRate, 'score');
+                performanceLabel = sameDisplay ? 'Avg · pass rate' : 'Avg / pass rate';
+                performanceValueHtml = '<span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span>' +
+                  (sameDisplay ? '' : '<span class="score-col-performance-separator">/</span><span class="score-col-value ' + passColorClassName + '">' + passDisplay + '</span>') +
+                  '<span class="score-col-performance-delta ' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span>';
+              }
               html += '<div class="breakdown-card' + cardValueClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(group.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(group.groupVal) + '">' +
                 '<div class="breakdown-card-label">' + escapeHtml(group.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + group.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latencyDisplay + '</span></div></div>' +
-                (supportsPassRate ? '<div class="breakdown-pass-summary"><span>Pass rate</span><strong>' + formatPercent(group.passRate) + ' &middot; <span class="' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span></strong></div>' + categoryPassTrack(group.passRate, overallPassRate) : '') +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">' + performanceLabel + '</span><span class="score-col-performance">' + performanceValueHtml + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + group.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latencyDisplay + '</span></div></div>' +
+                (supportsPassRate ? categoryPassTrack(group.passRate, overallPassRate) : '') +
               '</div>';
             }
             html += '</div>';
@@ -7355,13 +7586,6 @@
         section.innerHTML = html;
         wireChipClicks(section);
 
-        const sortSelect = section.querySelector('#category-breakdown-sort');
-        if (sortSelect) {
-          sortSelect.addEventListener('change', () => {
-            state.categoryBreakdownSort = sortSelect.value;
-            renderMetadataBreakdown();
-          });
-        }
         section.querySelectorAll('.category-breakdown-view-btn[data-category-view]').forEach(button => {
           button.addEventListener('click', () => {
             state.categoryBreakdownView = button.dataset.categoryView;
@@ -8024,6 +8248,9 @@
           const lensPass = (!state.viewPass && passAttempts)
             ? ((state.itemPassLens || {})[baseRow.item_id || String(baseRow.index)] || null)
             : null;
+          const latestOutputPass = passAttempts
+            ? passAttempts.reduce((latest, attempt, index) => attempt ? index + 1 : latest, null)
+            : null;
           let row = baseRow;
           if (lensPass) {
             const att = passAttempts[lensPass - 1];
@@ -8057,6 +8284,8 @@
           const metricMeta = row.metric_meta || {};
           const itemId = row.item_id || String(row.index);
           const safeId = btoa(itemId).replace(/[+/=]/g, '_');
+          const shownOutputPass = lensPass || latestOutputPass;
+          const outputLabel = shownOutputPass ? 'OUTPUT · PASS ' + shownOutputPass : 'OUTPUT';
 
           // Display item ID
           let displayItemId = itemId;
@@ -8086,7 +8315,7 @@
             const originalRaw = meta.original_score;
             const hasOriginal = !(originalRaw == null || originalRaw === '');
             const modifiedNote = hasOriginal ? '<div class="metric-edit-meta">Original: ' + escapeHtml(String(originalRaw)) + '</div>' : '';
-            return '<div class="metric-edit-block hidden" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '"><div class="metric-edit-title">Edit ' + escapeHtml(name) + '_score</div><div class="metric-edit-controls"><input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" /><button class="metric-edit-save" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '">Save</button><span class="metric-edit-status"></span></div>' + modifiedNote + '</div>';
+            return '<div class="metric-edit-block hidden" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '"><div class="metric-edit-title">Edit ' + escapeHtml(name) + '_score' + (state.viewPass ? ' (pass ' + state.viewPass + ')' : '') + '</div><div class="metric-edit-controls"><input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" /><button class="metric-edit-save" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '">Save</button><span class="metric-edit-status"></span></div>' + modifiedNote + '</div>';
           }).join('');
 
           // Status left cluster
@@ -8119,15 +8348,21 @@
             statusIndicator = '<div class="status-indicator"><div class="status-dot ' + pfClass + '"></div><span class="status-label ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span></div>';
           }
 
-          // Repeat runs: per-pass dot strip for the selected metric.
-          const rowPassScores = (row.pass_scores && metric) ? row.pass_scores[metric] : null;
+          // Repeat runs: per-pass dot strip for the selected metric (not on
+          // pass-scoped pages, which read as a single run).
+          const rowPassScores = (!state.viewPass && row.pass_scores && metric) ? row.pass_scores[metric] : null;
           if (Array.isArray(rowPassScores) && rowPassScores.length > 1) {
             const dotTitle = 'Per-pass scores: ' + rowPassScores.map(v => (v == null ? '—' : v)).join(', ');
-            const dots = rowPassScores.map(v => {
-              if (v == null) return '<span class="pass-dot"></span>';
-              return '<span class="pass-dot ' + (v >= threshold ? 'pass' : 'fail') + '"></span>';
+            const summaryTitle = 'All-pass scores' + (latestOutputPass ? ' · output from latest available pass (Pass ' + latestOutputPass + ')' : '');
+            const summaryDot = '<button type="button" class="pass-dot pass-dot-switch pass-dot-summary' + (!lensPass ? ' active' : '') + '" data-pass="" aria-label="View all-pass summary" aria-pressed="' + (!lensPass) + '" title="' + escapeAttr(summaryTitle) + '">All</button>';
+            const dots = summaryDot + rowPassScores.map((v, index) => {
+              const passNumber = index + 1;
+              const activeClass = lensPass === passNumber ? ' active' : '';
+              const stateClass = v == null ? '' : (v >= threshold ? ' pass' : ' fail');
+              const passTitle = 'View pass ' + passNumber + (v == null ? '' : ' · score ' + v);
+              return '<button type="button" class="pass-dot pass-dot-switch' + stateClass + activeClass + '" data-pass="' + passNumber + '" aria-label="View pass ' + passNumber + '" aria-pressed="' + (lensPass === passNumber) + '" title="' + escapeAttr(passTitle) + '">' + passNumber + '</button>';
             }).join('');
-            statusIndicator += '<span class="pass-dots" title="' + escapeAttr(dotTitle) + '">' + dots + '</span>';
+            statusIndicator += '<span class="pass-dots" data-item-id="' + escapeAttr(itemId) + '" title="' + escapeAttr(dotTitle) + '">' + dots + '</span>';
           }
 
           // Root cause + Solution (side by side for failed items)
@@ -8282,27 +8517,12 @@
             }
           }
 
-          // Attempt switcher: Summary (reduced scores + final output) or any
-          // individual pass. Hidden in ?pass=N scope — the page is one pass.
-          const attemptChips = (!state.viewPass && passAttempts && passAttempts.some(Boolean))
-            ? '<div class="attempt-switch" data-item-id="' + escapeAttr(itemId) + '">' +
-                '<span class="attempt-switch-label">Attempt</span>' +
-                '<button type="button" class="attempt-chip' + (!lensPass ? ' active' : '') + '" data-pass="" title="Reduced scores; final output">Summary</button>' +
-                passAttempts.map((att, i) => {
-                  if (!att) return '';
-                  const n = i + 1;
-                  const isErr = att.status === 'error';
-                  return '<button type="button" class="attempt-chip' + (lensPass === n ? ' active' : '') + (isErr ? ' err' : '') + '" data-pass="' + n + '" title="Pass ' + n + (isErr ? ' — errored' : '') + '">' + n + '</button>';
-                }).join('') +
-              '</div>'
-            : '';
-
           return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
             '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div>' + attemptChips + '<div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 
@@ -8328,13 +8548,13 @@
 
         // Attempt switcher: re-render the grid with the chosen pass lens
         // (renderItems preserves the scroll anchor).
-        container.querySelectorAll('.attempt-chip').forEach(chip => {
-          chip.addEventListener('click', () => {
-            const wrap = chip.closest('.attempt-switch');
+        container.querySelectorAll('.pass-dot-switch').forEach(control => {
+          control.addEventListener('click', () => {
+            const wrap = control.closest('[data-item-id]');
             if (!wrap) return;
             const lensItemId = wrap.dataset.itemId;
             state.itemPassLens = state.itemPassLens || {};
-            const n = parseInt(chip.dataset.pass || '', 10);
+            const n = parseInt(control.dataset.pass || '', 10);
             if (Number.isFinite(n) && n > 0) state.itemPassLens[lensItemId] = n;
             else delete state.itemPassLens[lensItemId];
             renderItems();
@@ -8344,7 +8564,7 @@
 
       // ── Metric edit handlers ──
 
-      async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+      async function updateMetricScore(filePath, rowIndex, metricName, newScore, passNumber) {
         if (IS_EXPORT) {
           const rows = state.snapshot.rows || [];
           const row = rows.find(r => Number(r.index) === rowIndex);
@@ -8361,7 +8581,10 @@
         const res = await fetch(apiUrl('api/runs/update_metric'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_path: filePath, row_index: rowIndex, metric_name: metricName, new_score: newScore }),
+          body: JSON.stringify({
+            file_path: filePath, row_index: rowIndex, metric_name: metricName, new_score: newScore,
+            ...(passNumber ? { pass_number: passNumber } : {}),
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to update metric');
@@ -8372,8 +8595,37 @@
         try {
           const rows = state.snapshot.rows || [];
           const idx = Number(updatedRow.index) || 0;
-          if (idx >= 0 && idx < rows.length) { rows[idx] = updatedRow; }
-          else { const pos = rows.findIndex(r => Number(r.index) === idx); if (pos >= 0) rows[pos] = updatedRow; }
+          let pos = (idx >= 0 && idx < rows.length && Number(rows[idx]?.index) === idx)
+            ? idx
+            : rows.findIndex(r => Number(r.index) === idx);
+          if (pos < 0) return;
+          // Merge, not replace: the server row is run-scoped; keep client-only
+          // fields, then re-apply the pass lens so a ?pass=N page stays scoped.
+          let next = { ...rows[pos], ...updatedRow };
+          if (state.viewPass) {
+            if (next.pass_scores) {
+              next.metric_values = state.allMetrics.map(name => {
+                const scores = next.pass_scores[name];
+                return (Array.isArray(scores) && scores.length >= state.viewPass)
+                  ? scores[state.viewPass - 1]
+                  : null;
+              });
+            }
+            const att = Array.isArray(next.pass_attempts) ? next.pass_attempts[state.viewPass - 1] : null;
+            if (att) {
+              next = {
+                ...next,
+                status: att.status,
+                error: att.error || '',
+                output: att.output,
+                output_full: att.output,
+                latency_ms: att.latency_ms || 0,
+                trace_id: att.trace_id || '',
+                trace_url: att.trace_url || '',
+              };
+            }
+          }
+          rows[pos] = next;
         } catch {}
       }
 
@@ -8401,7 +8653,7 @@
             btn.disabled = true;
             if (statusEl) statusEl.textContent = 'Saving...';
             try {
-              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value);
+              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass);
               if (result && result.row) {
                 applyUpdatedRow(result.row);
                 renderOverview();
