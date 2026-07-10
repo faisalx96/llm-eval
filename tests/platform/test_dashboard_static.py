@@ -17,6 +17,89 @@ def test_dashboard_delete_action_binding_allows_non_deletable_runs() -> None:
     assert "tr.querySelector('.delete-run').addEventListener" not in source
 
 
+def test_repeat_run_rows_render_pass_dot_strip() -> None:
+    """×k rows carry a per-pass dot strip (primary-metric score colors) fed by
+    the pass_summaries field of the runs-list payload."""
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    api = RUNS_API.read_text(encoding="utf-8")
+
+    assert "function renderPassDots(run)" in source
+    assert "run.pass_summaries" in source
+    assert "${renderPassDots(run)}" in source
+    # informational only — the samples-toggle button stays the sole expander
+    assert "querySelectorAll('.pass-dots')" not in source
+    assert 'class="pdot' in source
+
+    assert ".pass-dots" in styles
+    assert ".pdot.score-5" in styles
+    assert ".pdot.pending" in styles
+    assert ".pdot.running" in styles
+    assert ".pdot.err" in styles
+
+    assert '"pass_summaries": pass_summary_map.get(r.id) or None,' in api
+
+
+def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert '<button type="button" class="samples-toggle' in source
+    assert 'aria-expanded="${samplesOpen ? \'true\' : \'false\'}"' in source
+    assert 'aria-controls="${samplesPanelId}"' in source
+    assert "event.key !== 'Enter' && event.key !== ' '" in source
+    assert "toggle.setAttribute('aria-expanded'" in source
+    assert 'class="samples-detail-panel"' in source
+    assert "window.QymDataTable.render" in source
+    assert "samples-retry-btn" in source
+    assert "samples-pass-row" not in source
+    assert ".samples-detail-panel" in styles
+    assert ".samples-summary-grid" in styles
+    assert ".samples-toggle:focus-visible" in styles
+    assert index.index('/static/qym_table.js') < index.index('/static/dashboard.js')
+
+
+def test_repeat_run_analysis_uses_shared_visual_language() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert 'class="model-stat-box"' in source
+    assert 'class="distribution-bar samples-dist-bar"' in source
+    assert 'class="samples-metric-tabs" role="tablist"' in source
+    assert "state.samplesMetric = nextMetric;" in source
+    assert "window.QymMetrics.getMetricColorClass(v, mTypeOf(m))" in source
+    assert "mType === 'numeric' ? ''" in source
+    assert "statTile('Max@' + samplesCount" not in source
+    assert "statTile('Avg Score'" in source
+    assert "statTile('Errors'" in source
+    assert "statTile('Avg Latency'" in source
+    assert source.index("statTile('Errors'") < source.index("statTile('Avg Latency'")
+    assert "escapeHtml(groupMetricLabel) + ' vs k</div>'" in source
+    assert "⚡ Avg Latency" in source
+    assert "⚡ Median Latency" in source
+    assert "P95 Latency" in source
+    assert ">Errors</th>" in source
+    assert ">Avg lat</th>" not in source
+    assert ">Err</th>" not in source
+    assert ".samples-dist-col" not in source
+    assert "height: 180px;" in source
+
+
+def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "function buildRunIntelligenceCharts(rows)" in source
+    assert "Item Performance Matrix" in source
+    assert "Metric Correlation" in source
+    assert "Strongest Metric Relationship" in source
+    assert "Quality–Latency Frontier" in source
+    assert "Observed Performance by Pass" in source
+    assert "Quality–Stability Map" in source
+    assert "intelligenceCharts +" in source
+    assert 'role="img" aria-label="Item by metric performance matrix"' in source
+    assert "radar" not in source.lower()
+
+
 def test_user_filter_is_available_and_clickable_on_dashboard_views() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     assert "'filter-user-btn'" in source

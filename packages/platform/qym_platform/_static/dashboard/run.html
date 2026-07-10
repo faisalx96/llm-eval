@@ -3422,89 +3422,107 @@
     .sankey-dimmed { opacity: 0.15; }
     .sankey-highlighted { opacity: 1; }
     /* ─── Repeat runs (samples=k) ───
-       Reuses the .sp-* / .sv-* / .sc-* primitives from dashboard.css. */
-    .samples-analysis-card {
-      position: relative;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-default);
-      border-radius: 10px;
-      padding: var(--space-lg);
-      margin-bottom: var(--space-lg);
-      overflow: hidden;
-    }
-    .samples-analysis-card::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto 0;
-      height: 2px;
-      background: linear-gradient(90deg, var(--accent-primary), rgba(0, 212, 170, 0));
-      pointer-events: none;
-    }
-    .samples-analysis-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-md);
+       Section anatomy matches Overview (overview-header + section-title);
+       group-metric tiles reuse the Overview/Compare component (stats-row-flex + stat-box). */
+    #samples-analysis-section:not(:empty) { margin-bottom: var(--space-xl); }
+    .samples-group-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+      gap: var(--space-sm);
       margin-bottom: var(--space-md);
     }
-    .samples-analysis-meta {
+    .samples-group-tiles .model-stat-box {
+      min-height: 88px;
+      padding: var(--space-md);
+    }
+    .samples-group-tiles .model-stat-box .stat-title {
+      min-height: 0;
+      margin-bottom: var(--space-sm);
       font-size: var(--font-sm);
-      font-family: var(--font-mono);
-      color: var(--text-muted);
-    }
-    .samples-pill-inline {
-      font-size: var(--font-xs);
       font-weight: 650;
-      font-family: var(--font-mono);
-      padding: 1px 7px;
-      border-radius: 999px;
-      border: 1px solid var(--accent-primary);
-      color: var(--accent-primary);
-      vertical-align: middle;
-      margin-left: var(--space-sm);
     }
-    /* Stat strip: compact fixed-width tiles, hero accents tie to the curve */
-    .samples-stat-grid {
+    .samples-metric-row {
       display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
       flex-wrap: wrap;
-      gap: var(--space-sm);
-      margin-bottom: var(--space-lg);
     }
-    .samples-stat {
-      flex: 0 1 132px;
-      min-width: 108px;
-      background: var(--bg-elevated);
-      border: 1px solid var(--border-subtle);
-      border-top: 2px solid var(--border-strong);
+    .samples-metric-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 3px;
       border-radius: 6px;
-      padding: 7px 12px 8px;
+      background: var(--bg-elevated);
+      width: fit-content;
     }
-    .samples-stat.hero { border-top-color: var(--accent-primary); }
-    .samples-stat.hero-warn { border-top-color: var(--warning); }
-    .samples-stat-label {
-      font-size: var(--font-sm);
-      font-weight: 650;
+    .samples-metric-tab {
+      appearance: none;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 16px;
+      background: transparent;
       color: var(--text-muted);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+    .samples-metric-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+    .samples-metric-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-surface);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .samples-metric-threshold {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      font-family: var(--font-mono);
-      white-space: nowrap;
+      font-weight: 600;
     }
-    .samples-stat-value {
-      font-size: var(--font-xl); /* mid-tier stat per design language */
+    .samples-metric-threshold strong {
+      color: var(--accent-primary);
+      font-family: var(--font-mono);
       font-weight: 700;
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      color: var(--text-primary);
-      margin-top: 2px;
-      line-height: 1.2;
     }
-    .samples-stat-hint {
-      font-size: var(--font-sm);
+    /* Chart/Table view toggle (accent-active segmented buttons) */
+    .samples-curve-controls {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+    .samples-view-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .samples-view-btn {
+      appearance: none;
+      border: none;
+      background: var(--bg-elevated);
       color: var(--text-muted);
-      margin-top: 1px;
-      white-space: nowrap;
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      padding: 4px 12px;
+      cursor: pointer;
     }
+    .samples-view-btn + .samples-view-btn { border-left: 1px solid var(--border-default); }
+    .samples-view-btn:hover { color: var(--text-secondary); background: var(--bg-hover); }
+    .samples-view-btn.active {
+      color: var(--accent-primary);
+      background: var(--bg-active);
+    }
+    .samples-band-table { min-width: 0; width: 100%; }
     /* Pass sweep: the first-class per-pass table (all metrics + latencies) */
     .samples-sweep-wrap {
       border: 1px solid var(--border-subtle);
@@ -3541,7 +3559,11 @@
       font-size: var(--font-sm);
       color: var(--text-muted);
     }
-    .sw-status { width: 22px; text-align: center; }
+    .sw-pass {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
     .sw-num { text-align: right; }
     .sw-val {
       font-family: var(--font-mono);
@@ -3550,6 +3572,11 @@
       font-size: var(--font-md);
       display: block;
     }
+    .sw-val.score-5, .sw-meter.score-5 { color: var(--score-5); }
+    .sw-val.score-4, .sw-meter.score-4 { color: var(--score-4); }
+    .sw-val.score-3, .sw-meter.score-3 { color: var(--score-3); }
+    .sw-val.score-2, .sw-meter.score-2 { color: var(--score-2); }
+    .sw-val.score-1, .sw-meter.score-1 { color: var(--score-1); }
     .sw-val.empty { color: var(--text-muted); font-weight: 400; }
     .sw-meter {
       display: block;
@@ -3581,12 +3608,36 @@
       padding: 7px 14px;
       border-top: 1px solid var(--border-subtle);
     }
-    .samples-curve-block { max-width: 720px; }
+    /* Two-up chart panels: Accuracy vs k beside Correct Distribution */
+    .samples-charts-row {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+      gap: var(--space-lg);
+      align-items: start;
+      margin-bottom: var(--space-lg);
+    }
+    .samples-charts-row .samples-sweep-wrap { margin-bottom: 0; }
+    .samples-chart-block { padding: 0; }
+    .samples-chart-body { padding: 0 var(--space-lg) var(--space-md); }
     .samples-curve-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 4px;
+      gap: var(--space-md);
+      min-height: 30px;
+      padding: var(--space-md) var(--space-lg) 0;
+      margin-bottom: var(--space-sm);
+    }
+    .samples-zone-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--font-sm);
+      font-weight: 650;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
     }
     .samples-legend { display: flex; gap: var(--space-md); }
     .samples-legend-chip {
@@ -3603,11 +3654,190 @@
     .samples-legend-swatch.hat {
       background: repeating-linear-gradient(90deg, var(--warning) 0 4px, transparent 4px 7px);
     }
-    .samples-curve { width: 100%; max-width: 680px; height: auto; display: block; }
+    .samples-curve {
+      width: 100%;
+      height: 180px;
+      display: block;
+    }
     .samples-curve-axis {
       font-size: var(--font-sm);
       font-family: var(--font-mono);
       fill: var(--text-muted);
+    }
+    /* Correct distribution reuses the horizontal bar from Models/Compare;
+       the labeled breakdown keeps small and zero-count buckets readable. */
+    .samples-dist-bar { margin: var(--space-md) 0; }
+    .samples-dist-bar .dist-label,
+    .samples-dist-bar .dist-count { font-size: var(--font-sm); }
+    .samples-dist-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: var(--space-sm);
+    }
+    .samples-dist-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      column-gap: var(--space-sm);
+      row-gap: var(--space-xs);
+      padding: var(--space-sm);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+    }
+    .samples-dist-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      grid-row: 1 / span 2;
+    }
+    .samples-dist-dot.dist-zero { background: var(--error); }
+    .samples-dist-dot.dist-partial { background: var(--warning); }
+    .samples-dist-dot.dist-all { background: var(--success); }
+    .samples-dist-label {
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .samples-dist-value {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+    }
+    .samples-dist-item.empty { opacity: 0.55; }
+    @media (max-width: 900px) {
+      .samples-charts-row { grid-template-columns: 1fr; }
+    }
+    /* Run Intelligence: coordinated, non-redundant analytical views. */
+    .ri-insights { margin-bottom: var(--space-lg); }
+    .ri-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-sm);
+    }
+    .ri-header .section-title { margin-bottom: 0; }
+    .ri-header-copy {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      margin-top: var(--space-xs);
+    }
+    .ri-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: var(--space-sm);
+    }
+    .ri-panel {
+      grid-column: span 4;
+      min-width: 0;
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      overflow: hidden;
+    }
+    .ri-panel.wide { grid-column: 1 / -1; }
+    .ri-panel.half { grid-column: span 6; }
+    .ri-panel.matrix { grid-column: span 8; }
+    .ri-panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-sm);
+    }
+    .ri-panel-title {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .ri-panel-copy {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+      margin-top: var(--space-xs);
+    }
+    .ri-panel-stat {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .ri-chart-scroll { overflow-x: auto; }
+    .ri-chart {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin-inline: auto;
+    }
+    .ri-axis {
+      stroke: var(--border-strong);
+      stroke-width: 1;
+    }
+    .ri-gridline {
+      stroke: var(--border-subtle);
+      stroke-width: 1;
+      stroke-dasharray: 3 5;
+    }
+    .ri-label {
+      fill: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+    }
+    .ri-data-label {
+      fill: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+    }
+    .ri-cell-value {
+      fill: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 700;
+      pointer-events: none;
+    }
+    .ri-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+    .ri-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .ri-legend-swatch {
+      width: 16px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--ri-color);
+    }
+    .ri-note-row {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    @media (max-width: 1350px) {
+      .ri-panel { grid-column: span 6; }
+      .ri-panel.matrix, .ri-panel.trend, .ri-panel.wide { grid-column: 1 / -1; }
+    }
+    @media (max-width: 760px) {
+      .ri-panel { grid-column: 1 / -1; }
+      .ri-panel.half, .ri-panel.wide { grid-column: 1 / -1; }
+      .ri-header { align-items: flex-start; flex-direction: column; }
     }
     /* Per-item pass dots in the items table */
     .pass-dots {
@@ -3844,6 +4074,7 @@
         snapshot: null,
         allMetrics: [],
         selectedMetric: null,
+        samplesMetric: null,
         itemFilter: 'all',
         approvalFilter: null,
         approvalValues: ['approved', 'not_approved'],
@@ -4650,7 +4881,10 @@
         '</div>';
       }
 
-      // ── Repeat runs: "Samples analysis" section (only when samples > 1) ──
+      // ── Repeat runs: pass-centric analysis section (only when samples > 1).
+      // Header/boxes follow the standard section anatomy; group-metric tiles
+      // reuse the Models/Compare view component (model-stat-item + shared
+      // tooltips from QymMetrics.getMetricTooltips) so the three views match.
       async function renderSamplesAnalysis() {
         const container = el('samples-analysis-section');
         if (!container) return;
@@ -4658,14 +4892,7 @@
         const samplesCount = parseInt(run.samples, 10) || 1;
         if (samplesCount <= 1 || IS_EXPORT) { container.innerHTML = ''; return; }
 
-        const metricName = state.selectedMetric || state.allMetrics[0] || '';
-        container.innerHTML =
-          '<div class="samples-analysis-card">' +
-            '<div class="samples-analysis-header">' +
-              '<h3 class="section-title" style="margin:0">Samples analysis <span class="samples-pill-inline">×' + samplesCount + '</span></h3>' +
-              '<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading…</span>' +
-            '</div>' +
-          '</div>';
+        const metricName = state.samplesMetric || state.selectedMetric || state.allMetrics[0] || '';
 
         let group, passes;
         try {
@@ -4676,42 +4903,125 @@
           group = await groupRes.json();
           passes = await passesRes.json();
         } catch (err) {
-          container.querySelector('.samples-analysis-header span').textContent = 'Failed to load pass data';
+          container.innerHTML = '';
           return;
         }
-        if (!group || group.error || !group.group) {
-          container.querySelector('.samples-analysis-header span').textContent = '';
-          return;
-        }
+        if (!group || group.error || !group.group) { container.innerHTML = ''; return; }
 
         const g = group.group;
-        const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
-        const scoreClass = v => {
-          if (typeof v !== 'number') return '';
-          const cls = window.QymMetrics.getMetricColorClass(v, 'score');
-          return cls ? cls.replace('score-', 'sc-') : '';
-        };
-        const statCard = (label, value, hint, mods) =>
-          '<div class="samples-stat ' + (mods || '') + '">' +
-            '<div class="samples-stat-label">' + label + '</div>' +
-            '<div class="samples-stat-value ' + scoreClass(value) + '">' + fmt(value) + '</div>' +
-            '<div class="samples-stat-hint">' + hint + '</div>' +
+        const groupMetric = group.metric || metricName;
+        const thresholdPct = Math.round((group.threshold != null ? group.threshold : 0.8) * 100);
+        const isBool = !!state.metricIsBoolean[groupMetric];
+        const tooltips = window.QymMetrics.getMetricTooltips(samplesCount, isBool, thresholdPct);
+        const fp = v => (typeof v === 'number' ? window.QymMetrics.formatPercent(v) : 'NA');
+        const mTypeOf = m => state.metricTypes[m] || 'score';
+        const fmtMetric = (v, m) => window.QymMetrics.formatMetricValue(v, mTypeOf(m));
+        const groupMetricType = mTypeOf(groupMetric);
+        const groupMetricLabel = String(groupMetric || 'Metric')
+          .replace(/[_-]+/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+
+        const passRows = (passes && Array.isArray(passes.passes))
+          ? passes.passes.filter(p => p.status !== 'pending')
+          : [];
+        const latencyRows = passRows.filter(p => typeof p.avg_latency_ms === 'number' && (p.items_scored || 0) > 0);
+        const latencyItemCount = latencyRows.reduce((sum, p) => sum + (p.items_scored || 0), 0);
+        const aggregateAvgLatency = latencyItemCount > 0
+          ? latencyRows.reduce((sum, p) => sum + (p.avg_latency_ms * (p.items_scored || 0)), 0) / latencyItemCount
+          : run.avg_latency_ms;
+        const aggregateErrors = passRows.reduce((sum, p) => sum + (p.error_count || 0), 0);
+
+        // Same finished tile component used by the Models summary cards.
+        function statTile(title, value, tooltip, options = {}) {
+          const scoreEncoded = options.scoreEncoded !== false;
+          const cls = options.valueClass || ((scoreEncoded && typeof value === 'number') ? getSuccessClass(value) : '');
+          const display = options.format ? options.format(value) : fp(value);
+          return '<div class="model-stat-box">' +
+            '<div class="stat-title">' + title + (tooltip ? ' ' + infoIcon(tooltip) : '') + '</div>' +
+            '<div class="stat-main ' + cls + '">' + display + '</div>' +
           '</div>';
-        const statsHtml = [
-          statCard('Pass@' + g.k, g.pass_at_k, 'any pass passes', 'hero'),
-          statCard('Pass^' + g.k, g.pass_hat_k, 'every pass passes', 'hero-warn'),
-          statCard('Avg@' + g.k, g.avg_at_k, 'mean per attempt'),
-          statCard('Consistency', g.consistency, 'passes agree'),
-          statCard('Reliability', g.reliability, 'solvable items'),
+        }
+        const tilesHtml = [
+          statTile('Pass@' + samplesCount, g.pass_at_k, tooltips.passAtK),
+          statTile('Pass^' + samplesCount, g.pass_hat_k, tooltips.passHatK),
+          statTile('Consistency', g.consistency, tooltips.consistency),
+          statTile('Reliability', g.reliability, tooltips.reliability),
+          statTile('Avg Score', g.avg_at_k, tooltips.avgScore, {
+            scoreEncoded: groupMetricType !== 'numeric',
+            format: v => fmtMetric(v, groupMetric),
+          }),
+          statTile('Errors', aggregateErrors, 'Number of item evaluations that returned an error across all passes.', {
+            scoreEncoded: false,
+            valueClass: aggregateErrors > 0 ? 'failed-count' : '',
+            format: v => String(v || 0),
+          }),
+          statTile('Avg Latency', aggregateAvgLatency, tooltips.avgLatency, {
+            scoreEncoded: false,
+            format: v => formatLatency(v),
+          }),
         ].join('');
 
-        // Accuracy-vs-k curve: pass@k (capability) vs pass^k (reliability),
-        // every k computed on demand from the stored passes.
+        const metricTabsHtml = state.allMetrics.map(m =>
+          '<button type="button" role="tab" class="samples-metric-tab' + (m === groupMetric ? ' active' : '') + '" ' +
+            'data-samples-metric="' + escapeAttr(m) + '" aria-selected="' + (m === groupMetric) + '">' + escapeHtml(m) + '</button>'
+        ).join('');
+
+        const ratioColorCls = v => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, 'score') : '');
+        const metricColorCls = (v, m) => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, mTypeOf(m)) : '');
+
+        // Pass sweep table: every metric + latency stats per pass.
+        let sweepHtml = '';
+        if (passes && Array.isArray(passes.passes)) {
+          const metricCols = passes.metrics || [];
+          const visible = passRows;
+          const queued = passes.passes.length - visible.length;
+          const latCell = v => (typeof v === 'number' ? (v / 1000).toFixed(2) + 's' : '—');
+          const bodyRows = visible.map(p => {
+            const metricCells = metricCols.map(m => {
+              const v = (p.metric_means || {})[m];
+              if (typeof v !== 'number') return '<td class="sw-num"><span class="sw-val empty">—</span></td>';
+              const mType = mTypeOf(m);
+              const cls = metricColorCls(v, m);
+              const pct = Math.round(Math.max(0, Math.min(1, v)) * 100);
+              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmtMetric(v, m) + '</span>' +
+                (mType === 'numeric' ? '' : '<span class="sw-meter ' + cls + '"><i style="width:' + pct + '%"></i></span>') + '</td>';
+            }).join('');
+            const errs = p.error_count || 0;
+            return '<tr>' +
+              '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + ' of ' + passes.samples + '</span></td>' +
+              metricCells +
+              '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
+              '<td class="sw-num sw-dim">' + latCell(p.median_latency_ms) + '</td>' +
+              '<td class="sw-num sw-dim">' + latCell(p.p95_latency_ms) + '</td>' +
+              '<td class="sw-num ' + (errs > 0 ? 'sw-err' : 'sw-dim') + '">' + errs + '</td>' +
+              '<td class="sw-num sw-dim">' + (p.items_scored || 0) + '</td>' +
+            '</tr>';
+          }).join('');
+          const queuedRow = queued > 0
+            ? '<tr><td colspan="' + (6 + metricCols.length) + '" class="sw-queued">' + (queued === 1
+                ? 'Pass ' + passes.passes.length + ' of ' + passes.samples + ' queued'
+                : 'Passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + ' of ' + passes.samples + ' queued') + '</td></tr>'
+            : '';
+          sweepHtml =
+            '<div class="samples-sweep-wrap">' +
+              '<table class="samples-sweep">' +
+                '<thead><tr>' +
+                  '<th>Pass</th>' +
+                  metricCols.map(m => '<th class="sw-num-h">' + escapeHtml(m) + '</th>').join('') +
+                  '<th class="sw-num-h">⚡ Avg Latency</th><th class="sw-num-h">⚡ Median Latency</th><th class="sw-num-h">P95 Latency</th><th class="sw-num-h">Errors</th><th class="sw-num-h">Items</th>' +
+                '</tr></thead>' +
+                '<tbody>' + bodyRows + queuedRow + '</tbody>' +
+              '</table>' +
+            '</div>';
+        }
+
+        // Accuracy-vs-k: chart with a table toggle. All k <= samples computed
+        // on demand from the stored passes.
         const band = group.band || {};
         const ks = Object.keys(band).map(Number).sort((a, b) => a - b);
-        let curveHtml = '';
-        if (ks.length > 1) {
-          const W = 620, H = 230, PADL = 40, PADR = 14, PADT = 14, PADB = 26;
+        function curveChartHtml() {
+          if (ks.length < 2) return '';
+          const W = 620, H = 180, PADL = 44, PADR = 14, PADT = 10, PADB = 26;
           const x = k => PADL + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADL - PADR);
           const y = v => (H - PADB) - Math.max(0, Math.min(1, v)) * (H - PADT - PADB);
           const pts = key => ks.map(k => x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1));
@@ -4725,17 +5035,9 @@
           const gridline = (v, label) =>
             '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (W - PADR) + '" y2="' + y(v) + '" stroke="var(--border-subtle)"' + (v !== 0 ? ' stroke-dasharray="3 5"' : '') + '/>' +
             '<text x="' + (PADL - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="samples-curve-axis">' + label + '</text>';
-          curveHtml =
-            '<div class="samples-curve-head">' +
-              '<div class="samples-zone-title">Accuracy vs k</div>' +
-              '<div class="samples-legend">' +
-                '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>Pass@k</span>' +
-                '<span class="samples-legend-chip"><span class="samples-legend-swatch hat"></span>Pass^k</span>' +
-              '</div>' +
-            '</div>' +
-            '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="Accuracy versus k">' +
-              [[1.0, '1.0'], [0.75, '0.75'], [0.5, '0.5'], [0.25, '0.25'], [0.0, '0.0']].map(pair => gridline(pair[0], pair[1])).join('') +
-              '<path d="' + area + '" fill="rgba(0, 212, 170, 0.07)"/>' +
+          return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="' + escapeAttr(groupMetricLabel) + ' versus k">' +
+              [[1.0, '100%'], [0.75, '75%'], [0.5, '50%'], [0.25, '25%'], [0.0, '0%']].map(p => gridline(p[0], p[1])).join('') +
+              '<path d="' + area + '" fill="var(--success-dim)"/>' +
               '<g stroke="var(--warning)" fill="none" stroke-width="1.8" stroke-dasharray="5 4" stroke-linecap="round"><path d="' + line('pass_hat_k') + '"/></g>' +
               '<g stroke="var(--accent-primary)" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="' + line('pass_at_k') + '"/></g>' +
               dots('pass_hat_k', 'var(--warning)') +
@@ -4743,65 +5045,113 @@
               ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
             '</svg>';
         }
-
-        // Pass sweep: the first-class per-pass table — every metric,
-        // latency stats, errors, items. This is what the old ad-hoc
-        // group-of-runs view showed per run, now per pass.
-        let sweepHtml = '';
-        if (passes && Array.isArray(passes.passes)) {
-          const metricCols = passes.metrics || [];
-          const visible = passes.passes.filter(p => p.status !== 'pending');
-          const queued = passes.passes.length - visible.length;
-          const latCell = v => (typeof v === 'number' ? (v / 1000).toFixed(2) + 's' : '—');
-          const bodyRows = visible.map(p => {
-            const metricCells = metricCols.map(m => {
-              const v = (p.metric_means || {})[m];
-              if (typeof v !== 'number') return '<td class="sw-num"><span class="sw-val empty">—</span></td>';
-              const cls = scoreClass(v);
-              const pct = Math.round(Math.max(0, Math.min(1, v)) * 100);
-              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmt(v) + '</span>' +
-                '<span class="sw-meter ' + cls + '"><i style="width:' + pct + '%"></i></span></td>';
-            }).join('');
-            const errs = p.error_count || 0;
-            return '<tr>' +
-              '<td class="sw-pass">pass ' + p.pass_number + '/' + passes.samples + '</td>' +
-              '<td class="sw-status"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span></td>' +
-              metricCells +
-              '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
-              '<td class="sw-num sw-dim">' + latCell(p.median_latency_ms) + '</td>' +
-              '<td class="sw-num sw-dim">' + latCell(p.p95_latency_ms) + '</td>' +
-              '<td class="sw-num ' + (errs > 0 ? 'sw-err' : 'sw-dim') + '">' + errs + '</td>' +
-              '<td class="sw-num sw-dim">' + (p.items_scored || 0) + '</td>' +
-            '</tr>';
-          }).join('');
-          const queuedRow = queued > 0
-            ? '<tr><td colspan="' + (7 + metricCols.length) + '" class="sw-queued">' + (queued === 1
-                ? 'pass ' + passes.passes.length + '/' + passes.samples + ' queued'
-                : 'passes ' + (passes.passes.length - queued + 1) + '–' + passes.passes.length + '/' + passes.samples + ' queued') + '</td></tr>'
-            : '';
-          sweepHtml =
-            '<div class="samples-sweep-wrap">' +
-              '<table class="samples-sweep">' +
-                '<thead><tr>' +
-                  '<th>Pass</th><th></th>' +
-                  metricCols.map(m => '<th class="sw-num-h">' + escapeHtml(m) + '</th>').join('') +
-                  '<th class="sw-num-h">Avg lat</th><th class="sw-num-h">Median</th><th class="sw-num-h">P95</th><th class="sw-num-h">Err</th><th class="sw-num-h">Items</th>' +
-                '</tr></thead>' +
-                '<tbody>' + bodyRows + queuedRow + '</tbody>' +
-              '</table>' +
-            '</div>';
+        function curveTableHtml() {
+          if (!ks.length) return '';
+          const rows = ks.map(k =>
+            '<tr>' +
+              '<td class="sw-pass">k=' + k + '</td>' +
+              '<td class="sw-num"><span class="sw-val ' + ratioColorCls(band[k].pass_at_k) + '">' + fp(band[k].pass_at_k) + '</span></td>' +
+              '<td class="sw-num"><span class="sw-val ' + ratioColorCls(band[k].pass_hat_k) + '">' + fp(band[k].pass_hat_k) + '</span></td>' +
+            '</tr>'
+          ).join('');
+          return '<table class="samples-sweep samples-band-table">' +
+            '<thead><tr><th>k</th>' +
+            '<th class="sw-num-h">Pass@k ' + infoIcon('If the task got k tries, how often would at least one pass? Computed from all ' + samplesCount + ' stored passes (unbiased estimator).') + '</th>' +
+            '<th class="sw-num-h">Pass^k ' + infoIcon('If the task got k tries, how often would ALL k pass? The reliability counterpart of Pass@k.') + '</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
         }
+        const curveBlock = () => {
+          const mode = state.samplesCurveView || 'chart';
+          const legend = mode === 'chart'
+            ? '<div class="samples-legend">' +
+                '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>Pass@k</span>' +
+                '<span class="samples-legend-chip"><span class="samples-legend-swatch hat"></span>Pass^k</span>' +
+              '</div>'
+            : '';
+          return '<div class="samples-curve-head">' +
+              '<div class="samples-zone-title">' + escapeHtml(groupMetricLabel) + ' vs k</div>' +
+              '<div class="samples-curve-controls">' + legend +
+                '<div class="samples-view-toggle">' +
+                  '<button type="button" class="samples-view-btn' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
+                  '<button type="button" class="samples-view-btn' + (mode === 'table' ? ' active' : '') + '" data-view="table" aria-pressed="' + (mode === 'table') + '">Table</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            (mode === 'chart'
+              ? '<div class="samples-chart-body">' + curveChartHtml() + '</div>'
+              : curveTableHtml());
+        };
+
+        // Correct distribution — the same horizontal segmented bar used by
+        // Models/Compare, with an explicit breakdown for small/empty buckets.
+        const dist = Array.isArray(group.distribution) ? group.distribution : null;
+        function distChartHtml() {
+          const total = dist.reduce((a, b) => a + b, 0) || 1;
+          const segments = dist.map((count, n) => {
+            if (count === 0) return '';
+            const cls = n === 0 ? 'dist-zero' : (n === dist.length - 1 ? 'dist-all' : 'dist-partial');
+            const pct = Math.round((count / total) * 100);
+            return '<div class="dist-segment ' + cls + '" style="flex:' + count + '" title="' + n + ' of ' + samplesCount + ' passes correct: ' + count + ' items (' + pct + '%)">' +
+              '<span class="dist-label">' + n + '/' + samplesCount + '</span>' +
+              '<span class="dist-count">' + count + '</span>' +
+            '</div>';
+          }).join('');
+          const breakdown = dist.map((count, n) => {
+            const cls = n === 0 ? 'dist-zero' : (n === dist.length - 1 ? 'dist-all' : 'dist-partial');
+            const pct = Math.round((count / total) * 100);
+            return '<div class="samples-dist-item' + (count === 0 ? ' empty' : '') + '">' +
+              '<span class="samples-dist-dot ' + cls + '"></span>' +
+              '<span class="samples-dist-label">' + n + ' of ' + samplesCount + ' correct</span>' +
+              '<span class="samples-dist-value">' + count + ' ' + (count === 1 ? 'item' : 'items') + ' · ' + pct + '%</span>' +
+            '</div>';
+          }).join('');
+          return '<div class="distribution-bar samples-dist-bar" aria-label="Distribution of items by correct passes">' + segments + '</div>' +
+            '<div class="samples-dist-breakdown">' + breakdown + '</div>';
+        }
+        const distBlockHtml = (dist && dist.length > 1)
+          ? '<div class="samples-chart-block samples-sweep-wrap">' +
+              '<div class="samples-curve-head">' +
+                '<div class="samples-zone-title">Correct Distribution ' + infoIcon('How many of the ' + samplesCount + ' passes got each item correct (score ' + (isBool ? '= 100%' : '&ge;' + thresholdPct + '%') + '). Items at 0 never passed, items at ' + samplesCount + ' always passed — columns in between are flaky items. Same distribution as the Compare and Models views.') + '</div>' +
+              '</div>' +
+              '<div class="samples-chart-body">' + distChartHtml() + '</div>' +
+            '</div>'
+          : '';
 
         container.innerHTML =
-          '<div class="samples-analysis-card">' +
-            '<div class="samples-analysis-header">' +
-              '<h3 class="section-title" style="margin:0">Samples analysis <span class="samples-pill-inline">×' + samplesCount + '</span></h3>' +
-              '<span class="samples-analysis-meta">' + escapeHtml(group.metric || '') + ' · threshold ' + (group.threshold != null ? group.threshold : 0.8) + '</span>' +
-            '</div>' +
-            '<div class="samples-stat-grid">' + statsHtml + '</div>' +
-            sweepHtml +
-            '<div class="samples-curve-block">' + curveHtml + '</div>' +
+          '<div class="overview-header">' +
+            '<div><h3 class="section-title">Repeat Run Analysis</h3>' +
+            '<div class="overview-header-hint">Every item was evaluated ' + samplesCount + 'x in this run. Select the metric summarized across all ' + samplesCount + ' passes.</div></div>' +
+          '</div>' +
+          '<div class="samples-metric-row">' +
+            '<div class="samples-metric-tabs" role="tablist" aria-label="Repeat run aggregate metric">' + metricTabsHtml + '</div>' +
+            '<div class="samples-metric-threshold"><span>Pass threshold</span><strong>&ge;' + thresholdPct + '%</strong></div>' +
+          '</div>' +
+          '<div class="samples-group-tiles">' + tilesHtml + '</div>' +
+          sweepHtml +
+          '<div class="samples-charts-row">' +
+            '<div class="samples-chart-block samples-sweep-wrap" id="samples-curve-block">' + curveBlock() + '</div>' +
+            distBlockHtml +
           '</div>';
+
+        const blockEl = el('samples-curve-block');
+        container.querySelectorAll('.samples-metric-tab').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const nextMetric = btn.dataset.samplesMetric;
+            if (!nextMetric || nextMetric === groupMetric) return;
+            state.samplesMetric = nextMetric;
+            renderSamplesAnalysis();
+          });
+        });
+        function wireCurveToggle() {
+          blockEl.querySelectorAll('.samples-view-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              state.samplesCurveView = btn.dataset.view;
+              blockEl.innerHTML = curveBlock();
+              wireCurveToggle();
+            });
+          });
+        }
+        if (blockEl) wireCurveToggle();
       }
 
       function wireTopActions() {
@@ -5030,6 +5380,301 @@
         return fmt(minMs) + '-' + fmt(maxMs);
       }
 
+      function riScoreColor(value) {
+        if (value >= 0.9) return 'var(--score-5)';
+        if (value >= 0.75) return 'var(--score-4)';
+        if (value >= 0.6) return 'var(--score-3)';
+        if (value >= 0.4) return 'var(--score-2)';
+        return 'var(--score-1)';
+      }
+
+      function riMean(values) {
+        return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+      }
+
+      function riStdDev(values) {
+        if (values.length < 2) return 0;
+        const mean = riMean(values);
+        return Math.sqrt(values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / values.length);
+      }
+
+      function riPearson(pairs) {
+        if (pairs.length < 2) return null;
+        const xs = pairs.map(pair => pair[0]);
+        const ys = pairs.map(pair => pair[1]);
+        const mx = riMean(xs), my = riMean(ys);
+        let numerator = 0, dx = 0, dy = 0;
+        for (let i = 0; i < pairs.length; i++) {
+          const x = xs[i] - mx, y = ys[i] - my;
+          numerator += x * y;
+          dx += x * x;
+          dy += y * y;
+        }
+        return dx > 0 && dy > 0 ? numerator / Math.sqrt(dx * dy) : null;
+      }
+
+      function riScale(value, domainMin, domainMax, rangeMin, rangeMax) {
+        if (domainMax === domainMin) return (rangeMin + rangeMax) / 2;
+        return rangeMin + ((value - domainMin) / (domainMax - domainMin)) * (rangeMax - rangeMin);
+      }
+
+      function riMetricSeries(rows) {
+        return state.allMetrics.map((name, metricIndex) => {
+          const points = [];
+          rows.forEach((row, rowIndex) => {
+            const parsed = window.QymMetrics.getRowScore(row, metricIndex);
+            if (parsed.score !== null) points.push({ row, rowIndex, value: parsed.score });
+          });
+          const values = points.map(point => point.value);
+          return {
+            name,
+            metricIndex,
+            type: state.metricTypes[name] || 'score',
+            points,
+            min: values.length ? Math.min(...values) : 0,
+            max: values.length ? Math.max(...values) : 1,
+          };
+        }).filter(series => series.points.length > 0);
+      }
+
+      function buildRunIntelligenceCharts(rows) {
+        const series = riMetricSeries(rows);
+        if (!series.length || !rows.length) return '';
+        const chartColors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
+        const panels = [];
+
+        // Item x metric matrix: every available score, no aggregation hidden.
+        {
+          const left = 96, top = 10, bottom = 32, cellH = 22;
+          const width = Math.max(720, left + rows.length * 18 + 18);
+          const height = top + series.length * cellH + bottom;
+          const cellW = (width - left - 18) / rows.length;
+          const labelEvery = Math.max(1, Math.ceil(rows.length / 18));
+          let svg = '';
+          series.forEach((metric, metricRow) => {
+            const y = top + metricRow * cellH;
+            svg += '<text x="' + (left - 10) + '" y="' + (y + cellH / 2 + 4) + '" text-anchor="end" class="ri-label">' + escapeHtml(metric.name) + '</text>';
+            rows.forEach((row, rowIndex) => {
+              const parsed = window.QymMetrics.getRowScore(row, metric.metricIndex);
+              const x = left + rowIndex * cellW;
+              const rawValue = parsed.score;
+              const normalized = rawValue === null ? null : (metric.type === 'numeric'
+                ? (metric.max === metric.min ? 0.5 : (rawValue - metric.min) / (metric.max - metric.min))
+                : Math.max(0, Math.min(1, rawValue)));
+              const fill = normalized === null ? 'var(--bg-active)' : riScoreColor(normalized);
+              const display = rawValue === null ? 'No score' : window.QymMetrics.formatMetricValue(rawValue, metric.type);
+              svg += '<rect x="' + (x + 0.5).toFixed(1) + '" y="' + (y + 0.5) + '" width="' + Math.max(1, cellW - 1).toFixed(1) + '" height="' + (cellH - 1) + '" rx="1.5" fill="' + fill + '"' + (normalized === null ? ' opacity="0.35"' : '') + '>' +
+                '<title>' + escapeHtml((row.item_id || ('Item ' + (rowIndex + 1))) + ' · ' + metric.name + ': ' + display) + '</title></rect>';
+            });
+          });
+          rows.forEach((row, rowIndex) => {
+            if (rowIndex % labelEvery !== 0 && rowIndex !== rows.length - 1) return;
+            const x = left + rowIndex * cellW + cellW / 2;
+            svg += '<text x="' + x.toFixed(1) + '" y="' + (height - 20) + '" text-anchor="end" transform="rotate(-40 ' + x.toFixed(1) + ' ' + (height - 20) + ')" class="ri-data-label">#' + (row.index != null ? row.index + 1 : rowIndex + 1) + '</text>';
+          });
+          panels.push('<div class="ri-panel matrix">' +
+            '<div class="ri-panel-head"><div><div class="ri-panel-title">Item Performance Matrix</div>' +
+            '<div class="ri-panel-copy">Every item across every metric. Vertical patterns reveal consistently hard items; horizontal patterns reveal metric disagreement.</div></div>' +
+            '<div class="ri-panel-stat">' + rows.length + ' × ' + series.length + '</div></div>' +
+            '<div class="ri-chart-scroll"><svg class="ri-chart" style="min-width:' + width + 'px" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Item by metric performance matrix">' + svg + '</svg></div>' +
+          '</div>');
+        }
+
+        // Correlation matrix plus a direct scatter for the strongest relationship.
+        if (series.length > 1) {
+          const correlations = [];
+          for (let i = 0; i < series.length; i++) {
+            correlations[i] = [];
+            for (let j = 0; j < series.length; j++) {
+              const byRow = new Map(series[i].points.map(point => [point.rowIndex, point.value]));
+              const pairs = series[j].points.filter(point => byRow.has(point.rowIndex)).map(point => [byRow.get(point.rowIndex), point.value]);
+              correlations[i][j] = { value: i === j ? 1 : riPearson(pairs), pairs };
+            }
+          }
+          const cellW = 96, cellH = 28;
+          const left = 100, top = 50;
+          const width = left + series.length * cellW + 18;
+          const height = top + series.length * cellH + 18;
+          let svg = '';
+          series.forEach((metric, index) => {
+            const pos = left + index * cellW + cellW / 2;
+            svg += '<text x="' + pos + '" y="' + (top - 12) + '" text-anchor="end" transform="rotate(-38 ' + pos + ' ' + (top - 12) + ')" class="ri-label">' + escapeHtml(metric.name) + '</text>';
+            svg += '<text x="' + (left - 10) + '" y="' + (top + index * cellH + cellH / 2 + 4) + '" text-anchor="end" class="ri-label">' + escapeHtml(metric.name) + '</text>';
+          });
+          let strongest = null;
+          for (let i = 0; i < series.length; i++) {
+            for (let j = 0; j < series.length; j++) {
+              const corr = correlations[i][j].value;
+              const x = left + j * cellW, y = top + i * cellH;
+              const opacity = corr === null ? 0.12 : 0.18 + Math.abs(corr) * 0.72;
+              const fill = corr !== null && corr < 0 ? 'var(--chart-3)' : 'var(--chart-1)';
+              const label = corr === null ? '—' : corr.toFixed(2);
+              svg += '<rect x="' + (x + 1) + '" y="' + (y + 1) + '" width="' + (cellW - 2) + '" height="' + (cellH - 2) + '" rx="3" fill="' + fill + '" fill-opacity="' + opacity.toFixed(2) + '"><title>' + escapeHtml(series[i].name + ' vs ' + series[j].name + ': r=' + label) + '</title></rect>' +
+                '<text x="' + (x + cellW / 2) + '" y="' + (y + cellH / 2 + 4) + '" text-anchor="middle" class="ri-cell-value">' + label + '</text>';
+              if (i < j && corr !== null && (!strongest || Math.abs(corr) > Math.abs(strongest.corr))) {
+                strongest = { i, j, corr, pairs: correlations[i][j].pairs };
+              }
+            }
+          }
+          panels.push('<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Correlation</div>' +
+            '<div class="ri-panel-copy">Pearson correlation across matched items. Strong negatives expose metric tradeoffs; strong positives expose overlap.</div></div></div>' +
+            '<div class="ri-chart-scroll"><svg class="ri-chart ri-chart-square" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Metric correlation matrix">' + svg + '</svg></div></div>');
+
+          if (strongest && strongest.pairs.length > 1) {
+            const xSeries = series[strongest.i], ySeries = series[strongest.j];
+            const W = 620, H = 220, L = 52, R = 16, T = 14, B = 40;
+            const xVals = strongest.pairs.map(pair => pair[0]), yVals = strongest.pairs.map(pair => pair[1]);
+            const xMin = Math.min(...xVals), xMax = Math.max(...xVals), yMin = Math.min(...yVals), yMax = Math.max(...yVals);
+            let marks = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+              '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>';
+            strongest.pairs.forEach((pair, index) => {
+              const x = riScale(pair[0], xMin, xMax, L, W - R);
+              const y = riScale(pair[1], yMin, yMax, H - B, T);
+              marks += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5" fill="var(--chart-1)" stroke="var(--bg-surface)" stroke-width="2"><title>Matched item ' + (index + 1) + ' · ' + escapeHtml(xSeries.name) + ': ' + escapeHtml(window.QymMetrics.formatMetricValue(pair[0], xSeries.type)) + ' · ' + escapeHtml(ySeries.name) + ': ' + escapeHtml(window.QymMetrics.formatMetricValue(pair[1], ySeries.type)) + '</title></circle>';
+            });
+            marks += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 10) + '" text-anchor="middle" class="ri-label">' + escapeHtml(xSeries.name) + '</text>' +
+              '<text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">' + escapeHtml(ySeries.name) + '</text>' +
+              '<text x="' + L + '" y="' + (H - B + 18) + '" class="ri-data-label">' + escapeHtml(window.QymMetrics.formatMetricValue(xMin, xSeries.type)) + '</text>' +
+              '<text x="' + (W - R) + '" y="' + (H - B + 18) + '" text-anchor="end" class="ri-data-label">' + escapeHtml(window.QymMetrics.formatMetricValue(xMax, xSeries.type)) + '</text>';
+            panels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Strongest Metric Relationship</div>' +
+              '<div class="ri-panel-copy">' + escapeHtml(xSeries.name) + ' versus ' + escapeHtml(ySeries.name) + ', item by item.</div></div><div class="ri-panel-stat">r ' + strongest.corr.toFixed(2) + '</div></div>' +
+              '<svg class="ri-chart ri-chart-plot" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Scatter plot of the strongest metric relationship">' + marks + '</svg></div>');
+          }
+        }
+
+        const repeatSeries = series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => point.row.pass_scores && Array.isArray(point.row.pass_scores[metric.name]) && point.row.pass_scores[metric.name].length > 1));
+
+        // Quality-latency frontier: one item per point using normalized composite quality.
+        {
+          const normalizedByMetric = series.map(metric => {
+            const map = new Map();
+            metric.points.forEach(point => {
+              const normalized = metric.type === 'numeric'
+                ? (metric.max === metric.min ? 0.5 : (point.value - metric.min) / (metric.max - metric.min))
+                : Math.max(0, Math.min(1, point.value));
+              map.set(point.rowIndex, normalized);
+            });
+            return map;
+          });
+          const items = rows.map((row, rowIndex) => {
+            const values = normalizedByMetric.map(map => map.get(rowIndex)).filter(value => value !== undefined);
+            return { row, rowIndex, quality: values.length ? riMean(values) : null, latency: Number(row.latency_ms) };
+          }).filter(item => item.quality !== null && Number.isFinite(item.latency) && item.latency > 0);
+          if (items.length > 1) {
+            const W = 620, H = 220, L = 50, R = 18, T = 16, B = 40;
+            const lats = items.map(item => item.latency).sort((a, b) => a - b);
+            const qualities = items.map(item => item.quality).sort((a, b) => a - b);
+            const latMin = lats[0], latMax = lats[lats.length - 1];
+            const medianLat = lats[Math.floor((lats.length - 1) / 2)];
+            const medianQuality = qualities[Math.floor((qualities.length - 1) / 2)];
+            const xMedian = riScale(medianLat, latMin, latMax, L, W - R);
+            const yMedian = riScale(medianQuality, 0, 1, H - B, T);
+            let svg = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+              '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+              '<line x1="' + xMedian.toFixed(1) + '" y1="' + T + '" x2="' + xMedian.toFixed(1) + '" y2="' + (H - B) + '" class="ri-gridline"/>' +
+              '<line x1="' + L + '" y1="' + yMedian.toFixed(1) + '" x2="' + (W - R) + '" y2="' + yMedian.toFixed(1) + '" class="ri-gridline"/>';
+            [0, 0.5, 1].forEach(value => {
+              const y = riScale(value, 0, 1, H - B, T);
+              svg += '<text x="' + (L - 10) + '" y="' + (y + 4) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
+            });
+            items.forEach(item => {
+              const x = riScale(item.latency, latMin, latMax, L, W - R);
+              const y = riScale(item.quality, 0, 1, H - B, T);
+              const radius = 4 + Math.min(2, Number(item.row.retry_count || 0));
+              svg += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + radius + '" fill="' + riScoreColor(item.quality) + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((item.row.item_id || ('Item ' + (item.rowIndex + 1))) + ' · quality ' + formatPercent(item.quality) + ' · latency ' + formatLatency(item.latency) + (item.row.retry_count ? ' · retries ' + item.row.retry_count : '')) + '</title></circle>';
+            });
+            svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 10) + '" text-anchor="middle" class="ri-label">Response latency</text>' +
+              '<text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Composite quality</text>' +
+              '<text x="' + L + '" y="' + (H - B + 18) + '" class="ri-data-label">' + escapeHtml(formatLatency(latMin)) + '</text>' +
+              '<text x="' + (W - R) + '" y="' + (H - B + 18) + '" text-anchor="end" class="ri-data-label">' + escapeHtml(formatLatency(latMax)) + '</text>';
+            panels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div>' +
+              '<div class="ri-panel-copy">Find expensive failures and fast, high-quality items. Point size increases when retries are present.</div></div></div>' +
+              '<svg class="ri-chart ri-chart-plot" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Composite quality versus response latency by item">' + svg + '</svg>' +
+              '<div class="ri-note-row"><span>Dashed lines: run medians</span><span>' + items.length + ' items</span></div></div>');
+          }
+        }
+
+        // Repeat-run stability: observed pass trend and item volatility are distinct from pass@k.
+        if (repeatSeries.length) {
+          let passTrendPanel = '';
+          const maxPass = Math.max(...repeatSeries.flatMap(metric => metric.points.map(point => (point.row.pass_scores[metric.name] || []).length)));
+          if (maxPass > 1) {
+            const W = 1000, H = 350, L = 46, R = 16, T = 16, B = 36;
+            const x = pass => riScale(pass, 1, maxPass, L, W - R);
+            const y = value => riScale(value, 0, 1, H - B, T);
+            let svg = '';
+            [0, 0.25, 0.5, 0.75, 1].forEach(value => {
+              const py = y(value);
+              svg += '<line x1="' + L + '" y1="' + py + '" x2="' + (W - R) + '" y2="' + py + '" class="ri-gridline"/>' +
+                '<text x="' + (L - 9) + '" y="' + (py + 4) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
+            });
+            let legend = '';
+            repeatSeries.forEach((metric, metricIndex) => {
+              const color = chartColors[metricIndex % chartColors.length];
+              const means = [];
+              for (let pass = 1; pass <= maxPass; pass++) {
+                const values = metric.points.map(point => point.row.pass_scores[metric.name] || []).filter(values => values.length >= pass).map(values => Number(values[pass - 1])).filter(Number.isFinite);
+                means.push({ pass, value: values.length ? riMean(values) : null, count: values.length });
+              }
+              const valid = means.filter(point => point.value !== null);
+              if (!valid.length) return;
+              const path = valid.map((point, index) => (index === 0 ? 'M' : 'L') + x(point.pass).toFixed(1) + ' ' + y(point.value).toFixed(1)).join(' ');
+              svg += '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+              valid.forEach(point => {
+                svg += '<circle cx="' + x(point.pass).toFixed(1) + '" cy="' + y(point.value).toFixed(1) + '" r="4.5" fill="var(--bg-surface)" stroke="' + color + '" stroke-width="2"><title>' + escapeHtml(metric.name + ' · pass ' + point.pass + ': ' + formatPercent(point.value) + ' · ' + point.count + ' items') + '</title></circle>';
+              });
+              legend += '<span class="ri-legend-item" style="--ri-color:' + color + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</span>';
+            });
+            for (let pass = 1; pass <= maxPass; pass++) {
+              svg += '<text x="' + x(pass).toFixed(1) + '" y="' + (H - 14) + '" text-anchor="middle" class="ri-data-label">Pass ' + pass + '</text>';
+            }
+            passTrendPanel = '<div class="ri-panel half trend"><div class="ri-panel-head"><div><div class="ri-panel-title">Observed Performance by Pass</div>' +
+              '<div class="ri-panel-copy">Actual mean score on each stored pass for every score metric. This separates pass-order drift from the probability-based pass@k curve.</div></div></div>' +
+              '<div class="ri-legend">' + legend + '</div><svg class="ri-chart ri-chart-trend" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Observed metric performance by pass">' + svg + '</svg></div>';
+          }
+
+          const volatility = [];
+          repeatSeries.forEach((metric, metricIndex) => {
+            metric.points.forEach(point => {
+              const values = (point.row.pass_scores[metric.name] || []).map(Number).filter(Number.isFinite);
+              if (values.length > 1) volatility.push({ metric, metricIndex, row: point.row, rowIndex: point.rowIndex, mean: riMean(values), stddev: riStdDev(values), values });
+            });
+          });
+          if (volatility.length) {
+            const W = 620, H = 220, L = 50, R = 18, T = 16, B = 40;
+            const maxStd = Math.max(0.5, ...volatility.map(point => point.stddev));
+            const x = value => riScale(value, 0, 1, L, W - R);
+            const y = value => riScale(value, 0, maxStd, H - B, T);
+            let svg = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+              '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>';
+            [0, 0.5, 1].forEach(value => {
+              svg += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
+            });
+            [0, maxStd / 2, maxStd].forEach(value => {
+              svg += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
+            });
+            volatility.forEach(point => {
+              const color = chartColors[point.metricIndex % chartColors.length];
+              svg += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="5" fill="' + color + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + point.metric.name + ' · mean ' + formatPercent(point.mean) + ' · volatility ' + formatPercent(point.stddev)) + '</title></circle>';
+            });
+            const legend = repeatSeries.map((metric, metricIndex) => '<span class="ri-legend-item" style="--ri-color:' + chartColors[metricIndex % chartColors.length] + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</span>').join('');
+            svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 10) + '" text-anchor="middle" class="ri-label">Mean score</text>' +
+              '<text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Pass volatility</text>';
+            panels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Stability Map</div>' +
+              '<div class="ri-panel-copy">Upper-right items score well but fluctuate; lower-right items are consistently strong.</div></div></div>' +
+              '<div class="ri-legend">' + legend + '</div><svg class="ri-chart ri-chart-plot" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Mean score versus pass volatility by item and metric">' + svg + '</svg></div>');
+          }
+          if (passTrendPanel) panels.push(passTrendPanel);
+        }
+
+        if (!panels.length) return '';
+        return '<div class="ri-insights">' +
+          '<div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3>' +
+          '<div class="ri-header-copy">Relationships, item-level structure, operational tradeoffs, and repeat stability—each chart answers a different diagnostic question.</div></div></div>' +
+          '<div class="ri-grid">' + panels.join('') + '</div>' +
+        '</div>';
+      }
+
       function renderOverview(filteredItemsOverride = null) {
         const section = el('overview-section');
         if (!section || !state.snapshot) { if (section) section.innerHTML = ''; return; }
@@ -5054,6 +5699,8 @@
             summaryItem('completed', 'Completed', String(completed), '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>') +
             summaryItem('errors', 'Errors', String(failed), '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>') +
           '</div>';
+
+        const intelligenceCharts = buildRunIntelligenceCharts(rows);
 
         // ── Gauge color (hex for conic-gradient) ──
         function gaugeColorHex(score) {
@@ -5335,6 +5982,7 @@
             runSummaryHtml +
           '</div>' +
           (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '') +
+          intelligenceCharts +
           systemCards;
 
         // ── Wire click handlers ──

@@ -338,6 +338,46 @@
     return `<td class="col-trace-metric-value">${traceMetric.fmt(value)}</td>`;
   }
 
+  // Repeat runs: the pass-dot strip — one dot per pass on the parent row,
+  // score-colored by the primary metric. The stability story at a glance
+  // (informational only; the passes toggle opens the detail drawer).
+  function renderPassDots(run) {
+    const summaries = Array.isArray(run.pass_summaries) ? run.pass_summaries : [];
+    if (!(run.samples > 1) || summaries.length === 0) return '';
+    const MAX_DOTS = 8;
+    const shown = summaries.slice(0, MAX_DOTS);
+    const extra = summaries.length - shown.length;
+    const primaryMetric = (run.metrics || [])[0] || '';
+    const firstScored = shown.find(s => typeof s.primary_score === 'number');
+    const mType = state._metricTypes?.[primaryMetric]
+      || window.QymMetrics.detectMetricTypeFromAvg(firstScored ? firstScored.primary_score : null);
+    const dots = shown.map(s => {
+      const status = String(s.status || 'pending').toLowerCase();
+      const score = (typeof s.primary_score === 'number') ? s.primary_score : null;
+      const errs = Number(s.error_count) || 0;
+      let cls = status;
+      if (status === 'completed' && score !== null) {
+        const scoreClass = window.QymMetrics.getMetricColorClass(score, mType);
+        if (scoreClass) cls += ` ${scoreClass}`;
+      }
+      if (errs > 0) cls += ' err';
+      const scoreText = score !== null
+        ? `${primaryMetric} ${window.QymMetrics.formatMetricValue(score, mType)}`
+        : status;
+      const title = `pass ${s.pass_number}/${run.samples} — ${scoreText}`
+        + (errs > 0 ? ` · ${errs} item${errs === 1 ? '' : 's'} errored` : '')
+        + (status !== 'completed' && score !== null ? ` · ${status}` : '');
+      return `<span class="pdot ${cls}" title="${escapeHtml(title)}"></span>`;
+    }).join('');
+    const scoredText = shown
+      .map(s => (typeof s.primary_score === 'number'
+        ? window.QymMetrics.formatMetricValue(s.primary_score, mType)
+        : String(s.status || 'pending')))
+      .join(', ');
+    return `<span class="pass-dots" aria-label="Per-pass ${escapeHtml(primaryMetric)}: ${escapeHtml(scoredText)}">`
+      + `${dots}${extra > 0 ? `<span class="pdot-more">+${extra}</span>` : ''}</span>`;
+  }
+
   function getRunComboPeerValues(runs, run, valueGetter) {
     if (!Array.isArray(runs) || !run || typeof valueGetter !== 'function') return [];
     return runs
@@ -2915,9 +2955,6 @@
     }
   }
 
-  // #7: Extract base timestamp from run name/id for grouping.
-  // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
-  // Runs with the same task + base timestamp belong together.
   // Repeat runs: expand each ×k run into k per-pass pseudo-runs so group
   // analysis pools attempts (the attempt is the atomic unit). Runs without
   // pass data flow through unchanged (each = 1 attempt, today's semantics).
@@ -2944,89 +2981,9 @@
     return out;
   }
 
-  // Repeat runs: markup for the expanded two-zone instrument panel —
-  // pass ledger (score-colored numbers + meters, dot statuses) on the left,
-  // the group-metric verdict tiles on the right.
-  function renderSamplesDetail(passes, group) {
-    const metricNames = (passes && passes.metrics) || [];
-    const primaryMetric = metricNames[0];
-    const allPasses = (passes && passes.passes) || [];
-    const fmt = v => (typeof v === 'number' ? window.QymMetrics.formatNumericValue(v) : '—');
-    const scoreClass = v => {
-      if (typeof v !== 'number') return '';
-      const cls = window.QymMetrics.getMetricColorClass(v, 'score');
-      return cls ? cls.replace('score-', 'sc-') : '';
-    };
-
-    // Pending passes collapse into one line instead of a stack of empty rows.
-    const visible = allPasses.filter(p => p.status !== 'pending');
-    const queued = allPasses.length - visible.length;
-    const metricSub = (name, v) => {
-      const cls = scoreClass(v);
-      const pct = (typeof v === 'number') ? Math.round(Math.max(0, Math.min(1, v)) * 100) : 0;
-      return `<div class="sp-sub">
-        <span class="sp-sub-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-        <span class="sp-sub-value ${cls || 'empty'}">${typeof v === 'number' ? fmt(v) : '—'}</span>
-        <span class="sp-meter ${cls}"><i style="width:${pct}%"></i></span>
-      </div>`;
-    };
-    const internalSub = (name, text) =>
-      `<div class="sp-sub internal">
-        <span class="sp-sub-name">${name}</span>
-        <span class="sp-sub-value">${text}</span>
-        <span></span>
-      </div>`;
-    const latText = v => (typeof v === 'number' ? formatLatency(v) : '—');
-    const ledgerRows = visible.map(p => {
-      const errs = p.error_count || 0;
-      const metricSubs = metricNames.map(m => metricSub(m, (p.metric_means || {})[m])).join('');
-      const internalSubs = [
-        internalSub('avg latency', latText(p.avg_latency_ms)),
-        internalSub('median latency', latText(p.median_latency_ms)),
-        internalSub('p95 latency', latText(p.p95_latency_ms)),
-      ].join('');
-      return `<div class="sp-pass-block">
-        <div class="sp-pass-head">
-          <span class="sp-dot ${escapeHtml(p.status || '')}"></span>
-          <span class="sp-label">pass ${p.pass_number}/${passes.samples}</span>
-          <span class="sp-head-meta">${errs > 0 ? `<span class="err">${errs} err</span> · ` : ''}${p.items_scored || 0} items</span>
-        </div>
-        ${metricSubs}${internalSubs}
-      </div>`;
-    }).join('');
-    const queuedLine = queued > 0
-      ? `<div class="sp-queued">${queued === 1
-          ? `pass ${allPasses.length}/${passes.samples} queued`
-          : `passes ${allPasses.length - queued + 1}–${allPasses.length}/${passes.samples} queued`}</div>`
-      : '';
-
-    const g = (group && group.group) || {};
-    const k = g.k || (passes && passes.samples) || 0;
-    const tile = (label, value, mods) =>
-      `<div class="sv-tile ${mods || ''}">
-        <div class="sv-label">${label}</div>
-        <div class="sv-value ${scoreClass(value) || 'empty'}">${fmt(value)}</div>
-      </div>`;
-    const tiles = [
-      tile(`Pass@${k}`, g.pass_at_k, 'hero'),
-      tile(`Pass^${k}`, g.pass_hat_k, 'hero-warn'),
-      tile(`Avg@${k}`, g.avg_at_k),
-      tile('Consistency', g.consistency),
-      tile('Reliability', g.reliability),
-    ].join('');
-
-    return `<div class="samples-panel">
-        <div class="samples-passes">
-          <div class="samples-zone-title">Passes</div>
-          ${ledgerRows}${queuedLine}
-        </div>
-        <div class="samples-verdict">
-          <div class="samples-zone-title">Group metrics <span class="mono-note">· k=${k} · threshold ${group && group.threshold != null ? group.threshold : 0.8}</span></div>
-          <div class="sv-grid">${tiles}</div>
-        </div>
-      </div>`;
-  }
-
+  // #7: Extract base timestamp from run name/id for grouping.
+  // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
+  // Runs with the same task + base timestamp belong together.
   function extractRunTimestampGroup(run) {
     // Repeat runs are ONE logical run — never glue them into legacy
     // timestamp groups (runs.samples replaced the heuristic for new runs).
@@ -3222,12 +3179,16 @@
       const durationText = formatDurationMs(run.duration_ms);
       const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
+      const samplesOpen = run.samples > 1 && !!(state._samplesExpanded || {})[run.run_id];
+      const samplesPanelId = `samples-detail-${idx}`;
       const rowClasses = [
+        idx % 2 === 0 ? 'run-row-even' : 'run-row-odd',
         isSelected ? 'selected' : '',
         isFocused ? 'focused' : '',
         isGrouped ? 'grouped-run' : '',
         isGrouped && isFirstInGroup ? 'grouped-run-start' : '',
         isGrouped && isLastInGroup ? 'grouped-run-end' : '',
+        samplesOpen ? 'samples-open' : '',
       ].filter(Boolean).join(' ');
 
       // Generate metric columns
@@ -3241,10 +3202,11 @@
         const peerValues = getRunComboPeerValues(allRuns, run, candidate => candidate.metric_averages?.[metric]);
         const display = window.QymMetrics.formatMetricValueSmart(value, mType, peerValues);
         // Repeat runs: the ±CI half-width is the visual marker that this
-        // value is a mean over samples passes.
+        // value is a mean over samples passes. Formatted with the metric's
+        // own type so percent metrics read "53.3% ±10.0%", not "±0.1".
         const ciHalf = (run.samples > 1 && run.metric_cis) ? run.metric_cis[metric] : null;
         const ciHtml = (typeof ciHalf === 'number')
-          ? `<span class="metric-ci" title="95% CI over ${run.samples} passes">±${window.QymMetrics.formatNumericValue(ciHalf)}</span>`
+          ? `<span class="metric-ci" title="95% CI over ${run.samples} passes">±${window.QymMetrics.formatMetricValue(ciHalf, mType)}</span>`
           : '';
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${ciHtml}</td>`;
       }).join('');
@@ -3295,7 +3257,20 @@
             ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-run">
-            ${run.samples > 1 ? `<span class="samples-toggle" data-run-id="${run.run_id}" title="Show per-pass results" onclick="event.stopPropagation()">▶</span>` : ''}<span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>${run.samples > 1 ? `<span class="samples-pill" title="Repeat run: every item evaluated ${run.samples} times">×${run.samples}</span>` : ''}
+            <div class="run-cell-content">
+              <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
+              ${run.samples > 1 ? `<button type="button" class="samples-toggle${samplesOpen ? ' open' : ''}"
+                data-run-id="${run.run_id}" data-panel-id="${samplesPanelId}"
+                data-count="${run.samples}"
+                data-status="${escapeHtml(status)}"
+                data-live="${status === 'RUNNING' || status === 'PENDING' ? 'true' : 'false'}"
+                aria-expanded="${samplesOpen ? 'true' : 'false'}" aria-controls="${samplesPanelId}"
+                aria-label="${samplesOpen ? 'Collapse' : 'Expand'} ${run.samples} pass results"
+                title="${samplesOpen ? 'Collapse' : 'Expand'} ${run.samples} pass results">
+                <svg class="samples-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"></path></svg>
+                <span>${run.samples} passes</span>
+              </button>` : ''}${renderPassDots(run)}
+            </div>
           </td>
           <td class="col-task">
             <span class="tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
@@ -3548,75 +3523,292 @@
       });
     });
 
-    // Repeat runs: expand a ×k row into its per-pass slices + group metrics.
-    // Data is lazy-loaded on first expand (/passes + /group-metrics); expansion
-    // state + fetched markup survive the live-polling re-renders.
+    // Repeat runs open one attached inspector rather than pretending each pass
+    // is another top-level run. The summary explains the aggregate first; the
+    // compact breakdown below contains only fields that vary between passes.
     state._samplesExpanded = state._samplesExpanded || {};
-    state._samplesDetailHtml = state._samplesDetailHtml || {};
+    state._samplesData = state._samplesData || {};
+    state._samplesLoads = state._samplesLoads || {};
 
-    function insertSamplesDetail(runId, row, html) {
-      const detail = document.createElement('tr');
-      detail.className = 'samples-detail-row';
-      detail.dataset.samplesFor = runId;
-      detail.innerHTML = `<td colspan="${row.children.length}" class="samples-detail-cell">${html}</td>`;
-      row.insertAdjacentElement('afterend', detail);
+    function buildSamplesDetailMarkup(runId, data, colCount, panelId) {
+      const detailAttrs = `id="${panelId}" class="samples-detail-row" data-samples-for="${escapeHtml(runId)}"`;
+      if (!data) {
+        return `<tr ${detailAttrs}>
+          <td colspan="${colCount}" class="samples-detail-cell">
+            <section class="samples-detail-panel samples-detail-state" aria-label="Repeat run details" aria-busy="true">
+              <span class="samples-loading-spinner" aria-hidden="true"></span>
+              <span class="samples-state-copy"><strong>Loading repeat details</strong><span>Fetching per-pass scores and group metrics…</span></span>
+            </section>
+          </td>
+        </tr>`;
+      }
+      if (data.error) {
+        return `<tr ${detailAttrs}>
+          <td colspan="${colCount}" class="samples-detail-cell">
+            <section class="samples-detail-panel samples-detail-state samples-detail-error" aria-label="Repeat run details">
+              <span class="samples-state-icon" aria-hidden="true">!</span>
+              <span class="samples-state-copy"><strong>Repeat details unavailable</strong><span>${escapeHtml(data.error)}</span></span>
+              <button type="button" class="samples-retry-btn">Retry</button>
+            </section>
+          </td>
+        </tr>`;
+      }
+
+      const passes = data.passes || {};
+      const groupPayload = data.group || {};
+      const group = groupPayload.group || {};
+      const allPasses = passes.passes || [];
+      const k = group.k || passes.samples || 0;
+      const threshold = groupPayload.threshold != null ? groupPayload.threshold : 0.8;
+      const thrPct = Math.round(threshold * 100);
+      const groupMetric = groupPayload.metric || (passes.metrics || [])[0] || 'primary metric';
+      const finished = allPasses.filter(p => ['completed', 'failed'].includes(String(p.status || '').toLowerCase())).length;
+      const itemCounts = allPasses.map(p => Number(p.items_scored) || 0).filter(Boolean);
+      const itemSummary = itemCounts.length
+        ? (new Set(itemCounts).size === 1
+          ? `${itemCounts[0]} items per completed pass`
+          : `Up to ${Math.max(...itemCounts)} items per pass`)
+        : `${k} scheduled passes`;
+      const passScope = finished === k
+        ? `across ${k} independent passes.`
+        : `from ${finished} of ${k} completed passes.`;
+
+      const stat = (label, v, tooltip) => {
+        const isNum = typeof v === 'number';
+        const cls = isNum ? window.QymMetrics.getMetricColorClass(v, 'score') : '';
+        const text = isNum ? window.QymMetrics.formatMetricValue(v, 'score') : '—';
+        return `<div class="samples-summary-stat" title="${escapeHtml(tooltip)}">` +
+          `<span class="samples-summary-label">${label}</span>` +
+          `<strong class="samples-summary-value metric-score ${cls}">${text}</strong></div>`;
+      };
+
+      return `<tr ${detailAttrs}>
+        <td colspan="${colCount}" class="samples-detail-cell">
+          <section class="samples-detail-panel" aria-label="Repeat run details">
+            <header class="samples-detail-header">
+              <div class="samples-detail-heading">
+                <div class="samples-detail-title">Repeat summary <span class="samples-detail-count">${finished}/${k} complete</span></div>
+                <div class="samples-detail-meta">Group metrics use <span class="samples-detail-metric">${escapeHtml(groupMetric)}</span> ${passScope}</div>
+              </div>
+              <div class="samples-threshold" title="An item passes when its score meets or exceeds this threshold.">
+                <span>Pass threshold</span><strong>${window.QymMetrics.formatPercent(threshold, 0)}</strong>
+              </div>
+            </header>
+            <div class="samples-summary-grid">
+            ${stat(`Pass@${k}`, group.pass_at_k, `% of items where at least one of the ${k} passes scored ≥${thrPct}%.`)}
+            ${stat(`Pass^${k}`, group.pass_hat_k, `% of items where all ${k} passes scored ≥${thrPct}%.`)}
+            ${stat(`Avg@${k}`, group.avg_at_k, `Mean score across all items and all ${k} passes.`)}
+            ${stat('Consistency', group.consistency, 'How often passes agree on pass/fail for the same item. 100% = all passes agree.')}
+            ${stat('Reliability', group.reliability, 'Of the items solved at least once, the share of attempts that solve them.')}
+            </div>
+            <div class="samples-breakdown-header">
+              <span>Pass breakdown</span><span>${itemSummary}</span>
+            </div>
+            <div class="samples-pass-table-host"></div>
+          </section>
+        </td>
+      </tr>`;
+    }
+
+    function renderSamplesPassTable(detailRow, data, runStatus) {
+      const host = detailRow && detailRow.querySelector('.samples-pass-table-host');
+      if (!host) return;
+      const passes = data.passes || {};
+      const samples = Number(passes.samples) || 0;
+      const allPasses = Array.isArray(passes.passes) ? passes.passes : [];
+      const pending = allPasses.filter(p => String(p.status || '').toLowerCase() === 'pending');
+      const rows = allPasses.filter(p => String(p.status || '').toLowerCase() !== 'pending');
+      const pendingWillNotRun = ['STOPPED', 'FAILED', 'CANCELED', 'CANCELLED']
+        .includes(String(runStatus || '').toUpperCase());
+      if (pending.length) {
+        rows.push({
+          _queued: true,
+          _queuedCount: pending.length,
+          pass_number: pending[0].pass_number,
+          _lastPassNumber: pending[pending.length - 1].pass_number,
+          status: pendingWillNotRun ? 'not-run' : 'queued',
+        });
+      }
+      if (!rows.length) {
+        host.innerHTML = `<div class="samples-pass-empty">No pass results are available yet.</div>`;
+        return;
+      }
+      if (!window.QymDataTable) {
+        host.innerHTML = `<div class="samples-pass-empty">Pass details could not be rendered.</div>`;
+        return;
+      }
+
+      const columns = [
+        { id: 'pass', label: 'Pass', className: 'spt-pass-col', width: 156, minWidth: 136, flex: 1, resizable: false },
+        { id: 'status', label: 'Status', className: 'spt-status-col', width: 126, minWidth: 112, resizable: false },
+        ...metricsToShow.map((metric, index) => ({
+          id: `metric-${index}`, label: metric, className: 'spt-metric-col', width: 132, minWidth: 112, resizable: false,
+        })),
+        ...(visibleSystemColumns.has('latency')
+          ? [{ id: 'latency', label: 'Avg latency', className: 'spt-latency-col', width: 112, minWidth: 96, resizable: false }]
+          : []),
+        ...(visibleSystemColumns.has('median-latency')
+          ? [{ id: 'median', label: 'Median latency', className: 'spt-latency-col', width: 124, minWidth: 104, resizable: false }]
+          : []),
+        { id: 'issues', label: 'Issues', className: 'spt-issues-col', width: 96, minWidth: 84, resizable: false },
+      ];
+      const peerRows = rows.filter(row => !row._queued);
+      const result = window.QymDataTable.render({
+        host,
+        columns,
+        rows,
+        minWidth: columns.reduce((sum, column) => sum + column.minWidth, 0),
+        tableClass: 'samples-pass-table',
+        renderRow: pass => {
+          const tr = document.createElement('tr');
+          if (pass._queued) tr.className = 'spt-queued-row';
+          const firstPass = Number(pass.pass_number) || 1;
+          const lastPass = Number(pass._lastPassNumber) || firstPass;
+          const passLabel = pass._queued && firstPass !== lastPass
+            ? `Passes ${firstPass}–${lastPass}`
+            : `Pass ${firstPass}<span class="spt-pass-total">/${samples}</span>`;
+          const passMeta = pass._queued
+            ? (pendingWillNotRun ? `${pass._queuedCount} not run` : `${pass._queuedCount} waiting to start`)
+            : `${Number(pass.items_scored) || 0} items`;
+          const rawStatus = String(pass.status || 'unknown').toLowerCase();
+          const statusClass = rawStatus.replace(/[^a-z0-9_-]/g, '');
+          const statusLabel = rawStatus === 'queued'
+            ? 'Queued'
+            : (rawStatus === 'not-run' ? 'Not run' : rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1));
+          const metricCells = metricsToShow.map(metric => {
+            const value = (pass.metric_means || {})[metric];
+            if (typeof value !== 'number') return `<td class="spt-metric-col"><span class="metric-na">—</span></td>`;
+            const metricType = state._metricTypes?.[metric] || window.QymMetrics.detectMetricTypeFromAvg(value);
+            const peers = peerRows.map(sibling => (sibling.metric_means || {})[metric]);
+            const display = window.QymMetrics.formatMetricValueSmart(value, metricType, peers);
+            const metricClass = window.QymMetrics.getMetricColorClass(value, metricType);
+            return `<td class="spt-metric-col"><span class="metric-score ${metricClass}">${display}</span></td>`;
+          }).join('');
+          const latencyCells = (visibleSystemColumns.has('latency')
+            ? `<td class="spt-latency-col">${typeof pass.avg_latency_ms === 'number' ? formatLatency(pass.avg_latency_ms) : '—'}</td>`
+            : '') + (visibleSystemColumns.has('median-latency')
+            ? `<td class="spt-latency-col">${typeof pass.median_latency_ms === 'number' ? formatLatency(pass.median_latency_ms) : '—'}</td>`
+            : '');
+          const errors = Number(pass.error_count) || 0;
+          tr.innerHTML = `<td class="spt-pass-col"><span class="spt-pass-name">${passLabel}</span><span class="spt-pass-meta">${passMeta}</span></td>
+            <td class="spt-status-col"><span class="spt-status"><span class="spt-status-dot ${statusClass}" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span></td>
+            ${metricCells}${latencyCells}
+            <td class="spt-issues-col">${errors
+              ? `<span class="spt-error" title="${errors} item${errors === 1 ? '' : 's'} errored in this pass">${errors} error${errors === 1 ? '' : 's'}</span>`
+              : '<span class="spt-no-issues" title="No errors">—</span>'}</td>`;
+          return tr;
+        },
+      });
+      result.table.setAttribute('aria-label', 'Per-pass results');
+    }
+
+    function samplesDetailRows(runId) {
+      return Array.from(tbody.querySelectorAll('tr[data-samples-for]'))
+        .filter(detail => detail.dataset.samplesFor === runId);
+    }
+
+    function insertSamplesDetail(runId, row, panelId) {
+      samplesDetailRows(runId).forEach(detail => detail.remove());
+      const runStatus = row.querySelector('.samples-toggle')?.dataset.status || '';
+      row.insertAdjacentHTML('afterend', buildSamplesDetailMarkup(
+        runId,
+        state._samplesData[runId],
+        row.children.length,
+        panelId,
+      ));
+      const detail = row.nextElementSibling;
+      if (!detail || detail.dataset.samplesFor !== runId) return null;
+      if (row.dataset.memberOf) detail.dataset.memberOf = row.dataset.memberOf;
+      const data = state._samplesData[runId];
+      if (data && !data.error) renderSamplesPassTable(detail, data, runStatus);
+      const retry = detail.querySelector('.samples-retry-btn');
+      if (retry) {
+        retry.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          delete state._samplesData[runId];
+          insertSamplesDetail(runId, row, panelId);
+          loadSamplesData(runId, row, panelId);
+        });
+      }
       return detail;
     }
 
-    async function loadSamplesDetail(runId, detail) {
+    function findSamplesToggle(runId) {
+      return Array.from(tbody.querySelectorAll('.samples-toggle'))
+        .find(toggle => toggle.dataset.runId === runId) || null;
+    }
+
+    async function loadSamplesData(runId, row, panelId) {
+      if (state._samplesLoads[runId]) return;
+      state._samplesLoads[runId] = true;
       try {
         const [passesRes, groupRes] = await Promise.all([
           fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/passes`)),
           fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/group-metrics`)),
         ]);
+        if (!passesRes.ok || !groupRes.ok) throw new Error('Request failed');
         const passes = await passesRes.json();
         const group = await groupRes.json();
-        const html = renderSamplesDetail(passes, group);
-        state._samplesDetailHtml[runId] = html;
-        if (detail.isConnected) detail.querySelector('td').innerHTML = html;
+        if (passes.error || group.error) throw new Error(passes.error || group.error);
+        state._samplesData[runId] = {
+          passes,
+          group,
+        };
       } catch (err) {
-        if (detail.isConnected) {
-          detail.querySelector('td').innerHTML =
-            `<span style="color:var(--error);font-size:var(--font-sm)">Failed to load pass data</span>`;
-        }
+        state._samplesData[runId] = {
+          error: 'Could not load pass details. Check the connection and try again.',
+        };
+      } finally {
+        delete state._samplesLoads[runId];
+      }
+
+      const currentToggle = findSamplesToggle(runId);
+      const currentRow = row.isConnected ? row : (currentToggle && currentToggle.closest('tr'));
+      const currentPanelId = (currentToggle && currentToggle.dataset.panelId) || panelId;
+      if (currentRow && currentRow.isConnected && state._samplesExpanded[runId]) {
+        insertSamplesDetail(runId, currentRow, currentPanelId);
       }
     }
 
     tbody.querySelectorAll('.samples-toggle').forEach(toggle => {
       const runId = toggle.dataset.runId;
-      // Restore expansions the re-render just wiped.
+      const panelId = toggle.dataset.panelId;
       if (runId && state._samplesExpanded[runId]) {
         const row = toggle.closest('tr');
-        if (row && !tbody.querySelector(`tr.samples-detail-row[data-samples-for="${runId}"]`)) {
-          toggle.textContent = '▼';
-          const cached = state._samplesDetailHtml[runId];
-          const detail = insertSamplesDetail(
-            runId, row,
-            cached || `<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading passes…</span>`
-          );
-          // Live runs: refresh the pass data on every re-render pass.
-          loadSamplesDetail(runId, detail);
+        if (row) {
+          insertSamplesDetail(runId, row, panelId);
+          const cached = state._samplesData[runId];
+          const cachedIncomplete = cached && !cached.error && (cached.passes?.passes || [])
+            .some(pass => !['completed', 'failed'].includes(String(pass.status || '').toLowerCase()));
+          if (!cached || (!cached.error && (toggle.dataset.live === 'true' || cachedIncomplete))) {
+            loadSamplesData(runId, row, panelId);
+          }
         }
       }
-      toggle.addEventListener('click', async (e) => {
+      toggle.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggle.click();
+      });
+      toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         const row = toggle.closest('tr');
         if (!runId || !row) return;
-        const existing = tbody.querySelector(`tr.samples-detail-row[data-samples-for="${runId}"]`);
-        if (existing) {
-          const hidden = existing.style.display === 'none';
-          existing.style.display = hidden ? '' : 'none';
-          toggle.textContent = hidden ? '▼' : '▶';
-          state._samplesExpanded[runId] = hidden;
-          return;
+        const expanded = !state._samplesExpanded[runId];
+        const sampleCount = toggle.dataset.count || '';
+        state._samplesExpanded[runId] = expanded;
+        toggle.classList.toggle('open', expanded);
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${sampleCount} pass results`);
+        toggle.title = `${expanded ? 'Collapse' : 'Expand'} ${sampleCount} pass results`;
+        row.classList.toggle('samples-open', expanded);
+        if (expanded) {
+          insertSamplesDetail(runId, row, panelId);
+          if (!state._samplesData[runId]) loadSamplesData(runId, row, panelId);
+        } else {
+          samplesDetailRows(runId).forEach(detail => detail.remove());
         }
-        toggle.textContent = '▼';
-        state._samplesExpanded[runId] = true;
-        const detail = insertSamplesDetail(
-          runId, row,
-          `<span style="color:var(--text-muted);font-size:var(--font-sm)">Loading passes…</span>`
-        );
-        await loadSamplesDetail(runId, detail);
       });
     });
 

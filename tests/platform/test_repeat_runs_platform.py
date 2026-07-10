@@ -23,7 +23,12 @@ if "openai" not in sys.modules:
     sys.modules["openai"] = MagicMock()
 
 from qym_platform.app import create_app
-from qym_platform.api.runs import _build_run_data, run_group_metrics, run_passes
+from qym_platform.api.runs import (
+    _build_run_data,
+    legacy_list_runs,
+    run_group_metrics,
+    run_passes,
+)
 from qym_platform.auth import Principal
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
@@ -266,6 +271,56 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert set(gm["band"].keys()) == {1, 2, 3}
         assert gm["band"][1]["pass_at_k"] == pytest.approx(1.0 / 3.0)
         assert gm["band"][3]["pass_at_k"] == pytest.approx(1.0)
+
+
+def test_runs_list_payload_includes_pass_summaries_for_dot_strip():
+    """The list payload carries per-pass summaries so the runs-list pass-dot
+    strip renders without a per-row /passes fetch."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        payload = legacy_list_runs(
+            limit=100,
+            offset=0,
+            project_slug="project-1",
+            status=None,
+            exclude_live=False,
+            user=None,
+            user_id=None,
+            owner_user_id=None,
+            db=session,
+            principal=principal,
+        )
+        summaries = [
+            s
+            for models in payload["tasks"].values()
+            for run_list in models.values()
+            for s in run_list
+        ]
+        summary = next(s for s in summaries if s["run_id"] == RUN_ID)
+        assert summary["samples"] == 3
+
+        ps = summary["pass_summaries"]
+        assert [p["pass_number"] for p in ps] == [1, 2, 3]
+        # last_completed_pass == 3, so every pass reads completed
+        assert [p["status"] for p in ps] == ["completed"] * 3
+        # primary metric (accuracy) means per pass: 1.0, 0.0, 0.0 (zero-filled
+        # failed pass) — these drive the dot colors
+        assert ps[0]["primary_score"] == pytest.approx(1.0)
+        assert ps[1]["primary_score"] == pytest.approx(0.0)
+        assert ps[2]["primary_score"] == pytest.approx(0.0)
+        # pass 3 failed via item_failed (no attempt row), so attempt-derived
+        # error_count stays 0 — the zero-filled score already colors the dot
+        assert [p["error_count"] for p in ps] == [0, 0, 0]
 
 
 def test_old_sdk_events_without_pass_number_still_ingest():

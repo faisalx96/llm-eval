@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>قيِّم • Repeat runs — display options</title>
+<style>
+/* tokens per docs/DESIGN_LANGUAGE.md (qym platform design system) */
+:root{
+  --bg-void:#101018; --bg-base:#14141e; --bg-surface:#1a1a28; --bg-elevated:#222232;
+  --bg-hover:#2a2a3c; --bg-active:#323244;
+  --text-primary:#ededf0; --text-secondary:#a8a8ba; --text-muted:#9a9ab2; --text-dim:#6b6b80;
+  --accent-primary:#00d4aa; --accent-secondary:#00a8ff; --accent-tertiary:#a855f7;
+  --success:#10b981; --warning:#f59e0b; --error:#ef4444;
+  --score-1:#ef4444; --score-2:#f97316; --score-3:#eab308; --score-4:#84cc16; --score-5:#10b981;
+  --border-subtle:#252536; --border-default:#333348; --border-strong:#4a4a60;
+  --space-xs:4px; --space-sm:8px; --space-md:14px; --space-lg:20px; --space-xl:32px;
+  --font-xs:10px; --font-sm:11px; --font-base:12px; --font-md:13px; --font-lg:15px; --font-xl:18px; --font-title:22px;
+  --font-mono:'JetBrains Mono','SF Mono','Consolas',monospace;
+  --font-sans:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);font-size:var(--font-base);background:var(--bg-void);color:var(--text-primary);padding-bottom:120px}
+
+/* ── mock chrome ─────────────────────────────────────── */
+.mock-top{position:sticky;top:0;z-index:50;background:var(--bg-base);border-bottom:1px solid var(--border-default);padding:0 var(--space-lg)}
+.mock-top-row{display:flex;align-items:center;gap:var(--space-md);flex-wrap:wrap;min-height:52px;padding:8px 0}
+.mock-title{font-size:var(--font-lg);font-weight:700}
+.mock-title small{color:var(--text-muted);font-weight:500;margin-left:8px;font-size:var(--font-sm)}
+.opt-tabs{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
+.opt-tab{padding:8px 14px;font-size:var(--font-sm);font-weight:600;color:var(--text-muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;font-family:var(--font-sans)}
+.opt-tab:hover{color:var(--text-secondary)}
+.opt-tab.active{color:var(--accent-primary);border-bottom-color:var(--accent-primary)}
+.opt-tab:focus-visible{outline:2px solid var(--accent-primary);outline-offset:2px}
+.opt-section{display:none;max-width:1600px;margin:0 auto;padding:var(--space-lg)}
+.opt-section.active{display:block}
+.concept{margin:var(--space-md) 0 var(--space-lg);display:flex;gap:var(--space-md);align-items:baseline}
+.concept .k{font-size:var(--font-xs);font-weight:700;letter-spacing:.08em;color:var(--accent-primary);text-transform:uppercase;white-space:nowrap}
+.concept p{color:var(--text-secondary);font-size:var(--font-md);max-width:900px}
+.concept p b{color:var(--text-primary)}
+.try{margin:0 0 var(--space-sm);font-size:var(--font-sm);color:var(--text-muted)}
+.try code{font-family:var(--font-mono);background:var(--bg-elevated);padding:1px 6px;border-radius:3px;color:var(--accent-secondary)}
+
+/* ── faithful runs-table recreation ──────────────────── */
+.table-wrap{border:1px solid var(--border-default);border-radius:8px;overflow-x:auto;background:var(--bg-base)}
+table.runs{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--font-base);min-width:1180px}
+.runs th{background:var(--bg-surface);border-bottom:1px solid var(--border-strong);text-align:left;padding:8px 12px;
+  font-size:var(--font-xs);font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.runs td{padding:8px 12px;border-bottom:1px solid var(--border-subtle);vertical-align:middle;white-space:nowrap}
+.runs tbody tr{background:var(--bg-base)}
+.runs tbody tr:nth-child(odd){background:var(--bg-surface)}
+.runs tbody tr.rowhov:hover{background:var(--bg-hover)}
+.cb{width:13px;height:13px;border:1px solid var(--border-strong);border-radius:3px;display:inline-block;vertical-align:middle}
+.status-badge{display:inline-flex;align-items:center;gap:4px;font-size:var(--font-xs);font-weight:600;padding:2px 6px;line-height:1.2;
+  border-radius:4px;border:1px solid var(--border-default);background:var(--bg-elevated);color:var(--text-secondary);white-space:nowrap;vertical-align:middle}
+.status-badge.completed{color:var(--accent-tertiary);border-color:rgba(168,85,247,.35)}
+.status-badge.running{color:var(--accent-secondary);border-color:rgba(0,168,255,.35)}
+.status-badge.pending{color:var(--text-muted)}
+.status-errors{font-size:var(--font-xs);font-weight:700;color:var(--error);margin-left:6px}
+.run-id{font-family:var(--font-mono);font-size:var(--font-base);color:var(--text-primary)}
+.samples-pill{font-size:var(--font-xs);font-weight:650;font-family:var(--font-mono);padding:1px 7px;border-radius:999px;
+  border:1px solid var(--accent-primary);color:var(--accent-primary);background:transparent;margin-left:var(--space-sm);vertical-align:middle;cursor:pointer}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:var(--font-sm);padding:2px 8px;border-radius:4px;background:var(--bg-elevated);color:var(--text-secondary)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.metric-score{font-family:var(--font-mono);font-size:var(--font-sm);font-weight:600}
+.s1{color:var(--score-1)}.s2{color:var(--score-2)}.s3{color:var(--score-3)}.s4{color:var(--score-4)}.s5{color:var(--score-5)}
+.metric-ci{font-size:var(--font-sm);font-family:var(--font-mono);color:var(--text-muted);margin-left:var(--space-xs)}
+.metric-na{color:var(--text-dim);font-size:var(--font-sm)}
+.lat{font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-secondary)}
+.owner{display:inline-flex;align-items:center;gap:6px;font-size:var(--font-sm);color:var(--text-secondary)}
+.avatar{width:18px;height:18px;border-radius:50%;background:var(--accent-primary);color:#08251f;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.ts{font-size:var(--font-sm);color:var(--text-secondary)}.ts .sep{color:var(--text-dim);margin:0 3px}
+.toggle{display:inline-block;width:16px;color:var(--text-dim);cursor:pointer;user-select:none;margin-right:var(--space-xs)}
+.toggle:hover{color:var(--text-secondary)}
+.toggle.open{color:var(--accent-primary)}
+
+/* ══ OPTION A — pass dots + verdict hover card ═══════════ */
+.pass-dots{display:inline-flex;align-items:center;gap:3px;margin-left:var(--space-sm);vertical-align:middle;cursor:pointer;padding:3px 0}
+.pdot{width:8px;height:8px;border-radius:2px}
+.pdot.queued{background:var(--bg-active);border:1px solid var(--border-strong)}
+.pdot.running{background:var(--accent-secondary);animation:pulse 1.6s ease-in-out infinite}
+.pdot.err{box-shadow:0 0 0 1.5px var(--error)}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion: reduce){.pdot.running{animation:none}}
+.pillwrap{position:relative;display:inline-block}
+.verdict-card{position:absolute;top:calc(100% + 8px);left:-12px;z-index:40;width:340px;max-width:88vw;background:var(--bg-elevated);
+  border:1px solid var(--border-default);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:var(--space-md);
+  opacity:0;visibility:hidden;transform:translateY(-4px);transition:all .15s ease;cursor:default;white-space:normal}
+.pillwrap:hover .verdict-card,.pillwrap.pinned .verdict-card{opacity:1;visibility:visible;transform:none}
+.vc-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.vc-title{font-size:var(--font-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.vc-thr{font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted);margin-left:auto}
+.vc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 14px}
+.vc-stat .l{font-size:var(--font-xs);font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.vc-stat .v{font-family:var(--font-mono);font-size:var(--font-lg);font-weight:700}
+.vc-passline{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle);
+  font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted)}
+.vc-link{margin-top:10px;font-size:var(--font-sm)}
+.vc-link a{color:var(--accent-secondary);text-decoration:none}
+.vc-link a:hover{text-decoration:underline}
+
+/* ══ OPTION B — side peek panel ══════════════════════════ */
+.peek{position:fixed;top:0;right:0;bottom:0;width:540px;max-width:92vw;z-index:70;background:var(--bg-base);
+  border-left:1px solid var(--border-strong);box-shadow:-24px 0 48px rgba(0,0,0,.45);transform:translateX(102%);
+  transition:transform .22s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+.peek.open{transform:none}
+@media (prefers-reduced-motion: reduce){.peek{transition:none}}
+.peek-head{display:flex;align-items:center;gap:10px;padding:var(--space-md) var(--space-lg);border-bottom:1px solid var(--border-default);background:var(--bg-surface)}
+.peek-head .run-id{font-size:var(--font-md)}
+.peek-close{margin-left:auto;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer;padding:4px 8px;border-radius:4px}
+.peek-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+.peek-close:focus-visible{outline:2px solid var(--accent-primary);outline-offset:2px}
+.peek-body{overflow-y:auto;padding:var(--space-lg)}
+.peek-sec{margin-bottom:var(--space-xl)}
+.peek-sec-title{font-size:var(--font-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:baseline;gap:8px}
+.peek-sec-title .mono{font-family:var(--font-mono);font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:var(--space-sm)}
+.tile{background:var(--bg-surface);border:1px solid var(--border-subtle);border-top:2px solid var(--border-strong);border-radius:6px;padding:8px 10px}
+.tile.hero{border-top-color:var(--accent-primary)}
+.tile .l{font-size:var(--font-xs);font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.tile .v{font-family:var(--font-mono);font-size:var(--font-lg);font-weight:700;margin-top:2px}
+.ledger-wrap{overflow-x:auto}
+table.ledger{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--font-base)}
+.ledger th{font-size:var(--font-xs);font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;text-align:left;
+  padding:6px 10px;border-bottom:1px solid var(--border-strong);background:var(--bg-surface)}
+.ledger td{padding:6px 10px;border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--font-sm)}
+.ledger td:first-child{color:var(--text-secondary);font-weight:600}
+.heat{display:grid;grid-template-columns:110px repeat(3,34px);gap:3px;align-items:center}
+.heat .hl{font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted);padding-right:8px;overflow:hidden;text-overflow:ellipsis}
+.heat .hh{font-size:var(--font-xs);color:var(--text-muted);text-align:center;font-weight:600;text-transform:uppercase}
+.hcell{height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:var(--font-xs);font-weight:700;color:#0b0b12}
+.peek-foot{padding:var(--space-md) var(--space-lg);border-top:1px solid var(--border-default);background:var(--bg-surface)}
+.peek-foot a{color:var(--accent-secondary);font-size:var(--font-sm);text-decoration:none}
+.peek-foot a:hover{text-decoration:underline}
+
+/* ══ OPTION C — native group expansion ═══════════════════ */
+.gm-strip td{background:var(--bg-elevated);border-top:1.5px solid var(--border-strong);border-bottom:1px solid var(--border-default);padding:6px 12px}
+.gm-inner{display:inline-flex;align-items:baseline;gap:var(--space-lg);flex-wrap:wrap}
+.gm-label{font-size:var(--font-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-primary)}
+.gm-stat{white-space:nowrap;font-size:var(--font-xs);font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+.gm-stat .metric-score{margin-left:6px}
+.gm-note{font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted)}
+tr.pass-member td{background:var(--bg-base)}
+tr.pass-member .tag,tr.pass-member .owner,tr.pass-member .ts{opacity:.4}
+tr.pass-member .run-id{color:var(--text-secondary);font-weight:600;font-family:var(--font-mono);font-size:var(--font-sm)}
+tr.pass-member .items{font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted);margin-left:var(--space-sm)}
+tr.pass-member td:first-child{box-shadow:inset 2px 0 0 var(--accent-primary)}
+tr.pass-member.last td{border-bottom:1px solid var(--border-strong)}
+.pass-indent{display:inline-block;width:20px}
+
+/* outcome + recommendation footer */
+.reco{max-width:1600px;margin:var(--space-xl) auto 0;padding:0 var(--space-lg);display:grid;gap:var(--space-md)}
+.reco-box{border:1px solid var(--border-default);border-left:3px solid var(--accent-primary);border-radius:8px;background:var(--bg-base);padding:var(--space-md) var(--space-lg)}
+.reco-box .t{font-size:var(--font-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-primary);margin-bottom:6px}
+.reco-box p{color:var(--text-secondary);font-size:var(--font-md);max-width:960px}
+.reco-box p b{color:var(--text-primary)}
+.reco-box.chosen{border-left-color:var(--success)}
+.reco-box.chosen .t{color:var(--success)}
+</style>
+</head>
+<body>
+
+<div class="mock-top">
+  <div class="mock-top-row">
+    <div class="mock-title">Repeat runs in the Runs view <small>3 directions · same data, same design tokens</small></div>
+    <div class="opt-tabs">
+      <button class="opt-tab active" data-opt="a">A · Dots + verdict card</button>
+      <button class="opt-tab" data-opt="b">B · Side peek</button>
+      <button class="opt-tab" data-opt="c">C · Group expansion</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ OPTION A ═══════════════ -->
+<section class="opt-section active" id="opt-a">
+  <div class="concept">
+    <span class="k">Concept</span>
+    <p>The ×k run stays <b>one row, forever</b> — no expansion. Three score-colored <b>pass dots</b> sit next to the ×3 pill: the pass story at a glance (two yellow, one orange = unstable). Hovering the pill opens a <b>verdict card</b> with the five group metrics; click pins it. Full detail is one click away on the run page's pass view. Zero table disruption.</p>
+  </div>
+  <p class="try">Try it: hover (or tap) the <code>×3</code> pill on the second row · hover the dots</p>
+  <div class="table-wrap"><table class="runs">
+    <thead><tr><th></th><th>Status</th><th>Run</th><th>Task</th><th>Model</th><th>Dataset</th><th>Accuracy</th><th>Faithfulness</th><th>Avg Lat</th><th>Med Lat</th><th>Owner</th><th>Time</th><th>Dur</th></tr></thead>
+    <tbody>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="run-id">sql-agent-classic</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">72.4%</span></td>
+        <td><span class="metric-score s4">81.0%</span></td>
+        <td><span class="lat">1.9s</span></td><td><span class="lat">1.8s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>20:14</span></td>
+        <td><span class="lat">18m 4s</span></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span> <span class="status-errors">1⚠</span></td>
+        <td>
+          <span class="run-id">sql-agent-x3</span>
+          <span class="pillwrap" id="pillwrap-a">
+            <span class="samples-pill">×3</span>
+            <div class="verdict-card">
+              <div class="vc-head"><span class="vc-title">Group metrics · k=3</span><span class="vc-thr">threshold 80%</span></div>
+              <div class="vc-grid">
+                <div class="vc-stat"><div class="l">Pass@3</div><div class="v metric-score s4">80.0%</div></div>
+                <div class="vc-stat"><div class="l">Pass^3</div><div class="v metric-score s1">20.0%</div></div>
+                <div class="vc-stat"><div class="l">Avg@3</div><div class="v metric-score s2">53.3%</div></div>
+                <div class="vc-stat"><div class="l">Consistency</div><div class="v metric-score s3">60.0%</div></div>
+                <div class="vc-stat"><div class="l">Reliability</div><div class="v metric-score s3">66.7%</div></div>
+              </div>
+              <div class="vc-passline">
+                <span>passes</span>
+                <span class="pdot" style="background:var(--score-3)" title="pass 1 — acc 60.0%"></span>
+                <span class="pdot" style="background:var(--score-2)" title="pass 2 — acc 40.0%"></span>
+                <span class="pdot err" style="background:var(--score-3)" title="pass 3 — acc 60.0% · 1 item errored"></span>
+                <span style="margin-left:auto">60% · 40% · 60%</span>
+              </div>
+              <div class="vc-link"><a href="#" onclick="return false">Open pass view →</a></div>
+            </div>
+          </span>
+          <span class="pass-dots" title="per-pass accuracy: 60% · 40% · 60%⚠">
+            <span class="pdot" style="background:var(--score-3)"></span>
+            <span class="pdot" style="background:var(--score-2)"></span>
+            <span class="pdot err" style="background:var(--score-3)"></span>
+          </span>
+        </td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s2">53.3%</span><span class="metric-ci">±25.2%</span></td>
+        <td><span class="metric-score s3">67.9%</span><span class="metric-ci">±12.2%</span></td>
+        <td><span class="lat">2.1s</span></td><td><span class="lat">2.1s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:33</span></td>
+        <td><span class="lat">20m 0s</span></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge running">RUNNING • pass 2/5 • 40%</span></td>
+        <td>
+          <span class="run-id">sql-agent-x5-live</span>
+          <span class="pillwrap"><span class="samples-pill">×5</span></span>
+          <span class="pass-dots" title="pass 1 done · pass 2 running · 3 queued">
+            <span class="pdot" style="background:var(--score-3)"></span>
+            <span class="pdot running"></span>
+            <span class="pdot queued"></span><span class="pdot queued"></span><span class="pdot queued"></span>
+          </span>
+        </td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">66.7%</span></td>
+        <td><span class="metric-na">—</span></td>
+        <td><span class="lat">2.1s</span></td><td><span class="lat">2.0s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>22:02</span></td>
+        <td><span class="metric-na">—</span></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="run-id">sql-agent-v2</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-tertiary)"></span>claude-sql-v2</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">68.1%</span></td>
+        <td><span class="metric-score s4">77.5%</span></td>
+        <td><span class="lat">2.4s</span></td><td><span class="lat">2.2s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 4<span class="sep">·</span>18:51</span></td>
+        <td><span class="lat">21m 12s</span></td>
+      </tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ═══════════════ OPTION B ═══════════════ -->
+<section class="opt-section" id="opt-b">
+  <div class="concept">
+    <span class="k">Concept</span>
+    <p>The table never changes shape. Clicking the <b>×3 pill slides in a peek panel</b> from the right — a surface <b>purpose-built for passes</b>: verdict tiles, a dense pass ledger with only the columns passes actually have (no empty cells possible, scales to k=10), and an <b>item × pass matrix</b> showing exactly which items flip between passes — the thing no row layout can express.</p>
+  </div>
+  <p class="try">Try it: click the <code>×3</code> pill · press <code>Esc</code> or ✕ to close</p>
+  <div class="table-wrap"><table class="runs">
+    <thead><tr><th></th><th>Status</th><th>Run</th><th>Task</th><th>Model</th><th>Dataset</th><th>Accuracy</th><th>Faithfulness</th><th>Avg Lat</th><th>Med Lat</th><th>Owner</th><th>Time</th><th>Dur</th></tr></thead>
+    <tbody>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="run-id">sql-agent-classic</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">72.4%</span></td>
+        <td><span class="metric-score s4">81.0%</span></td>
+        <td><span class="lat">1.9s</span></td><td><span class="lat">1.8s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>20:14</span></td>
+        <td><span class="lat">18m 4s</span></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span> <span class="status-errors">1⚠</span></td>
+        <td><span class="run-id">sql-agent-x3</span><span class="samples-pill" id="peek-trigger">×3</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s2">53.3%</span><span class="metric-ci">±25.2%</span></td>
+        <td><span class="metric-score s3">67.9%</span><span class="metric-ci">±12.2%</span></td>
+        <td><span class="lat">2.1s</span></td><td><span class="lat">2.1s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:33</span></td>
+        <td><span class="lat">20m 0s</span></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="run-id">sql-agent-v2</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-tertiary)"></span>claude-sql-v2</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">68.1%</span></td>
+        <td><span class="metric-score s4">77.5%</span></td>
+        <td><span class="lat">2.4s</span></td><td><span class="lat">2.2s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 4<span class="sep">·</span>18:51</span></td>
+        <td><span class="lat">21m 12s</span></td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <div class="peek" id="peek" role="dialog" aria-label="Repeat run passes">
+    <div class="peek-head">
+      <span class="run-id">sql-agent-x3</span>
+      <span class="samples-pill" style="cursor:default">×3</span>
+      <span class="status-badge completed">COMPLETED</span>
+      <button class="peek-close" id="peek-close" title="Close">✕</button>
+    </div>
+    <div class="peek-body">
+      <div class="peek-sec">
+        <div class="peek-sec-title">Group metrics <span class="mono">k=3 · threshold 80%</span></div>
+        <div class="tiles">
+          <div class="tile hero"><div class="l">Pass@3</div><div class="v metric-score s4">80.0%</div></div>
+          <div class="tile hero"><div class="l">Pass^3</div><div class="v metric-score s1">20.0%</div></div>
+          <div class="tile"><div class="l">Avg@3</div><div class="v metric-score s2">53.3%</div></div>
+          <div class="tile"><div class="l">Consist.</div><div class="v metric-score s3">60.0%</div></div>
+          <div class="tile"><div class="l">Reliab.</div><div class="v metric-score s3">66.7%</div></div>
+        </div>
+      </div>
+      <div class="peek-sec">
+        <div class="peek-sec-title">Passes</div>
+        <div class="ledger-wrap">
+        <table class="ledger">
+          <thead><tr><th>Pass</th><th>Status</th><th>Accuracy</th><th>Faithf.</th><th>Avg lat</th><th>Errors</th></tr></thead>
+          <tbody>
+            <tr><td>1/3</td><td><span class="status-badge completed">COMPLETED</span></td><td><span class="metric-score s3">60.0%</span></td><td><span class="metric-score s3">70.0%</span></td><td>2.1s</td><td><span class="metric-na">—</span></td></tr>
+            <tr><td>2/3</td><td><span class="status-badge completed">COMPLETED</span></td><td><span class="metric-score s2">40.0%</span></td><td><span class="metric-score s3">62.6%</span></td><td>2.2s</td><td><span class="metric-na">—</span></td></tr>
+            <tr><td>3/3</td><td><span class="status-badge completed">COMPLETED</span></td><td><span class="metric-score s3">60.0%</span></td><td><span class="metric-score s3">71.0%</span></td><td>2.4s</td><td><span class="status-errors" style="margin:0">1⚠</span></td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+      <div class="peek-sec">
+        <div class="peek-sec-title">Item × pass matrix <span class="mono">accuracy</span></div>
+        <div class="heat">
+          <span></span><span class="hh">p1</span><span class="hh">p2</span><span class="hh">p3</span>
+          <span class="hl">q_0412</span><span class="hcell" style="background:var(--score-5)">1</span><span class="hcell" style="background:var(--score-1)">0</span><span class="hcell" style="background:var(--score-5)">1</span>
+          <span class="hl">q_0511</span><span class="hcell" style="background:var(--score-5)">1</span><span class="hcell" style="background:var(--score-5)">1</span><span class="hcell" style="background:var(--score-5)">1</span>
+          <span class="hl">q_0788</span><span class="hcell" style="background:var(--score-1)">0</span><span class="hcell" style="background:var(--score-1)">0</span><span class="hcell" style="background:var(--score-5)">1</span>
+          <span class="hl">q_0901</span><span class="hcell" style="background:var(--score-1)">0</span><span class="hcell" style="background:var(--score-1)">0</span><span class="hcell" style="background:var(--score-1);opacity:.55" title="errored">⚠</span>
+          <span class="hl">q_1120</span><span class="hcell" style="background:var(--score-5)">1</span><span class="hcell" style="background:var(--score-5)">1</span><span class="hcell" style="background:var(--score-1)">0</span>
+        </div>
+      </div>
+    </div>
+    <div class="peek-foot"><a href="#" onclick="return false">Open full pass view →</a></div>
+  </div>
+</section>
+
+<!-- ═══════════════ OPTION C ═══════════════ -->
+<section class="opt-section" id="opt-c">
+  <div class="concept">
+    <span class="k">Concept</span>
+    <p>Expansion, but speaking the table's <b>existing group dialect</b> — the same pattern as timestamp groups. Opening ×3 inserts a <b>group-metrics strip</b> (styled like a group header) and <b>full pass rows</b>: inherited context (task, model, dataset, owner) is shown <b>dimmed</b> instead of blank — nothing looks empty, passes still read as children. Metrics and latencies align under their columns, formatted exactly like every other row.</p>
+  </div>
+  <p class="try">Try it: click the <code>▶</code> chevron on the second row</p>
+  <div class="table-wrap"><table class="runs">
+    <thead><tr><th></th><th>Status</th><th>Run</th><th>Task</th><th>Model</th><th>Dataset</th><th>Accuracy</th><th>Faithfulness</th><th>Avg Lat</th><th>Med Lat</th><th>Owner</th><th>Time</th><th>Dur</th></tr></thead>
+    <tbody>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="toggle" style="visibility:hidden">▶</span><span class="run-id">sql-agent-classic</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">72.4%</span></td>
+        <td><span class="metric-score s4">81.0%</span></td>
+        <td><span class="lat">1.9s</span></td><td><span class="lat">1.8s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>20:14</span></td>
+        <td><span class="lat">18m 4s</span></td>
+      </tr>
+      <tr class="rowhov" id="c-parent">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span> <span class="status-errors">1⚠</span></td>
+        <td><span class="toggle" id="c-toggle" role="button" tabindex="0" aria-expanded="false">▶</span><span class="run-id">sql-agent-x3</span><span class="samples-pill">×3</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s2">53.3%</span><span class="metric-ci">±25.2%</span></td>
+        <td><span class="metric-score s3">67.9%</span><span class="metric-ci">±12.2%</span></td>
+        <td><span class="lat">2.1s</span></td><td><span class="lat">2.1s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:33</span></td>
+        <td><span class="lat">20m 0s</span></td>
+      </tr>
+      <tr class="gm-strip c-sub" hidden>
+        <td colspan="13">
+          <div class="gm-inner">
+            <span class="gm-label">Group metrics</span>
+            <span class="gm-stat">Pass@3<span class="metric-score s4">80.0%</span></span>
+            <span class="gm-stat">Pass^3<span class="metric-score s1">20.0%</span></span>
+            <span class="gm-stat">Avg@3<span class="metric-score s2">53.3%</span></span>
+            <span class="gm-stat">Consistency<span class="metric-score s3">60.0%</span></span>
+            <span class="gm-stat">Reliability<span class="metric-score s3">66.7%</span></span>
+            <span class="gm-note">k=3 · threshold 80%</span>
+          </div>
+        </td>
+      </tr>
+      <tr class="pass-member c-sub" hidden>
+        <td></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="pass-indent"></span><span class="run-id">pass 1/3</span><span class="items">5 items</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">60.0%</span></td>
+        <td><span class="metric-score s3">70.0%</span></td>
+        <td><span class="lat">2.1s</span></td><td><span class="lat">2.1s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:33</span></td>
+        <td></td>
+      </tr>
+      <tr class="pass-member c-sub" hidden>
+        <td></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="pass-indent"></span><span class="run-id">pass 2/3</span><span class="items">5 items</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s2">40.0%</span></td>
+        <td><span class="metric-score s3">62.6%</span></td>
+        <td><span class="lat">2.2s</span></td><td><span class="lat">2.2s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:45</span></td>
+        <td></td>
+      </tr>
+      <tr class="pass-member last c-sub" hidden>
+        <td></td>
+        <td><span class="status-badge completed">COMPLETED</span> <span class="status-errors">1⚠</span></td>
+        <td><span class="pass-indent"></span><span class="run-id">pass 3/3</span><span class="items">5 items</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-secondary)"></span>claude-sql-v3</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">60.0%</span></td>
+        <td><span class="metric-score s3">71.0%</span></td>
+        <td><span class="lat">2.4s</span></td><td><span class="lat">2.4s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 5<span class="sep">·</span>21:56</span></td>
+        <td></td>
+      </tr>
+      <tr class="rowhov">
+        <td><span class="cb"></span></td>
+        <td><span class="status-badge completed">COMPLETED</span></td>
+        <td><span class="toggle" style="visibility:hidden">▶</span><span class="run-id">sql-agent-v2</span></td>
+        <td><span class="tag">text2sql</span></td>
+        <td><span class="tag"><span class="dot" style="background:var(--accent-tertiary)"></span>claude-sql-v2</span></td>
+        <td><span class="tag">text2sql-eval</span></td>
+        <td><span class="metric-score s3">68.1%</span></td>
+        <td><span class="metric-score s4">77.5%</span></td>
+        <td><span class="lat">2.4s</span></td><td><span class="lat">2.2s</span></td>
+        <td><span class="owner"><span class="avatar">FA</span>faisal</span></td>
+        <td><span class="ts">Jul 4<span class="sep">·</span>18:51</span></td>
+        <td><span class="lat">21m 12s</span></td>
+      </tr>
+    </tbody>
+  </table></div>
+</section>
+
+<div class="reco">
+  <div class="reco-box chosen">
+    <div class="t">Outcome — what got built</div>
+    <p><b>A's dots + an attached drawer</b> (no peek). The dots ship on every ×k row, fed by a new <b>pass_summaries</b> field in the runs-list payload. The expansion drawer is the accessible inspector panel: repeat summary, the five group metrics as percent stats, and a proper pass table on the shared table component. The verdict hover card and side peek were dropped.</p>
+  </div>
+  <div class="reco-box">
+    <div class="t">Original recommendation (for the record)</div>
+    <p><b>A + B together.</b> Dots give the stability story while scanning; the peek gives full pass detail without bending the table's grid. Option C was the strongest <i>pure-table</i> alternative — reusing the group pattern users already know — but spends k rows repeating near-identical tags.</p>
+  </div>
+</div>
+
+<script>
+// tabs
+document.querySelectorAll('.opt-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.opt-tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.opt-section').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  document.getElementById('opt-' + t.dataset.opt).classList.add('active');
+  document.getElementById('peek').classList.remove('open');
+}));
+// A: pin the verdict card on click/tap
+const pw = document.getElementById('pillwrap-a');
+pw.querySelector('.samples-pill').addEventListener('click', e => { e.stopPropagation(); pw.classList.toggle('pinned'); });
+document.addEventListener('click', e => { if (!pw.contains(e.target)) pw.classList.remove('pinned'); });
+// B: peek open/close
+const peek = document.getElementById('peek');
+document.getElementById('peek-trigger').addEventListener('click', () => peek.classList.add('open'));
+document.getElementById('peek-close').addEventListener('click', () => peek.classList.remove('open'));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') peek.classList.remove('open'); });
+// C: group expansion (click or keyboard)
+const ct = document.getElementById('c-toggle');
+function toggleC() {
+  const open = ct.classList.toggle('open');
+  ct.textContent = open ? '▼' : '▶';
+  ct.setAttribute('aria-expanded', open ? 'true' : 'false');
+  document.querySelectorAll('.c-sub').forEach(r => r.hidden = !open);
+}
+ct.addEventListener('click', toggleC);
+ct.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleC(); } });
+</script>
+</body>
+</html>

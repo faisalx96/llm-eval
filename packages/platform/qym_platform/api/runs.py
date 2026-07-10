@@ -1034,6 +1034,98 @@ def legacy_list_runs(
             half_width = 1.96 * (variance ** 0.5) / (n ** 0.5)
             ci_map.setdefault(row.run_id, {})[row.metric_name] = half_width
 
+    # Repeat runs: tiny per-pass summaries (status + primary-metric mean +
+    # error count) power the pass-dot strip on the runs list without a
+    # per-row /passes fetch. Status semantics mirror /api/runs/{id}/passes.
+    pass_summary_map: Dict[str, List[Dict[str, Any]]] = {}
+    if sampled_run_ids:
+        from qym_platform.db.models import RunItemAttempt, RunItemPassScore
+
+        dot_score_rows = (
+            db.query(
+                RunItemPassScore.run_id,
+                RunItemPassScore.metric_name,
+                RunItemPassScore.pass_number,
+                func.avg(RunItemPassScore.score_numeric).label("mean"),
+            )
+            .filter(
+                RunItemPassScore.run_id.in_(sampled_run_ids),
+                RunItemPassScore.score_numeric.isnot(None),
+            )
+            .group_by(
+                RunItemPassScore.run_id,
+                RunItemPassScore.metric_name,
+                RunItemPassScore.pass_number,
+            )
+            .all()
+        )
+        pass_means: Dict[str, Dict[str, Dict[int, float]]] = {}
+        for rid, metric_name, pass_number, mean in dot_score_rows:
+            if mean is None:
+                continue
+            pass_means.setdefault(rid, {}).setdefault(metric_name, {})[int(pass_number)] = float(mean)
+
+        dot_attempt_rows = (
+            db.query(
+                RunItemAttempt.run_id,
+                RunItemAttempt.pass_number,
+                func.count(RunItemAttempt.id).label("n"),
+                func.sum(
+                    case((func.lower(RunItemAttempt.status) == "failed", 1), else_=0)
+                ).label("errs"),
+            )
+            .filter(
+                RunItemAttempt.run_id.in_(sampled_run_ids),
+                RunItemAttempt.is_last_attempt.is_(True),
+            )
+            .group_by(RunItemAttempt.run_id, RunItemAttempt.pass_number)
+            .all()
+        )
+        pass_attempts: Dict[str, Dict[int, int]] = {}
+        pass_errors: Dict[str, Dict[int, int]] = {}
+        for rid, pass_number, n_attempts, errs in dot_attempt_rows:
+            pass_attempts.setdefault(rid, {})[int(pass_number)] = int(n_attempts or 0)
+            pass_errors.setdefault(rid, {})[int(pass_number)] = int(errs or 0)
+
+        for r in runs:
+            k = int(getattr(r, "samples", 1) or 1)
+            if k <= 1:
+                continue
+            metrics_list = list(r.metrics or [])
+            primary = metrics_list[0] if metrics_list else None
+            means = (pass_means.get(r.id) or {}).get(primary, {}) if primary else {}
+            attempts = pass_attempts.get(r.id, {})
+            errors = pass_errors.get(r.id, {})
+            last_completed = 0
+            if isinstance(r.run_metadata, dict):
+                try:
+                    last_completed = int(r.run_metadata.get("last_completed_pass") or 0)
+                except (TypeError, ValueError):
+                    last_completed = 0
+            run_status = str(getattr(r.status, "value", r.status) or "").upper()
+            summaries: List[Dict[str, Any]] = []
+            for p in range(1, k + 1):
+                has_data = p in means or p in attempts
+                # The pass right after the last completed one is in flight on a
+                # live run even before its first item lands (matches the
+                # parent badge's "pass j/k" progress text).
+                in_flight = run_status == "RUNNING" and p == last_completed + 1
+                if p <= last_completed:
+                    p_status = "completed"
+                elif has_data or in_flight:
+                    p_status = "running"
+                else:
+                    p_status = "pending"
+                summaries.append(
+                    {
+                        "pass_number": p,
+                        "status": p_status,
+                        "primary_score": means.get(p),
+                        "error_count": errors.get(p, 0),
+                    }
+                )
+            pass_summary_map[r.id] = summaries
+
     # --- Batch query: approvals ---
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
     approval_map = {a.run_id: a for a in approvals}
@@ -1153,6 +1245,7 @@ def legacy_list_runs(
             "run_config": {},  # Omit full config from list view for payload size
             "samples": int(getattr(r, "samples", 1) or 1),
             "metric_cis": ci_map.get(r.id) or None,
+            "pass_summaries": pass_summary_map.get(r.id) or None,
             "last_completed_pass": (
                 r.run_metadata.get("last_completed_pass")
                 if isinstance(r.run_metadata, dict)
@@ -2035,6 +2128,12 @@ def run_group_metrics(
         }
         for k in range(1, max_k + 1)
     }
+    # Correct distribution (same shape as the Compare/Models views):
+    # distribution[n] = how many items had exactly n passing passes.
+    distribution = [0] * (samples + 1)
+    for scores in items_scores.values():
+        n_correct = sum(1 for s in scores if s >= threshold)
+        distribution[min(n_correct, samples)] += 1
     return {
         "run_id": run.id,
         "metric": metric_name,
@@ -2042,6 +2141,7 @@ def run_group_metrics(
         "samples": samples,
         "group": stats,
         "band": band,
+        "distribution": distribution,
     }
 
 

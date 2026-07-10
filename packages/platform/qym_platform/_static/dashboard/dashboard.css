@@ -2770,6 +2770,16 @@ body.chart-col-resize-active {
   background: var(--bg-surface);
 }
 
+/* Main-run striping is tied to the logical run index so inserted detail rows
+   never flip the rows below them. */
+.runs-table tbody tr.run-row-even {
+  background: var(--bg-surface);
+}
+
+.runs-table tbody tr.run-row-odd {
+  background: var(--bg-base);
+}
+
 .runs-table tbody tr:hover {
   background: var(--bg-hover);
 }
@@ -3111,6 +3121,20 @@ body.chart-col-resize-active {
 .runs-table tbody tr:nth-child(odd) td.col-task,
 .runs-table tbody tr:nth-child(odd) td.col-model {
   background: var(--bg-surface);
+}
+.runs-table tbody tr.run-row-even td.col-select,
+.runs-table tbody tr.run-row-even td.col-status,
+.runs-table tbody tr.run-row-even td.col-run,
+.runs-table tbody tr.run-row-even td.col-task,
+.runs-table tbody tr.run-row-even td.col-model {
+  background: var(--bg-surface);
+}
+.runs-table tbody tr.run-row-odd td.col-select,
+.runs-table tbody tr.run-row-odd td.col-status,
+.runs-table tbody tr.run-row-odd td.col-run,
+.runs-table tbody tr.run-row-odd td.col-task,
+.runs-table tbody tr.run-row-odd td.col-model {
+  background: var(--bg-base);
 }
 .runs-table tbody tr:hover td.col-select,
 .runs-table tbody tr:hover td.col-status,
@@ -8048,30 +8072,109 @@ td.col-trace-metric-value {
 }
 
 /* ═══ Repeat runs (samples=k) ═══ */
-/* Pill on the RUN cell marking a multi-sample run. Badge recipe. */
-.samples-pill {
-  font-size: var(--font-xs);
-  font-weight: 650;
-  font-family: var(--font-mono);
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-primary);
-  color: var(--accent-primary);
-  background: transparent;
-  margin-left: var(--space-sm);
-  vertical-align: middle;
+.run-cell-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.run-cell-content .run-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Disclosure arrow (decorative glyph) for the per-pass expansion. */
+
+/* The count and disclosure are one semantic, keyboard-accessible control. */
 .samples-toggle {
-  display: inline-block;
-  width: 16px;
-  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 28px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   user-select: none;
-  margin-right: var(--space-xs);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
-.samples-toggle:hover { color: var(--text-secondary); }
+.samples-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+.samples-toggle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.samples-toggle.open {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+}
+.samples-toggle-chevron {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(-90deg);
+  transition: transform 0.14s ease;
+}
+.samples-toggle.open .samples-toggle-chevron { transform: rotate(0); }
+
+/* Pass-dot strip: one dot per pass beside the toggle, colored by the
+   primary-metric score ramp — the stability story without expanding.
+   Informational only (tooltips per dot); the toggle opens the drawer. */
+.pass-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.pdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--border-strong); /* completed pass on a numeric metric (no good/bad scale) */
+}
+.pdot.score-5 { background: var(--score-5); }
+.pdot.score-4 { background: var(--score-4); }
+.pdot.score-3 { background: var(--score-3); }
+.pdot.score-2 { background: var(--score-2); }
+.pdot.score-1 { background: var(--score-1); }
+.pdot.pending {
+  background: var(--bg-active);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.pdot.running {
+  background: var(--accent-secondary);
+  animation: pdot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes pdot-pulse {
+  50% { opacity: 0.45; }
+}
+.pdot.err { box-shadow: 0 0 0 1.5px var(--error); }
+.pdot.pending.err {
+  box-shadow: inset 0 0 0 1px var(--border-strong), 0 0 0 1.5px var(--error);
+}
+.pdot-more {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
 /* ±CI half-width beside a metric mean — the multi-sample marker. */
 .metric-ci {
   font-size: var(--font-sm);
@@ -8081,89 +8184,18 @@ td.col-trace-metric-value {
   margin-left: var(--space-xs);
   white-space: nowrap;
 }
-/* Expanded detail row: a dense two-zone instrument panel —
-   pass ledger (left) · group-metric verdict tiles (right). */
-.samples-detail-cell {
-  background: var(--bg-base);
-  padding: 0;
-  border-bottom: 1px solid var(--border-default);
+
+/* Shared pass-status marker used by the run-detail repeat table. */
+.sp-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bg-active);
+  vertical-align: middle;
 }
-.samples-panel {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-xl);
-  padding: var(--space-md) var(--space-lg);
-  border-left: 2px solid var(--accent-primary);
-}
-.samples-passes { flex: 0 1 480px; min-width: 340px; }
-.samples-zone-title {
-  font-size: var(--font-sm);
-  font-weight: 650;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 6px;
-}
-.samples-zone-title .mono-note {
-  font-family: var(--font-mono);
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-}
-/* Pass ledger: one block per pass; every metric + internal metric gets its
-   own sub-row under the pass header. */
-.sp-pass-block {
-  padding: 6px 0 7px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.sp-pass-block:last-of-type { border-bottom: none; }
-.sp-pass-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 0 3px;
-}
-.sp-pass-head .sp-head-meta {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-sm);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.sp-pass-head .sp-head-meta .err { color: var(--error); font-weight: 700; }
-.sp-sub {
-  display: grid;
-  grid-template-columns: minmax(96px, 130px) 44px minmax(70px, 140px);
-  align-items: center;
-  gap: 10px;
-  padding: 2px 0 2px 17px;
-}
-.sp-sub-name {
-  font-size: var(--font-sm);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.sp-sub.internal .sp-sub-name { color: var(--text-muted); font-family: var(--font-mono); }
-.sp-sub-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-.sp-sub.internal .sp-sub-value { font-weight: 400; color: var(--text-secondary); }
-.sp-label {
-  font-family: var(--font-mono);
-  font-size: var(--font-sm);
-  font-weight: 650;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.sp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bg-active); justify-self: center; }
 .sp-dot.completed { background: var(--success); }
+.sp-dot.failed { background: var(--error); }
 .sp-dot.running {
   background: var(--accent-secondary);
   box-shadow: 0 0 0 3px rgba(0, 168, 255, 0.15);
@@ -8172,82 +8204,376 @@ td.col-trace-metric-value {
 @keyframes sp-dot-pulse {
   50% { box-shadow: 0 0 0 5px rgba(0, 168, 255, 0.06); }
 }
-.sp-score {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  text-align: right;
+
+/* Attached repeat-run inspector. */
+.qym-app { --repeat-viewport-offset: var(--sidebar-w); }
+.qym-app:has(> .sidebar.collapsed) { --repeat-viewport-offset: var(--sidebar-collapsed-w); }
+
+.runs-table > tbody > tr.samples-open:not(.selected),
+.runs-table > tbody > tr.samples-open:not(.selected) > td.col-select,
+.runs-table > tbody > tr.samples-open:not(.selected) > td.col-status,
+.runs-table > tbody > tr.samples-open:not(.selected) > td.col-run,
+.runs-table > tbody > tr.samples-open:not(.selected) > td.col-task,
+.runs-table > tbody > tr.samples-open:not(.selected) > td.col-model {
+  background: var(--bg-elevated);
 }
-.sp-score.empty { color: var(--text-muted); font-weight: 400; }
-.sp-meter {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--bg-active);
+.runs-table > tbody > tr.samples-open > td {
+  border-bottom-color: transparent;
+}
+.runs-table > tbody > tr.samples-open > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.runs-table > tbody > tr.samples-detail-row,
+.runs-table > tbody > tr.samples-detail-row:hover {
+  background: var(--bg-base);
+  cursor: default;
+}
+.runs-table > tbody > tr.samples-detail-row > td.samples-detail-cell,
+.runs-table > tbody > tr.samples-detail-row:hover > td.samples-detail-cell {
+  padding: 0;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-default);
+}
+.samples-detail-panel {
+  position: sticky;
+  left: var(--space-md);
+  width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-xl) - var(--space-lg));
+  max-width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-xl) - var(--space-lg));
+  margin: var(--space-xs) var(--space-md) var(--space-md);
   overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 2px solid var(--accent-primary);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
 }
-.sp-meter i { display: block; height: 100%; border-radius: 2px; background: currentColor; }
-.sp-latency, .sp-items {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-sm);
+.samples-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: linear-gradient(90deg, var(--bg-elevated), var(--bg-surface));
+  border-bottom: 1px solid var(--border-default);
+}
+.samples-detail-heading { min-width: 0; }
+.samples-detail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  font-weight: 650;
+}
+.samples-detail-count {
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
   color: var(--text-muted);
-  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-weight: 650;
   white-space: nowrap;
 }
-.sp-queued {
-  font-family: var(--font-mono);
-  font-size: var(--font-sm);
+.samples-detail-meta {
+  margin-top: var(--space-xs);
   color: var(--text-muted);
-  padding: 6px 0 2px;
+  font-size: var(--font-sm);
 }
-/* Score color ramp for numbers + meters (currentColor drives the meter) */
-.sc-1 { color: var(--score-1); }
-.sc-2 { color: var(--score-2); }
-.sc-3 { color: var(--score-3); }
-.sc-4 { color: var(--score-4); }
-.sc-5 { color: var(--score-5); }
-/* Verdict zone: the reduced group metrics as compact tiles */
-.samples-verdict {
-  flex: 1;
-  min-width: 420px;
-  max-width: 720px;
-  border-left: 1px solid var(--border-subtle);
-  padding-left: var(--space-xl);
+.samples-detail-metric {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
-.sv-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(88px, 1fr));
-  grid-auto-rows: min-content;
-  align-content: start;
+.samples-threshold {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-sm);
+  flex: 0 0 auto;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-base);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
 }
-.sv-tile {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-top: 2px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 6px 10px 7px;
+.samples-threshold strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 650;
 }
-.sv-tile.hero { border-top-color: var(--accent-primary); }
-.sv-tile.hero-warn { border-top-color: var(--warning); }
-.sv-label {
+.samples-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  overflow-x: auto;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-default);
+}
+.samples-summary-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-md) var(--space-lg);
+  border-right: 1px solid var(--border-subtle);
+}
+.samples-summary-stat:last-child { border-right: 0; }
+.samples-summary-label {
+  color: var(--text-muted);
   font-size: var(--font-sm);
   font-weight: 650;
-  color: var(--text-muted);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-family: var(--font-mono);
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.sv-value {
-  font-size: var(--font-lg);
-  font-weight: 700;
+.samples-summary-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.samples-breakdown-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md) var(--space-lg) var(--space-sm);
+}
+.samples-breakdown-header > span:first-child {
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  font-weight: 600;
+}
+.samples-breakdown-header > span:last-child {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+.samples-pass-table-host {
+  width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The shared table lives inside the wide runs table, so reset the parent
+   table's descendant rules and retain the standard QymDataTable recipe. */
+.runs-table .samples-pass-table {
+  width: 100%;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.runs-table .samples-pass-table thead th {
+  position: static;
+  z-index: auto;
+  height: auto;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.runs-table .samples-pass-table tbody tr,
+.runs-table .samples-pass-table tbody tr:nth-child(odd) {
+  background: var(--bg-surface);
+  cursor: default;
+}
+.runs-table .samples-pass-table tbody tr:nth-child(even) {
+  background: var(--bg-base);
+}
+.runs-table .samples-pass-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+.runs-table .samples-pass-table tbody td,
+.runs-table .samples-pass-table tbody tr:hover td {
+  position: static;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  text-align: left;
+  vertical-align: middle;
+}
+.runs-table .samples-pass-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.spt-pass-name {
+  display: block;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.spt-pass-total {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.spt-pass-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+}
+.spt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.spt-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.spt-status-dot.completed { background: var(--success); }
+.spt-status-dot.failed { background: var(--error); }
+.spt-status-dot.running {
+  background: var(--accent-secondary);
+  box-shadow: 0 0 0 3px rgba(0, 168, 255, 0.15);
+  animation: samples-dot-pulse 1.6s ease-in-out infinite;
+}
+.spt-status-dot.queued,
+.spt-status-dot.pending { background: var(--text-muted); }
+@keyframes samples-dot-pulse {
+  50% { box-shadow: 0 0 0 5px rgba(0, 168, 255, 0.06); }
+}
+.runs-table .samples-pass-table td.spt-metric-col,
+.runs-table .samples-pass-table td.spt-latency-col,
+.runs-table .samples-pass-table td.spt-issues-col {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  margin-top: 1px;
+  white-space: nowrap;
 }
-.sv-value.empty { color: var(--text-muted); font-weight: 400; }
-@media (max-width: 1100px) {
-  .samples-panel { flex-direction: column; gap: var(--space-md); }
-  .samples-verdict { border-left: none; padding-left: 0; max-width: none; }
+.spt-error {
+  color: var(--error);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.spt-no-issues { color: var(--text-muted); }
+.runs-table .samples-pass-table .spt-queued-row td {
+  color: var(--text-muted);
+  background: var(--bg-base);
+}
+.samples-pass-empty {
+  padding: var(--space-lg);
+  color: var(--text-muted);
+  font-size: var(--font-base);
+  text-align: center;
+}
+.samples-detail-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 88px;
+  padding: var(--space-lg);
+}
+.samples-loading-spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: samples-loading-spin 0.8s linear infinite;
+}
+@keyframes samples-loading-spin { to { transform: rotate(360deg); } }
+.samples-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid var(--error);
+  border-radius: 50%;
+  color: var(--error);
+  font-family: var(--font-mono);
+  font-size: var(--font-md);
+  font-weight: 700;
+}
+.samples-state-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+.samples-state-copy strong {
+  color: var(--text-primary);
+  font-size: var(--font-md);
+}
+.samples-state-copy span {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+.samples-retry-btn {
+  min-height: 28px;
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.samples-retry-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+.samples-retry-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .samples-detail-panel {
+    width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
+    max-width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
+    margin-right: var(--space-xs);
+  }
+  .samples-detail-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+  .samples-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+  }
+  .samples-summary-stat {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .samples-summary-stat:nth-child(even) {
+    border-right: 0;
+  }
+  .samples-summary-stat:last-child {
+    grid-column: 1 / -1;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .samples-breakdown-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .samples-toggle,
+  .samples-toggle-chevron { transition: none; }
+  .samples-loading-spinner,
+  .sp-dot.running,
+  .spt-status-dot.running { animation: none; }
 }
