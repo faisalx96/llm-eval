@@ -254,6 +254,20 @@ def test_detail_passes_and_group_metrics_endpoints():
         row = payload["snapshot"]["rows"][0]
         assert row["pass_scores"] == {"accuracy": [1.0, 0.0, 0.0]}
 
+        # every pass's final attempt ships with the row — output, latency,
+        # status — so the UI can show each attempt, not just the last one.
+        # Pass 3 failed without an attempt event, so its slot is null and the
+        # item-level error remains the source of truth for it.
+        attempts_payload = row["pass_attempts"]
+        assert [a and a["status"] for a in attempts_payload] == [
+            "completed",
+            "completed",
+            None,
+        ]
+        assert attempts_payload[0]["output"] == "out-pass-1"
+        assert attempts_payload[1]["output"] == "out-pass-2"
+        assert attempts_payload[0]["latency_ms"] == pytest.approx(100.0)
+
         # lazy per-pass endpoint (runs-list expansion)
         passes = run_passes(RUN_ID, db=session, principal=principal)
         assert passes["samples"] == 3

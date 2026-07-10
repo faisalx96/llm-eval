@@ -9,6 +9,12 @@ DASHBOARD_DIR = ROOT / "packages" / "platform" / "qym_platform" / "_static" / "d
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
 
 
+def _rule(css: str, selector: str) -> str:
+    """The body of the first CSS block that starts with `selector`."""
+    start = css.index(selector)
+    return css[start:css.index("}", css.index("{", start)) + 1]
+
+
 def test_dashboard_delete_action_binding_allows_non_deletable_runs() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
 
@@ -43,7 +49,6 @@ def test_repeat_run_rows_render_pass_dot_strip() -> None:
 def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
-    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
 
     assert '<button type="button" class="samples-toggle' in source
     assert 'aria-expanded="${samplesOpen ? \'true\' : \'false\'}"' in source
@@ -51,13 +56,114 @@ def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
     assert "event.key !== 'Enter' && event.key !== ' '" in source
     assert "toggle.setAttribute('aria-expanded'" in source
     assert 'class="samples-detail-panel"' in source
-    assert "window.QymDataTable.render" in source
     assert "samples-retry-btn" in source
     assert "samples-pass-row" not in source
     assert ".samples-detail-panel" in styles
     assert ".samples-summary-grid" in styles
     assert ".samples-toggle:focus-visible" in styles
-    assert index.index('/static/qym_table.js') < index.index('/static/dashboard.js')
+
+
+def test_repeat_drawer_follows_mock_option_c() -> None:
+    """Runs view expands repeat runs in the table's native group dialect
+    (mock option C): a compact ×k pill with a disclosure chevron opens a
+    group-metrics strip plus one real table row per pass — metrics under
+    their columns, inherited context cloned from the parent row and dimmed."""
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    # leading disclosure chevron before the run name (mock C's toggle), pass
+    # dots after it, and a spacer aligning chevron-less rows; no hover card
+    toggle_at = source.index('class="samples-toggle${samplesOpen')
+    run_id_at = source.index('<span class="run-id"', toggle_at)
+    assert toggle_at < run_id_at < source.index('${renderPassDots(run)}', toggle_at)
+    assert 'class="samples-toggle-spacer"' in source
+    assert ".samples-toggle.open .samples-toggle-chevron" in styles
+    assert "verdict-card" not in source
+    assert "verdict-card" not in styles
+
+    # group-metrics strip in the table's group-header dialect, with the
+    # platform's inline threshold slider (not a static trailing value) and
+    # an item-weighted avg-latency stat
+    assert "`% of items where at least one of the ${k} passes" in source
+    assert 'class="samples-summary-grid"' in source
+    assert 'class="threshold-slider-inline samples-threshold-slider"' in source
+    assert source.index("samples-threshold-slider") < source.index('class="samples-summary-grid"')
+    assert ">Avg latency</span>" in source
+    assert "${latencyStat}" in source
+
+    # the whole repeat-run row is an expand target (name still navigates)
+    assert "const rowToggle = tr.querySelector('.samples-toggle');" in source
+
+    # user-initiated expands fade in (opacity only — a transform would unpin
+    # the sticky columns); collapse is instant and re-renders have no motion
+    assert "detail.classList.add('samples-anim');" in source
+    assert "samples-closing" not in source
+    assert "transform" not in _rule(styles, "@keyframes samples-row-in")
+    assert ".runs-table > tbody > tr.samples-anim" in styles
+
+    # each completed pass row deep-links to the run page scoped to that pass
+    assert 'data-pass-number="${firstPass}"' in source
+    assert "`${base}?pass=${passNumber}`" in source
+    assert '.runs-table > tbody > tr.pass-member[data-pass-number]:hover' in styles
+
+    # first expand renders optimistically from pass_summaries (shimmer for
+    # unknown cells, fetch fills in place); spinner row only as fallback.
+    # A fill-in swap landing mid-fade resumes the animation via negative
+    # delay instead of cutting it short.
+    assert "_optimistic: true" in source
+    assert 'class="samples-skel"' in source
+    assert ".samples-skel" in styles
+    assert "samples-loading-spinner" in source
+    assert "detail.style.animationDelay = `${i * 30 - elapsed}ms`;" in source
+
+    # sticky-column zebra/hover rules must not split pass rows visually
+    assert ".runs-table > tbody > tr.pass-member:hover > td.col-model" in styles
+
+    # native pass rows: same column skeleton as run rows, inherited cells dimmed
+    assert 'class="pass-member' in source
+    assert "const inherit = cls =>" in source
+    assert "${inherit('col-task')}" in source
+    assert "${inherit('col-owner')}" in source
+    assert 'class="col-metric-value"' in source
+    assert ".runs-table > tbody > tr.pass-member > td:first-child" in styles
+    assert ".pass-member .tag," in styles
+
+    # the embedded sub-table and the item × pass matrix are gone
+    assert "samples-pass-table" not in source
+    assert "QymDataTable" not in source
+    assert "samples-matrix" not in source
+    assert "smx-" not in styles
+
+
+def test_run_page_supports_single_pass_scope() -> None:
+    """?pass=N scopes the run page to one pass: metric values swap to that
+    pass's scores at load time (so filters/overview/charts follow), a banner
+    says so, score edits are disabled, and the sweep table marks the pass."""
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "const VIEW_PASS = (() => {" in source
+    assert "new URLSearchParams(window.location.search).get('pass')" in source
+    assert "scores[state.viewPass - 1]" in source
+    assert 'class="pass-scope-banner"' in source
+    assert "View all passes" in source
+    assert "body.pass-scoped .metric-edit-open { display: none; }" in source
+    assert "state.viewPass === p.pass_number ? ' class=\"sw-current\"'" in source
+    assert ".samples-sweep tr.sw-current td" in source
+
+    # pass scope swaps outputs/latency/traces too, from per-pass attempts
+    assert "row.pass_attempts[state.viewPass - 1]" in source
+
+    # every item card offers an attempt switcher (Summary or any pass);
+    # lensed cards hide score edits (edits apply to the reduced score)
+    assert 'class="attempt-switch"' in source
+    assert 'data-pass="' in source
+    assert "state.itemPassLens" in source
+    assert ".item-card.pass-lensed .metric-edit-open { display: none; }" in source
+
+    # the API ships per-pass attempts on run-detail rows
+    api = RUNS_API.read_text(encoding="utf-8")
+    assert '"pass_attempts": (' in api
+    assert "RunItemAttempt.is_last_attempt.is_(True)" in api
 
 
 def test_repeat_run_analysis_uses_shared_visual_language() -> None:
@@ -87,17 +193,54 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
 
 def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    active = source.split("function buildDeepAnalysisCharts(rows)", 1)[1].split("function renderOverview", 1)[0]
 
-    assert "function buildRunIntelligenceCharts(rows)" in source
-    assert "Item Performance Matrix" in source
-    assert "Metric Correlation" in source
-    assert "Strongest Metric Relationship" in source
-    assert "Quality–Latency Frontier" in source
-    assert "Observed Performance by Pass" in source
-    assert "Quality–Stability Map" in source
+    assert "function buildDeepAnalysisCharts(rows)" in source
+    assert "Metric Relationships" in active
+    assert "Metric Correlation" in active
+    assert "Metric Relationship" in active
+    assert "Quality and Latency" in active
+    assert "Quality–Latency Frontier" in active
+    assert "Repeat Stability" in active
+    assert "Quality–Stability Map" in active
+    assert "Threshold Explorer" in active
+    assert "Score Estimate by Pass Count" in active
+    assert "ri-x-axis" in active
+    assert "ri-y-axis" in active
+    assert "Item Performance Matrix" not in active
+    assert "Observed Performance by Pass" not in active
     assert "intelligenceCharts +" in source
-    assert 'role="img" aria-label="Item by metric performance matrix"' in source
+    assert "const intelligenceCharts = buildDeepAnalysisCharts(rows);" in source
     assert "radar" not in source.lower()
+
+
+def test_run_item_detail_offers_virtualized_repeat_heatmap() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "itemDetailView: 'cards'" in source
+    assert 'data-items-view="cards"' in source
+    assert 'data-items-view="heatmap"' in source
+    assert "function renderItemsHeatmap(container, items, metric, metricIndex)" in source
+    assert 'class="item-heatmap-viewport"' in source
+    assert "Math.floor(viewport.scrollTop / rowHeight)" in source
+    assert "Only visible rows are rendered" in source
+
+
+def test_run_category_breakdown_keeps_cards_and_adds_repeat_aware_compare_view() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "categoryBreakdownView: 'cards'" in source
+    assert "function getCategoryMetricScores(row, metric, metricIndex)" in source
+    assert "row.pass_scores[metric]" in source
+    assert "if (!state.viewPass" in source
+    assert 'data-category-view="cards"' in source
+    assert 'data-category-view="compare"' in source
+    assert 'class="breakdown-pass-summary"' in source
+    assert 'class="category-pass-track' in source
+    assert 'class="category-compare-row"' in source
+    assert "Run pass rate &middot;" in source
+    assert "data-category-expand" in source
+    assert "metricType !== 'numeric'" in source
 
 
 def test_user_filter_is_available_and_clickable_on_dashboard_views() -> None:

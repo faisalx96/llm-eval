@@ -97,6 +97,17 @@ PROFILES = (
         volatility=0.19,
         story="Fast responses with pass drift, flaky items, retries, and a late recovery.",
     ),
+    Profile(
+        run_id="showcase-classic-single",
+        external_run_id="showcase-classic-single-v1",
+        model="showcase/nova-sql-classic",
+        samples=1,
+        quality_shift=0.05,
+        latency_base=880.0,
+        latency_quality_cost=420.0,
+        volatility=0.08,
+        story="A classic single-pass run — the baseline row with no repeat machinery.",
+    ),
 )
 
 
@@ -396,7 +407,11 @@ def _seed_profile(
                     score_raw=value,
                     meta={"aggregation": "mean", "passes": profile.samples, "showcase": True},
                     label="pass" if value >= (0.5 if metric == "accuracy" else 0.7) else "fail",
-                    explanation=f"Mean {metric} across {profile.samples} evaluation passes.",
+                    explanation=(
+                        f"Mean {metric} across {profile.samples} evaluation passes."
+                        if profile.samples > 1
+                        else f"{metric} score for the single evaluation pass."
+                    ),
                 )
             )
 

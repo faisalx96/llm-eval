@@ -1624,8 +1624,9 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     # Repeat runs: per-pass scores power the dot strips in the items table.
     run_samples = int(getattr(run, "samples", 1) or 1)
     pass_scores_by_item: Dict[str, Dict[str, Dict[int, Optional[float]]]] = {}
+    pass_attempts_by_item: Dict[str, Dict[int, Dict[str, Any]]] = {}
     if run_samples > 1:
-        from qym_platform.db.models import RunItemPassScore
+        from qym_platform.db.models import RunItemAttempt, RunItemPassScore
 
         for ps in (
             db.query(RunItemPassScore)
@@ -1635,6 +1636,30 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             pass_scores_by_item.setdefault(ps.item_id, {}).setdefault(
                 ps.metric_name, {}
             )[int(ps.pass_number)] = ps.score_numeric
+
+        # Every pass's final attempt — output, latency, trace — so the UI can
+        # show each attempt, not just the item's last one.
+        for att in (
+            db.query(RunItemAttempt)
+            .filter(
+                RunItemAttempt.run_id == run.id,
+                RunItemAttempt.is_last_attempt.is_(True),
+            )
+            .all()
+        ):
+            att_error = att.error or ""
+            is_failed = str(att.status or "").lower() == "failed"
+            pass_attempts_by_item.setdefault(att.item_id, {})[int(att.pass_number)] = {
+                "pass_number": int(att.pass_number),
+                "status": "error" if is_failed else "completed",
+                "output": (
+                    f"ERROR: {att_error}" if is_failed and att_error else _stringify(att.output)
+                ),
+                "error": att_error,
+                "latency_ms": att.latency_ms,
+                "trace_id": att.trace_id or "",
+                "trace_url": att.trace_url or "",
+            }
 
     # Fallback timestamps: for items missing task_started_at_ms in item_metadata,
     # look up the item_started event's sent_at timestamp as an approximation.
@@ -1741,6 +1766,16 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                             pass_scores_by_item.get(it.item_id) or {}
                         ).items()
                     }
+                    if run_samples > 1
+                    else None
+                ),
+                # Repeat runs: [attempt per pass, index 0 = pass 1] — each
+                # pass's final output/latency/trace (null where not run yet).
+                "pass_attempts": (
+                    [
+                        (pass_attempts_by_item.get(it.item_id) or {}).get(p)
+                        for p in range(1, run_samples + 1)
+                    ]
                     if run_samples > 1
                     else None
                 ),

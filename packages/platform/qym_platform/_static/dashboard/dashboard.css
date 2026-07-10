@@ -2702,7 +2702,7 @@ body.chart-col-resize-active {
 .runs-table {
   --runs-col-select-width: 40px;
   --runs-col-status-width: 164px;
-  --runs-col-run-width: 220px;
+  --runs-col-run-width: 308px;
   --runs-col-task-width: 150px;
   --runs-col-model-width: 220px;
   width: max-content;
@@ -8085,30 +8085,26 @@ td.col-trace-metric-value {
   white-space: nowrap;
 }
 
-/* The count and disclosure are one semantic, keyboard-accessible control. */
+/* Leading disclosure chevron (mock option C's toggle): one semantic,
+   keyboard-accessible control before the run name that opens the group. */
 .samples-toggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  min-height: 28px;
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--border-default);
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--font-sm);
-  font-weight: 600;
-  line-height: 1;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   user-select: none;
-  white-space: nowrap;
   flex: 0 0 auto;
-  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  transition: color 0.14s ease, background 0.14s ease;
 }
 .samples-toggle:hover {
   color: var(--text-primary);
-  border-color: var(--border-strong);
   background: var(--bg-hover);
 }
 .samples-toggle:focus-visible {
@@ -8117,21 +8113,25 @@ td.col-trace-metric-value {
 }
 .samples-toggle.open {
   color: var(--accent-primary);
-  border-color: var(--accent-primary);
-  background: var(--bg-active);
 }
 .samples-toggle-chevron {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   transform: rotate(-90deg);
   transition: transform 0.14s ease;
 }
 .samples-toggle.open .samples-toggle-chevron { transform: rotate(0); }
+/* Keeps run names aligned on rows without a chevron (mock option C). */
+.samples-toggle-spacer {
+  display: inline-block;
+  width: 18px;
+  flex: 0 0 auto;
+}
 
 /* Pass-dot strip: one dot per pass beside the toggle, colored by the
    primary-metric score ramp — the stability story without expanding.
@@ -8209,19 +8209,24 @@ td.col-trace-metric-value {
 .qym-app { --repeat-viewport-offset: var(--sidebar-w); }
 .qym-app:has(> .sidebar.collapsed) { --repeat-viewport-offset: var(--sidebar-collapsed-w); }
 
-.runs-table > tbody > tr.samples-open:not(.selected),
-.runs-table > tbody > tr.samples-open:not(.selected) > td.col-select,
-.runs-table > tbody > tr.samples-open:not(.selected) > td.col-status,
-.runs-table > tbody > tr.samples-open:not(.selected) > td.col-run,
-.runs-table > tbody > tr.samples-open:not(.selected) > td.col-task,
-.runs-table > tbody > tr.samples-open:not(.selected) > td.col-model {
-  background: var(--bg-elevated);
+/* The open parent carries the selected-row highlight; the strip below sits
+   one step darker, the pass rows recess to the void — a graded hierarchy. */
+.runs-table > tbody > tr.samples-open,
+.runs-table > tbody > tr.samples-open > td.col-select,
+.runs-table > tbody > tr.samples-open > td.col-status,
+.runs-table > tbody > tr.samples-open > td.col-run,
+.runs-table > tbody > tr.samples-open > td.col-task,
+.runs-table > tbody > tr.samples-open > td.col-model {
+  background: var(--bg-active);
 }
 .runs-table > tbody > tr.samples-open > td {
   border-bottom-color: transparent;
 }
 .runs-table > tbody > tr.samples-open > td:first-child {
   box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.runs-table > tbody > tr.samples-open .run-id {
+  font-weight: 650; /* the open parent reads as the group's header */
 }
 .runs-table > tbody > tr.samples-detail-row,
 .runs-table > tbody > tr.samples-detail-row:hover {
@@ -8231,244 +8236,220 @@ td.col-trace-metric-value {
 .runs-table > tbody > tr.samples-detail-row > td.samples-detail-cell,
 .runs-table > tbody > tr.samples-detail-row:hover > td.samples-detail-cell {
   padding: 0;
-  background: var(--bg-base);
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-default);
+  box-shadow: inset 2px 0 0 var(--accent-primary);
 }
+/* Group-metrics strip in the table's group-header dialect (mock option C).
+   The cell paints the full row; the sticky inner keeps the content pinned
+   while the table scrolls horizontally. */
 .samples-detail-panel {
   position: sticky;
-  left: var(--space-md);
-  width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-xl) - var(--space-lg));
-  max-width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-xl) - var(--space-lg));
-  margin: var(--space-xs) var(--space-md) var(--space-md);
+  left: 0;
+  width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
+  max-width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
   overflow: hidden;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-left: 2px solid var(--accent-primary);
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 .samples-detail-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: var(--space-lg);
-  padding: var(--space-md) var(--space-lg);
-  background: linear-gradient(90deg, var(--bg-elevated), var(--bg-surface));
-  border-bottom: 1px solid var(--border-default);
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-md);
 }
-.samples-detail-heading { min-width: 0; }
 .samples-detail-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-primary);
-  font-size: var(--font-md);
-  font-weight: 650;
-}
-.samples-detail-count {
-  padding: 2px var(--space-sm);
-  border: 1px solid var(--border-default);
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-xs);
-  font-weight: 650;
+  color: var(--accent-primary);
+  font-size: var(--font-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.samples-detail-meta {
-  margin-top: var(--space-xs);
-  color: var(--text-muted);
-  font-size: var(--font-sm);
-}
-.samples-detail-metric {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
+/* Threshold control — matches the run-detail threshold slider: visible
+   track (the strip is bg-elevated, so the track steps up to bg-active)
+   and the standard 18px thumb. */
 .samples-threshold {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
   flex: 0 0 auto;
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--border-default);
-  border-radius: 999px;
-  background: var(--bg-base);
+  align-self: center;
   color: var(--text-muted);
   font-size: var(--font-sm);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
-.samples-threshold strong {
-  color: var(--text-primary);
+.samples-threshold .threshold-slider-inline {
+  width: 120px;
+  height: 6px;
+  background: var(--bg-active);
+  border-radius: 3px;
+}
+.samples-threshold .threshold-slider-inline::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+}
+.samples-threshold .threshold-slider-inline::-webkit-slider-thumb:hover {
+  box-shadow: 0 3px 10px rgba(0, 212, 170, 0.5);
+}
+.samples-threshold .threshold-slider-inline::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  box-shadow: 0 2px 6px rgba(0, 212, 170, 0.4);
+}
+.samples-threshold .threshold-slider-inline::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-active);
+}
+.samples-threshold .threshold-value {
+  min-width: 40px;
+  color: var(--accent-primary);
   font-family: var(--font-mono);
+  font-size: var(--font-sm);
   font-weight: 650;
 }
+/* Group verdicts inline in the strip — label · value pairs, nothing taller. */
 .samples-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
-  overflow-x: auto;
-  background: var(--bg-base);
-  border-bottom: 1px solid var(--border-default);
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .samples-summary-stat {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  min-width: 0;
-  padding: var(--space-md) var(--space-lg);
-  border-right: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  white-space: nowrap;
 }
-.samples-summary-stat:last-child { border-right: 0; }
 .samples-summary-label {
   color: var(--text-muted);
   font-size: var(--font-sm);
   font-weight: 650;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 .samples-summary-value {
+  color: var(--text-primary); /* non-score stats (latency); score colors override */
   font-family: var(--font-mono);
-  font-size: var(--font-xl);
+  font-size: var(--font-md);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-.samples-breakdown-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-lg);
-  padding: var(--space-md) var(--space-lg) var(--space-sm);
-}
-.samples-breakdown-header > span:first-child {
-  color: var(--text-primary);
-  font-size: var(--font-md);
-  font-weight: 600;
-}
-.samples-breakdown-header > span:last-child {
-  color: var(--text-muted);
-  font-size: var(--font-sm);
-}
-.samples-pass-table-host {
-  width: 100%;
-  overflow-x: auto;
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* The shared table lives inside the wide runs table, so reset the parent
-   table's descendant rules and retain the standard QymDataTable recipe. */
-.runs-table .samples-pass-table {
-  width: 100%;
-  min-width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-.runs-table .samples-pass-table thead th {
-  position: static;
-  z-index: auto;
-  height: auto;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border-default);
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: var(--font-sm);
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  text-align: left;
-  text-transform: uppercase;
-}
-.runs-table .samples-pass-table tbody tr,
-.runs-table .samples-pass-table tbody tr:nth-child(odd) {
-  background: var(--bg-surface);
+/* Pass member rows — the table's own group dialect (mock option C): metrics
+   align under their columns, inherited context is dimmed, not blank. The
+   rows recess to the void surface so they read as children nested under the
+   elevated parent + strip header block, not as more top-level runs. */
+.runs-table > tbody > tr.pass-member,
+.runs-table > tbody > tr.pass-member:hover {
+  background: var(--bg-void);
   cursor: default;
 }
-.runs-table .samples-pass-table tbody tr:nth-child(even) {
-  background: var(--bg-base);
+.runs-table > tbody > tr.pass-member > td {
+  background: var(--bg-void);
+  border-bottom: 1px solid var(--border-subtle);
 }
-.runs-table .samples-pass-table tbody tr:hover {
+.runs-table > tbody > tr.pass-member > td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+/* Pass rows stay flat by default: out-rank the sticky-column zebra and hover
+   rules so the frozen cells never split visually from the rest of the row. */
+.runs-table > tbody > tr.pass-member > td.col-select,
+.runs-table > tbody > tr.pass-member > td.col-status,
+.runs-table > tbody > tr.pass-member > td.col-run,
+.runs-table > tbody > tr.pass-member > td.col-task,
+.runs-table > tbody > tr.pass-member > td.col-model,
+.runs-table > tbody > tr.pass-member:hover > td.col-select,
+.runs-table > tbody > tr.pass-member:hover > td.col-status,
+.runs-table > tbody > tr.pass-member:hover > td.col-run,
+.runs-table > tbody > tr.pass-member:hover > td.col-task,
+.runs-table > tbody > tr.pass-member:hover > td.col-model {
+  background: var(--bg-void);
+}
+/* Completed passes open their own detail page: uniform hover across the
+   whole row (sticky cells included) signals the link. */
+.runs-table > tbody > tr.pass-member[data-pass-number] { cursor: pointer; }
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-select,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-status,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-run,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-task,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-model {
   background: var(--bg-hover);
 }
-.runs-table .samples-pass-table tbody td,
-.runs-table .samples-pass-table tbody tr:hover td {
-  position: static;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
-  background: transparent;
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover .pass-member-id {
+  color: var(--accent-primary);
+}
+.runs-table > tbody > tr.pass-member.pass-member-last > td {
+  border-bottom: 1px solid var(--border-strong);
+}
+.pass-member .tag,
+.pass-member .owner-name,
+.pass-member .version-badge {
+  opacity: 0.4;
+}
+.pass-indent {
+  display: inline-block;
+  width: 26px; /* chevron width + gap: pass labels align under run names */
+}
+.pass-member-id {
   color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--font-base);
-  text-align: left;
-  vertical-align: middle;
-}
-.runs-table .samples-pass-table tbody tr:last-child td {
-  border-bottom: 0;
-}
-.spt-pass-name {
-  display: block;
-  color: var(--text-primary);
   font-family: var(--font-mono);
-  font-weight: 650;
-  white-space: nowrap;
-}
-.spt-pass-total {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-.spt-pass-meta {
-  display: block;
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: var(--font-sm);
-  white-space: nowrap;
-}
-.spt-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.spt-status-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--border-strong);
-}
-.spt-status-dot.completed { background: var(--success); }
-.spt-status-dot.failed { background: var(--error); }
-.spt-status-dot.running {
-  background: var(--accent-secondary);
-  box-shadow: 0 0 0 3px rgba(0, 168, 255, 0.15);
-  animation: samples-dot-pulse 1.6s ease-in-out infinite;
-}
-.spt-status-dot.queued,
-.spt-status-dot.pending { background: var(--text-muted); }
-@keyframes samples-dot-pulse {
-  50% { box-shadow: 0 0 0 5px rgba(0, 168, 255, 0.06); }
-}
-.runs-table .samples-pass-table td.spt-metric-col,
-.runs-table .samples-pass-table td.spt-latency-col,
-.runs-table .samples-pass-table td.spt-issues-col {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.spt-error {
-  color: var(--error);
-  font-family: var(--font-sans);
   font-size: var(--font-sm);
   font-weight: 600;
+  white-space: nowrap;
 }
-.spt-no-issues { color: var(--text-muted); }
-.runs-table .samples-pass-table .spt-queued-row td {
+.pass-member-items {
+  margin-left: var(--space-sm);
   color: var(--text-muted);
-  background: var(--bg-base);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  white-space: nowrap;
 }
-.samples-pass-empty {
-  padding: var(--space-lg);
+.pass-member-status {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pass-member-empty {
+  padding: var(--space-md) var(--space-lg);
   color: var(--text-muted);
   font-size: var(--font-base);
-  text-align: center;
+}
+
+/* Shimmer placeholder for values the detail fetch hasn't delivered yet —
+   the optimistic drawer renders full geometry from pass_summaries and the
+   fetch fills these in place. */
+.samples-skel {
+  display: inline-block;
+  width: 36px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  vertical-align: baseline;
+  animation: samples-skel-pulse 1.2s ease-in-out infinite;
+}
+@keyframes samples-skel-pulse {
+  50% { opacity: 0.45; }
+}
+
+/* Expand motion. Opacity only — a transform would turn the row into a
+   containing block and briefly unpin the sticky columns. The stagger reads
+   as the group unfolding row by row. Collapse is instant: rows can't
+   animate height, so a fade would hold space and then snap. */
+@keyframes samples-row-in {
+  from { opacity: 0; }
+}
+.runs-table > tbody > tr.samples-anim {
+  animation: samples-row-in 0.16s ease both;
+  animation-delay: calc(var(--samples-row-i, 0) * 30ms);
 }
 .samples-detail-state {
   display: flex;
@@ -8538,42 +8519,18 @@ td.col-trace-metric-value {
 }
 
 @media (max-width: 760px) {
-  .samples-detail-panel {
-    width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
-    max-width: calc(100vw - var(--repeat-viewport-offset, 0px) - var(--space-lg));
-    margin-right: var(--space-xs);
-  }
   .samples-detail-header {
     align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-sm) var(--space-lg);
   }
-  .samples-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    overflow-x: visible;
-  }
-  .samples-summary-stat {
-    border-bottom: 1px solid var(--border-subtle);
-  }
-  .samples-summary-stat:nth-child(even) {
-    border-right: 0;
-  }
-  .samples-summary-stat:last-child {
-    grid-column: 1 / -1;
-    border-right: 0;
-    border-bottom: 0;
-  }
-  .samples-breakdown-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
+  .samples-threshold { margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .samples-toggle,
   .samples-toggle-chevron { transition: none; }
+  .runs-table > tbody > tr.samples-anim,
+  .samples-skel { animation: none; }
   .samples-loading-spinner,
-  .sp-dot.running,
-  .spt-status-dot.running { animation: none; }
+  .sp-dot.running { animation: none; }
 }

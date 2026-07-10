@@ -1372,6 +1372,89 @@
       line-height: 1;
     }
 
+    /* ?pass=N scope: banner in the hero card; score edits are disabled
+       because edits apply to the reduced score, not the viewed pass. */
+    .pass-scope-banner {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+      margin-top: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      background: rgba(0, 212, 170, 0.06);
+      border: 1px solid rgba(0, 212, 170, 0.25);
+      border-left: 3px solid var(--accent-primary);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: var(--font-md);
+    }
+    .pass-scope-banner strong {
+      color: var(--accent-primary);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .pass-scope-banner a {
+      margin-left: auto;
+      color: var(--accent-secondary);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .pass-scope-banner a:hover { text-decoration: underline; }
+    body.pass-scoped .metric-edit-open { display: none; }
+    .samples-sweep tr.sw-current td { background: var(--bg-active); }
+
+    /* Per-card attempt switcher: Summary or any individual pass. Edits are
+       hidden while a card is lensed — they apply to the reduced score. */
+    .item-card.pass-lensed .metric-edit-open { display: none; }
+    .attempt-switch {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: var(--space-sm);
+    }
+    .attempt-switch-label {
+      margin-right: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .attempt-chip {
+      min-width: 22px;
+      padding: 1px 7px;
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      line-height: 1.5;
+      cursor: pointer;
+    }
+    .attempt-chip:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .attempt-chip:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+    }
+    .attempt-chip.active {
+      color: var(--accent-primary);
+      border-color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.1);
+    }
+    .attempt-chip.err { color: var(--error); border-color: rgba(239, 68, 68, 0.45); }
+    .attempt-chip.err.active {
+      color: var(--error);
+      border-color: var(--error);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
     .threshold-control {
       display: flex;
       align-items: center;
@@ -1484,6 +1567,158 @@
     }
     .category-chip.selected .chip-count {
       opacity: 0.85;
+    }
+    .category-breakdown-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+    .category-breakdown-toolbar .category-chip-bar {
+      flex: 1;
+      min-width: 0;
+      margin-bottom: 0;
+    }
+    .category-breakdown-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .category-breakdown-context {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      white-space: nowrap;
+    }
+    .category-breakdown-context strong {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+    .category-breakdown-sort {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    .category-breakdown-sort label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .category-breakdown-sort .filter-select {
+      min-width: 112px;
+      max-width: 132px;
+    }
+    .category-breakdown-view-toggle {
+      flex-shrink: 0;
+    }
+    .category-compare-tabs {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      margin-bottom: var(--space-md);
+      overflow-x: auto;
+    }
+    .category-compare-tab {
+      appearance: none;
+      border: 1px solid var(--border-default);
+      border-radius: 5px;
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .category-compare-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+    .category-compare-tab.active {
+      color: var(--accent-primary);
+      background: var(--bg-active);
+      border-color: var(--border-strong);
+    }
+    .category-compare-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+    }
+    .category-compare-head,
+    .category-compare-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(220px, 3fr) 68px 68px 68px 54px 78px;
+      column-gap: var(--space-md);
+      align-items: center;
+      min-width: 860px;
+    }
+    .category-compare-head {
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .category-compare-head span:not(:first-child) { text-align: right; }
+    .category-compare-row {
+      appearance: none;
+      width: 100%;
+      min-height: 52px;
+      padding: 0 var(--space-md);
+      border: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      text-align: left;
+      cursor: pointer;
+    }
+    .category-compare-row:hover { background: var(--bg-hover); }
+    .category-compare-name {
+      overflow: hidden;
+      color: var(--text-primary);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .category-compare-number,
+    .category-compare-delta {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .category-compare-number.muted { color: var(--text-muted); }
+    .category-compare-delta.positive { color: var(--success); }
+    .category-compare-delta.negative { color: var(--error); }
+    .category-baseline-note {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .category-baseline-marker {
+      width: 1px;
+      height: 14px;
+      background: var(--border-strong);
+    }
+    .category-expand-btn {
+      appearance: none;
+      margin-top: var(--space-sm);
+      padding: var(--space-xs) 0;
+      border: 0;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      cursor: pointer;
     }
     .category-empty-state,
     .section-empty-state {
@@ -1837,6 +2072,54 @@
     .breakdown-card-scores .score-col-value.score-3 { color: var(--score-3); }
     .breakdown-card-scores .score-col-value.score-2 { color: var(--score-2); }
     .breakdown-card-scores .score-col-value.score-1 { color: var(--score-1); }
+    .breakdown-pass-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .breakdown-pass-summary strong {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .breakdown-pass-summary .positive { color: var(--success); }
+    .breakdown-pass-summary .negative { color: var(--error); }
+    .category-pass-track {
+      position: relative;
+      height: 7px;
+      margin-top: var(--space-xs);
+      border-radius: 3px;
+      background: var(--bg-surface);
+      overflow: visible;
+    }
+    .category-compare-row .category-pass-track {
+      margin-top: 0;
+      background: var(--bg-elevated);
+    }
+    .category-pass-track.has-baseline::after {
+      content: '';
+      position: absolute;
+      z-index: 2;
+      top: -4px;
+      bottom: -4px;
+      left: var(--category-baseline);
+      width: 1px;
+      background: var(--border-strong);
+    }
+    .category-pass-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--category-pass);
+      border-radius: 3px;
+      background: var(--category-pass-color);
+    }
     .breakdown-card-count {
       display: inline-flex;
       align-items: center;
@@ -2103,6 +2386,94 @@
       display: flex;
       flex-direction: column;
       gap: var(--space-xl);
+    }
+    .items-view-toggle { margin-left: auto; }
+    .item-heatmap-shell {
+      overflow: hidden;
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .item-heatmap-scroll { overflow-x: auto; }
+    .item-heatmap-grid {
+      display: grid;
+      grid-template-columns: 110px 110px 72px 72px repeat(var(--heat-pass-count), minmax(72px, 1fr));
+      min-width: var(--heat-min-width);
+    }
+    .item-heatmap-head {
+      min-height: 36px;
+      align-items: center;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .item-heatmap-head > span,
+    .item-heatmap-row > span { padding: 0 var(--space-sm); }
+    .item-heatmap-head .numeric { text-align: right; }
+    .item-heatmap-viewport {
+      position: relative;
+      height: 360px;
+      overflow-y: auto;
+      contain: strict;
+    }
+    .item-heatmap-spacer { width: 100%; }
+    .item-heatmap-layer {
+      position: absolute;
+      inset: 0 0 auto;
+    }
+    .item-heatmap-row {
+      height: 40px;
+      align-items: center;
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+    }
+    .item-heatmap-row:hover { background: var(--bg-hover); }
+    .item-heatmap-id,
+    .item-heatmap-number {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .item-heatmap-id {
+      overflow: hidden;
+      color: var(--text-primary);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-heatmap-category {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-heatmap-number { text-align: right; }
+    .item-heatmap-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
+      margin: 0 var(--space-xs);
+      padding: 0 !important;
+      border-radius: 4px;
+      color: var(--bg-void);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 700;
+    }
+    .item-heatmap-cell.empty {
+      background: var(--bg-active);
+      color: var(--text-muted);
+    }
+    .item-heatmap-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
     }
     .item-card {
       display: flex;
@@ -3761,6 +4132,36 @@
       font-size: var(--font-sm);
       margin-top: var(--space-xs);
     }
+    .ri-analysis-section {
+      padding-top: var(--space-sm);
+    }
+    .ri-analysis-section + .ri-analysis-section {
+      margin-top: var(--space-lg);
+      padding-top: var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .ri-subhead {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+    .ri-subhead::before {
+      content: '';
+      width: 3px;
+      height: 16px;
+      border-radius: 2px;
+      background: var(--ri-section-color, var(--accent-primary));
+    }
+    .ri-subhead h4 {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .ri-subhead span {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
     .ri-grid {
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
@@ -3803,6 +4204,29 @@
       font-variant-numeric: tabular-nums;
       font-weight: 700;
       white-space: nowrap;
+    }
+    .ri-relationship-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+    .ri-axis-control {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    .ri-axis-control label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .ri-axis-select {
+      min-width: 108px;
+      max-width: 150px;
     }
     .ri-chart-scroll { overflow-x: auto; }
     .ri-chart {
@@ -3867,14 +4291,29 @@
       color: var(--text-muted);
       font-size: var(--font-sm);
     }
+    .ri-zone-label {
+      fill: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
     @media (max-width: 1350px) {
       .ri-panel { grid-column: span 6; }
       .ri-panel.matrix, .ri-panel.trend, .ri-panel.wide { grid-column: 1 / -1; }
+    }
+    @media (max-width: 900px) {
+      .category-breakdown-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .category-breakdown-controls { justify-content: flex-start; }
     }
     @media (max-width: 760px) {
       .ri-panel { grid-column: 1 / -1; }
       .ri-panel.half, .ri-panel.wide { grid-column: 1 / -1; }
       .ri-header { align-items: flex-start; flex-direction: column; }
+      .breakdown-grid { flex-direction: column; }
+      .breakdown-grid .breakdown-card { width: 100%; }
     }
     /* Per-item pass dots in the items table */
     .pass-dots {
@@ -4007,6 +4446,10 @@
                 <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
               </div>
             </div>
+            <div class="samples-view-toggle items-view-toggle" role="group" aria-label="Item detail view">
+              <button type="button" class="samples-view-btn active" data-items-view="cards" aria-pressed="true">Cards</button>
+              <button type="button" class="samples-view-btn" data-items-view="heatmap" aria-pressed="false">Heatmap</button>
+            </div>
             <div class="fp-actions-spacer"></div>
             <div class="fp-actions">
               <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
@@ -4047,6 +4490,15 @@
         if (projectMatch) return decodeURIComponent(projectMatch[1]);
         const runMatch = path.match(/\/run\/(.+)$/);
         return runMatch ? decodeURIComponent(runMatch[1]) : null;
+      })();
+
+      // Repeat runs: ?pass=N scopes the page to a single pass — every score
+      // on the page (item cards, filters, overview, charts) comes from that
+      // pass's slice instead of the reduced mean.
+      const VIEW_PASS = (() => {
+        const raw = new URLSearchParams(window.location.search).get('pass');
+        const n = parseInt(raw || '', 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
       })();
 
       function apiUrl(path) {
@@ -4137,6 +4589,13 @@
         allMetadataKeys: [],
         selectedCategories: new Set(),   // which metadata keys to show as breakdowns
         categoryFilters: {},             // custom category filters: key -> null|[values]
+        categoryBreakdownView: 'cards',
+        categoryBreakdownSort: 'default',
+        categoryCompareKey: null,
+        expandedCategoryGroups: new Set(),
+        relationshipX: null,
+        relationshipY: null,
+        itemDetailView: 'cards',
         visibleMetadataFields: {},
         visibleMetricMetaFields: {},
         allMetricMetaKeys: [],
@@ -4709,6 +5168,39 @@
         const run = state.run;
         const snap = state.snapshot;
         state.allMetrics = snap.metric_names || run.metric_names || [];
+
+        // Pass scope: swap every row's reduced metric values AND its
+        // output/latency/status/trace for the viewed pass's slice, once, so
+        // all downstream consumers follow.
+        const samplesTotal = parseInt(run.samples, 10) || 1;
+        state.viewPass = (VIEW_PASS && samplesTotal > 1 && VIEW_PASS <= samplesTotal) ? VIEW_PASS : null;
+        if (state.viewPass) {
+          const metricNames = state.allMetrics;
+          snap.rows = (snap.rows || []).map(row => {
+            if (!row.pass_scores && !row.pass_attempts) return row;
+            const passValues = metricNames.map(name => {
+              const scores = (row.pass_scores || {})[name];
+              return (Array.isArray(scores) && scores.length >= state.viewPass)
+                ? scores[state.viewPass - 1]
+                : null;
+            });
+            const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[state.viewPass - 1] : null;
+            return {
+              ...row,
+              metric_values: passValues,
+              ...(att ? {
+                status: att.status,
+                error: att.error || '',
+                output: att.output,
+                output_full: att.output,
+                latency_ms: att.latency_ms || 0,
+                trace_id: att.trace_id || '',
+                trace_url: att.trace_url || '',
+              } : {}),
+            };
+          });
+          document.body.classList.add('pass-scoped');
+        }
         if (state.allMetrics.length > 0 && !state.selectedMetric) {
           state.selectedMetric = state.allMetrics[0];
         }
@@ -4791,7 +5283,8 @@
           if (state.visibleMetricMetaFields[k] === undefined) state.visibleMetricMetaFields[k] = true;
         }
 
-        document.title = '\u0642\u064A\u0651\u0650\u0645 \u2022 ' + (run.run_name || 'Run Detail');
+        document.title = '\u0642\u064A\u0651\u0650\u0645 \u2022 ' + (run.run_name || 'Run Detail')
+          + (state.viewPass ? ' \u2022 Pass ' + state.viewPass : '');
       }
 
       function showEmpty() {
@@ -4917,10 +5410,22 @@
         ].filter(Boolean).join('');
         const executionContextHtml = buildExecutionContextSectionHtml();
 
+        const hasPassAttempts = (state.snapshot.rows || [])
+          .some(r => Array.isArray(r.pass_attempts) && r.pass_attempts.some(Boolean));
+        const passNoticeHtml = state.viewPass
+          ? '<div class="pass-scope-banner">' +
+              '<strong>Pass ' + state.viewPass + ' of ' + samplesCount + '</strong>' +
+              '<span>' + (hasPassAttempts
+                ? 'Everything on this page — scores, outputs, latency, traces — is from this pass.'
+                : 'Scores on this page are from this pass only. Outputs, latency, and traces show each item’s final attempt.') + '</span>' +
+              '<a href="' + escapeAttr(window.location.pathname) + '">View all passes →</a>' +
+            '</div>'
+          : '';
+
         el('run-summary').innerHTML = '<div class="run-summary-card">' +
           '<div class="hero-top">' +
             '<div class="hero-identity">' +
-              '<div class="hero-eyebrow">Run Detail</div>' +
+              '<div class="hero-eyebrow">Run Detail' + (state.viewPass ? ' · Pass ' + state.viewPass + '/' + samplesCount : '') + '</div>' +
               '<div class="hero-headline">' +
                 '<div class="hero-run-name">' + escapeHtml(run.run_name || runId || '—') + '</div>' +
               '</div>' +
@@ -4935,6 +5440,7 @@
             '</div>' +
           '</div>' +
           ingestWarningHtml +
+          passNoticeHtml +
           '<div class="hero-meta-grid">' + metaHtml + '</div>' +
           executionContextHtml +
         '</div>';
@@ -5046,7 +5552,7 @@
                 (mType === 'numeric' ? '' : '<span class="sw-meter ' + cls + '"><i style="width:' + pct + '%"></i></span>') + '</td>';
             }).join('');
             const errs = p.error_count || 0;
-            return '<tr>' +
+            return '<tr' + (state.viewPass === p.pass_number ? ' class="sw-current"' : '') + '>' +
               '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + ' of ' + passes.samples + '</span></td>' +
               metricCells +
               '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
@@ -5734,6 +6240,220 @@
         '</div>';
       }
 
+      function riQuantile(values, quantile) {
+        if (!values.length) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const position = (sorted.length - 1) * quantile;
+        const lower = Math.floor(position);
+        const upper = Math.min(sorted.length - 1, lower + 1);
+        return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+      }
+
+      function riMetricValue(metric, value) {
+        return window.QymMetrics.formatMetricValue(value, metric.type, metric.type === 'numeric' ? 1 : 0);
+      }
+
+      function buildDeepAnalysisCharts(rows) {
+        const series = riMetricSeries(rows);
+        if (!series.length || !rows.length) return '';
+        const chartColors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
+        const metricByName = new Map(series.map(metric => [metric.name, metric]));
+        if (!metricByName.has(state.relationshipX)) state.relationshipX = series[0].name;
+        if (!metricByName.has(state.relationshipY) || state.relationshipY === state.relationshipX) {
+          state.relationshipY = (series.find(metric => metric.name !== state.relationshipX) || series[0]).name;
+        }
+
+        const relationshipPanels = [];
+        if (series.length > 1) {
+          const W = 620, H = 250, left = 112, top = 58, right = 18, bottom = 18;
+          const cellW = (W - left - right) / series.length;
+          const cellH = (H - top - bottom) / series.length;
+          let matrix = '';
+          series.forEach((metric, index) => {
+            const x = left + index * cellW + cellW / 2;
+            matrix += '<text x="' + x.toFixed(1) + '" y="' + (top - 12) + '" text-anchor="end" transform="rotate(-38 ' + x.toFixed(1) + ' ' + (top - 12) + ')" class="ri-label">' + escapeHtml(metric.name) + '</text>' +
+              '<text x="' + (left - 10) + '" y="' + (top + index * cellH + cellH / 2 + 4).toFixed(1) + '" text-anchor="end" class="ri-label">' + escapeHtml(metric.name) + '</text>';
+          });
+          series.forEach((rowMetric, rowIndex) => {
+            const rowMap = new Map(rowMetric.points.map(point => [point.rowIndex, point.value]));
+            series.forEach((columnMetric, columnIndex) => {
+              const pairs = columnMetric.points.filter(point => rowMap.has(point.rowIndex)).map(point => [rowMap.get(point.rowIndex), point.value]);
+              const correlation = rowIndex === columnIndex ? 1 : riPearson(pairs);
+              const opacity = correlation === null ? 0.12 : 0.18 + Math.abs(correlation) * 0.72;
+              const fill = correlation !== null && correlation < 0 ? 'var(--chart-3)' : 'var(--chart-1)';
+              const label = correlation === null ? '\u2014' : correlation.toFixed(2);
+              const x = left + columnIndex * cellW, y = top + rowIndex * cellH;
+              matrix += '<rect x="' + (x + 1).toFixed(1) + '" y="' + (y + 1).toFixed(1) + '" width="' + Math.max(1, cellW - 2).toFixed(1) + '" height="' + Math.max(1, cellH - 2).toFixed(1) + '" rx="3" fill="' + fill + '" fill-opacity="' + opacity.toFixed(2) + '"><title>' + escapeHtml(rowMetric.name + ' vs ' + columnMetric.name + ': r=' + label) + '</title></rect>' +
+                '<text x="' + (x + cellW / 2).toFixed(1) + '" y="' + (y + cellH / 2 + 4).toFixed(1) + '" text-anchor="middle" class="ri-cell-value">' + label + '</text>';
+            });
+          });
+          relationshipPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Correlation</div><div class="ri-panel-copy">Pearson correlation across matched item means.</div></div></div>' +
+            '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Metric correlation matrix">' + matrix + '</svg></div>');
+
+          const xMetric = metricByName.get(state.relationshipX);
+          const yMetric = metricByName.get(state.relationshipY);
+          const xMap = new Map(xMetric.points.map(point => [point.rowIndex, point]));
+          const matched = yMetric.points.filter(point => xMap.has(point.rowIndex)).map(point => ({ x: xMap.get(point.rowIndex).value, y: point.value, row: point.row, rowIndex: point.rowIndex }));
+          const pairs = matched.map(point => [point.x, point.y]);
+          const correlation = riPearson(pairs);
+          const SW = 620, SH = 250, SL = 54, SR = 18, ST = 16, SB = 42;
+          const xValues = matched.map(point => point.x), yValues = matched.map(point => point.y);
+          const xMin = xMetric.type === 'numeric' ? Math.min(...xValues) : 0;
+          const xMax = xMetric.type === 'numeric' ? Math.max(...xValues) : 1;
+          const yMin = yMetric.type === 'numeric' ? Math.min(...yValues) : 0;
+          const yMax = yMetric.type === 'numeric' ? Math.max(...yValues) : 1;
+          const sx = value => riScale(value, xMin, xMax, SL, SW - SR);
+          const sy = value => riScale(value, yMin, yMax, SH - SB, ST);
+          let scatter = '<line x1="' + SL + '" y1="' + (SH - SB) + '" x2="' + (SW - SR) + '" y2="' + (SH - SB) + '" class="ri-axis"/><line x1="' + SL + '" y1="' + ST + '" x2="' + SL + '" y2="' + (SH - SB) + '" class="ri-axis"/>';
+          for (let tick = 0; tick < 3; tick++) {
+            const xValue = xMin + (xMax - xMin) * tick / 2;
+            const yValue = yMin + (yMax - yMin) * tick / 2;
+            scatter += '<text x="' + sx(xValue).toFixed(1) + '" y="' + (SH - SB + 18) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(riMetricValue(xMetric, xValue)) + '</text>' +
+              '<text x="' + (SL - 9) + '" y="' + (sy(yValue) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + escapeHtml(riMetricValue(yMetric, yValue)) + '</text>';
+          }
+          matched.forEach(point => {
+            scatter += '<circle cx="' + sx(point.x).toFixed(1) + '" cy="' + sy(point.y).toFixed(1) + '" r="4.5" fill="var(--chart-1)" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + xMetric.name + ' ' + riMetricValue(xMetric, point.x) + ' · ' + yMetric.name + ' ' + riMetricValue(yMetric, point.y)) + '</title></circle>';
+          });
+          scatter += '<text x="' + ((SL + SW - SR) / 2) + '" y="' + (SH - 8) + '" text-anchor="middle" class="ri-label">' + escapeHtml(xMetric.name) + '</text>' +
+            '<text x="16" y="' + ((ST + SH - SB) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((ST + SH - SB) / 2) + ')" class="ri-label">' + escapeHtml(yMetric.name) + '</text>';
+          const options = selected => series.map(metric => '<option value="' + escapeAttr(metric.name) + '"' + (metric.name === selected ? ' selected' : '') + '>' + escapeHtml(metric.name) + '</option>').join('');
+          relationshipPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Relationship</div><div class="ri-panel-copy">' + escapeHtml(xMetric.name) + ' versus ' + escapeHtml(yMetric.name) + ', item by item.</div></div>' +
+            '<div class="ri-relationship-controls"><span class="ri-axis-control"><label for="ri-x-axis">X</label><select class="filter-select ri-axis-select" id="ri-x-axis" data-ri-axis="x">' + options(xMetric.name) + '</select></span>' +
+            '<span class="ri-axis-control"><label for="ri-y-axis">Y</label><select class="filter-select ri-axis-select" id="ri-y-axis" data-ri-axis="y">' + options(yMetric.name) + '</select></span>' +
+            '<span class="ri-panel-stat">r ' + (correlation === null ? '\u2014' : correlation.toFixed(2)) + '</span></div></div>' +
+            '<svg class="ri-chart" viewBox="0 0 ' + SW + ' ' + SH + '" role="img" aria-label="Relationship between selected metrics">' + scatter + '</svg></div>');
+        }
+
+        const qualityMetric = series.find(metric => metric.name === state.selectedMetric && metric.type !== 'numeric') || series.find(metric => metric.type !== 'numeric') || series[0];
+        const qualityItems = qualityMetric.points.map(point => ({ row: point.row, rowIndex: point.rowIndex, quality: point.value, latency: Number(point.row.latency_ms) })).filter(item => Number.isFinite(item.latency) && item.latency > 0);
+        let frontierPanel = '';
+        if (qualityItems.length > 1) {
+          const W = 1000, H = 285, L = 54, R = 18, T = 16, B = 42;
+          const latencies = qualityItems.map(item => item.latency);
+          const qualities = qualityItems.map(item => item.quality);
+          let latMin = Math.min(...latencies), latMax = Math.max(...latencies);
+          if (latMin === latMax) { latMin *= 0.95; latMax *= 1.05; }
+          const medianLatency = riQuantile(latencies, 0.5);
+          const p95Latency = riQuantile(latencies, 0.95);
+          const medianQuality = riQuantile(qualities, 0.5);
+          const x = value => riScale(value, latMin, latMax, L, W - R);
+          const y = value => riScale(value, 0, 1, H - B, T);
+          const zoneX = x(p95Latency), zoneY = y(medianQuality);
+          let frontier = '<rect x="' + zoneX.toFixed(1) + '" y="' + zoneY.toFixed(1) + '" width="' + (W - R - zoneX).toFixed(1) + '" height="' + (H - B - zoneY).toFixed(1) + '" fill="var(--error)" opacity="0.10"/>' +
+            '<text x="' + (W - R - 8) + '" y="' + (H - B - 10) + '" text-anchor="end" class="ri-zone-label">slow + weak</text>' +
+            '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>' +
+            '<line x1="' + x(medianLatency).toFixed(1) + '" y1="' + T + '" x2="' + x(medianLatency).toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
+            '<line x1="' + L + '" y1="' + y(medianQuality).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(medianQuality).toFixed(1) + '" stroke="var(--border-strong)" stroke-dasharray="5 4"/>' +
+            '<line x1="' + x(p95Latency).toFixed(1) + '" y1="' + T + '" x2="' + x(p95Latency).toFixed(1) + '" y2="' + (H - B) + '" stroke="var(--border-strong)" stroke-dasharray="2 3"/>';
+          [0, 0.5, 1].forEach(value => {
+            frontier += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>';
+          });
+          [latMin, (latMin + latMax) / 2, latMax].forEach(value => {
+            frontier += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(formatLatency(value)) + '</text>';
+          });
+          qualityItems.forEach(item => {
+            const radius = 4 + Math.min(2, Number(item.row.retry_count || 0));
+            frontier += '<circle cx="' + x(item.latency).toFixed(1) + '" cy="' + y(item.quality).toFixed(1) + '" r="' + radius + '" fill="' + riScoreColor(item.quality) + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((item.row.item_id || ('Item ' + (item.rowIndex + 1))) + ' · ' + qualityMetric.name + ' ' + riMetricValue(qualityMetric, item.quality) + ' · latency ' + formatLatency(item.latency)) + '</title></circle>';
+          });
+          frontier += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Average latency</text>' +
+            '<text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Mean ' + escapeHtml(qualityMetric.name) + '</text>';
+          frontierPanel = '<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item. Point size increases with retries; reference lines show run medians.</div></div></div>' +
+            '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Quality versus latency by item">' + frontier + '</svg>' +
+            '<div class="ri-note-row"><span>Dot size = retries</span><span>Dashed = medians · dotted = p95 latency</span></div></div>';
+        }
+
+        const repeatSeries = series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => Array.isArray(point.row.pass_scores?.[metric.name]) && point.row.pass_scores[metric.name].length > 1));
+        const repeatPanels = [];
+        if (repeatSeries.length) {
+          const volatility = [];
+          repeatSeries.forEach((metric, metricIndex) => {
+            metric.points.forEach(point => {
+              const values = (point.row.pass_scores?.[metric.name] || []).map(Number).filter(Number.isFinite);
+              if (values.length > 1) volatility.push({ metric, metricIndex, row: point.row, rowIndex: point.rowIndex, mean: riMean(values), stddev: riStdDev(values) });
+            });
+          });
+          if (volatility.length) {
+            const W = 1000, H = 285, L = 54, R = 18, T = 16, B = 42;
+            const maxStd = Math.max(0.1, ...volatility.map(point => point.stddev)) * 1.08;
+            const x = value => riScale(value, 0, 1, L, W - R);
+            const y = value => riScale(value, 0, maxStd, H - B, T);
+            let stability = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>';
+            [0, 0.5, 1].forEach(value => stability += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+            [0, maxStd / 2, maxStd].forEach(value => stability += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+            volatility.forEach(point => {
+              stability += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="4.5" fill="' + chartColors[point.metricIndex % chartColors.length] + '" stroke="var(--bg-surface)" stroke-width="2"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + point.metric.name + ' · mean ' + formatPercent(point.mean) + ' · standard deviation ' + formatPercent(point.stddev)) + '</title></circle>';
+            });
+            stability += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Mean score</text><text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Pass-to-pass standard deviation</text>';
+            const legend = repeatSeries.map((metric, index) => '<span class="ri-legend-item" style="--ri-color:' + chartColors[index % chartColors.length] + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</span>').join('');
+            repeatPanels.push('<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Stability Map</div><div class="ri-panel-copy">Mean score versus pass-to-pass standard deviation, one point per item and metric.</div></div></div><div class="ri-legend">' + legend + '</div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Mean score versus repeat stability">' + stability + '</svg></div>');
+          }
+
+          const thresholdMetric = qualityMetric;
+          const valuesByItem = thresholdMetric.points.map(point => (point.row.pass_scores?.[thresholdMetric.name] || [point.value]).map(Number).filter(Number.isFinite)).filter(values => values.length);
+          const thresholds = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
+          const passRates = thresholds.map(threshold => {
+            const values = valuesByItem.flat();
+            return values.length ? values.filter(value => value >= threshold).length / values.length : 0;
+          });
+          const partialRates = thresholds.map(threshold => valuesByItem.length ? valuesByItem.filter(values => {
+            const passes = values.filter(value => value >= threshold).length;
+            return passes > 0 && passes < values.length;
+          }).length / valuesByItem.length : 0);
+          const lineChart = (lines, labels, ariaLabel) => {
+            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38;
+            const x = index => riScale(index, 0, labels.length - 1, L, W - R);
+            const y = value => riScale(value, 0, 1, H - B, T);
+            let svg = '';
+            [0, 0.25, 0.5, 0.75, 1].forEach(value => svg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+            lines.forEach(line => {
+              svg += '<path d="' + line.values.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="' + line.color + '" stroke-width="2.5"' + (line.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+              line.values.forEach((value, index) => svg += '<circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + line.color + '" stroke-width="2"><title>' + escapeHtml(labels[index] + ': ' + formatPercent(value)) + '</title></circle>');
+            });
+            labels.forEach((label, index) => svg += '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(label) + '</text>');
+            return '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(ariaLabel) + '">' + svg + '</svg>';
+          };
+          repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Threshold Explorer</div><div class="ri-panel-copy">Pass rate and partial-pass items at several thresholds.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-1)"><span class="ri-legend-swatch"></span>pass rate</span><span class="ri-legend-item" style="--ri-color:var(--chart-5)"><span class="ri-legend-swatch"></span>partial-pass items</span></div>' +
+            lineChart([{ values: passRates, color: 'var(--chart-1)' }, { values: partialRates, color: 'var(--chart-5)', dash: true }], thresholds.map(value => '\u2265' + Math.round(value * 100) + '%'), 'Pass rate and partial-pass items by threshold') + '</div>');
+
+          const maxPass = Math.max(...valuesByItem.map(values => values.length));
+          const estimates = [], lowerBounds = [], upperBounds = [];
+          for (let passCount = 1; passCount <= maxPass; passCount++) {
+            const itemMeans = valuesByItem.filter(values => values.length >= passCount).map(values => riMean(values.slice(0, passCount)));
+            estimates.push(riMean(itemMeans));
+            let seed = 1777 + passCount * 97;
+            const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+            const bootstrap = [];
+            for (let sample = 0; sample < 200; sample++) {
+              let sum = 0;
+              for (let index = 0; index < itemMeans.length; index++) sum += itemMeans[Math.floor(random() * itemMeans.length)];
+              bootstrap.push(sum / itemMeans.length);
+            }
+            lowerBounds.push(riQuantile(bootstrap, 0.025));
+            upperBounds.push(riQuantile(bootstrap, 0.975));
+          }
+          {
+            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38;
+            const x = index => riScale(index, 0, Math.max(1, estimates.length - 1), L, W - R);
+            const y = value => riScale(value, 0, 1, H - B, T);
+            let estimateSvg = '';
+            [0, 0.25, 0.5, 0.75, 1].forEach(value => estimateSvg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+            const upper = upperBounds.map((value, index) => x(index).toFixed(1) + ' ' + y(value).toFixed(1));
+            const lower = lowerBounds.map((value, index) => x(index).toFixed(1) + ' ' + y(value).toFixed(1)).reverse();
+            estimateSvg += '<path d="M' + upper.join(' L') + ' L' + lower.join(' L') + ' Z" fill="var(--chart-2)" opacity="0.12"/><path d="' + estimates.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="var(--chart-2)" stroke-width="2.5"/>';
+            estimates.forEach((value, index) => {
+              estimateSvg += '<line x1="' + x(index).toFixed(1) + '" y1="' + y(lowerBounds[index]).toFixed(1) + '" x2="' + x(index).toFixed(1) + '" y2="' + y(upperBounds[index]).toFixed(1) + '" stroke="var(--border-strong)"/><circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="var(--chart-2)" stroke-width="2"><title>' + (index + 1) + ' passes: ' + escapeHtml(formatPercent(value)) + '</title></circle><text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + (index + 1) + '</text>';
+            });
+            repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Score Estimate by Pass Count</div><div class="ri-panel-copy">Cumulative mean and item-level bootstrap interval as passes are added.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-2)"><span class="ri-legend-swatch"></span>cumulative mean</span><span class="ri-legend-item" style="--ri-color:var(--border-strong)"><span class="ri-legend-swatch"></span>95% interval</span></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Score estimate by pass count">' + estimateSvg + '</svg></div>');
+          }
+        }
+
+        let html = '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore metric relationships, quality and latency, and repeat stability.</div></div></div>';
+        if (relationshipPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-primary)"><div class="ri-subhead"><h4>Metric Relationships</h4><span>Compare how evaluation metrics move together across the same items.</span></div><div class="ri-grid">' + relationshipPanels.join('') + '</div></div>';
+        if (frontierPanel) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--warning)"><div class="ri-subhead"><h4>Quality and Latency</h4><span>View item-level quality alongside response time.</span></div><div class="ri-grid">' + frontierPanel + '</div></div>';
+        if (repeatPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-tertiary)"><div class="ri-subhead"><h4>Repeat Stability</h4><span>Compare score levels, variation, thresholds, and pass-count estimates.</span></div><div class="ri-grid">' + repeatPanels.join('') + '</div></div>';
+        return html + '</div>';
+      }
+
       function renderOverview(filteredItemsOverride = null) {
         const section = el('overview-section');
         if (!section || !state.snapshot) { if (section) section.innerHTML = ''; return; }
@@ -5759,7 +6479,7 @@
             summaryItem('errors', 'Errors', String(failed), '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>') +
           '</div>';
 
-        const intelligenceCharts = buildRunIntelligenceCharts(rows);
+        const intelligenceCharts = buildDeepAnalysisCharts(rows);
 
         // ── Gauge color (hex for conic-gradient) ──
         function gaugeColorHex(score) {
@@ -6093,6 +6813,23 @@
             renderItems();
           });
         });
+
+        grid.querySelectorAll('.ri-axis-select[data-ri-axis]').forEach(select => {
+          select.addEventListener('change', () => {
+            const axis = select.dataset.riAxis;
+            const next = select.value;
+            if (axis === 'x') {
+              const previous = state.relationshipX;
+              if (next === state.relationshipY) state.relationshipY = previous;
+              state.relationshipX = next;
+            } else {
+              const previous = state.relationshipY;
+              if (next === state.relationshipX) state.relationshipX = previous;
+              state.relationshipY = next;
+            }
+            renderOverview(getFilteredItems());
+          });
+        });
       }
 
       function getApprovalState(row) {
@@ -6389,6 +7126,88 @@
         return keys;
       }
 
+      function getCategoryMetricScores(row, metric, metricIndex) {
+        if (!state.viewPass && row.pass_scores && Array.isArray(row.pass_scores[metric])) {
+          const passValues = row.pass_scores[metric]
+            .map(value => window.QymMetrics.parseScoreValue(value))
+            .filter(value => value !== null);
+          if (passValues.length > 0) return passValues;
+        }
+        const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+        return score === null ? [] : [score];
+      }
+
+      function getCategoryGroupStats(categoryKey, rows, filteredItemIds, metric, metricIndex, threshold, supportsPassRate) {
+        const groups = {};
+        for (const row of rows) {
+          const itemId = row.item_id || String(row.index);
+          if (!filteredItemIds.has(itemId)) continue;
+          const metadata = row.item_metadata || {};
+          const rawValue = metadata[categoryKey] ?? '';
+          const isListKey = isListCategoryKey(categoryKey);
+          const parsedValues = getMetadataCategoryValues(metadata, categoryKey);
+          const groupValues = parsedValues.length ? parsedValues : [String(rawValue)];
+          if (groupValues.length === 0) groupValues.push('');
+          const domainIsSole = isListKey && groupValues.length === 1;
+          const metricScores = getCategoryMetricScores(row, metric, metricIndex);
+
+          for (const groupValue of groupValues) {
+            if (isListKey && state.domainFilter !== null
+                && state.domainFilter.some(filter => filter.toLowerCase() === groupValue.toLowerCase()) && !domainIsSole) continue;
+            const effective = groupValue || 'unknown';
+            if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
+            groups[effective].count++;
+            groups[effective].scores.push(...metricScores);
+            if (row.latency_ms && row.status === 'completed') groups[effective].latencies.push(row.latency_ms);
+          }
+        }
+
+        const stats = Object.entries(groups).map(([groupValue, group]) => {
+          const passCount = supportsPassRate ? group.scores.filter(score => score >= threshold).length : 0;
+          return {
+            groupVal: groupValue,
+            itemCount: group.count,
+            avgScore: group.scores.length ? group.scores.reduce((sum, score) => sum + score, 0) / group.scores.length : 0,
+            passRate: supportsPassRate && group.scores.length ? passCount / group.scores.length : null,
+            avgLatency: group.latencies.length ? group.latencies.reduce((sum, latency) => sum + latency, 0) / group.latencies.length : null,
+          };
+        });
+
+        if (state.categoryBreakdownSort === 'name') {
+          stats.sort((a, b) => a.groupVal.localeCompare(b.groupVal));
+        } else if (state.categoryBreakdownSort === 'rate' || state.categoryBreakdownSort === 'delta') {
+          stats.sort((a, b) => (b.passRate ?? -1) - (a.passRate ?? -1) || a.groupVal.localeCompare(b.groupVal));
+        } else if (categoryKey === 'complexity') {
+          const order = ['easy', 'medium', 'hard', 'expert'];
+          stats.sort((a, b) => {
+            const aIndex = order.indexOf(a.groupVal.toLowerCase().trim());
+            const bIndex = order.indexOf(b.groupVal.toLowerCase().trim());
+            return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+          });
+        } else {
+          stats.sort((a, b) => b.avgScore - a.avgScore);
+        }
+        return stats;
+      }
+
+      function categoryDeltaText(passRate, baseline) {
+        if (passRate === null || baseline === null) return '\u2014';
+        const points = Math.round((passRate - baseline) * 100);
+        return (points > 0 ? '+' : '') + points + 'pp';
+      }
+
+      function categoryDeltaClass(passRate, baseline) {
+        if (passRate === null || baseline === null || passRate === baseline) return '';
+        return passRate > baseline ? 'positive' : 'negative';
+      }
+
+      function categoryPassTrack(passRate, baseline) {
+        if (passRate === null) return '';
+        const baselineStyle = baseline === null ? '' : '--category-baseline:' + Math.round(baseline * 100) + '%;';
+        return '<div class="category-pass-track' + (baseline === null ? '' : ' has-baseline') + '" style="--category-pass:' + Math.round(passRate * 100) + '%;' + baselineStyle + '--category-pass-color:' + riScoreColor(passRate) + '">' +
+          '<span class="category-pass-fill"></span></div>';
+      }
+
       function renderMetadataBreakdown() {
         const section = el('metadata-breakdown');
         if (!section) return;
@@ -6401,8 +7220,14 @@
         const metric = state.selectedMetric || state.allMetrics[0];
         if (!metric) return;
         const mIdx = state.allMetrics.indexOf(metric);
+        const metricType = state.metricTypes[metric] || 'score';
         const isBoolean = state.metricIsBoolean[metric];
+        const supportsPassRate = metricType !== 'numeric';
+        if (!supportsPassRate && ['rate', 'delta'].includes(state.categoryBreakdownSort)) {
+          state.categoryBreakdownSort = 'default';
+        }
         const rows = state.snapshot.rows || [];
+        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
 
         // Get filtered item IDs so breakdown only shows items matching current filters
         const filteredItems = getFilteredItems();
@@ -6411,10 +7236,18 @@
           return r.item_id || String(r.index);
         }));
 
+        const overallScores = [];
+        for (const row of rows) {
+          const itemId = row.item_id || String(row.index);
+          if (filteredItemIds.has(itemId)) overallScores.push(...getCategoryMetricScores(row, metric, mIdx));
+        }
+        const overallPassRate = supportsPassRate && overallScores.length
+          ? overallScores.filter(score => score >= threshold).length / overallScores.length
+          : null;
+
         let html = '<h3 class="section-title">Performance by Category</h3>';
 
-        // Chip selector bar
-        html += '<div class="category-chip-bar">';
+        html += '<div class="category-breakdown-toolbar"><div class="category-chip-bar">';
         html += '<span class="category-chip-bar-label">Categories</span>';
         for (const { key, count } of chipKeys) {
           const selected = state.selectedCategories.has(key);
@@ -6423,6 +7256,20 @@
             escapeHtml(displayName) + ' <span class="chip-count">' + count + '</span></button>';
         }
         html += '</div>';
+        html += '<div class="category-breakdown-controls">' +
+          '<span class="category-breakdown-context">Metric <strong>' + escapeHtml(metric) + '</strong>' +
+            (supportsPassRate ? ' &middot; Pass <strong>&ge;' + escapeHtml(formatPercent(threshold)) + '</strong>' : ' &middot; Numeric metric') + '</span>' +
+          '<span class="category-breakdown-sort"><label for="category-breakdown-sort">Sort</label>' +
+            '<select class="filter-select" id="category-breakdown-sort">' +
+              '<option value="default"' + (state.categoryBreakdownSort === 'default' ? ' selected' : '') + '>Default</option>' +
+              '<option value="name"' + (state.categoryBreakdownSort === 'name' ? ' selected' : '') + '>Name</option>' +
+              '<option value="rate"' + (state.categoryBreakdownSort === 'rate' ? ' selected' : '') + (supportsPassRate ? '' : ' disabled') + '>Pass rate</option>' +
+              '<option value="delta"' + (state.categoryBreakdownSort === 'delta' ? ' selected' : '') + (supportsPassRate ? '' : ' disabled') + '>Delta</option>' +
+            '</select></span>' +
+          '<span class="samples-view-toggle category-breakdown-view-toggle" role="group" aria-label="Category view">' +
+            '<button type="button" class="samples-view-btn category-breakdown-view-btn' + (state.categoryBreakdownView === 'cards' ? ' active' : '') + '" data-category-view="cards" aria-pressed="' + (state.categoryBreakdownView === 'cards') + '">Cards</button>' +
+            '<button type="button" class="samples-view-btn category-breakdown-view-btn' + (state.categoryBreakdownView === 'compare' ? ' active' : '') + '" data-category-view="compare" aria-pressed="' + (state.categoryBreakdownView === 'compare') + '">Compare</button>' +
+          '</span></div></div>';
 
         const breakdownKeys = chipKeys.filter(c => state.selectedCategories.has(c.key)).map(c => c.key);
 
@@ -6435,94 +7282,109 @@
           return;
         }
 
-        html += '<div class="comparison-stats">';
+        const statsByKey = new Map(breakdownKeys.map(key => [key, getCategoryGroupStats(key, rows, filteredItemIds, metric, mIdx, threshold, supportsPassRate)]));
+        html += '<div class="comparison-stats metadata-breakdown-content">';
 
-        for (const bdKey of breakdownKeys) {
-          const groups = {};
-          for (const row of rows) {
-            const itemId = row.item_id || String(row.index);
-            if (!filteredItemIds.has(itemId)) continue;
-            const md = row.item_metadata || {};
-            const rawVal = md[bdKey] ?? '';
-            const isListKey = isListCategoryKey(bdKey);
-            const groupVals = getMetadataCategoryValues(md, bdKey).length ? getMetadataCategoryValues(md, bdKey) : [String(rawVal)];
-            if (groupVals.length === 0) groupVals.push('');
-            const domainIsSole = isListKey && groupVals.length === 1;
-            for (const groupVal of groupVals) {
-              if (isListKey && state.domainFilter !== null
-                  && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
-              const effective = groupVal || 'unknown';
-              if (!groups[effective]) groups[effective] = { scores: [], latencies: [], count: 0 };
-              groups[effective].count++;
-              if (mIdx >= 0) {
-                const { score } = window.QymMetrics.getRowScore(row, mIdx);
-                if (score !== null) groups[effective].scores.push(score);
-              }
-              if (row.latency_ms && row.status === 'completed') {
-                groups[effective].latencies.push(row.latency_ms);
-              }
-            }
+        if (state.categoryBreakdownView === 'compare') {
+          if (!breakdownKeys.includes(state.categoryCompareKey)) state.categoryCompareKey = breakdownKeys[0];
+          html += '<div class="category-compare-tabs" role="tablist" aria-label="Category dimension">';
+          for (const key of breakdownKeys) {
+            html += '<button type="button" class="category-compare-tab' + (state.categoryCompareKey === key ? ' active' : '') + '" data-category-compare-key="' + escapeAttr(key) + '" role="tab" aria-selected="' + (state.categoryCompareKey === key) + '">' + escapeHtml(key) + '</button>';
           }
-
-          const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
-          const groupStats = Object.entries(groups).map(([gv, g]) => {
-            const passCount = g.scores.filter(s => s >= threshold).length;
-            return {
-              groupVal: gv,
-              itemCount: g.count,
-              avgScore: g.scores.length > 0 ? g.scores.reduce((a,b)=>a+b,0) / g.scores.length : 0,
-              passRate: g.scores.length > 0 ? passCount / g.scores.length : 0,
-              avgLatency: g.latencies.length > 0 ? g.latencies.reduce((a,b)=>a+b,0) / g.latencies.length : null,
-            };
-          });
-
-          if (bdKey === 'complexity') {
-            const co = ['easy','medium','hard'];
-            groupStats.sort((a,b) => {
-              const ai = co.indexOf(a.groupVal.toLowerCase().trim());
-              const bi = co.indexOf(b.groupVal.toLowerCase().trim());
-              return (ai===-1?999:ai) - (bi===-1?999:bi);
-            });
-          } else {
-            groupStats.sort((a,b) => b.avgScore - a.avgScore);
+          html += '</div>';
+          const compareStats = statsByKey.get(state.categoryCompareKey) || [];
+          html += '<div class="category-compare-scroll"><div class="category-compare-head"><span>Category</span><span>Pass rate</span><span>Rate</span><span>Average</span><span>Delta</span><span>Items</span><span>Latency</span></div>';
+          for (const group of compareStats) {
+            const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
+            const latencyDisplay = group.avgLatency !== null ? formatLatency(group.avgLatency) : '&mdash;';
+            const deltaClass = categoryDeltaClass(group.passRate, overallPassRate);
+            html += '<button type="button" class="category-compare-row" data-bd-category="' + escapeAttr(state.categoryCompareKey) + '" data-bd-value="' + escapeAttr(group.groupVal) + '" title="Click to filter by ' + escapeAttr(group.groupVal) + '">' +
+              '<span class="category-compare-name" title="' + escapeAttr(group.groupVal) + '">' + escapeHtml(group.groupVal) + '</span>' +
+              '<span>' + categoryPassTrack(group.passRate, overallPassRate) + '</span>' +
+              '<span class="category-compare-number">' + (group.passRate === null ? '&mdash;' : formatPercent(group.passRate)) + '</span>' +
+              '<span class="category-compare-number muted">' + averageDisplay + '</span>' +
+              '<span class="category-compare-delta ' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span>' +
+              '<span class="category-compare-number muted">' + group.itemCount + '</span>' +
+              '<span class="category-compare-number muted">' + latencyDisplay + '</span></button>';
           }
+          html += '</div>';
+          if (overallPassRate !== null) html += '<div class="category-baseline-note"><span class="category-baseline-marker"></span><span>Run pass rate &middot; ' + formatPercent(overallPassRate) + '</span></div>';
+        } else {
+          for (const bdKey of breakdownKeys) {
+            const groupStats = statsByKey.get(bdKey) || [];
+            if (groupStats.length === 0) continue;
 
-          if (groupStats.length === 0) continue;
+            const icon = bdKey === 'complexity' ? '\u2666' : (bdKey === 'domain' ? '\u25C6' : '\u25CB');
+            const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : (bdKey === 'domain' ? 'breakdown-domain' : 'breakdown-custom');
+            const expanded = state.expandedCategoryGroups.has(bdKey);
+            const visibleStats = expanded ? groupStats : groupStats.slice(0, 6);
 
-          const icon = bdKey === 'complexity' ? '\u2666' : (bdKey === 'domain' ? '\u25C6' : '\u25CB');
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : (bdKey === 'domain' ? 'breakdown-domain' : 'breakdown-custom');
-          const displayName = bdKey;
+            html += '<div class="breakdown-section ' + colorClass + '">';
+            html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(bdKey) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
+            html += '<div class="breakdown-grid">';
 
-          html += '<div class="breakdown-section ' + colorClass + '">';
-          html += '<div class="breakdown-header"><span class="breakdown-icon">' + icon + '</span> ' + escapeHtml(displayName) + ' <span class="breakdown-metric">' + escapeHtml(metric) + '</span></div>';
-          html += '<div class="breakdown-grid">';
-
-          for (const g of groupStats) {
-              const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '&mdash;';
-              let cardValClass = '';
+            for (const group of visibleStats) {
+              const latencyDisplay = group.avgLatency !== null ? formatLatency(group.avgLatency) : '&mdash;';
+              let cardValueClass = '';
               if (bdKey === 'complexity') {
-                const cv = g.groupVal.toLowerCase().trim();
-                if (['easy','simple','basic','low'].includes(cv)) cardValClass = ' complexity-easy';
-                else if (['medium','moderate','intermediate','mid'].includes(cv)) cardValClass = ' complexity-medium';
-                else if (['hard','difficult','advanced','high','complex'].includes(cv)) cardValClass = ' complexity-hard';
-                else if (['very hard','very_hard','expert','extreme'].includes(cv)) cardValClass = ' complexity-expert';
+                const value = group.groupVal.toLowerCase().trim();
+                if (['easy','simple','basic','low'].includes(value)) cardValueClass = ' complexity-easy';
+                else if (['medium','moderate','intermediate','mid'].includes(value)) cardValueClass = ' complexity-medium';
+                else if (['hard','difficult','advanced','high','complex'].includes(value)) cardValueClass = ' complexity-hard';
+                else if (['very hard','very_hard','expert','extreme'].includes(value)) cardValueClass = ' complexity-expert';
               }
-              const bdMType = state.metricTypes[metric] || 'score';
-              const bdColorCls = window.QymMetrics.getMetricColorClass(g.avgScore, bdMType);
-              const bdDisplay = window.QymMetrics.formatMetricValue(g.avgScore, bdMType, 0);
-              html += '<div class="breakdown-card' + cardValClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(g.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(g.groupVal) + '">' +
-                '<div class="breakdown-card-label">' + escapeHtml(g.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + bdColorCls + '">' + bdDisplay + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + g.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latStr + '</span></div></div></div>';
+              const colorClassName = window.QymMetrics.getMetricColorClass(group.avgScore, metricType);
+              const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
+              const deltaClass = categoryDeltaClass(group.passRate, overallPassRate);
+              html += '<div class="breakdown-card' + cardValueClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(group.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(group.groupVal) + '">' +
+                '<div class="breakdown-card-label">' + escapeHtml(group.groupVal) + '</div>' +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + group.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latencyDisplay + '</span></div></div>' +
+                (supportsPassRate ? '<div class="breakdown-pass-summary"><span>Pass rate</span><strong>' + formatPercent(group.passRate) + ' &middot; <span class="' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span></strong></div>' + categoryPassTrack(group.passRate, overallPassRate) : '') +
+              '</div>';
+            }
+            html += '</div>';
+            if (groupStats.length > 6) {
+              html += '<button type="button" class="category-expand-btn" data-category-expand="' + escapeAttr(bdKey) + '">' +
+                (expanded ? 'Show less' : 'Show ' + (groupStats.length - visibleStats.length) + ' more') + '</button>';
+            }
+            html += '</div>';
           }
-          html += '</div></div>';
         }
 
         html += '</div>';
         section.innerHTML = html;
         wireChipClicks(section);
 
+        const sortSelect = section.querySelector('#category-breakdown-sort');
+        if (sortSelect) {
+          sortSelect.addEventListener('change', () => {
+            state.categoryBreakdownSort = sortSelect.value;
+            renderMetadataBreakdown();
+          });
+        }
+        section.querySelectorAll('.category-breakdown-view-btn[data-category-view]').forEach(button => {
+          button.addEventListener('click', () => {
+            state.categoryBreakdownView = button.dataset.categoryView;
+            renderMetadataBreakdown();
+          });
+        });
+        section.querySelectorAll('.category-compare-tab[data-category-compare-key]').forEach(button => {
+          button.addEventListener('click', () => {
+            state.categoryCompareKey = button.dataset.categoryCompareKey;
+            renderMetadataBreakdown();
+          });
+        });
+        section.querySelectorAll('.category-expand-btn[data-category-expand]').forEach(button => {
+          button.addEventListener('click', () => {
+            const key = button.dataset.categoryExpand;
+            if (state.expandedCategoryGroups.has(key)) state.expandedCategoryGroups.delete(key);
+            else state.expandedCategoryGroups.add(key);
+            renderMetadataBreakdown();
+          });
+        });
+
         // Wire breakdown card click-to-filter
-        section.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+        section.querySelectorAll('.breakdown-card[data-bd-category], .category-compare-row[data-bd-category]').forEach(card => {
           card.addEventListener('click', () => {
             const cat = card.dataset.bdCategory;
             const val = card.dataset.bdValue;
@@ -7066,6 +7928,53 @@
         }, 80);
       }
 
+      function renderItemsHeatmap(container, items, metric, metricIndex) {
+        const rowHeight = 40;
+        const metricType = state.metricTypes[metric] || 'score';
+        const rowValues = items.map(item => {
+          const row = item.row;
+          let values = [];
+          if (!state.viewPass && Array.isArray(row.pass_scores?.[metric])) {
+            values = row.pass_scores[metric].map(value => window.QymMetrics.parseScoreValue(value));
+          } else {
+            const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+            values = [score];
+          }
+          return { row, values };
+        });
+        const passCount = Math.max(1, ...rowValues.map(item => item.values.length));
+        const minWidth = 364 + passCount * 72;
+        const passHeaders = Array.from({ length: passCount }, (_, index) => '<span style="text-align:center">Pass ' + (index + 1) + '</span>').join('');
+        container.classList.add('heatmap-mode');
+        container.innerHTML = '<div class="item-heatmap-shell"><div class="item-heatmap-scroll"><div class="item-heatmap-grid item-heatmap-head" style="--heat-pass-count:' + passCount + ';--heat-min-width:' + minWidth + 'px"><span>Item</span><span>Complexity</span><span class="numeric">Mean</span><span class="numeric">Std dev</span>' + passHeaders + '</div>' +
+          '<div class="item-heatmap-viewport" id="item-heatmap-viewport"><div class="item-heatmap-spacer" style="height:' + (rowValues.length * rowHeight) + 'px"></div><div class="item-heatmap-layer" id="item-heatmap-layer"></div></div></div>' +
+          '<div class="item-heatmap-meta"><span id="item-heatmap-count"></span><span>Only visible rows are rendered</span></div></div>';
+        const viewport = el('item-heatmap-viewport');
+        const layer = el('item-heatmap-layer');
+        const count = el('item-heatmap-count');
+        const draw = () => {
+          const start = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - 2);
+          const end = Math.min(rowValues.length, start + 14);
+          layer.style.transform = 'translateY(' + (start * rowHeight) + 'px)';
+          layer.innerHTML = rowValues.slice(start, end).map(({ row, values }) => {
+            const numericValues = values.filter(value => value !== null && Number.isFinite(value));
+            const average = numericValues.length ? riMean(numericValues) : null;
+            const deviation = numericValues.length > 1 ? riStdDev(numericValues) : 0;
+            const category = row.item_metadata?.complexity || parseMetaList(row.item_metadata?.domain || '')[0] || '\u2014';
+            const cells = Array.from({ length: passCount }, (_, index) => {
+              const value = values[index];
+              if (value === null || !Number.isFinite(value)) return '<span class="item-heatmap-cell empty">\u2014</span>';
+              const normalized = metricType === 'numeric' ? 0.5 : Math.max(0, Math.min(1, value));
+              return '<span class="item-heatmap-cell" style="background:' + riScoreColor(normalized) + ';opacity:' + (0.55 + normalized * 0.45).toFixed(2) + '" title="' + escapeAttr((row.item_id || String(row.index)) + ' · pass ' + (index + 1) + ' · ' + riMetricValue({ type: metricType }, value)) + '">' + escapeHtml(riMetricValue({ type: metricType }, value)) + '</span>';
+            }).join('');
+            return '<div class="item-heatmap-grid item-heatmap-row" style="--heat-pass-count:' + passCount + ';--heat-min-width:' + minWidth + 'px"><span class="item-heatmap-id" title="' + escapeAttr(row.item_id || String(row.index)) + '">' + escapeHtml(row.item_id || String(row.index)) + '</span><span class="item-heatmap-category">' + escapeHtml(String(category)) + '</span><span class="item-heatmap-number">' + (average === null ? '\u2014' : escapeHtml(riMetricValue({ type: metricType }, average))) + '</span><span class="item-heatmap-number">' + escapeHtml(formatPercent(deviation)) + '</span>' + cells + '</div>';
+          }).join('');
+          count.textContent = rowValues.length + ' matching items · ' + (end - start) + ' rows rendered';
+        };
+        viewport.addEventListener('scroll', draw, { passive: true });
+        draw();
+      }
+
       function renderItems(scrollToTop) {
         const preserveAnchor = state.hasRenderedItems && !scrollToTop;
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
@@ -7091,13 +8000,51 @@
         const pageItems = items.slice(start, start + state.pageSize);
 
         if (items.length === 0) {
+          container.classList.remove('heatmap-mode');
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
           paginationEl.innerHTML = '';
           if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
           return;
         }
 
-        container.innerHTML = pageItems.map(({ row }) => {
+        if (state.itemDetailView === 'heatmap') {
+          paginationEl.innerHTML = '';
+          renderItemsHeatmap(container, items, metric, mIdx);
+          if (scrollToTop) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          else if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          state.hasRenderedItems = true;
+          return;
+        }
+
+        container.classList.remove('heatmap-mode');
+        container.innerHTML = pageItems.map(({ row: baseRow }) => {
+          // Attempt lens: a card can be switched to one pass's slice \u2014
+          // that pass's output/latency/trace/status and scores.
+          const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : null;
+          const lensPass = (!state.viewPass && passAttempts)
+            ? ((state.itemPassLens || {})[baseRow.item_id || String(baseRow.index)] || null)
+            : null;
+          let row = baseRow;
+          if (lensPass) {
+            const att = passAttempts[lensPass - 1];
+            const lensValues = state.allMetrics.map(name => {
+              const scores = (baseRow.pass_scores || {})[name];
+              return (Array.isArray(scores) && scores.length >= lensPass) ? scores[lensPass - 1] : null;
+            });
+            row = {
+              ...baseRow,
+              metric_values: lensValues,
+              ...(att ? {
+                status: att.status,
+                error: att.error || '',
+                output: att.output,
+                output_full: att.output,
+                latency_ms: att.latency_ms || 0,
+                trace_id: att.trace_id || '',
+                trace_url: att.trace_url || '',
+              } : {}),
+            };
+          }
           const input = row.input_full || row.input || '\u2014';
           const expected = row.expected_full || row.expected || '';
           const output = row.output_full || row.output || '\u2014';
@@ -7335,12 +8282,27 @@
             }
           }
 
-          return '<div class="item-card">' +
+          // Attempt switcher: Summary (reduced scores + final output) or any
+          // individual pass. Hidden in ?pass=N scope — the page is one pass.
+          const attemptChips = (!state.viewPass && passAttempts && passAttempts.some(Boolean))
+            ? '<div class="attempt-switch" data-item-id="' + escapeAttr(itemId) + '">' +
+                '<span class="attempt-switch-label">Attempt</span>' +
+                '<button type="button" class="attempt-chip' + (!lensPass ? ' active' : '') + '" data-pass="" title="Reduced scores; final output">Summary</button>' +
+                passAttempts.map((att, i) => {
+                  if (!att) return '';
+                  const n = i + 1;
+                  const isErr = att.status === 'error';
+                  return '<button type="button" class="attempt-chip' + (lensPass === n ? ' active' : '') + (isErr ? ' err' : '') + '" data-pass="' + n + '" title="Pass ' + n + (isErr ? ' — errored' : '') + '">' + n + '</button>';
+                }).join('') +
+              '</div>'
+            : '';
+
+          return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
             '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div>' + attemptChips + '<div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
           '</div>';
         }).join('');
 
@@ -7363,6 +8325,21 @@
         wireSolutionHandlers();
         wireCopyHandlers();
         initExpectedToggles();
+
+        // Attempt switcher: re-render the grid with the chosen pass lens
+        // (renderItems preserves the scroll anchor).
+        container.querySelectorAll('.attempt-chip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            const wrap = chip.closest('.attempt-switch');
+            if (!wrap) return;
+            const lensItemId = wrap.dataset.itemId;
+            state.itemPassLens = state.itemPassLens || {};
+            const n = parseInt(chip.dataset.pass || '', 10);
+            if (Number.isFinite(n) && n > 0) state.itemPassLens[lensItemId] = n;
+            else delete state.itemPassLens[lensItemId];
+            renderItems();
+          });
+        });
       }
 
       // ── Metric edit handlers ──
@@ -8403,6 +9380,19 @@
         state.sortBy = e.target.value;
         state.page = 1;
         renderItems();
+      });
+
+      document.querySelectorAll('.items-view-toggle [data-items-view]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.itemDetailView = button.dataset.itemsView;
+          state.page = 1;
+          document.querySelectorAll('.items-view-toggle [data-items-view]').forEach(option => {
+            const active = option.dataset.itemsView === state.itemDetailView;
+            option.classList.toggle('active', active);
+            option.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          renderItems();
+        });
       });
 
       el('filter-approval')?.addEventListener('change', (e) => {
