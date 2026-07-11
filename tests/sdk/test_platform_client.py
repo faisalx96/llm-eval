@@ -110,12 +110,14 @@ def test_platform_client_create_run_uses_bounded_timeout(monkeypatch):
         dataset="dataset",
         model=None,
         metrics=[],
+        metric_specs={"quality": {"score_type": "percentage"}},
         run_metadata={},
         run_config={},
     )
 
     assert handle.run_id == "run-123"
     assert calls[0][3] == client_module.PlatformClient.CREATE_RUN_TIMEOUT
+    assert calls[0][1]["metric_specs"]["quality"]["score_type"] == "percentage"
 
 
 def test_platform_tls_uses_custom_ca_bundle(monkeypatch):

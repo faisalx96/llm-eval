@@ -35,6 +35,7 @@ from qym_platform.db.models import (
     Run,
     RunItem,
     RunItemScore,
+    RunMetricSpec,
     RunWorkflowStatus,
     User,
     UserRole,
@@ -303,6 +304,52 @@ def test_runs_list_includes_median_latency(client, session_factory) -> None:
     summary = next(item for item in summaries if item["run_id"] == run_id)
     assert summary["avg_latency_ms"] == pytest.approx((100.0 + 400.0 + 900.0) / 3)
     assert summary["median_latency_ms"] == pytest.approx(400.0)
+
+
+def test_run_apis_include_authoritative_metric_specs(client, session_factory) -> None:
+    run_id = "00000000-0000-0000-0000-000000000114"
+    with session_factory() as session:
+        run = _seed_run(session, run_id=run_id)
+        run.metrics = ["is_correct", "token_count"]
+        session.add_all(
+            [
+                RunMetricSpec(
+                    run_id=run_id,
+                    metric_name="is_correct",
+                    position=0,
+                    score_type="boolean",
+                    direction="maximize",
+                    sample_reducer="mean",
+                    run_reducer="mean",
+                ),
+                RunMetricSpec(
+                    run_id=run_id,
+                    metric_name="token_count",
+                    position=1,
+                    score_type="count",
+                    direction="minimize",
+                    sample_reducer="mean",
+                    run_reducer="mean",
+                    unit="tokens",
+                ),
+            ]
+        )
+        session.commit()
+
+    list_response = client.get("/api/runs", headers=_ui_headers("admin@example.com"))
+    assert list_response.status_code == 200
+    summaries = list_response.json()["tasks"]["task-1"]["nomodel"]
+    summary = next(item for item in summaries if item["run_id"] == run_id)
+    assert summary["metric_specs"]["is_correct"]["score_type"] == "boolean"
+    assert summary["metric_specs"]["token_count"]["unit"] == "tokens"
+
+    detail_response = client.get(
+        f"/api/runs/{run_id}", headers=_ui_headers("admin@example.com")
+    )
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["run"]["metric_specs"] == detail["snapshot"]["metric_specs"]
+    assert detail["run"]["metric_specs"]["token_count"]["score_type"] == "count"
 
 
 def test_runs_list_includes_total_retries(client, session_factory) -> None:

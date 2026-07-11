@@ -174,7 +174,17 @@ def json_validity(output, expected=None):
 <p>For a metric you reuse across runs, register it once at import time and then reference it by string — the same way you use built-ins:</p>
 <pre data-lang="python">from qym.metrics.registry import register_metric
 
-register_metric("has_citation", citation_score)</pre>
+register_metric("has_citation", citation_score, score_type="boolean")</pre>
+
+<p>For a metric used directly by one evaluator, prefer the more visible typed wrapper:</p>
+
+<pre data-lang="python">from qym import Evaluator, Metric
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=[Metric(citation_score, score_type="boolean")],
+)</pre>
 <pre data-lang="python">metrics = ["has_citation", "exact_match"]</pre>
 
 <div class="docs-callout tip">

@@ -431,6 +431,30 @@ class RunItemScore(Base):
     __table_args__ = (UniqueConstraint("run_id", "item_id", "metric_name", name="uq_run_item_metric"),)
 
 
+class RunMetricSpec(Base):
+    """Immutable metric semantics captured when a run is created."""
+
+    __tablename__ = "run_metric_specs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    metric_name: Mapped[str] = mapped_column(String(200))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    score_type: Mapped[str] = mapped_column(String(30))
+    direction: Mapped[str] = mapped_column(String(20), default="maximize")
+    pass_threshold: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sample_reducer: Mapped[str] = mapped_column(String(20), default="mean")
+    run_reducer: Mapped[str] = mapped_column(String(20), default="mean")
+    unit: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    precision: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "metric_name", name="uq_run_metric_spec"),
+        Index("ix_run_metric_specs_run_position", "run_id", "position"),
+    )
+
+
 class RunItemPassScore(Base):
     """One numeric score per (run, item, metric, pass) for repeat runs.
 

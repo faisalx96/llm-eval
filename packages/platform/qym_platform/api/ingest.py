@@ -47,6 +47,7 @@ from qym_platform.db.models import (
     RunEvent,
     RunItem,
     RunItemScore,
+    RunMetricSpec,
     RunTraceAggregate,
     RunWorkflowStatus,
     Span,
@@ -711,6 +712,7 @@ class CreateRunRequest(BaseModel):
     dataset: str
     model: Optional[str] = None
     metrics: list[str] = Field(default_factory=list)
+    metric_specs: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     dataset_id: Optional[str] = None
     dataset_version_id: Optional[str] = None
     dataset_alias: Optional[str] = None
@@ -757,6 +759,70 @@ def _samples_from_config(run_config: Optional[Dict[str, Any]]) -> int:
         return max(1, int((run_config or {}).get("samples") or 1))
     except (TypeError, ValueError):
         return 1
+
+
+def _normalized_metric_spec(raw: Dict[str, Any]) -> Dict[str, Any]:
+    score_type = str(raw.get("score_type") or "legacy")
+    direction = str(raw.get("direction") or "maximize")
+    sample_reducer = str(raw.get("sample_reducer") or "mean")
+    run_reducer = str(raw.get("run_reducer") or "mean")
+    if score_type not in {"boolean", "percentage", "count", "number", "legacy"}:
+        raise HTTPException(status_code=422, detail=f"Invalid metric score_type: {score_type}")
+    if direction not in {"maximize", "minimize"}:
+        raise HTTPException(status_code=422, detail=f"Invalid metric direction: {direction}")
+    if sample_reducer not in {"mean", "sum", "min", "max"} or run_reducer not in {
+        "mean", "sum", "min", "max"
+    }:
+        raise HTTPException(status_code=422, detail="Invalid metric reducer")
+    if sample_reducer != "mean" or run_reducer != "mean":
+        raise HTTPException(status_code=422, detail="Only the mean metric reducer is currently supported")
+    threshold = raw.get("pass_threshold")
+    precision = raw.get("precision")
+    return {
+        "schema_version": int(raw.get("schema_version") or 1),
+        "score_type": score_type,
+        "direction": direction,
+        "pass_threshold": float(threshold) if threshold is not None else None,
+        "sample_reducer": sample_reducer,
+        "run_reducer": run_reducer,
+        "unit": str(raw["unit"])[:80] if raw.get("unit") is not None else None,
+        "precision": int(precision) if precision is not None else None,
+    }
+
+
+def _store_metric_specs(
+    db: Session, run: Run, metric_specs: Dict[str, Dict[str, Any]]
+) -> None:
+    """Create a run's immutable metric schema, rejecting later conflicts."""
+    if not metric_specs:
+        return
+    existing = {
+        row.metric_name: row
+        for row in db.query(RunMetricSpec).filter(RunMetricSpec.run_id == run.id).all()
+    }
+    positions = {name: index for index, name in enumerate(run.metrics or [])}
+    for name, raw in metric_specs.items():
+        if name not in positions:
+            raise HTTPException(
+                status_code=422, detail=f"Metric spec provided for unknown metric: {name}"
+            )
+        normalized = _normalized_metric_spec(raw)
+        current = existing.get(name)
+        if current:
+            stored = {key: getattr(current, key) for key in normalized}
+            if stored != normalized:
+                raise HTTPException(
+                    status_code=409, detail=f"Metric spec changed during run: {name}"
+                )
+            continue
+        db.add(
+            RunMetricSpec(
+                run_id=run.id,
+                metric_name=name,
+                position=positions[name],
+                **normalized,
+            )
+        )
 
 
 @router.post("/runs")
@@ -806,6 +872,8 @@ def create_run(
         last_event_at=utc_now_naive(),
     )
     db.add(run)
+    db.flush()
+    _store_metric_specs(db, run, req.metric_specs)
     db.commit()
     db.refresh(run)
 
@@ -818,7 +886,12 @@ def create_run(
     live_url = f"{settings.base_url.rstrip('/')}{live_path}"
     # supports_pass_events: capability flag for repeat runs (samples=k) — new
     # SDKs check it before streaming pass-aware events to old platforms.
-    return {"run_id": run.id, "live_url": live_url, "supports_pass_events": True}
+    return {
+        "run_id": run.id,
+        "live_url": live_url,
+        "supports_pass_events": True,
+        "supports_metric_specs": True,
+    }
 
 
 @router.post("/runs/{run_id}/events")
@@ -845,6 +918,35 @@ async def ingest_events(
     attempt_cache: Dict[tuple[str, int, int], Optional[RunItemAttempt]] = {}
     score_cache: Dict[tuple[str, str], Optional[RunItemScore]] = {}
     pass_score_cache: Dict[tuple[str, str, int], Optional[RunItemPassScore]] = {}
+    metric_spec_cache = {
+        spec.metric_name: spec
+        for spec in db.query(RunMetricSpec).filter(RunMetricSpec.run_id == run_id).all()
+    }
+
+    def _validate_metric_score(payload: MetricScoredPayload) -> None:
+        spec = metric_spec_cache.get(payload.metric_name)
+        if not spec or spec.score_type == "legacy":
+            return
+        value = payload.score_value
+        numeric = payload.score_numeric
+        if numeric is None or not math.isfinite(float(numeric)):
+            raise HTTPException(status_code=422, detail="Metric score must be finite")
+        if spec.score_type == "boolean":
+            if value is not None and not (
+                isinstance(value, bool)
+                or (isinstance(value, (int, float)) and float(value) in {0.0, 1.0})
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Boolean metric {payload.metric_name} must emit bool, 0, or 1",
+                )
+            if float(numeric) not in {0.0, 1.0}:
+                raise HTTPException(status_code=422, detail="Boolean score must be 0 or 1")
+        elif spec.score_type == "percentage" and not 0.0 <= float(numeric) <= 1.0:
+            raise HTTPException(status_code=422, detail="Percentage score must be between 0 and 1")
+        elif spec.score_type == "count":
+            if float(numeric) < 0 or not float(numeric).is_integer():
+                raise HTTPException(status_code=422, detail="Count score must be a non-negative integer")
 
     def _get_item(item_id: str) -> Optional[RunItem]:
         if item_id in item_cache:
@@ -1002,6 +1104,7 @@ async def ingest_events(
                 run.dataset_version_id = payload.dataset_version_id
             run.model = payload.model
             run.metrics = payload.metrics
+            _store_metric_specs(db, run, payload.metric_specs)
             md = _sanitize_for_json(dict(payload.run_metadata or {}))
             if payload.total_items is not None:
                 md["total_items"] = int(payload.total_items)
@@ -1127,6 +1230,7 @@ async def ingest_events(
                 )
 
         elif isinstance(payload, MetricScoredPayload):
+            _validate_metric_score(payload)
             mark_run_running(run)
             reduced_numeric = payload.score_numeric
             if run.samples > 1:

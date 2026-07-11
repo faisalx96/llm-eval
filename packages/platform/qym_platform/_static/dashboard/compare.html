@@ -6734,12 +6734,23 @@
       // Detect if a metric is boolean/score/numeric and initialize threshold
       function detectMetricTypes() {
         state.metricTypes = {};
+        state.metricSpecs = {};
+        state.metricSpecConflicts = {};
         for (const metricName of state.allMetrics) {
           // Collect all rows across all runs for this metric
           let allRows = [];
           let metricIdx = -1;
           for (const run of state.runs) {
             const snap = run.snapshot || {};
+            const spec = snap.metric_specs?.[metricName] || run.run?.metric_specs?.[metricName];
+            if (spec && spec.score_type !== 'legacy') {
+              const existingSpec = state.metricSpecs[metricName];
+              if (existingSpec && JSON.stringify(existingSpec) !== JSON.stringify(spec)) {
+                state.metricSpecConflicts[metricName] = true;
+              } else if (!existingSpec) {
+                state.metricSpecs[metricName] = spec;
+              }
+            }
             const rows = snap.rows || [];
             const metricNames = snap.metric_names || run.run?.metric_names || [];
             const idx = metricNames.indexOf(metricName);
@@ -6752,11 +6763,16 @@
             }
           }
 
-          const mType = window.QymMetrics.detectMetricType(allRows, 0);
+          const inferredType = window.QymMetrics.detectMetricType(allRows, 0);
+          const mType = state.metricSpecConflicts[metricName]
+            ? 'numeric'
+            : state.metricSpecs[metricName]
+            ? window.QymMetrics.metricTypeFromSpec(state.metricSpecs[metricName])
+            : inferredType;
           state.metricTypes[metricName] = mType;
           state.metricIsBoolean[metricName] = (mType === 'boolean');
-          if (!state.metricThresholds[metricName]) {
-            state.metricThresholds[metricName] = 0.8;
+          if (state.metricThresholds[metricName] == null) {
+            state.metricThresholds[metricName] = state.metricSpecs[metricName]?.pass_threshold ?? 0.8;
           }
         }
       }
@@ -8893,7 +8909,10 @@
 
               const itemMType = state.metricTypes?.[name] || 'score';
               const cls = window.QymMetrics.getMetricColorClass(v, itemMType);
-              const display = window.QymMetrics.formatMetricValue(v, itemMType);
+              const isReducedBoolean = itemMType === 'boolean' && Number(run.run?.samples || 1) > 1;
+              const display = isReducedBoolean
+                ? window.QymMetrics.formatMetricValue(v, 'score')
+                : window.QymMetrics.formatMetricObservation(v, itemMType, state.metricSpecs?.[name]);
               const isSelected = name === selectedMetric;
               const meta = metricMeta[name] || {};
               const editBtn = `<button class="metric-edit-open" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="Edit ${escapeAttr(name)}" title="Edit">✎</button>`;

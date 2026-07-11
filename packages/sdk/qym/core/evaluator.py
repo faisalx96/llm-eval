@@ -45,7 +45,8 @@ from .observers import (
 )
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
-from ..metrics.registry import get_metric
+from ..metrics.registry import get_metric, get_metric_spec
+from ..metrics.spec import Metric, MetricSpec
 from ..utils.env import load_cwd_dotenv
 
 
@@ -423,7 +424,7 @@ class Evaluator:
         self,
         task: Any,
         dataset: Union[str, Any],
-        metrics: List[Union[str, Callable]],
+        metrics: List[Union[str, Callable, Metric]],
         config: Optional[Union[Dict[str, Any], EvaluatorConfig]] = None,
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
@@ -437,7 +438,7 @@ class Evaluator:
         Args:
             task: Callable or framework object to evaluate.
             dataset: qym platform dataset name, local dataset path, or dataset object.
-            metrics: Metric names or callables.
+            metrics: Metric names, callables, or typed ``Metric`` definitions.
             config: Optional evaluator configuration.
             observer: Optional lifecycle observer for advanced integrations.
             model: Optional model override or list of models.
@@ -472,6 +473,7 @@ class Evaluator:
 
         self.task = task
         self._raw_metrics = list(metrics)
+        self.metric_specs: Dict[str, MetricSpec] = {}
         self.metrics = self._prepare_metrics(metrics)
 
         # Load only the caller's cwd .env before any config/env auto-detection.
@@ -680,6 +682,7 @@ class Evaluator:
             "git_branch": git_info["git_branch"],
             "cli_invocation": self.config.cli_invocation,
             "metric_names": list(self.metrics.keys()),
+            "metric_specs": self._metric_specs_payload(),
             "trace": {
                 "destinations": {
                     "phoenix": bool(getattr(self._otel, "phoenix_enabled", False)),
@@ -705,21 +708,35 @@ class Evaluator:
 
         return run_block
 
+    def _metric_specs_payload(self) -> Dict[str, Dict[str, Any]]:
+        return {name: spec.to_dict() for name, spec in self.metric_specs.items()}
+
     def _prepare_metrics(
-        self, metrics: List[Union[str, Callable]]
+        self, metrics: List[Union[str, Callable, Metric]]
     ) -> Dict[str, Callable]:
         """Convert metric list to dict of callables."""
         prepared = {}
         for metric in metrics:
-            if isinstance(metric, str):
-                prepared[metric] = get_metric(metric)
+            if isinstance(metric, Metric):
+                name = metric.name
+                func = metric.fn
+                spec = metric.spec
+            elif isinstance(metric, str):
+                name = metric
+                func = get_metric(metric)
+                spec = get_metric_spec(metric)
             elif callable(metric):
                 name = getattr(metric, "__name__", f"custom_metric_{len(prepared)}")
-                prepared[name] = metric
+                func = metric
+                spec = MetricSpec(score_type="legacy")
             else:
                 raise ValueError(
                     f"Metric must be string or callable, got {type(metric)}"
                 )
+            if name in prepared:
+                raise ValueError(f"Duplicate metric name: {name!r}")
+            prepared[name] = func
+            self.metric_specs[name] = spec
         return prepared
 
     def _attach_observer(self, observer: Optional[EvaluationObserver]) -> None:
@@ -1020,6 +1037,7 @@ class Evaluator:
                         dataset=str(self.dataset_name),
                         model=self.model_name,
                         metrics=list(self.metrics.keys()),
+                        metric_specs=self._metric_specs_payload(),
                         run_metadata=start_metadata,
                         run_config={
                             "max_concurrency": self.max_concurrency,
@@ -1080,6 +1098,7 @@ class Evaluator:
                                 "dataset_alias": getattr(self.dataset, "alias", None),
                                 "model": self.model_name,
                                 "metrics": list(self.metrics.keys()),
+                                "metric_specs": self._metric_specs_payload(),
                                 "total_items": int(self.total_items),
                                 "run_metadata": dict(self.run_metadata or {}),
                                 "run_config": {
@@ -2344,7 +2363,16 @@ class Evaluator:
             # Wrap in MetricResult
             from qym.metrics.result import MetricResult
 
+            raw_score_value = score.score if isinstance(score, MetricResult) else score
+            if isinstance(score, dict):
+                raw_score_value = score.get("score")
+            spec = self.metric_specs[m_name]
+            if metric_status not in {"timeout", "error"}:
+                validated_score = spec.validate_score(raw_score_value)
+            else:
+                validated_score = MetricResult.from_raw(score).score
             result = MetricResult.from_raw(score)
+            result.score = validated_score
             main_val = result.score
 
             # Add score as OTEL event on eval span (provider-agnostic)
@@ -2362,6 +2390,7 @@ class Evaluator:
                             "pass_number": self._current_pass,
                             "metric_name": str(m_name),
                             "score_numeric": result.score,
+                            "score_value": raw_score_value,
                             "score_raw": result.to_legacy_dict(),
                             "meta": result.metadata or {},
                             "label": result.label,

@@ -29,6 +29,7 @@ class RunStartedPayload(BaseModel):
     dataset: str
     model: Optional[str] = None
     metrics: list[str] = Field(default_factory=list)
+    metric_specs: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     dataset_id: Optional[str] = None
     dataset_version_id: Optional[str] = None
     dataset_alias: Optional[str] = None
@@ -55,6 +56,7 @@ class MetricScoredPayload(BaseModel):
     pass_number: int = Field(default=1, ge=1)
     metric_name: str
     score_numeric: Optional[float] = None
+    score_value: Any = None
     score_raw: Any = None
     meta: Dict[str, Any] = Field(default_factory=dict)
     label: Optional[str] = None

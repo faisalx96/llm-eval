@@ -3,7 +3,7 @@
 <p class="docs-lead">qym ships a small set of metrics you can use by name — no code required. Seven work offline out of the box; seven more are LLM-as-judge metrics that activate when you install the <code>judges</code> extra. This page is the accurate catalog: exact names, what each one measures, and the footguns the older docs got wrong.</p>
 
 <h2>How metrics are selected</h2>
-<p>You pass metrics to the <code>Evaluator</code> as a list. Each entry is either a <strong>string</strong> (the registry name of a built-in) or a <strong>callable</strong> (your own function — see <a href="#sdk-guide/custom-metrics">Custom metrics</a>). You can mix them freely:</p>
+<p>You pass metrics to the <code>Evaluator</code> as a list. Each entry can be a <strong>string</strong> (the registry name of a built-in), a legacy callable, or a typed <code>Metric(...)</code> wrapper. Use the wrapper for custom metrics so qym can validate and correctly display booleans, percentages, counts, and raw numbers. See <a href="#sdk-guide/metrics">Metrics (deep dive)</a>.</p>
 <pre data-lang="python">from qym import Evaluator, CsvDataset
 
 result = Evaluator(

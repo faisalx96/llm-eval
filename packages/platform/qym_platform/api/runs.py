@@ -38,6 +38,7 @@ from qym_platform.db.models import (
     RunItem,
     RunItemAttempt,
     RunItemScore,
+    RunMetricSpec,
     RunWorkflowStatus,
     Span,
     User,
@@ -60,6 +61,36 @@ from qym_platform.settings import PlatformSettings
 router = APIRouter()
 
 _LANGFUSE_URL_RE = re.compile(r"(https?://[^/]+)/project/([^/]+)")
+
+
+def _metric_spec_payload(spec: RunMetricSpec) -> Dict[str, Any]:
+    return {
+        "schema_version": spec.schema_version,
+        "score_type": spec.score_type,
+        "direction": spec.direction,
+        "pass_threshold": spec.pass_threshold,
+        "sample_reducer": spec.sample_reducer,
+        "run_reducer": spec.run_reducer,
+        "unit": spec.unit,
+        "precision": spec.precision,
+    }
+
+
+def _metric_specs_for_runs(
+    db: Session, run_ids: List[str]
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    if not run_ids:
+        return {}
+    result: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    rows = (
+        db.query(RunMetricSpec)
+        .filter(RunMetricSpec.run_id.in_(run_ids))
+        .order_by(RunMetricSpec.position.asc())
+        .all()
+    )
+    for row in rows:
+        result.setdefault(row.run_id, {})[row.metric_name] = _metric_spec_payload(row)
+    return result
 
 
 def _median(values: List[Optional[float]]) -> float:
@@ -929,6 +960,7 @@ def legacy_list_runs(
         }
 
     run_ids = [r.id for r in runs]
+    metric_specs_by_run = _metric_specs_for_runs(db, run_ids)
 
     # --- Batch query: item aggregates per run ---
     item_agg_rows = (
@@ -1226,6 +1258,7 @@ def legacy_list_runs(
             "timestamp": _iso(started_at),
             "file_path": r.id,
             "metrics": metrics,
+            "metric_specs": metric_specs_by_run.get(r.id, {}),
             "metric_averages": metric_averages,
             "total_items": total_items,
             "progress_completed": completed_count,
@@ -1419,6 +1452,7 @@ def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]
         return []
 
     run_ids = [run.id for run in runs]
+    metric_specs_by_run = _metric_specs_for_runs(db, run_ids)
     metrics_by_run = {run.id: list(run.metrics or []) for run in runs}
     dataset_info = _dataset_version_info_map(db, runs)
     runs_data: dict[str, dict[str, Any]] = {}
@@ -1435,16 +1469,19 @@ def _build_models_runs_data(db: Session, runs: list[Run]) -> list[dict[str, Any]
                 "file_path": run.id,
                 "run_name": _run_display_name(run),
                 "metric_names": metrics,
+                "metric_specs": metric_specs_by_run.get(run.id, {}),
                 "task_name": run.task,
                 "dataset_name": run.dataset,
                 "dataset_version": _dsv["dataset_version"],
                 "dataset_aliases": _dsv["dataset_aliases"],
                 "model_name": _strip_model_provider(run.model or ""),
+                "samples": int(getattr(run, "samples", 1) or 1),
             },
             "snapshot": {
                 "rows": [],
                 "stats": stats,
                 "metric_names": metrics,
+                "metric_specs": metric_specs_by_run.get(run.id, {}),
             },
         }
 
@@ -1600,6 +1637,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     """Build the run + snapshot data dict used by the UI."""
     items: List[RunItem] = db.query(RunItem).filter(RunItem.run_id == run.id).order_by(RunItem.index.asc()).all()
     metrics = list(run.metrics or [])
+    metric_specs = _metric_specs_for_runs(db, [run.id]).get(run.id, {})
     corrections = (
         db.query(ReviewCorrection)
         .filter(ReviewCorrection.run_id == run.id, ReviewCorrection.is_active.is_(True))
@@ -1825,6 +1863,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             "run_name": run_name,
             "external_run_id": run.external_run_id or "",
             "metric_names": metrics,
+            "metric_specs": metric_specs,
             "config": run_config,
             "metadata": run_metadata,
             "status": run.status,
@@ -1847,7 +1886,12 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 else None
             ),
         },
-        "snapshot": {"rows": ui_rows, "stats": stats, "metric_names": metrics},
+        "snapshot": {
+            "rows": ui_rows,
+            "stats": stats,
+            "metric_names": metrics,
+            "metric_specs": metric_specs,
+        },
     })
 
 

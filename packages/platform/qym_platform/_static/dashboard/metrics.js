@@ -683,6 +683,24 @@ function detectMetricTypeFromAvg(avgValue) {
   return 'score';
 }
 
+/** Map an authoritative API metric spec to the dashboard's presentation type. */
+function metricTypeFromSpec(spec, fallbackValue) {
+  const scoreType = spec && spec.score_type;
+  if (scoreType === 'boolean') return 'boolean';
+  if (scoreType === 'percentage') return 'score';
+  if (scoreType === 'count' || scoreType === 'number') return 'numeric';
+  return detectMetricTypeFromAvg(fallbackValue);
+}
+
+/** Format a single, unreduced metric observation. */
+function formatMetricObservation(value, metricType, spec) {
+  if (value === undefined || value === null || isNaN(value)) return '\u2014';
+  if (metricType === 'boolean') return Number(value) === 1 ? 'True' : 'False';
+  const precision = spec && Number.isInteger(spec.precision) ? spec.precision : undefined;
+  const formatted = formatMetricValue(value, metricType, precision);
+  return spec && spec.unit && metricType === 'numeric' ? `${formatted} ${spec.unit}` : formatted;
+}
+
 /**
  * Format a metric value according to its type.
  * @param {number} value
@@ -778,9 +796,11 @@ if (typeof window !== 'undefined') {
     // Type detection
     detectMetricType,
     detectMetricTypeFromAvg,
+    metricTypeFromSpec,
     // Formatting utilities
     formatPercent,
     formatMetricValue,
+    formatMetricObservation,
     formatMetricValueSmart,
     formatNumericValue,
     formatLatency,

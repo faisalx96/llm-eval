@@ -1392,15 +1392,22 @@
     // Detect metric types from averages across all runs
     const metricTypes = {};
     for (const metric of metricsSet) {
+      let specifiedType = null;
       let detectedNumeric = false;
       for (const run of runs) {
         const avg = run.metric_averages?.[metric];
+        const spec = run.metric_specs?.[metric];
+        if (spec && spec.score_type !== 'legacy') {
+          const currentType = window.QymMetrics.metricTypeFromSpec(spec, avg);
+          specifiedType = specifiedType || currentType;
+          if (specifiedType !== currentType) specifiedType = 'numeric';
+        }
         if (avg !== undefined && avg !== null && (avg > 1 || avg < 0)) {
           detectedNumeric = true;
           break;
         }
       }
-      metricTypes[metric] = detectedNumeric ? 'numeric' : 'score';
+      metricTypes[metric] = specifiedType || (detectedNumeric ? 'numeric' : 'score');
     }
 
     return { runs, metrics: Array.from(metricsSet).sort(), metricTypes };

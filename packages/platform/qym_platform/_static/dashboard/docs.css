@@ -4,6 +4,11 @@
    Design rules: docs/DESIGN_LANGUAGE.md — docs keep a larger prose scale
    (sanctioned exception) but share the color ramp. */
 
+/* Reserve scrollbar space across short and long articles so the centered
+   three-column grid does not shift horizontally during page changes. */
+html,
+.shell-content { scrollbar-gutter: stable; }
+
 .docs-page {
   /* Small uppercase labels use --text-muted: dim is decorative-only and
      muted clears 4.5:1 on every docs surface (see docs/DESIGN_LANGUAGE.md). */
@@ -35,6 +40,7 @@
   border-right: 1px solid var(--border-subtle);
   padding: 16px 12px 28px;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 
 .docs-search {
@@ -260,6 +266,7 @@
   border-left: 1px solid var(--border-subtle);
   padding: 30px 14px;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 .docs-toc-title { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--docs-label); margin-bottom: 8px; }
 .docs-toc a {

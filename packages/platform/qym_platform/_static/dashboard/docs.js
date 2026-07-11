@@ -70,6 +70,7 @@
   var partialCache = {};
   var tocObserver = null;
   var currentKey = null;
+  var loadSequence = 0;
 
   // data-lang values (or filenames) → highlight.js language ids
   function hljsLang(label) {
@@ -169,6 +170,27 @@
   function setActiveNav(key) {
     els.subnav.querySelectorAll('.docs-nav-link').forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('data-key') === key);
+    });
+  }
+
+  function bindRouteLinks() {
+    var page = els.content.closest('.docs-page');
+    if (!page) return;
+    page.addEventListener('click', function (event) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      var link = event.target.closest('a[href^="#"]');
+      if (!link || !page.contains(link)) return;
+      var href = link.getAttribute('href');
+      if (!href || href === '#') return;
+      var routeTarget = href.replace(/^#\/?/, '').split('/');
+      if (routeTarget.length < 2 || !findPage(routeTarget[0], routeTarget[1])) return;
+
+      // Native hash navigation scrolls the outgoing article before hashchange
+      // renders the destination. Own the history update so there is only one
+      // scroll operation, after the new article is mounted.
+      event.preventDefault();
+      history.pushState(null, '', href);
+      route();
     });
   }
 
@@ -296,19 +318,30 @@
     var found = findPage(sectionId, pageId);
     if (!found) { found = findPage(FLAT[0].section, FLAT[0].page); sectionId = FLAT[0].section; pageId = FLAT[0].page; }
     var key = sectionId + '/' + pageId;
+    var requestSequence = ++loadSequence;
     currentKey = key;
     setActiveNav(key);
     document.title = 'قيِّم • ' + found.page.title;
-    els.content.innerHTML = '<div class="docs-loading">Loading…</div>';
+    // Keep the current article mounted while the next partial loads. Replacing
+    // it with a short loading row collapses the scroll area and makes the
+    // three-column layout visibly jump on every page switch.
+    els.content.setAttribute('aria-busy', 'true');
+    if (!els.content.childElementCount) {
+      els.content.innerHTML = '<div class="docs-loading">Loading…</div>';
+    }
 
     var render = function (htmlText) {
+      if (requestSequence !== loadSequence) return;
       els.content.innerHTML = htmlText;
       enhanceCode();
       buildTOC(key);
       buildPager(key);
-      if (heading && scrollToHeading(heading, false)) return;
-      var scroller = document.getElementById('shell-content');
-      if (scroller) scroller.scrollTop = 0;
+      els.content.removeAttribute('aria-busy');
+      if (!(heading && scrollToHeading(heading, false))) {
+        var scroller = document.getElementById('shell-content');
+        if (scroller) scroller.scrollTop = 0;
+        else window.scrollTo(0, 0);
+      }
     };
 
     if (partialCache[key]) { render(partialCache[key]); return; }
@@ -317,8 +350,12 @@
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.text();
       })
-      .then(function (text) { partialCache[key] = text; render(text); })
+      .then(function (text) {
+        partialCache[key] = text;
+        render(text);
+      })
       .catch(function () {
+        if (requestSequence !== loadSequence) return;
         render('<p class="docs-eyebrow">' + esc(found.section.title) + '</p>'
           + '<h1>' + esc(found.page.title) + '</h1>'
           + '<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
@@ -348,7 +385,14 @@
     els.toc = document.getElementById('docs-toc');
     if (!els.subnav || !els.content || !els.toc) return;
     buildNav();
+    bindRouteLinks();
     window.addEventListener('hashchange', route);
+    document.addEventListener('qym:popstate', function (event) {
+      var target = currentRoute();
+      if (!target || !findPage(target.section, target.page)) return;
+      event.preventDefault();
+      route();
+    });
     route();
   }
 

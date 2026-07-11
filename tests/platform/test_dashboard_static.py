@@ -7,7 +7,24 @@ ROOT = Path(__file__).resolve().parents[2]
 DASHBOARD_JS = ROOT / "packages" / "platform" / "qym_platform" / "_static" / "dashboard" / "dashboard.js"
 DASHBOARD_DIR = ROOT / "packages" / "platform" / "qym_platform" / "_static" / "dashboard"
 METRICS_JS = DASHBOARD_DIR / "metrics.js"
+DOCS_JS = DASHBOARD_DIR / "docs.js"
+DOCS_CSS = DASHBOARD_DIR / "docs.css"
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
+
+
+def test_docs_page_switch_is_atomic_and_layout_stable() -> None:
+    source = DOCS_JS.read_text(encoding="utf-8")
+    styles = DOCS_CSS.read_text(encoding="utf-8")
+
+    assert "if (!els.content.childElementCount)" in source
+    assert "var requestSequence = ++loadSequence;" in source
+    assert "if (requestSequence !== loadSequence) return;" in source
+    assert "els.content.removeAttribute('aria-busy');" in source
+    assert "event.preventDefault();" in source
+    assert "history.pushState(null, '', href);" in source
+    assert "document.addEventListener('qym:popstate'" in source
+    assert ".shell-content { scrollbar-gutter: stable; }" in styles
+    assert styles.count("scrollbar-gutter: stable;") >= 3
 
 
 def _rule(css: str, selector: str) -> str:

@@ -10,30 +10,36 @@ metric_app = typer.Typer(help="Inspect available evaluation metrics.")
 @metric_app.command("list")
 def metric_list() -> None:
     """List all available evaluation metrics."""
-    from ..metrics import builtin_metrics
+    from ..metrics import builtin_metric_specs, builtin_metrics
 
     metrics_data = []
     for name, metric_func in sorted(builtin_metrics.items()):
         description = "No description available"
         if hasattr(metric_func, "__doc__") and metric_func.__doc__:
             description = metric_func.__doc__.strip().split("\n")[0]
-        metrics_data.append({
-            "name": name,
-            "description": description,
-        })
+        metrics_data.append(
+            {
+                "name": name,
+                "score_type": builtin_metric_specs[name].score_type,
+                "description": description,
+            }
+        )
 
     if is_json_mode():
-        output({
-            "metrics": metrics_data,
-            "total": len(metrics_data),
-        })
+        output(
+            {
+                "metrics": metrics_data,
+                "total": len(metrics_data),
+            }
+        )
     else:
         from rich.table import Table
 
         table = Table(title="Available Metrics")
         table.add_column("Name", style="cyan", no_wrap=True)
+        table.add_column("Score type", style="magenta", no_wrap=True)
         table.add_column("Description")
         for m in metrics_data:
-            table.add_row(m["name"], m["description"])
+            table.add_row(m["name"], m["score_type"], m["description"])
         err_console.print(table)
         err_console.print(f"\nTotal: {len(metrics_data)} metrics")

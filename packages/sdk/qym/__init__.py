@@ -29,7 +29,7 @@ from .core.observers import (
 from .core.results import EvaluationResult
 from .core.config import RunSpec
 from .core.dataset import CsvDataset, InMemoryDataset, JsonlDataset, QymDataset
-from .metrics import builtin_metrics, list_available_metrics
+from .metrics import Metric, MetricSpec, builtin_metrics, list_available_metrics
 
 __all__ = [
     "Evaluator",
@@ -37,6 +37,8 @@ __all__ = [
     "EvaluationResult",
     "GroupRunAnalysis",
     "MultiModelRunner",
+    "Metric",
+    "MetricSpec",
     "ProgressCallbackObserver",
     "ProgressSnapshot",
     "RunSpec",

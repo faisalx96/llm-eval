@@ -4,6 +4,43 @@
 
 <p>For writing your own scoring functions, see <a href="#sdk-guide/custom-metrics">Custom metrics</a>. For LLM-graded scoring, see <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>. For where these tunables live, see <a href="#sdk-guide/config">Configs &amp; options</a>.</p>
 
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Declare custom metric score types with <code>Metric(...)</code>.</span> Explicit types prevent a raw <code>0.4</code> from being mistaken for <code>40%</code>, and let item views render boolean observations as <code>True</code> or <code>False</code>. Built-in metrics already carry their specifications.</p></div>
+
+<h2>Typed metrics</h2>
+<p>Wrap a custom callable with <code>Metric</code> directly in the evaluator. This is the recommended API because the score semantics stay visible at the call site:</p>
+
+<pre data-lang="python">from qym import Evaluator, Metric
+
+evaluator = Evaluator(
+    task=my_task,
+    dataset=my_dataset,
+    metrics=[
+        Metric(is_correct, score_type="boolean"),
+        Metric(similarity, score_type="percentage", pass_threshold=0.8),
+        Metric(token_count, score_type="count", direction="minimize", unit="tokens"),
+        Metric(raw_measurement, score_type="number"),
+    ],
+)</pre>
+
+<table>
+<thead><tr><th><code>score_type</code></th><th>Valid return</th><th>Item display</th><th>Run aggregate</th></tr></thead>
+<tbody>
+<tr><td><code>boolean</code></td><td><code>bool</code>, <code>0</code>, or <code>1</code></td><td><code>True</code> / <code>False</code></td><td>Percentage true</td></tr>
+<tr><td><code>percentage</code></td><td>Finite number from <code>0</code> to <code>1</code></td><td><code>82.0%</code></td><td>Mean percentage</td></tr>
+<tr><td><code>count</code></td><td>Non-negative integer</td><td>Raw integer and optional unit</td><td>Mean count</td></tr>
+<tr><td><code>number</code></td><td>Any finite number</td><td>Raw number</td><td>Mean number</td></tr>
+</tbody>
+</table>
+
+<p>The wrapper accepts an optional stable <code>name</code>, <code>direction="maximize"</code> or <code>"minimize"</code>, a percentage or numeric <code>pass_threshold</code>, a short <code>unit</code>, and display <code>precision</code>. You can also construct and reuse <code>MetricSpec</code> explicitly:</p>
+
+<pre data-lang="python">from qym import Metric, MetricSpec
+
+quality_spec = MetricSpec(score_type="percentage", pass_threshold=0.8)
+quality = Metric(quality_score, name="quality", spec=quality_spec)</pre>
+
+<p>For repeat runs, each boolean pass remains <code>True</code> or <code>False</code>. The reduced item value is a rate, so two true passes out of four display as <code>50%</code>. This distinction is intentional.</p>
+
 <h2>The metric contract</h2>
 <p>A metric is any Python callable that qym invokes once per task output. Its return value is normalized into a single internal model, <code>MetricResult</code>, before it is recorded. You never have to construct that model yourself &mdash; qym wraps whatever you return via <code>MetricResult.from_raw</code>.</p>
 
