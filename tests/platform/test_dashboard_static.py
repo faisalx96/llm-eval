@@ -41,6 +41,16 @@ def test_dashboard_delete_action_binding_allows_non_deletable_runs() -> None:
     assert "tr.querySelector('.delete-run').addEventListener" not in source
 
 
+def test_empty_dashboard_links_to_first_run_docs() -> None:
+    markup = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+
+    assert 'id="empty-docs-link"' in markup
+    assert 'href="/docs-guide#get-started/first-run"' in markup
+    assert "qym --task-file my_task.py" not in markup
+    assert "emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');" in source
+
+
 def test_repeat_run_rows_render_pass_dot_strip() -> None:
     """×k rows carry a per-pass dot strip (primary-metric score colors) fed by
     the pass_summaries field of the runs-list payload."""
@@ -105,6 +115,19 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     assert "`% of items where at least one of the ${k} passes" in source
     assert 'class="samples-summary-grid"' in source
     assert 'class="threshold-slider-inline samples-threshold-slider"' in source
+    assert 'class="samples-metric-select"' in source
+    assert source.index('class="samples-metric-select"') < source.index(
+        'class="threshold-slider-inline samples-threshold-slider"'
+    )
+    assert "state._samplesMetric[runId] = metricSelect.value;" in source
+    assert "params.set('metric', metric);" in source
+    assert "const controlsRow = inserted.find" in source
+    metric_select_rule = _rule(styles, ".samples-metric-select {")
+    assert "box-sizing: border-box;" in metric_select_rule
+    assert "height: var(--space-lg);" in metric_select_rule
+    assert "max-width: 112px;" in metric_select_rule
+    assert "font-size: var(--font-sm);" in metric_select_rule
+    assert "line-height: 1;" in metric_select_rule
     assert source.index("samples-threshold-slider") < source.index('class="samples-summary-grid"')
     assert ">Avg latency</span>" in source
     assert "${latencyStat}" in source
@@ -143,8 +166,35 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     assert "${inherit('col-task')}" in source
     assert "${inherit('col-owner')}" in source
     assert 'class="col-metric-value"' in source
+    assert "pass.trace_stats?.[tm.key]" in source
+    assert (
+        "const passDate = pass.started_at ? formatDate(pass.started_at) : null;"
+        in source
+    )
+    assert "formatDurationMs(pass.duration_ms)" in source
+    assert (
+        "return passRows.map((pass, i) => memberRow(pass, i === passRows.length - 1)).join('') + strip;"
+        in source
+    )
     assert ".runs-table > tbody > tr.pass-member > td:first-child" in styles
     assert ".pass-member .tag," in styles
+
+    # best-in-column chips across sibling passes (same dialect as the run
+    # page's pass sweep): max wins for metrics, min wins for latencies
+    assert "winnersFor(p => (p.metric_means || {})[metric], 'max')" in source
+    assert "const avgLatencyWinners = winnersFor(p => p.avg_latency_ms, 'min');" in source
+    assert "const medianLatencyWinners = winnersFor(p => p.median_latency_ms, 'min');" in source
+    assert "const chipAttrs = (winners, passNumber) =>" in source
+    assert "Tied for best across passes" in source
+    chip_rule = _rule(styles, ".pass-member .sw-best {")
+    assert "display: inline-block;" in chip_rule
+    # zero left padding: the chip stays flush with the column's left alignment
+    # edge, so the tint never crosses under the header
+    assert "padding: 2px 8px 2px 0;" in chip_rule
+    assert "margin: -2px 0;" in chip_rule
+    assert "background: color-mix(in srgb, var(--success) 14%, transparent);" in chip_rule
+    tied_chip_rule = _rule(styles, ".pass-member .sw-best.sw-tied {")
+    assert "box-shadow: inset 0 0 0 1px" in tied_chip_rule
 
     # the embedded sub-table and the item × pass matrix are gone
     assert "samples-pass-table" not in source
@@ -207,8 +257,8 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert 'aria-pressed="' in source
     assert "querySelectorAll('.pass-dot-switch')" in source
     assert ".pass-dot-switch.active" in source
-    assert "var(--warning) 45%" in source
-    assert "0 0 9px color-mix(in srgb, var(--warning) 55%" in source
+    assert "inset 0 0 0 2px color-mix(in srgb, var(--warning) 65%" in source
+    assert "0 0 4px color-mix(in srgb, var(--warning) 25%" in source
     assert ".item-card.pass-lensed .metric-edit-open { display: none; }" in source
 
     # the API ships per-pass attempts on run-detail rows, and update_metric
@@ -264,10 +314,39 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert "background: var(--bg-surface);" in shared_box_rule
     assert "border: 1px solid var(--border-default);" in shared_box_rule
     assert "border-radius: 10px;" in shared_box_rule
+    shared_hover_rule = _rule(source, ".metric-card:hover,")
+    assert ".samples-group-tiles .model-stat-box:hover" in shared_hover_rule
+    assert ".samples-sweep-wrap:hover" in shared_hover_rule
+    assert ".samples-chart-block:hover" in shared_hover_rule
+    assert ".ri-panel:hover" in shared_hover_rule
+    assert ".breakdown-card:hover" in shared_hover_rule
+    assert "border-color: var(--border-strong);" in shared_hover_rule
+    assert "box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);" in shared_hover_rule
     assert "⚡ Avg Latency" in source
     assert "⚡ Median Latency" in source
     assert "P95 Latency" not in repeat_analysis
     assert "p.p95_latency_ms" not in repeat_analysis
+    assert "const winnersFor = (valueOf, direction) =>" in source
+    assert "winnersFor(p => (p.metric_means || {})[m], 'max')" in source
+    assert "const avgLatencyWinners = winnersFor(p => p.avg_latency_ms, 'min');" in source
+    assert "const medianLatencyWinners = winnersFor(p => p.median_latency_ms, 'min');" in source
+    assert "const errorWinners = winnersFor(p => Number(p.error_count || 0), 'min');" in source
+    assert "if (values.every(entry => entry.value === best)) return new Set();" in source
+    assert "sw-winner-badge" not in source
+    assert "sw-winner-cell" not in source
+    assert "Best across passes" in source
+    assert "Tied for best across passes" in source
+    assert "display: block;" in _rule(source, ".sw-cell-value {")
+    best_rule = _rule(source, ".sw-cell-value.sw-best {")
+    assert "display: inline-block;" in best_rule
+    # zero right padding: the chip stays flush with the column's right
+    # alignment edge, so the tint never crosses under the header
+    assert "padding: 2px 0 2px 8px;" in best_rule
+    assert "margin: -2px 0;" in best_rule
+    assert "background: color-mix(in srgb, var(--success) 14%, transparent);" in best_rule
+    tied_rule = _rule(source, ".sw-cell-value.sw-best.sw-tied {")
+    assert "background: color-mix(in srgb, var(--success) 7%, transparent);" in tied_rule
+    assert "box-shadow: inset 0 0 0 1px" in tied_rule
     assert "sw-meter" not in repeat_analysis
     assert "<span>Pass ' + p.pass_number + '</span>" in repeat_analysis
     assert ">Errors</th>" in source
@@ -327,14 +406,16 @@ def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     assert "Score Estimate by Pass Count" in active
     assert "ri-x-axis" in active
     assert "ri-y-axis" in active
-    assert "repeatAnalysisMetric" in source
-    assert "repeatStabilityHiddenMetrics" in source
-    assert "data-ri-repeat-metric" in active
-    assert "data-ri-stability-metric" in active
-    assert "ri-legend-toggle" in active
-    assert "if (visibleCount <= 1) return;" in source
+    assert "repeatAnalysisMetric" not in source
+    assert "repeatStabilityHiddenMetrics" not in source
+    assert "data-ri-repeat-metric" not in active
+    assert "data-ri-stability-metric" not in active
+    assert "ri-legend-toggle" not in active
+    assert "const repeatMetricName = state.samplesMetric || state.selectedMetric;" in active
+    assert "const visibleStabilitySeries = [repeatMetric];" in active
     assert "const thresholdMetric = repeatMetric;" in active
-    assert "state.repeatAnalysisMetric = select.value;" in source
+    assert "state.samplesMetric = nextMetric;" in source
+    assert "renderOverview(getFilteredItems());" in source
     assert "rotateMatrixLabels" in active
     assert "const rotateMatrixLabels = series.length > 4;" in active
     assert "truncateMatrixLabel" in active
@@ -379,11 +460,30 @@ def test_run_category_breakdown_keeps_cards_and_adds_repeat_aware_compare_view()
     assert 'class="category-breakdown-context"' not in source
     assert 'id="category-breakdown-sort"' not in source
     assert 'class="score-col-performance"' in source
-    assert "performanceLabel = sameDisplay ? 'Avg · pass rate' : 'Avg / pass rate';" in source
+    assert "Avg · pass rate" not in source
+    assert "Avg / pass rate" not in source
     assert 'class="breakdown-pass-summary"' not in source
     assert 'class="category-pass-track' in source
+    assert "function categoryScoreTrack(score, baseline)" in source
+    assert "categoryScoreTrack(group.avgScore, overallAverage)" in source
     assert 'class="category-compare-row"' in source
-    assert "Run pass rate &middot;" in source
+    assert "<span>Pass rate</span>" not in source
+    assert "<span>Rate</span>" not in source
+    assert "const metric = state.samplesMetric || state.selectedMetric || state.allMetrics[0];" in source
+    assert "Overall metric average score" in source
+    assert 'class="category-baseline-score"' in source
+    assert "renderMetadataBreakdown();" in source
+    assert "'Overall run mean'" not in source
+    assert "'Filtered mean'" not in source
+    assert "scored results from" not in source
+    assert "items across" not in source
+    assert "scored items in Pass" not in source
+    track_rule = _rule(source, ".category-pass-track {")
+    marker_rule = _rule(source, ".category-pass-track.has-baseline::after {")
+    assert "background: var(--bg-elevated);" in track_rule
+    assert "width: 2px;" in marker_rule
+    assert "background: var(--text-secondary);" in marker_rule
+    assert "<span>| ' + baselineScope" not in source
     assert "data-category-expand" in source
     assert "metricType !== 'numeric'" in source
 

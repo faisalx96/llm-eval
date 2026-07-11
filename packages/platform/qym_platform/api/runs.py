@@ -5,7 +5,7 @@ import os
 import re
 from collections import defaultdict
 from html import escape
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +39,7 @@ from qym_platform.db.models import (
     RunItemAttempt,
     RunItemScore,
     RunMetricSpec,
+    RunTraceAggregate,
     RunWorkflowStatus,
     Span,
     User,
@@ -2090,6 +2091,8 @@ def run_passes(
             RunItemAttempt.pass_number,
             RunItemAttempt.latency_ms,
             RunItemAttempt.status,
+            RunItemAttempt.task_started_at_ms,
+            RunItemAttempt.trace_id,
         )
         .filter(
             RunItemAttempt.run_id == run.id,
@@ -2099,12 +2102,58 @@ def run_passes(
     )
     latencies_by_pass: Dict[int, List[float]] = {}
     errors_by_pass: Dict[int, int] = {}
-    for pass_number, latency_ms, status in attempt_rows:
+    starts_by_pass: Dict[int, List[int]] = {}
+    ends_by_pass: Dict[int, List[float]] = {}
+    trace_ids_by_pass: Dict[int, List[str]] = {}
+    for pass_number, latency_ms, status, task_started_at_ms, trace_id in attempt_rows:
         p = int(pass_number)
         if latency_ms is not None:
             latencies_by_pass.setdefault(p, []).append(float(latency_ms))
+        if task_started_at_ms is not None:
+            started = int(task_started_at_ms)
+            starts_by_pass.setdefault(p, []).append(started)
+            if latency_ms is not None:
+                ends_by_pass.setdefault(p, []).append(started + float(latency_ms))
+        if trace_id and str(status or "").lower() != "failed":
+            trace_ids_by_pass.setdefault(p, []).append(str(trace_id))
         if str(status or "").lower() == "failed":
             errors_by_pass[p] = errors_by_pass.get(p, 0) + 1
+
+    trace_ids = {
+        trace_id for values in trace_ids_by_pass.values() for trace_id in values
+    }
+    trace_aggregates = (
+        db.query(RunTraceAggregate)
+        .filter(
+            RunTraceAggregate.run_id == run.id,
+            RunTraceAggregate.trace_id.in_(trace_ids),
+        )
+        .all()
+        if trace_ids
+        else []
+    )
+    trace_aggregate_map = {
+        aggregate.trace_id: aggregate for aggregate in trace_aggregates
+    }
+    if trace_aggregate_map:
+        from qym_platform.api.ingest import (
+            _build_run_trace_stats,
+            _trace_bucket_from_aggregate,
+        )
+
+        trace_stats_by_pass = {
+            p: _build_run_trace_stats(
+                [
+                    _trace_bucket_from_aggregate(trace_aggregate_map[trace_id])
+                    for trace_id in pass_trace_ids
+                    if trace_id in trace_aggregate_map
+                ]
+            )
+            for p, pass_trace_ids in trace_ids_by_pass.items()
+            if any(trace_id in trace_aggregate_map for trace_id in pass_trace_ids)
+        }
+    else:
+        trace_stats_by_pass = {}
 
     def _lat_stats(values: Optional[List[float]]) -> Dict[str, Optional[float]]:
         if not values:
@@ -2136,6 +2185,14 @@ def run_passes(
         else:
             status = "pending"
         lat = _lat_stats(latencies_by_pass.get(p))
+        pass_starts = starts_by_pass.get(p) or []
+        pass_ends = ends_by_pass.get(p) or []
+        started_at_ms = min(pass_starts) if pass_starts else None
+        duration_ms = (
+            max(pass_ends) - started_at_ms
+            if started_at_ms is not None and pass_ends
+            else None
+        )
         passes.append(
             {
                 "pass_number": p,
@@ -2146,6 +2203,15 @@ def run_passes(
                 "avg_latency_ms": lat["avg"],
                 "median_latency_ms": lat["median"],
                 "p95_latency_ms": lat["p95"],
+                "started_at": (
+                    to_api_timestamp(
+                        datetime.fromtimestamp(started_at_ms / 1000.0, timezone.utc)
+                    )
+                    if started_at_ms is not None
+                    else None
+                ),
+                "duration_ms": duration_ms,
+                "trace_stats": trace_stats_by_pass.get(p),
             }
         )
     return {"run_id": run.id, "samples": samples, "metrics": metrics, "passes": passes}

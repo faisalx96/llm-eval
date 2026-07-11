@@ -41,6 +41,7 @@ from qym_platform.db.models import (
     RunItemAttempt,
     RunItemPassScore,
     RunItemScore,
+    RunTraceAggregate,
     RunWorkflowStatus,
     User,
     UserRole,
@@ -248,6 +249,34 @@ def test_detail_passes_and_group_metrics_endpoints():
             user=user, auth_type="api_key", scopes=(), project_id="project-1"
         )
 
+        stored_attempts = (
+            session.query(RunItemAttempt)
+            .filter(RunItemAttempt.run_id == RUN_ID)
+            .order_by(RunItemAttempt.pass_number)
+            .all()
+        )
+        for index, attempt in enumerate(stored_attempts, start=1):
+            attempt.task_started_at_ms = 1_700_000_000_000 + index * 1_000
+            attempt.trace_id = f"trace-pass-{index}"
+            tokens = index * 1_000
+            session.add(
+                RunTraceAggregate(
+                    run_id=RUN_ID,
+                    trace_id=attempt.trace_id,
+                    span_count=1,
+                    tokens=tokens,
+                    llm_calls=index,
+                    tool_calls=index + 1,
+                    raw_bucket={
+                        "span_count": 1,
+                        "tokens": tokens,
+                        "llm_calls": index,
+                        "tool_calls": index + 1,
+                    },
+                )
+            )
+        session.commit()
+
         # detail payload: samples + per-row pass_scores for the dot strips
         payload = _build_run_data(session, run)
         assert payload["run"]["samples"] == 3
@@ -275,6 +304,16 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert [p["status"] for p in passes["passes"]] == ["completed"] * 3
         assert passes["passes"][0]["metric_means"]["accuracy"] == pytest.approx(1.0)
         assert passes["passes"][2]["metric_means"]["accuracy"] == pytest.approx(0.0)
+        assert passes["passes"][0]["started_at"] == "2023-11-14T22:13:21Z"
+        assert passes["passes"][0]["duration_ms"] == pytest.approx(100.0)
+        assert passes["passes"][0]["trace_stats"]["avg_tokens"] == pytest.approx(
+            1000.0
+        )
+        assert passes["passes"][1]["trace_stats"]["avg_llm_calls"] == pytest.approx(
+            2.0
+        )
+        assert passes["passes"][2]["started_at"] is None
+        assert passes["passes"][2]["trace_stats"] is None
 
         # on-demand group metrics + full k-band (no reducer lock-in)
         gm = run_group_metrics(

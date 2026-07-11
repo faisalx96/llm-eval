@@ -3548,6 +3548,7 @@
     state._samplesData = state._samplesData || {};
     state._samplesLoads = state._samplesLoads || {};
     state._samplesThreshold = state._samplesThreshold || {};
+    state._samplesMetric = state._samplesMetric || {};
     state._samplesAnimStart = state._samplesAnimStart || {};
 
     function buildSamplesDetailMarkup(runId, data, row, panelId, runStatus) {
@@ -3613,6 +3614,9 @@
       const threshold = groupPayload.threshold != null ? groupPayload.threshold : 0.8;
       const thrPct = Math.round(threshold * 100);
       const groupMetric = groupPayload.metric || (passes.metrics || [])[0] || 'primary metric';
+      const metricOptions = (passes.metrics || []).map(metric =>
+        `<option value="${escapeHtml(metric)}"${metric === groupMetric ? ' selected' : ''}>${escapeHtml(metric)}</option>`
+      ).join('');
       const finished = allPasses.filter(p => ['completed', 'failed'].includes(String(p.status || '').toLowerCase())).length;
       const itemCounts = allPasses.map(p => Number(p.items_scored) || 0).filter(Boolean);
       const itemSummary = itemCounts.length
@@ -3665,6 +3669,38 @@
       }
       const peerPasses = passRows.filter(pass => !pass._queued);
 
+      // Best-in-column chips across sibling passes (same dialect as the run
+      // page's pass sweep): max wins for metrics, min wins for latencies.
+      const winnersFor = (valueOf, direction) => {
+        const entries = peerPasses
+          .map(p => ({ pass: Number(p.pass_number), value: valueOf(p) }))
+          .filter(entry => typeof entry.value === 'number' && Number.isFinite(entry.value));
+        if (entries.length < 2) return new Set();
+        const best = direction === 'min'
+          ? Math.min(...entries.map(entry => entry.value))
+          : Math.max(...entries.map(entry => entry.value));
+        if (entries.every(entry => entry.value === best)) return new Set();
+        return new Set(
+          entries
+            .filter(entry => Math.abs(entry.value - best) <= Math.max(1e-9, Number.EPSILON * Math.max(1, Math.abs(best))))
+            .map(entry => entry.pass)
+        );
+      };
+      const metricWinners = Object.fromEntries(metricsToShow.map(metric => [
+        metric,
+        winnersFor(p => (p.metric_means || {})[metric], 'max'),
+      ]));
+      const avgLatencyWinners = winnersFor(p => p.avg_latency_ms, 'min');
+      const medianLatencyWinners = winnersFor(p => p.median_latency_ms, 'min');
+      const chipAttrs = (winners, passNumber) => {
+        if (!winners || !winners.has(passNumber)) return { cls: '', title: '' };
+        const tied = winners.size > 1;
+        return {
+          cls: tied ? ' sw-best sw-tied' : ' sw-best',
+          title: ` title="${tied ? 'Tied for best across passes' : 'Best across passes'}"`,
+        };
+      };
+
       const memberRow = (pass, isLast) => {
         const firstPass = Number(pass.pass_number) || 1;
         const lastPass = Number(pass._lastPassNumber) || firstPass;
@@ -3687,12 +3723,19 @@
           const peers = peerPasses.map(sibling => (sibling.metric_means || {})[metric]);
           const display = window.QymMetrics.formatMetricValueSmart(value, metricType, peers);
           const metricClass = window.QymMetrics.getMetricColorClass(value, metricType);
-          return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span></td>`;
+          const chip = chipAttrs(metricWinners[metric], firstPass);
+          return `<td class="col-metric-value"><span class="metric-score ${metricClass}${chip.cls}"${chip.title}>${display}</span></td>`;
         }).join('');
-        const latencyCell = (cls, v) =>
-          `<td class="${cls}"><span class="latency-value">${typeof v === 'number'
+        const latencyCell = (cls, v, winners) => {
+          const chip = chipAttrs(winners, firstPass);
+          return `<td class="${cls}"><span class="latency-value${chip.cls}"${chip.title}>${typeof v === 'number'
             ? formatLatency(v)
             : (pass._queued ? '—' : pendingText('—'))}</span></td>`;
+        };
+        const passDate = pass.started_at ? formatDate(pass.started_at) : null;
+        const passDuration = typeof pass.duration_ms === 'number'
+          ? formatDurationMs(pass.duration_ms)
+          : null;
         return `<tr class="pass-member${isLast ? ' pass-member-last' : ''}${pass._queued ? ' pass-member-queued' : ''}"
             data-samples-for="${escapeHtml(runId)}"${pass._queued ? '' : ` data-pass-number="${firstPass}" title="Open Pass ${firstPass} details"`}>
           <td class="col-select"></td>
@@ -3707,23 +3750,29 @@
           ${inherit('col-dataset')}
           ${inherit('col-version')}
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
-          ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms) : ''}
-          ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms) : ''}
-          ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, null)).join('')}
+          ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
+          ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms, medianLatencyWinners) : ''}
+          ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, pass.trace_stats?.[tm.key])).join('')}
           ${inherit('col-owner')}
-          <td class="col-time"><span class="metric-na">—</span></td>
-          <td class="col-duration"></td>
+          <td class="col-time">${passDate
+            ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
+            : '<span class="metric-na">—</span>'}</td>
+          <td class="col-duration"><span class="duration-value">${passDuration || '—'}</span></td>
           <td class="col-actions"></td>
         </tr>`;
       };
 
-      // Group-metrics strip (the table's group-header dialect) + pass rows.
+      // The group-metrics strip closes the expanded pass group at the bottom.
       const strip = `<tr ${detailAttrs}>
         <td colspan="${colCount}" class="samples-detail-cell">
           <section class="samples-detail-panel" aria-label="Repeat run group metrics">
             <header class="samples-detail-header"
               title="Group metrics use ${escapeHtml(groupMetric)} ${escapeHtml(passScope)} ${itemSummary}.">
               <span class="samples-detail-title">Group metrics</span>
+              ${metricOptions ? `<label class="samples-metric-control">
+                <span>Metric</span>
+                <select class="samples-metric-select" aria-label="Group metric">${metricOptions}</select>
+              </label>` : ''}
               <span class="samples-threshold" title="An item passes when its score meets or exceeds this threshold.">
                 <span>Pass if ≥</span>
                 <input type="range" class="threshold-slider-inline samples-threshold-slider"
@@ -3744,11 +3793,11 @@
       </tr>`;
 
       if (!passRows.length) {
-        return strip + `<tr class="pass-member pass-member-last" data-samples-for="${escapeHtml(runId)}">
+        return `<tr class="pass-member pass-member-last" data-samples-for="${escapeHtml(runId)}">
           <td colspan="${colCount}" class="pass-member-empty">No pass results are available yet.</td>
-        </tr>`;
+        </tr>` + strip;
       }
-      return strip + passRows.map((pass, i) => memberRow(pass, i === passRows.length - 1)).join('');
+      return passRows.map((pass, i) => memberRow(pass, i === passRows.length - 1)).join('') + strip;
     }
 
     function samplesDetailRows(runId) {
@@ -3768,6 +3817,7 @@
       ));
       const inserted = samplesDetailRows(runId);
       if (!inserted.length) return null;
+      const controlsRow = inserted.find(detail => detail.classList.contains('samples-detail-row')) || inserted[0];
       if (row.dataset.memberOf) {
         inserted.forEach(detail => { detail.dataset.memberOf = row.dataset.memberOf; });
       }
@@ -3791,7 +3841,7 @@
           detail.style.animationDelay = `${i * 30 - elapsed}ms`;
         });
       }
-      const retry = inserted[0].querySelector('.samples-retry-btn');
+      const retry = controlsRow.querySelector('.samples-retry-btn');
       if (retry) {
         retry.addEventListener('click', event => {
           event.preventDefault();
@@ -3819,31 +3869,50 @@
       // Threshold slider (the platform's inline slider): live label on drag,
       // group metrics recomputed server-side on release — passes are
       // threshold-independent, so only the strip refreshes.
-      const slider = inserted[0].querySelector('.samples-threshold-slider');
+      const reloadGroupMetrics = async () => {
+        const params = new URLSearchParams();
+        const metric = state._samplesMetric[runId];
+        const threshold = state._samplesThreshold[runId];
+        if (metric) params.set('metric', metric);
+        if (typeof threshold === 'number') params.set('threshold', String(threshold));
+        try {
+          const res = await fetch(apiUrl(
+            `api/runs/${encodeURIComponent(runId)}/group-metrics?${params.toString()}`
+          ));
+          if (!res.ok) throw new Error('Request failed');
+          const group = await res.json();
+          if (group.error) throw new Error(group.error);
+          const cached = state._samplesData[runId];
+          if (!cached || cached.error) return;
+          cached.group = group;
+        } catch {
+          return;
+        }
+        const currentToggle = findSamplesToggle(runId);
+        const currentRow = row.isConnected ? row : (currentToggle && currentToggle.closest('tr'));
+        if (currentRow && currentRow.isConnected && state._samplesExpanded[runId]) {
+          insertSamplesDetail(runId, currentRow, panelId);
+        }
+      };
+
+      const metricSelect = controlsRow.querySelector('.samples-metric-select');
+      if (metricSelect) {
+        metricSelect.addEventListener('change', () => {
+          state._samplesMetric[runId] = metricSelect.value;
+          reloadGroupMetrics();
+        });
+      }
+
+      const slider = controlsRow.querySelector('.samples-threshold-slider');
       if (slider) {
-        const valueEl = inserted[0].querySelector('.samples-threshold .threshold-value');
+        const valueEl = controlsRow.querySelector('.samples-threshold .threshold-value');
         slider.addEventListener('input', () => {
           if (valueEl) valueEl.textContent = `${slider.value}%`;
         });
-        slider.addEventListener('change', async () => {
+        slider.addEventListener('change', () => {
           const thr = Number(slider.value) / 100;
           state._samplesThreshold[runId] = thr;
-          try {
-            const res = await fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/group-metrics?threshold=${thr}`));
-            if (!res.ok) throw new Error('Request failed');
-            const group = await res.json();
-            if (group.error) throw new Error(group.error);
-            const cached = state._samplesData[runId];
-            if (!cached || cached.error) return;
-            cached.group = group;
-          } catch {
-            return;
-          }
-          const currentToggle = findSamplesToggle(runId);
-          const currentRow = row.isConnected ? row : (currentToggle && currentToggle.closest('tr'));
-          if (currentRow && currentRow.isConnected && state._samplesExpanded[runId]) {
-            insertSamplesDetail(runId, currentRow, panelId);
-          }
+          reloadGroupMetrics();
         });
       }
       return inserted[0];
@@ -3859,8 +3928,13 @@
       state._samplesLoads[runId] = true;
       try {
         const thr = state._samplesThreshold[runId];
+        const metric = state._samplesMetric[runId];
+        const groupParams = new URLSearchParams();
+        if (metric) groupParams.set('metric', metric);
+        if (typeof thr === 'number') groupParams.set('threshold', String(thr));
+        const groupQuery = groupParams.toString();
         const groupUrl = `api/runs/${encodeURIComponent(runId)}/group-metrics`
-          + (typeof thr === 'number' ? `?threshold=${thr}` : '');
+          + (groupQuery ? `?${groupQuery}` : '');
         const [passesRes, groupRes] = await Promise.all([
           fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/passes`)),
           fetch(apiUrl(groupUrl)),
@@ -6653,6 +6727,11 @@
   // ═══════════════════════════════════════════════════
   // INIT
   // ═══════════════════════════════════════════════════
+
+  const emptyDocsLink = el('empty-docs-link');
+  if (emptyDocsLink) {
+    emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');
+  }
 
   // Check auth first before loading dashboard
   async function checkAuthAndInit() {
