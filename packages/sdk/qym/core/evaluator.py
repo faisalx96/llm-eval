@@ -45,8 +45,8 @@ from .observers import (
 )
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
-from ..metrics.registry import get_metric, get_metric_spec
-from ..metrics.spec import Metric, MetricSpec
+from ..metrics.registry import get_metric
+from ..metrics.judges.base import JudgeInputError
 from ..utils.env import load_cwd_dotenv
 
 
@@ -1852,6 +1852,40 @@ class Evaluator:
 
         return results
 
+    def _single_dataset_input_name(self) -> Optional[str]:
+        """Return the declared input name for a single-column dataset."""
+        input_cols = getattr(self.dataset, "input_cols", None)
+        if isinstance(input_cols, str):
+            return input_cols or None
+        if (
+            isinstance(input_cols, (list, tuple))
+            and len(input_cols) == 1
+            and isinstance(input_cols[0], str)
+        ):
+            return input_cols[0] or None
+        return None
+
+    def _prepare_metric_input(self, input_data: Any) -> Any:
+        """Give metrics named inputs without changing task input behavior."""
+        if isinstance(input_data, dict):
+            return {
+                self.input_mapping.get(key, key): value
+                for key, value in input_data.items()
+            }
+
+        input_name = self._single_dataset_input_name()
+        if input_name:
+            resolved_name = self.input_mapping.get(input_name, input_name)
+            return {resolved_name: input_data}
+
+        # Backward-compatible fallback for callers that supply only a one-entry
+        # mapping but use a dataset type without input-column schema.
+        if len(self.input_mapping) == 1:
+            resolved_name = next(iter(self.input_mapping.values()))
+            return {resolved_name: input_data}
+
+        return input_data
+
     def _resolve_metric_arguments(
         self,
         metric: Callable,
@@ -1869,12 +1903,7 @@ class Evaluator:
             for p in params
         )
 
-        mapped_input_data = input_data
-        if isinstance(input_data, dict):
-            mapped_input_data = {
-                self.input_mapping.get(key, key): value
-                for key, value in input_data.items()
-            }
+        mapped_input_data = self._prepare_metric_input(input_data)
 
         named_values = {
             "output": output,
@@ -2480,7 +2509,10 @@ class Evaluator:
             return m_name, score
         except Exception as e:
             metric_status = "error"
-            logger.error(f"Metric {m_name} failed: {e}")
+            if isinstance(e, JudgeInputError):
+                console.print(e.rich_message())
+            else:
+                logger.error(f"Metric {m_name} failed: {e}")
             score = {"score": 0, "error": traceback.format_exc()}
             self._notify_observer(
                 "on_metric_result",

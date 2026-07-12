@@ -201,6 +201,8 @@ evaluator = Evaluator(
 
 Metrics can still read the original names (`sql_prompt`, `sql_context`) and the mapped names (`question`, `schema`).
 
+For a single-column CSV, the task keeps receiving the scalar value for backward compatibility, while metrics receive a named dictionary derived from the CSV schema. For example, `input_col="question"` gives the task `"What is AI?"` and gives metrics `{"question": "What is AI?"}`. If `input_mapping={"prompt": "question"}` is configured, metrics receive the resolved name: `{"question": "What is AI?"}`. Scalar inputs from dataset types that do not declare a column schema remain scalar because qym cannot infer a field name safely.
+
 ### Task with Model Routing (For Multi-Model)
 
 When comparing multiple models, add a `model_name` or `model` parameter:
@@ -361,6 +363,21 @@ evaluator = Evaluator(
 ```
 
 The "Required Input Fields" column shows what keys your dataset's `input` dict should contain. For example, `relevance` expects `input_data["question"]`.
+
+Judge prompts are validated before an LLM request is made. If a prompt references a field that is not available, qym raises `JudgeInputError` and prints one colored terminal message containing the judge metric name, expected fields, received fields or input type, and an `input_mapping` example. The message links directly to the platform's **Multiple input columns** documentation at `$QYM_BASE_URL/docs-guide#get-started/datasets/multiple-input-columns` (falling back to `http://localhost:8000` when `QYM_BASE_URL` is unset).
+
+For example, if `hallucination` requires `{context}` but receives only `{"question": ...}`, the LLM is not called. Either add `context` to the dataset input or map the existing CSV column to the required name:
+
+```python
+evaluator = Evaluator(
+    task=my_task,
+    dataset=dataset,
+    metrics=["hallucination"],
+    input_mapping={"source_text": "context"},
+)
+```
+
+The same validation applies to custom and pairwise judges. Every simple `{field}` placeholder in their prompt must be supplied by `output`, `expected`, `input`, or a named input field.
 
 **Configuration** — you must configure your LLM provider before using judge metrics. Add to your `.env` file:
 
