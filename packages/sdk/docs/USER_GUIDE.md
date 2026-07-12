@@ -126,6 +126,7 @@ The evaluator looks at your function signature and passes arguments intelligentl
 | `def task(q, model_name)` | `task(q=input_data, model_name="gpt-4")` |
 | `def task(q, trace_id)` | `task(q=input_data, trace_id="abc-123...")` |
 | `def task(**kwargs)` | `task(**input_data, model="gpt-4", trace_id="...")` if input is dict |
+| `def task(question, schema)` with `input_mapping={"sql_prompt": "question", "sql_context": "schema"}` | `task(question=input["sql_prompt"], schema=input["sql_context"])` |
 
 **Special parameters** automatically populated by the evaluator:
 - `model` or `model_name`: The current model being evaluated
@@ -159,6 +160,46 @@ def my_task(question, context):
     prompt = f"Context: {context}\nQuestion: {question}"
     return call_llm(prompt)
 ```
+
+### Task with Multiple CSV Input Columns
+
+Local CSV datasets can build a dict input from several columns. If the CSV column names already match your task parameters, qym unpacks them directly:
+
+```python
+dataset = CsvDataset(
+    "text2sql.csv",
+    input_col=["question", "schema"],
+    expected_col="sql",
+)
+
+def text2sql_task(question, schema):
+    return generate_sql(question=question, schema=schema)
+```
+
+If your CSV uses different names, pass `input_mapping` to `Evaluator`. The mapping is `{CSV column name: task parameter name}`:
+
+```python
+dataset = CsvDataset(
+    "text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+)
+
+def text2sql_task(question, schema):
+    return generate_sql(question=question, schema=schema)
+
+evaluator = Evaluator(
+    task=text2sql_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+    input_mapping={
+        "sql_prompt": "question",
+        "sql_context": "schema",
+    },
+)
+```
+
+Metrics can still read the original names (`sql_prompt`, `sql_context`) and the mapped names (`question`, `schema`).
 
 ### Task with Model Routing (For Multi-Model)
 
@@ -519,10 +560,16 @@ The parameter **names matter** for keyword argument matching. Use these exact na
 | 2nd | `expected` | The `expected_output` from dataset (or `None`) |
 | 3rd | `input_data` | The original `input` from dataset |
 | named | `item_metadata` | Metadata from the dataset item |
+| named | `task_metadata` | Metadata returned by the task-output envelope |
+| named | any dict input key | That individual input value; for mapped CSV inputs, both original and mapped names are available |
 
 ```python
 # ✅ CORRECT: Using standard parameter names
 def my_metric(output, expected, input_data):
+    ...
+
+# ✅ ALSO CORRECT: Read one mapped CSV input directly
+def sql_metric(output, expected, schema):
     ...
 
 # ✅ ALSO CORRECT: Positional matching works with any names
@@ -730,12 +777,12 @@ If you already have test cases in a spreadsheet or CSV, you can run evaluations 
 
 #### Required columns
 
-- A column containing the task **input** (you choose its name, then pass it as `input_col` / `--csv-input-col`).
+- One or more columns containing the task **input** (you choose their names, then pass a string or list as `input_col`; the CLI currently accepts one `--csv-input-col`).
 
 #### Optional columns
 
 - **Expected output** column (for built-in metrics like `exact_match`): pass as `expected_col` / `--csv-expected-col`
-- **ID** column: pass as `id_col` / `--csv-id-col` (otherwise IDs are generated as `row_000000`, `row_000001`, ...)
+- **ID** column: pass as `id_col` / `--csv-id-col` (otherwise stable IDs are generated as `csv_<fingerprint>__NNNN`)
 - **Metadata** columns: pass as `metadata_cols` / `--csv-metadata-cols` (we convert them into a JSON object/dict per row)
 
 #### Cell parsing rules (minimal, predictable)
@@ -789,6 +836,39 @@ evaluator = Evaluator(
 
 results = evaluator.run()
 ```
+
+#### Multiple input columns
+
+Use `input_col=[...]` when one row needs to provide several task arguments. qym returns the item input as a dict keyed by CSV column name:
+
+```csv
+id,sql_prompt,sql_context,sql
+case-1,List all users,CREATE TABLE users(id INT);,SELECT * FROM users;
+```
+
+```python
+dataset = CsvDataset(
+    "datasets/text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+    id_col="id",
+)
+
+def text2sql_task(question, schema):
+    ...
+
+evaluator = Evaluator(
+    task=text2sql_task,
+    dataset=dataset,
+    metrics=[valid_sql],
+    input_mapping={
+        "sql_prompt": "question",
+        "sql_context": "schema",
+    },
+)
+```
+
+Without `input_mapping`, your task parameters should match the CSV column names (`def task(sql_prompt, sql_context): ...`). With `input_mapping`, the original input remains visible in saved results and the UI, while the task receives the mapped parameter names.
 
 **Tracing behavior:** If your Langfuse credentials are set, runs created from CSV will still emit Langfuse traces (useful if your task expects `trace_id`). If credentials are not set, evaluation still runs (without tracing).
 

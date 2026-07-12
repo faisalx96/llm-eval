@@ -64,6 +64,7 @@ print(result.success_rate)</pre>
     model=None,              # str or Sequence[str]
     langfuse_client=None,    # deprecated and ignored
     progress_callback=None,  # Callable[[ProgressSnapshot], None]
+    input_mapping=None,      # map dataset input names to task parameter names
 )</pre>
 
 <table>
@@ -77,6 +78,7 @@ print(result.success_rate)</pre>
     <tr><td><code>model</code></td><td>No</td><td><code>str</code> or <code>Sequence[str]</code></td><td>A single model label, or a list to run the same task across multiple models.</td></tr>
     <tr><td><code>langfuse_client</code></td><td>No</td><td>—</td><td><strong>Deprecated and ignored.</strong> qym uses platform / OpenTelemetry tracing; passing this only logs a warning.</td></tr>
     <tr><td><code>progress_callback</code></td><td>No</td><td><code>Callable</code></td><td>Receives a <code>ProgressSnapshot</code> on each lifecycle event. A shortcut on the constructor only — not on <code>run_parallel()</code>.</td></tr>
+    <tr><td><code>input_mapping</code></td><td>No</td><td><code>dict[str, str]</code></td><td>Maps dataset input names to task parameter names before the task is called. Most useful with <code>CsvDataset(input_col=[...])</code>, e.g. <code>{"sql_prompt": "question"}</code>.</td></tr>
   </tbody>
 </table>
 
@@ -149,7 +151,7 @@ results = Evaluator.run_parallel(
 <div class="docs-cards">
   <div class="docs-card">
     <h3>CsvDataset</h3>
-    <p>Local <code>.csv</code> with configurable columns. Cells that start with <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string.</p>
+    <p>Local <code>.csv</code> with configurable columns. Pass <code>input_col=[...]</code> for multi-column dict inputs. Cells that start with <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string.</p>
   </div>
   <div class="docs-card">
     <h3>JsonlDataset</h3>
@@ -174,6 +176,19 @@ csv_ds = CsvDataset(
     expected_col="answer",
     id_col="id",
     metadata_cols=["domain", "difficulty"],
+)
+
+# Local CSV with multiple task inputs and cleaner task parameter names
+text2sql_ds = CsvDataset(
+    "datasets/text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+)
+Evaluator(
+    task=text2sql_task,
+    dataset=text2sql_ds,
+    metrics=[valid_sql],
+    input_mapping={"sql_prompt": "question", "sql_context": "schema"},
 )
 
 # Local JSONL (fixed keys, no remapping)

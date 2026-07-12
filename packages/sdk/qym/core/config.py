@@ -89,6 +89,7 @@ class RunSpec(BaseModel):
     metrics: List[Union[str, Callable]]
     config: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    input_mapping: Dict[str, str] = Field(default_factory=dict)
     output_path: Optional[str] = None
     
     # Derived fields for display/logging
