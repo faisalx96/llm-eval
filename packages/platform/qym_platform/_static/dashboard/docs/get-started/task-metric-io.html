@@ -32,9 +32,32 @@
     <tr><td><code>def task(q, context)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(q=..., context=...)</code> — dict keys matched to params</td></tr>
     <tr><td><code>def task(item)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(item={...})</code> — single param, no key match → whole dict</td></tr>
     <tr><td><code>def task(**kwargs)</code></td><td><code>{"q": "...", "context": "..."}</code></td><td><code>task(q=..., context=...)</code></td></tr>
+    <tr><td><code>def task(question, schema)</code></td><td><code>{"sql_prompt": "...", "sql_context": "..."}</code> plus <code>input_mapping</code></td><td><code>task(question=..., schema=...)</code> — CSV names remapped before the call</td></tr>
   </tbody>
 </table>
 <p>In short: a <strong>dict input is unpacked</strong> into matching keyword arguments when your parameter names line up (or when you accept <code>**kwargs</code> or have more than one parameter). A non-dict input goes to your single parameter. A single parameter that matches no dict key receives the whole dict.</p>
+
+<h3>CSV input mapping</h3>
+<p>When a local CSV has multiple input columns, <code>CsvDataset(input_col=[...])</code> produces a dict input. If the column names are not the task parameter names, pass <code>input_mapping</code> to <code>Evaluator</code>. The mapping direction is <strong>dataset input name &rarr; task parameter name</strong>:</p>
+<pre data-lang="python">dataset = CsvDataset(
+    "text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+)
+
+def task(question, schema):
+    return generate_sql(question=question, schema=schema)
+
+Evaluator(
+    task=task,
+    dataset=dataset,
+    metrics=[valid_sql],
+    input_mapping={
+        "sql_prompt": "question",
+        "sql_context": "schema",
+    },
+)</pre>
+<p>The original input dict is preserved for saved artifacts and display. Metrics can request either the original names (<code>sql_prompt</code>, <code>sql_context</code>) or the mapped names (<code>question</code>, <code>schema</code>) as parameters.</p>
 
 <h3>Auto-injected parameters</h3>
 <p>Three parameter names are special. If your task declares any of them, qym fills them in automatically — they are <strong>not</strong> drawn from the item input:</p>
@@ -90,7 +113,9 @@
     <tr><td><code>output</code></td><td>What the task returned (see the envelope note below).</td></tr>
     <tr><td><code>expected</code></td><td>The item's <code>expected_output</code> (or <code>None</code>).</td></tr>
     <tr><td><code>input_data</code></td><td>The original item <code>input</code>.</td></tr>
+    <tr><td><code>task_metadata</code></td><td>The hidden metadata dict returned by the task-output envelope, or <code>{}</code>.</td></tr>
     <tr><td><code>metadata</code> or <code>item_metadata</code></td><td>The item's <code>metadata</code> dict. Both names resolve to the same value.</td></tr>
+    <tr><td>any key in a dict input</td><td>That individual input value. If <code>input_mapping</code> is set, both the original and mapped names are recognized.</td></tr>
   </tbody>
 </table>
 

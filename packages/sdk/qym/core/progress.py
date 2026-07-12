@@ -1,31 +1,43 @@
 """Progress tracking and UI state management for evaluations."""
 
+import json
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
+
 @runtime_checkable
 class ProgressObserver(Protocol):
     """Protocol for observing progress of evaluation items."""
-    
+
     def start_item(self, index: int) -> None: ...
-    
-    def update_trace_info(self, index: int, trace_id: Optional[str], trace_url: Optional[str]) -> None: ...
-    
+
+    def update_trace_info(
+        self, index: int, trace_id: Optional[str], trace_url: Optional[str]
+    ) -> None: ...
+
     def update_output(self, index: int, output: Any) -> None: ...
-    
+
     def set_metric_computing(self, index: int, metric: str) -> None: ...
-    
-    def update_metric(self, index: int, metric: str, value: Any, metadata: Optional[Dict[str, Any]] = None) -> None: ...
-    
+
+    def update_metric(
+        self,
+        index: int,
+        metric: str,
+        value: Any,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None: ...
+
     def set_metric_error(self, index: int, metric: str) -> None: ...
-    
+
     def complete_item(self, index: int, elapsed_time: Optional[float] = None) -> None: ...
 
-    def fail_item(self, index: int, error: str, elapsed_time: Optional[float] = None) -> None: ...
-    
+    def fail_item(
+        self, index: int, error: str, elapsed_time: Optional[float] = None
+    ) -> None: ...
+
     def fail_item_timeout(self, index: int, timeout: float) -> None: ...
-    
+
     def get_snapshot(self) -> Dict[str, Any]: ...
 
 
@@ -41,22 +53,24 @@ class ProgressTracker(ProgressObserver):
     def _init_statuses(self):
         """Initialize status dictionaries for all items."""
         for idx, item in enumerate(self.items):
-            input_text = str(item.input)
-            expected_text = str(getattr(item, 'expected_output', 'N/A'))
-        
+            input_text = self._format_display_value(item.input)
+            expected_text = self._format_display_value(
+                getattr(item, "expected_output", "N/A")
+            )
+
             self.item_statuses[idx] = {
-                'input': input_text,
-                'output': '[dim]pending[/dim]',
-                'expected': expected_text,
-                'metrics': {metric: '[dim]pending[/dim]' for metric in self.metrics},
-                'metric_meta': {metric: {} for metric in self.metrics},
-                'status': 'pending',
-                'time': '[dim]pending[/dim]',
-                'start_time': None,
-                'end_time': None,
-                'elapsed_time_override': None,
-                'trace_id': None,
-                'trace_url': None
+                "input": input_text,
+                "output": "[dim]pending[/dim]",
+                "expected": expected_text,
+                "metrics": {metric: "[dim]pending[/dim]" for metric in self.metrics},
+                "metric_meta": {metric: {} for metric in self.metrics},
+                "status": "pending",
+                "time": "[dim]pending[/dim]",
+                "start_time": None,
+                "end_time": None,
+                "elapsed_time_override": None,
+                "trace_id": None,
+                "trace_url": None,
             }
 
     def start_item(self, index: int):
@@ -74,7 +88,7 @@ class ProgressTracker(ProgressObserver):
 
     def update_output(self, index: int, output: Any):
         """Update the output for an item."""
-        self.item_statuses[index]['output'] = str(output)
+        self.item_statuses[index]['output'] = self._format_display_value(output)
 
     def set_metric_computing(self, index: int, metric: str):
         """Mark a metric as computing."""
@@ -235,6 +249,15 @@ class ProgressTracker(ProgressObserver):
             )
         except Exception:
             return str(text)
+
+    def _format_display_value(self, value: Any) -> str:
+        """Format structured values for readable UI display."""
+        if isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except Exception:
+                pass
+        return str(value)
 
     def _flatten_meta(self, md: Dict[str, Any]) -> Dict[str, Any]:
         """Flatten nested metadata dictionary."""

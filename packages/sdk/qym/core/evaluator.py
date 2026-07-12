@@ -431,6 +431,7 @@ class Evaluator:
         samples: Optional[int] = None,
         langfuse_client: Optional[Any] = None,
         progress_callback: Optional[Callable[[ProgressSnapshot], None]] = None,
+        input_mapping: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize the evaluator.
@@ -447,6 +448,10 @@ class Evaluator:
                 reported with k = samples. Overrides ``config.samples``.
             langfuse_client: Deprecated and ignored.
             progress_callback: Optional callback receiving ProgressSnapshot updates.
+            input_mapping: Optional mapping from dataset input names to task
+                parameter names. Useful when a local CSV uses columns such as
+                ``sql_prompt`` and ``sql_context`` but the task signature expects
+                ``question`` and ``schema``.
         """
 
         # Parse config
@@ -472,6 +477,7 @@ class Evaluator:
             self.config.samples = samples
 
         self.task = task
+        self.input_mapping = self._normalize_input_mapping(input_mapping)
         self._raw_metrics = list(metrics)
         self.metric_specs: Dict[str, MetricSpec] = {}
         self.metrics = self._prepare_metrics(metrics)
@@ -487,7 +493,10 @@ class Evaluator:
         self.client: Optional[Any] = None
         self.langfuse_enabled: bool = False
         if langfuse_client is not None:
-            logger.warning("langfuse_client is deprecated and ignored; qym uses platform/OpenTelemetry tracing.")
+            logger.warning(
+                "langfuse_client is deprecated and ignored; qym uses "
+                "platform/OpenTelemetry tracing."
+            )
 
         # Load and validate dataset
         if isinstance(dataset, str):
@@ -509,6 +518,7 @@ class Evaluator:
 
         # Prepare task adapter
         self.task_adapter = auto_detect_task(task, self.client)
+        self.task_adapter.input_mapping = self.input_mapping
         self.task_adapter._warning_callback = lambda msg: self._notify_observer(
             "on_warning",
             message=msg,
@@ -574,6 +584,27 @@ class Evaluator:
         self._platform_dataset_version_id: Optional[str] = getattr(
             self.dataset, "dataset_version_id", None
         )
+
+    @staticmethod
+    def _normalize_input_mapping(
+        input_mapping: Optional[Dict[str, str]],
+    ) -> Dict[str, str]:
+        """Validate and copy dataset-input to task-parameter mappings."""
+        if input_mapping is None:
+            return {}
+        if not isinstance(input_mapping, dict):
+            raise TypeError(
+                "input_mapping must be a dict of input name to parameter name"
+            )
+
+        normalized: Dict[str, str] = {}
+        for source, target in input_mapping.items():
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError("input_mapping keys must be non-empty strings")
+            if not isinstance(target, str) or not target.strip():
+                raise ValueError("input_mapping values must be non-empty strings")
+            normalized[source] = target
+        return normalized
 
     # Class-level counter for ensuring unique run IDs within the same process
     _run_id_counter: Dict[str, int] = {}
@@ -674,6 +705,7 @@ class Evaluator:
                 "max_concurrency": self.max_concurrency,
                 "max_metric_concurrency": self.max_metric_concurrency,
                 "timeout": self.timeout,
+                "input_mapping": dict(self.input_mapping),
                 "run_metadata": self.run_metadata,
             },
             "model": self.model_name,
@@ -958,6 +990,7 @@ class Evaluator:
                 "timeout": self.timeout,
                 "user_provided_run_name": bool(self.config.run_name),
                 "samples": self.samples,
+                "input_mapping": dict(self.input_mapping),
             },
         )
         result.samples = self.samples
@@ -1027,6 +1060,7 @@ class Evaluator:
                         "model": self.model_name,
                         "task": self._task_name,
                         "dataset": str(self.dataset_name),
+                        "input_mapping": self.input_mapping,
                     }
                 )
                 try:
@@ -1045,6 +1079,7 @@ class Evaluator:
                             "timeout": self.timeout,
                             "run_name": self.run_name,
                             "task_name": self._task_name,
+                            "input_mapping": dict(self.input_mapping),
                             "run_config_id": run_config_id,
                             "git_branch": git_info["git_branch"],
                             "git_commit": git_info["git_commit"],
@@ -1107,6 +1142,7 @@ class Evaluator:
                                     "timeout": self.timeout,
                                     "run_name": self.run_name,
                                     "task_name": self._task_name,
+                                    "input_mapping": dict(self.input_mapping),
                                     "run_config_id": run_config_id,
                                 },
                                 "started_at": _utc_now_str(),
@@ -1829,21 +1865,44 @@ class Evaluator:
         sig = inspect.signature(metric)
         params = list(sig.parameters.values())
         has_var_kwargs = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD for p in params
+            p.kind == inspect.Parameter.VAR_KEYWORD
+            for p in params
         )
+
+        mapped_input_data = input_data
+        if isinstance(input_data, dict):
+            mapped_input_data = {
+                self.input_mapping.get(key, key): value
+                for key, value in input_data.items()
+            }
+
         named_values = {
             "output": output,
             "expected": expected,
-            "input_data": input_data,
+            "input_data": mapped_input_data,
+            "task_metadata": task_metadata or {},
             "metadata": item_metadata or {},
             "item_metadata": item_metadata or {},
         }
+
+        # Allow metrics to request individual CSV inputs by parameter name.
+        if isinstance(input_data, dict):
+            # Preserve original CSV column names.
+            for key, value in input_data.items():
+                named_values.setdefault(key, value)
+
+            # Also expose names produced by input_mapping.
+            for key, value in mapped_input_data.items():
+                named_values[key] = value
 
         concrete_params = [
             p
             for p in params
             if p.kind
-            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            not in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            )
         ]
 
         can_use_keywords = has_var_kwargs or all(
@@ -1851,18 +1910,22 @@ class Evaluator:
             and p.name in named_values
             for p in concrete_params
         )
+
         if can_use_keywords:
             kwargs = (
                 dict(named_values)
                 if has_var_kwargs
-                else {p.name: named_values[p.name] for p in concrete_params}
+                else {
+                    p.name: named_values[p.name]
+                    for p in concrete_params
+                }
             )
             return (), kwargs
 
         positional = [
             output,
             expected,
-            input_data,
+            mapped_input_data,
             item_metadata or {},
         ]
         return tuple(positional[: len(concrete_params)]), {}
@@ -1953,6 +2016,7 @@ class Evaluator:
                     "metrics": self._raw_metrics,
                     "config": run_config,
                     "metadata": {"model": model_name},  # Stripped for display
+                    "input_mapping": dict(self.input_mapping),
                 }
             )
 
@@ -2077,15 +2141,21 @@ class Evaluator:
         except Exception:
             pass
 
+    @staticmethod
+    def _prepare_task_input(input_data: Any) -> Any:
+        """Preserve mapping inputs so adapters can inject multiple columns by name."""
+        return dict(input_data) if isinstance(input_data, dict) else input_data
+
     async def _run_single_task_attempt(
         self, index: int, item: Any, attempt_number: int
     ) -> TaskAttemptResult:
         """Execute a single task attempt with its own trace."""
         spans = self._create_item_spans(index, item, attempt_number)
+        task_input = self._prepare_task_input(item.input)
         # Create a NullTrace for adapter compatibility
         adapter_trace = NullTrace(
             name=f"eval-{self.run_name}-item-{index}-attempt-{attempt_number}",
-            input=item.input,
+            input=task_input,
         )
         adapter_trace.trace_id = spans.trace_id
 
@@ -2103,7 +2173,7 @@ class Evaluator:
             async def _task_call():
                 try:
                     return await self.task_adapter.arun(
-                        item.input,
+                        task_input,
                         adapter_trace,
                         model_name=self.model_name_full,
                     )

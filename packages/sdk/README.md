@@ -121,6 +121,29 @@ results = evaluator.run()
 
 > CSV datasets work without Langfuse credentials. If credentials are set, traces are still recorded.
 
+CSV rows can also provide several task inputs. Use a list for `input_col`, and add `input_mapping` when the CSV column names differ from your task parameters:
+
+```python
+dataset = CsvDataset(
+    "text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+)
+
+def text2sql_task(question, schema):
+    return generate_sql(question=question, schema=schema)
+
+results = Evaluator(
+    task=text2sql_task,
+    dataset=dataset,
+    metrics=["exact_match"],
+    input_mapping={
+        "sql_prompt": "question",
+        "sql_context": "schema",
+    },
+).run()
+```
+
 ## Run Progress Hooks
 
 Wrappers can subscribe to evaluation progress with `progress_callback`. The callback receives a structured `ProgressSnapshot` whenever the run starts, an item starts or finishes, a metric result is produced, a warning is emitted, or the run completes.
