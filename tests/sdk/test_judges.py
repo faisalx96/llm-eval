@@ -14,7 +14,12 @@ sys.modules.setdefault("openai", _mock_openai)
 
 from qym.metrics.result import MetricResult
 from qym.metrics.judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
-from qym.metrics.judges.base import snap_to_rail, create_judge
+from qym.metrics.judges.base import (
+    JudgeInputError,
+    create_judge,
+    create_pairwise_judge,
+    snap_to_rail,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +247,90 @@ class TestCreateJudge:
         assert "What is AI?" in user_msg
         assert "AI is artificial intelligence." in user_msg
         assert "test output" in user_msg
+
+    @pytest.mark.asyncio
+    async def test_missing_prompt_input_reports_judge_and_received_fields(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("QYM_BASE_URL", "https://qym.example.com/root/")
+        judge = create_judge(
+            name="relevance",
+            prompt="Question: {question}\nResponse: {output}",
+            choices={"relevant": 1.0, "irrelevant": 0.0},
+        )
+
+        with pytest.raises(JudgeInputError) as exc_info:
+            await judge(
+                "test output",
+                input_data={"prompt": "What is AI?", "context": "AI context"},
+            )
+
+        message = str(exc_info.value)
+        assert "Judge metric 'relevance'" in message
+        assert "required input field(s): question" in message
+        assert "Received input fields/type: context, prompt" in message
+        assert "Evaluator(input_mapping=" in message
+        assert (
+            "https://qym.example.com/root/docs-guide"
+            "#get-started/datasets/multiple-input-columns" in message
+        )
+
+        rich_message = exc_info.value.rich_message()
+        assert "[red]Judge input error: relevance[/red]" in rich_message
+        assert "[yellow]Expected:[/yellow] question" in rich_message
+        assert "[cyan]Received:[/cyan] context, prompt" in rich_message
+        assert (
+            "[link=https://qym.example.com/root/docs-guide"
+            "#get-started/datasets/multiple-input-columns]" in rich_message
+        )
+        assert rich_message.endswith(
+            "Task with Multiple CSV Input Columns[/link]"
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_prompt_input_reports_scalar_type(self):
+        judge = create_judge(
+            name="custom_quality",
+            prompt="Query: {query}\nResponse: {output}",
+            choices={"good": 1.0, "bad": 0.0},
+        )
+
+        with pytest.raises(JudgeInputError, match=r"custom_quality.*<str>"):
+            await judge("test output", input_data="What is AI?")
+
+    @pytest.mark.asyncio
+    async def test_escaped_braces_are_not_required_fields(self):
+        content = json.dumps({"verdict": "good", "explanation": "Valid."})
+        mock_client = _make_mock_client(content)
+
+        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+            judge = create_judge(
+                name="json_example",
+                prompt='Return shape {{"verdict": "good"}} for {output}',
+                choices={"good": 1.0, "bad": 0.0},
+            )
+            result = await judge("test output")
+
+        assert result.score == 1.0
+
+    @pytest.mark.asyncio
+    async def test_pairwise_missing_prompt_input_reports_metric_name(self):
+        judge = create_pairwise_judge(
+            name="pairwise_helpfulness",
+            prompt=(
+                "Question: {question}\n"
+                "Response A: {output_a}\n"
+                "Response B: {output_b}"
+            ),
+        )
+
+        with pytest.raises(JudgeInputError) as exc_info:
+            await judge("answer A", "answer B", {"prompt": "What is AI?"})
+
+        message = str(exc_info.value)
+        assert "Judge metric 'pairwise_helpfulness'" in message
+        assert "required input field(s): question" in message
+        assert "Received input fields/type: prompt" in message
 
     @pytest.mark.asyncio
     async def test_case_insensitive_verdict(self):

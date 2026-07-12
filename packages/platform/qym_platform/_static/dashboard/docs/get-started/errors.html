@@ -132,8 +132,12 @@ result = Evaluator(task, data, metrics=[slow_metric], config=config).run(show_tu
 export QYM_JUDGE_API_KEY=&lt;provider-key&gt;   # required (falls back to OPENAI_API_KEY)
 export QYM_JUDGE_BASE_URL=https://api.openai.com/v1  # optional (falls back to OPENAI_BASE_URL)</pre>
 
-<h3>Judge runs but its prompt is wrong</h3>
-<p>Judge prompts are filled from your dataset item. If a prompt references a variable that your input doesn't provide, qym leaves the placeholder as the <strong>literal</strong> text (for example <code>{context}</code> appears verbatim in the prompt) — this does <em>not</em> raise an error, so verify your dataset actually carries the keys the judge expects. As a guide, <code>relevance</code> needs <code>input["question"]</code>; <code>faithfulness_llm</code> needs <code>input["context"]</code> and <code>input["question"]</code>; <code>tool_calling</code> needs <code>input["question"]</code> and <code>input["tool_definitions"]</code> (the tool calls themselves come from the task <strong>output</strong>). See <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a> for the per-judge field list.</p>
+<h3>Judge input error: a prompt field is missing</h3>
+<p>Judge prompts are validated before an LLM request is made. If a prompt references a field that the metric input does not provide, qym raises <code>JudgeInputError</code> and prints one colored terminal message with the judge metric name, the expected fields, the fields or type it received, and an <code>input_mapping</code> example. The LLM is not called with an unresolved placeholder.</p>
+<pre data-lang="text">Judge input error: hallucination
+Expected: context
+Received: question</pre>
+<p>Fix the dataset input or map the existing CSV column to the required judge name, for example <code>input_mapping={"source_text": "context"}</code>. For a single-column CSV, qym uses the declared <code>input_col</code> as the metric input key automatically; a mapping is only needed when that column name differs from the judge's required field. As a guide, <code>relevance</code> needs <code>input["question"]</code>; <code>faithfulness_llm</code> needs <code>input["context"]</code> and <code>input["question"]</code>; <code>tool_calling</code> needs <code>input["question"]</code>, <code>input["tool_definitions"]</code>, and <code>input["tool_calls"]</code>. See <a href="#get-started/datasets/multiple-input-columns">Multiple input columns</a> for mapping and <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a> for the per-judge field list.</p>
 
 <h2>Platform &amp; connectivity</h2>
 

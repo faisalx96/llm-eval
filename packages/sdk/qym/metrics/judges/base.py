@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 from typing import Any, Callable, Dict, List, Optional
@@ -20,6 +21,52 @@ DEFAULT_SYSTEM_PROMPT = (
     'keys: "verdict" (one of the allowed labels) and "explanation" (a brief '
     "justification for your verdict). Do not include any other text."
 )
+
+
+class JudgeInputError(ValueError):
+    """Raised when a judge prompt references unavailable input fields."""
+
+    DOCS_ROUTE = "/docs-guide#get-started/datasets/multiple-input-columns"
+
+    @classmethod
+    def docs_url(cls) -> str:
+        """Return the platform mapping-docs URL from the process environment."""
+        base_url = (os.getenv("QYM_BASE_URL") or "http://localhost:8000").rstrip("/")
+        return f"{base_url}{cls.DOCS_ROUTE}"
+
+    def __init__(
+        self,
+        *,
+        judge_name: str,
+        missing_fields: List[str],
+        received: str,
+    ) -> None:
+        self.judge_name = judge_name
+        self.missing_fields = list(missing_fields)
+        self.received = received
+        missing = ", ".join(self.missing_fields)
+        super().__init__(
+            f"Judge metric '{judge_name}' is missing required input field(s): "
+            f"{missing}. Received input fields/type: {received}. "
+            "Ensure the dataset input contains the required field names, or map "
+            "dataset columns with Evaluator(input_mapping={"
+            "'<dataset_column>': '<required_field>'}). "
+            f"See {self.docs_url()}."
+        )
+
+    def rich_message(self) -> str:
+        """Return a colored, actionable representation for Rich consoles."""
+        missing = ", ".join(self.missing_fields)
+        return (
+            f"\n\n[red]Judge input error: {self.judge_name}[/red]\n"
+            f"[yellow]Expected:[/yellow] {missing}\n"
+            f"[cyan]Received:[/cyan] {self.received}\n"
+            "Ensure the dataset input contains the required field names, or use "
+            "Evaluator(input_mapping={"
+            "'<dataset_column>': '<required_field>'}).\n"
+            f"Docs: [link={self.docs_url()}]"
+            "Task with Multiple CSV Input Columns[/link]"
+        )
 
 
 def snap_to_rail(text: str, rails: List[str]) -> Optional[str]:
@@ -236,6 +283,46 @@ def _safe_substitute(template: str, subs: Dict[str, str]) -> str:
     return result
 
 
+def _required_prompt_fields(template: str) -> set[str]:
+    """Return simple ``{field}`` placeholders referenced by a judge prompt.
+
+    This deliberately mirrors the placeholder syntax supported by
+    :func:`_safe_substitute`. Double-braced literals such as ``{{field}}`` are
+    ignored.
+    """
+    return set(
+        re.findall(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)\}(?!\})", template)
+    )
+
+
+def _validate_prompt_inputs(
+    *,
+    judge_name: str,
+    template: str,
+    substitutions: Dict[str, str],
+    input_data: Any,
+) -> None:
+    """Raise an actionable error when a judge prompt cannot be rendered."""
+    available_fields = {
+        key for key in substitutions if isinstance(key, str)
+    }
+    missing_fields = sorted(_required_prompt_fields(template) - available_fields)
+    if not missing_fields:
+        return
+
+    if isinstance(input_data, dict):
+        received_fields = sorted(str(key) for key in input_data)
+        received = ", ".join(received_fields) if received_fields else "<empty dict>"
+    else:
+        received = f"<{type(input_data).__name__}>"
+
+    raise JudgeInputError(
+        judge_name=judge_name,
+        missing_fields=missing_fields,
+        received=received,
+    )
+
+
 def create_judge(
     name: str,
     prompt: str,
@@ -305,6 +392,12 @@ def create_judge(
             for k, v in input_data.items():
                 subs.setdefault(k, str(v) if v is not None else "")
 
+        _validate_prompt_inputs(
+            judge_name=name,
+            template=tpl,
+            substitutions=subs,
+            input_data=input_data,
+        )
         user_prompt = _safe_substitute(tpl, subs)
 
         return await llm_judge(
@@ -396,6 +489,12 @@ def create_pairwise_judge(
             for k, v in input_data.items():
                 subs.setdefault(k, str(v) if v is not None else "")
 
+        _validate_prompt_inputs(
+            judge_name=name,
+            template=prompt,
+            substitutions=subs,
+            input_data=input_data,
+        )
         user_prompt = _safe_substitute(prompt, subs)
 
         return await llm_judge(

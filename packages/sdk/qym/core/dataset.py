@@ -407,6 +407,7 @@ class QymDataset:
         self.id: Optional[str] = None
         self.dataset_version_id: Optional[str] = None
         self._version_label: Optional[str] = None
+        self.input_cols: List[str] = []
         self._items: Optional[List[CsvDatasetItem]] = None
         if not self.platform_url or not self.api_key:
             raise DatasetNotFoundError(
@@ -455,6 +456,14 @@ class QymDataset:
                 self.id = str(dataset_data.get("id") or "") or self.id
                 self.name = str(dataset_data.get("name") or self.name)
             if version_data:
+                schema = version_data.get("schema") or {}
+                schema_input_cols = schema.get("input_cols") or []
+                if isinstance(schema_input_cols, str):
+                    schema_input_cols = [schema_input_cols]
+                if isinstance(schema_input_cols, list):
+                    self.input_cols = [
+                        col for col in schema_input_cols if isinstance(col, str) and col
+                    ]
                 self.dataset_version_id = (
                     str(version_data.get("id") or "")
                     or self.dataset_version_id

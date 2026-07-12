@@ -9,38 +9,35 @@ This script runs the evaluation using:
   2. execution_accuracy: Does it return the same results as the gold SQL?
 
 Usage:
-    # First, download the local CSV dataset
-    python load_data.py
+    # First, upload the dataset
+    python upload_dataset.py
 
     # Then run the evaluation
     python run_eval.py
 """
+import sys
+
+print(sys.executable)
+
 from dotenv import load_dotenv
 
 load_dotenv()
-
-from metrics import valid_sql, execution_accuracy
-from qym import CsvDataset, Evaluator
+from qym import Evaluator, CsvDataset
 from task import text2sql_task
+from metrics import valid_sql, execution_accuracy
 
 data = CsvDataset(
     "examples/text2sql/synthetic_text_to_sql_test.csv",
     input_col=["sql_prompt", "sql_context"],
     expected_col="sql",
-    id_col="id",
-    metadata_cols=[
-        "domain",
-        "sql_complexity",
-        "sql_task_type",
-    ],
+    metadata_cols= ["sql_prompt", "sql_context"] 
 )
-
 
 def main():
     evaluator = Evaluator(
         task=text2sql_task,
         dataset=data,
-        metrics=[valid_sql, execution_accuracy],
+        metrics=[valid_sql, "execution_accuracy"],
         model="openai/gpt-4o-mini",
         config={
             "max_concurrency": 10,
@@ -48,8 +45,8 @@ def main():
         },
         input_mapping={
             "sql_prompt": "question",
-            "sql_context": "schema",
-        },
+            "sql_context": "schema"
+        }
     )
 
     evaluator.run()

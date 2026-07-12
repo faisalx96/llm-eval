@@ -79,6 +79,83 @@ def test_evaluator_metric_arguments_include_original_and_mapped_inputs(mock_data
     }
 
 
+def test_scalar_metric_input_uses_original_single_column_name(mock_dataset):
+    def task(question):
+        return question
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    mock_dataset.input_cols = ["question"]
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        config={"otel_enabled": False},
+    )
+
+    args, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data="What is AI?",
+    )
+
+    assert args == ()
+    assert kwargs["input_data"] == {"question": "What is AI?"}
+
+
+def test_scalar_metric_input_uses_mapped_single_column_name(mock_dataset):
+    def task(question):
+        return question
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    mock_dataset.input_cols = ["prompt"]
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        input_mapping={"prompt": "question"},
+        config={"otel_enabled": False},
+    )
+
+    _, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data="What is AI?",
+    )
+
+    assert kwargs["input_data"] == {"question": "What is AI?"}
+
+
+def test_scalar_metric_input_stays_scalar_without_schema_or_mapping(mock_dataset):
+    def task(value):
+        return value
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    mock_dataset.input_cols = []
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        config={"otel_enabled": False},
+    )
+
+    _, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data="unnamed input",
+    )
+
+    assert kwargs["input_data"] == "unnamed input"
+
+
 def test_evaluator_validates_input_mapping(mock_task, mock_dataset):
     with pytest.raises(TypeError, match="input_mapping must be a dict"):
         Evaluator(
