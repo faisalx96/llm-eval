@@ -333,6 +333,7 @@ function calculateGroupedCohortComparison(options) {
     getMetricIndex,
     getItemId,
     getRunId,
+    metricName,
   } = options || {};
 
   const bucketKeys = ['a_sweeps_b', 'b_sweeps_a', 'both_pass', 'both_fail'];
@@ -398,6 +399,15 @@ function calculateGroupedCohortComparison(options) {
     return result;
   }
 
+  // Cohort size counts passes, not runs: a samples=9 repeat run contributes
+  // nine entries per item once its per-pass scores are exploded below.
+  const sideSampleCount = runs => runs.reduce(
+    (sum, runData) => sum + Math.max(1, Number(runData?.run?.samples || 1)), 0,
+  );
+  result.leftRunCount = sideSampleCount(leftRuns);
+  result.rightRunCount = sideSampleCount(rightRuns);
+  result.k = result.leftRunCount;
+
   const selectedRuns = [...leftRuns, ...rightRuns];
   const itemIds = new Set();
   selectedRuns.forEach((runData) => {
@@ -445,6 +455,23 @@ function calculateGroupedCohortComparison(options) {
       if (!row) return null;
       const metricIdx = getMetricIndex(runData);
       if (metricIdx < 0) return null;
+      // Repeat runs carry per-pass scores; each pass joins the cohort as its
+      // own entry so pass@k / noise math sees all of them, not the reduced
+      // mean. Falls back to the single reduced score when unavailable.
+      const perPass = metricName && row?.pass_scores ? row.pass_scores[metricName] : null;
+      const cleanPasses = Array.isArray(perPass)
+        ? perPass.map(Number).filter(value => Number.isFinite(value))
+        : [];
+      if (cleanPasses.length) {
+        const attempt = Math.max(1, Number(row?.retry_count || 0) + 1);
+        cleanPasses.forEach((value) => {
+          scores.push(value);
+          passes.push(value >= threshold);
+          attempts.push(attempt);
+        });
+        rowList.push(row);
+        continue;
+      }
       const { score } = getRowScore(row, metricIdx);
       if (score === null) return null;
       scores.push(score);
@@ -484,9 +511,9 @@ function calculateGroupedCohortComparison(options) {
 
   itemIds.forEach((itemId) => {
     const leftValues = collectGroupValues(leftRuns, itemId);
-    if (!leftValues || leftValues.scores.length !== leftRuns.length) return;
+    if (!leftValues || leftValues.scores.length < leftRuns.length) return;
     const rightValues = collectGroupValues(rightRuns, itemId);
-    if (!rightValues || rightValues.scores.length !== rightRuns.length) return;
+    if (!rightValues || rightValues.scores.length < rightRuns.length) return;
 
     result.eligibleItems += 1;
     updateAggregateState(leftAgg, leftValues);

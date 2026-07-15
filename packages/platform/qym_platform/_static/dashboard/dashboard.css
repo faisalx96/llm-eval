@@ -8193,6 +8193,14 @@ td.col-trace-metric-value {
   white-space: nowrap;
 }
 
+/* report_k needs headroom: pass@k from barely k passes is high-noise. */
+.metric-noise-warn {
+  font-size: var(--font-sm);
+  color: var(--warning);
+  margin-left: var(--space-xs);
+  cursor: help;
+}
+
 /* Shared pass-status marker used by the run-detail repeat table. */
 .sp-dot {
   display: inline-block;

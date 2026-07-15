@@ -3217,9 +3217,15 @@
         // own type so percent metrics read "53.3% ±10.0%", not "±0.1".
         const ciHalf = (run.samples > 1 && run.metric_cis) ? run.metric_cis[metric] : null;
         const ciHtml = (typeof ciHalf === 'number')
-          ? `<span class="metric-ci" title="95% CI over ${run.samples} passes">±${window.QymMetrics.formatMetricValue(ciHalf, mType)}</span>`
+          ? `<span class="metric-ci" title="95% CI across items × ${run.samples} passes">±${window.QymMetrics.formatMetricValue(ciHalf, mType)}</span>`
           : '';
-        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${ciHtml}</td>`;
+        // report_k needs headroom: pass@k estimated from barely k passes is
+        // high-noise, so nudge toward samples >= 2k.
+        const lowSamples = run.report_k && run.samples < 2 * run.report_k;
+        const noiseHtml = lowSamples
+          ? `<span class="metric-noise-warn" title="pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.">⚠</span>`
+          : '';
+        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${ciHtml}${noiseHtml}</td>`;
       }).join('');
 
       const status = run.status || '';
@@ -3608,8 +3614,11 @@
       const passes = data.passes || {};
       const groupPayload = data.group || {};
       const group = groupPayload.group || {};
+      const reportK = Number(groupPayload.report_k) || null;
       const allPasses = passes.passes || [];
       const k = group.k || passes.samples || 0;
+      const passAtLabel = reportK && reportK !== k ? `Pass@${reportK} · est. from ${k}` : `Pass@${k}`;
+      const passHatLabel = reportK && reportK !== k ? `Pass^${reportK} · est. from ${k}` : `Pass^${k}`;
       const threshold = groupPayload.threshold != null ? groupPayload.threshold : 0.8;
       const thrPct = Math.round(threshold * 100);
       const groupMetric = groupPayload.metric || (passes.metrics || [])[0] || 'primary metric';
@@ -3731,8 +3740,12 @@
                 <span class="threshold-value">${thrPct}%</span>
               </span>
               <div class="samples-summary-grid">
-              ${stat(`Pass@${k}`, group.pass_at_k, `% of items where at least one of the ${k} passes scored ≥${thrPct}%.`)}
-              ${stat(`Pass^${k}`, group.pass_hat_k, `% of items where all ${k} passes scored ≥${thrPct}%.`)}
+              ${stat(passAtLabel, group.pass_at_k, reportK
+                ? `Estimated chance that at least one of ${reportK} attempts scores ≥${thrPct}% — the unbiased pass@${reportK} computed from all ${k} stored passes.`
+                : `% of items where at least one of the ${k} passes scored ≥${thrPct}%.`)}
+              ${stat(passHatLabel, group.pass_hat_k, reportK
+                ? `Estimated chance that all ${reportK} attempts score ≥${thrPct}% — the unbiased pass^${reportK} computed from all ${k} stored passes.`
+                : `% of items where all ${k} passes scored ≥${thrPct}%.`)}
               ${stat(`Avg@${k}`, group.avg_at_k, `Mean score across all items and all ${k} passes.`)}
               ${stat('Consistency', group.consistency, 'How often passes agree on pass/fail for the same item. 100% = all passes agree.')}
               ${stat('Reliability', group.reliability, 'Of the items solved at least once, the share of attempts that solve them.')}
