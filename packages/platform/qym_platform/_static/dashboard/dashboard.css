@@ -3340,6 +3340,14 @@ body.chart-col-resize-active {
 .metric-score.score-2 { color: var(--score-2); }
 .metric-score.score-1 { color: var(--score-1); }
 
+/* Inline metric pills on item-by-item cards (run, compare, pass comparison)
+   share the same score ramp. */
+.metric-score-value.score-5 { color: var(--score-5); }
+.metric-score-value.score-4 { color: var(--score-4); }
+.metric-score-value.score-3 { color: var(--score-3); }
+.metric-score-value.score-2 { color: var(--score-2); }
+.metric-score-value.score-1 { color: var(--score-1); }
+
 .metric-na {
   color: var(--text-dim);
   font-size: var(--font-sm);

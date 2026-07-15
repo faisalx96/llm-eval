@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Run Detail</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=variable-mapping-20260510">
+  <link rel="stylesheet" href="/static/dashboard.css?v=metric-score-ramp-20260711">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
@@ -4374,6 +4374,185 @@
       background: var(--bg-elevated);
       color: var(--text-muted);
     }
+
+    /* ── Pass comparison: side-by-side / grouped pass columns (repeat runs) ── */
+    .pass-cmp-open {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: var(--space-xs);
+      padding: 2px 9px;
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .pass-cmp-open:hover { color: var(--accent-primary); border-color: var(--accent-primary); }
+    .item-run-output.pass-cmp { background: transparent; }
+    .pass-cmp-summary {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .pass-cmp-modes {
+      display: inline-flex;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .pass-cmp-mode {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      padding: 3px 10px;
+      cursor: pointer;
+    }
+    .pass-cmp-mode + .pass-cmp-mode { border-left: 1px solid var(--border-default); }
+    .pass-cmp-mode:hover { color: var(--text-primary); }
+    .pass-cmp-mode.active {
+      background: rgba(0, 212, 170, 0.12);
+      color: var(--accent-primary);
+    }
+    .pass-cmp-close {
+      appearance: none;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      padding: 3px 9px;
+      margin-left: var(--space-xs);
+      cursor: pointer;
+    }
+    .pass-cmp-close:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    .pass-cmp-grid {
+      display: grid;
+      grid-template-columns: repeat(var(--pass-cmp-cols, 2), minmax(250px, 1fr));
+      gap: var(--space-sm);
+      align-items: start;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .pass-cmp-col {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--border-strong);
+      border-radius: 0 6px 6px 0;
+      padding: var(--space-sm);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      min-width: 0;
+    }
+    .pass-cmp-col.best { border-left-color: var(--accent-primary); }
+    .pass-cmp-col.failed { border-left-color: var(--score-1); }
+    .pass-cmp-caption {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .pass-cmp-sdot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      flex-shrink: 0;
+    }
+    .pass-cmp-sdot.pass { background: var(--score-5); }
+    .pass-cmp-sdot.fail { background: var(--score-1); }
+    .pass-cmp-pname {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+    }
+    .pass-cmp-best {
+      font-size: var(--font-xs);
+      font-weight: 650;
+      color: var(--warning);
+      background: rgba(234, 179, 8, 0.15);
+      border: 1px solid rgba(234, 179, 8, 0.4);
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+    .pass-cmp-latency {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .pass-cmp-chip {
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.1);
+      border: 1px solid rgba(0, 212, 170, 0.35);
+      border-radius: 999px;
+      padding: 1px 7px;
+    }
+    .pass-cmp-chip.fail {
+      color: var(--score-1);
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+    .pass-cmp-vwrap { overflow-x: auto; }
+    .pass-cmp-vtable { width: 100%; border-collapse: collapse; }
+    .pass-cmp-vtable th {
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: right;
+      padding: 2px 0 2px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      white-space: nowrap;
+    }
+    .pass-cmp-vtable th:first-child { text-align: left; padding-left: 0; }
+    .pass-cmp-vtable td {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      text-align: right;
+      padding: 3px 0 3px 10px;
+      white-space: nowrap;
+    }
+    .pass-cmp-vtable td:first-child { text-align: left; padding-left: 0; }
+    .pass-cmp-vtable td.num {
+      font-family: var(--font-mono);
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+    .pass-cmp-vpass {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+    /* Metric value colors come from the shared .metric-score-value ramp in
+       dashboard.css; only the variant score table needs its own mapping. */
+    .pass-cmp-vtable td.score-5 { color: var(--score-5); }
+    .pass-cmp-vtable td.score-4 { color: var(--score-4); }
+    .pass-cmp-vtable td.score-3 { color: var(--score-3); }
+    .pass-cmp-vtable td.score-2 { color: var(--score-2); }
+    .pass-cmp-vtable td.score-1 { color: var(--score-1); }
+    .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
 </head>
 <body>
@@ -8204,6 +8383,141 @@
         draw();
       }
 
+      // ── Pass comparison (repeat runs): side-by-side / grouped pass columns ──
+
+      function _passCompareNorm(output) {
+        if (output == null) return '';
+        const text = typeof output === 'object' ? JSON.stringify(output) : String(output);
+        return text.trim().replace(/\s+/g, ' ');
+      }
+
+      // Group attempts by normalized output; most frequent first, ties by
+      // earliest pass. Exact match after whitespace collapse — no fuzzy rule.
+      function _passCompareGroups(attempts) {
+        const groups = new Map();
+        attempts.forEach(att => {
+          const key = _passCompareNorm(att.output);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(att);
+        });
+        return Array.from(groups.values())
+          .sort((a, b) => (b.length - a.length) || (a[0].pass_number - b[0].pass_number));
+      }
+
+      // Unique highest score on the selected metric → that pass gets ★ Best.
+      // Numeric metrics have no good/bad direction, so no best there.
+      function _passCompareBest(row, metric) {
+        if (!metric || (state.metricTypes[metric] || 'score') === 'numeric') return null;
+        const scores = (row.pass_scores || {})[metric];
+        if (!Array.isArray(scores)) return null;
+        let best = null, bestVal = null, tied = false;
+        scores.forEach((raw, i) => {
+          const v = window.QymMetrics.parseScoreValue(raw);
+          if (v === null) return;
+          if (bestVal === null || v > bestVal) { bestVal = v; best = i + 1; tied = false; }
+          else if (v === bestVal) tied = true;
+        });
+        return (!tied && best) ? best : null;
+      }
+
+      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml) {
+        const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : [];
+        const attempts = passAttempts
+          .map((att, i) => att ? { ...att, pass_number: att.pass_number || i + 1 } : null)
+          .filter(Boolean);
+        if (attempts.length < 2) return '';
+        const mode = (state.itemPassCompare || {})[itemId] === 'grouped' ? 'grouped' : 'columns';
+        const pendingCount = passAttempts.length - attempts.length;
+        const bestPass = _passCompareBest(baseRow, metric);
+        const metricIsNumeric = metric ? (state.metricTypes[metric] || 'score') === 'numeric' : true;
+
+        const scoreFor = (name, passNo) => {
+          const scores = (baseRow.pass_scores || {})[name];
+          return window.QymMetrics.parseScoreValue(Array.isArray(scores) ? scores[passNo - 1] : null);
+        };
+        const passState = (att) => {
+          if (att.status === 'error') return 'fail';
+          if (!metric || metricIsNumeric) return '';
+          const v = scoreFor(metric, att.pass_number);
+          if (v === null) return '';
+          return v >= threshold ? 'pass' : 'fail';
+        };
+        const pillsFor = (passNo) => state.allMetrics.map(name => {
+          const v = scoreFor(name, passNo);
+          if (v === null) return '';
+          const mType = state.metricTypes[name] || 'score';
+          const cls = window.QymMetrics.getMetricColorClass(v, mType);
+          const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
+          return '<div class="metric-score-row ' + (name === metric ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></div>';
+        }).join('');
+        const traceBtnFor = (att) => {
+          if (IS_EXPORT) return '';
+          const attTraceUrl = att.trace_url || buildLangfuseTraceUrl(att.trace_id);
+          if (!att.trace_id && !attTraceUrl) return '';
+          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
+          return '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId + ' · Pass ' + att.pass_number) + '" data-trace-id="' + escapeAttr(att.trace_id || '') + '" data-trace-url="' + escapeAttr(attTraceUrl || '') + '" title="Open trace viewer for pass ' + att.pass_number + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>';
+        };
+        const outputTextHtml = (att) => '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '—') + '</div>';
+
+        let cols;
+        let summary;
+        if (mode === 'grouped') {
+          const groups = _passCompareGroups(attempts);
+          summary = attempts.length + ' passes · ' + (groups.length === 1 ? 'identical output' : groups.length + ' distinct outputs');
+          const headCells = '<th></th>' + state.allMetrics.map(n => '<th>' + escapeHtml(n) + '</th>').join('') + '<th>latency</th>';
+          cols = groups.map((group, gi) => {
+            const label = groups.length === 1
+              ? 'All ' + attempts.length + ' passes'
+              : 'Variant ' + (gi < 26 ? String.fromCharCode(65 + gi) : gi + 1) + ' · ' + group.length + '/' + attempts.length;
+            const chips = group.map(att => '<span class="pass-cmp-chip' + (passState(att) === 'fail' ? ' fail' : '') + '">pass ' + att.pass_number + '</span>').join('');
+            const isBestG = bestPass != null && group.some(att => att.pass_number === bestPass);
+            const allFailed = group.every(att => att.status === 'error');
+            const bodyRows = group.map(att => {
+              const cells = state.allMetrics.map(name => {
+                const v = scoreFor(name, att.pass_number);
+                if (v === null) return '<td class="num">—</td>';
+                const mType = state.metricTypes[name] || 'score';
+                const cls = window.QymMetrics.getMetricColorClass(v, mType);
+                return '<td class="num ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</td>';
+              }).join('');
+              return '<tr><td class="pass-cmp-vpass">pass ' + att.pass_number + '</td>' + cells + '<td class="num">' + (att.latency_ms ? formatLatency(att.latency_ms) : '—') + '</td></tr>';
+            }).join('');
+            return '<div class="pass-cmp-col' + (isBestG ? ' best' : '') + (allFailed ? ' failed' : '') + '">' +
+              '<div class="pass-cmp-caption"><span class="pass-cmp-pname">' + label + '</span>' + chips + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + '</div>' +
+              outputTextHtml(group[0]) +
+              '<div class="pass-cmp-vwrap"><table class="pass-cmp-vtable"><thead><tr>' + headCells + '</tr></thead><tbody>' + bodyRows + '</tbody></table></div>' +
+              (traceBtnFor(group[0]) ? '<div class="pass-cmp-actions">' + traceBtnFor(group[0]) + '</div>' : '') +
+            '</div>';
+          });
+        } else {
+          summary = attempts.length + ' passes';
+          cols = attempts.map(att => {
+            const st = passState(att);
+            const isBest = bestPass === att.pass_number;
+            const latency = att.latency_ms ? '<span class="pass-cmp-latency">' + formatLatency(att.latency_ms) + '</span>' : '';
+            return '<div class="pass-cmp-col' + (isBest ? ' best' : '') + (att.status === 'error' ? ' failed' : '') + '">' +
+              '<div class="pass-cmp-caption"><span class="pass-cmp-sdot ' + st + '"></span><span class="pass-cmp-pname">Pass ' + att.pass_number + '</span>' + (isBest ? '<span class="pass-cmp-best">★ Best</span>' : '') + latency + '</div>' +
+              outputTextHtml(att) +
+              '<div class="metric-scores-inline">' + pillsFor(att.pass_number) + '</div>' +
+              (traceBtnFor(att) ? '<div class="pass-cmp-actions">' + traceBtnFor(att) + '</div>' : '') +
+            '</div>';
+          });
+        }
+        if (pendingCount > 0) summary += ' · ' + pendingCount + ' pending';
+
+        const modesHtml = '<span class="pass-cmp-modes">' +
+          '<button type="button" class="pass-cmp-mode' + (mode === 'columns' ? ' active' : '') + '" data-mode="columns" data-item-id="' + escapeAttr(itemId) + '">Side by side</button>' +
+          '<button type="button" class="pass-cmp-mode' + (mode === 'grouped' ? ' active' : '') + '" data-mode="grouped" data-item-id="' + escapeAttr(itemId) + '">Group identical</button>' +
+          '</span>' +
+          '<button type="button" class="pass-cmp-close" data-item-id="' + escapeAttr(itemId) + '" title="Back to single-pass view">✕</button>';
+
+        return '<div class="item-run-output pass-cmp">' +
+          '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span><span class="output-actions">' + modesHtml + '</span></div>' +
+          '<div class="pass-cmp-grid" style="--pass-cmp-cols:' + cols.length + ';">' + cols.join('') + '</div>' +
+          rootCauseHtml +
+        '</div>';
+      }
+
       function renderItems(scrollToTop) {
         const preserveAnchor = state.hasRenderedItems && !scrollToTop;
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
@@ -8250,7 +8564,12 @@
           // Attempt lens: a card can be switched to one pass's slice \u2014
           // that pass's output/latency/trace/status and scores.
           const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : null;
-          const lensPass = (!state.viewPass && passAttempts)
+          // Pass comparison replaces the single-output block with all passes
+          // as columns; the lens is moot while it's on.
+          const passCompareMode = (!state.viewPass && passAttempts && passAttempts.filter(Boolean).length > 1)
+            ? ((state.itemPassCompare || {})[baseRow.item_id || String(baseRow.index)] || null)
+            : null;
+          const lensPass = (!passCompareMode && !state.viewPass && passAttempts)
             ? ((state.itemPassLens || {})[baseRow.item_id || String(baseRow.index)] || null)
             : null;
           const latestOutputPass = passAttempts
@@ -8371,6 +8690,7 @@
               return '<button type="button" class="pass-dot pass-dot-switch' + stateClass + activeClass + '" data-pass="' + passNumber + '" aria-label="View pass ' + passNumber + '" aria-pressed="' + (lensPass === passNumber) + '" title="' + escapeAttr(passTitle) + '">' + passNumber + '</button>';
             }).join('');
             statusIndicator += '<span class="pass-dots" data-item-id="' + escapeAttr(itemId) + '" title="' + escapeAttr(dotTitle) + '">' + dots + '</span>';
+            statusIndicator += '<button type="button" class="pass-cmp-open" data-item-id="' + escapeAttr(itemId) + '" title="Compare all passes side by side">⇄ Side by side</button>';
           }
 
           // Root cause + Solution (side by side for failed items)
@@ -8525,12 +8845,20 @@
             }
           }
 
+          let outputBlockHtml = '';
+          if (passCompareMode) {
+            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml);
+          }
+          if (!outputBlockHtml) {
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>';
+          }
+
           return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
             '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
-            '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>' +
+            outputBlockHtml +
           '</div>';
         }).join('');
 
@@ -8565,6 +8893,33 @@
             const n = parseInt(control.dataset.pass || '', 10);
             if (Number.isFinite(n) && n > 0) state.itemPassLens[lensItemId] = n;
             else delete state.itemPassLens[lensItemId];
+            renderItems();
+          });
+        });
+
+        // Pass comparison: open defaults to grouped when passes repeat
+        // themselves, otherwise side-by-side columns.
+        container.querySelectorAll('.pass-cmp-open').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.itemId;
+            const row = (state.snapshot.rows || []).find(r => (r.item_id || String(r.index)) === id);
+            const attempts = (Array.isArray(row?.pass_attempts) ? row.pass_attempts : []).filter(Boolean);
+            const distinct = new Set(attempts.map(a => _passCompareNorm(a.output))).size;
+            state.itemPassCompare = state.itemPassCompare || {};
+            state.itemPassCompare[id] = distinct < attempts.length ? 'grouped' : 'columns';
+            renderItems();
+          });
+        });
+        container.querySelectorAll('.pass-cmp-mode').forEach(btn => {
+          btn.addEventListener('click', () => {
+            state.itemPassCompare = state.itemPassCompare || {};
+            state.itemPassCompare[btn.dataset.itemId] = btn.dataset.mode === 'grouped' ? 'grouped' : 'columns';
+            renderItems();
+          });
+        });
+        container.querySelectorAll('.pass-cmp-close').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (state.itemPassCompare) delete state.itemPassCompare[btn.dataset.itemId];
             renderItems();
           });
         });
