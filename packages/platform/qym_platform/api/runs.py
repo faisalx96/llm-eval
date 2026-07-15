@@ -1032,30 +1032,44 @@ def legacy_list_runs(
         }
 
     # --- Batch query: per-pass score spread for repeat runs (samples > 1) ---
-    # Normal-approximation 95% CI half-width over all per-pass scores; the
-    # ±CI in the metric cell is the visual marker of a multi-sample run.
+    # Normal-approximation 95% CI half-width, clustered by item: passes of
+    # the same item are correlated, so the standard error is computed over
+    # per-item pass means (N = items), not the pooled passes — pooling
+    # understates the interval. The ±CI in the metric cell is the visual
+    # marker of a multi-sample run.
     sampled_run_ids = [r.id for r in runs if int(getattr(r, "samples", 1) or 1) > 1]
     ci_map: Dict[str, Dict[str, float]] = {}
     if sampled_run_ids:
         from qym_platform.db.models import RunItemPassScore
 
-        spread_rows = (
+        item_means = (
             db.query(
-                RunItemPassScore.run_id,
-                RunItemPassScore.metric_name,
-                func.avg(RunItemPassScore.score_numeric).label("mean"),
-                func.count(RunItemPassScore.score_numeric).label("n"),
-                (
-                    func.avg(
-                        RunItemPassScore.score_numeric * RunItemPassScore.score_numeric
-                    )
-                ).label("mean_sq"),
+                RunItemPassScore.run_id.label("run_id"),
+                RunItemPassScore.metric_name.label("metric_name"),
+                func.avg(RunItemPassScore.score_numeric).label("item_mean"),
             )
             .filter(
                 RunItemPassScore.run_id.in_(sampled_run_ids),
                 RunItemPassScore.score_numeric.isnot(None),
             )
-            .group_by(RunItemPassScore.run_id, RunItemPassScore.metric_name)
+            .group_by(
+                RunItemPassScore.run_id,
+                RunItemPassScore.metric_name,
+                RunItemPassScore.item_id,
+            )
+            .subquery()
+        )
+        spread_rows = (
+            db.query(
+                item_means.c.run_id,
+                item_means.c.metric_name,
+                func.avg(item_means.c.item_mean).label("mean"),
+                func.count(item_means.c.item_mean).label("n"),
+                func.avg(item_means.c.item_mean * item_means.c.item_mean).label(
+                    "mean_sq"
+                ),
+            )
+            .group_by(item_means.c.run_id, item_means.c.metric_name)
             .all()
         )
         for row in spread_rows:
@@ -1277,6 +1291,11 @@ def legacy_list_runs(
             "status": r.status,
             "run_config": {},  # Omit full config from list view for payload size
             "samples": int(getattr(r, "samples", 1) or 1),
+            "report_k": (
+                r.run_config.get("report_k")
+                if isinstance(r.run_config, dict)
+                else None
+            ),
             "metric_cis": ci_map.get(r.id) or None,
             "pass_summaries": pass_summary_map.get(r.id) or None,
             "last_completed_pass": (
@@ -2198,7 +2217,16 @@ def run_group_metrics(
             float(score_numeric) if score_numeric is not None else 0.0
         )
 
-    stats = group_stats(items_scores, threshold=threshold, k=samples)
+    run_config = run.run_config if isinstance(run.run_config, dict) else {}
+    raw_report_k = run_config.get("report_k")
+    report_k = (
+        int(raw_report_k)
+        if isinstance(raw_report_k, (int, float)) and 1 <= int(raw_report_k) <= samples
+        else None
+    )
+    stats = group_stats(
+        items_scores, threshold=threshold, k=samples, report_k=report_k
+    )
     max_k = max((len(v) for v in items_scores.values()), default=0)
     band = {
         k: {
@@ -2218,6 +2246,7 @@ def run_group_metrics(
         "metric": metric_name,
         "threshold": threshold,
         "samples": samples,
+        "report_k": report_k,
         "group": stats,
         "band": band,
         "distribution": distribution,

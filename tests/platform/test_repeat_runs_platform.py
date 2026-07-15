@@ -457,3 +457,86 @@ def test_old_sdk_events_without_pass_number_still_ingest():
             .one()
         )
         assert attempt.pass_number == 1
+
+
+def test_runs_list_metric_ci_is_clustered_by_item():
+    """The ±CI half-width must use the SE over per-item pass means, not the
+    pooled passes: passes of one item are correlated, and pooling understates
+    the interval."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+        # Two items x 3 passes, internally consistent (worst case for pooling):
+        # item-1 always 1.0, item-2 always 0.0.
+        for item_id, score in (("item-1", 1.0), ("item-2", 0.0)):
+            session.add(
+                RunItem(run_id=RUN_ID, item_id=item_id, index=0, input={"q": "x"})
+            )
+            for pass_number in (1, 2, 3):
+                session.add(
+                    RunItemPassScore(
+                        run_id=RUN_ID,
+                        item_id=item_id,
+                        metric_name="accuracy",
+                        pass_number=pass_number,
+                        score_numeric=score,
+                    )
+                )
+        session.commit()
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        payload = legacy_list_runs(
+            limit=100,
+            offset=0,
+            project_slug="project-1",
+            status=None,
+            exclude_live=False,
+            user=None,
+            user_id=None,
+            owner_user_id=None,
+            db=session,
+            principal=principal,
+        )
+        summaries = [
+            s
+            for models in payload["tasks"].values()
+            for run_list in models.values()
+            for s in run_list
+        ]
+        summary = next(s for s in summaries if s["run_id"] == RUN_ID)
+        # Item means are 1.0 and 0.0 -> variance 0.25, N=2 items:
+        # half = 1.96 * 0.5 / sqrt(2). The pooled version (N=6 passes) would
+        # give 1.96 * 0.5 / sqrt(6) — asserting the clustered value pins the fix.
+        expected = 1.96 * 0.5 / (2 ** 0.5)
+        assert summary["metric_cis"]["accuracy"] == pytest.approx(expected)
+
+
+def test_group_metrics_respects_report_k_from_run_config():
+    """run_config.report_k publishes pass@k estimated from all samples: the
+    endpoint reports it, and group stats use the unbiased subset estimator."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+        run = session.query(Run).filter(Run.id == RUN_ID).one()
+        run.run_config = {"samples": 3, "report_k": 2}
+        session.commit()
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        gm = run_group_metrics(
+            RUN_ID, metric=None, threshold=0.8, db=session, principal=principal
+        )
+        assert gm["report_k"] == 2
+        # item-1: c=1 of n=3 -> unbiased pass@2 = 1 - C(2,2)/C(3,2) = 2/3
+        assert gm["group"]["pass_at_k"] == pytest.approx(2.0 / 3.0)
+        assert gm["group"]["report_k"] == 2
