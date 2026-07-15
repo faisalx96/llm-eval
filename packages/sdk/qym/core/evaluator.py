@@ -429,6 +429,7 @@ class Evaluator:
         observer: Optional[EvaluationObserver] = None,
         model: Optional[Union[str, Sequence[str]]] = None,
         samples: Optional[int] = None,
+        report_k: Optional[int] = None,
         langfuse_client: Optional[Any] = None,
         progress_callback: Optional[Callable[[ProgressSnapshot], None]] = None,
     ):
@@ -445,6 +446,9 @@ class Evaluator:
             samples: Evaluate every item this many times (k sequential passes)
                 as ONE logical run; group metrics (Pass@k, Pass^k, ...) are
                 reported with k = samples. Overrides ``config.samples``.
+            report_k: Publish pass@k / pass^k at this k, estimated (unbiased)
+                from all ``samples`` passes — run 9, report pass@3. Must be
+                <= samples. Overrides ``config.report_k``.
             langfuse_client: Deprecated and ignored.
             progress_callback: Optional callback receiving ProgressSnapshot updates.
         """
@@ -470,6 +474,14 @@ class Evaluator:
             if not isinstance(samples, int) or samples < 1:
                 raise ValueError("samples must be an integer >= 1")
             self.config.samples = samples
+        if report_k is not None:
+            if not isinstance(report_k, int) or report_k < 1:
+                raise ValueError("report_k must be an integer >= 1")
+            self.config.report_k = report_k
+        if self.config.report_k is not None and self.config.report_k > self.config.samples:
+            raise ValueError(
+                f"report_k ({self.config.report_k}) cannot exceed samples ({self.config.samples})"
+            )
 
         self.task = task
         self._raw_metrics = list(metrics)
@@ -958,9 +970,15 @@ class Evaluator:
                 "timeout": self.timeout,
                 "user_provided_run_name": bool(self.config.run_name),
                 "samples": self.samples,
+                **(
+                    {"report_k": self.config.report_k}
+                    if self.config.report_k is not None
+                    else {}
+                ),
             },
         )
         result.samples = self.samples
+        result.report_k = self.config.report_k
 
         items = self.dataset.get_items()
         if not items:
@@ -1048,6 +1066,16 @@ class Evaluator:
                             "run_config_id": run_config_id,
                             "git_branch": git_info["git_branch"],
                             "git_commit": git_info["git_commit"],
+                            # Repeat runs: the platform derives Run.samples
+                            # from run_config at creation; omitting it made
+                            # streamed repeat runs land as samples=1 with no
+                            # per-pass scores.
+                            "samples": self.samples,
+                            **(
+                                {"report_k": self.config.report_k}
+                                if self.config.report_k is not None
+                                else {}
+                            ),
                         },
                         dataset_id=self._platform_dataset_id,
                         dataset_version_id=self._platform_dataset_version_id,
@@ -1108,6 +1136,12 @@ class Evaluator:
                                     "run_name": self.run_name,
                                     "task_name": self._task_name,
                                     "run_config_id": run_config_id,
+                                    "samples": self.samples,
+                                    **(
+                                        {"report_k": self.config.report_k}
+                                        if self.config.report_k is not None
+                                        else {}
+                                    ),
                                 },
                                 "started_at": _utc_now_str(),
                             },
