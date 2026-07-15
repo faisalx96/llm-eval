@@ -44,6 +44,7 @@ wheels/
 # AI assistant settings (keep local only)
 .claude/
 .codex/
+.codex-work/
 .cursor/
 CLAUDE.md
 AIR_GAPPED_GUIDE.md
