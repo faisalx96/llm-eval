@@ -8201,6 +8201,44 @@ td.col-trace-metric-value {
   cursor: help;
 }
 
+/* Estimator mark: barred accent @k (x̄-style "averaged over all draws") plus
+   a small "i" inviting the teaching hover. Teal @k = estimated from the full
+   pass pool; plain @k = literal run count. */
+.est-atk {
+  position: relative;
+  color: var(--accent-primary);
+  cursor: help;
+}
+
+.est-atk::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 1.5px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+}
+
+.est-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 999px;
+  color: var(--accent-primary);
+  font-size: var(--font-xs);
+  font-weight: 650;
+  font-family: var(--font-mono);
+  line-height: 1;
+  cursor: help;
+  flex: none;
+}
+
 /* Shared pass-status marker used by the run-detail repeat table. */
 .sp-dot {
   display: inline-block;

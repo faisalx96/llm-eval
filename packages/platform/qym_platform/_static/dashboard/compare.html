@@ -387,6 +387,44 @@
       white-space: nowrap;
     }
 
+    /* Estimator mark: a barred accent @k (x̄-style "averaged over all draws")
+       plus a small "i" that invites the teaching hover. Teal @k = estimated
+       from the full pass pool; plain @k = literal run count. */
+    .est-atk {
+      position: relative;
+      color: var(--accent-primary);
+      cursor: help;
+    }
+
+    .est-atk::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -3px;
+      height: 1.5px;
+      background: var(--accent-primary);
+      border-radius: 1px;
+    }
+
+    .est-info {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 12px;
+      height: 12px;
+      margin-left: 4px;
+      border: 1px solid var(--accent-primary);
+      border-radius: 999px;
+      color: var(--accent-primary);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      font-family: var(--font-mono);
+      line-height: 1;
+      cursor: help;
+      flex: none;
+    }
+
     /* Verdict banner: the week-over-week decision, judged against run luck.
        Same surface + bottom-strip pattern as the stat cards. */
     .sweep-verdict {
@@ -5445,11 +5483,24 @@
         `;
       }
 
-      function renderSweepStatCard(label, fromValue, toValue, deltaValue, noise) {
+      // Estimator label: barred accent @k + "i" hover invitation when the
+      // published k is estimated from a larger pass pool (report_k < samples).
+      function estimatorTip(sym, reportK, k) {
+        const name = sym === '^' ? `pass^${reportK}` : `pass@${reportK}`;
+        return `${name} estimated from all ${k} stored passes — the exact result over every possible ${reportK}-pass draw. Unlike a raw ${name} measured from only ${reportK} passes, it does not change on re-run.`;
+      }
+
+      function estimatorLabelHtml(base, sym, reportK, k) {
+        if (!reportK || reportK === k) return escapeHtml(`${base}${sym}${k}`);
+        const tip = escapeAttr(estimatorTip(sym, reportK, k));
+        return `${escapeHtml(base)}<span class="est-atk" title="${tip}">${escapeHtml(sym)}${reportK}</span><span class="est-info" title="${tip}">i</span>`;
+      }
+
+      function renderSweepStatCard(labelHtml, fromValue, toValue, deltaValue, noise) {
         const deltaClass = getNoiseDeltaClass(deltaValue, noise);
         return `
           <div class="sweep-stat-card ${deltaClass}">
-            <div class="sweep-stat-label">${escapeHtml(label)}</div>
+            <div class="sweep-stat-label">${labelHtml}</div>
             <div class="sweep-stat-values">
               <span class="sweep-stat-from">${formatSweepMetricValue(fromValue)}</span>
               <span class="sweep-stat-arrow">→</span>
@@ -5967,18 +6018,17 @@
 
         const reportK = presentation.reportK;
         const noise = presentation.noise || {};
-        const passAtLabel = reportK && reportK !== k ? `Pass@${reportK} · est. from ${k}` : `Pass@${k}`;
-        const passHatLabel = reportK && reportK !== k ? `Pass^${reportK} · est. from ${k}` : `Pass^${k}`;
+        const passAtPlain = reportK && reportK !== k ? `Pass@${reportK}` : `Pass@${k}`;
         const statCards = [
-          renderSweepStatCard(passAtLabel, presentation.left.passAtK, presentation.right.passAtK, presentation.deltas.passAtK, noise.passAtK),
-          renderSweepStatCard(`Avg@${k}`, presentation.left.avgAtK, presentation.right.avgAtK, presentation.deltas.avgAtK, noise.avgAtK),
+          renderSweepStatCard(estimatorLabelHtml('Pass', '@', reportK, k), presentation.left.passAtK, presentation.right.passAtK, presentation.deltas.passAtK, noise.passAtK),
+          renderSweepStatCard(escapeHtml(`Avg@${k}`), presentation.left.avgAtK, presentation.right.avgAtK, presentation.deltas.avgAtK, noise.avgAtK),
           renderSweepStatCard('Consistency', presentation.left.consistency ?? 0, presentation.right.consistency ?? 0, presentation.deltas.consistency, noise.consistency),
           renderSweepStatCard('Reliability', presentation.left.reliability ?? 0, presentation.right.reliability ?? 0, presentation.deltas.reliability, noise.reliability),
-          renderSweepStatCard(passHatLabel, presentation.left.passHatK, presentation.right.passHatK, presentation.deltas.passHatK, noise.passHatK),
+          renderSweepStatCard(estimatorLabelHtml('Pass', '^', reportK, k), presentation.left.passHatK, presentation.right.passHatK, presentation.deltas.passHatK, noise.passHatK),
         ].join('');
         const verdictHtml = noise.avgAtK
           ? renderSweepVerdict(noise, `Avg@${k}`, 'avgAtK')
-          : renderSweepVerdict(noise, passAtLabel, 'passAtK');
+          : renderSweepVerdict(noise, passAtPlain, 'passAtK');
 
         const rowsHtml = presentation.items.map(item => {
           const itemLabel = item.itemId || item.rawItemId || '—';

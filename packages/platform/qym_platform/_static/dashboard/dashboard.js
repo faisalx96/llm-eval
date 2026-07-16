@@ -3617,8 +3617,19 @@
       const reportK = Number(groupPayload.report_k) || null;
       const allPasses = passes.passes || [];
       const k = group.k || passes.samples || 0;
-      const passAtLabel = reportK && reportK !== k ? `Pass@${reportK} · est. from ${k}` : `Pass@${k}`;
-      const passHatLabel = reportK && reportK !== k ? `Pass^${reportK} · est. from ${k}` : `Pass^${k}`;
+      // Estimator mark: barred accent @k + "i" hover invitation when the
+      // published k is estimated from the full pass pool (report_k < samples).
+      const estLabel = (sym, kRep) => {
+        if (!kRep || kRep === k) return `Pass${sym}${k}`;
+        const name = sym === '^' ? `pass^${kRep}` : `pass@${kRep}`;
+        const tip = escapeHtml(
+          `${name} estimated from all ${k} stored passes — the exact result over every possible ${kRep}-pass draw. ` +
+          `Unlike a raw ${name} measured from only ${kRep} passes, it does not change on re-run.`
+        );
+        return `Pass<span class="est-atk" title="${tip}">${sym}${kRep}</span><span class="est-info" title="${tip}">i</span>`;
+      };
+      const passAtLabel = estLabel('@', reportK);
+      const passHatLabel = estLabel('^', reportK);
       const threshold = groupPayload.threshold != null ? groupPayload.threshold : 0.8;
       const thrPct = Math.round(threshold * 100);
       const groupMetric = groupPayload.metric || (passes.metrics || [])[0] || 'primary metric';
