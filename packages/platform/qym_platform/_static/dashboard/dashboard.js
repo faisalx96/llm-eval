@@ -3626,7 +3626,7 @@
           `${name} estimated from all ${k} stored passes — the exact result over every possible ${kRep}-pass draw. ` +
           `Unlike a raw ${name} measured from only ${kRep} passes, it does not change on re-run.`
         );
-        return `Pass<span class="est-atk" title="${tip}">${sym}${kRep}</span><span class="est-info" title="${tip}">i</span>`;
+        return `Pass<span class="est-atk" title="${tip}">${sym}${kRep}</span><span class="est-info" title="${tip}">?</span>`;
       };
       const passAtLabel = estLabel('@', reportK);
       const passHatLabel = estLabel('^', reportK);

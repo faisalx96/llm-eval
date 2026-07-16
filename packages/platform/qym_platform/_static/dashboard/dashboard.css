@@ -8228,11 +8228,11 @@ td.col-trace-metric-value {
   width: 11px;
   height: 11px;
   margin-left: 4px;
-  border: 1px solid var(--border-strong);
+  background: var(--accent-primary);
   border-radius: 999px;
-  color: var(--text-muted);
+  color: var(--bg-void);
   font-size: var(--font-xs);
-  font-weight: 400;
+  font-weight: 650;
   font-family: var(--font-mono);
   line-height: 1;
   transform: scale(0.85);
