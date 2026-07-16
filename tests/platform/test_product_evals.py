@@ -695,6 +695,7 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
         encoding="utf-8",
     )
     monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+    monkeypatch.delenv("QYM_PRODUCT_EVAL_MAX_RETRIES", raising=False)
 
     preset = validate_submit_request(
         preset_name="insightor",
@@ -707,6 +708,7 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
 
     assert preset.default_dataset_name == "playground_set_v2"
     assert preset.requires_dataset_name is False
+    assert preset.default_config["max_retries"] == 1
 
 
 def test_insightor_preset_rejects_env_effective_concurrency_above_20(

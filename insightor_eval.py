@@ -26,7 +26,6 @@ urllib3.disable_warnings(InsecureRequestWarning)
 # Third-party imports - Specialized tools
 import dataikuapi
 from dotenv import load_dotenv
-from langfuse import Langfuse
 from qym import Evaluator
 
 load_dotenv()
@@ -47,8 +46,16 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return os.getenv(name, default)
 
 
-# Initialize Langfuse client for tracking
-client = Langfuse()
+def _unwrap_insightor_output(output: Any) -> Any:
+    """Unwrap qym's task-output envelope for Insightor metrics."""
+    if (
+        isinstance(output, dict)
+        and set(output) == {"output", "metadata"}
+        and isinstance(output.get("output"), dict)
+    ):
+        return output["output"]
+    return output
+
 
 # =============================================================================
 # PROMPT GENERATION FOR LLM EVALUATION
@@ -732,6 +739,7 @@ def context_judge(output, expected, input_data) -> str:
     Returns:
         dict with context_differed, context_influences, and reasoning
     """
+    output = _unwrap_insightor_output(output)
     generated_sql = output.get("sql", "")
     context = output.get("context", "")
 
@@ -897,6 +905,8 @@ def accuracy(output, expected, input_data=None) -> dict:
     Returns:
         dict: Accuracy score and detailed metadata
     """
+    output = _unwrap_insightor_output(output)
+
     # Initialize result tracking variables
     llm_result = {}
     expected_result = {}
@@ -1007,6 +1017,109 @@ def _log_timing(entry: dict):
 response_file_lock = threading.Lock()
 # Output file path for API responses (JSON Lines format)
 API_RESPONSES_FILE = os.path.join(os.path.dirname(__file__), "api_responses.jsonl")
+MAX_SSE_WARNINGS = 20
+
+
+def _record_sse_warning(warnings: List[str], message: str) -> None:
+    """Record a bounded parser warning without interrupting the stream."""
+    if len(warnings) < MAX_SSE_WARNINGS:
+        warnings.append(message)
+
+
+def _parse_sse_data_line(raw_line: Any, warnings: List[str]) -> Optional[dict]:
+    """Parse one SSE data line, returning None for control or malformed lines."""
+    if isinstance(raw_line, bytes):
+        try:
+            line = raw_line.decode("utf-8")
+        except UnicodeDecodeError:
+            _record_sse_warning(warnings, "Ignored SSE line with invalid UTF-8")
+            return None
+    elif isinstance(raw_line, str):
+        line = raw_line
+    else:
+        _record_sse_warning(
+            warnings, f"Ignored SSE line with unexpected type {type(raw_line).__name__}"
+        )
+        return None
+
+    # Accept both the canonical ``data:payload`` form and ``data: payload``.
+    if not line.startswith("data:"):
+        return None
+    payload = line[5:].lstrip()
+    if not payload or payload == "[DONE]":
+        return None
+
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, TypeError):
+        _record_sse_warning(warnings, "Ignored SSE line with invalid JSON")
+        return None
+    if not isinstance(data, dict):
+        _record_sse_warning(warnings, "Ignored SSE JSON payload that was not an object")
+        return None
+    return data
+
+
+def _mapping_or_empty(
+    value: Any, warnings: List[str], field_name: str
+) -> Dict[str, Any]:
+    """Return a mapping value or an empty mapping while recording schema drift."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    _record_sse_warning(
+        warnings,
+        f"Ignored non-object SSE field '{field_name}' ({type(value).__name__})",
+    )
+    return {}
+
+
+def _nonempty_string(value: Any, warnings: List[str], field_name: str) -> Optional[str]:
+    """Return a non-empty string, ignoring invalid values without raising."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    _record_sse_warning(
+        warnings,
+        f"Ignored non-string SSE field '{field_name}' ({type(value).__name__})",
+    )
+    return None
+
+
+def _context_string(value: Any, warnings: List[str], field_name: str) -> Optional[str]:
+    """Normalize textual or structured context without trusting its shape."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    _record_sse_warning(
+        warnings,
+        f"Ignored unsupported SSE field '{field_name}' ({type(value).__name__})",
+    )
+    return None
+
+
+def _auth_error_detail(response: requests.Response) -> str:
+    """Return a bounded server error without exposing submitted credentials."""
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        payload = None
+
+    if isinstance(payload, dict):
+        for key in ("detail", "message", "error_description", "error"):
+            value = payload.get(key)
+            if value:
+                if isinstance(value, (dict, list)):
+                    return json.dumps(value, ensure_ascii=False)[:500]
+                return str(value)[:500]
+
+    text = str(getattr(response, "text", "") or "").strip()
+    return text[:500] if text else "no error details returned"
 
 
 def insightor_api(question: str) -> Dict[str, Any]:
@@ -1021,10 +1134,13 @@ def insightor_api(question: str) -> Dict[str, Any]:
     """
     base_url = _env("INSIGHTOR_URL")
     access_token = None
+    refresh_error: Optional[str] = None
     session = requests.Session()
 
     def _refresh_token() -> bool:
         """Refresh the access token using the refresh_token."""
+        nonlocal access_token, refresh_error
+        refresh_error = None
         try:
             response = requests.post(
                 f"{base_url}/auth/token",
@@ -1035,15 +1151,28 @@ def insightor_api(question: str) -> Dict[str, Any]:
             )
 
             if response.status_code == 200:
-                data = response.json()
-                nonlocal access_token
+                try:
+                    data = response.json()
+                except (TypeError, ValueError):
+                    refresh_error = "HTTP 200 returned invalid JSON"
+                    return False
+                if not isinstance(data, dict):
+                    refresh_error = (
+                        f"HTTP 200 returned {type(data).__name__}, expected an object"
+                    )
+                    return False
                 access_token = data.get("access_token")
-                if access_token:
+                if isinstance(access_token, str) and access_token:
                     session.headers["Authorization"] = f"Bearer {access_token}"
                     return True
+                refresh_error = "HTTP 200 response did not include access_token"
+                return False
+            refresh_error = (
+                f"HTTP {response.status_code}: {_auth_error_detail(response)}"
+            )
             return False
         except requests.RequestException as e:
-            print(e)
+            refresh_error = f"{type(e).__name__}: {e}"
             return False
 
     def _generate_id(prefix: str) -> str:
@@ -1058,7 +1187,9 @@ def insightor_api(question: str) -> Dict[str, Any]:
         """Make HTTP request with automatic token refresh on 401."""
         # Ensure we have a token
         if not access_token and not _refresh_token():
-            raise ValueError("Failed to obtain access token")
+            raise ValueError(
+                f"Failed to obtain access token: {refresh_error or 'unknown error'}"
+            )
 
         url = f"{base_url}{path}"
         response = session.request(method, url, **kwargs)
@@ -1070,7 +1201,9 @@ def insightor_api(question: str) -> Dict[str, Any]:
                 if response.status_code == 401:
                     raise ValueError("Authentication failed after token refresh")
             else:
-                raise ValueError("Token refresh failed")
+                raise ValueError(
+                    f"Token refresh failed: {refresh_error or 'unknown error'}"
+                )
 
         return response
 
@@ -1115,74 +1248,109 @@ def insightor_api(question: str) -> Dict[str, Any]:
     generated_sql = ""
     langfuse_url = ""
     context = ""
+    sse_warnings: List[str] = []
 
     for line in response.iter_lines():
         if not line:
             continue
-        decoded_line = line.decode("utf-8")
         elapsed = time.time() - start_time
-
-        if not decoded_line.startswith("data: ") or decoded_line.startswith(
-            "data: [DONE]"
-        ):
+        data = _parse_sse_data_line(line, sse_warnings)
+        if data is None:
             continue
 
-        try:
-            data = json.loads(decoded_line[6:])  # Remove "data: " prefix
-            rich = data.get("rich", {})
-            rich_type = rich.get("type", "")
-            rich_data = rich.get("data", {})
+        rich = _mapping_or_empty(data.get("rich"), sse_warnings, "rich")
+        rich_type = _nonempty_string(rich.get("type"), sse_warnings, "rich.type") or ""
+        rich_data = _mapping_or_empty(rich.get("data"), sse_warnings, "rich.data")
 
-            # Extract key info for logging
-            event_info = {"elapsed_seconds": round(elapsed, 2), "type": rich_type}
+        # Extract key info for logging
+        event_info = {"elapsed_seconds": round(elapsed, 2), "type": rich_type}
 
-            # Add type-specific info
-            if rich_type == "status_bar_update":
-                event_info["message"] = rich_data.get("message", "")
-                event_info["level"] = rich_data.get("level", "")
-            elif rich_type == "task_tracker_update":
-                task = rich_data.get("task", {})
-                event_info["task_id"] = rich_data.get("task_id", "")
-                event_info["task_status"] = task.get("status", "") if task else ""
-                event_info["task_title"] = task.get("title", "") if task else ""
-                # Extract langfuse_url from task metadata
-                task_metadata = task.get("metadata", {}) if task else {}
-                if task_metadata and "langfuse_url" in task_metadata:
-                    langfuse_url = task_metadata["langfuse_url"]
-                    event_info["langfuse_url"] = langfuse_url
-                # Extract context from task metadata
-                if (
-                    task_metadata
-                    and task["id"] == "rag_context_inject"
-                    and task["status"] == "completed"
-                ):
-                    context = task["metadata"]["context"]
+        # Add type-specific info
+        if rich_type == "status_bar_update":
+            event_info["message"] = rich_data.get("message", "")
+            event_info["level"] = rich_data.get("level", "")
+        elif rich_type == "task_tracker_update":
+            task = _mapping_or_empty(rich_data.get("task"), sse_warnings, "task")
+            event_info["task_id"] = rich_data.get("task_id", "")
+            event_info["task_status"] = task.get("status", "")
+            event_info["task_title"] = task.get("title", "")
+            task_metadata = _mapping_or_empty(
+                task.get("metadata"), sse_warnings, "task.metadata"
+            )
 
-            elif rich_type == "status_card":
-                metadata = rich_data.get("metadata", {})
-                event_info["has_sql"] = "sql" in metadata
-                event_info["has_result"] = "result" in metadata
-                if "sql" in metadata:
-                    generated_sql = metadata["sql"]
-            elif rich_type == "tool_call":
-                event_info["tool_name"] = rich_data.get("name", "")
-                if rich_data.get("name") == "run_sql":
-                    generated_sql = rich_data.get("args", {}).get("sql", "")
-            elif rich_type == "tool_result":
-                result_data = rich_data.get("result", {})
-                if isinstance(result_data, dict) and "sql" in result_data:
-                    generated_sql = result_data["sql"]
-                    event_info["has_sql"] = True
-            elif rich_type == "text":
-                content = rich_data.get("content", "")
-                event_info["text_preview"] = content[:100] if content else ""
-                if content:
-                    agent_response = content
+            next_langfuse_url = _nonempty_string(
+                task_metadata.get("langfuse_url"),
+                sse_warnings,
+                "task.metadata.langfuse_url",
+            )
+            if next_langfuse_url:
+                langfuse_url = next_langfuse_url
+                event_info["langfuse_url"] = langfuse_url
 
-            streaming_events.append(event_info)
+            if (
+                task.get("id") == "rag_context_inject"
+                and task.get("status") == "completed"
+            ):
+                next_context = _context_string(
+                    task_metadata.get("context"),
+                    sse_warnings,
+                    "task.metadata.context",
+                )
+                if next_context:
+                    context = next_context
+                else:
+                    _record_sse_warning(
+                        sse_warnings,
+                        "Completed rag_context_inject task did not include context",
+                    )
 
-        except json.JSONDecodeError:
-            continue
+        elif rich_type == "status_card":
+            metadata = _mapping_or_empty(
+                rich_data.get("metadata"), sse_warnings, "status_card.metadata"
+            )
+            next_sql = _nonempty_string(
+                metadata.get("sql"), sse_warnings, "status_card.metadata.sql"
+            )
+            event_info["has_sql"] = bool(next_sql)
+            event_info["has_result"] = "result" in metadata
+            if next_sql:
+                generated_sql = next_sql
+        elif rich_type == "tool_call":
+            tool_name = _nonempty_string(
+                rich_data.get("name"), sse_warnings, "tool_call.name"
+            )
+            event_info["tool_name"] = tool_name or ""
+            if tool_name == "run_sql":
+                args = _mapping_or_empty(
+                    rich_data.get("args"), sse_warnings, "tool_call.args"
+                )
+                next_sql = _nonempty_string(
+                    args.get("sql"), sse_warnings, "tool_call.args.sql"
+                )
+                if next_sql:
+                    generated_sql = next_sql
+        elif rich_type == "tool_result":
+            result_data = _mapping_or_empty(
+                rich_data.get("result"), sse_warnings, "tool_result.result"
+            )
+            next_sql = _nonempty_string(
+                result_data.get("sql"), sse_warnings, "tool_result.result.sql"
+            )
+            if next_sql:
+                generated_sql = next_sql
+                event_info["has_sql"] = True
+        elif rich_type == "text":
+            content = _nonempty_string(
+                rich_data.get("content"), sse_warnings, "text.content"
+            )
+            event_info["text_preview"] = content[:100] if content else ""
+            if content:
+                agent_response = content
+
+        streaming_events.append(event_info)
+
+    if not generated_sql:
+        _record_sse_warning(sse_warnings, "SSE stream ended without a SQL result")
 
     response_data = {
         "sql": generated_sql,
@@ -1190,6 +1358,8 @@ def insightor_api(question: str) -> Dict[str, Any]:
         "context": context,
         "langfuse_url": langfuse_url,
     }
+    if sse_warnings:
+        response_data["sse_warnings"] = sse_warnings
 
     # Thread-safe write to JSON Lines file (raw response + streaming events)
     # with response_file_lock:
@@ -1214,7 +1384,17 @@ def insightor_api(question: str) -> Dict[str, Any]:
         }
     )
 
-    return response_data
+    task_metadata = {
+        "context": context,
+        "external_trace_url": langfuse_url,
+    }
+    if sse_warnings:
+        task_metadata["sse_warnings"] = list(sse_warnings)
+
+    return {
+        "output": response_data,
+        "metadata": task_metadata,
+    }
 
 
 if __name__ == "__main__":
@@ -1245,9 +1425,14 @@ if __name__ == "__main__":
                     "host": _env("INSIGHTOR_URL"),
                     "kb": _env("KB_VERSION"),
                     "timeout": 900,
+                    "max_retries": 1,
+                    "checkpoint_enabled": False,
+                    "platform_url": os.getenv("QYM_BASE_URL"),
+                    "platform_api_key": os.getenv("QYM_API_KEY"),
                 },
             }
         ]
         * 1,
+        auto_save=False,
         max_parallel_runs=1,  # Control how many runs execute at once (see below)
     )
