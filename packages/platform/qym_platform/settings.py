@@ -53,6 +53,7 @@ class PlatformSettings(BaseSettings):
     product_eval_max_retries: int = Field(default=1, ge=0, le=2)
     product_eval_max_parallel_runs: int = Field(default=1, ge=1, le=3)
     product_eval_metric_timeout: int = Field(default=300, ge=1)
+    product_eval_default_dataset: str = Field(default="playground_set_v2")
 
 
 class ProductEvalSettings(BaseSettings):
@@ -71,3 +72,4 @@ class ProductEvalSettings(BaseSettings):
     max_retries: int = Field(default=1, ge=0, le=2)
     max_parallel_runs: int = Field(default=1, ge=1, le=3)
     metric_timeout: int = Field(default=300, ge=1)
+    default_dataset: str = Field(default="playground_set_v2")
