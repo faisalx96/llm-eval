@@ -485,6 +485,33 @@ class RunItemPassScore(Base):
     )
 
 
+class RunMetricAnalysis(Base):
+    """Cached repeat-analysis curves for one run metric and pass threshold."""
+
+    __tablename__ = "run_metric_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
+    metric_name: Mapped[str] = mapped_column(String(200))
+    # Integer micros avoid floating-point equality in the cache key.
+    threshold_micros: Mapped[int] = mapped_column(Integer)
+    method_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    source_signature: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "metric_name", "threshold_micros", "method_version",
+            name="uq_run_metric_analysis_cache",
+        ),
+        Index(
+            "ix_run_metric_analyses_lookup", "run_id", "metric_name", "threshold_micros"
+        ),
+    )
+
+
 class Approval(Base):
     __tablename__ = "approvals"
 
