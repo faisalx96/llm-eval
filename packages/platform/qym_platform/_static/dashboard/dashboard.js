@@ -3212,20 +3212,13 @@
         const metricClass = window.QymMetrics.getMetricColorClass(value, mType);
         const peerValues = getRunComboPeerValues(allRuns, run, candidate => candidate.metric_averages?.[metric]);
         const display = window.QymMetrics.formatMetricValueSmart(value, mType, peerValues);
-        // Repeat runs: the ±CI half-width is the visual marker that this
-        // value is a mean over samples passes. Formatted with the metric's
-        // own type so percent metrics read "53.3% ±10.0%", not "±0.1".
-        const ciHalf = (run.samples > 1 && run.metric_cis) ? run.metric_cis[metric] : null;
-        const ciHtml = (typeof ciHalf === 'number')
-          ? `<span class="metric-ci" title="95% CI across items × ${run.samples} passes">±${window.QymMetrics.formatMetricValue(ciHalf, mType)}</span>`
-          : '';
         // report_k needs headroom: pass@k estimated from barely k passes is
         // high-noise, so nudge toward samples >= 2k.
         const lowSamples = run.report_k && run.samples < 2 * run.report_k;
         const noiseHtml = lowSamples
           ? `<span class="metric-noise-warn" title="pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.">⚠</span>`
           : '';
-        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${ciHtml}${noiseHtml}</td>`;
+        return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${noiseHtml}</td>`;
       }).join('');
 
       const status = run.status || '';
@@ -3623,10 +3616,9 @@
         if (!kRep || kRep === k) return `Pass${sym}${k}`;
         const name = sym === '^' ? `pass^${kRep}` : `pass@${kRep}`;
         const tip = escapeHtml(
-          `${name} estimated from all ${k} stored passes — the exact result over every possible ${kRep}-pass draw. ` +
-          `Unlike a raw ${name} measured from only ${kRep} passes, it does not change on re-run.`
+          `${name} estimated from all ${k} passes`
         );
-        return `Pass<span class="est-atk" title="${tip}">${sym}${kRep}</span><span class="est-info" title="${tip}">?</span>`;
+        return `Pass<span class="est-atk">${sym}${kRep}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
       };
       const passAtLabel = estLabel('@', reportK);
       const passHatLabel = estLabel('^', reportK);
@@ -6736,3 +6728,42 @@
   updateRunsRefreshCadence();
 
 })();
+
+      // Estimator help tooltip: the runs-list strip and sweep cards clip
+      // overflow (and shell ancestors trap position:fixed), so the tooltip
+      // renders in a body-level portal that nothing can clip.
+      (function initEstimatorTooltipPortal() {
+        let portal = null;
+        document.addEventListener('mouseover', (event) => {
+          const icon = event.target && event.target.closest
+            ? event.target.closest('.est-info-icon')
+            : null;
+          if (!icon) {
+            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
+              portal.style.display = 'none';
+            }
+            return;
+          }
+          const source = icon.querySelector('.stat-info-tooltip');
+          if (!source) return;
+          if (!portal) {
+            portal = document.createElement('div');
+            portal.className = 'stat-info-tooltip est-tooltip-portal';
+            document.body.appendChild(portal);
+          }
+          portal.textContent = source.textContent;
+          const rect = icon.getBoundingClientRect();
+          portal.style.display = 'block';
+          portal.style.position = 'fixed';
+          const half = 110; // tooltip is 220px wide
+          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+          const center = rect.left + rect.width / 2;
+          const left = viewportWidth > 2 * (half + 8)
+            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
+            : center;
+          portal.style.left = Math.round(left) + 'px';
+          portal.style.top = Math.round(rect.top - 8) + 'px';
+          portal.style.bottom = 'auto';
+          portal.style.transform = 'translate(-50%, -100%)';
+        });
+      })();

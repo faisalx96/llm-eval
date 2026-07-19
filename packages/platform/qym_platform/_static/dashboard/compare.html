@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css?v=metric-score-ramp-20260711">
+  <link rel="stylesheet" href="./static/dashboard.css?v=estimator-mark-20260717">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js"></script>
@@ -407,25 +407,28 @@
       border-radius: 1px;
     }
 
-    .est-info {
+    .stat-info-icon.est-info-icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 11px;
-      height: 11px;
+      width: 12px;
+      height: 12px;
       margin-left: 4px;
+      border-radius: 50%;
       background: var(--accent-primary);
-      border-radius: 999px;
-      color: var(--bg-void);
+      color: var(--bg-base);
       font-size: var(--font-xs);
-      font-weight: 650;
-      font-family: var(--font-mono);
-      line-height: 1;
-      transform: scale(0.85);
-      transform-origin: center;
+      font-weight: 700;
+      font-style: italic;
+      font-family: var(--font-sans);
       cursor: help;
-      flex: none;
+      position: relative;
+      flex-shrink: 0;
+      vertical-align: 1px;
     }
+
+    .stat-info-icon.est-info-icon .stat-info-tooltip { display: none !important; }
+
 
     /* Verdict banner: the week-over-week decision, judged against run luck.
        Same surface + bottom-strip pattern as the stat cards. */
@@ -1380,8 +1383,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 15px;
-      height: 15px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       background: var(--accent-primary);
       color: var(--bg-primary);
@@ -5489,14 +5492,54 @@
       // published k is estimated from a larger pass pool (report_k < samples).
       function estimatorTip(sym, reportK, k) {
         const name = sym === '^' ? `pass^${reportK}` : `pass@${reportK}`;
-        return `${name} estimated from all ${k} stored passes — the exact result over every possible ${reportK}-pass draw. Unlike a raw ${name} measured from only ${reportK} passes, it does not change on re-run.`;
+        return `${name} estimated from all ${k} passes`;
       }
 
       function estimatorLabelHtml(base, sym, reportK, k) {
         if (!reportK || reportK === k) return escapeHtml(`${base}${sym}${k}`);
         const tip = escapeAttr(estimatorTip(sym, reportK, k));
-        return `${escapeHtml(base)}<span class="est-atk" title="${tip}">${escapeHtml(sym)}${reportK}</span><span class="est-info" title="${tip}">?</span>`;
+        return `${escapeHtml(base)}<span class="est-atk">${escapeHtml(sym)}${reportK}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
       }
+
+
+      // Estimator help tooltip: the runs-list strip and sweep cards clip
+      // overflow (and shell ancestors trap position:fixed), so the tooltip
+      // renders in a body-level portal that nothing can clip.
+      (function initEstimatorTooltipPortal() {
+        let portal = null;
+        document.addEventListener('mouseover', (event) => {
+          const icon = event.target && event.target.closest
+            ? event.target.closest('.est-info-icon')
+            : null;
+          if (!icon) {
+            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
+              portal.style.display = 'none';
+            }
+            return;
+          }
+          const source = icon.querySelector('.stat-info-tooltip');
+          if (!source) return;
+          if (!portal) {
+            portal = document.createElement('div');
+            portal.className = 'stat-info-tooltip est-tooltip-portal';
+            document.body.appendChild(portal);
+          }
+          portal.textContent = source.textContent;
+          const rect = icon.getBoundingClientRect();
+          portal.style.display = 'block';
+          portal.style.position = 'fixed';
+          const half = 110; // tooltip is 220px wide
+          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+          const center = rect.left + rect.width / 2;
+          const left = viewportWidth > 2 * (half + 8)
+            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
+            : center;
+          portal.style.left = Math.round(left) + 'px';
+          portal.style.top = Math.round(rect.top - 8) + 'px';
+          portal.style.bottom = 'auto';
+          portal.style.transform = 'translate(-50%, -100%)';
+        });
+      })();
 
       function renderSweepStatCard(labelHtml, fromValue, toValue, deltaValue, noise) {
         const deltaClass = getNoiseDeltaClass(deltaValue, noise);

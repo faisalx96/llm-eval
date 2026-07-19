@@ -4554,8 +4554,8 @@ body.chart-col-resize-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--text-muted);
   color: var(--bg-base);
@@ -4911,8 +4911,8 @@ body.chart-col-resize-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--accent-primary);
   color: var(--bg-base);
@@ -8183,22 +8183,36 @@ td.col-trace-metric-value {
   margin-left: 2px;
 }
 
-/* ±CI half-width beside a metric mean — the multi-sample marker. */
-.metric-ci {
-  font-size: var(--font-sm);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  margin-left: var(--space-xs);
-  white-space: nowrap;
-}
-
 /* report_k needs headroom: pass@k from barely k passes is high-noise. */
 .metric-noise-warn {
   font-size: var(--font-sm);
   color: var(--warning);
   margin-left: var(--space-xs);
   cursor: help;
+}
+
+.stat-info-icon.est-info-icon .stat-info-tooltip { display: none !important; }
+
+/* Estimator help mark: qym's stat-info-icon, sized for dense labels. The
+   nested .stat-info-tooltip appears instantly on hover of the symbol. */
+.stat-info-icon.est-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: var(--bg-base);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  font-style: italic;
+  font-family: var(--font-sans);
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: 1px;
 }
 
 /* Estimator mark: barred accent @k (x̄-style "averaged over all draws") plus
@@ -8221,25 +8235,6 @@ td.col-trace-metric-value {
   border-radius: 1px;
 }
 
-.est-info {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 11px;
-  height: 11px;
-  margin-left: 4px;
-  background: var(--accent-primary);
-  border-radius: 999px;
-  color: var(--bg-void);
-  font-size: var(--font-xs);
-  font-weight: 650;
-  font-family: var(--font-mono);
-  line-height: 1;
-  transform: scale(0.85);
-  transform-origin: center;
-  cursor: help;
-  flex: none;
-}
 
 /* Shared pass-status marker used by the run-detail repeat table. */
 .sp-dot {
