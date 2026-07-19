@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Run Detail</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=metric-score-ramp-20260711">
+  <link rel="stylesheet" href="/static/dashboard.css?v=estimator-mark-20260717">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
@@ -647,8 +647,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 15px;
-      height: 15px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       background: var(--accent-primary);
       color: var(--bg-primary);
@@ -3798,6 +3798,36 @@
       display: flex;
       align-items: center;
       gap: var(--space-md);
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .samples-statistic-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 6px;
+      background: var(--bg-elevated);
+    }
+    .samples-statistic-btn {
+      appearance: none;
+      border: 0;
+      border-radius: 4px;
+      padding: 5px 10px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .samples-statistic-btn:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+    .samples-statistic-btn.active {
+      color: var(--accent-primary);
+      background: var(--bg-surface);
     }
     .samples-view-toggle {
       display: inline-flex;
@@ -3824,6 +3854,24 @@
       background: var(--bg-active);
     }
     .samples-band-table { min-width: 0; width: 100%; }
+    .samples-band-table-wrap {
+      width: min(100%, 760px);
+      margin: 0 auto var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .samples-band-cell-main {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+    .samples-band-cell-ci {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      margin-left: var(--space-xs);
+    }
     /* Pass sweep: the first-class per-pass table (all metrics + latencies) */
     .samples-sweep-wrap {
       border: 1px solid var(--border-subtle);
@@ -3903,18 +3951,33 @@
       padding: 7px 14px;
       border-top: 1px solid var(--border-subtle);
     }
-    /* Two-up chart panels: Accuracy vs k beside Correct Distribution */
+    /* Pair repeat performance with its distribution so wide pages carry
+       useful analysis instead of stretching one chart edge to edge. */
     .samples-charts-row {
       display: grid;
-      grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+      grid-template-columns: minmax(0, 1fr);
+      width: 100%;
       gap: var(--space-lg);
       align-items: stretch;
       margin-bottom: var(--space-lg);
     }
+    .samples-charts-row.with-distribution {
+      grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    }
     .samples-charts-row .samples-sweep-wrap { margin-bottom: 0; }
     .samples-charts-row > .samples-chart-block {
       align-self: stretch;
-      height: 100%;
+      height: auto;
+    }
+    .samples-charts-row > .ri-panel {
+      grid-column: auto;
+      align-self: stretch;
+    }
+    .samples-stability-section {
+      width: 100%;
+      margin-bottom: var(--space-lg);
+      padding-top: var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
     }
     .samples-chart-block {
       padding: 0;
@@ -3972,10 +4035,18 @@
     .samples-legend-swatch.hat {
       background: repeating-linear-gradient(90deg, var(--warning) 0 4px, transparent 4px 7px);
     }
+    .samples-legend-band {
+      width: 14px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--accent-primary);
+      opacity: 0.2;
+    }
     .samples-curve {
       width: 100%;
-      flex: 1 1 auto;
-      min-height: 230px;
+      height: 260px;
+      min-height: 260px;
+      flex: none;
       display: block;
     }
     .samples-curve-axis {
@@ -4043,7 +4114,8 @@
       white-space: nowrap;
     }
     @media (max-width: 900px) {
-      .samples-charts-row { grid-template-columns: 1fr; }
+      .samples-charts-row,
+      .samples-charts-row.with-distribution { grid-template-columns: 1fr; }
     }
     /* Run Intelligence: coordinated, non-redundant analytical views. */
     .ri-insights { margin-bottom: var(--space-lg); }
@@ -4095,6 +4167,11 @@
       grid-template-columns: repeat(12, minmax(0, 1fr));
       gap: var(--space-sm);
     }
+    .ri-grid.deep-analysis-grid { gap: var(--space-md); }
+    .ri-grid.deep-analysis-grid > .ri-panel:only-child,
+    .samples-stability-section .ri-panel:only-child { grid-column: 1 / -1; }
+    .ri-grid.deep-analysis-grid > .ri-panel:first-child:nth-last-child(2),
+    .ri-grid.deep-analysis-grid > .ri-panel:first-child:nth-last-child(2) ~ .ri-panel { grid-column: span 6; }
     .ri-panel {
       grid-column: span 4;
       min-width: 0;
@@ -4185,6 +4262,7 @@
       display: block;
       width: 100%;
       height: auto;
+      max-height: 320px;
       margin-inline: auto;
     }
     .ri-axis {
@@ -4310,6 +4388,7 @@
     @media (max-width: 1350px) {
       .ri-panel { grid-column: span 6; }
       .ri-panel.matrix, .ri-panel.trend, .ri-panel.wide { grid-column: 1 / -1; }
+      .ri-grid.deep-analysis-grid > .ri-panel:last-child:nth-child(odd) { grid-column: 1 / -1; }
     }
     @media (max-width: 900px) {
       .category-breakdown-toolbar {
@@ -4817,8 +4896,7 @@
         expandedCategoryGroups: new Set(),
         relationshipX: null,
         relationshipY: null,
-        repeatAnalysisMetric: null,
-        repeatStabilityHiddenMetrics: [],
+        samplesStatistic: 'compare',
         itemDetailView: 'cards',
         visibleMetadataFields: {},
         visibleMetricMetaFields: {},
@@ -4977,6 +5055,45 @@
         if (rate >= 0.4) return 'score-2';
         return 'score-1';
       }
+
+
+      // Estimator help tooltip: rendered in a body-level portal so no
+      // overflow/containing-block ancestor can clip it.
+      (function initEstimatorTooltipPortal() {
+        let portal = null;
+        document.addEventListener('mouseover', (event) => {
+          const icon = event.target && event.target.closest
+            ? event.target.closest('.est-info-icon')
+            : null;
+          if (!icon) {
+            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
+              portal.style.display = 'none';
+            }
+            return;
+          }
+          const source = icon.querySelector('.stat-info-tooltip');
+          if (!source) return;
+          if (!portal) {
+            portal = document.createElement('div');
+            portal.className = 'stat-info-tooltip est-tooltip-portal';
+            document.body.appendChild(portal);
+          }
+          portal.textContent = source.textContent;
+          const rect = icon.getBoundingClientRect();
+          portal.style.display = 'block';
+          portal.style.position = 'fixed';
+          const half = 110; // tooltip is 220px wide
+          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+          const center = rect.left + rect.width / 2;
+          const left = viewportWidth > 2 * (half + 8)
+            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
+            : center;
+          portal.style.left = Math.round(left) + 'px';
+          portal.style.top = Math.round(rect.top - 8) + 'px';
+          portal.style.bottom = 'auto';
+          portal.style.transform = 'translate(-50%, -100%)';
+        });
+      })();
 
       function infoIcon(tooltip) {
         return '<span class="stat-info-icon">i<span class="stat-info-tooltip">' + tooltip + '</span></span>';
@@ -5720,6 +5837,27 @@
         const groupMetricLabel = String(groupMetric || 'Metric')
           .replace(/[_-]+/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase());
+        const finalRepeatPoint = group.band?.[samplesCount] || group.band?.[String(samplesCount)] || null;
+        const finalPassAtK = Number.isFinite(Number(finalRepeatPoint?.pass_at_k))
+          ? Number(finalRepeatPoint.pass_at_k)
+          : g.pass_at_k;
+        const finalPassHatK = Number.isFinite(Number(finalRepeatPoint?.pass_hat_k))
+          ? Number(finalRepeatPoint.pass_hat_k)
+          : g.pass_hat_k;
+
+        // report_k: publish the estimated pass@k (barred @k + help mark)
+        // instead of the raw k=samples point; g.pass_at_k/g.pass_hat_k are
+        // already the unbiased estimators when report_k is set.
+        const reportK = Number(group.report_k) || null;
+        const estActive = !!(reportK && reportK !== samplesCount);
+        function estimatorLabel(sym) {
+          if (!estActive) return 'Pass' + sym + samplesCount;
+          const tip = (sym === '^' ? 'pass^' : 'pass@') + reportK
+            + ' estimated from all ' + samplesCount + ' passes';
+          return 'Pass<span class="est-atk">' + sym + reportK + '</span>'
+            + '<span class="stat-info-icon est-info-icon">i'
+            + '<span class="stat-info-tooltip">' + tip + '</span></span>';
+        }
 
         const passRows = (passes && Array.isArray(passes.passes))
           ? passes.passes.filter(p => p.status !== 'pending')
@@ -5742,8 +5880,8 @@
           '</div>';
         }
         const tilesHtml = [
-          statTile('Pass@' + samplesCount, g.pass_at_k, tooltips.passAtK),
-          statTile('Pass^' + samplesCount, g.pass_hat_k, tooltips.passHatK),
+          statTile(estimatorLabel('@'), estActive ? g.pass_at_k : finalPassAtK, estActive ? '' : tooltips.passAtK),
+          statTile(estimatorLabel('^'), estActive ? g.pass_hat_k : finalPassHatK, estActive ? '' : tooltips.passHatK),
           statTile('Consistency', g.consistency, tooltips.consistency),
           statTile('Reliability', g.reliability, tooltips.reliability),
           statTile('Avg Score', g.avg_at_k, tooltips.avgScore, {
@@ -5773,7 +5911,6 @@
             '</div>'
           : '';
 
-        const ratioColorCls = v => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, 'score') : '');
         const metricColorCls = (v, m) => (typeof v === 'number' ? window.QymMetrics.getMetricColorClass(v, mTypeOf(m)) : '');
 
         // Pass sweep table: every metric + latency stats per pass.
@@ -5818,85 +5955,169 @@
             '</div>';
         }
 
-        // Accuracy-vs-k: chart with a table toggle. All k <= samples computed
-        // on demand from the stored passes.
+        // Unified repeat-performance chart. Pass@k and Pass^k use all stored
+        // passes to estimate an attempt budget; cumulative average uses the
+        // first k observed passes. The endpoint supplies one item-bootstrap
+        // uncertainty band per statistic so every view shares one contract.
         const band = group.band || {};
         const ks = Object.keys(band).map(Number).sort((a, b) => a - b);
+        const statisticOptions = groupMetricType === 'numeric'
+          ? [{ key: 'cumulative_avg', label: 'Average', xLabel: 'Passes observed', copy: 'Average score as observed passes are added.' }]
+          : [
+              { key: 'compare', label: 'Compare', xLabel: 'Attempts allowed', copy: 'Compare the chance of any success with the chance of consistent success as attempts increase.' },
+              { key: 'pass_at_k', label: 'Pass@k', xLabel: 'Attempts allowed', copy: 'Probability that at least one of k selected attempts passes.' },
+              { key: 'pass_hat_k', label: 'Pass^k', xLabel: 'Attempts allowed', copy: 'Probability that all k selected attempts pass.' },
+              { key: 'cumulative_avg', label: 'Average', xLabel: 'Passes observed', copy: 'Average score as observed passes are added.' },
+            ];
+        const statisticKeys = new Set(statisticOptions.map(option => option.key));
+        if (!statisticKeys.has(state.samplesStatistic)) state.samplesStatistic = statisticOptions[0].key;
+        const selectedStatistic = () => statisticOptions.find(option => option.key === state.samplesStatistic) || statisticOptions[0];
+        const statisticValue = (point, key) => Number(point?.[key]);
+        const statisticInterval = (point, key) => point?.uncertainty?.[key] || null;
+        const formatStatistic = (value, key = selectedStatistic().key) => key === 'cumulative_avg'
+          ? fmtMetric(value, groupMetric)
+          : fp(value);
         // Drawn at the box's own size (1 SVG unit = 1px): the panel stretches
         // to match its sibling, so a fixed viewBox would letterbox vertically.
         // fitCurveChart re-renders after layout with the measured dimensions.
         function curveChartHtml(W = 620, H = 230) {
           if (ks.length < 2) return '';
-          const PADL = 52, PADR = 24, PADT = 14, PADB = 26, DATA_INSET = 12;
-          const curveValues = ks.flatMap(k => [band[k].pass_at_k, band[k].pass_hat_k]).filter(Number.isFinite);
+          const selected = selectedStatistic();
+          const isComparison = selected.key === 'compare';
+          const visibleKeys = isComparison ? ['pass_at_k', 'pass_hat_k'] : [selected.key];
+          const PADL = 52, PADR = 24, PADT = 14, PADB = 44, DATA_INSET = 12;
+          const curveValues = ks.flatMap(k => {
+            const point = band[k];
+            return visibleKeys.flatMap(key => {
+              const interval = statisticInterval(point, key);
+              return [statisticValue(point, key), interval?.low, interval?.high];
+            });
+          }).filter(Number.isFinite);
           const observedMin = curveValues.length ? Math.min(...curveValues) : 0;
           const observedMax = curveValues.length ? Math.max(...curveValues) : 1;
           const observedSpan = Math.max(0, observedMax - observedMin);
-          const paddedSpan = Math.max(0.2, observedSpan * 1.4);
-          const center = (observedMin + observedMax) / 2;
-          let yMin = Math.max(0, center - paddedSpan / 2);
-          let yMax = Math.min(1, center + paddedSpan / 2);
-          if (yMin === 0) yMax = Math.min(1, Math.max(yMax, 0.2));
-          if (yMax === 1) yMin = Math.max(0, Math.min(yMin, 0.8));
-          yMin = Math.max(0, Math.floor(yMin * 20) / 20);
-          yMax = Math.min(1, Math.ceil(yMax * 20) / 20);
-          if (yMax <= yMin) yMax = Math.min(1, yMin + 0.2);
+          const boundedScore = isComparison || selected.key !== 'cumulative_avg' || groupMetricType !== 'numeric';
+          let yMin, yMax, yTicks;
+          if (boundedScore) {
+            const tickStep = observedSpan > 0.8 ? 0.2 : 0.1;
+            const padding = Math.max(0.025, observedSpan * 0.05);
+            yMin = Math.max(0, Math.floor((observedMin - padding) / tickStep) * tickStep);
+            yMax = Math.min(1, Math.ceil((observedMax + padding) / tickStep) * tickStep);
+            if (yMax - yMin < 0.2) {
+              const center = (observedMin + observedMax) / 2;
+              yMin = Math.max(0, Math.floor((center - 0.1) / tickStep) * tickStep);
+              yMax = Math.min(1, Math.ceil((center + 0.1) / tickStep) * tickStep);
+            }
+            const tickCount = Math.round((yMax - yMin) / tickStep);
+            yTicks = Array.from({ length: tickCount + 1 }, (_, index) => Number((yMin + tickStep * index).toFixed(10)));
+          } else {
+            const minimumSpan = Math.max(1, Math.abs(observedMax) * 0.1);
+            const paddedSpan = Math.max(minimumSpan, observedSpan * 1.25);
+            const center = (observedMin + observedMax) / 2;
+            yMin = center - paddedSpan / 2;
+            yMax = center + paddedSpan / 2;
+            yTicks = Array.from({ length: 5 }, (_, index) => yMin + (yMax - yMin) * index / 4);
+          }
           const x = k => (PADL + DATA_INSET) + ((k - ks[0]) / (ks[ks.length - 1] - ks[0])) * (W - PADL - PADR - DATA_INSET * 2);
           const y = v => {
             const clamped = Math.max(yMin, Math.min(yMax, v));
             return (H - PADB) - ((clamped - yMin) / (yMax - yMin)) * (H - PADT - PADB);
           };
-          const pts = key => ks.map(k => x(k).toFixed(1) + ' ' + y(band[k][key]).toFixed(1));
-          const line = key => pts(key).map((p, i) => (i === 0 ? 'M' : 'L') + p).join(' ');
-          const dots = (key, color, labelOffset) => ks.map(k => {
-            const value = band[k][key];
+          const colorFor = key => key === 'pass_hat_k' ? 'var(--warning)' : 'var(--accent-primary)';
+          const labelFor = key => key === 'pass_hat_k' ? 'Pass^k' : (key === 'pass_at_k' ? 'Pass@k' : selected.label);
+          const intervalPathFor = (key, opacity) => {
+            const intervalKs = ks.filter(k => {
+              const interval = statisticInterval(band[k], key);
+              return interval && Number.isFinite(interval.low) && Number.isFinite(interval.high);
+            });
+            return intervalKs.length > 1
+              ? '<path d="M' + intervalKs.map(k => x(k).toFixed(1) + ' ' + y(statisticInterval(band[k], key).high).toFixed(1)).join(' L') +
+                ' L' + intervalKs.slice().reverse().map(k => x(k).toFixed(1) + ' ' + y(statisticInterval(band[k], key).low).toFixed(1)).join(' L') +
+                ' Z" fill="' + colorFor(key) + '" opacity="' + opacity + '"/>'
+              : '';
+          };
+          const lineFor = key => {
+            const points = ks.map(k => x(k).toFixed(1) + ' ' + y(statisticValue(band[k], key)).toFixed(1));
+            return points.map((point, index) => (index === 0 ? 'M' : 'L') + point).join(' ');
+          };
+          const marksFor = key => ks.map(k => {
+            const value = statisticValue(band[k], key);
+            const interval = statisticInterval(band[k], key);
             const markerY = y(value);
+            const labelOffset = isComparison && key === 'pass_hat_k' ? 19 : -11;
             const labelY = Math.max(PADT + 9, Math.min(H - PADB - 5, markerY + labelOffset));
-            return '<circle cx="' + x(k).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + color + '" stroke-width="2"><title>' + Math.round(value * 100) + '%</title></circle>' +
-              '<text x="' + x(k).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="samples-curve-value" fill="' + color + '">' + Math.round(value * 100) + '%</text>';
+            const intervalTitle = interval ? ' · 95% uncertainty ' + formatStatistic(interval.low, key) + ' to ' + formatStatistic(interval.high, key) : '';
+            return '<circle cx="' + x(k).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + colorFor(key) + '" stroke-width="2"><title>' + escapeHtml(labelFor(key) + ' · k=' + k + ': ' + formatStatistic(value, key) + intervalTitle) + '</title></circle>' +
+              '<text x="' + x(k).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="samples-curve-value" fill="' + colorFor(key) + '">' + escapeHtml(formatStatistic(value, key)) + '</text>';
           }).join('');
-          const gridline = (v, label) =>
+          const axisFormat = value => boundedScore ? Math.round(value * 100) + '%' : fmtMetric(value, groupMetric);
+          const gridline = v =>
             '<line x1="' + PADL + '" y1="' + y(v) + '" x2="' + (W - PADR) + '" y2="' + y(v) + '" stroke="var(--border-subtle)"' + (v !== yMin ? ' stroke-dasharray="3 5"' : '') + '/>' +
-            '<text x="' + (PADL - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="samples-curve-axis">' + label + '</text>';
-          const yTicks = Array.from({ length: 5 }, (_, index) => yMin + (yMax - yMin) * index / 4);
-          return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="' + escapeAttr(groupMetricLabel) + ' versus k with y-axis from ' + Math.round(yMin * 100) + '% to ' + Math.round(yMax * 100) + '%">' +
-              yTicks.slice().reverse().map(value => gridline(value, Math.round(value * 100) + '%')).join('') +
-              '<g stroke="var(--warning)" fill="none" stroke-width="1.8" stroke-dasharray="5 4" stroke-linecap="round"><path d="' + line('pass_hat_k') + '"/></g>' +
-              '<g stroke="var(--accent-primary)" fill="none" stroke-width="2.2" stroke-linecap="round"><path d="' + line('pass_at_k') + '"/></g>' +
-              dots('pass_hat_k', 'var(--warning)', 17) +
-              dots('pass_at_k', 'var(--accent-primary)', -12) +
-              ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
+            '<text x="' + (PADL - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="samples-curve-axis">' + escapeHtml(axisFormat(v)) + '</text>';
+          return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="samples-curve" role="img" aria-label="' + escapeAttr(selected.label + ' for ' + groupMetricLabel) + '">' +
+              yTicks.slice().reverse().map(gridline).join('') +
+              visibleKeys.map(key => intervalPathFor(key, isComparison ? 0.08 : 0.12)).join('') +
+              visibleKeys.map(key => '<path d="' + lineFor(key) + '" fill="none" stroke="' + colorFor(key) + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"' + (key === 'pass_hat_k' ? ' stroke-dasharray="6 5"' : '') + '/>').join('') +
+              visibleKeys.map(marksFor).join('') +
+              ks.map(k => '<text x="' + x(k).toFixed(1) + '" y="' + (H - 24) + '" text-anchor="middle" class="samples-curve-axis">k=' + k + '</text>').join('') +
+              '<text x="' + ((PADL + W - PADR) / 2) + '" y="' + (H - 6) + '" text-anchor="middle" class="samples-curve-axis">' + escapeHtml(selected.xLabel) + '</text>' +
             '</svg>';
         }
         function curveTableHtml() {
           if (!ks.length) return '';
+          const tableStatistics = groupMetricType === 'numeric'
+            ? [{ key: 'cumulative_avg', label: 'Average' }]
+            : [
+                { key: 'pass_at_k', label: 'Pass@k' },
+                { key: 'pass_hat_k', label: 'Pass^k' },
+                { key: 'cumulative_avg', label: 'Average' },
+              ];
+          const tableCell = (point, statistic) => {
+            const value = statisticValue(point, statistic.key);
+            const interval = statisticInterval(point, statistic.key);
+            const margin = interval && Number.isFinite(interval.low) && Number.isFinite(interval.high)
+              ? (interval.high - interval.low) / 2
+              : null;
+            const title = interval
+              ? '95% CI: ' + formatStatistic(interval.low, statistic.key) + ' to ' + formatStatistic(interval.high, statistic.key)
+              : '95% CI unavailable';
+            return '<td class="sw-num" title="' + escapeAttr(title) + '"><span class="samples-band-cell-main">' + escapeHtml(formatStatistic(value, statistic.key)) + '</span>' +
+              (margin !== null ? '<span class="samples-band-cell-ci">±' + escapeHtml(formatStatistic(margin, statistic.key)) + '</span>' : '') + '</td>';
+          };
           const rows = ks.map(k =>
             '<tr>' +
               '<td class="sw-pass">k=' + k + '</td>' +
-              '<td class="sw-num"><span class="sw-val ' + ratioColorCls(band[k].pass_at_k) + '">' + fp(band[k].pass_at_k) + '</span></td>' +
-              '<td class="sw-num"><span class="sw-val ' + ratioColorCls(band[k].pass_hat_k) + '">' + fp(band[k].pass_hat_k) + '</span></td>' +
+              tableStatistics.map(statistic => tableCell(band[k], statistic)).join('') +
             '</tr>'
           ).join('');
-          return '<table class="samples-sweep samples-band-table">' +
+          return '<div class="samples-band-table-wrap"><table class="samples-sweep samples-band-table">' +
             '<thead><tr><th>k</th>' +
-            '<th class="sw-num-h">Pass@k ' + infoIcon('If the task got k tries, how often would at least one pass? Computed from all ' + samplesCount + ' stored passes (unbiased estimator).') + '</th>' +
-            '<th class="sw-num-h">Pass^k ' + infoIcon('If the task got k tries, how often would ALL k pass? The reliability counterpart of Pass@k.') + '</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table>';
+            tableStatistics.map(statistic => '<th class="sw-num-h">' + statistic.label + '</th>').join('') +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
         }
         const curveBlock = () => {
           const mode = state.samplesCurveView || 'chart';
+          const selected = selectedStatistic();
+          const isComparison = selected.key === 'compare';
+          const hasUncertainty = ks.some(k => isComparison
+            ? statisticInterval(band[k], 'pass_at_k') || statisticInterval(band[k], 'pass_hat_k')
+            : statisticInterval(band[k], selected.key));
           const legend = mode === 'chart'
             ? '<div class="samples-legend">' +
-                '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>Pass@k</span>' +
-                '<span class="samples-legend-chip"><span class="samples-legend-swatch hat"></span>Pass^k</span>' +
+                (isComparison
+                  ? '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>Pass@k</span><span class="samples-legend-chip"><span class="samples-legend-swatch hat"></span>Pass^k</span>'
+                  : '<span class="samples-legend-chip"><span class="samples-legend-swatch at"></span>' + escapeHtml(selected.label) + '</span>') +
+                (hasUncertainty ? '<span class="samples-legend-chip" title="Uncertainty when generalizing to another comparable set of evaluation items."><span class="samples-legend-band"></span>95% CI</span>' : '') +
               '</div>'
             : '';
           return '<div class="samples-curve-head">' +
               '<div class="samples-chart-heading">' +
-                '<div class="samples-zone-title">' + escapeHtml(groupMetricLabel) + ' vs k</div>' +
-                '<div class="samples-zone-copy">Probability that at least one or all selected attempts pass.</div>' +
+                '<div class="samples-zone-title">Repeat Performance</div>' +
+                '<div class="samples-zone-copy">' + escapeHtml(selected.copy) + '</div>' +
               '</div>' +
-              '<div class="samples-curve-controls">' + legend +
+              '<div class="samples-curve-controls">' +
+                '<div class="samples-statistic-tabs" role="tablist" aria-label="Repeat performance view">' + statisticOptions.map(option => '<button type="button" role="tab" class="samples-statistic-btn' + (option.key === selected.key ? ' active' : '') + '" data-samples-statistic="' + option.key + '" aria-selected="' + (option.key === selected.key) + '">' + escapeHtml(option.label) + '</button>').join('') + '</div>' +
+                legend +
                 '<div class="samples-view-toggle">' +
                   '<button type="button" class="samples-view-btn' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
                   '<button type="button" class="samples-view-btn' + (mode === 'table' ? ' active' : '') + '" data-view="table" aria-pressed="' + (mode === 'table') + '">Table</button>' +
@@ -5908,8 +6129,64 @@
               : curveTableHtml());
         };
 
-        // Correct distribution — the same horizontal segmented bar used by
-        // Models/Compare, with an explicit breakdown for small/empty buckets.
+        // Repeat stability belongs beside repeat performance and follows the
+        // metric selected above. Binary outcomes use the exact pass-count
+        // distribution; richer score metrics also get item volatility and
+        // threshold sensitivity views.
+        const repeatRows = Array.isArray(state.snapshot?.rows) ? state.snapshot.rows : [];
+        const passVectors = repeatRows.map((row, rowIndex) => ({
+          row,
+          rowIndex,
+          values: (row.pass_scores?.[groupMetric] || []).map(Number).filter(Number.isFinite),
+        })).filter(point => point.values.length > 1);
+        let stabilityMapHtml = '';
+        if (!isBool && groupMetricType !== 'numeric' && passVectors.length) {
+          const points = passVectors.map(point => ({ ...point, mean: riMean(point.values), stddev: riStdDev(point.values) }));
+          const W = 620, H = 245, L = 54, R = 18, T = 16, B = 42;
+          const maxStd = Math.max(0.1, ...points.map(point => point.stddev)) * 1.08;
+          const x = value => riScale(value, 0, 1, L, W - R);
+          const y = value => riScale(value, 0, maxStd, H - B, T);
+          let svg = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>';
+          [0, 0.5, 1].forEach(value => svg += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+          [0, maxStd / 2, maxStd].forEach(value => svg += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+          points.forEach(point => {
+            svg += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="3.5" fill="var(--accent-primary)" stroke="var(--bg-surface)" stroke-width="1.5"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + groupMetric + ' · mean ' + formatPercent(point.mean) + ' · standard deviation ' + formatPercent(point.stddev)) + '</title></circle>';
+          });
+          svg += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Mean score</text><text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Pass-to-pass standard deviation</text>';
+          stabilityMapHtml = '<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Stability Map</div><div class="ri-panel-copy">Mean score versus pass-to-pass variation for ' + escapeHtml(groupMetric) + ', one point per item.</div></div></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Mean score versus repeat stability for ' + escapeAttr(groupMetric) + '">' + svg + '</svg></div>';
+        }
+
+        let thresholdExplorerHtml = '';
+        if (supportsThreshold && passVectors.length) {
+          const thresholds = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
+          const allValues = passVectors.flatMap(point => point.values);
+          const passRates = thresholds.map(threshold => allValues.length ? allValues.filter(value => value >= threshold).length / allValues.length : 0);
+          const partialRates = thresholds.map(threshold => passVectors.length ? passVectors.filter(point => {
+            const passesAtThreshold = point.values.filter(value => value >= threshold).length;
+            return passesAtThreshold > 0 && passesAtThreshold < point.values.length;
+          }).length / passVectors.length : 0);
+          const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38, DATA_INSET = 12;
+          const x = index => riScale(index, 0, thresholds.length - 1, L + DATA_INSET, W - R - DATA_INSET);
+          const y = value => riScale(value, 0, 1, H - B, T);
+          let svg = '';
+          [0, 0.25, 0.5, 0.75, 1].forEach(value => svg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
+          [
+            { values: passRates, color: 'var(--chart-1)', labelOffset: -9 },
+            { values: partialRates, color: 'var(--chart-5)', labelOffset: 14, dash: true },
+          ].forEach(line => {
+            svg += '<path d="' + line.values.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="' + line.color + '" stroke-width="2.5"' + (line.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
+            line.values.forEach((value, index) => {
+              const markerY = y(value);
+              const labelY = Math.max(T + 9, Math.min(H - B - 5, markerY + line.labelOffset));
+              svg += '<circle cx="' + x(index).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + line.color + '" stroke-width="2"><title>≥' + Math.round(thresholds[index] * 100) + '%: ' + escapeHtml(formatPercent(value)) + '</title></circle><text x="' + x(index).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="ri-point-value" fill="' + line.color + '">' + escapeHtml(formatPercent(value, 0)) + '</text>';
+            });
+          });
+          thresholds.forEach((threshold, index) => svg += '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">≥' + Math.round(threshold * 100) + '%</text>');
+          thresholdExplorerHtml = '<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Threshold Explorer</div><div class="ri-panel-copy">Pass rate and partial-pass items for ' + escapeHtml(groupMetric) + ' at several thresholds.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-1)"><span class="ri-legend-swatch"></span>pass rate</span><span class="ri-legend-item" style="--ri-color:var(--chart-5)"><span class="ri-legend-swatch"></span>partial-pass items</span></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(groupMetric + ' pass rate and partial-pass items by threshold') + '">' + svg + '</svg></div>';
+        }
+
+        // Pass-count distribution — exact correctness for binary metrics and
+        // thresholded passes for richer score metrics.
         const dist = Array.isArray(group.distribution) ? group.distribution : null;
         function distChartHtml() {
           let buckets;
@@ -5924,24 +6201,33 @@
             buckets = grouped;
           }
           const maximum = Math.max(1, ...buckets.map(bucket => bucket.count));
-          return '<div class="samples-correct-chart" role="img" aria-label="Distribution of items by correct passes">' + buckets.map((bucket, index) => {
+          return '<div class="samples-correct-chart" role="img" aria-label="Distribution of items by passing attempts">' + buckets.map((bucket, index) => {
             const edgeClass = index === 0 ? ' zero' : (index === buckets.length - 1 ? ' all' : '');
             const height = Math.max(bucket.count ? 3 : 0, Math.round((bucket.count / maximum) * 100));
             const title = samplesCount <= 10
-              ? bucket.correct + ' of ' + samplesCount + ' passes correct: ' + bucket.count + ' items'
-              : bucket.label + ' correct passes: ' + bucket.count + ' items';
+              ? bucket.correct + ' of ' + samplesCount + ' attempts passed: ' + bucket.count + ' items'
+              : bucket.label + ' passing attempts: ' + bucket.count + ' items';
             return '<div class="samples-correct-col"><div class="samples-correct-bar' + edgeClass + '" style="--samples-correct-height:' + height + '%" title="' + escapeAttr(title) + '"><span class="samples-correct-count">' + bucket.count + '</span><span class="samples-correct-label">' + bucket.label + '</span></div></div>';
           }).join('') + '</div>';
         }
+        const distributionTitle = isBool ? 'Correct Distribution' : 'Pass Distribution';
+        const distributionCopy = isBool
+          ? 'Items by exact correct-pass count. Runs above 10 passes are grouped into percentage bins.'
+          : 'Items by attempts meeting the selected pass threshold. Runs above 10 passes are grouped into percentage bins.';
         const distBlockHtml = (dist && dist.length > 1)
-          ? '<div class="samples-chart-block samples-sweep-wrap">' +
-              '<div class="samples-curve-head">' +
-                '<div class="samples-chart-heading">' +
-                  '<div class="samples-zone-title">Correct Distribution</div>' +
-                  '<div class="samples-zone-copy">Items by exact correct-pass count. Runs above 10 passes are grouped into percentage bins.</div>' +
-                '</div>' +
-              '</div>' +
+          ? '<div class="ri-panel samples-distribution-panel">' +
+              '<div class="ri-panel-head"><div>' +
+                '<div class="ri-panel-title">' + distributionTitle + '</div>' +
+                '<div class="ri-panel-copy">' + distributionCopy + '</div>' +
+              '</div></div>' +
               '<div class="samples-chart-body">' + distChartHtml() + '</div>' +
+            '</div>'
+          : '';
+        const stabilityPanelsHtml = stabilityMapHtml + thresholdExplorerHtml;
+        const stabilitySectionHtml = stabilityPanelsHtml
+          ? '<div class="ri-analysis-section samples-stability-section" style="--ri-section-color:var(--accent-tertiary)">' +
+              '<div class="ri-subhead"><h4>Repeat Stability</h4><span>See which items stay dependable and where results vary between attempts.</span></div>' +
+              '<div class="ri-grid">' + stabilityPanelsHtml + '</div>' +
             '</div>'
           : '';
 
@@ -5956,10 +6242,11 @@
           '</div>' +
           '<div class="samples-group-tiles">' + tilesHtml + '</div>' +
           sweepHtml +
-          '<div class="samples-charts-row">' +
+          '<div class="samples-charts-row' + (distBlockHtml ? ' with-distribution' : '') + '">' +
             '<div class="samples-chart-block samples-sweep-wrap" id="samples-curve-block">' + curveBlock() + '</div>' +
             distBlockHtml +
-          '</div>';
+          '</div>' +
+          stabilitySectionHtml;
 
         const blockEl = el('samples-curve-block');
         container.querySelectorAll('tr[data-sw-pass]').forEach(tr => {
@@ -5975,6 +6262,7 @@
             if (!nextMetric || nextMetric === groupMetric) return;
             state.samplesMetric = nextMetric;
             renderSamplesAnalysis();
+            renderOverview();
           });
         });
         const samplesThreshold = container.querySelector('[data-samples-threshold]');
@@ -6006,6 +6294,16 @@
           svg.outerHTML = curveChartHtml(w, h);
         }
         function wireCurveToggle() {
+          blockEl.querySelectorAll('[data-samples-statistic]').forEach(button => {
+            button.addEventListener('click', () => {
+              const statistic = button.dataset.samplesStatistic;
+              if (!statisticKeys.has(statistic) || statistic === state.samplesStatistic) return;
+              state.samplesStatistic = statistic;
+              blockEl.innerHTML = curveBlock();
+              wireCurveToggle();
+              requestAnimationFrame(fitCurveChart);
+            });
+          });
           blockEl.querySelectorAll('.samples-view-btn').forEach(btn => {
             btn.addEventListener('click', () => {
               state.samplesCurveView = btn.dataset.view;
@@ -6617,7 +6915,7 @@
                 '<text x="' + (x + cellW / 2).toFixed(1) + '" y="' + (y + cellH / 2 + 4).toFixed(1) + '" text-anchor="middle" class="ri-cell-value">' + label + '</text>';
             });
           });
-          relationshipPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Correlation</div><div class="ri-panel-copy">Pearson correlation across matched item means.</div></div></div>' +
+          relationshipPanels.push('<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Correlation</div><div class="ri-panel-copy">Pearson correlation across matched item means.</div></div></div>' +
             '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Metric correlation matrix">' + matrix + '</svg></div>');
 
           const xMetric = metricByName.get(state.relationshipX);
@@ -6647,7 +6945,7 @@
           scatter += '<text x="' + ((SL + SW - SR) / 2) + '" y="' + (SH - 8) + '" text-anchor="middle" class="ri-label">' + escapeHtml(xMetric.name) + '</text>' +
             '<text x="16" y="' + ((ST + SH - SB) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((ST + SH - SB) / 2) + ')" class="ri-label">' + escapeHtml(yMetric.name) + '</text>';
           const options = selected => series.map(metric => '<option value="' + escapeAttr(metric.name) + '"' + (metric.name === selected ? ' selected' : '') + '>' + escapeHtml(metric.name) + '</option>').join('');
-          relationshipPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Relationship</div><div class="ri-panel-copy">' + escapeHtml(xMetric.name) + ' versus ' + escapeHtml(yMetric.name) + ', item by item.</div></div>' +
+          relationshipPanels.push('<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Relationship</div><div class="ri-panel-copy">' + escapeHtml(xMetric.name) + ' versus ' + escapeHtml(yMetric.name) + ', item by item.</div></div>' +
             '<div class="ri-relationship-controls"><span class="ri-axis-control"><label for="ri-x-axis">X</label><select class="filter-select ri-axis-select" id="ri-x-axis" data-ri-axis="x">' + options(xMetric.name) + '</select></span>' +
             '<span class="ri-axis-control"><label for="ri-y-axis">Y</label><select class="filter-select ri-axis-select" id="ri-y-axis" data-ri-axis="y">' + options(yMetric.name) + '</select></span>' +
             '<span class="ri-panel-stat">r ' + (correlation === null ? '\u2014' : correlation.toFixed(2)) + '</span></div></div>' +
@@ -6658,7 +6956,7 @@
         const qualityItems = qualityMetric.points.map(point => ({ row: point.row, rowIndex: point.rowIndex, quality: point.value, latency: Number(point.row.latency_ms) })).filter(item => Number.isFinite(item.latency) && item.latency > 0);
         let frontierPanel = '';
         if (qualityItems.length > 1) {
-          const W = 1000, H = 285, L = 54, R = 18, T = 16, B = 42;
+          const W = 620, H = 250, L = 54, R = 18, T = 16, B = 42;
           const latencies = qualityItems.map(item => item.latency);
           const qualities = qualityItems.map(item => item.quality);
           let latMin = Math.min(...latencies), latMax = Math.max(...latencies);
@@ -6709,137 +7007,15 @@
             '<span class="ri-frontier-legend-item"><span class="ri-frontier-line p95"></span>p95 latency</span>' +
             (hasOutliers ? '<span class="ri-frontier-legend-item"><span class="ri-frontier-outlier"></span>&gt;p95 outliers</span>' : '') +
           '</div>';
-          frontierPanel = '<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item, positioned by quality and response time.</div></div></div>' +
+          frontierPanel = '<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item, positioned by quality and response time.</div></div></div>' +
             frontierLegend +
             '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Quality versus latency by item">' + frontier + '</svg>' +
           '</div>';
         }
 
-        // Cross-pass panels have no place on a ?pass=N page (rows keep their
-        // pass_scores there, so gate on the view, not the data).
-        const repeatSeries = state.viewPass ? [] : series.filter(metric => metric.type !== 'numeric' && metric.points.some(point => Array.isArray(point.row.pass_scores?.[metric.name]) && point.row.pass_scores[metric.name].length > 1));
-        const repeatPanels = [];
-        let repeatMetricControlHtml = '';
-        if (repeatSeries.length) {
-          if (!repeatSeries.some(metric => metric.name === state.repeatAnalysisMetric)) {
-            state.repeatAnalysisMetric = repeatSeries.some(metric => metric.name === state.selectedMetric)
-              ? state.selectedMetric
-              : repeatSeries[0].name;
-          }
-          const repeatMetric = repeatSeries.find(metric => metric.name === state.repeatAnalysisMetric) || repeatSeries[0];
-          const repeatMetricNames = new Set(repeatSeries.map(metric => metric.name));
-          state.repeatStabilityHiddenMetrics = (state.repeatStabilityHiddenMetrics || []).filter(name => repeatMetricNames.has(name));
-          const hiddenStabilityMetrics = new Set(state.repeatStabilityHiddenMetrics);
-          let visibleStabilitySeries = repeatSeries.filter(metric => !hiddenStabilityMetrics.has(metric.name));
-          if (!visibleStabilitySeries.length) {
-            state.repeatStabilityHiddenMetrics = [];
-            hiddenStabilityMetrics.clear();
-            visibleStabilitySeries = repeatSeries;
-          }
-          if (repeatSeries.length > 1) {
-            repeatMetricControlHtml = '<span class="ri-axis-control ri-repeat-metric-control"><label for="ri-repeat-metric">Metric</label>' +
-              '<select class="filter-select ri-repeat-metric-select" id="ri-repeat-metric" data-ri-repeat-metric>' +
-                repeatSeries.map(metric => '<option value="' + escapeAttr(metric.name) + '"' + (metric.name === repeatMetric.name ? ' selected' : '') + '>' + escapeHtml(metric.name) + '</option>').join('') +
-              '</select></span>';
-          }
-          const volatility = [];
-          visibleStabilitySeries.forEach(metric => {
-            const metricIndex = repeatSeries.indexOf(metric);
-            metric.points.forEach(point => {
-              const values = (point.row.pass_scores?.[metric.name] || []).map(Number).filter(Number.isFinite);
-              if (values.length > 1) volatility.push({ metric, metricIndex, row: point.row, rowIndex: point.rowIndex, mean: riMean(values), stddev: riStdDev(values) });
-            });
-          });
-          if (volatility.length) {
-            const W = 1000, H = 285, L = 54, R = 18, T = 16, B = 42;
-            const maxStd = Math.max(0.1, ...volatility.map(point => point.stddev)) * 1.08;
-            const x = value => riScale(value, 0, 1, L, W - R);
-            const y = value => riScale(value, 0, maxStd, H - B, T);
-            let stability = '<line x1="' + L + '" y1="' + (H - B) + '" x2="' + (W - R) + '" y2="' + (H - B) + '" class="ri-axis"/><line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (H - B) + '" class="ri-axis"/>';
-            [0, 0.5, 1].forEach(value => stability += '<text x="' + x(value).toFixed(1) + '" y="' + (H - B + 18) + '" text-anchor="middle" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
-            [0, maxStd / 2, maxStd].forEach(value => stability += '<text x="' + (L - 10) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
-            volatility.forEach(point => {
-              stability += '<circle cx="' + x(point.mean).toFixed(1) + '" cy="' + y(point.stddev).toFixed(1) + '" r="3.5" fill="' + chartColors[point.metricIndex % chartColors.length] + '" stroke="var(--bg-surface)" stroke-width="1.5"><title>' + escapeHtml((point.row.item_id || ('Item ' + (point.rowIndex + 1))) + ' · ' + point.metric.name + ' · mean ' + formatPercent(point.mean) + ' · standard deviation ' + formatPercent(point.stddev)) + '</title></circle>';
-            });
-            stability += '<text x="' + ((L + W - R) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="ri-label">Mean score</text><text x="16" y="' + ((T + H - B) / 2) + '" text-anchor="middle" transform="rotate(-90 16 ' + ((T + H - B) / 2) + ')" class="ri-label">Pass-to-pass standard deviation</text>';
-            const legend = repeatSeries.map((metric, index) => {
-              const isVisible = !hiddenStabilityMetrics.has(metric.name);
-              return '<button type="button" class="ri-legend-item ri-legend-toggle' + (isVisible ? '' : ' off') + '" style="--ri-color:' + chartColors[index % chartColors.length] + '" data-ri-stability-metric="' + escapeAttr(metric.name) + '" aria-pressed="' + isVisible + '"><span class="ri-legend-swatch"></span>' + escapeHtml(metric.name) + '</button>';
-            }).join('');
-            repeatPanels.push('<div class="ri-panel wide"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Stability Map</div><div class="ri-panel-copy">Mean score versus pass-to-pass standard deviation, one point per item and metric.</div></div></div><div class="ri-legend">' + legend + '</div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Mean score versus repeat stability">' + stability + '</svg></div>');
-          }
-
-          const thresholdMetric = repeatMetric;
-          const valuesByItem = thresholdMetric.points.map(point => (point.row.pass_scores?.[thresholdMetric.name] || [point.value]).map(Number).filter(Number.isFinite)).filter(values => values.length);
-          const thresholds = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
-          const passRates = thresholds.map(threshold => {
-            const values = valuesByItem.flat();
-            return values.length ? values.filter(value => value >= threshold).length / values.length : 0;
-          });
-          const partialRates = thresholds.map(threshold => valuesByItem.length ? valuesByItem.filter(values => {
-            const passes = values.filter(value => value >= threshold).length;
-            return passes > 0 && passes < values.length;
-          }).length / valuesByItem.length : 0);
-          const lineChart = (lines, labels, ariaLabel) => {
-            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38, DATA_INSET = 12;
-            const x = index => riScale(index, 0, labels.length - 1, L + DATA_INSET, W - R - DATA_INSET);
-            const y = value => riScale(value, 0, 1, H - B, T);
-            let svg = '';
-            [0, 0.25, 0.5, 0.75, 1].forEach(value => svg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
-            lines.forEach(line => {
-              svg += '<path d="' + line.values.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="' + line.color + '" stroke-width="2.5"' + (line.dash ? ' stroke-dasharray="5 4"' : '') + '/>';
-              line.values.forEach((value, index) => {
-                const markerY = y(value);
-                const labelY = Math.max(T + 9, Math.min(H - B - 5, markerY + (line.labelOffset || -9)));
-                svg += '<circle cx="' + x(index).toFixed(1) + '" cy="' + markerY.toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="' + line.color + '" stroke-width="2"><title>' + escapeHtml(labels[index] + ': ' + formatPercent(value)) + '</title></circle>' +
-                  '<text x="' + x(index).toFixed(1) + '" y="' + labelY.toFixed(1) + '" text-anchor="middle" class="ri-point-value" fill="' + line.color + '">' + escapeHtml(formatPercent(value, 0)) + '</text>';
-              });
-            });
-            labels.forEach((label, index) => svg += '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + escapeHtml(label) + '</text>');
-            return '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(ariaLabel) + '">' + svg + '</svg>';
-          };
-          repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Threshold Explorer</div><div class="ri-panel-copy">Pass rate and partial-pass items for ' + escapeHtml(thresholdMetric.name) + ' at several thresholds.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-1)"><span class="ri-legend-swatch"></span>pass rate</span><span class="ri-legend-item" style="--ri-color:var(--chart-5)"><span class="ri-legend-swatch"></span>partial-pass items</span></div>' +
-            lineChart([{ values: passRates, color: 'var(--chart-1)', labelOffset: -9 }, { values: partialRates, color: 'var(--chart-5)', dash: true, labelOffset: 14 }], thresholds.map(value => '\u2265' + Math.round(value * 100) + '%'), thresholdMetric.name + ' pass rate and partial-pass items by threshold') + '</div>');
-
-          const maxPass = Math.max(...valuesByItem.map(values => values.length));
-          const estimates = [], lowerBounds = [], upperBounds = [];
-          for (let passCount = 1; passCount <= maxPass; passCount++) {
-            const itemMeans = valuesByItem.filter(values => values.length >= passCount).map(values => riMean(values.slice(0, passCount)));
-            estimates.push(riMean(itemMeans));
-            let seed = 1777 + passCount * 97;
-            const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-            const bootstrap = [];
-            for (let sample = 0; sample < 200; sample++) {
-              let sum = 0;
-              for (let index = 0; index < itemMeans.length; index++) sum += itemMeans[Math.floor(random() * itemMeans.length)];
-              bootstrap.push(sum / itemMeans.length);
-            }
-            lowerBounds.push(riQuantile(bootstrap, 0.025));
-            upperBounds.push(riQuantile(bootstrap, 0.975));
-          }
-          {
-            const W = 620, H = 245, L = 46, R = 16, T = 14, B = 38, DATA_INSET = 12;
-            const x = index => riScale(index, 0, Math.max(1, estimates.length - 1), L + DATA_INSET, W - R - DATA_INSET);
-            const y = value => riScale(value, 0, 1, H - B, T);
-            let estimateSvg = '';
-            [0, 0.25, 0.5, 0.75, 1].forEach(value => estimateSvg += '<line x1="' + L + '" y1="' + y(value).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(value).toFixed(1) + '" class="ri-gridline"/><text x="' + (L - 9) + '" y="' + (y(value) + 4).toFixed(1) + '" text-anchor="end" class="ri-data-label">' + Math.round(value * 100) + '%</text>');
-            const upper = upperBounds.map((value, index) => x(index).toFixed(1) + ' ' + y(value).toFixed(1));
-            const lower = lowerBounds.map((value, index) => x(index).toFixed(1) + ' ' + y(value).toFixed(1)).reverse();
-            estimateSvg += '<path d="M' + upper.join(' L') + ' L' + lower.join(' L') + ' Z" fill="var(--chart-2)" opacity="0.12"/><path d="' + estimates.map((value, index) => (index ? 'L' : 'M') + x(index).toFixed(1) + ' ' + y(value).toFixed(1)).join(' ') + '" fill="none" stroke="var(--chart-2)" stroke-width="2.5"/>';
-            estimates.forEach((value, index) => {
-              const valueLabelY = Math.max(T + 9, y(upperBounds[index]) - 7);
-              estimateSvg += '<line x1="' + x(index).toFixed(1) + '" y1="' + y(lowerBounds[index]).toFixed(1) + '" x2="' + x(index).toFixed(1) + '" y2="' + y(upperBounds[index]).toFixed(1) + '" stroke="var(--border-strong)"/><circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="4" fill="var(--bg-surface)" stroke="var(--chart-2)" stroke-width="2"><title>' + (index + 1) + ' passes: ' + escapeHtml(formatPercent(value)) + '</title></circle>' +
-                '<text x="' + x(index).toFixed(1) + '" y="' + valueLabelY.toFixed(1) + '" text-anchor="middle" class="ri-point-value" fill="var(--chart-2)">' + escapeHtml(formatPercent(value, 0)) + '</text>' +
-                '<text x="' + x(index).toFixed(1) + '" y="' + (H - 12) + '" text-anchor="middle" class="ri-data-label">' + (index + 1) + '</text>';
-            });
-            repeatPanels.push('<div class="ri-panel half"><div class="ri-panel-head"><div><div class="ri-panel-title">Score Estimate by Pass Count</div><div class="ri-panel-copy">Cumulative ' + escapeHtml(thresholdMetric.name) + ' mean and item-level bootstrap interval as passes are added.</div></div></div><div class="ri-legend"><span class="ri-legend-item" style="--ri-color:var(--chart-2)"><span class="ri-legend-swatch"></span>cumulative mean</span><span class="ri-legend-item" style="--ri-color:var(--border-strong)"><span class="ri-legend-swatch"></span>95% interval</span></div><svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + escapeAttr(thresholdMetric.name) + ' score estimate by pass count">' + estimateSvg + '</svg></div>');
-          }
-        }
-
-        let html = '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore metric relationships, quality and latency, and repeat stability.</div></div></div>';
-        if (relationshipPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-primary)"><div class="ri-subhead"><h4>Metric Relationships</h4><span>Compare how evaluation metrics move together across the same items.</span></div><div class="ri-grid">' + relationshipPanels.join('') + '</div></div>';
-        if (frontierPanel) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--warning)"><div class="ri-subhead"><h4>Quality and Latency</h4><span>View item-level quality alongside response time.</span></div><div class="ri-grid">' + frontierPanel + '</div></div>';
-        if (repeatPanels.length) html += '<div class="ri-analysis-section" style="--ri-section-color:var(--accent-tertiary)"><div class="ri-subhead"><h4>Repeat Stability</h4><span>Compare score levels, variation, thresholds, and pass-count estimates.</span>' + repeatMetricControlHtml + '</div><div class="ri-grid">' + repeatPanels.join('') + '</div></div>';
+        let html = '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore metric relationships and quality alongside response latency.</div></div></div>';
+        const deepPanels = relationshipPanels.concat(frontierPanel ? [frontierPanel] : []);
+        if (deepPanels.length) html += '<div class="ri-grid deep-analysis-grid">' + deepPanels.join('') + '</div>';
         return html + '</div>';
       }
 
@@ -7220,29 +7396,6 @@
           });
         });
 
-        grid.querySelectorAll('[data-ri-repeat-metric]').forEach(select => {
-          select.addEventListener('change', () => {
-            state.repeatAnalysisMetric = select.value;
-            renderOverview(getFilteredItems());
-          });
-        });
-
-        grid.querySelectorAll('[data-ri-stability-metric]').forEach(button => {
-          button.addEventListener('click', () => {
-            const controls = Array.from(grid.querySelectorAll('[data-ri-stability-metric]'));
-            const visibleCount = controls.filter(control => control.getAttribute('aria-pressed') === 'true').length;
-            const metric = button.dataset.riStabilityMetric;
-            if (!metric) return;
-            const hidden = new Set(state.repeatStabilityHiddenMetrics || []);
-            if (hidden.has(metric)) hidden.delete(metric);
-            else {
-              if (visibleCount <= 1) return;
-              hidden.add(metric);
-            }
-            state.repeatStabilityHiddenMetrics = Array.from(hidden);
-            renderOverview(getFilteredItems());
-          });
-        });
       }
 
       function getApprovalState(row) {
