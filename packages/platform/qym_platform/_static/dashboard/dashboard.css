@@ -1376,28 +1376,44 @@ main {
 }
 
 .empty-state h2 {
-  font-size: var(--font-lg);
-  color: var(--text-secondary);
+  font-size: var(--font-xl);
+  font-weight: 650;
+  color: var(--text-primary);
   margin-bottom: var(--space-sm);
 }
 
 .empty-state p {
+  font-size: var(--font-md);
   color: var(--text-muted);
+  line-height: 1.5;
   margin-bottom: var(--space-lg);
 }
 
-.empty-state code {
-  display: block;
-  text-align: left;
-  padding: var(--space-md);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: var(--font-sm);
-  color: var(--accent-primary);
-  white-space: pre-wrap;
-  max-width: 500px;
+.empty-state-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 6px;
+  color: var(--bg-void);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  font-weight: 650;
+  text-decoration: none;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.empty-state-link:hover {
+  color: var(--bg-void);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.empty-state-link:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3351,6 +3367,21 @@ body.chart-col-resize-active {
 .metric-na {
   color: var(--text-dim);
   font-size: var(--font-sm);
+}
+
+/* Best-in-column chip on expanded pass rows (outlined when tied). Zero left
+   padding keeps the chip flush with the column's left alignment edge — values
+   stay aligned and the tint only trails right into empty space. */
+.pass-member .sw-best {
+  display: inline-block;
+  padding: 2px 8px 2px 0;
+  margin: -2px 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+.pass-member .sw-best.sw-tied {
+  background: color-mix(in srgb, var(--success) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 35%, transparent);
 }
 
 .col-latency,
@@ -8319,6 +8350,40 @@ td.col-trace-metric-value {
 /* Threshold control — matches the run-detail threshold slider: visible
    track (the strip is bg-elevated, so the track steps up to bg-active)
    and the standard 18px thumb. */
+.samples-metric-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.samples-metric-select {
+  box-sizing: border-box;
+  height: var(--space-lg);
+  max-width: 112px;
+  padding: 0 var(--space-md) 0 var(--space-xs);
+  background: var(--bg-active);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.samples-metric-select:hover {
+  border-color: var(--border-strong);
+}
+.samples-metric-select:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
 .samples-threshold {
   display: inline-flex;
   align-items: center;

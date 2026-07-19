@@ -167,7 +167,7 @@
       height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
-      background: var(--text-muted);
+      background: var(--text-secondary);
     }
     .hero-status.completed {
       background: rgba(168, 85, 247, 0.1);
@@ -1571,10 +1571,10 @@
     .category-compare-head,
     .category-compare-row {
       display: grid;
-      grid-template-columns: minmax(140px, 1fr) minmax(220px, 3fr) 68px 68px 68px 54px 78px;
+      grid-template-columns: minmax(140px, 1fr) minmax(220px, 3fr) 68px 54px 78px;
       column-gap: var(--space-md);
       align-items: center;
-      min-width: 860px;
+      min-width: 680px;
     }
     .category-compare-head {
       padding: var(--space-sm) var(--space-md);
@@ -1608,15 +1608,12 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .category-compare-number,
-    .category-compare-delta {
+    .category-compare-number {
       text-align: right;
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
     }
     .category-compare-number.muted { color: var(--text-muted); }
-    .category-compare-delta.positive { color: var(--success); }
-    .category-compare-delta.negative { color: var(--error); }
     .category-baseline-note {
       display: flex;
       align-items: center;
@@ -1626,9 +1623,27 @@
       font-size: var(--font-sm);
     }
     .category-baseline-marker {
-      width: 1px;
-      height: 14px;
-      background: var(--border-strong);
+      width: 2px;
+      height: 16px;
+      background: var(--text-secondary);
+    }
+    .category-baseline-score {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--space-lg);
+      padding: 0 var(--space-sm);
+      border: 1px solid var(--category-average-color);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--category-average-color) 12%, transparent);
+      color: var(--category-average-color);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .metadata-breakdown-content > .category-baseline-note {
+      margin: 0 0 var(--space-md);
     }
     .category-expand-btn {
       appearance: none;
@@ -1986,24 +2001,12 @@
       gap: var(--space-xs);
       flex-wrap: wrap;
     }
-    .score-col-performance-separator {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .score-col-performance-delta {
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .score-col-performance-delta.positive { color: var(--success); }
-    .score-col-performance-delta.negative { color: var(--error); }
     .category-pass-track {
       position: relative;
-      height: 7px;
+      height: 8px;
       margin-top: var(--space-xs);
-      border-radius: 3px;
-      background: var(--bg-surface);
+      border-radius: 4px;
+      background: var(--bg-elevated);
       overflow: visible;
     }
     .category-compare-row .category-pass-track {
@@ -2017,8 +2020,9 @@
       top: -4px;
       bottom: -4px;
       left: var(--category-baseline);
-      width: 1px;
-      background: var(--border-strong);
+      width: 2px;
+      background: var(--text-secondary);
+      transform: translateX(-1px);
     }
     .category-pass-fill {
       position: absolute;
@@ -3918,7 +3922,26 @@
       align-items: center;
       gap: var(--space-sm);
     }
-    .sw-num { text-align: right; }
+    .sw-num {
+      text-align: right;
+    }
+    .sw-cell-value {
+      display: block;
+    }
+    /* Best-in-column marker: a soft chip hugging the winning value (outlined when tied).
+       Zero right padding keeps the chip flush with the column's right alignment edge —
+       digits stay aligned and the tint only trails left into empty space. */
+    .sw-cell-value.sw-best {
+      display: inline-block;
+      padding: 2px 0 2px 8px;
+      margin: -2px 0;
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--success) 14%, transparent);
+    }
+    .sw-cell-value.sw-best.sw-tied {
+      background: color-mix(in srgb, var(--success) 7%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 35%, transparent);
+    }
     .sw-val {
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
@@ -4188,6 +4211,23 @@
       border: 1px solid var(--border-default);
       border-radius: 10px;
     }
+    .metric-card,
+    .samples-group-tiles .model-stat-box,
+    .samples-sweep-wrap,
+    .samples-chart-block,
+    .ri-panel,
+    .breakdown-card {
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .metric-card:hover,
+    .samples-group-tiles .model-stat-box:hover,
+    .samples-sweep-wrap:hover,
+    .samples-chart-block:hover,
+    .ri-panel:hover,
+    .breakdown-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+    }
     /* Category color remains an accent; the box itself keeps the shared border. */
     .breakdown-root-cause .breakdown-card { border-left: 3px solid rgba(224, 122, 95, 0.3); }
     .breakdown-errors.task-error-group .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
@@ -4252,11 +4292,6 @@
       max-width: 150px;
       background: var(--bg-surface);
     }
-    .ri-repeat-metric-control { margin-left: auto; }
-    .ri-repeat-metric-select {
-      min-width: 140px;
-      background: var(--bg-surface);
-    }
     .ri-chart-scroll { overflow-x: auto; }
     .ri-chart {
       display: block;
@@ -4306,21 +4341,6 @@
       font-family: var(--font-mono);
       font-size: var(--font-sm);
     }
-    .ri-legend-toggle {
-      appearance: none;
-      padding: var(--space-xs) var(--space-sm);
-      border: 0;
-      border-radius: 4px;
-      background: transparent;
-      cursor: pointer;
-      transition: background 0.15s, opacity 0.15s;
-    }
-    .ri-legend-toggle:hover { background: var(--bg-hover); }
-    .ri-legend-toggle:focus-visible {
-      outline: 2px solid var(--accent-primary);
-      outline-offset: 2px;
-    }
-    .ri-legend-toggle.off { opacity: 0.35; }
     .ri-legend-swatch {
       width: 16px;
       height: 3px;
@@ -4441,7 +4461,7 @@
     }
     .pass-dot-switch.active {
       outline: none;
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 45%, transparent), 0 0 9px color-mix(in srgb, var(--warning) 55%, transparent);
+      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--warning) 65%, transparent), 0 0 4px color-mix(in srgb, var(--warning) 25%, transparent);
       opacity: 1;
       transform: none;
     }
@@ -5920,20 +5940,56 @@
           const visible = passRows;
           const queued = passes.passes.length - visible.length;
           const latCell = v => (typeof v === 'number' ? (v / 1000).toFixed(2) + 's' : '—');
+          const winnersFor = (valueOf, direction) => {
+            const values = visible
+              .map(p => ({ pass: p.pass_number, value: valueOf(p) }))
+              .filter(entry => typeof entry.value === 'number' && Number.isFinite(entry.value));
+            if (values.length < 2) return new Set();
+            const best = direction === 'min'
+              ? Math.min(...values.map(entry => entry.value))
+              : Math.max(...values.map(entry => entry.value));
+            if (values.every(entry => entry.value === best)) return new Set();
+            return new Set(
+              values
+                .filter(entry => Math.abs(entry.value - best) <= Math.max(1e-9, Number.EPSILON * Math.max(1, Math.abs(best))))
+                .map(entry => entry.pass)
+            );
+          };
+          const metricWinners = Object.fromEntries(metricCols.map(m => [
+            m,
+            winnersFor(p => (p.metric_means || {})[m], 'max'),
+          ]));
+          const avgLatencyWinners = winnersFor(p => p.avg_latency_ms, 'min');
+          const medianLatencyWinners = winnersFor(p => p.median_latency_ms, 'min');
+          const errorWinners = winnersFor(p => Number(p.error_count || 0), 'min');
+          const bestTitle = winners => winners.size > 1
+            ? 'Tied for best across passes'
+            : 'Best across passes';
+          const valueCell = (content, winners, passNumber, extraClass) => {
+            const isBest = winners.has(passNumber);
+            const valueCls = 'sw-cell-value' + (isBest ? ' sw-best' + (winners.size > 1 ? ' sw-tied' : '') : '');
+            return '<td class="sw-num' + (extraClass ? ' ' + extraClass : '') + '">' +
+              '<span class="' + valueCls + '"' + (isBest ? ' title="' + bestTitle(winners) + '"' : '') + '>' + content + '</span></td>';
+          };
           const bodyRows = visible.map(p => {
             const metricCells = metricCols.map(m => {
               const v = (p.metric_means || {})[m];
               if (typeof v !== 'number') return '<td class="sw-num"><span class="sw-val empty">—</span></td>';
               const cls = metricColorCls(v, m);
-              return '<td class="sw-num"><span class="sw-val ' + cls + '">' + fmtMetric(v, m) + '</span></td>';
+              return valueCell(
+                '<span class="sw-val ' + cls + '">' + fmtMetric(v, m) + '</span>',
+                metricWinners[m],
+                p.pass_number,
+                ''
+              );
             }).join('');
             const errs = p.error_count || 0;
             return '<tr data-sw-pass="' + p.pass_number + '" title="View pass ' + p.pass_number + '">' +
               '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + '</span></td>' +
               metricCells +
-              '<td class="sw-num sw-dim">' + latCell(p.avg_latency_ms) + '</td>' +
-              '<td class="sw-num sw-dim">' + latCell(p.median_latency_ms) + '</td>' +
-              '<td class="sw-num ' + (errs > 0 ? 'sw-err' : 'sw-dim') + '">' + errs + '</td>' +
+              valueCell(latCell(p.avg_latency_ms), avgLatencyWinners, p.pass_number, 'sw-dim') +
+              valueCell(latCell(p.median_latency_ms), medianLatencyWinners, p.pass_number, 'sw-dim') +
+              valueCell(String(errs), errorWinners, p.pass_number, errs > 0 ? 'sw-err' : 'sw-dim') +
               '<td class="sw-num sw-dim">' + (p.items_scored || 0) + '</td>' +
             '</tr>';
           }).join('');
@@ -6262,7 +6318,8 @@
             if (!nextMetric || nextMetric === groupMetric) return;
             state.samplesMetric = nextMetric;
             renderSamplesAnalysis();
-            renderOverview();
+            renderOverview(getFilteredItems());
+            renderMetadataBreakdown();
           });
         });
         const samplesThreshold = container.querySelector('[data-samples-threshold]');
@@ -7756,21 +7813,10 @@
         return stats;
       }
 
-      function categoryDeltaText(passRate, baseline) {
-        if (passRate === null || baseline === null) return '\u2014';
-        const points = Math.round((passRate - baseline) * 100);
-        return (points > 0 ? '+' : '') + points + 'pp';
-      }
-
-      function categoryDeltaClass(passRate, baseline) {
-        if (passRate === null || baseline === null || passRate === baseline) return '';
-        return passRate > baseline ? 'positive' : 'negative';
-      }
-
-      function categoryPassTrack(passRate, baseline) {
-        if (passRate === null) return '';
+      function categoryScoreTrack(score, baseline) {
+        if (score === null) return '';
         const baselineStyle = baseline === null ? '' : '--category-baseline:' + Math.round(baseline * 100) + '%;';
-        return '<div class="category-pass-track' + (baseline === null ? '' : ' has-baseline') + '" style="--category-pass:' + Math.round(passRate * 100) + '%;' + baselineStyle + '--category-pass-color:' + riScoreColor(passRate) + '">' +
+        return '<div class="category-pass-track' + (baseline === null ? '' : ' has-baseline') + '" style="--category-pass:' + Math.round(score * 100) + '%;' + baselineStyle + '--category-pass-color:' + riScoreColor(score) + '">' +
           '<span class="category-pass-fill"></span></div>';
       }
 
@@ -7783,7 +7829,7 @@
         // If no metadata keys at all, hide the section
         if (chipKeys.length === 0) { section.innerHTML = ''; return; }
 
-        const metric = state.selectedMetric || state.allMetrics[0];
+        const metric = state.samplesMetric || state.selectedMetric || state.allMetrics[0];
         if (!metric) return;
         const mIdx = state.allMetrics.indexOf(metric);
         const metricType = state.metricTypes[metric] || 'score';
@@ -7807,10 +7853,9 @@
           const itemId = row.item_id || String(row.index);
           if (filteredItemIds.has(itemId)) overallScores.push(...getCategoryMetricScores(row, metric, mIdx));
         }
-        const overallPassRate = supportsPassRate && overallScores.length
-          ? overallScores.filter(score => score >= threshold).length / overallScores.length
+        const overallAverage = overallScores.length
+          ? overallScores.reduce((sum, score) => sum + score, 0) / overallScores.length
           : null;
-
         let html = '<h3 class="section-title">Performance by Category</h3>';
 
         html += '<div class="category-breakdown-toolbar"><div class="category-chip-bar">';
@@ -7841,6 +7886,9 @@
 
         const statsByKey = new Map(breakdownKeys.map(key => [key, getCategoryGroupStats(key, rows, filteredItemIds, metric, mIdx, threshold, supportsPassRate)]));
         html += '<div class="comparison-stats metadata-breakdown-content">';
+        if (supportsPassRate && overallAverage !== null) {
+          html += '<div class="category-baseline-note"><span class="category-baseline-marker"></span><span>Overall metric average score</span><strong class="category-baseline-score" style="--category-average-color:' + riScoreColor(overallAverage) + '">' + window.QymMetrics.formatMetricValue(overallAverage, metricType, 0) + '</strong></div>';
+        }
 
         if (state.categoryBreakdownView === 'compare') {
           if (!breakdownKeys.includes(state.categoryCompareKey)) state.categoryCompareKey = breakdownKeys[0];
@@ -7850,22 +7898,18 @@
           }
           html += '</div>';
           const compareStats = statsByKey.get(state.categoryCompareKey) || [];
-          html += '<div class="category-compare-scroll"><div class="category-compare-head"><span>Category</span><span>Pass rate</span><span>Rate</span><span>Average</span><span>Delta</span><span>Items</span><span>Latency</span></div>';
+          html += '<div class="category-compare-scroll"><div class="category-compare-head"><span>Category</span><span>Score</span><span>Average</span><span>Items</span><span>Latency</span></div>';
           for (const group of compareStats) {
             const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
             const latencyDisplay = group.avgLatency !== null ? formatLatency(group.avgLatency) : '&mdash;';
-            const deltaClass = categoryDeltaClass(group.passRate, overallPassRate);
             html += '<button type="button" class="category-compare-row" data-bd-category="' + escapeAttr(state.categoryCompareKey) + '" data-bd-value="' + escapeAttr(group.groupVal) + '" title="Click to filter by ' + escapeAttr(group.groupVal) + '">' +
               '<span class="category-compare-name" title="' + escapeAttr(group.groupVal) + '">' + escapeHtml(group.groupVal) + '</span>' +
-              '<span>' + categoryPassTrack(group.passRate, overallPassRate) + '</span>' +
-              '<span class="category-compare-number">' + (group.passRate === null ? '&mdash;' : formatPercent(group.passRate)) + '</span>' +
+              '<span>' + (supportsPassRate ? categoryScoreTrack(group.avgScore, overallAverage) : '') + '</span>' +
               '<span class="category-compare-number muted">' + averageDisplay + '</span>' +
-              '<span class="category-compare-delta ' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span>' +
               '<span class="category-compare-number muted">' + group.itemCount + '</span>' +
               '<span class="category-compare-number muted">' + latencyDisplay + '</span></button>';
           }
           html += '</div>';
-          if (overallPassRate !== null) html += '<div class="category-baseline-note"><span class="category-baseline-marker"></span><span>Run pass rate &middot; ' + formatPercent(overallPassRate) + '</span></div>';
         } else {
           for (const bdKey of breakdownKeys) {
             const groupStats = statsByKey.get(bdKey) || [];
@@ -7892,22 +7936,11 @@
               }
               const colorClassName = window.QymMetrics.getMetricColorClass(group.avgScore, metricType);
               const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
-              const deltaClass = categoryDeltaClass(group.passRate, overallPassRate);
-              let performanceLabel = 'Average';
-              let performanceValueHtml = '<span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span>';
-              if (supportsPassRate) {
-                const passDisplay = formatPercent(group.passRate);
-                const sameDisplay = Math.abs(group.passRate - group.avgScore) < 0.0005;
-                const passColorClassName = window.QymMetrics.getMetricColorClass(group.passRate, 'score');
-                performanceLabel = sameDisplay ? 'Avg · pass rate' : 'Avg / pass rate';
-                performanceValueHtml = '<span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span>' +
-                  (sameDisplay ? '' : '<span class="score-col-performance-separator">/</span><span class="score-col-value ' + passColorClassName + '">' + passDisplay + '</span>') +
-                  '<span class="score-col-performance-delta ' + deltaClass + '">' + categoryDeltaText(group.passRate, overallPassRate) + '</span>';
-              }
+              const performanceValueHtml = '<span class="score-col-value ' + colorClassName + '">' + averageDisplay + '</span>';
               html += '<div class="breakdown-card' + cardValueClass + '" data-bd-category="' + escapeAttr(bdKey) + '" data-bd-value="' + escapeAttr(group.groupVal) + '" style="cursor:pointer;" title="Click to filter by ' + escapeAttr(group.groupVal) + '">' +
                 '<div class="breakdown-card-label">' + escapeHtml(group.groupVal) + '</div>' +
-                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">' + performanceLabel + '</span><span class="score-col-performance">' + performanceValueHtml + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + group.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latencyDisplay + '</span></div></div>' +
-                (supportsPassRate ? categoryPassTrack(group.passRate, overallPassRate) : '') +
+                '<div class="breakdown-card-scores"><div class="score-col"><span class="score-col-label">Average</span><span class="score-col-performance">' + performanceValueHtml + '</span></div><div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">' + group.itemCount + '</span></div><div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">' + latencyDisplay + '</span></div></div>' +
+                (supportsPassRate ? categoryScoreTrack(group.avgScore, overallAverage) : '') +
               '</div>';
             }
             html += '</div>';

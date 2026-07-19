@@ -450,6 +450,7 @@ def _seed_profile(
             else:
                 attempt_number = 1
             final_failed = is_terminal_error and pass_number == profile.samples
+            pass_trace_id = f"{profile.run_id[-12:]}-{index + 1:03d}-p{pass_number}"
             db.add(
                 RunItemAttempt(
                     run_id=profile.run_id,
@@ -459,11 +460,47 @@ def _seed_profile(
                     status="FAILED" if final_failed else "COMPLETED",
                     latency_ms=float(pass_row["latency_ms"]),
                     task_started_at_ms=task_started_ms,
+                    trace_id=pass_trace_id,
                     error=error if final_failed else None,
                     is_last_attempt=True,
                     output=None if final_failed else output,
                 )
             )
+            if not final_failed:
+                pass_factor = 0.94 + (pass_number - 1) * 0.03
+                pass_tokens = round(float(trace_stats["tokens"]) * pass_factor)
+                pass_reasoning_tokens = round(
+                    float(trace_stats["reasoning_tokens"]) * pass_factor
+                )
+                raw_bucket = {
+                    "span_count": 1,
+                    "tokens": pass_tokens,
+                    "cost": 0.0,
+                    "llm_calls": int(trace_stats["llm_calls"]),
+                    "tool_calls": int(trace_stats["tool_calls"]),
+                    "tool_errors": int(trace_stats["tool_errors"]),
+                    "malformed_tool_calls": 0,
+                    "noisy_reasoning": 0,
+                    "provider_errors": 0,
+                    "has_reasoning": True,
+                    "has_reasoning_tokens": pass_reasoning_tokens > 0,
+                    "reasoning_tokens": pass_reasoning_tokens,
+                }
+                db.add(
+                    RunTraceAggregate(
+                        run_id=profile.run_id,
+                        trace_id=pass_trace_id,
+                        span_count=1,
+                        tokens=pass_tokens,
+                        llm_calls=int(trace_stats["llm_calls"]),
+                        tool_calls=int(trace_stats["tool_calls"]),
+                        tool_errors=int(trace_stats["tool_errors"]),
+                        has_reasoning=True,
+                        has_reasoning_tokens=pass_reasoning_tokens > 0,
+                        reasoning_tokens=pass_reasoning_tokens,
+                        raw_bucket=raw_bucket,
+                    )
+                )
 
 
 def seed(project_slug: str) -> list[Profile]:

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Runs</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=pass-best-chip-20260711">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
@@ -83,8 +83,9 @@
         <div class="empty-icon">∅</div>
         <h2>No evaluation runs found</h2>
         <p>Run an evaluation to populate this dashboard.</p>
-        <code>qym --task-file my_task.py --task-function my_func \
-  --dataset my-dataset --metrics exact_match</code>
+        <a id="empty-docs-link" class="empty-state-link" href="/docs-guide#get-started/first-run">
+          Read the first-run guide <span aria-hidden="true">→</span>
+        </a>
       </div>
     </div>
 
@@ -217,6 +218,6 @@
   <script>window.__QYM_INITIAL_VIEW__ = 'table';</script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=pass-best-chip-20260711"></script>
 </body>
 </html>
