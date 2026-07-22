@@ -37,7 +37,12 @@ def main():
     evaluator = Evaluator(
         task=text2sql_task,
         dataset=data,
-        metrics=[valid_sql, "execution_accuracy"],
+        metrics=[
+            execution_accuracy,
+            valid_sql,
+            "relevance",
+            "toxicity",
+            ],
         model="openai/gpt-4o-mini",
         config={
             "max_concurrency": 10,

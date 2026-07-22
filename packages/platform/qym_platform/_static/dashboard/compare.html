@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css?v=pass-best-chip-20260711">
+  <link rel="stylesheet" href="./static/dashboard.css?v=analyzer-document-library-20260720">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js"></script>
   <script src="./static/metrics.js"></script>
   <script src="./static/trace_viewer.js"></script>
-  <script src="./static/playground.js?v=variable-mapping-20260510"></script>
+  <script src="./static/playground.js?v=per-metric-analysis-20260721"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* Compare-specific styles */
@@ -11330,7 +11330,7 @@
 
       // ── AI Evaluator Playground (compare view) ──────────────
       if (!IS_COMPARE_EXPORT && typeof QymPlayground !== 'undefined') {
-      QymPlayground.init({
+        QymPlayground.init({
           apiUrl: apiUrl,
           getRunId: function () {
               // Use first run by default in compare mode
@@ -11339,9 +11339,19 @@
           },
           getRows: function () {
               if (!state.runs || state.runs.length === 0) return [];
-              var rows = state.runs[0]?.snapshot?.rows || [];
+              var snapshot = state.runs[0]?.snapshot || {};
+              var rows = snapshot.rows || [];
+              var metricNames = snapshot.metric_names || state.runs[0]?.run?.metric_names || [];
               var metric = state.selectedItemsMetric || state.selectedOverviewMetric;
               return rows.map(function (r) {
+                  var metricScores = {};
+                  var metricThresholds = {};
+                  var metricDirections = {};
+                  metricNames.forEach(function (metricName, index) {
+                      metricScores[metricName] = window.QymMetrics.parseScoreValue((r.metric_values || [])[index]);
+                      metricThresholds[metricName] = state.metricThresholds[metricName] == null ? 0.8 : state.metricThresholds[metricName];
+                      metricDirections[metricName] = (state.metricSpecs[metricName] && state.metricSpecs[metricName].direction) || 'maximize';
+                  });
                   return {
                       item_id: r.item_id,
                       index: r.index,
@@ -11352,12 +11362,15 @@
                       item_metadata: r.item_metadata,
                       metric_metadata: metric ? ((r.metric_meta || {})[metric] || {}) : {},
                       metric_metadata_by_metric: r.metric_meta || {},
-                      scores: r.scores || {},
+                      scores: metricScores,
+                      metric_scores: metricScores,
+                      metric_thresholds: metricThresholds,
+                      metric_directions: metricDirections,
                       metric_score: metric && r[metric] != null ? parseFloat(r[metric]) : null,
                   };
               });
           },
-          getMetric: function () { return state.selectedItemsMetric || state.selectedOverviewMetric; },
+          getMetric: function () { return null; },
           getThreshold: function () {
               var m = state.selectedItemsMetric || state.selectedOverviewMetric;
               return state.metricThresholds[m] || 0.8;
@@ -11371,10 +11384,19 @@
                   var row = rows.find(function (r) { return r.item_id === result.item_id; });
                   if (row) {
                       if (!row.item_metadata) row.item_metadata = {};
-                      row.item_metadata.root_cause = result.root_cause;
-                      row.item_metadata.root_cause_note = result.root_cause_note;
-                      row.item_metadata.root_cause_source = 'ai';
-                      row.item_metadata.root_cause_confidence = result.confidence;
+                      if (!row.item_metadata.metric_analyses) row.item_metadata.metric_analyses = {};
+                      if (result.metric_name) {
+                          row.item_metadata.metric_analyses[result.metric_name] = {
+                              source: 'ai',
+                              root_cause: result.root_cause,
+                              root_cause_detail: result.root_cause_detail || '',
+                              root_cause_note: result.root_cause_note || '',
+                              confidence: result.confidence,
+                              solution: result.solution || '',
+                              solution_note: result.solution_note || '',
+                              error: result.error || '',
+                          };
+                      }
                   }
               }
               // Update root cause values
@@ -11390,7 +11412,7 @@
           },
           showToast: showToast,
           escapeHtml: escapeHtml,
-      });
+        });
       }
 
       function escapeInlineScriptContent(content) {

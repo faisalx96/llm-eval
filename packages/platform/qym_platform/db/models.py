@@ -20,7 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, object_session, relationship
 
 from qym_platform.db.base import Base
 
@@ -103,6 +103,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, default="")
+    analyzer_roles: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -235,6 +236,42 @@ class Run(Base):
         }
 
 
+class AnalyzerDocument(Base):
+    """A reference document shared by every member of a project."""
+
+    __tablename__ = "analyzer_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    uploaded_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    characters: Mapped[int] = mapped_column(Integer, nullable=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_analyzer_documents_project_created", "project_id", "created_at"),
+    )
+
+
+class AnalyzerRunDocument(Base):
+    """A run's shared selection of documents from its project library."""
+
+    __tablename__ = "analyzer_run_documents"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("analyzer_documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    selected: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class RunItem(Base):
     __tablename__ = "run_items"
 
@@ -254,6 +291,35 @@ class RunItem(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     trace_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     trace_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+
+    @property
+    def trace_content(self) -> list[dict[str, Any]]:
+        """Return the native OpenTelemetry spans associated with this item."""
+        session = object_session(self)
+        if session is None or not self.trace_id:
+            return []
+        spans = (
+            session.query(Span)
+            .filter(Span.run_id == self.run_id, Span.trace_id == self.trace_id)
+            .order_by(Span.start_time_ns.asc(), Span.id.asc())
+            .all()
+        )
+        return [
+            {
+                "span_id": span.span_id,
+                "parent_span_id": span.parent_span_id,
+                "name": span.name,
+                "kind": span.kind,
+                "start_time_ns": span.start_time_ns,
+                "end_time_ns": span.end_time_ns,
+                "duration_ms": span.duration_ms,
+                "status": span.status,
+                "attributes": span.attributes or {},
+                "events": span.events or [],
+                "links": span.links or [],
+            }
+            for span in spans
+        ]
 
     __table_args__ = (
         UniqueConstraint("run_id", "item_id", name="uq_run_item"),
@@ -614,6 +680,7 @@ class ReviewCorrection(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
     item_id: Mapped[str] = mapped_column(String(200), index=True)
+    metric_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
     task: Mapped[str] = mapped_column(String(200), index=True)
 
     input_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
@@ -622,14 +689,14 @@ class ReviewCorrection(Base):
     scores_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     ai_root_cause: Mapped[str] = mapped_column(String(200))
-    ai_root_cause_detail: Mapped[str] = mapped_column(String(200), default="")
+    ai_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ai_solution: Mapped[str] = mapped_column(String(200), default="")
     ai_solution_note: Mapped[str] = mapped_column(Text, default="")
 
     human_root_cause: Mapped[str] = mapped_column(String(200))
-    human_root_cause_detail: Mapped[str] = mapped_column(String(200), default="")
+    human_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     human_solution: Mapped[str] = mapped_column(String(200), default="")
     human_solution_note: Mapped[str] = mapped_column(Text, default="")
@@ -651,4 +718,11 @@ class ReviewCorrection(Base):
     __table_args__ = (
         Index("ix_review_corrections_task_created", "task", "created_at"),
         Index("ix_review_corrections_run_item_active", "run_id", "item_id", "is_active"),
+        Index(
+            "ix_review_corrections_run_item_metric_active",
+            "run_id",
+            "item_id",
+            "metric_name",
+            "is_active",
+        ),
     )

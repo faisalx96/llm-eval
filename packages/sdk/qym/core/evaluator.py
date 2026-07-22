@@ -45,8 +45,9 @@ from .observers import (
 )
 from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
-from ..metrics.registry import get_metric
+from ..metrics.registry import get_metric, get_metric_spec
 from ..metrics.judges.base import JudgeInputError
+from ..metrics.spec import Metric, MetricSpec
 from ..utils.env import load_cwd_dotenv
 
 

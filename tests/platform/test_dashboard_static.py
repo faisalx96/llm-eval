@@ -10,6 +10,7 @@ METRICS_JS = DASHBOARD_DIR / "metrics.js"
 DOCS_JS = DASHBOARD_DIR / "docs.js"
 DOCS_CSS = DASHBOARD_DIR / "docs.css"
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
+ANALYSIS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "analysis.py"
 
 
 def test_docs_page_switch_is_atomic_and_layout_stable() -> None:
@@ -891,3 +892,73 @@ def test_shell_form_dialog_supports_structured_details() -> None:
     assert "shell-form-checkbox" in source
     assert ".shell-modal-detail-item" in styles
     assert ".shell-form-checkbox-help" in styles
+
+
+def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    shell = (DASHBOARD_DIR / "shell.js").read_text(encoding="utf-8")
+    routes = RUNS_API.read_text(encoding="utf-8")
+    analysis_api = ANALYSIS_API.read_text(encoding="utf-8")
+
+    assert "openAnalyzerPage" in run
+    assert "QymPlayground.open()" not in run
+    assert "projectUrl(CURRENT_PROJECT_SLUG, 'analysis')" in run
+    assert "buildNavItem('Auto-analysis', 'analysis', 'analysis'" in shell
+    assert "else if (rest === 'analysis') page = 'analysis';" in shell
+    assert 'id="analysis-run-select"' in analyzer
+    assert "api/runs?limit=200&project_slug=" in analyzer
+    assert 'id="analyzer-host"' in analyzer
+    assert "container: document.getElementById('analyzer-host')" in analyzer
+    assert 'id="pg-project-description"' in playground
+    assert 'class="pg-context-panel"' in playground
+    assert 'id="pg-role-list"' in playground
+    assert 'id="pg-infer-roles"' in playground
+    assert "cfg.project_description = descriptionEl.value.trim();" in playground
+    assert "cfg.analysis_roles = roles" in playground
+    assert 'id="pg-document-input"' in playground
+    assert "cfg.reference_documents = selectedDocuments.map" in playground
+    assert "'/analysis-documents'" in playground
+    assert "Reference Document Library" in playground
+    assert "selectedDocumentCount + ' selected'" in playground
+    assert "_updateReferenceDocumentSelection" in playground
+    assert "_deleteReferenceDocument" in playground
+    assert '@router.get("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
+    assert '@router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
+    assert '@router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
+    assert "_MAX_REFERENCE_DOCUMENTS" not in playground
+    assert "5 documents" not in playground
+    assert "if (!_validateProjectDescription()) return;" in playground
+    assert '@router.get("/projects/{project_slug}/analysis"' in routes
+    assert '@router.get("/projects/{project_slug}/runs/{run_id:path}/analyzer"' in routes
+    assert '@router.post("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
+    assert '@router.patch("/api/runs/{run_id:path}/analysis-context")' in analysis_api
+    assert '@router.post("/api/runs/{run_id:path}/analysis-roles/infer")' in analysis_api
+    assert "metric_analyses" in run
+    assert "Per-metric root cause analysis" in run
+    assert 'data-metric-rc-item=' in run
+    assert 'data-metric-rcdetail-item=' in run
+    assert 'data-metric-feedback-item=' in run
+    assert 'data-metric-sol-item=' in run
+    assert "saveMetricAnalysisPatch" in run
+    assert "metric_name: metricName" in run
+    assert "getMetric: () => null" in analyzer
+    assert "getMetric: function () { return null; }" in compare
+    assert "row.item_metadata.metric_analyses[result.metric_name]" in compare
+    assert '"type": "aggregating"' in analysis_api
+    assert "evt.type === 'aggregating'" in playground
+    assert "Aggregating root causes\\u2026" in playground
+    assert "labels consolidated" in playground
+
+
+def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() -> None:
+    shell = (DASHBOARD_DIR / "shell.js").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "if (typeof window.__QYM_ROOT_PATH__ === 'string')" in shell
+    assert "return configuredRoot ? configuredRoot + '/' : '/';" in shell
+    assert "const path = rawPath.length > 1 ? rawPath.replace(/\\/+$/, '') : rawPath;" in shell
+    assert "const pathname = rawPathname.length > 1 ? rawPathname.replace(/\\/+$/, '') : rawPathname;" in shell
+    assert "const path = rawPath.length > 1 ? rawPath.replace(/\\/+$/, '') : rawPath;" in run

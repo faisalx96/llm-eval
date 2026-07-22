@@ -5,10 +5,11 @@ import ast
 import copy
 import inspect
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import String, and_, cast, func, or_, tuple_
@@ -17,6 +18,8 @@ from sqlalchemy.orm import Session
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
+    AnalyzerDocument,
+    AnalyzerRunDocument,
     CorrectionStatus,
     Project,
     ProjectLlmConnection,
@@ -25,11 +28,23 @@ from qym_platform.db.models import (
     Run,
     RunItem,
     RunItemScore,
+    RunMetricSpec,
     User,
 )
 from qym_platform.deps import get_db
 from qym_platform.permissions import apply_reviewable_run_filter, can_modify_run, can_review_run, can_view_run
 from qym_platform.secrets import resolve_llm_api_key
+from qym_platform.services.analysis_aggregation import (
+    AnalysisAggregationError,
+    aggregate_analysis_categories,
+)
+from qym_platform.services.document_extractor import (
+    MAX_REFERENCE_DOCUMENT_CHARS,
+    MAX_REFERENCE_UPLOAD_BYTES,
+    DocumentExtractionError,
+    UnsupportedDocumentError,
+    extract_document_text,
+)
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
     ROOT_CAUSE_CATEGORIES,
@@ -40,8 +55,16 @@ from qym_platform.services.llm_analyzer import (
     build_analysis_prompt,
     build_client,
     get_few_shot_examples,
+    infer_analysis_roles,
+    normalize_analysis_roles,
 )
-from qym_platform.services.root_cause_changes import apply_root_cause_change, build_ai_state
+from qym_platform.services.root_cause_changes import (
+    apply_root_cause_change,
+    build_ai_state,
+    build_item_metadata,
+    extract_analysis_state,
+    replace_metric_review_candidate,
+)
 from qym_platform.settings import PlatformSettings
 
 router = APIRouter(tags=["analysis"])
@@ -49,9 +72,32 @@ router = APIRouter(tags=["analysis"])
 MappingSource = Union[str, List[str]]
 
 
+class ReferenceDocument(BaseModel):
+    """Extracted document content included in each analyzer prompt."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1, max_length=MAX_REFERENCE_DOCUMENT_CHARS)
+
+
+class AnalyzerRoleConfig(BaseModel):
+    """One neutral project-domain lens used during root-cause analysis."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field(..., min_length=1, max_length=2000)
+
+
+class AnalyzerDocumentSelection(BaseModel):
+    """Selection state for one document in the current user's run library."""
+
+    selected: bool
+
+
 class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
+    project_description: Optional[str] = None
+    analysis_roles: Optional[List[AnalyzerRoleConfig]] = None
+    reference_documents: Optional[List[ReferenceDocument]] = None
     system_prompt: Optional[str] = None
     additional_instructions: Optional[str] = None
     custom_variable_mapping: Optional[Dict[str, MappingSource]] = None
@@ -101,6 +147,20 @@ class TestRequest(BaseModel):
     item_ids: List[str] = Field(..., min_length=1, max_length=3)
     metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
+    connection_id: Optional[str] = None
+
+
+class AnalysisContextUpdate(BaseModel):
+    """Project-scoped analyzer context edited in the analyzer side panel."""
+
+    project_description: str = Field(default="", max_length=20_000)
+    analysis_roles: List[AnalyzerRoleConfig] = Field(default_factory=list, max_length=8)
+
+
+class RoleInferenceRequest(BaseModel):
+    """Inputs for the project role-writer agent."""
+
+    project_description: str = Field(..., min_length=1, max_length=20_000)
     connection_id: Optional[str] = None
 
 
@@ -157,6 +217,12 @@ def _playground_config_to_analyzer(pg: PlaygroundConfig | None) -> dict[str, Any
     if pg is None:
         return None
     cfg: dict[str, Any] = {}
+    if pg.project_description is not None:
+        cfg["project_description"] = pg.project_description
+    if pg.analysis_roles is not None:
+        cfg["analysis_roles"] = [role.model_dump() for role in pg.analysis_roles]
+    if pg.reference_documents is not None:
+        cfg["reference_documents"] = [document.model_dump() for document in pg.reference_documents]
     if pg.system_prompt is not None:
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
@@ -322,6 +388,7 @@ def _collect_task_root_cause_catalog(
 def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
     return {
         "item_id": result.item_id,
+        "metric_name": result.metric_name,
         "root_cause": result.root_cause,
         "root_cause_detail": result.root_cause_detail,
         "root_cause_note": result.root_cause_note,
@@ -332,61 +399,378 @@ def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
     }
 
 
+@dataclass
+class _PersistedAnalysisBinding:
+    item: RunItem
+    metric_name: str | None
+    result: AnalysisResult
+    original_root_cause: str
+    original_root_cause_detail: str
+    original_solution: str
+
+
+def _persisted_ai_analysis_bindings(
+    items: list[RunItem],
+    analysis_targets: list[tuple[RunItem, str]],
+    overwritten_item_ids: set[str] | None = None,
+) -> list[_PersistedAnalysisBinding]:
+    """Load saved AI labels that should participate in run-wide aggregation."""
+    target_keys = {(item.item_id, metric_name) for item, metric_name in analysis_targets}
+    target_item_ids = (
+        overwritten_item_ids
+        if overwritten_item_ids is not None
+        else {item.item_id for item, _ in analysis_targets}
+    )
+    bindings: list[_PersistedAnalysisBinding] = []
+
+    for item in items:
+        meta = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+        root_cause = str(meta.get("root_cause") or "").strip()
+        root_cause_detail = str(meta.get("root_cause_detail") or "").strip()
+        if (
+            root_cause
+            and meta.get("root_cause_source") == "ai"
+            and item.item_id not in target_item_ids
+        ):
+            bindings.append(
+                _PersistedAnalysisBinding(
+                    item=item,
+                    metric_name=None,
+                    result=AnalysisResult(
+                        item_id=item.item_id,
+                        root_cause=root_cause,
+                        root_cause_detail=root_cause_detail,
+                        root_cause_note=str(meta.get("root_cause_note") or ""),
+                        confidence=float(meta.get("root_cause_confidence") or 0.0),
+                        solution=str(meta.get("solution") or ""),
+                        solution_note=str(meta.get("solution_note") or ""),
+                    ),
+                    original_root_cause=root_cause,
+                    original_root_cause_detail=root_cause_detail,
+                    original_solution=str(meta.get("solution") or ""),
+                )
+            )
+
+        metric_analyses = meta.get("metric_analyses")
+        if not isinstance(metric_analyses, dict):
+            continue
+        for metric_name, raw_analysis in metric_analyses.items():
+            if not isinstance(raw_analysis, dict) or raw_analysis.get("source") != "ai":
+                continue
+            if (item.item_id, metric_name) in target_keys:
+                continue
+            metric_root_cause = str(raw_analysis.get("root_cause") or "").strip()
+            if not metric_root_cause or raw_analysis.get("error"):
+                continue
+            metric_detail = str(raw_analysis.get("root_cause_detail") or "").strip()
+            bindings.append(
+                _PersistedAnalysisBinding(
+                    item=item,
+                    metric_name=metric_name,
+                    result=AnalysisResult(
+                        item_id=item.item_id,
+                        metric_name=metric_name,
+                        root_cause=metric_root_cause,
+                        root_cause_detail=metric_detail,
+                        root_cause_note=str(raw_analysis.get("root_cause_note") or ""),
+                        confidence=float(raw_analysis.get("confidence") or 0.0),
+                        solution=str(raw_analysis.get("solution") or ""),
+                        solution_note=str(raw_analysis.get("solution_note") or ""),
+                    ),
+                    original_root_cause=metric_root_cause,
+                    original_root_cause_detail=metric_detail,
+                    original_solution=str(raw_analysis.get("solution") or ""),
+                )
+            )
+
+    return bindings
+
+
+def _persist_aggregated_bindings(
+    db: Session,
+    run: Run,
+    bindings: list[_PersistedAnalysisBinding],
+    principal: Principal,
+) -> int:
+    """Persist canonical labels while leaving feedback and solution notes unchanged."""
+    changed = [
+        binding
+        for binding in bindings
+        if (
+            binding.result.root_cause != binding.original_root_cause
+            or binding.result.root_cause_detail
+            != binding.original_root_cause_detail
+            or binding.result.solution != binding.original_solution
+        )
+    ]
+    actor_user_id = principal.user.id if principal.auth_type != "none" else None
+
+    for binding in changed:
+        if binding.metric_name is not None:
+            continue
+        state = extract_analysis_state(
+            binding.item.item_metadata
+            if isinstance(binding.item.item_metadata, dict)
+            else {}
+        )
+        state["root_cause"] = binding.result.root_cause
+        state["root_cause_detail"] = binding.result.root_cause_detail
+        state["solution"] = binding.result.solution
+        apply_root_cause_change(
+            db,
+            run=run,
+            item=binding.item,
+            actor_user_id=actor_user_id,
+            actor_source="ai",
+            next_state=state,
+        )
+
+    metric_changes_by_item: dict[str, list[_PersistedAnalysisBinding]] = {}
+    for binding in changed:
+        if binding.metric_name is not None:
+            metric_changes_by_item.setdefault(binding.item.item_id, []).append(binding)
+
+    items_by_id = {binding.item.item_id: binding.item for binding in changed}
+    for item_id, item_bindings in metric_changes_by_item.items():
+        item = items_by_id[item_id]
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        metric_analyses = dict(meta.get("metric_analyses") or {})
+        for binding in item_bindings:
+            analysis = dict(metric_analyses.get(binding.metric_name) or {})
+            analysis["root_cause"] = binding.result.root_cause
+            analysis["root_cause_detail"] = binding.result.root_cause_detail
+            analysis["solution"] = binding.result.solution
+            metric_analyses[binding.metric_name] = analysis
+        meta["metric_analyses"] = metric_analyses
+        item.item_metadata = meta
+        actor_user_id = principal.user.id if principal.auth_type != "none" else None
+        for binding in item_bindings:
+            replace_metric_review_candidate(
+                db,
+                run=run,
+                item=item,
+                metric_name=binding.metric_name or "",
+                analysis=metric_analyses[binding.metric_name],
+                actor_user_id=actor_user_id,
+                actor_source="ai",
+            )
+
+    return len(changed)
+
+
+async def _aggregate_run_analysis_results(
+    *,
+    db: Session,
+    run: Run,
+    all_items: list[RunItem],
+    analysis_targets: list[tuple[RunItem, str]],
+    new_results: list[AnalysisResult],
+    client: Any,
+    model: str,
+    analyzer_config: dict[str, Any] | None,
+    principal: Principal,
+) -> tuple[dict[str, int], int]:
+    """Aggregate new and previously saved AI labels across the entire run."""
+    successful_item_ids = {
+        result.item_id for result in new_results if not result.error
+    }
+    bindings = _persisted_ai_analysis_bindings(
+        all_items,
+        analysis_targets,
+        overwritten_item_ids=successful_item_ids,
+    )
+    combined_results = [*new_results, *(binding.result for binding in bindings)]
+    if not combined_results:
+        return {}, 0
+
+    new_labels_before = [
+        (result.root_cause, result.root_cause_detail, result.solution)
+        for result in new_results
+    ]
+    categories = await aggregate_analysis_categories(
+        client,
+        model,
+        combined_results,
+        known_categories=(analyzer_config or {}).get("root_cause_categories")
+        or ROOT_CAUSE_CATEGORIES,
+        known_details=(analyzer_config or {}).get("root_cause_details") or [],
+        known_category_details=(analyzer_config or {}).get("category_details_map")
+        or {},
+        known_solutions=(analyzer_config or {}).get("solution_categories")
+        or SOLUTION_CATEGORIES,
+    )
+    changed_new_results = sum(
+        (result.root_cause, result.root_cause_detail, result.solution) != before
+        for result, before in zip(new_results, new_labels_before)
+    )
+    changed_saved_results = _persist_aggregated_bindings(
+        db,
+        run,
+        bindings,
+        principal,
+    )
+    return categories, changed_new_results + changed_saved_results
+
+
 def _save_analysis_results(
     db: Session,
     run: Run,
-    filtered_items: list[RunItem],
+    analysis_targets: list[tuple[RunItem, str]],
     results: list[AnalysisResult],
     principal: Principal,
 ) -> tuple[list[Dict[str, Any]], int]:
     response_results: list[Dict[str, Any]] = []
     error_count = 0
 
+    items_by_id = {item.item_id: item for item, _ in analysis_targets}
+    results_by_item: dict[str, list[AnalysisResult]] = {}
     for result in results:
-        item = next((i for i in filtered_items if i.item_id == result.item_id), None)
-        if not item:
+        results_by_item.setdefault(result.item_id, []).append(result)
+        response_results.append(_analysis_result_payload(result))
+
+    for item_id, item_results in results_by_item.items():
+        item = items_by_id.get(item_id)
+        if item is None:
             continue
 
-        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        original_meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        successful = [result for result in item_results if not result.error]
 
-        if result.error:
-            error_count += 1
-            meta["analysis_error"] = result.error
-            item.item_metadata = meta
-        else:
-            if "analysis_error" in meta:
-                meta.pop("analysis_error", None)
-                item.item_metadata = meta
-            apply_root_cause_change(
-                db,
-                run=run,
-                item=item,
-                actor_user_id=principal.user.id if principal.auth_type != "none" else None,
-                actor_source="ai",
-                next_state=build_ai_state(
-                    root_cause=result.root_cause,
-                    root_cause_detail=result.root_cause_detail,
-                    root_cause_note=result.root_cause_note,
-                    confidence=result.confidence,
-                    solution=result.solution,
-                    solution_note=result.solution_note,
+        # Keep the legacy item-level summary for older consumers, but review
+        # candidates are created independently for each metric below.
+        if successful and original_meta.get("root_cause_source") != "human":
+            primary = successful[0]
+            item.item_metadata = build_item_metadata(
+                original_meta,
+                build_ai_state(
+                    root_cause=primary.root_cause,
+                    root_cause_detail=primary.root_cause_detail,
+                    root_cause_note=primary.root_cause_note,
+                    confidence=primary.confidence,
+                    solution=primary.solution,
+                    solution_note=primary.solution_note,
                 ),
             )
 
-        response_results.append(_analysis_result_payload(result))
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else original_meta
+        metric_analyses = dict(meta.get("metric_analyses") or {})
+        item_errors: list[str] = []
+        for result in item_results:
+            metric_name = str(result.metric_name or "").strip()
+            if not metric_name:
+                continue
+            if result.error:
+                error_count += 1
+                item_errors.append(f"{metric_name}: {result.error}")
+                metric_analyses[metric_name] = {
+                    "source": "ai",
+                    "error": result.error,
+                }
+                continue
+            metric_analyses[metric_name] = {
+                "source": "ai",
+                "root_cause": result.root_cause,
+                "root_cause_detail": result.root_cause_detail,
+                "root_cause_note": result.root_cause_note,
+                "confidence": result.confidence,
+                "solution": result.solution,
+                "solution_note": result.solution_note,
+            }
+        meta["metric_analyses"] = metric_analyses
+        if item_errors:
+            meta["analysis_error"] = "; ".join(item_errors)
+        else:
+            meta.pop("analysis_error", None)
+        item.item_metadata = meta
+        actor_user_id = principal.user.id if principal.auth_type != "none" else None
+        if successful:
+            # Metric-scoped candidates supersede the old item-scoped review
+            # candidate. Leaving both active makes the review workflow appear
+            # to have one shared diagnosis even though every metric now has an
+            # independent category, root cause, and feedback.
+            legacy_candidates = (
+                db.query(ReviewCorrection)
+                .filter(
+                    ReviewCorrection.run_id == run.id,
+                    ReviewCorrection.item_id == item.item_id,
+                    ReviewCorrection.metric_name.is_(None),
+                    ReviewCorrection.is_active.is_(True),
+                )
+                .all()
+            )
+            for candidate in legacy_candidates:
+                candidate.is_active = False
+                candidate.status = CorrectionStatus.SUPERSEDED
+        for result in successful:
+            metric_name = str(result.metric_name or "").strip()
+            if not metric_name:
+                continue
+            replace_metric_review_candidate(
+                db,
+                run=run,
+                item=item,
+                metric_name=metric_name,
+                analysis=metric_analyses[metric_name],
+                actor_user_id=actor_user_id,
+                actor_source="ai",
+            )
 
     db.commit()
     return response_results, error_count
 
 
-def _filter_analysis_items(
+def _load_metric_specs(db: Session, run: Run) -> dict[str, RunMetricSpec]:
+    specs = (
+        db.query(RunMetricSpec)
+        .filter(RunMetricSpec.run_id == run.id)
+        .order_by(RunMetricSpec.position.asc(), RunMetricSpec.id.asc())
+        .all()
+    )
+    return {spec.metric_name: spec for spec in specs}
+
+
+def _metric_passed(
+    score: RunItemScore | None,
+    spec: RunMetricSpec | None,
+    fallback_threshold: float,
+) -> bool:
+    if score is None or score.score_numeric is None:
+        return False
+    threshold = (
+        spec.pass_threshold
+        if spec is not None and spec.pass_threshold is not None
+        else fallback_threshold
+    )
+    direction = str(spec.direction or "maximize").lower() if spec is not None else "maximize"
+    if direction in {"minimize", "lower", "lower_is_better"}:
+        return score.score_numeric <= threshold
+    return score.score_numeric >= threshold
+
+
+def _analysis_metric_names(
+    run: Run,
+    scores_by_item: dict[str, dict[str, RunItemScore]],
+    requested_metric: str | None,
+) -> list[str]:
+    if requested_metric:
+        return [requested_metric]
+    names = list(run.metrics or [])
+    for item_scores in scores_by_item.values():
+        for metric_name in item_scores:
+            if metric_name not in names:
+                names.append(metric_name)
+    return names
+
+
+def _filter_analysis_targets(
     run: Run,
     request: AnalyzeRequest,
     all_items: list[RunItem],
     scores_by_item: dict[str, dict[str, RunItemScore]],
-) -> tuple[str | None, list[RunItem]]:
-    metric = request.metric or (run.metrics[0] if run.metrics else None)
-    filtered_items: list[RunItem] = []
+    metric_specs: dict[str, RunMetricSpec],
+) -> list[tuple[RunItem, str]]:
+    metrics = _analysis_metric_names(run, scores_by_item, request.metric)
+    targets: list[tuple[RunItem, str]] = []
 
     for item in all_items:
         md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
@@ -397,31 +781,9 @@ def _filter_analysis_items(
         if md.get("root_cause_source") == "human" and not request.allow_human_overwrite:
             continue
 
-        if request.only_unanalyzed and md.get("root_cause"):
-            continue
-
         is_error = bool(item.error)
         if request.item_filter == "errors" and not is_error:
             continue
-        if request.item_filter == "failed" and not is_error and metric:
-            item_scores = scores_by_item.get(item.item_id, {})
-            score = item_scores.get(metric)
-            if score and score.score_numeric is not None and score.score_numeric >= request.threshold:
-                continue
-        if request.item_filter == "passed":
-            if is_error:
-                continue
-            if metric:
-                item_scores = scores_by_item.get(item.item_id, {})
-                score = item_scores.get(metric)
-                if not score or score.score_numeric is None or score.score_numeric < request.threshold:
-                    continue
-
-        if request.max_score is not None and metric:
-            item_scores = scores_by_item.get(item.item_id, {})
-            score = item_scores.get(metric)
-            if score and score.score_numeric is not None and score.score_numeric > request.max_score:
-                continue
 
         if request.complexity is not None:
             item_complexity = str(md.get("complexity", "")).lower()
@@ -440,9 +802,122 @@ def _filter_analysis_items(
             elif item_rc not in request.root_cause:
                 continue
 
-        filtered_items.append(item)
+        item_scores = scores_by_item.get(item.item_id, {})
+        metric_analyses = md.get("metric_analyses") if isinstance(md.get("metric_analyses"), dict) else {}
+        for metric_name in metrics:
+            score = item_scores.get(metric_name)
+            passed = False if is_error else _metric_passed(
+                score,
+                metric_specs.get(metric_name),
+                request.threshold,
+            )
 
-    return metric, filtered_items
+            if request.item_filter == "failed" and passed:
+                continue
+            if request.item_filter == "passed" and (is_error or not passed):
+                continue
+            if request.max_score is not None and score is not None:
+                direction = str(
+                    getattr(metric_specs.get(metric_name), "direction", "maximize")
+                    or "maximize"
+                ).lower()
+                # The UI's max-score severity filter is meaningful for the
+                # normalized, higher-is-better metrics it was designed for.
+                # Applying the same upper bound to minimize metrics would drop
+                # their failures (which are necessarily the larger values).
+                if direction not in {"minimize", "lower", "lower_is_better"}:
+                    if (
+                        score.score_numeric is not None
+                        and score.score_numeric > request.max_score
+                    ):
+                        continue
+
+            existing_analysis = metric_analyses.get(metric_name)
+            if request.only_unanalyzed and isinstance(existing_analysis, dict):
+                if existing_analysis.get("root_cause"):
+                    continue
+            targets.append((item, metric_name))
+
+    return targets
+
+
+def _analysis_config_with_project_context(
+    db: Session,
+    run: Run,
+    analyzer_config: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Fill omitted request context from the project's saved analyzer settings."""
+    config = dict(analyzer_config or {})
+    project = db.get(Project, run.project_id)
+    if project is not None:
+        if not str(config.get("project_description") or "").strip():
+            config["project_description"] = str(project.description or "").strip()
+        if not config.get("analysis_roles"):
+            config["analysis_roles"] = normalize_analysis_roles(project.analyzer_roles)
+    return config or None
+
+
+async def _analyze_targets_batch(
+    *,
+    client: Any,
+    model: str,
+    targets: list[tuple[RunItem, str]],
+    scores_by_item: dict[str, dict[str, RunItemScore]],
+    corrections: list[ReviewCorrection],
+    concurrency: int,
+    config: dict[str, Any] | None,
+    temperature: float | None,
+    max_tokens: int | None,
+    progress_callback: Any = None,
+) -> list[AnalysisResult]:
+    """Run the existing analyzer once for every item-metric target."""
+    if _supports_metric_name_arg(analyze_items_batch):
+        return await analyze_items_batch(
+            client=client,
+            model=model,
+            items=[
+                (item, scores_by_item.get(item.item_id, {}), metric_name)
+                for item, metric_name in targets
+            ],
+            corrections=corrections,
+            concurrency=concurrency,
+            config=config,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            progress_callback=progress_callback,
+        )
+
+    # Compatibility for deployments that still provide the older analyzer
+    # callable: adapt and invoke one target at a time so metric context is not
+    # accidentally shared between targets.
+    results: list[AnalysisResult] = []
+    for completed, (item, metric_name) in enumerate(targets, start=1):
+        item_scores = scores_by_item.get(item.item_id, {})
+        adapted_item, adapted_config = _adapt_legacy_analyzer_inputs(
+            item,
+            item_scores,
+            config,
+            metric_name,
+        )
+        batch_results = await analyze_items_batch(
+            client=client,
+            model=model,
+            items=[(adapted_item, item_scores)],
+            corrections=corrections,
+            concurrency=1,
+            config=adapted_config,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        for result in batch_results:
+            result.item_id = item.item_id
+            result.metric_name = metric_name
+            results.append(result)
+            if progress_callback is not None:
+                callback_result = progress_callback(result, completed, len(targets))
+                if asyncio.iscoroutine(callback_result):
+                    await callback_result
+    return results
 
 
 @router.post("/api/runs/{run_id:path}/analyze")
@@ -462,59 +937,85 @@ async def analyze_run_items(
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
 
-    metric, filtered_items = _filter_analysis_items(run, request, all_items, scores_by_item)
+    metric_specs = _load_metric_specs(db, run)
+    analysis_targets = _filter_analysis_targets(
+        run,
+        request,
+        all_items,
+        scores_by_item,
+        metric_specs,
+    )
 
-    if not filtered_items:
-        return {"total_analyzed": 0, "results": [], "errors": 0}
+    analyzer_config = _analysis_config_with_project_context(
+        db,
+        run,
+        _playground_config_to_analyzer(request.config),
+    )
+    client = build_client(llm_config)
+    model = llm_config.get("llm_model", "gpt-4o-mini")
 
-    # Convert playground config
-    analyzer_config = _playground_config_to_analyzer(request.config)
+    if not analysis_targets:
+        try:
+            categories, aggregated = await _aggregate_run_analysis_results(
+                db=db,
+                run=run,
+                all_items=all_items,
+                analysis_targets=[],
+                new_results=[],
+                client=client,
+                model=model,
+                analyzer_config=analyzer_config,
+                principal=principal,
+            )
+            db.commit()
+        except AnalysisAggregationError as exc:
+            db.rollback()
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {
+            "total_analyzed": 0,
+            "results": [],
+            "categories": categories,
+            "aggregated": aggregated,
+            "errors": 0,
+        }
 
     # Get few-shot examples from correction bank
     cfg_ids = (analyzer_config or {}).get("correction_ids")
     corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
 
-    # Build items list with their scores
-    items_with_scores = [
-        (item, scores_by_item.get(item.item_id, {})) for item in filtered_items
-    ]
-
     # Run async LLM analysis
-    client = build_client(llm_config)
-    model = llm_config.get("llm_model", "gpt-4o-mini")
-    batch_items = items_with_scores
-    batch_config = analyzer_config
-    if not _supports_metric_name_arg(analyze_items_batch):
-        adapted_items: list[tuple[RunItem, dict[str, RunItemScore]]] = []
-        for item, item_scores in items_with_scores:
-            adapted_item, batch_config = _adapt_legacy_analyzer_inputs(
-                item,
-                item_scores,
-                batch_config,
-                metric,
-            )
-            adapted_items.append((adapted_item, item_scores))
-        batch_items = adapted_items
-
-    batch_kwargs = dict(
+    results = await _analyze_targets_batch(
         client=client,
         model=model,
-        items=batch_items,
+        targets=analysis_targets,
+        scores_by_item=scores_by_item,
         corrections=corrections,
         concurrency=request.concurrency,
-        config=batch_config,
+        config=analyzer_config,
         temperature=request.config.temperature if request.config else None,
         max_tokens=request.config.max_tokens if request.config else None,
     )
-    if _supports_metric_name_arg(analyze_items_batch):
-        batch_kwargs["metric_name"] = metric
-    results: list[AnalysisResult] = await analyze_items_batch(**batch_kwargs)
+    try:
+        categories, aggregated = await _aggregate_run_analysis_results(
+            db=db,
+            run=run,
+            all_items=all_items,
+            analysis_targets=analysis_targets,
+            new_results=results,
+            client=client,
+            model=model,
+            analyzer_config=analyzer_config,
+            principal=principal,
+        )
+    except AnalysisAggregationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    # Save results to item_metadata and revision history
+    # Save per-metric results plus one backwards-compatible item summary.
     response_results, error_count = _save_analysis_results(
         db,
         run,
-        filtered_items,
+        analysis_targets,
         results,
         principal,
     )
@@ -522,6 +1023,8 @@ async def analyze_run_items(
     return {
         "total_analyzed": len(results),
         "results": response_results,
+        "categories": categories,
+        "aggregated": aggregated,
         "errors": error_count,
     }
 
@@ -542,13 +1045,20 @@ async def analyze_run_items_stream(
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
     all_items, scores_by_item = _load_run_items_and_scores(db, run)
-    metric, filtered_items = _filter_analysis_items(run, request, all_items, scores_by_item)
+    metric_specs = _load_metric_specs(db, run)
+    analysis_targets = _filter_analysis_targets(
+        run,
+        request,
+        all_items,
+        scores_by_item,
+        metric_specs,
+    )
 
     async def stream_events():
         def encode(event: Dict[str, Any]) -> str:
             return json.dumps(event, ensure_ascii=False) + "\n"
 
-        total = len(filtered_items)
+        total = len(analysis_targets)
         yield encode(
             {
                 "type": "started",
@@ -559,33 +1069,54 @@ async def analyze_run_items_stream(
             }
         )
 
-        if not filtered_items:
-            yield encode({"type": "done", "total_analyzed": 0, "results": [], "errors": 0})
-            return
-
-        analyzer_config = _playground_config_to_analyzer(request.config)
-        cfg_ids = (analyzer_config or {}).get("correction_ids")
-        corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
-
-        items_with_scores = [
-            (item, scores_by_item.get(item.item_id, {})) for item in filtered_items
-        ]
-
+        analyzer_config = _analysis_config_with_project_context(
+            db,
+            run,
+            _playground_config_to_analyzer(request.config),
+        )
         client = build_client(llm_config)
         model = llm_config.get("llm_model", "gpt-4o-mini")
-        batch_items = items_with_scores
-        batch_config = analyzer_config
-        if not _supports_metric_name_arg(analyze_items_batch):
-            adapted_items: list[tuple[RunItem, dict[str, RunItemScore]]] = []
-            for item, item_scores in items_with_scores:
-                adapted_item, batch_config = _adapt_legacy_analyzer_inputs(
-                    item,
-                    item_scores,
-                    batch_config,
-                    metric,
+
+        if not analysis_targets:
+            yield encode(
+                {
+                    "type": "aggregating",
+                    "completed": 0,
+                    "total": 0,
+                    "errors": 0,
+                }
+            )
+            try:
+                categories, aggregated = await _aggregate_run_analysis_results(
+                    db=db,
+                    run=run,
+                    all_items=all_items,
+                    analysis_targets=[],
+                    new_results=[],
+                    client=client,
+                    model=model,
+                    analyzer_config=analyzer_config,
+                    principal=principal,
                 )
-                adapted_items.append((adapted_item, item_scores))
-            batch_items = adapted_items
+                db.commit()
+            except AnalysisAggregationError as exc:
+                db.rollback()
+                yield encode({"type": "error", "message": str(exc)})
+                return
+            yield encode(
+                {
+                    "type": "done",
+                    "total_analyzed": 0,
+                    "results": [],
+                    "categories": categories,
+                    "aggregated": aggregated,
+                    "errors": 0,
+                }
+            )
+            return
+
+        cfg_ids = (analyzer_config or {}).get("correction_ids")
+        corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         progress_errors = 0
@@ -601,6 +1132,7 @@ async def analyze_run_items_stream(
                     "total": total_count,
                     "errors": progress_errors,
                     "item_id": result.item_id,
+                    "metric_name": result.metric_name,
                     "root_cause": result.root_cause,
                     "root_cause_detail": result.root_cause_detail,
                     "error": result.error,
@@ -609,20 +1141,18 @@ async def analyze_run_items_stream(
 
         async def run_batch() -> None:
             try:
-                batch_kwargs = dict(
+                results = await _analyze_targets_batch(
                     client=client,
                     model=model,
-                    items=batch_items,
+                    targets=analysis_targets,
+                    scores_by_item=scores_by_item,
                     corrections=corrections,
                     concurrency=request.concurrency,
-                    config=batch_config,
+                    config=analyzer_config,
                     temperature=request.config.temperature if request.config else None,
                     max_tokens=request.config.max_tokens if request.config else None,
                     progress_callback=on_progress,
                 )
-                if _supports_metric_name_arg(analyze_items_batch):
-                    batch_kwargs["metric_name"] = metric
-                results: list[AnalysisResult] = await analyze_items_batch(**batch_kwargs)
                 await queue.put({"type": "_complete", "results": results})
             except Exception as exc:
                 logger_msg = f"Analysis stream failed for run {run_id}: {exc}"
@@ -634,15 +1164,39 @@ async def analyze_run_items_stream(
                 event = await queue.get()
                 if event.get("type") == "_complete":
                     results = event["results"]
+                    yield encode(
+                        {
+                            "type": "aggregating",
+                            "completed": total,
+                            "total": total,
+                            "errors": progress_errors,
+                        }
+                    )
                     try:
+                        categories, aggregated = await _aggregate_run_analysis_results(
+                            db=db,
+                            run=run,
+                            all_items=all_items,
+                            analysis_targets=analysis_targets,
+                            new_results=results,
+                            client=client,
+                            model=model,
+                            analyzer_config=analyzer_config,
+                            principal=principal,
+                        )
                         response_results, error_count = _save_analysis_results(
                             db,
                             run,
-                            filtered_items,
+                            analysis_targets,
                             results,
                             principal,
                         )
+                    except AnalysisAggregationError as exc:
+                        db.rollback()
+                        yield encode({"type": "error", "message": str(exc)})
+                        break
                     except Exception as exc:
+                        db.rollback()
                         yield encode({"type": "error", "message": f"Failed to save analysis results: {exc}"})
                         break
                     yield encode(
@@ -650,6 +1204,8 @@ async def analyze_run_items_stream(
                             "type": "done",
                             "total_analyzed": len(results),
                             "results": response_results,
+                            "categories": categories,
+                            "aggregated": aggregated,
                             "errors": error_count,
                         }
                     )
@@ -666,6 +1222,250 @@ async def analyze_run_items_stream(
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _analysis_document_payload(document: AnalyzerDocument, *, selected: bool) -> Dict[str, Any]:
+    return {
+        "id": document.id,
+        "name": document.name,
+        "content": document.content,
+        "characters": document.characters,
+        "truncated": document.truncated,
+        "selected": selected,
+        "created_at": to_api_timestamp(document.created_at),
+    }
+
+
+def _document_library_run(db: Session, principal: Principal, run_id: str) -> Run:
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return run
+
+
+@router.get("/api/runs/{run_id:path}/analysis-documents")
+def list_analysis_documents(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """List the project library with this run's shared selections."""
+    run = _document_library_run(db, principal, run_id)
+    documents = (
+        db.query(AnalyzerDocument)
+        .filter(AnalyzerDocument.project_id == run.project_id)
+        .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
+        .all()
+    )
+    selections = {
+        row.document_id: row.selected
+        for row in db.query(AnalyzerRunDocument)
+        .filter(AnalyzerRunDocument.run_id == run.id)
+        .all()
+    }
+    return {
+        "documents": [
+            _analysis_document_payload(document, selected=selections.get(document.id, False))
+            for document in documents
+        ]
+    }
+
+
+@router.post("/api/runs/{run_id:path}/analysis-documents")
+async def upload_analysis_document(
+    run_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Extract a project document and select it for the current run."""
+    run = _document_library_run(db, principal, run_id)
+
+    try:
+        raw = await file.read(MAX_REFERENCE_UPLOAD_BYTES + 1)
+    finally:
+        await file.close()
+
+    if len(raw) > MAX_REFERENCE_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="The document exceeds the 10 MB upload limit.")
+
+    try:
+        document = extract_document_text(file.filename or "document", raw)
+    except UnsupportedDocumentError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except DocumentExtractionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    stored = AnalyzerDocument(
+        project_id=run.project_id,
+        uploaded_by_user_id=principal.user.id,
+        name=document.name,
+        content=document.content,
+        characters=document.characters,
+        truncated=document.truncated,
+    )
+    db.add(stored)
+    db.flush()
+    db.add(AnalyzerRunDocument(run_id=run.id, document_id=stored.id, selected=True))
+    db.commit()
+    db.refresh(stored)
+    return {"document": _analysis_document_payload(stored, selected=True)}
+
+
+@router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")
+def select_analysis_document(
+    run_id: str,
+    document_id: str,
+    request: AnalyzerDocumentSelection,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist whether a project-library document is selected for this run."""
+    run = _document_library_run(db, principal, run_id)
+    document = (
+        db.query(AnalyzerDocument)
+        .filter(
+            AnalyzerDocument.id == document_id,
+            AnalyzerDocument.project_id == run.project_id,
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Analyzer document not found")
+    selection = (
+        db.query(AnalyzerRunDocument)
+        .filter(
+            AnalyzerRunDocument.run_id == run.id,
+            AnalyzerRunDocument.document_id == document.id,
+        )
+        .first()
+    )
+    if selection:
+        selection.selected = request.selected
+    else:
+        selection = AnalyzerRunDocument(
+            run_id=run.id,
+            document_id=document.id,
+            selected=request.selected,
+        )
+        db.add(selection)
+    db.commit()
+    return {"document": _analysis_document_payload(document, selected=selection.selected)}
+
+
+@router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")
+def delete_analysis_document(
+    run_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Delete one document from the shared project library."""
+    run = _document_library_run(db, principal, run_id)
+    document = (
+        db.query(AnalyzerDocument)
+        .filter(
+            AnalyzerDocument.id == document_id,
+            AnalyzerDocument.project_id == run.project_id,
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Analyzer document not found")
+    db.delete(document)
+    db.commit()
+    return {"ok": True, "document_id": document_id}
+
+
+@router.patch("/api/runs/{run_id:path}/analysis-context")
+def update_analysis_context(
+    run_id: str,
+    request: AnalysisContextUpdate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist project description and analyzer roles from the side panel."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    project = db.get(Project, run.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project.description = request.project_description.strip()
+    project.analyzer_roles = normalize_analysis_roles(
+        [role.model_dump() for role in request.analysis_roles]
+    )
+    db.commit()
+    return {
+        "project_description": project.description,
+        "analysis_roles": project.analyzer_roles,
+    }
+
+
+@router.post("/api/runs/{run_id:path}/analysis-roles/infer")
+async def infer_project_analysis_roles(
+    run_id: str,
+    request: RoleInferenceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Run the role-writer agent over selected documents and approved examples."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_modify_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    project = db.get(Project, run.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    selected_documents = (
+        db.query(AnalyzerDocument)
+        .join(
+            AnalyzerRunDocument,
+            AnalyzerRunDocument.document_id == AnalyzerDocument.id,
+        )
+        .filter(
+            AnalyzerRunDocument.run_id == run.id,
+            AnalyzerRunDocument.selected.is_(True),
+            AnalyzerDocument.project_id == run.project_id,
+        )
+        .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
+        .all()
+    )
+    corrections = get_few_shot_examples(db, task=run.task, limit=20)
+    llm_config = _get_llm_config(db, run.project_id, request.connection_id)
+
+    try:
+        roles = await infer_analysis_roles(
+            build_client(llm_config),
+            llm_config.get("llm_model", "gpt-4o-mini"),
+            project_description=request.project_description,
+            reference_documents=[
+                {"name": document.name, "content": document.content}
+                for document in selected_documents
+            ],
+            corrections=corrections,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Role inference failed: {exc}") from exc
+
+    project.description = request.project_description.strip()
+    project.analyzer_roles = roles
+    db.commit()
+    return {
+        "project_description": project.description,
+        "analysis_roles": roles,
+        "documents_used": len(selected_documents),
+        "examples_used": len(corrections),
+    }
 
 
 @router.post("/api/runs/{run_id:path}/analyze-preview")
@@ -697,20 +1497,46 @@ def analyze_preview(
     )
     scores = {s.metric_name: s for s in scores_list}
 
-    analyzer_config = _playground_config_to_analyzer(request.config)
+    preview_metric = request.metric
+    if not preview_metric:
+        specs = _load_metric_specs(db, run)
+        preview_request = AnalyzeRequest(
+            item_filter="failed",
+            only_unanalyzed=False,
+            allow_human_overwrite=True,
+            item_ids=[item.item_id],
+        )
+        preview_targets = _filter_analysis_targets(
+            run,
+            preview_request,
+            [item],
+            {item.item_id: scores},
+            specs,
+        )
+        preview_metric = (
+            preview_targets[0][1]
+            if preview_targets
+            else next(iter(scores), (run.metrics or [None])[0])
+        )
+
+    analyzer_config = _analysis_config_with_project_context(
+        db,
+        run,
+        _playground_config_to_analyzer(request.config),
+    )
     cfg_ids = (analyzer_config or {}).get("correction_ids")
     corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
     prompt_item = item
     prompt_config = analyzer_config
     prompt_kwargs = dict(config=prompt_config)
     if _supports_metric_name_arg(build_analysis_prompt):
-        prompt_kwargs["metric_name"] = request.metric
+        prompt_kwargs["metric_name"] = preview_metric
     else:
-        prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, scores, analyzer_config, request.metric)
+        prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, scores, analyzer_config, preview_metric)
         prompt_kwargs["config"] = prompt_config
     messages = build_analysis_prompt(prompt_item, scores, corrections, **prompt_kwargs)
 
-    return {"messages": messages}
+    return {"messages": messages, "metric_name": preview_metric}
 
 
 @router.post("/api/runs/{run_id:path}/analyze-test")
@@ -748,15 +1574,36 @@ async def analyze_test(
     for s in all_scores:
         scores_by_item.setdefault(s.item_id, {})[s.metric_name] = s
 
-    analyzer_config = _playground_config_to_analyzer(request.config)
+    analyzer_config = _analysis_config_with_project_context(
+        db,
+        run,
+        _playground_config_to_analyzer(request.config),
+    )
     cfg_ids = (analyzer_config or {}).get("correction_ids")
     corrections = get_few_shot_examples(db, task=run.task, limit=None, correction_ids=cfg_ids)
 
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
 
-    results = []
-    for item in items:
+    metric_specs = _load_metric_specs(db, run)
+    target_request = AnalyzeRequest(
+        metric=request.metric,
+        item_filter="failed" if request.metric is None else "all",
+        only_unanalyzed=False,
+        allow_human_overwrite=True,
+        item_ids=request.item_ids,
+    )
+    targets = _filter_analysis_targets(
+        run,
+        target_request,
+        items,
+        scores_by_item,
+        metric_specs,
+    )
+
+    analyzed_results: list[AnalysisResult] = []
+    messages_by_result: list[list[dict[str, Any]]] = []
+    for item, metric_name in targets:
         item_scores = scores_by_item.get(item.item_id, {})
 
         # Build prompt messages so we can return the inputs alongside the result
@@ -764,9 +1611,9 @@ async def analyze_test(
         prompt_config = analyzer_config
         prompt_kwargs = dict(config=prompt_config)
         if _supports_metric_name_arg(build_analysis_prompt):
-            prompt_kwargs["metric_name"] = request.metric
+            prompt_kwargs["metric_name"] = metric_name
         else:
-            prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, request.metric)
+            prompt_item, prompt_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, metric_name)
             prompt_kwargs["config"] = prompt_config
         messages = build_analysis_prompt(prompt_item, item_scores, corrections, **prompt_kwargs)
 
@@ -781,14 +1628,37 @@ async def analyze_test(
             max_tokens=request.config.max_tokens if request.config else None,
         )
         if _supports_metric_name_arg(analyze_single_item):
-            single_kwargs["metric_name"] = request.metric
+            single_kwargs["metric_name"] = metric_name
         else:
-            legacy_item, legacy_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, request.metric)
+            legacy_item, legacy_config = _adapt_legacy_analyzer_inputs(item, item_scores, analyzer_config, metric_name)
             single_kwargs["item"] = legacy_item
             single_kwargs["config"] = legacy_config
         result = await analyze_single_item(**single_kwargs)
-        results.append({
+        result.metric_name = metric_name
+        analyzed_results.append(result)
+        messages_by_result.append(messages)
+
+    try:
+        categories = await aggregate_analysis_categories(
+            client,
+            model,
+            analyzed_results,
+            known_categories=(analyzer_config or {}).get("root_cause_categories")
+            or ROOT_CAUSE_CATEGORIES,
+            known_details=(analyzer_config or {}).get("root_cause_details") or [],
+            known_category_details=(analyzer_config or {}).get(
+                "category_details_map"
+            )
+            or {},
+            known_solutions=(analyzer_config or {}).get("solution_categories")
+            or SOLUTION_CATEGORIES,
+        )
+    except AnalysisAggregationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    results = [
+        {
             "item_id": result.item_id,
+            "metric_name": result.metric_name,
             "root_cause": result.root_cause,
             "root_cause_detail": result.root_cause_detail,
             "root_cause_note": result.root_cause_note,
@@ -797,9 +1667,11 @@ async def analyze_test(
             "solution_note": result.solution_note,
             "error": result.error,
             "messages": messages,
-        })
+        }
+        for result, messages in zip(analyzed_results, messages_by_result)
+    ]
 
-    return {"results": results}
+    return {"results": results, "categories": categories}
 
 
 @router.get("/api/runs/{run_id:path}/corrections")
@@ -865,6 +1737,7 @@ def get_analysis_config(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    project = db.get(Project, run.project_id)
 
     connections = (
         db.query(ProjectLlmConnection)
@@ -916,6 +1789,8 @@ def get_analysis_config(
         "model": default_conn.llm_model if default_conn else None,
         "llm_connections": connection_payloads,
         "default_connection_id": default_conn.id if default_conn else None,
+        "project_description": str(project.description or "") if project else "",
+        "analysis_roles": normalize_analysis_roles(project.analyzer_roles) if project else [],
         "total_items": total,
         "items_with_root_cause": with_rc,
         "items_ai_assigned": ai_assigned,
@@ -1024,6 +1899,7 @@ def _serialize_review_fields(
         "revision_id": c.revision_id,
         "run_id": c.run_id,
         "item_id": c.item_id,
+        "metric_name": c.metric_name,
         "task": c.task,
         "dataset": run.dataset if run else "",
         "model": _strip_model_provider(run.model or "") if run else "",
@@ -1057,7 +1933,7 @@ def _serialize_review_fields(
 def _build_history_map(
     db: Session,
     corrections: List[ReviewCorrection],
-) -> tuple[Dict[tuple[str, str], List[Dict[str, Any]]], Dict[str, User]]:
+) -> tuple[Dict[tuple[str, str, Optional[str]], List[Dict[str, Any]]], Dict[str, User]]:
     keys = sorted({(c.run_id, c.item_id) for c in corrections})
     if not keys:
         return {}, {}
@@ -1092,17 +1968,19 @@ def _build_history_map(
     runs_by_id = _load_runs_map(db, {run_id for run_id, _ in keys})
 
     candidates_by_revision: Dict[int, ReviewCorrection] = {}
-    orphan_candidates: Dict[tuple[str, str], List[ReviewCorrection]] = {}
+    orphan_candidates: Dict[tuple[str, str, Optional[str]], List[ReviewCorrection]] = {}
     for candidate in all_candidates:
         if candidate.revision_id is not None and candidate.revision_id not in candidates_by_revision:
             candidates_by_revision[candidate.revision_id] = candidate
         elif candidate.revision_id is None:
-            orphan_candidates.setdefault((candidate.run_id, candidate.item_id), []).append(candidate)
+            orphan_candidates.setdefault(
+                (candidate.run_id, candidate.item_id, candidate.metric_name), []
+            ).append(candidate)
 
-    history_map: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
-    revisions_by_key: Dict[tuple[str, str], List[RootCauseRevision]] = {}
+    history_map: Dict[tuple[str, str, Optional[str]], List[Dict[str, Any]]] = {}
+    revisions_by_key: Dict[tuple[str, str, Optional[str]], List[RootCauseRevision]] = {}
     for revision in revisions:
-        revisions_by_key.setdefault((revision.run_id, revision.item_id), []).append(revision)
+        revisions_by_key.setdefault((revision.run_id, revision.item_id, None), []).append(revision)
 
     for key, revision_list in revisions_by_key.items():
         entries: List[Dict[str, Any]] = []
@@ -1198,7 +2076,9 @@ def _serialize_corrections_with_history(
                 correction,
                 users_by_id=users_by_id,
                 runs_by_id=runs_by_id,
-                history=history_map.get((correction.run_id, correction.item_id), []),
+                history=history_map.get(
+                    (correction.run_id, correction.item_id, correction.metric_name), []
+                ),
             )
         )
     return serialized
@@ -1236,11 +2116,17 @@ def _approve_candidate(
         correction.human_solution = correction.ai_solution or ""
         correction.human_solution_note = correction.ai_solution_note or ""
 
+    metric_scope = (
+        ReviewCorrection.metric_name.is_(None)
+        if correction.metric_name is None
+        else ReviewCorrection.metric_name == correction.metric_name
+    )
     older_approved = (
         db.query(ReviewCorrection)
         .filter(
             ReviewCorrection.run_id == correction.run_id,
             ReviewCorrection.item_id == correction.item_id,
+            metric_scope,
             ReviewCorrection.id != correction.id,
             ReviewCorrection.status == CorrectionStatus.APPROVED,
         )
@@ -1257,29 +2143,79 @@ def _approve_candidate(
     correction.review_comment = comment
 
 
-def _delete_active_candidate(db: Session, correction: ReviewCorrection) -> None:
+def _reject_candidate(
+    db: Session,
+    *,
+    correction: ReviewCorrection,
+    reviewer_id: Optional[str],
+    comment: str,
+    reviewed_at: datetime,
+) -> None:
+    """Reject a review candidate while preserving its full audit history."""
     _require_active_candidate(correction)
+    correction.status = CorrectionStatus.REJECTED
+    correction.reviewed_by_user_id = reviewer_id
+    correction.reviewed_at = reviewed_at
+    correction.review_comment = comment
 
+
+def _delete_active_candidate(
+    db: Session,
+    *,
+    correction: ReviewCorrection,
+    reviewer_id: Optional[str],
+    comment: str,
+    reviewed_at: datetime,
+) -> None:
+    """Remove a candidate from reviews while retaining a rejected audit record."""
+    _require_active_candidate(correction)
     run = Run.active(db).filter(Run.id == correction.run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     item = (
         db.query(RunItem)
-        .filter(RunItem.run_id == correction.run_id, RunItem.item_id == correction.item_id)
+        .filter(
+            RunItem.run_id == correction.run_id,
+            RunItem.item_id == correction.item_id,
+        )
         .first()
     )
     if not item:
         raise HTTPException(status_code=404, detail="Run item not found")
 
+    if correction.metric_name:
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        metric_analyses = dict(meta.get("metric_analyses") or {})
+        metric_analyses.pop(correction.metric_name, None)
+        if metric_analyses:
+            meta["metric_analyses"] = metric_analyses
+        else:
+            meta.pop("metric_analyses", None)
+        item.item_metadata = meta
+        correction.status = CorrectionStatus.REJECTED
+        correction.is_active = False
+        correction.reviewed_by_user_id = reviewer_id
+        correction.reviewed_at = reviewed_at
+        correction.review_comment = comment
+        return
+
     apply_root_cause_change(
         db,
         run=run,
         item=item,
-        actor_user_id=None,
+        actor_user_id=reviewer_id,
         actor_source="system",
         next_state={},
     )
-    db.delete(correction)
+
+    # Keep the row for review history, but deactivate it so it is deleted from
+    # the active Reviews collection. apply_root_cause_change may supersede it,
+    # so record the requested rejection after clearing the run item state.
+    correction.status = CorrectionStatus.REJECTED
+    correction.is_active = False
+    correction.reviewed_by_user_id = reviewer_id
+    correction.reviewed_at = reviewed_at
+    correction.review_comment = comment
 
 
 @router.get("/api/corrections")
@@ -1581,6 +2517,60 @@ def update_correction(
         if request_key in request:
             patch[state_key] = request.get(request_key)
 
+    if c.metric_name:
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        metric_analyses = dict(meta.get("metric_analyses") or {})
+        analysis = dict(metric_analyses.get(c.metric_name) or {})
+        if "root_cause" in patch:
+            root_cause = str(patch.get("root_cause") or "").strip()
+            if root_cause:
+                analysis["root_cause"] = root_cause
+            else:
+                for field in ("root_cause", "root_cause_detail", "root_cause_note", "confidence"):
+                    analysis.pop(field, None)
+        for field in ("root_cause_detail", "root_cause_note", "solution", "solution_note"):
+            if field not in patch:
+                continue
+            value = str(patch.get(field) or "").strip()
+            if value:
+                analysis[field] = value
+            else:
+                analysis.pop(field, None)
+                if field == "solution":
+                    analysis.pop("solution_note", None)
+        analysis.pop("error", None)
+        analysis.pop("confidence", None)
+        analysis["source"] = "human"
+        meaningful = {
+            key: value
+            for key, value in analysis.items()
+            if key != "source" and value not in (None, "")
+        }
+        if meaningful:
+            metric_analyses[c.metric_name] = analysis
+        else:
+            metric_analyses.pop(c.metric_name, None)
+        if metric_analyses:
+            meta["metric_analyses"] = metric_analyses
+        else:
+            meta.pop("metric_analyses", None)
+        item.item_metadata = meta
+        target = replace_metric_review_candidate(
+            db,
+            run=run,
+            item=item,
+            metric_name=c.metric_name,
+            analysis=analysis if meaningful else {},
+            actor_user_id=(
+                principal.user.id if principal.auth_type != "none" else None
+            ),
+            actor_source="human",
+        )
+        db.commit()
+        if target is None:
+            return _serialize_corrections_with_history(db, [c])[0]
+        return _serialize_corrections_with_history(db, [target])[0]
+
     result = apply_root_cause_change(
         db,
         run=run,
@@ -1619,11 +2609,17 @@ def approve_correction(
 
     target = correction
     if not correction.is_active:
+        metric_scope = (
+            ReviewCorrection.metric_name.is_(None)
+            if correction.metric_name is None
+            else ReviewCorrection.metric_name == correction.metric_name
+        )
         active_candidate = (
             db.query(ReviewCorrection)
             .filter(
                 ReviewCorrection.run_id == correction.run_id,
                 ReviewCorrection.item_id == correction.item_id,
+                metric_scope,
                 ReviewCorrection.is_active.is_(True),
             )
             .first()
@@ -1643,6 +2639,81 @@ def approve_correction(
     return _serialize_corrections_with_history(db, [target])[0]
 
 
+@router.post("/api/corrections/approve-metric-analysis")
+def approve_metric_analysis(
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Materialize and approve one saved per-metric analysis."""
+    run_id = str(request.get("run_id") or "").strip()
+    item_id = str(request.get("item_id") or "").strip()
+    metric_name = str(request.get("metric_name") or "").strip()
+    if not run_id or not item_id or not metric_name:
+        raise HTTPException(
+            status_code=400,
+            detail="run_id, item_id, and metric_name required",
+        )
+
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run or not can_review_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    item = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run.id, RunItem.item_id == item_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Run item not found")
+
+    metric_analyses = (
+        item.item_metadata.get("metric_analyses", {})
+        if isinstance(item.item_metadata, dict)
+        else {}
+    )
+    analysis = metric_analyses.get(metric_name)
+    if not isinstance(analysis, dict) or not str(analysis.get("root_cause") or "").strip():
+        raise HTTPException(status_code=404, detail="Metric analysis not found")
+
+    candidate = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id == item.item_id,
+            ReviewCorrection.metric_name == metric_name,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+        .first()
+    )
+    if candidate is None:
+        source = str(analysis.get("source") or "ai").lower()
+        candidate = replace_metric_review_candidate(
+            db,
+            run=run,
+            item=item,
+            metric_name=metric_name,
+            analysis=analysis,
+            actor_user_id=(
+                principal.user.id if principal.auth_type != "none" else None
+            ),
+            actor_source="human" if source == "human" else "ai",
+        )
+        if candidate is None:
+            raise HTTPException(status_code=409, detail="Metric analysis is not reviewable")
+        db.flush()
+
+    _approve_candidate(
+        db,
+        correction=candidate,
+        reviewer_id=principal.user.id if principal.auth_type != "none" else None,
+        comment=(request.get("comment") or "").strip(),
+        reviewed_at=utc_now_naive(),
+    )
+    db.commit()
+    return _serialize_corrections_with_history(db, [candidate])[0]
+
+
 @router.post("/api/corrections/{correction_id}/reject")
 def reject_correction(
     correction_id: int,
@@ -1659,10 +2730,13 @@ def reject_correction(
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    c.status = CorrectionStatus.REJECTED
-    c.reviewed_by_user_id = principal.user.id if principal.auth_type != "none" else None
-    c.reviewed_at = utc_now_naive()
-    c.review_comment = (request.get("comment") or "").strip()
+    _reject_candidate(
+        db,
+        correction=c,
+        reviewer_id=principal.user.id if principal.auth_type != "none" else None,
+        comment=(request.get("comment") or "").strip(),
+        reviewed_at=utc_now_naive(),
+    )
 
     db.commit()
     return _serialize_corrections_with_history(db, [c])[0]
@@ -1744,10 +2818,13 @@ def bulk_correction_action(
             )
             affected += 1
         elif request.action == "reject":
-            c.status = CorrectionStatus.REJECTED
-            c.reviewed_by_user_id = reviewer_id
-            c.reviewed_at = now
-            c.review_comment = request.comment
+            _reject_candidate(
+                db,
+                correction=c,
+                reviewer_id=reviewer_id,
+                comment=request.comment,
+                reviewed_at=now,
+            )
             affected += 1
         elif request.action == "reset":
             c.status = CorrectionStatus.PENDING
@@ -1756,7 +2833,13 @@ def bulk_correction_action(
             c.review_comment = ""
             affected += 1
         elif request.action == "delete":
-            _delete_active_candidate(db, c)
+            _delete_active_candidate(
+                db,
+                correction=c,
+                reviewer_id=reviewer_id,
+                comment=request.comment or "Rejected automatically after deletion request.",
+                reviewed_at=now,
+            )
             affected += 1
 
     db.commit()
@@ -1769,13 +2852,19 @@ def delete_correction(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Delete a single correction."""
+    """Delete a correction from reviews and retain it as rejected history."""
     c = db.query(ReviewCorrection).filter(ReviewCorrection.id == correction_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Correction not found")
     run = Run.active(db).filter(Run.id == c.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
-    _delete_active_candidate(db, c)
+    _delete_active_candidate(
+        db,
+        correction=c,
+        reviewer_id=principal.user.id if principal.auth_type != "none" else None,
+        comment="Rejected automatically after deletion request.",
+        reviewed_at=utc_now_naive(),
+    )
     db.commit()
-    return {"ok": True, "deleted_id": correction_id}
+    return {"ok": True, "deleted_id": correction_id, "status": CorrectionStatus.REJECTED.value}

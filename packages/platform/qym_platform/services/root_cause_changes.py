@@ -207,6 +207,116 @@ def _snapshot_scores(db: Session, run_id: str, item_id: str) -> dict[str, Any]:
     return snap
 
 
+def replace_metric_review_candidate(
+    db: Session,
+    *,
+    run: Run,
+    item: RunItem,
+    metric_name: str,
+    analysis: dict[str, Any],
+    actor_user_id: Optional[str],
+    actor_source: str,
+    created_at: Optional[datetime] = None,
+) -> Optional[ReviewCorrection]:
+    """Replace the active review candidate for one item/metric analysis."""
+    if actor_source not in {"ai", "human", "system"}:
+        raise ValueError(f"Unsupported actor_source: {actor_source}")
+
+    metric_name = str(metric_name or "").strip()
+    if not metric_name:
+        raise ValueError("metric_name is required")
+
+    active_candidates = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id == item.item_id,
+            ReviewCorrection.metric_name == metric_name,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .all()
+    )
+    ai_baseline = next(
+        (candidate for candidate in active_candidates if str(candidate.ai_root_cause or "").strip()),
+        None,
+    )
+    if ai_baseline is None and actor_source != "ai":
+        ai_baseline = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == run.id,
+                ReviewCorrection.item_id == item.item_id,
+                ReviewCorrection.metric_name == metric_name,
+                ReviewCorrection.ai_root_cause.is_not(None),
+                ReviewCorrection.ai_root_cause != "",
+            )
+            .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+            .first()
+        )
+
+    root_cause = str(analysis.get("root_cause") or "").strip()
+    deactivation_status = (
+        CorrectionStatus.SUPERSEDED if root_cause else CorrectionStatus.WITHDRAWN
+    )
+    for candidate in active_candidates:
+        candidate.is_active = False
+        candidate.status = deactivation_status
+
+    if not root_cause:
+        return None
+
+    timestamp = to_storage_utc(created_at) or utc_now_naive()
+    is_ai = actor_source == "ai"
+    candidate = ReviewCorrection(
+        run_id=run.id,
+        item_id=item.item_id,
+        metric_name=metric_name,
+        task=run.task,
+        input_snapshot=item.input,
+        expected_snapshot=item.expected,
+        output_snapshot=item.output,
+        scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
+        ai_root_cause=(root_cause if is_ai else (ai_baseline.ai_root_cause if ai_baseline else "")),
+        ai_root_cause_detail=(
+            str(analysis.get("root_cause_detail") or "")
+            if is_ai
+            else (ai_baseline.ai_root_cause_detail if ai_baseline else "")
+        ),
+        ai_root_cause_note=(
+            str(analysis.get("root_cause_note") or "")
+            if is_ai
+            else (ai_baseline.ai_root_cause_note if ai_baseline else "")
+        ),
+        ai_confidence=(
+            analysis.get("confidence")
+            if is_ai
+            else (ai_baseline.ai_confidence if ai_baseline else None)
+        ),
+        ai_solution=(
+            str(analysis.get("solution") or "")
+            if is_ai
+            else (ai_baseline.ai_solution if ai_baseline else "")
+        ),
+        ai_solution_note=(
+            str(analysis.get("solution_note") or "")
+            if is_ai
+            else (ai_baseline.ai_solution_note if ai_baseline else "")
+        ),
+        human_root_cause="" if is_ai else root_cause,
+        human_root_cause_detail="" if is_ai else str(analysis.get("root_cause_detail") or ""),
+        human_root_cause_note="" if is_ai else str(analysis.get("root_cause_note") or ""),
+        human_solution="" if is_ai else str(analysis.get("solution") or ""),
+        human_solution_note="" if is_ai else str(analysis.get("solution_note") or ""),
+        corrected_by_user_id=actor_user_id,
+        revision_id=None,
+        is_active=True,
+        status=CorrectionStatus.PENDING,
+        created_at=timestamp,
+    )
+    db.add(candidate)
+    return candidate
+
+
 def _build_candidate_snapshot(
     *,
     run: Run,

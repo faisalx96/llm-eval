@@ -27,8 +27,16 @@
   // ══════════════════════════════════════════════════
 
   function getAppRootPath() {
-    const path = window.location.pathname;
+    if (typeof window.__QYM_ROOT_PATH__ === 'string') {
+      const configuredRoot = window.__QYM_ROOT_PATH__.replace(/\/+$/, '');
+      return configuredRoot ? configuredRoot + '/' : '/';
+    }
+
+    const rawPath = window.location.pathname;
+    const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
     const patterns = [
+      /\/projects\/[^/]+\/analysis$/,
+      /\/projects\/[^/]+\/runs\/[^/]+\/analyzer$/,
       /\/projects\/[^/]+\/runs\/[^/]+$/,
       /\/projects\/[^/]+\/reviews$/,
       /\/projects\/[^/]+\/datasets(?:\/[^/]+(?:\/compare)?)?$/,
@@ -37,6 +45,7 @@
       /\/projects\/[^/]+\/charts$/,
       /\/projects\/[^/]+\/models$/,
       /\/projects\/[^/]+$/,
+      /\/run\/[^/]+\/analyzer$/,
       /\/run\/[^/]+$/,
       /\/reviews$/,
       /\/profile$/,
@@ -50,7 +59,7 @@
         return next.endsWith('/') ? next : next + '/';
       }
     }
-    if (path.endsWith('/')) return path;
+    if (rawPath.endsWith('/')) return rawPath;
     return (path.substring(0, path.lastIndexOf('/') + 1) || '/');
   }
 
@@ -61,7 +70,8 @@
   }
 
   function parseRoute() {
-    const pathname = window.location.pathname;
+    const rawPathname = window.location.pathname;
+    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
     const search = new URLSearchParams(window.location.search);
 
     // Project-scoped routes: /projects/{slug}/...
@@ -86,8 +96,13 @@
         }
       }
       else if (rest === 'overview') page = 'overview';
+      else if (rest === 'analysis') page = 'analysis';
       else if (rest === 'reviews') page = 'reviews';
       else if (rest === 'settings') page = 'settings';
+      else if (rest.startsWith('runs/') && rest.endsWith('/analyzer')) {
+        page = 'analysis';
+        subId = rest.slice(5, -'/analyzer'.length);
+      }
       else if (rest.startsWith('runs/')) { page = 'run-detail'; subId = rest.slice(5); }
 
       return { projectSlug: slug, page: page, subId: subId };
@@ -95,6 +110,8 @@
 
     // Legacy run detail: /run/{id} — keep project context from last known project
     const lastSlug = localStorage.getItem('qym:last-project-slug') || null;
+    const analyzerMatch = pathname.match(/\/run\/(.+)\/analyzer$/);
+    if (analyzerMatch) return { projectSlug: lastSlug, page: 'analysis', subId: analyzerMatch[1] };
     const runMatch = pathname.match(/\/run\/(.+)$/);
     if (runMatch) return { projectSlug: lastSlug, page: 'run-detail', subId: runMatch[1] };
 
@@ -152,9 +169,11 @@
     if (relative === null) return false;
     if (relative === '') return true;
     return [
-      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|datasets(?:\/[^/]+(?:\/compare)?)?|reviews|settings))?$/,
+      /^projects\/[^/]+(?:\/(?:runs|overview|charts|models|datasets(?:\/[^/]+(?:\/compare)?)?|analysis|reviews|settings))?$/,
       /^projects\/[^/]+\/runs\/[^/]+$/,
+      /^projects\/[^/]+\/runs\/[^/]+\/analyzer$/,
       /^run\/[^/]+$/,
+      /^run\/[^/]+\/analyzer$/,
       /^reviews$/,
       /^profile$/,
       /^admin$/,
@@ -295,6 +314,7 @@
     charts: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
     runs: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
     models: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+    analysis: '<path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><path d="m5.64 5.64 2.12 2.12"/><path d="m16.24 16.24 2.12 2.12"/><path d="m18.36 5.64-2.12 2.12"/><path d="m7.76 16.24-2.12 2.12"/><circle cx="12" cy="12" r="3"/>',
     datasets: '<path d="M21 5c0 1.7-4 3-9 3S3 6.7 3 5s4-3 9-3 9 1.3 9 3Z"/><path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6"/>',
     reviews: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     traces: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
@@ -350,6 +370,7 @@
       buildNavItem('Charts', 'charts', 'charts', { href: projectSlug ? projectUrl(projectSlug, 'charts') : '#' }),
       buildNavItem('Runs', 'runs', 'runs', { href: projectSlug ? projectUrl(projectSlug) : '#' }),
       buildNavItem('Models', 'models', 'models', { href: projectSlug ? projectUrl(projectSlug, 'models') : '#' }),
+      buildNavItem('Auto-analysis', 'analysis', 'analysis', { href: projectSlug ? projectUrl(projectSlug, 'analysis') : '#' }),
       buildNavItem('Reviews', 'reviews', 'reviews', { href: projectSlug ? projectUrl(projectSlug, 'reviews') : '#' }),
       buildNavItem('Datasets', 'datasets', 'datasets', { href: projectSlug ? projectUrl(projectSlug, 'datasets') : '#' }),
       buildNavItem('Project Settings', 'settings', 'settings', { href: projectSlug ? projectUrl(projectSlug, 'settings') : '#' }),
@@ -432,6 +453,8 @@
     charts: 'Charts',
     runs: 'Runs',
     'run-detail': 'Run Detail',
+    analyzer: 'Auto-analysis',
+    analysis: 'Auto-analysis',
     models: 'Models',
     datasets: 'Datasets',
     reviews: 'Reviews',
@@ -451,7 +474,9 @@
       // First crumb = project switcher
       crumbs.push({ label: _currentProject.name, projectSwitcher: true });
 
-      if (ctx.page === 'run-detail') {
+      if (ctx.page === 'analysis' || ctx.page === 'analyzer') {
+        crumbs.push({ label: 'Auto-analysis', current: true });
+      } else if (ctx.page === 'run-detail') {
         crumbs.push({ label: 'Runs', href: projectUrl(ctx.projectSlug) });
         crumbs.push({ label: ctx.subId || 'Run', current: true });
       } else if (ctx.page === 'compare') {
@@ -460,6 +485,9 @@
       } else {
         crumbs.push({ label: PAGE_LABELS[ctx.page] || ctx.page, current: true });
       }
+    } else if (ctx.page === 'analysis' || ctx.page === 'analyzer') {
+      crumbs.push({ label: ctx.subId || 'Run', href: getAppRootPath() + 'run/' + encodeURIComponent(ctx.subId || '') });
+      crumbs.push({ label: 'Auto-analysis', current: true });
     } else if (ctx.page === 'run-detail') {
       crumbs.push({ label: ctx.subId || 'Run Detail', current: true });
     } else {
@@ -513,6 +541,7 @@
   // Map sub-pages to their parent nav section
   var NAV_PARENT = {
     'run-detail': 'runs',
+    'analyzer': 'analysis',
     'compare': 'runs',
   };
 
@@ -1352,6 +1381,7 @@
       'charts': projectUrl(slug, 'charts'),
       'runs': projectUrl(slug),
       'models': projectUrl(slug, 'models'),
+      'analysis': projectUrl(slug, 'analysis'),
       'datasets': projectUrl(slug, 'datasets'),
       'reviews': projectUrl(slug, 'reviews'),
       'traces': '#',

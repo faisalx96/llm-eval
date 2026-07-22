@@ -55,7 +55,10 @@ from qym_platform.permissions import (
     has_project_access,
 )
 from qym_platform.services.run_lifecycle import reconcile_stale_running_run
-from qym_platform.services.root_cause_changes import apply_root_cause_change
+from qym_platform.services.root_cause_changes import (
+    apply_root_cause_change,
+    replace_metric_review_candidate,
+)
 from qym_platform.settings import PlatformSettings
 
 
@@ -186,6 +189,10 @@ def _platform_static_admin_index() -> Path:
 
 def _platform_static_dashboard_run() -> Path:
     return _platform_static_dir() / "dashboard" / "run.html"
+
+
+def _platform_static_dashboard_analyzer() -> Path:
+    return _platform_static_dir() / "dashboard" / "analyzer.html"
 
 
 def _platform_static_project_settings() -> Path:
@@ -847,6 +854,46 @@ def project_settings_index(project_slug: str, request: Request, db: Session = De
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Project settings UI not found")
     return _dashboard_html_response(idx, request)
+
+
+@router.get("/run/{run_id:path}/analyzer", response_model=None)
+def analyzer_ui(run_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    redirect = _maybe_redirect_to_login(request, db)
+    if redirect:
+        return redirect
+    idx = _platform_static_dashboard_analyzer()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="LLM Analyzer UI not found")
+    return _dashboard_html_response(idx, request)
+
+
+@router.get("/projects/{project_slug}/analysis", response_model=None)
+def project_analysis_ui(
+    project_slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Serve the project's first-class auto-analysis workspace."""
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
+    idx = _platform_static_dashboard_analyzer()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="Auto-analysis UI not found")
+    return _dashboard_html_response(idx, request)
+
+
+@router.get("/projects/{project_slug}/runs/{run_id:path}/analyzer", response_model=None)
+def project_analyzer_ui(
+    project_slug: str,
+    run_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    guarded = _guard_project_page(request, db, project_slug)
+    if guarded:
+        return guarded
+    return analyzer_ui(run_id=run_id, request=request, db=db)
 
 
 @router.get("/run/{run_id:path}", response_model=None)
@@ -1646,8 +1693,14 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         .all()
     )
     correction_by_item: Dict[str, ReviewCorrection] = {}
+    corrections_by_item_metric: Dict[str, Dict[str, ReviewCorrection]] = {}
     for corr in corrections:
-        correction_by_item.setdefault(corr.item_id, corr)
+        if corr.metric_name:
+            corrections_by_item_metric.setdefault(corr.item_id, {}).setdefault(
+                corr.metric_name, corr
+            )
+        else:
+            correction_by_item.setdefault(corr.item_id, corr)
 
     # Read pre-computed trace stats from stored metadata
     run_trace_stats = run.run_metadata.get("trace_stats") if isinstance(run.run_metadata, dict) else None
@@ -1756,6 +1809,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         if not ts_ms:
             ts_ms = _item_start_ts.get(it.item_id)
         corr = correction_by_item.get(it.item_id)
+        metric_corrections = corrections_by_item_metric.get(it.item_id, {})
         item_metadata = it.item_metadata if isinstance(it.item_metadata, dict) else {}
         retry_count = int(it.retry_count or item_metadata.get("retry_count") or 0)
         identity = build_compare_identity(
@@ -1793,6 +1847,17 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "review_correction_status": (
                     corr.status.value if corr and hasattr(corr.status, "value") else (corr.status if corr else "")
                 ),
+                "review_corrections": {
+                    metric_name: {
+                        "id": metric_correction.id,
+                        "status": (
+                            metric_correction.status.value
+                            if hasattr(metric_correction.status, "value")
+                            else metric_correction.status
+                        ),
+                    }
+                    for metric_name, metric_correction in metric_corrections.items()
+                },
                 "trace_stats": item_metadata.get("trace_stats") if isinstance(item_metadata, dict) else None,
                 # Repeat runs: metric -> [score per pass, index 0 = pass 1]
                 "pass_scores": (
@@ -2548,11 +2613,15 @@ def update_root_cause(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Update root_cause and feedback (root_cause_note) in item_metadata for a single run's item.
+    """Update item-level or metric-level root-cause analysis for one run item.
 
     Each field is only modified when its key is explicitly present in the request.
     This prevents partial saves (e.g. saving only root_cause_note) from erasing
     unrelated fields like root_cause or root_cause_detail.
+
+    Supplying ``metric_name`` scopes the patch to the corresponding entry in
+    ``item_metadata.metric_analyses`` and leaves the legacy item-level summary
+    untouched.
     """
     item_id = request.get("item_id")
     run_id = request.get("run_id")
@@ -2574,10 +2643,139 @@ def update_root_cause(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    editable_fields = (
+        "root_cause",
+        "root_cause_detail",
+        "root_cause_note",
+        "solution",
+        "solution_note",
+    )
     patch = {}
-    for field in ("root_cause", "root_cause_detail", "root_cause_note", "solution", "solution_note"):
+    for field in editable_fields:
         if field in request or (field == "root_cause_note" and request.get(field) is not None):
             patch[field] = request.get(field)
+
+    raw_metric_name = request.get("metric_name")
+    if raw_metric_name is not None:
+        metric_name = str(raw_metric_name).strip()
+        if not metric_name:
+            raise HTTPException(status_code=400, detail="metric_name must not be empty")
+
+        meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        metric_analyses = (
+            dict(meta.get("metric_analyses"))
+            if isinstance(meta.get("metric_analyses"), dict)
+            else {}
+        )
+        known_metrics = {str(name) for name in (run.metrics or [])}
+        known_metrics.update(str(name) for name in metric_analyses)
+        if metric_name not in known_metrics:
+            raise HTTPException(status_code=400, detail="Unknown metric_name")
+
+        before_analysis = (
+            dict(metric_analyses.get(metric_name))
+            if isinstance(metric_analyses.get(metric_name), dict)
+            else {}
+        )
+        analysis = dict(before_analysis)
+
+        if "root_cause" in patch:
+            root_cause = str(patch.get("root_cause") or "").strip()
+            if root_cause:
+                analysis["root_cause"] = root_cause
+            else:
+                for field in (
+                    "root_cause",
+                    "root_cause_detail",
+                    "root_cause_note",
+                    "confidence",
+                ):
+                    analysis.pop(field, None)
+        if "root_cause_detail" in patch:
+            detail = str(patch.get("root_cause_detail") or "").strip()
+            if detail:
+                analysis["root_cause_detail"] = detail
+            else:
+                analysis.pop("root_cause_detail", None)
+        if "root_cause_note" in patch:
+            note = str(patch.get("root_cause_note") or "").strip()
+            if note:
+                analysis["root_cause_note"] = note
+            else:
+                analysis.pop("root_cause_note", None)
+        if "solution" in patch:
+            solution = str(patch.get("solution") or "").strip()
+            if solution:
+                analysis["solution"] = solution
+            else:
+                analysis.pop("solution", None)
+                analysis.pop("solution_note", None)
+        if "solution_note" in patch:
+            solution_note = str(patch.get("solution_note") or "").strip()
+            if solution_note:
+                analysis["solution_note"] = solution_note
+            else:
+                analysis.pop("solution_note", None)
+
+        if patch:
+            analysis.pop("error", None)
+            analysis.pop("confidence", None)
+            analysis["source"] = "human"
+
+        meaningful_analysis = {
+            key: value
+            for key, value in analysis.items()
+            if key != "source" and value not in (None, "")
+        }
+        if meaningful_analysis:
+            metric_analyses[metric_name] = analysis
+        else:
+            metric_analyses.pop(metric_name, None)
+
+        if metric_analyses:
+            meta["metric_analyses"] = metric_analyses
+        else:
+            meta.pop("metric_analyses", None)
+        item.item_metadata = meta
+
+        after_analysis = dict(metric_analyses.get(metric_name) or {})
+        if before_analysis != after_analysis:
+            replace_metric_review_candidate(
+                db,
+                run=run,
+                item=item,
+                metric_name=metric_name,
+                analysis=after_analysis,
+                actor_user_id=(
+                    principal.user.id if principal.auth_type != "none" else None
+                ),
+                actor_source="human",
+            )
+            db.add(
+                AuditLog(
+                    actor_user_id=(
+                        principal.user.id if principal.auth_type != "none" else None
+                    ),
+                    action="metric_root_cause_change:human",
+                    entity_type="run_item_metric_analysis",
+                    entity_id=f"{run.id}:{item.item_id}:{metric_name}",
+                    before=before_analysis,
+                    after=after_analysis,
+                    created_at=utc_now_naive(),
+                )
+            )
+        db.commit()
+        updated_snapshot = _build_run_data(db, run).get("snapshot", {})
+        updated_rows = (
+            updated_snapshot.get("rows", [])
+            if isinstance(updated_snapshot, dict)
+            else []
+        )
+        updated_row = next(
+            (row for row in updated_rows if row.get("item_id") == item.item_id),
+            None,
+        )
+        return {"ok": True, "row": updated_row}
 
     apply_root_cause_change(
         db,

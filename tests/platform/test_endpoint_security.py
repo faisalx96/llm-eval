@@ -28,6 +28,7 @@ from qym_platform.app import create_app
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
+    AuditLog,
     CorrectionStatus,
     Project,
     ProjectMembership,
@@ -234,6 +235,180 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert denied_analyze.status_code == 403
 
+    owner_document = client.post(
+        "/api/runs/run-1/analysis-documents",
+        headers=_headers("owner@example.com"),
+        files={"file": ("rubric.txt", b"Answers must cite evidence.", "text/plain")},
+    )
+    assert owner_document.status_code == 200
+    assert owner_document.json()["document"]["content"] == "Answers must cite evidence."
+    document_id = owner_document.json()["document"]["id"]
+
+    with session_factory() as session:
+        session.add(
+            Run(
+                id="run-2",
+                project_id="project-a",
+                created_by_user_id="owner-1",
+                owner_user_id="owner-1",
+                task="task-2",
+                dataset="dataset-2",
+                metrics=["judge"],
+                status=RunWorkflowStatus.COMPLETED,
+                run_metadata={},
+                run_config={},
+            )
+        )
+        session.commit()
+
+    owner_library = client.get(
+        "/api/runs/run-1/analysis-documents",
+        headers=_headers("owner@example.com"),
+    )
+    assert owner_library.status_code == 200
+    assert owner_library.json()["documents"] == [owner_document.json()["document"]]
+
+    manager_library = client.get(
+        "/api/runs/run-1/analysis-documents",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert manager_library.status_code == 200
+    assert manager_library.json()["documents"] == [owner_document.json()["document"]]
+
+    second_run_library = client.get(
+        "/api/runs/run-2/analysis-documents",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert second_run_library.status_code == 200
+    assert second_run_library.json()["documents"][0]["id"] == document_id
+    assert second_run_library.json()["documents"][0]["selected"] is False
+
+    deselected = client.patch(
+        f"/api/runs/run-1/analysis-documents/{document_id}",
+        headers=_headers("owner@example.com"),
+        json={"selected": False},
+    )
+    assert deselected.status_code == 200
+    assert deselected.json()["document"]["selected"] is False
+
+    manager_can_change_project_document_selection = client.patch(
+        f"/api/runs/run-1/analysis-documents/{document_id}",
+        headers=_headers("manager-a@example.com"),
+        json={"selected": True},
+    )
+    assert manager_can_change_project_document_selection.status_code == 200
+    assert manager_can_change_project_document_selection.json()["document"]["selected"] is True
+
+    shared_selection = client.get(
+        "/api/runs/run-1/analysis-documents",
+        headers=_headers("owner@example.com"),
+    )
+    assert shared_selection.json()["documents"][0]["selected"] is True
+
+    denied_document = client.post(
+        "/api/runs/run-1/analysis-documents",
+        headers=_headers("other@example.com"),
+        files={"file": ("rubric.txt", b"Answers must cite evidence.", "text/plain")},
+    )
+    assert denied_document.status_code == 403
+
+    deleted = client.delete(
+        f"/api/runs/run-1/analysis-documents/{document_id}",
+        headers=_headers("owner@example.com"),
+    )
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True, "document_id": document_id}
+
+
+def test_metric_root_cause_edits_are_scoped_and_audited(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_platform_data(session)
+        item = (
+            session.query(RunItem)
+            .filter(RunItem.run_id == "run-1", RunItem.item_id == "item-1")
+            .one()
+        )
+        assert item is not None
+        item.item_metadata = {
+            "root_cause": "Item Summary",
+            "root_cause_source": "ai",
+            "keep_me": "untouched",
+            "metric_analyses": {
+                "judge": {
+                    "source": "ai",
+                    "root_cause": "Wrong Format",
+                    "root_cause_detail": "Bad envelope",
+                    "root_cause_note": "Original explanation",
+                    "confidence": 0.82,
+                    "solution": "Refine Prompt Instructions",
+                }
+            },
+        }
+        session.commit()
+
+    changed = client.post(
+        "/api/runs/update_root_cause",
+        headers=_headers("owner@example.com"),
+        json={
+            "run_id": "run-1",
+            "item_id": "item-1",
+            "metric_name": "judge",
+            "root_cause": "Reasoning Error",
+        },
+    )
+    assert changed.status_code == 200
+    changed_meta = changed.json()["row"]["item_metadata"]
+    changed_analysis = changed_meta["metric_analyses"]["judge"]
+    assert changed_analysis["root_cause"] == "Reasoning Error"
+    assert changed_analysis["root_cause_detail"] == "Bad envelope"
+    assert changed_analysis["root_cause_note"] == "Original explanation"
+    assert changed_analysis["solution"] == "Refine Prompt Instructions"
+    assert changed_analysis["source"] == "human"
+    assert "confidence" not in changed_analysis
+    assert changed_meta["root_cause"] == "Item Summary"
+    assert changed_meta["keep_me"] == "untouched"
+
+    annotated = client.post(
+        "/api/runs/update_root_cause",
+        headers=_headers("owner@example.com"),
+        json={
+            "run_id": "run-1",
+            "item_id": "item-1",
+            "metric_name": "judge",
+            "root_cause_detail": "Wrong join key",
+            "root_cause_note": "Reviewed against the expected output.",
+        },
+    )
+    assert annotated.status_code == 200
+    annotated_analysis = annotated.json()["row"]["item_metadata"]["metric_analyses"]["judge"]
+    assert annotated_analysis["root_cause"] == "Reasoning Error"
+    assert annotated_analysis["root_cause_detail"] == "Wrong join key"
+    assert annotated_analysis["root_cause_note"] == "Reviewed against the expected output."
+
+    unknown_metric = client.post(
+        "/api/runs/update_root_cause",
+        headers=_headers("owner@example.com"),
+        json={
+            "run_id": "run-1",
+            "item_id": "item-1",
+            "metric_name": "not-a-run-metric",
+            "root_cause": "Other",
+        },
+    )
+    assert unknown_metric.status_code == 400
+
+    with session_factory() as session:
+        audits = (
+            session.query(AuditLog)
+            .filter(AuditLog.action == "metric_root_cause_change:human")
+            .order_by(AuditLog.id.asc())
+            .all()
+        )
+        assert len(audits) == 2
+        assert audits[0].entity_id == "run-1:item-1:judge"
+        assert audits[0].before["root_cause"] == "Wrong Format"
+        assert audits[0].after["root_cause"] == "Reasoning Error"
+
 
 def test_correction_review_permissions_and_filtering(client, session_factory) -> None:
     with session_factory() as session:
@@ -271,6 +446,25 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
         json={"ids": [1], "action": "reject", "comment": "nope"},
     )
     assert denied_bulk.status_code == 403
+
+    removed = client.delete(
+        "/api/corrections/1",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert removed.status_code == 200
+    assert removed.json() == {"ok": True, "deleted_id": 1, "status": "rejected"}
+    with session_factory() as session:
+        correction = session.get(ReviewCorrection, 1)
+        assert correction is not None
+        assert correction.status == CorrectionStatus.REJECTED
+        assert correction.is_active is False
+        assert correction.review_comment == "Rejected automatically after deletion request."
+
+    manager_list_after_delete = client.get(
+        "/api/corrections", headers=_headers("manager-a@example.com")
+    )
+    assert manager_list_after_delete.status_code == 200
+    assert manager_list_after_delete.json()["corrections"] == []
 
 
 def test_api_key_scopes_are_not_enforced(client, session_factory) -> None:

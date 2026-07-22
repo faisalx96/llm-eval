@@ -1,7 +1,7 @@
 /**
- * QymPlayground — AI Evaluator Playground modal
- * Single-column scrollable layout with variable mapping, auto-preview, matched items table
- * Shared module used by run.html and compare.html
+ * QymPlayground — AI Evaluator Playground
+ * Single-column layout with variable mapping, auto-preview, and matched items.
+ * It can render as a modal or inside a dedicated page container.
  */
 window.QymPlayground = (function () {
   'use strict';
@@ -18,6 +18,10 @@ window.QymPlayground = (function () {
   var _PAGE_SIZE = 10;
   var _selectedItemId = null;
   var _customVars = [];
+  var _configUnlocked = false;
+  var _referenceDocuments = [];
+  var _analysisRoles = [];
+  var _documentUploadsInFlight = 0;
 
   // ── Public API ──
 
@@ -29,6 +33,10 @@ window.QymPlayground = (function () {
   }
 
   function close() {
+    if (_opts.onClose) {
+      _opts.onClose();
+      return;
+    }
     if (_overlay) _overlay.style.display = 'none';
   }
 
@@ -42,6 +50,7 @@ window.QymPlayground = (function () {
     Promise.all([
       fetch(base('api/runs/' + runId + '/analysis-config')).then(function (r) { if (!r.ok) throw new Error('Config: HTTP ' + r.status); return r.json(); }),
       fetch(base('api/runs/' + runId + '/corrections')).then(function (r) { if (!r.ok) throw new Error('Corrections: HTTP ' + r.status); return r.json(); }),
+      fetch(base('api/runs/' + runId + '/analysis-documents')).then(function (r) { if (!r.ok) throw new Error('Documents: HTTP ' + r.status); return r.json(); }),
     ]).then(function (results) {
       _config = results[0];
       var _conns = (_config && _config.llm_connections) || [];
@@ -51,6 +60,10 @@ window.QymPlayground = (function () {
       _matchedPage = 0;
       _selectedItemId = null;
       _customVars = [];
+      _configUnlocked = true;
+      _referenceDocuments = (results[2] && results[2].documents) || [];
+      _analysisRoles = (_config && _config.analysis_roles) || [];
+      _documentUploadsInFlight = 0;
       _createModal();
       _overlay.style.display = 'flex';
     }).catch(function (err) {
@@ -167,7 +180,7 @@ window.QymPlayground = (function () {
 
   function _highlightPreview(escaped) {
     // Highlight section labels like INPUT:, EXPECTED OUTPUT:, ACTUAL OUTPUT:, etc.
-    escaped = escaped.replace(/^(INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|METRIC SCORES:|METADATA:|METRIC METADATA(?: \([^)]+\))?:)/gm,
+    escaped = escaped.replace(/^(REFERENCE DOCUMENTS:|DOCUMENT:|INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|METRIC SCORES:|METADATA:|METRIC METADATA(?: \([^)]+\))?:)/gm,
       '<span class="pg-hl-label">$1</span>');
     // Highlight --- Example --- / --- End Example --- blocks
     escaped = escaped.replace(/^(--- (?:Example|End Example) ---)/gm,
@@ -529,24 +542,55 @@ window.QymPlayground = (function () {
     return rows.filter(function (r) {
       var md = r.item_metadata;
       if (!allowHumanOverwrite && md && typeof md === 'object' && md.root_cause_source === 'human') return false;
-      if (skipAnalyzed) {
-        if (md && typeof md === 'object' && md.root_cause) return false;
-      }
       var isError = !!r.error;
       var score = r.metric_score;
+      var metricScores = r.metric_scores && typeof r.metric_scores === 'object' ? r.metric_scores : null;
+      var metricThresholds = r.metric_thresholds && typeof r.metric_thresholds === 'object' ? r.metric_thresholds : {};
+      var metricDirections = r.metric_directions && typeof r.metric_directions === 'object' ? r.metric_directions : {};
+      var failedMetrics = [];
+      if (metricScores) {
+        Object.keys(metricScores).forEach(function (metricName) {
+          var metricScore = metricScores[metricName];
+          var metricThreshold = metricThresholds[metricName] == null ? threshold : Number(metricThresholds[metricName]);
+          var direction = String(metricDirections[metricName] || 'maximize').toLowerCase();
+          var metricPassed = metricScore != null && (
+            direction === 'minimize' || direction === 'lower' || direction === 'lower_is_better'
+              ? Number(metricScore) <= metricThreshold
+              : Number(metricScore) >= metricThreshold
+          );
+          if (isError || !metricPassed) failedMetrics.push(metricName);
+        });
+      }
+      if (!metricScores && (isError || score == null || score < threshold)) {
+        failedMetrics.push(_opts.getMetric ? (_opts.getMetric() || 'metric') : 'metric');
+      }
+      if (skipAnalyzed && failedMetrics.length > 0) {
+        var existing = md && typeof md.metric_analyses === 'object' ? md.metric_analyses : {};
+        failedMetrics = failedMetrics.filter(function (metricName) {
+          return !(existing[metricName] && existing[metricName].root_cause);
+        });
+      }
       if (itemFilter === 'errors') {
         if (!isError) return false;
       } else if (itemFilter === 'failed') {
-        // Include errors, null scores (unknown), and scores below threshold
-        if (isError) { /* include errors */ }
-        else if (score == null) { /* include — score unknown */ }
-        else if (score < threshold) { /* include — below threshold */ }
-        else return false;
+        if (failedMetrics.length === 0) return false;
       } else if (itemFilter === 'passed') {
         if (isError) return false;
-        if (score == null || score < threshold) return false;
+        if (failedMetrics.length > 0) return false;
       }
-      if (!isNaN(maxScore) && score != null && score > maxScore) return false;
+      if (!isNaN(maxScore)) {
+        if (metricScores) {
+          var hasScoreAtOrBelowMax = failedMetrics.some(function (metricName) {
+            var metricScore = metricScores[metricName];
+            var direction = String(metricDirections[metricName] || 'maximize').toLowerCase();
+            var isMinimize = direction === 'minimize' || direction === 'lower' || direction === 'lower_is_better';
+            return isMinimize || metricScore == null || Number(metricScore) <= maxScore;
+          });
+          if (!hasScoreAtOrBelowMax) return false;
+        } else if (score != null && score > maxScore) {
+          return false;
+        }
+      }
       return true;
     });
   }
@@ -554,11 +598,20 @@ window.QymPlayground = (function () {
   // ── Create modal DOM ──
 
   function _createModal() {
-    if (_overlay) { document.body.removeChild(_overlay); _overlay = null; }
+    if (_overlay && _overlay.parentNode) { _overlay.parentNode.removeChild(_overlay); _overlay = null; }
+
+    var pageContainer = null;
+    if (_opts.container) {
+      pageContainer = typeof _opts.container === 'string'
+        ? document.querySelector(_opts.container)
+        : _opts.container;
+    }
 
     var overlay = document.createElement('div');
-    overlay.className = 'playground-overlay';
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    overlay.className = 'playground-overlay' + (pageContainer ? ' playground-page-overlay' : '');
+    if (!pageContainer) {
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    }
 
     var modal = document.createElement('div');
     modal.className = 'playground-modal';
@@ -569,7 +622,7 @@ window.QymPlayground = (function () {
     header.innerHTML =
       '<div class="playground-header-left">' +
         '<span class="playground-header-icon">&#x1F916;</span>' +
-        '<span class="playground-header-title">AI Evaluator Playground</span>' +
+        '<span class="playground-header-title">LLM Analyzer</span>' +
       '</div>' +
       '<button class="playground-close" title="Close">&times;</button>';
     header.querySelector('.playground-close').addEventListener('click', close);
@@ -588,6 +641,8 @@ window.QymPlayground = (function () {
     scroll.className = 'playground-scroll';
     scroll.innerHTML = _buildScrollContent();
     modal.appendChild(scroll);
+    var descriptionEl = scroll.querySelector('#pg-project-description');
+    if (descriptionEl) descriptionEl.value = (_config && _config.project_description) || '';
 
     // Sticky footer
     var footer = document.createElement('div');
@@ -610,17 +665,19 @@ window.QymPlayground = (function () {
     footer.innerHTML =
       connSelect +
       '<button class="pg-footer-btn pg-footer-test" id="pg-test-btn" ' + (!llmOk ? 'disabled' : '') + '>Test Selected</button>' +
-      '<button class="pg-footer-btn pg-footer-runall" id="pg-runall-btn" ' + (!llmOk ? 'disabled' : '') + '>Run All (' + _getMatchedItems().length + ' items)</button>';
+      '<button class="pg-footer-btn pg-footer-runall" id="pg-runall-btn" ' + (!llmOk ? 'disabled' : '') + '>Analyze failures (' + _getMatchedItems().length + ' items)</button>';
+    footer.hidden = false;
     modal.appendChild(footer);
     var connEl = footer.querySelector('#pg-connection');
     if (connEl) connEl.addEventListener('change', function () { _connectionId = connEl.value || null; });
 
     overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+    (pageContainer || document.body).appendChild(overlay);
     _overlay = overlay;
 
     // Wire all events
     _wireEvents();
+    _syncActionAvailability();
     document.addEventListener('keydown', _onKeyDown);
 
     // Auto-select first matched item
@@ -654,12 +711,81 @@ window.QymPlayground = (function () {
     '</details>';
   }
 
+  function _formatCharacterCount(value) {
+    return Number(value || 0).toLocaleString() + ' characters';
+  }
+
+  function _buildAnalysisRolesEditor() {
+    if (_analysisRoles.length === 0) {
+      return '<div class="pg-role-empty">No roles yet. Infer roles after selecting reference documents, or add one manually.</div>';
+    }
+    return _analysisRoles.map(function (role, index) {
+      return '<div class="pg-role-item" data-role-index="' + index + '">' +
+        '<div class="pg-role-item-head"><span>Role ' + (index + 1) + '</span><button class="pg-role-remove" type="button" data-role-index="' + index + '">Remove</button></div>' +
+        '<input class="pg-role-name" type="text" value="' + _escAttr(role.name || '') + '" placeholder="Role name" aria-label="Role name" />' +
+        '<textarea class="pg-role-description" placeholder="Domain knowledge, invariants, and evidence this role contributes" aria-label="Role description">' + _esc(role.description || '') + '</textarea>' +
+      '</div>';
+    }).join('');
+  }
+
+  function _buildReferenceDocumentList() {
+    if (_referenceDocuments.length === 0) {
+      return '<div class="pg-document-empty">This project library is empty. Add documents once, then select the ones to use for this run.</div>';
+    }
+    return _referenceDocuments.map(function (document, index) {
+      var meta = _formatCharacterCount(document.characters || document.content.length);
+      if (document.truncated) meta += ' · shortened to prompt limit';
+      return '<div class="pg-document-item" data-document-index="' + index + '">' +
+        '<input class="pg-document-select" type="checkbox" data-document-index="' + index + '"' + (document.selected !== false ? ' checked' : '') + ' aria-label="Include ' + _escAttr(document.name) + ' in analyzer runs" />' +
+        '<div class="pg-document-copy">' +
+          '<span class="pg-document-name">' + _esc(document.name) + '</span>' +
+          '<span class="pg-document-meta">' + _esc(meta) + '</span>' +
+        '</div>' +
+        '<button class="pg-document-remove" type="button" data-document-index="' + index + '" aria-label="Delete ' + _escAttr(document.name) + '">Delete</button>' +
+      '</div>';
+    }).join('');
+  }
+
   function _buildScrollContent() {
     var cats = (_config && _config.default_categories) || [
       'Hallucination', 'Incomplete Answer', 'Wrong Format', 'Context Missing',
       'Reasoning Error', 'Tool Use Error', 'Instruction Following', 'Knowledge Gap',
     ];
-    var html = '';
+    var html = '<div class="pg-workspace">';
+
+    // ── Project Description ──
+    var descriptionBody = '';
+    descriptionBody += '<div class="pg-instructions-hint">Describe what the project does, who it serves, and what a correct output should accomplish. This context is included in every analyzer prompt.</div>';
+    descriptionBody += '<textarea class="pg-instructions-textarea pg-project-description" id="pg-project-description" placeholder="e.g. This assistant converts natural-language analytics questions into read-only SQL for our warehouse. A correct response must use the provided schema, preserve the user intent, and avoid data-changing statements." spellcheck="true" required aria-required="true"></textarea>';
+    descriptionBody += '<div class="pg-required-message" id="pg-project-description-error">Enter a project description before testing or running the analyzer.</div>';
+    var rolesBody = '<div class="pg-instructions-hint">Roles are neutral domain-knowledge lenses. The role writer reads selected documents and approved corrections, then captures facts and past lessons without creating label shortcuts.</div>' +
+      '<div class="pg-role-list" id="pg-role-list">' + _buildAnalysisRolesEditor() + '</div>' +
+      '<button class="pg-context-secondary" id="pg-add-role" type="button">Add role</button>';
+    html += '<aside class="pg-context-panel">' +
+      '<div class="pg-context-eyebrow">Project context</div>' +
+      '<h2 class="pg-context-title">Description</h2>' + descriptionBody +
+      '<div class="pg-context-divider"></div>' +
+      '<h2 class="pg-context-title">Analysis roles</h2>' + rolesBody +
+      '<div class="pg-context-actions">' +
+        '<button class="pg-context-secondary" id="pg-save-context" type="button">Save context</button>' +
+        '<button class="pg-context-primary" id="pg-infer-roles" type="button">Infer roles</button>' +
+      '</div>' +
+      '<div class="pg-context-status" id="pg-context-status" role="status" aria-live="polite"></div>' +
+    '</aside>';
+    html += '<div class="pg-analysis-main">';
+
+    // ── Reference Documents ──
+    var documentsBody = '';
+    documentsBody += '<div class="pg-instructions-hint">Manage the shared project document library. Uploaded documents remain available to every project member; selections apply to this run.</div>';
+    documentsBody += '<label class="pg-document-dropzone" id="pg-document-dropzone" for="pg-document-input">' +
+      '<span class="pg-document-upload-title">Choose documents or drop them here</span>' +
+      '<span class="pg-document-upload-help">PDF, DOCX, TXT, Markdown, HTML, CSV, JSON, or YAML · up to 10 MB each</span>' +
+    '</label>';
+    documentsBody += '<input class="pg-document-input" id="pg-document-input" type="file" multiple accept=".pdf,.docx,.txt,.text,.md,.markdown,.html,.htm,.csv,.json,.yaml,.yml,.log,.rst" />';
+    documentsBody += '<div class="pg-document-upload-status" id="pg-document-upload-status" role="status" aria-live="polite"></div>';
+    documentsBody += '<div class="pg-document-list" id="pg-document-list">' + _buildReferenceDocumentList() + '</div>';
+    var selectedDocumentCount = _referenceDocuments.filter(function (document) { return document.selected !== false; }).length;
+    html += _section('Reference Document Library', documentsBody, { badge: selectedDocumentCount + ' selected', badgeId: 'pg-documents-badge' });
 
     // ── Additional Instructions ──
     var instrBody = '';
@@ -753,6 +879,8 @@ window.QymPlayground = (function () {
       '<div class="pg-progress-bar"><div class="pg-progress-fill" id="pg-runall-progress-fill"></div></div>' +
     '</div>';
     html += '<div id="pg-runall-results" class="pg-runall-results"></div>';
+
+    html += '</div></div>';
 
     return html;
   }
@@ -1014,6 +1142,21 @@ window.QymPlayground = (function () {
   function _buildConfigPayload() {
     var cfg = {};
 
+    var descriptionEl = document.getElementById('pg-project-description');
+    if (descriptionEl && descriptionEl.value.trim()) {
+      cfg.project_description = descriptionEl.value.trim();
+    }
+
+    var roles = _readAnalysisRolesFromEditor();
+    if (roles.length > 0) cfg.analysis_roles = roles;
+
+    var selectedDocuments = _referenceDocuments.filter(function (document) { return document.selected !== false; });
+    if (selectedDocuments.length > 0) {
+      cfg.reference_documents = selectedDocuments.map(function (document) {
+        return { name: document.name, content: document.content };
+      });
+    }
+
     // Additional instructions
     var instrEl = document.getElementById('pg-additional-instructions');
     if (instrEl && instrEl.value.trim()) {
@@ -1078,6 +1221,106 @@ window.QymPlayground = (function () {
     return cfg;
   }
 
+  function _renderReferenceDocuments() {
+    var list = document.getElementById('pg-document-list');
+    var badge = document.getElementById('pg-documents-badge');
+    if (list) list.innerHTML = _buildReferenceDocumentList();
+    if (badge) {
+      var selectedCount = _referenceDocuments.filter(function (document) { return document.selected !== false; }).length;
+      badge.textContent = selectedCount + ' selected';
+    }
+    _syncActionAvailability();
+  }
+
+  function _setDocumentUploadStatus(message, isError) {
+    var status = document.getElementById('pg-document-upload-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.className = 'pg-document-upload-status' + (isError ? ' pg-document-upload-error' : '');
+  }
+
+  function _uploadReferenceDocument(file) {
+    var runId = _getRunId();
+    if (!runId) return Promise.reject(new Error('Could not determine the run ID.'));
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var form = new FormData();
+    form.append('file', file, file.name);
+    return fetch(base('api/runs/' + runId + '/analysis-documents'), {
+      method: 'POST',
+      body: form,
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var payload = {};
+        try { payload = text ? JSON.parse(text) : {}; } catch (e) {}
+        if (!response.ok) throw new Error(payload.detail || text || 'Document upload failed');
+        if (!payload.document) throw new Error('Document upload returned no extracted content.');
+        return payload.document;
+      });
+    });
+  }
+
+  function _updateReferenceDocumentSelection(document) {
+    var runId = _getRunId();
+    if (!runId || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    return fetch(base('api/runs/' + runId + '/analysis-documents/' + encodeURIComponent(document.id)), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selected: document.selected !== false }),
+    }).then(function (response) {
+      if (!response.ok) return response.text().then(function (text) { throw new Error(text || 'Selection update failed'); });
+      return response.json();
+    });
+  }
+
+  function _deleteReferenceDocument(document) {
+    var runId = _getRunId();
+    if (!runId || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    return fetch(base('api/runs/' + runId + '/analysis-documents/' + encodeURIComponent(document.id)), {
+      method: 'DELETE',
+    }).then(function (response) {
+      if (!response.ok) return response.text().then(function (text) { throw new Error(text || 'Document deletion failed'); });
+      return response.json();
+    });
+  }
+
+  function _handleReferenceDocumentFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (files.length === 0) return;
+    _documentUploadsInFlight += files.length;
+    _setDocumentUploadStatus('Extracting ' + files.length + ' document' + (files.length === 1 ? '' : 's') + '…', false);
+    _renderReferenceDocuments();
+
+    Promise.all(files.map(function (file) {
+      return _uploadReferenceDocument(file).then(function (document) {
+        return { document: document };
+      }).catch(function (error) {
+        return { error: error, filename: file.name };
+      });
+    })).then(function (results) {
+      var added = 0;
+      var failed = 0;
+      results.forEach(function (result) {
+        if (result.document) {
+          _referenceDocuments.push(result.document);
+          added++;
+        } else {
+          failed++;
+          if (_opts.showToast) _opts.showToast('error', 'Document Upload Failed', result.filename + ': ' + result.error.message);
+        }
+      });
+      _documentUploadsInFlight -= results.length;
+      _renderReferenceDocuments();
+      if (added > 0) {
+        _setDocumentUploadStatus(added + ' document' + (added === 1 ? '' : 's') + ' saved to the project library and selected.' + (failed ? ' ' + failed + ' failed.' : ''), false);
+        _scheduleAutoPreview(0);
+      } else {
+        _setDocumentUploadStatus('No documents were added.', true);
+      }
+    });
+  }
+
   function _getFieldMapping() {
     var mappingDefs = [
       { idx: 0, key: 'input', defaultField: 'input' },
@@ -1116,9 +1359,217 @@ window.QymPlayground = (function () {
     return hasAny ? mapping : null;
   }
 
+  function _readAnalysisRolesFromEditor() {
+    var list = document.getElementById('pg-role-list');
+    if (!list) return _analysisRoles.slice();
+    var roles = [];
+    list.querySelectorAll('.pg-role-item').forEach(function (item) {
+      var nameEl = item.querySelector('.pg-role-name');
+      var descriptionEl = item.querySelector('.pg-role-description');
+      var name = nameEl ? nameEl.value.trim() : '';
+      var description = descriptionEl ? descriptionEl.value.trim() : '';
+      if (name && description) roles.push({ name: name, description: description });
+    });
+    return roles.slice(0, 8);
+  }
+
+  function _renderAnalysisRolesEditor() {
+    var list = document.getElementById('pg-role-list');
+    if (list) list.innerHTML = _buildAnalysisRolesEditor();
+  }
+
+  function _setContextStatus(message, isError) {
+    var status = document.getElementById('pg-context-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('pg-context-status-error', !!isError);
+  }
+
+  function _saveAnalysisContext() {
+    if (!_validateProjectDescription()) return Promise.reject(new Error('Project description is required'));
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var descriptionEl = document.getElementById('pg-project-description');
+    var payload = {
+      project_description: descriptionEl ? descriptionEl.value.trim() : '',
+      analysis_roles: _readAnalysisRolesFromEditor(),
+    };
+    _setContextStatus('Saving project context…', false);
+    return fetch(base('api/runs/' + runId + '/analysis-context'), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not save context'); });
+      return response.json();
+    }).then(function (data) {
+      _analysisRoles = data.analysis_roles || [];
+      if (_config) {
+        _config.project_description = data.project_description || '';
+        _config.analysis_roles = _analysisRoles;
+      }
+      _renderAnalysisRolesEditor();
+      _setContextStatus('Project context saved.', false);
+      _scheduleAutoPreview(0);
+      return data;
+    }).catch(function (error) {
+      _setContextStatus(error.message || 'Could not save project context.', true);
+      throw error;
+    });
+  }
+
+  function _inferAnalysisRoles() {
+    if (!_validateProjectDescription()) return;
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var descriptionEl = document.getElementById('pg-project-description');
+    var button = document.getElementById('pg-infer-roles');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Inferring…';
+    }
+    _setContextStatus('Reading selected documents and approved corrections…', false);
+    fetch(base('api/runs/' + runId + '/analysis-roles/infer'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_description: descriptionEl ? descriptionEl.value.trim() : '',
+        connection_id: _connectionId,
+      }),
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not infer roles'); });
+      return response.json();
+    }).then(function (data) {
+      _analysisRoles = data.analysis_roles || [];
+      if (_config) {
+        _config.project_description = data.project_description || '';
+        _config.analysis_roles = _analysisRoles;
+      }
+      _renderAnalysisRolesEditor();
+      _setContextStatus('Inferred ' + _analysisRoles.length + ' roles from ' + data.documents_used + ' documents and ' + data.examples_used + ' approved examples.', false);
+      _scheduleAutoPreview(0);
+    }).catch(function (error) {
+      _setContextStatus(error.message || 'Could not infer roles.', true);
+      if (_opts.showToast) _opts.showToast('error', 'Role Inference Failed', error.message);
+    }).finally(function () {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Infer roles';
+      }
+    });
+  }
+
   // ── Wire all events ──
 
   function _wireEvents() {
+    var descriptionEl = document.getElementById('pg-project-description');
+    if (descriptionEl) {
+      descriptionEl.addEventListener('input', function () {
+        descriptionEl.classList.remove('pg-field-invalid');
+        _syncActionAvailability();
+        _scheduleAutoPreview();
+      });
+    }
+    var roleList = document.getElementById('pg-role-list');
+    if (roleList) {
+      roleList.addEventListener('input', function () { _scheduleAutoPreview(); });
+      roleList.addEventListener('click', function (event) {
+        var remove = event.target.closest('.pg-role-remove');
+        if (!remove) return;
+        _analysisRoles = _readAnalysisRolesFromEditor();
+        var index = parseInt(remove.dataset.roleIndex, 10);
+        if (!Number.isNaN(index)) _analysisRoles.splice(index, 1);
+        _renderAnalysisRolesEditor();
+        _scheduleAutoPreview(0);
+      });
+    }
+    var addRole = document.getElementById('pg-add-role');
+    if (addRole) addRole.addEventListener('click', function () {
+      _analysisRoles = _readAnalysisRolesFromEditor();
+      if (_analysisRoles.length >= 8) {
+        _setContextStatus('A project can have at most 8 analysis roles.', true);
+        return;
+      }
+      _analysisRoles.push({ name: '', description: '' });
+      _renderAnalysisRolesEditor();
+    });
+    var saveContext = document.getElementById('pg-save-context');
+    if (saveContext) saveContext.addEventListener('click', function () {
+      saveContext.disabled = true;
+      _saveAnalysisContext().catch(function () {}).finally(function () { saveContext.disabled = false; });
+    });
+    var inferRoles = document.getElementById('pg-infer-roles');
+    if (inferRoles) inferRoles.addEventListener('click', _inferAnalysisRoles);
+
+    var documentInput = document.getElementById('pg-document-input');
+    if (documentInput) {
+      documentInput.addEventListener('change', function () {
+        _handleReferenceDocumentFiles(documentInput.files);
+        documentInput.value = '';
+      });
+    }
+    var documentDropzone = document.getElementById('pg-document-dropzone');
+    if (documentDropzone) {
+      ['dragenter', 'dragover'].forEach(function (eventName) {
+        documentDropzone.addEventListener(eventName, function (event) {
+          event.preventDefault();
+          if (!documentInput || !documentInput.disabled) documentDropzone.classList.add('pg-document-dropzone-active');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (eventName) {
+        documentDropzone.addEventListener(eventName, function (event) {
+          event.preventDefault();
+          documentDropzone.classList.remove('pg-document-dropzone-active');
+        });
+      });
+      documentDropzone.addEventListener('drop', function (event) {
+        if (documentInput && !documentInput.disabled) {
+          _handleReferenceDocumentFiles(event.dataTransfer && event.dataTransfer.files);
+        }
+      });
+    }
+    var documentList = document.getElementById('pg-document-list');
+    if (documentList) {
+      documentList.addEventListener('change', function (event) {
+        var checkbox = event.target.closest('.pg-document-select');
+        if (!checkbox) return;
+        var index = parseInt(checkbox.dataset.documentIndex, 10);
+        if (Number.isNaN(index) || index < 0 || index >= _referenceDocuments.length) return;
+        var document = _referenceDocuments[index];
+        var previous = document.selected !== false;
+        document.selected = checkbox.checked;
+        _renderReferenceDocuments();
+        _updateReferenceDocumentSelection(document).then(function () {
+          _setDocumentUploadStatus(document.name + (document.selected ? ' selected for analyzer runs.' : ' kept in the library but not selected.'), false);
+          _scheduleAutoPreview(0);
+        }).catch(function (error) {
+          document.selected = previous;
+          _renderReferenceDocuments();
+          _setDocumentUploadStatus('Could not save the document selection.', true);
+          if (_opts.showToast) _opts.showToast('error', 'Document Update Failed', error.message);
+        });
+      });
+      documentList.addEventListener('click', function (event) {
+        var remove = event.target.closest('.pg-document-remove');
+        if (!remove) return;
+        var index = parseInt(remove.dataset.documentIndex, 10);
+        if (Number.isNaN(index) || index < 0 || index >= _referenceDocuments.length) return;
+        var removed = _referenceDocuments[index];
+        remove.disabled = true;
+        _deleteReferenceDocument(removed).then(function () {
+          var currentIndex = _referenceDocuments.indexOf(removed);
+          if (currentIndex >= 0) _referenceDocuments.splice(currentIndex, 1);
+          _setDocumentUploadStatus(removed.name + ' deleted from the project library.', false);
+          _renderReferenceDocuments();
+          _scheduleAutoPreview(0);
+        }).catch(function (error) {
+          remove.disabled = false;
+          _setDocumentUploadStatus('Could not delete ' + removed.name + '.', true);
+          if (_opts.showToast) _opts.showToast('error', 'Document Delete Failed', error.message);
+        });
+      });
+    }
+
     // Additional instructions
     var instrEl = document.getElementById('pg-additional-instructions');
     if (instrEl) {
@@ -1321,7 +1772,7 @@ window.QymPlayground = (function () {
     _highlightSelectedRow();
     _scheduleAutoPreview();
     var testBtn = document.getElementById('pg-test-btn');
-    if (testBtn && _config && _config.llm_configured) testBtn.disabled = false;
+    if (testBtn) _syncActionAvailability();
   }
 
   function _highlightSelectedRow() {
@@ -1353,13 +1804,42 @@ window.QymPlayground = (function () {
   }
 
   function _updateFooterCount() {
+    _syncActionAvailability();
+  }
+
+  function _hasProjectDescription() {
+    var descriptionEl = document.getElementById('pg-project-description');
+    return !!(descriptionEl && descriptionEl.value.trim());
+  }
+
+  function _syncActionAvailability() {
     var matched = _getMatchedItems();
     var runAllBtn = document.getElementById('pg-runall-btn');
+    var testBtn = document.getElementById('pg-test-btn');
+    var ready = !!(
+      _config &&
+      _config.llm_configured &&
+      _hasProjectDescription() &&
+      _documentUploadsInFlight === 0
+    );
     if (runAllBtn) {
-      runAllBtn.textContent = 'Run All (' + matched.length + ' items)';
-      if (matched.length === 0) runAllBtn.disabled = true;
-      else if (_config && _config.llm_configured) runAllBtn.disabled = false;
+      runAllBtn.textContent = 'Analyze failures (' + matched.length + ' items)';
+      runAllBtn.disabled = !ready || matched.length === 0 || _running;
     }
+    if (testBtn) testBtn.disabled = !ready || _running;
+  }
+
+  function _validateProjectDescription() {
+    if (_hasProjectDescription()) return true;
+    var descriptionEl = document.getElementById('pg-project-description');
+    if (descriptionEl) {
+      descriptionEl.classList.add('pg-field-invalid');
+      descriptionEl.focus();
+    }
+    if (_opts.showToast) {
+      _opts.showToast('warning', 'Project Description Required', 'Describe the project before testing or running the analyzer.');
+    }
+    return false;
   }
 
   function _onAdditionalInstructionsChange() {
@@ -1416,6 +1896,13 @@ window.QymPlayground = (function () {
     var indicator = document.getElementById('pg-preview-indicator');
 
     try {
+      if (!_hasProjectDescription()) {
+        if (content) content.textContent = 'Enter the project description above to generate a prompt preview.';
+        if (toggleBtn) toggleBtn.style.display = 'none';
+        if (loading) loading.style.display = 'none';
+        return;
+      }
+
       var itemId = _selectedItemId;
       if (!itemId) {
         var matched = _getMatchedItems();
@@ -1496,6 +1983,7 @@ window.QymPlayground = (function () {
 
   function _runTest() {
     if (_running) return;
+    if (!_validateProjectDescription()) return;
 
     var testItemId = _selectedItemId;
     if (!testItemId) {
@@ -1543,8 +2031,8 @@ window.QymPlayground = (function () {
       _running = false;
       if (btn) {
         btn.textContent = 'Test Selected';
-        if (_config && _config.llm_configured) btn.disabled = false;
       }
+      _syncActionAvailability();
     });
   }
 
@@ -1631,7 +2119,7 @@ window.QymPlayground = (function () {
 
       return '<div class="pg-test-result-card">' +
         '<div class="pg-result-header">' +
-          '<span class="pg-result-item-id">' + _esc(r.item_id.slice(0, 24)) + '</span>' +
+          '<span class="pg-result-item-id">' + _esc(r.item_id.slice(0, 24)) + (r.metric_name ? ' · ' + _esc(r.metric_name) : '') + '</span>' +
         '</div>' +
         (r.root_cause_detail ? '<div class="pg-result-rc" style="color:var(--text-primary, #eee);">' + _esc(r.root_cause_detail) + '</div>' : '') +
         '<div class="pg-result-rc" style="color:' + color + ';' + (r.root_cause_detail ? 'font-size:var(--font-base);opacity:0.8;margin-top:2px;' : '') + '">' + _esc(r.root_cause) + '</div>' +
@@ -1652,6 +2140,7 @@ window.QymPlayground = (function () {
 
   function _runAll() {
     if (_running) return;
+    if (!_validateProjectDescription()) return;
     _running = true;
 
     var runId = _getRunId();
@@ -1675,7 +2164,7 @@ window.QymPlayground = (function () {
     };
 
     var btn = document.getElementById('pg-runall-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Running\u2026'; }
+    if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Analyzing\u2026'; }
 
     var progress = document.getElementById('pg-runall-progress');
     var fill = document.getElementById('pg-runall-progress-fill');
@@ -1701,9 +2190,18 @@ window.QymPlayground = (function () {
       var errors = Number(evt.errors || 0);
       var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
       if (fill) fill.style.width = pct + '%';
+      if (evt.type === 'aggregating') {
+        if (btn) btn.textContent = '\u23F3 Aggregating\u2026';
+        if (progressText) progressText.textContent = 'Aggregating root causes\u2026';
+        if (subtext) {
+          subtext.textContent = 'Analysis complete. Consolidating related categories, details, and solutions.' +
+            (errors > 0 ? ' Errors: ' + errors : '');
+        }
+        return;
+      }
       if (progressText) {
         progressText.textContent = total > 0
-          ? 'Analyzing items: ' + completed + '/' + total + ' (' + pct + '%)'
+          ? 'Analyzing metric failures: ' + completed + '/' + total + ' (' + pct + '%)'
           : 'No matching items to analyze';
       }
       if (subtext) {
@@ -1712,13 +2210,21 @@ window.QymPlayground = (function () {
             ? 'Running up to ' + (evt.concurrency || 20) + ' LLM calls concurrently.'
             : 'All matching items are already analyzed or filtered out.';
         } else {
-          var itemText = evt.item_id ? 'Last item: ' + String(evt.item_id).slice(0, 32) : 'Waiting for results...';
+          var itemText = evt.item_id ? 'Last: ' + String(evt.item_id).slice(0, 32) + (evt.metric_name ? ' · ' + evt.metric_name : '') : 'Waiting for results...';
           subtext.textContent = itemText + (errors > 0 ? ' | Errors: ' + errors : '');
         }
       }
     }
 
     function finishRunAll(data) {
+      var analyzed = Number(data.total_analyzed || 0);
+      var aggregated = Number(data.aggregated || 0);
+      var completionText = analyzed > 0
+        ? 'Analyzed <strong>' + analyzed + '</strong> metric failures successfully'
+        : 'Existing root-cause analysis checked successfully';
+      if (aggregated > 0) {
+        completionText += '<div>Consolidated <strong>' + aggregated + '</strong> category/detail/solution labels</div>';
+      }
       if (fill) {
         fill.style.transition = 'width 0.3s ease-out';
         fill.style.width = '100%';
@@ -1730,12 +2236,16 @@ window.QymPlayground = (function () {
       if (resultsEl) {
         resultsEl.innerHTML = '<div class="pg-runall-done">' +
           '<div class="pg-runall-done-icon">\u2728</div>' +
-          '<div class="pg-runall-done-text">Analyzed <strong>' + data.total_analyzed + '</strong> items successfully' +
-          (data.errors > 0 ? '<div class="pg-runall-done-error">\u26A0\uFE0F ' + data.errors + ' items failed to analyze</div>' : '') +
+          '<div class="pg-runall-done-text">' + completionText +
+          (data.errors > 0 ? '<div class="pg-runall-done-error">\u26A0\uFE0F ' + data.errors + ' metric analyses failed</div>' : '') +
           '</div></div>';
       }
 
-      if (_opts.showToast) _opts.showToast('success', 'Analysis Complete', data.total_analyzed + ' items analyzed');
+      if (_opts.showToast) {
+        var toastText = analyzed + ' metric failures analyzed';
+        if (aggregated > 0) toastText += ' · ' + aggregated + ' labels consolidated';
+        _opts.showToast('success', 'Analysis Complete', toastText);
+      }
       if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);
 
       setTimeout(function () {
@@ -1759,7 +2269,7 @@ window.QymPlayground = (function () {
         lines.forEach(function (line) {
           if (!line.trim()) return;
           var evt = JSON.parse(line);
-          if (evt.type === 'started' || evt.type === 'progress') {
+          if (evt.type === 'started' || evt.type === 'progress' || evt.type === 'aggregating') {
             updateProgress(evt);
           } else if (evt.type === 'done') {
             finalData = evt;

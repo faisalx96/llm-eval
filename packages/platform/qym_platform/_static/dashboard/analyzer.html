@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Auto-analysis</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css?v=per-metric-analysis-20260721">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js?v=auto-analysis-page-20260721"></script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/playground.js?v=auto-analysis-page-20260721"></script>
+  <style>
+    /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only. */
+    .analysis-page {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: var(--space-xl) var(--space-lg);
+      box-sizing: border-box;
+    }
+    .analysis-hero {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-title);
+      font-weight: 650;
+    }
+    .analysis-description {
+      max-width: 720px;
+      margin: var(--space-xs) 0 0;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-base);
+    }
+    .analysis-meta-value {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+    .analysis-run-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-md);
+      align-items: end;
+      margin-bottom: var(--space-lg);
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-run-field {
+      min-width: 0;
+    }
+    .analysis-run-label {
+      display: block;
+      margin-bottom: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-run-select {
+      width: 100%;
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      outline: none;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-md);
+    }
+    .analysis-run-select:focus {
+      border-color: var(--accent-primary);
+    }
+    .analysis-run-summary {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-run-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .analysis-run-link:hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+    .analysis-loading,
+    .analysis-error,
+    .analysis-empty {
+      padding: var(--space-xl);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      text-align: center;
+    }
+    .analysis-empty-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .analysis-empty-copy {
+      margin: var(--space-sm) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-md);
+      line-height: 1.5;
+    }
+    .analysis-error {
+      color: var(--error);
+    }
+    .analysis-status {
+      display: none;
+      margin-bottom: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+    }
+    .analysis-status.visible {
+      display: block;
+    }
+    .analysis-status.success {
+      border-color: var(--success-dim);
+      color: var(--success);
+    }
+    .analysis-status.warning {
+      border-color: var(--warning-dim);
+      color: var(--warning);
+    }
+    .analysis-status.error {
+      border-color: var(--error-dim);
+      color: var(--error);
+    }
+    .analysis-page .playground-header {
+      display: none;
+    }
+    .analysis-page .playground-page-overlay .playground-modal {
+      min-height: 0;
+    }
+    @media (max-width: 720px) {
+      .analysis-description {
+        white-space: normal;
+      }
+      .analysis-run-panel {
+        grid-template-columns: 1fr;
+      }
+      .analysis-run-link {
+        justify-content: center;
+      }
+      .analysis-page .playground-footer {
+        align-items: stretch;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="analysis-page">
+    <header class="analysis-hero">
+      <h1 class="analysis-title">Auto-analysis</h1>
+      <p class="analysis-description">Investigate failed metrics with shared project context, reference documents, and review-approved examples.</p>
+      <div class="analysis-meta">
+        <span>Scope <span class="analysis-meta-value">project</span></span>
+        <span aria-hidden="true">·</span>
+        <span>Mode <span class="analysis-meta-value">failed metrics</span></span>
+      </div>
+    </header>
+
+    <section class="analysis-run-panel" id="analysis-run-panel">
+      <div class="analysis-run-field">
+        <label class="analysis-run-label" for="analysis-run-select">Run to analyze</label>
+        <select class="analysis-run-select" id="analysis-run-select" disabled>
+          <option value="">Loading runs…</option>
+        </select>
+        <div class="analysis-run-summary" id="analysis-run-summary">Choose a run to load its failed metrics.</div>
+      </div>
+      <a class="analysis-run-link" id="analysis-run-link" href="#" hidden>View run →</a>
+    </section>
+
+    <div class="analysis-status" id="analysis-status" role="status" aria-live="polite"></div>
+    <div class="analysis-loading" id="analysis-loading">Loading the analysis workspace…</div>
+    <div class="analysis-error" id="analysis-error" hidden></div>
+    <div class="analysis-empty" id="analysis-empty" hidden>
+      <h2 class="analysis-empty-title">No runs are ready for analysis</h2>
+      <p class="analysis-empty-copy">Complete an evaluation run, then return here to analyze its failed metrics.</p>
+    </div>
+    <div id="analyzer-host" hidden></div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const rootPath = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+      const rawPath = window.location.pathname;
+      const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
+      const params = new URLSearchParams(window.location.search);
+      const projectPageMatch = path.match(/\/projects\/([^/]+)\/analysis$/);
+      const projectRunMatch = path.match(/\/projects\/([^/]+)\/runs\/(.+)\/analyzer$/);
+      const legacyRunMatch = path.match(/\/run\/(.+)\/analyzer$/);
+      const projectSlug = decodeURIComponent((projectPageMatch && projectPageMatch[1]) || (projectRunMatch && projectRunMatch[1]) || '');
+      let runId = decodeURIComponent(
+        params.get('run') ||
+        (projectRunMatch && projectRunMatch[2]) ||
+        (legacyRunMatch && legacyRunMatch[1]) ||
+        ''
+      );
+      const requestedMetric = params.get('metric') || '';
+      const state = { data: null, metric: '', runs: [] };
+
+      function apiUrl(value) {
+        return window.location.origin + rootPath + '/' + String(value || '').replace(/^\/+/, '');
+      }
+
+      function projectUrl(suffix = '') {
+        const clean = String(suffix || '').replace(/^\/+/, '');
+        return rootPath + '/projects/' + encodeURIComponent(projectSlug) + (clean ? '/' + clean : '');
+      }
+
+      function escapeHtml(value) {
+        const node = document.createElement('div');
+        node.textContent = value == null ? '' : String(value);
+        return node.innerHTML;
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function showStatus(type, title, message) {
+        const node = document.getElementById('analysis-status');
+        node.className = 'analysis-status visible ' + (type || '');
+        node.textContent = (title ? title + ': ' : '') + (message || '');
+      }
+
+      function flattenRuns(payload) {
+        const runs = [];
+        Object.values((payload && payload.tasks) || {}).forEach(models => {
+          Object.values(models || {}).forEach(modelRuns => {
+            (modelRuns || []).forEach(run => runs.push(run));
+          });
+        });
+        return runs.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+      }
+
+      function runLabel(run) {
+        return run.run_name || run.external_run_id || run.run_id || 'Unnamed run';
+      }
+
+      function renderRunSelector() {
+        const select = document.getElementById('analysis-run-select');
+        if (!projectSlug) {
+          document.getElementById('analysis-run-panel').hidden = true;
+          return;
+        }
+        select.disabled = false;
+        select.innerHTML = '<option value="">Select a run…</option>' + state.runs.map(run => {
+          const context = [run.task_name, run.model_name, run.status].filter(Boolean).join(' · ');
+          return '<option value="' + escapeAttr(run.run_id) + '"' + (run.run_id === runId ? ' selected' : '') + '>' +
+            escapeHtml(runLabel(run) + (context ? ' — ' + context : '')) +
+          '</option>';
+        }).join('');
+      }
+
+      function updateRunSummary() {
+        const summary = state.runs.find(run => run.run_id === runId);
+        const node = document.getElementById('analysis-run-summary');
+        const link = document.getElementById('analysis-run-link');
+        if (summary) {
+          const parts = [
+            summary.task_name,
+            summary.model_name,
+            summary.dataset_name,
+            summary.total_items == null ? '' : summary.total_items + ' items',
+          ].filter(Boolean);
+          node.textContent = parts.join(' · ');
+        } else if (state.data && state.data.run) {
+          const run = state.data.run;
+          node.textContent = [run.task_name, run.model_name, run.dataset_name].filter(Boolean).join(' · ');
+        }
+        if (projectSlug && runId) {
+          link.href = projectUrl('runs/' + encodeURIComponent(runId));
+          link.hidden = false;
+        } else if (runId) {
+          link.href = rootPath + '/run/' + encodeURIComponent(runId);
+          link.hidden = false;
+        }
+      }
+
+      function navigateToRun(nextRunId) {
+        if (!projectSlug || !nextRunId) return;
+        const nextParams = new URLSearchParams();
+        nextParams.set('run', nextRunId);
+        const nextUrl = projectUrl('analysis') + '?' + nextParams.toString();
+        if (window.QymShell && window.QymShell.navigateTo) window.QymShell.navigateTo(nextUrl);
+        else window.location.href = nextUrl;
+      }
+
+      async function loadProjectRuns() {
+        if (!projectSlug) return;
+        const response = await fetch(apiUrl('api/runs?limit=200&project_slug=' + encodeURIComponent(projectSlug)));
+        if (!response.ok) throw new Error('Could not load project runs (HTTP ' + response.status + ').');
+        state.runs = flattenRuns(await response.json());
+        if (!runId && state.runs.length) {
+          const preferred = state.runs.find(run => !['RUNNING', 'PENDING'].includes(String(run.status || '').toUpperCase())) || state.runs[0];
+          runId = preferred.run_id;
+          const nextParams = new URLSearchParams(window.location.search);
+          nextParams.set('run', runId);
+          history.replaceState(history.state, '', projectUrl('analysis') + '?' + nextParams.toString());
+        }
+        renderRunSelector();
+        updateRunSummary();
+      }
+
+      function analyzerRows() {
+        const snapshot = (state.data && state.data.snapshot) || {};
+        const metrics = snapshot.metric_names || [];
+        const metricIndex = metrics.indexOf(state.metric);
+        const specs = snapshot.metric_specs || {};
+        return (snapshot.rows || []).map(row => {
+          const value = metricIndex >= 0 ? (row.metric_values || [])[metricIndex] : null;
+          const parsed = window.QymMetrics.parseScoreValue(value);
+          const metricScores = {};
+          const metricThresholds = {};
+          const metricDirections = {};
+          metrics.forEach((metricName, index) => {
+            metricScores[metricName] = window.QymMetrics.parseScoreValue((row.metric_values || [])[index]);
+            metricThresholds[metricName] = specs[metricName] && specs[metricName].pass_threshold != null
+              ? Number(specs[metricName].pass_threshold)
+              : 0.8;
+            metricDirections[metricName] = (specs[metricName] && specs[metricName].direction) || 'maximize';
+          });
+          return {
+            item_id: row.item_id,
+            index: row.index,
+            input: row.input,
+            input_full: row.input_full,
+            output: row.output,
+            output_full: row.output_full,
+            expected: row.expected,
+            expected_full: row.expected_full,
+            error: row.error,
+            item_metadata: row.item_metadata,
+            metric_metadata: state.metric ? ((row.metric_meta || {})[state.metric] || {}) : {},
+            metric_metadata_by_metric: row.metric_meta || {},
+            scores: metricScores,
+            metric_scores: metricScores,
+            metric_thresholds: metricThresholds,
+            metric_directions: metricDirections,
+            metric_score: parsed,
+          };
+        });
+      }
+
+      function metricThreshold() {
+        const snapshot = (state.data && state.data.snapshot) || {};
+        const specs = snapshot.metric_specs || {};
+        const spec = specs[state.metric] || {};
+        return spec.pass_threshold == null ? 0.8 : Number(spec.pass_threshold);
+      }
+
+      function applyAnalysisResults(data) {
+        const rows = state.data && state.data.snapshot ? state.data.snapshot.rows || [] : [];
+        (data.results || []).forEach(result => {
+          const row = rows.find(candidate => candidate.item_id === result.item_id);
+          if (!row) return;
+          if (!row.item_metadata || typeof row.item_metadata !== 'object') row.item_metadata = {};
+          if (!row.item_metadata.metric_analyses || typeof row.item_metadata.metric_analyses !== 'object') {
+            row.item_metadata.metric_analyses = {};
+          }
+          if (result.metric_name) {
+            row.item_metadata.metric_analyses[result.metric_name] = {
+              source: 'ai',
+              root_cause: result.root_cause,
+              root_cause_detail: result.root_cause_detail || '',
+              root_cause_note: result.root_cause_note || '',
+              confidence: result.confidence,
+              solution: result.solution || '',
+              solution_note: result.solution_note || '',
+              error: result.error || '',
+            };
+          }
+        });
+        showStatus('success', 'Analysis complete', String(data.total_analyzed || 0) + ' metric failures analyzed. Open the run to review detailed results.');
+      }
+
+      async function loadRun() {
+        if (!runId) {
+          document.getElementById('analysis-loading').hidden = true;
+          document.getElementById('analysis-empty').hidden = false;
+          return;
+        }
+
+        const response = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId)));
+        if (!response.ok) throw new Error('Could not load this run (HTTP ' + response.status + ').');
+        const data = await response.json();
+        if (!data.run || !data.snapshot) throw new Error('The run data is incomplete.');
+        state.data = data;
+
+        const metrics = data.snapshot.metric_names || data.run.metric_names || [];
+        state.metric = metrics.includes(requestedMetric) ? requestedMetric : (metrics[0] || '');
+        document.title = 'قيِّم • Auto-analysis • ' + (data.run.run_name || runId);
+        updateRunSummary();
+
+        document.getElementById('analysis-loading').hidden = true;
+        document.getElementById('analyzer-host').hidden = false;
+
+        window.QymPlayground.init({
+          container: document.getElementById('analyzer-host'),
+          apiUrl: apiUrl,
+          getRunId: () => data.run.file_path || data.run.run_id || runId,
+          getRows: analyzerRows,
+          getMetric: () => null,
+          getThreshold: metricThreshold,
+          onAnalysisComplete: applyAnalysisResults,
+          showToast: showStatus,
+          escapeHtml: escapeHtml,
+        });
+        window.QymPlayground.open();
+      }
+
+      document.getElementById('analysis-run-select').addEventListener('change', event => {
+        navigateToRun(event.target.value);
+      });
+
+      (async () => {
+        try {
+          await loadProjectRuns();
+          await loadRun();
+        } catch (error) {
+          document.getElementById('analysis-loading').hidden = true;
+          const errorNode = document.getElementById('analysis-error');
+          errorNode.hidden = false;
+          errorNode.textContent = error.message || 'Failed to load auto-analysis.';
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

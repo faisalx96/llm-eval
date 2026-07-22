@@ -318,6 +318,7 @@ AI-suggested values show a robot icon with confidence indicator. Human-confirmed
 
 Before running analysis, click **Auto-Analyze** to open the **Playground** modal where you can:
 
+- **Upload reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML files are converted to text and automatically included in every analyzer prompt for the current session
 - **Edit the system prompt** and preview the rendered prompt
 - **Map variables** and add **additional instructions** with custom-variable interpolation
 - **Toggle the correction bank** — approved corrections are used as few-shot examples
