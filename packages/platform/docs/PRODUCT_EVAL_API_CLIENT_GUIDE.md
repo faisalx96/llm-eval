@@ -83,12 +83,13 @@ Optional inputs:
 | `run_name` | string | Display name for the Qym runs. |
 | `task_name` | string | Optional task display label. |
 | `model` | string | Optional model label or model override. |
+| `run_count` | integer | Optional sample count from `1` to `100`. Defaults to the deployment's `QYM_PRODUCT_EVAL_RUN_COUNT` (default `3`). |
 | `metadata` | object | Optional caller metadata stored on Qym runs. Do not put secrets here. |
 | `agent_version` | string | Optional Insightor agent version label. |
 | `image_version` | string | Optional Insightor image version label. |
 | `kb_version` | string | Optional Insightor knowledge-base version label. |
 
-Runtime settings such as concurrency, timeout, retries, and parallel attempts are controlled by the Qym platform deployment. Clients cannot override them in the request. The recommended platform-managed defaults are `max_concurrency=10` and `max_parallel_runs=1`.
+Runtime settings such as concurrency, timeout, retries, and parallel attempts are controlled by the Qym platform deployment. `run_count` is the exception: clients may override its deployment default per request.
 
 If the request includes `config` or any unsupported field, the API returns `400 Bad Request` and no eval is created.
 
@@ -103,6 +104,7 @@ curl -X POST "$QYM_BASE_URL/v1/product-evals" \
     "dataset": "customer-langfuse-dataset",
     "insightor_url": "https://insightor.example.com",
     "refresh_token": "'"$INSIGHTOR_REFRESH_TOKEN"'",
+    "run_count": 5,
     "agent_version": "agent-v1",
     "image_version": "image-v1",
     "kb_version": "kb-v1",
@@ -128,10 +130,10 @@ The test preset:
 | Items | 50 |
 | Item behavior | Each item sleeps for about 5 seconds, then returns a deterministic result |
 | Metric | `exact_match` |
-| Runs created | 3 |
+| Samples per item | Effective `run_count` |
 | Per-run concurrency | 10 items |
-| Compare URL | Returned after at least two test runs are created |
-| `group_analysis` | Returned after all three test runs complete, using the same pass@3-style shape as `insightor` |
+| Samples view | Per-pass results are available on the single Qym run |
+| `group_analysis` | Returned after the sampled run completes, using a pass@k-style shape where `k` is `run_count` |
 
 Example:
 
@@ -290,7 +292,7 @@ Recommended polling interval: every 2 to 5 seconds.
 
 ### Completed Response
 
-The `runs` array below is shortened to one attempt for readability. Completed `insightor` and `test` evals normally return three completed attempt rows.
+The `runs` array below is shortened to one entry for readability. The configured `run_count` controls the sampled evaluation.
 
 ```json
 {
@@ -394,7 +396,8 @@ Stopping is best-effort for the in-process worker: the API immediately stops the
 | `eval_id` | Stable ID for this eval. Use it for polling and stopping. |
 | `status` | Eval status: `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
 | `qym_project_id` | Qym project ID associated with your API key. Usually only needed for support/debugging. |
-| `runs` | Qym runs created for the eval. `insightor` and `test` usually have three rows. |
+| `run_count` | Effective sample count after applying the request override or deployment default. |
+| `runs` | Planned sample entries for the eval. The count follows the effective `run_count`. |
 | `runs[].attempt` | Attempt number, starting at `1`. |
 | `runs[].status` | Attempt status: `PENDING`, `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. `PENDING` means the attempt is planned but has not started yet. |
 | `runs[].qym_run_id` | Qym run ID for that attempt, or `null` until created. |
@@ -412,7 +415,7 @@ Stopping is best-effort for the in-process worker: the API immediately stops the
 | `runs[].summary.metric_stats` | Per-metric count, mean, min, and max for numeric scores. |
 | `runs[].summary.latency_ms` | Count, mean, min, and max item latency in milliseconds. |
 | `qym_compare_url` | Qym compare URL for created attempts. On completion, this is the main UI result link. |
-| `group_analysis` | Final pass@3, avg@3, consistency, reliability, and average latency metrics. `null` until all three runs complete. |
+| `group_analysis` | Final pass@k, avg@k, consistency, reliability, and average latency metrics. `null` until the sampled run completes. |
 | `created_at` | UTC timestamp when the eval was accepted. |
 | `updated_at` | UTC timestamp when the eval last changed. |
 | `error` | Present only when `status` is `FAILED`. |

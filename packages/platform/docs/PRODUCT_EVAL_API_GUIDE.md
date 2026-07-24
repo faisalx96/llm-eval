@@ -4,7 +4,7 @@ This API lets an external application trigger a predefined qym evaluation over H
 
 The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
 
-For the `insightor` preset, the API runs **one qym run with `samples=3`** (native repeat runs): every dataset item is evaluated three times inside a single run, producing one dashboard row with per-pass detail instead of three separate runs. Runtime limits such as concurrency are controlled by `QYM_PRODUCT_EVAL_*` environment variables on the platform. When the run finishes, the API returns the same grouped Pass@3, Avg@3, consistency, reliability, and latency metrics as before (the response contract is unchanged), and the run's own "Samples analysis" view shows the per-pass breakdown.
+For the `insightor` preset, the API runs **one qym run with `samples=k`** (native repeat runs): every dataset item is evaluated `k` times inside a single run. Clients can set `run_count`; when omitted, the deployment uses `QYM_PRODUCT_EVAL_RUN_COUNT` (default `3`). The run reports grouped Pass@k, Avg@k, consistency, reliability, and latency metrics, with per-pass detail in the "Samples analysis" view.
 
 ## Authentication
 
@@ -83,6 +83,7 @@ Request body:
   "image_version": "image-v1",
   "kb_version": "kb-v1",
   "run_name": "product-eval-smoke-001",
+  "run_count": 5,
   "model": "optional-model",
   "metadata": {
     "source": "external-app",
@@ -99,6 +100,7 @@ Fields:
 - `refresh_token`: Required for `insightor`. Treated as a secret input and not logged in product eval metadata or returned by this API.
 - `agent_version`, `image_version`, `kb_version`: Optional Insightor version labels used for run naming and task runtime config.
 - `run_name`: Optional display/run name. If omitted, the preset default is used.
+- `run_count`: Optional number of samples for every dataset item, from `1` to `100`. Overrides `QYM_PRODUCT_EVAL_RUN_COUNT`.
 - `model`: Optional model override. Some presets may ignore this.
 - `metadata`: Optional caller metadata stored on the qym run.
 
@@ -116,6 +118,7 @@ Operators configure Insightor product eval runtime limits with Qym platform envi
 | `QYM_PRODUCT_EVAL_MAX_RETRIES` | `1` | `0` to `2` | Retries for failed items. |
 | `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS` | `1` | `1` to `3` | Number of Insightor attempts to run at the same time. |
 | `QYM_PRODUCT_EVAL_METRIC_TIMEOUT` | `300` | `>= 1` | Metric timeout in seconds. |
+| `QYM_PRODUCT_EVAL_RUN_COUNT` | `3` | `1` to `100` | Default sample count when the request omits `run_count`. |
 | `QYM_PRODUCT_EVAL_DEFAULT_DATASET` | `playground_set_v2` | Non-empty Qym dataset name | Dataset used when the request omits `dataset`. |
 
 The effective concurrency budget must satisfy:
@@ -159,6 +162,7 @@ Response:
   "ok": true,
   "data": {
     "status": "RUNNING",
+    "run_count": 5,
     "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
     "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
     "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
@@ -221,9 +225,9 @@ Response:
 }
 ```
 
-For single-run presets, once `qym_run_id` is present, switch to polling `/v1/product-evals/{qym_run_id}`. For `insightor`, keep polling the returned job `poll_url` and use `qym_compare_url` to open the three-run compare view.
+Once `qym_run_id` is present, clients can poll `/v1/product-evals/{qym_run_id}`. For `insightor`, keep polling the returned job URL while the sampled run is active.
 
-When the Insightor job reaches `COMPLETED`, the job payload also includes `group_analysis` with final `pass_at_3`, `avg_at_3`, `consistency`, `reliability`, and `avg_latency_ms` values computed from the SDK grouped analysis result objects.
+When the Insightor job reaches `COMPLETED`, the job payload includes `group_analysis` with dynamic `pass_at_<k>` and `avg_at_<k>` keys, plus `consistency`, `reliability`, and `avg_latency_ms`, where `k` is the effective `run_count`.
 
 Insightor job response:
 

@@ -135,11 +135,12 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
 
     def fake_submit(**kwargs):
         captured.update(kwargs)
+        expected_runs = kwargs.get("run_count") or 3
         job = ProductEvalJob(
             job_id="eval_submit1",
             preset="insightor",
             project_id=kwargs.get("project_id"),
-            expected_runs=3,
+            expected_runs=expected_runs,
         )
         job.initialize_planned_runs()
         job.mark(status="RUNNING", run_id="run-1")
@@ -159,6 +160,7 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
             "image_version": "image-v1",
             "kb_version": "kb-v1",
             "run_name": "external-test-001",
+            "run_count": 5,
             "metadata": {"source": "curl"},
         },
     )
@@ -170,8 +172,11 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
     payload = envelope["data"]
     assert payload["eval_id"] == "eval_submit1"
     assert payload["qym_project_id"] == "project-1"
-    assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3]
+    assert payload["run_count"] == 5
+    assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3, 4, 5]
     assert [run["status"] for run in payload["runs"]] == [
+        "PENDING",
+        "PENDING",
         "PENDING",
         "PENDING",
         "PENDING",
@@ -195,6 +200,7 @@ def test_submit_product_eval_starts_job_and_returns_eval_id(
     assert runtime_inputs.image_version == "image-v1"
     assert runtime_inputs.kb_version == "kb-v1"
     assert captured["run_name"] == "external-test-001"
+    assert captured["run_count"] == 5
     assert captured["metadata"] == {"source": "curl"}
 
 
@@ -228,6 +234,7 @@ def test_submit_product_eval_returns_eval_id_when_starting(
     assert payload["eval_id"] == "eval_starting1"
     assert payload["status"] == "STARTING"
     assert payload["qym_project_id"] == "project-1"
+    assert payload["run_count"] == 3
     assert [run["attempt"] for run in payload["runs"]] == [1, 2, 3]
     assert [run["status"] for run in payload["runs"]] == [
         "PENDING",
@@ -659,8 +666,7 @@ def test_submit_rejects_blank_dataset_name(client, session_factory) -> None:
     assert envelope["ok"] is False
     assert envelope["error"]["code"] == "invalid_request"
     assert (
-        "dataset must be a non-empty Qym dataset name"
-        in envelope["error"]["message"]
+        "dataset must be a non-empty Qym dataset name" in envelope["error"]["message"]
     )
 
 
@@ -714,10 +720,25 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
 
 def test_insightor_preset_uses_deployed_default_dataset(monkeypatch) -> None:
     monkeypatch.setenv("QYM_PRODUCT_EVAL_DEFAULT_DATASET", "production-eval-set")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_RUN_COUNT", "7")
 
     preset = get_preset("insightor")
 
     assert preset.default_dataset_name == "production-eval-set"
+    assert preset.run_count == 7
+
+
+def test_submit_rejects_invalid_run_count(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="submit-token", scopes=["runs:write"])
+
+    response = client.post(
+        "/v1/product-evals",
+        headers=_auth_headers("submit-token"),
+        json={"preset": "test", "run_count": 0},
+    )
+
+    assert response.status_code == 422
 
 
 def test_insightor_preset_rejects_env_effective_concurrency_above_20(
@@ -790,6 +811,36 @@ def test_job_manager_uses_configured_worker_count(monkeypatch) -> None:
     manager._executor.shutdown(wait=False, cancel_futures=True)
 
 
+def test_job_manager_uses_request_run_count_override(monkeypatch) -> None:
+    manager = ProductEvalJobManager(max_workers=1)
+    captured: dict[str, int] = {}
+
+    def capture_run(job, *args):
+        captured["run_count"] = args[-1]
+        job.mark(status="COMPLETED")
+
+    monkeypatch.setattr(manager, "_run_job", capture_run)
+    job = manager.submit(
+        preset_name="test",
+        api_key="token",
+        run_name=None,
+        task_name=None,
+        dataset_name=None,
+        runtime_inputs=None,
+        model=None,
+        metadata={},
+        platform_url="http://testserver",
+        run_count=5,
+    )
+    assert job._future is not None
+    job._future.result(timeout=5)
+
+    assert job.expected_runs == 5
+    assert [row["attempt"] for row in job.runs] == [1, 2, 3, 4, 5]
+    assert captured["run_count"] == 5
+    manager._executor.shutdown(wait=False, cancel_futures=True)
+
+
 def test_job_manager_rejects_when_all_worker_slots_are_active(monkeypatch) -> None:
     manager = ProductEvalJobManager(max_workers=1)
     started = threading.Event()
@@ -852,9 +903,7 @@ def test_run_v2_async_preset_is_removed(client, session_factory) -> None:
     assert "Unknown product eval preset" in envelope["error"]["message"]
 
 
-def test_insightor_preset_uses_samples_repeat_run(
-    monkeypatch, tmp_path
-) -> None:
+def test_insightor_preset_uses_samples_repeat_run(monkeypatch, tmp_path) -> None:
     """run_count>1 now runs ONE Evaluator with samples=k (native repeat runs)."""
     script = tmp_path / "insightor_eval.py"
     script.write_text(
@@ -982,9 +1031,7 @@ def test_insightor_preset_uses_samples_repeat_run(
     assert job.group_analysis["avg_latency_ms"] == pytest.approx(100.0)
 
 
-def test_insightor_stop_reaches_sampled_run_mid_flight(
-    monkeypatch, tmp_path
-) -> None:
+def test_insightor_stop_reaches_sampled_run_mid_flight(monkeypatch, tmp_path) -> None:
     """Stop requests wire into the samples=k run via config.should_stop."""
     script = tmp_path / "insightor_eval.py"
     script.write_text(

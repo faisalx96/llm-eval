@@ -107,3 +107,4 @@ insightor_eval_qym_processed/
 scripts/build_insightor_dashboard_data.py
 scripts/build_insightor_dashboard_html.py
 scripts/insightor_eval_dashboard.template.html
+scripts/median_triplet_bootstrap.cpp
