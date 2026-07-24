@@ -17,9 +17,14 @@ cd "$REPO_ROOT"
 
 SDK_DIR="${REPO_ROOT}/packages/sdk"
 PYPROJECT="${SDK_DIR}/pyproject.toml"
+VERSION_FILE="${SDK_DIR}/qym/_version.py"
 
 if [[ ! -f "$PYPROJECT" ]]; then
     echo -e "${RED}Cannot find ${PYPROJECT}${NC}" >&2
+    exit 1
+fi
+if [[ ! -f "$VERSION_FILE" ]]; then
+    echo -e "${RED}Cannot find ${VERSION_FILE}${NC}" >&2
     exit 1
 fi
 
@@ -31,8 +36,32 @@ fi
 
 echo -e "${GREEN}=== QYM SDK builder ===${NC}\n"
 
-# Current version from pyproject.toml
-CURRENT_VERSION=$(grep -E '^version\s*=' "$PYPROJECT" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+# Current version from the SDK's single source of truth.
+CURRENT_VERSION=$("$PY" - "$VERSION_FILE" <<'PY'
+import ast
+from pathlib import Path
+import sys
+
+version_file = Path(sys.argv[1])
+tree = ast.parse(version_file.read_text(encoding="utf-8"), filename=str(version_file))
+
+for node in tree.body:
+    if not isinstance(node, ast.Assign):
+        continue
+    if not any(
+        isinstance(target, ast.Name) and target.id == "__version__"
+        for target in node.targets
+    ):
+        continue
+    version = ast.literal_eval(node.value)
+    if not isinstance(version, str) or not version:
+        raise SystemExit(f"Invalid __version__ in {version_file}")
+    print(version)
+    break
+else:
+    raise SystemExit(f"Cannot find __version__ in {version_file}")
+PY
+)
 echo -e "Current SDK version: ${YELLOW}${CURRENT_VERSION}${NC}"
 
 # Bump prompt
@@ -40,10 +69,29 @@ read -r -p "New version (blank to keep ${CURRENT_VERSION}): " NEW_VERSION
 NEW_VERSION="${NEW_VERSION:-$CURRENT_VERSION}"
 
 if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
-    # Update pyproject.toml
-    sed -E "s/^version[[:space:]]*=[[:space:]]*\"[^\"]+\"/version = \"${NEW_VERSION}\"/" "$PYPROJECT" > "${PYPROJECT}.tmp"
-    mv "${PYPROJECT}.tmp" "$PYPROJECT"
-    echo -e "${GREEN}Bumped version to ${NEW_VERSION} in ${PYPROJECT}${NC}"
+    "$PY" - "$VERSION_FILE" "$NEW_VERSION" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+version_file = Path(sys.argv[1])
+version = sys.argv[2]
+
+if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.!+_-]*", version):
+    raise SystemExit(f"Invalid version: {version!r}")
+
+text = version_file.read_text(encoding="utf-8")
+pattern = re.compile(r'^__version__\s*=\s*(["\']).*?\1\s*$', re.MULTILINE)
+updated, count = pattern.subn(
+    lambda _: f'__version__ = "{version}"',
+    text,
+    count=1,
+)
+if count != 1:
+    raise SystemExit(f"Cannot find __version__ assignment in {version_file}")
+version_file.write_text(updated, encoding="utf-8")
+PY
+    echo -e "${GREEN}Bumped version to ${NEW_VERSION} in ${VERSION_FILE}${NC}"
 fi
 
 # Bundle deps?
