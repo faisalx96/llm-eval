@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qym"
-version = "1.1.0"
+dynamic = ["version"]
 description = "Simple, automated LLM evaluation framework"
 readme = "README.md"
 license = {text = "MIT"}
@@ -55,6 +55,9 @@ Homepage = "https://github.com/faisalx96/qym"
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.setuptools.dynamic]
+version = {attr = "qym._version.__version__"}
 
 [tool.setuptools.package-data]
 qym = ["_static/ui/*", "_static/dashboard/*"]
