@@ -248,7 +248,7 @@ def _format_missing_script_error(script_path: Path) -> str:
     return f"Preset script not found: {script_path}"
 
 
-def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
+def _insightor_platform_config() -> tuple[Dict[str, Any], int, str]:
     settings = ProductEvalSettings()
     config = {
         "max_concurrency": settings.max_concurrency,
@@ -262,12 +262,21 @@ def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
         raise ProductEvalError(
             "QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS must be less than or equal to 20"
         )
-    return config, max_parallel_runs
+    default_dataset = settings.default_dataset.strip()
+    if not default_dataset:
+        raise ProductEvalError(
+            "QYM_PRODUCT_EVAL_DEFAULT_DATASET must be a non-empty Qym dataset name"
+        )
+    return config, max_parallel_runs, default_dataset
 
 
 def get_preset(name: str) -> ProductEvalPreset:
     if name == "insightor":
-        default_config, max_parallel_runs = _insightor_platform_config()
+        (
+            default_config,
+            max_parallel_runs,
+            default_dataset,
+        ) = _insightor_platform_config()
         return ProductEvalPreset(
             name="insightor",
             script_path=_default_insightor_script(),
@@ -275,7 +284,7 @@ def get_preset(name: str) -> ProductEvalPreset:
             metric_name="accuracy",
             dataset_env=None,
             model_env="MODEL",
-            default_dataset_name="playground_set_v2",
+            default_dataset_name=default_dataset,
             default_config=default_config,
             run_count=3,
             max_parallel_runs=max_parallel_runs,
@@ -304,7 +313,7 @@ def validate_dataset_name(dataset_name: Optional[str]) -> Optional[str]:
         return None
     clean = str(dataset_name).strip()
     if not clean:
-        raise ProductEvalError("dataset must be a non-empty Langfuse dataset name")
+        raise ProductEvalError("dataset must be a non-empty Qym dataset name")
     return clean
 
 

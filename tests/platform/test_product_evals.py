@@ -659,7 +659,7 @@ def test_submit_rejects_blank_dataset_name(client, session_factory) -> None:
     assert envelope["ok"] is False
     assert envelope["error"]["code"] == "invalid_request"
     assert (
-        "dataset must be a non-empty Langfuse dataset name"
+        "dataset must be a non-empty Qym dataset name"
         in envelope["error"]["message"]
     )
 
@@ -695,6 +695,8 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
         encoding="utf-8",
     )
     monkeypatch.setenv("QYM_INSIGHTOR_EVAL_SCRIPT", str(script))
+    monkeypatch.delenv("QYM_PRODUCT_EVAL_MAX_RETRIES", raising=False)
+    monkeypatch.delenv("QYM_PRODUCT_EVAL_DEFAULT_DATASET", raising=False)
 
     preset = validate_submit_request(
         preset_name="insightor",
@@ -707,6 +709,15 @@ def test_insightor_preset_defaults_dataset_name(monkeypatch, tmp_path) -> None:
 
     assert preset.default_dataset_name == "playground_set_v2"
     assert preset.requires_dataset_name is False
+    assert preset.default_config["max_retries"] == 1
+
+
+def test_insightor_preset_uses_deployed_default_dataset(monkeypatch) -> None:
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_DEFAULT_DATASET", "production-eval-set")
+
+    preset = get_preset("insightor")
+
+    assert preset.default_dataset_name == "production-eval-set"
 
 
 def test_insightor_preset_rejects_env_effective_concurrency_above_20(
@@ -867,6 +878,7 @@ def test_insightor_preset_uses_samples_repeat_run(
     monkeypatch.setenv("QYM_PRODUCT_EVAL_TIMEOUT", "30")
     monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_RETRIES", "1")
     monkeypatch.setenv("QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS", "3")
+    monkeypatch.setenv("QYM_PRODUCT_EVAL_DEFAULT_DATASET", "deployment-eval-set")
 
     import types
 
@@ -940,7 +952,7 @@ def test_insightor_preset_uses_samples_repeat_run(
     assert config["samples"] == 3  # ONE run with k passes, not k runs
     assert callable(config["should_stop"])
     assert captured["model"] == "model-1"
-    assert captured["dataset"] == "playground_set_v2"
+    assert captured["dataset"] == "deployment-eval-set"
     assert config["run_name"] == "external-run"
     assert config["max_concurrency"] == 6
     assert config["timeout"] == 30

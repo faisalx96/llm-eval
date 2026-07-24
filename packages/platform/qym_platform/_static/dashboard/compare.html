@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css?v=pass-best-chip-20260711">
+  <link rel="stylesheet" href="./static/dashboard.css?v=estimator-mark-20260717">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js"></script>
@@ -377,6 +377,117 @@
       background: rgba(148, 163, 184, 0.14);
       color: #94a3b8;
     }
+
+    .sweep-stat-noise {
+      font-size: var(--font-sm);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      margin-left: var(--space-sm);
+      white-space: nowrap;
+    }
+
+    /* Estimator mark: a barred accent @k (x̄-style "averaged over all draws")
+       plus a small "i" that invites the teaching hover. Teal @k = estimated
+       from the full pass pool; plain @k = literal run count. */
+    .est-atk {
+      position: relative;
+      color: var(--accent-primary);
+      cursor: help;
+    }
+
+    .est-atk::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -3px;
+      height: 1.5px;
+      background: var(--accent-primary);
+      border-radius: 1px;
+    }
+
+    .stat-info-icon.est-info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 12px;
+      height: 12px;
+      margin-left: 4px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      color: var(--bg-base);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      font-style: italic;
+      font-family: var(--font-sans);
+      cursor: help;
+      position: relative;
+      flex-shrink: 0;
+      vertical-align: 1px;
+    }
+
+    .stat-info-icon.est-info-icon .stat-info-tooltip { display: none !important; }
+
+
+    /* Verdict banner: the week-over-week decision, judged against run luck.
+       Same surface + bottom-strip pattern as the stat cards. */
+    .sweep-verdict {
+      display: flex;
+      gap: var(--space-md);
+      align-items: flex-start;
+      padding: var(--space-md) 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sweep-verdict::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      background: rgba(148, 163, 184, 0.55);
+    }
+
+    .sweep-verdict.positive::after { background: var(--success); }
+    .sweep-verdict.negative::after { background: var(--error); }
+
+    .sweep-verdict-badge {
+      flex: none;
+      margin-top: 1px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      border: 1px solid #94a3b8;
+      color: #94a3b8;
+      font-size: var(--font-xs);
+      font-weight: 650;
+      font-family: var(--font-mono);
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .sweep-verdict.positive .sweep-verdict-badge { color: #34d399; border-color: #34d399; }
+    .sweep-verdict.negative .sweep-verdict-badge { color: #f87171; border-color: #f87171; }
+
+    .sweep-verdict-title {
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .sweep-verdict-sub {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .sweep-outcome-card.sweep-outcome-filter { cursor: pointer; }
+    .sweep-outcome-card.sweep-outcome-filter:hover { background: var(--bg-hover); }
 
     .sweep-outcome-grid {
       display: grid;
@@ -1272,8 +1383,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 15px;
-      height: 15px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       background: var(--accent-primary);
       color: var(--bg-primary);
@@ -4943,6 +5054,7 @@
           leftRunIds: groups.leftRunIds || [],
           rightRunIds: groups.rightRunIds || [],
           threshold,
+          metricName,
           getMetricIndex: (runData) => {
             const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
             return metricNames.indexOf(metricName);
@@ -4950,6 +5062,17 @@
           getItemId: getRowCompareId,
           getRunId: getCompareRunDataId,
         });
+        // Publish pass@report_k when every cohort run agrees on it.
+        const cohortRunIds = new Set([
+          ...(groups.leftRunIds || []),
+          ...(groups.rightRunIds || []),
+        ]);
+        const reportKs = (state.runs || [])
+          .filter(runData => cohortRunIds.has(getCompareRunDataId(runData)))
+          .map(runData => Number(runData?.run?.config?.report_k) || null);
+        result.reportK = reportKs.length && reportKs.every(value => value && value === reportKs[0])
+          ? reportKs[0]
+          : null;
         state.groupedComparisonCache[metricName] = result;
         return result;
       }
@@ -5050,11 +5173,178 @@
         return 'neutral';
       }
 
-      function renderSweepDelta(value) {
-        const deltaClass = getDeltaClass(value);
+      // Evidence-based coloring: a delta only earns color when it exceeds its
+      // own luck band; inside the band it renders neutral regardless of sign.
+      function getNoiseDeltaClass(value, noise) {
+        if (!noise || noise.halfWidth === null || noise.halfWidth === undefined) {
+          return getDeltaClass(value);
+        }
+        if (value > noise.halfWidth) return 'positive';
+        if (value < -noise.halfWidth) return 'negative';
+        return 'neutral';
+      }
+
+      function renderSweepDelta(value, noise) {
+        const deltaClass = getNoiseDeltaClass(value, noise);
         const rounded = Math.abs(value) < 0.0005 ? 0 : value;
         const prefix = rounded > 0 ? '+' : '';
-        return `<span class="sweep-delta-pill ${deltaClass}">${prefix}${(rounded * 100).toFixed(1)}%</span>`;
+        const pill = `<span class="sweep-delta-pill ${deltaClass}">${prefix}${(rounded * 100).toFixed(1)}%</span>`;
+        if (!noise || noise.halfWidth === null || noise.halfWidth === undefined) return pill;
+        const band = (noise.halfWidth * 100).toFixed(1);
+        const pv = noise.pValue !== null && noise.pValue !== undefined ? noise.pValue.toFixed(3) : '—';
+        const tip = `Δ ${prefix}${(rounded * 100).toFixed(1)}% · noise band ±${band}% (95%) · p=${pv}`;
+        return `<span title="${escapeAttr(tip)}">${pill}<span class="sweep-stat-noise">noise ±${band}</span></span>`;
+      }
+
+      // ── noise statistics (mirrors qym.core.reducers.noise_report) ──
+      // Under "nothing changed", each item's pass count is Binomial with the
+      // pooled pass rate; the variance of every pass-metric delta follows
+      // exactly from the estimator lookup tables. avg@k (continuous) uses the
+      // pooled within-item score variance instead. No simulation.
+
+      function sweepPassAtK(n, c, k) {
+        if (k <= 0 || k > n) return null;
+        if (n - c < k) return 1;
+        let product = 1;
+        for (let i = n - c + 1; i <= n; i += 1) product *= 1 - k / i;
+        return 1 - product;
+      }
+
+      function sweepPassHatK(n, c, k) {
+        if (k <= 0 || k > n) return null;
+        if (c < k) return 0;
+        // C(c,k)/C(n,k) in stable product form.
+        let value = 1;
+        for (let i = 0; i < k; i += 1) value *= (c - i) / (n - i);
+        return value;
+      }
+
+      function sweepBinomPmf(n, p) {
+        const pmf = new Array(n + 1).fill(0);
+        if (p <= 0) { pmf[0] = 1; return pmf; }
+        if (p >= 1) { pmf[n] = 1; return pmf; }
+        // Iterative pmf: C(n,c) p^c q^(n-c), built from the previous term.
+        let term = Math.pow(1 - p, n);
+        pmf[0] = term;
+        for (let c = 1; c <= n; c += 1) {
+          term *= ((n - c + 1) / c) * (p / (1 - p));
+          pmf[c] = term;
+        }
+        return pmf;
+      }
+
+      function sweepLutMoments(lut, pmf) {
+        let mean = 0;
+        let second = 0;
+        for (let c = 0; c < lut.length; c += 1) {
+          mean += lut[c] * pmf[c];
+          second += lut[c] * lut[c] * pmf[c];
+        }
+        return { mean, variance: Math.max(0, second - mean * mean) };
+      }
+
+      function sweepPassMetricLuts(n, kEff) {
+        const luts = {
+          passAtK: [],
+          passHatK: [],
+        };
+        for (let c = 0; c <= n; c += 1) {
+          luts.passAtK.push(sweepPassAtK(n, c, kEff));
+          luts.passHatK.push(sweepPassHatK(n, c, kEff));
+        }
+        if (n > 1) {
+          luts.consistency = [];
+          for (let c = 0; c <= n; c += 1) {
+            luts.consistency.push((2 * Math.max(c, n - c)) / n - 1);
+          }
+        }
+        return luts;
+      }
+
+      function normalCdf(z) {
+        // Abramowitz–Stegun 7.1.26 erf approximation; |error| < 1.5e-7.
+        const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
+        const poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+        const erf = 1 - poly * Math.exp(-(z * z) / 2);
+        return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf);
+      }
+
+      const SWEEP_Z_95 = 1.959964;
+
+      function computeSweepNoise(items, reportK) {
+        const names = ['passAtK', 'passHatK', 'consistency'];
+        const sumsLeft = {};
+        const sumsRight = {};
+        const variances = {};
+        const counts = {};
+        let usable = 0;
+        let avgDfItems = 0;
+
+        items.forEach((item) => {
+          const leftPasses = Array.isArray(item?.leftPasses) ? item.leftPasses : [];
+          const rightPasses = Array.isArray(item?.rightPasses) ? item.rightPasses : [];
+          const leftScores = Array.isArray(item?.leftScores) ? item.leftScores : [];
+          const rightScores = Array.isArray(item?.rightScores) ? item.rightScores : [];
+          const nLeft = leftPasses.length;
+          const nRight = rightPasses.length;
+          if (!nLeft || !nRight) return;
+          usable += 1;
+          const cLeft = leftPasses.filter(Boolean).length;
+          const cRight = rightPasses.filter(Boolean).length;
+          const pooledP = (cLeft + cRight) / (nLeft + nRight);
+
+          const kLeft = reportK ? Math.min(reportK, nLeft) : nLeft;
+          const kRight = reportK ? Math.min(reportK, nRight) : nRight;
+          const lutsLeft = sweepPassMetricLuts(nLeft, kLeft);
+          const lutsRight = sweepPassMetricLuts(nRight, kRight);
+          const pmfLeft = sweepBinomPmf(nLeft, pooledP);
+          const pmfRight = sweepBinomPmf(nRight, pooledP);
+
+          names.forEach((name) => {
+            if (!lutsLeft[name] || !lutsRight[name]) return;
+            sumsLeft[name] = (sumsLeft[name] || 0) + lutsLeft[name][cLeft];
+            sumsRight[name] = (sumsRight[name] || 0) + lutsRight[name][cRight];
+            counts[name] = (counts[name] || 0) + 1;
+            variances[name] = (variances[name] || 0)
+              + sweepLutMoments(lutsLeft[name], pmfLeft).variance
+              + sweepLutMoments(lutsRight[name], pmfRight).variance;
+          });
+
+          // avgAtK: continuous scores, pooled within-item variance.
+          const meanLeft = leftScores.reduce((s, v) => s + Number(v || 0), 0) / (leftScores.length || 1);
+          const meanRight = rightScores.reduce((s, v) => s + Number(v || 0), 0) / (rightScores.length || 1);
+          sumsLeft.avgAtK = (sumsLeft.avgAtK || 0) + meanLeft;
+          sumsRight.avgAtK = (sumsRight.avgAtK || 0) + meanRight;
+          counts.avgAtK = (counts.avgAtK || 0) + 1;
+          const df = leftScores.length + rightScores.length - 2;
+          if (df > 0) {
+            avgDfItems += 1;
+            let ss = 0;
+            leftScores.forEach((v) => { ss += (Number(v || 0) - meanLeft) ** 2; });
+            rightScores.forEach((v) => { ss += (Number(v || 0) - meanRight) ** 2; });
+            const pooledVar = ss / df;
+            variances.avgAtK = (variances.avgAtK || 0)
+              + pooledVar * (1 / leftScores.length + 1 / rightScores.length);
+          }
+        });
+
+        const out = { reliability: null };
+        ['passAtK', 'passHatK', 'avgAtK', 'consistency'].forEach((name) => {
+          const nItems = counts[name] || 0;
+          if (!nItems) { out[name] = null; return; }
+          // Single score per item per side: within-item variance is not
+          // estimable, so avg gets no band rather than a false ±0.
+          if (name === 'avgAtK' && !avgDfItems) { out[name] = null; return; }
+          const delta = ((sumsRight[name] || 0) - (sumsLeft[name] || 0)) / nItems;
+          const sd = Math.sqrt(variances[name] || 0) / nItems;
+          const halfWidth = SWEEP_Z_95 * sd;
+          const pValue = sd > 0 ? 2 * (1 - normalCdf(Math.abs(delta) / sd)) : (delta === 0 ? 1 : 0);
+          let verdict = 'within_noise';
+          if (delta > halfWidth) verdict = 'improved';
+          else if (delta < -halfWidth) verdict = 'regressed';
+          out[name] = { delta, halfWidth, pValue, verdict, items: nItems };
+        });
+        return out;
       }
 
       function renderSweepMetaBadges(item) {
@@ -5198,17 +5488,103 @@
         `;
       }
 
-      function renderSweepStatCard(label, fromValue, toValue, deltaValue) {
-        const deltaClass = getDeltaClass(deltaValue);
+      // Estimator label: barred accent @k + "i" hover invitation when the
+      // published k is estimated from a larger pass pool (report_k < samples).
+      function estimatorTip(sym, reportK, k) {
+        const name = sym === '^' ? `pass^${reportK}` : `pass@${reportK}`;
+        return `${name} estimated from all ${k} passes`;
+      }
+
+      function estimatorLabelHtml(base, sym, reportK, k) {
+        if (!reportK || reportK === k) return escapeHtml(`${base}${sym}${k}`);
+        const tip = escapeAttr(estimatorTip(sym, reportK, k));
+        return `${escapeHtml(base)}<span class="est-atk">${escapeHtml(sym)}${reportK}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
+      }
+
+
+      // Estimator help tooltip: the runs-list strip and sweep cards clip
+      // overflow (and shell ancestors trap position:fixed), so the tooltip
+      // renders in a body-level portal that nothing can clip.
+      (function initEstimatorTooltipPortal() {
+        let portal = null;
+        document.addEventListener('mouseover', (event) => {
+          const icon = event.target && event.target.closest
+            ? event.target.closest('.est-info-icon')
+            : null;
+          if (!icon) {
+            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
+              portal.style.display = 'none';
+            }
+            return;
+          }
+          const source = icon.querySelector('.stat-info-tooltip');
+          if (!source) return;
+          if (!portal) {
+            portal = document.createElement('div');
+            portal.className = 'stat-info-tooltip est-tooltip-portal';
+            document.body.appendChild(portal);
+          }
+          portal.textContent = source.textContent;
+          const rect = icon.getBoundingClientRect();
+          portal.style.display = 'block';
+          portal.style.position = 'fixed';
+          const half = 110; // tooltip is 220px wide
+          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+          const center = rect.left + rect.width / 2;
+          const left = viewportWidth > 2 * (half + 8)
+            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
+            : center;
+          portal.style.left = Math.round(left) + 'px';
+          portal.style.top = Math.round(rect.top - 8) + 'px';
+          portal.style.bottom = 'auto';
+          portal.style.transform = 'translate(-50%, -100%)';
+        });
+      })();
+
+      function renderSweepStatCard(labelHtml, fromValue, toValue, deltaValue, noise) {
+        const deltaClass = getNoiseDeltaClass(deltaValue, noise);
         return `
           <div class="sweep-stat-card ${deltaClass}">
-            <div class="sweep-stat-label">${escapeHtml(label)}</div>
+            <div class="sweep-stat-label">${labelHtml}</div>
             <div class="sweep-stat-values">
               <span class="sweep-stat-from">${formatSweepMetricValue(fromValue)}</span>
               <span class="sweep-stat-arrow">→</span>
               <span class="sweep-stat-to">${formatSweepMetricValue(toValue)}</span>
             </div>
-            ${renderSweepDelta(deltaValue)}
+            ${renderSweepDelta(deltaValue, noise)}
+          </div>
+        `;
+      }
+
+      // The verdict banner: one primary metric judged against its luck band.
+      // "Within noise" is a claim about evidence, not a claim of no change.
+      function renderSweepVerdict(noise, primaryLabel, primaryKey) {
+        const entry = noise ? noise[primaryKey] : null;
+        if (!entry) return '';
+        const delta = entry.delta;
+        const prefix = delta > 0 ? '+' : '';
+        const deltaText = `${prefix}${(delta * 100).toFixed(1)}%`;
+        const band = (entry.halfWidth * 100).toFixed(1);
+        const pv = entry.pValue < 0.001 ? 'p < 0.001' : `p = ${entry.pValue.toFixed(3)}`;
+        let cls = 'neutral';
+        let badge = 'WITHIN NOISE';
+        let headline = `${primaryLabel} ${deltaText} — not distinguishable from run luck`;
+        if (entry.verdict === 'improved') {
+          cls = 'positive';
+          badge = 'IMPROVED';
+          headline = `${primaryLabel} ${deltaText} — beyond noise`;
+        } else if (entry.verdict === 'regressed') {
+          cls = 'negative';
+          badge = 'REGRESSED';
+          headline = `${primaryLabel} ${deltaText} — beyond noise`;
+        }
+        return `
+          <div class="sweep-verdict ${cls}">
+            <span class="sweep-verdict-badge">${badge}</span>
+            <div>
+              <div class="sweep-verdict-title">${escapeHtml(headline)}</div>
+              <div class="sweep-verdict-sub">noise ±${band}% at 95% · ${pv} · ${entry.items} paired items · primary metric — other metrics below are context</div>
+            </div>
           </div>
         `;
       }
@@ -5358,7 +5734,7 @@
         });
       }
 
-      function summarizeSweepItems(items, leftRunCount, rightRunCount) {
+      function summarizeSweepItems(items, leftRunCount, rightRunCount, reportK) {
         const summary = {
           eligibleItems: items.length,
           left: {
@@ -5388,16 +5764,20 @@
             improvedCount: 0,
             regressedCount: 0,
             unchangedCount: 0,
+            decisivelyFixedCount: 0,
+            decisivelyBrokenCount: 0,
             avgAttemptsDelta: 0,
           },
+          noise: null,
+          reportK: reportK || null,
         };
 
         if (!items.length) return summary;
 
         function aggregateSide(sideKey, runCount) {
           const agg = {
-            passAtKCount: 0,
-            passHatKCount: 0,
+            passAtKSum: 0,
+            passHatKSum: 0,
             totalScoreSum: 0,
             totalScoreCount: 0,
             totalConsistencySum: 0,
@@ -5419,8 +5799,11 @@
             agg.totalAttemptsSum += attempts.reduce((sum, value) => sum + Number(value || 0), 0);
             agg.totalAttemptsCount += attempts.length;
 
-            if (passCount > 0) agg.passAtKCount += 1;
-            if (passes.length && passCount === passes.length) agg.passHatKCount += 1;
+            if (passes.length) {
+              const kEff = reportK ? Math.min(reportK, passes.length) : passes.length;
+              agg.passAtKSum += sweepPassAtK(passes.length, passCount, kEff) ?? 0;
+              agg.passHatKSum += sweepPassHatK(passes.length, passCount, kEff) ?? 0;
+            }
             if (passes.length > 1) {
               const failCount = passes.length - passCount;
               agg.totalConsistencySum += (2 * Math.max(passCount, failCount) / passes.length) - 1;
@@ -5433,8 +5816,8 @@
           });
 
           return {
-            passAtK: items.length ? agg.passAtKCount / items.length : 0,
-            passHatK: items.length ? agg.passHatKCount / items.length : 0,
+            passAtK: items.length ? agg.passAtKSum / items.length : 0,
+            passHatK: items.length ? agg.passHatKSum / items.length : 0,
             avgAtK: agg.totalScoreCount ? agg.totalScoreSum / agg.totalScoreCount : 0,
             consistency: agg.itemsWithMultipleRuns ? agg.totalConsistencySum / agg.itemsWithMultipleRuns : null,
             reliability: agg.itemsWithAtLeastOnePass ? agg.totalReliabilitySum / agg.itemsWithAtLeastOnePass : null,
@@ -5458,8 +5841,19 @@
           else if (item.move < 0) summary.summary.regressedCount += 1;
           else summary.summary.unchangedCount += 1;
           attemptsDeltaSum += (item.rightAvgAttempts ?? 0) - (item.leftAvgAttempts ?? 0);
+          const leftPasses = Array.isArray(item?.leftPasses) ? item.leftPasses : [];
+          const rightPasses = Array.isArray(item?.rightPasses) ? item.rightPasses : [];
+          if (leftPasses.length && rightPasses.length) {
+            const leftAllFail = leftPasses.every((value) => !value);
+            const leftAllPass = leftPasses.every(Boolean);
+            const rightAllFail = rightPasses.every((value) => !value);
+            const rightAllPass = rightPasses.every(Boolean);
+            if (leftAllFail && rightAllPass) summary.summary.decisivelyFixedCount += 1;
+            if (leftAllPass && rightAllFail) summary.summary.decisivelyBrokenCount += 1;
+          }
         });
         summary.summary.avgAttemptsDelta = items.length ? attemptsDeltaSum / items.length : 0;
+        summary.noise = computeSweepNoise(items, reportK);
         return summary;
       }
 
@@ -5470,12 +5864,15 @@
         const rightLabel = reversed ? (groups.modelALabel || 'Model A') : (groups.modelBLabel || 'Model B');
         const displayedItems = (grouped.items || []).map(item => getSweepDisplayedItem(item, reversed)).filter(Boolean);
         const filteredItems = sortSweepItems(filterSweepItems(displayedItems));
-        const summary = summarizeSweepItems(filteredItems, grouped.leftRunCount || groups.k || 0, grouped.rightRunCount || groups.k || 0);
+        const reportK = groups.reportK || grouped.reportK || null;
+        const summary = summarizeSweepItems(filteredItems, grouped.leftRunCount || groups.k || 0, grouped.rightRunCount || groups.k || 0, reportK);
         return {
           reversed,
           leftLabel,
           rightLabel,
-          k: groups.k || grouped.k || grouped.leftRunCount || 0,
+          // grouped.k counts passes (a samples=9 repeat run contributes 9),
+          // so it wins over groups.k, which counts selected runs.
+          k: grouped.k || groups.k || grouped.leftRunCount || 0,
           displayedItems,
           totalItems: displayedItems.length,
           items: filteredItems,
@@ -5664,13 +6061,19 @@
           presentation.displayedItems
         );
 
+        const reportK = presentation.reportK;
+        const noise = presentation.noise || {};
+        const passAtPlain = reportK && reportK !== k ? `Pass@${reportK}` : `Pass@${k}`;
         const statCards = [
-          renderSweepStatCard(`Pass@${k}`, presentation.left.passAtK, presentation.right.passAtK, presentation.deltas.passAtK),
-          renderSweepStatCard(`Avg@${k}`, presentation.left.avgAtK, presentation.right.avgAtK, presentation.deltas.avgAtK),
-          renderSweepStatCard('Consistency', presentation.left.consistency ?? 0, presentation.right.consistency ?? 0, presentation.deltas.consistency),
-          renderSweepStatCard('Reliability', presentation.left.reliability ?? 0, presentation.right.reliability ?? 0, presentation.deltas.reliability),
-          renderSweepStatCard(`Pass^${k}`, presentation.left.passHatK, presentation.right.passHatK, presentation.deltas.passHatK),
+          renderSweepStatCard(estimatorLabelHtml('Pass', '@', reportK, k), presentation.left.passAtK, presentation.right.passAtK, presentation.deltas.passAtK, noise.passAtK),
+          renderSweepStatCard(escapeHtml(`Avg@${k}`), presentation.left.avgAtK, presentation.right.avgAtK, presentation.deltas.avgAtK, noise.avgAtK),
+          renderSweepStatCard('Consistency', presentation.left.consistency ?? 0, presentation.right.consistency ?? 0, presentation.deltas.consistency, noise.consistency),
+          renderSweepStatCard('Reliability', presentation.left.reliability ?? 0, presentation.right.reliability ?? 0, presentation.deltas.reliability, noise.reliability),
+          renderSweepStatCard(estimatorLabelHtml('Pass', '^', reportK, k), presentation.left.passHatK, presentation.right.passHatK, presentation.deltas.passHatK, noise.passHatK),
         ].join('');
+        const verdictHtml = noise.avgAtK
+          ? renderSweepVerdict(noise, `Avg@${k}`, 'avgAtK')
+          : renderSweepVerdict(noise, passAtPlain, 'passAtK');
 
         const rowsHtml = presentation.items.map(item => {
           const itemLabel = item.itemId || item.rawItemId || '—';
@@ -5701,6 +6104,8 @@
               <button type="button" class="compare-mode-tab sweep-reverse-btn ${presentation.reversed ? 'active' : ''}" id="sweep-reverse-btn">Reverse</button>
             </div>
           </div>
+
+          ${verdictHtml}
 
           <div class="sweep-filter-bar">
             <div class="sweep-filter-group">
@@ -5802,6 +6207,14 @@
                 <div class="sweep-outcome-value neutral">${presentation.summary.unchangedCount}</div>
                 <div class="sweep-outcome-label">Unchanged</div>
               </div>
+              <div class="sweep-outcome-card sweep-outcome-filter" data-sweep-outcome="right_sweeps_left" title="Every run failed before, every run passes now — real fixes by inspection. Click to filter.">
+                <div class="sweep-outcome-value positive">${presentation.summary.decisivelyFixedCount}</div>
+                <div class="sweep-outcome-label">Decisively Fixed</div>
+              </div>
+              <div class="sweep-outcome-card sweep-outcome-filter" data-sweep-outcome="left_sweeps_right" title="Every run passed before, every run fails now — real regressions by inspection. Click to filter.">
+                <div class="sweep-outcome-value negative">${presentation.summary.decisivelyBrokenCount}</div>
+                <div class="sweep-outcome-label">Decisively Broken</div>
+              </div>
               <div class="sweep-outcome-card">
                 <div class="sweep-outcome-value accent">${formatSweepAttemptsDelta(presentation.summary.avgAttemptsDelta)}</div>
                 <div class="sweep-outcome-label">Avg Δ Attempts / Item</div>
@@ -5849,6 +6262,14 @@
             renderSweepView();
           });
         }
+
+        container.querySelectorAll('.sweep-outcome-filter[data-sweep-outcome]').forEach((card) => {
+          card.addEventListener('click', () => {
+            const outcome = card.getAttribute('data-sweep-outcome');
+            state.sweepOutcomeFilter = state.sweepOutcomeFilter === outcome ? 'all' : outcome;
+            renderSweepView();
+          });
+        });
 
         const searchInput = el('sweep-search-input');
         if (searchInput) {

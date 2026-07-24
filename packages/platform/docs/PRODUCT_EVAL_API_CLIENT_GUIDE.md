@@ -79,7 +79,7 @@ Optional inputs:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `dataset` | string | Langfuse dataset name. Defaults to `"playground_set_v2"` if omitted. |
+| `dataset` | string | Qym dataset name. Uses the deployment's `QYM_PRODUCT_EVAL_DEFAULT_DATASET` (default `"playground_set_v2"`) if omitted. |
 | `run_name` | string | Display name for the Qym runs. |
 | `task_name` | string | Optional task display label. |
 | `model` | string | Optional model label or model override. |

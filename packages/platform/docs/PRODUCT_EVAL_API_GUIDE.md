@@ -94,7 +94,7 @@ Request body:
 Fields:
 
 - `preset`: Required preset name. Use `test` for smoke tests or `insightor` for the real Insightor eval.
-- `dataset`: Langfuse dataset name. Optional for `insightor`; defaults to `playground_set_v2` when omitted.
+- `dataset`: Qym dataset name. Optional for `insightor`; defaults to `QYM_PRODUCT_EVAL_DEFAULT_DATASET` when omitted.
 - `insightor_url`: Required for `insightor`. Passed to the in-process Insightor task and not returned in polling payloads.
 - `refresh_token`: Required for `insightor`. Treated as a secret input and not logged in product eval metadata or returned by this API.
 - `agent_version`, `image_version`, `kb_version`: Optional Insightor version labels used for run naming and task runtime config.
@@ -113,9 +113,10 @@ Operators configure Insightor product eval runtime limits with Qym platform envi
 | `QYM_PRODUCT_EVAL_MAX_WORKERS` | `3` | `>= 1` | Maximum active product eval jobs in this platform process. Requests above this return `429`. |
 | `QYM_PRODUCT_EVAL_MAX_CONCURRENCY` | `10` | `1` to `20` | Item-level concurrency inside each Qym run. |
 | `QYM_PRODUCT_EVAL_TIMEOUT` | `900` | `1` to `900` | Overall run timeout in seconds. |
-| `QYM_PRODUCT_EVAL_MAX_RETRIES` | `0` | `0` to `2` | Retries for failed items. |
+| `QYM_PRODUCT_EVAL_MAX_RETRIES` | `1` | `0` to `2` | Retries for failed items. |
 | `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS` | `1` | `1` to `3` | Number of Insightor attempts to run at the same time. |
 | `QYM_PRODUCT_EVAL_METRIC_TIMEOUT` | `300` | `>= 1` | Metric timeout in seconds. |
+| `QYM_PRODUCT_EVAL_DEFAULT_DATASET` | `playground_set_v2` | Non-empty Qym dataset name | Dataset used when the request omits `dataset`. |
 
 The effective concurrency budget must satisfy:
 
@@ -136,7 +137,7 @@ Required request fields for `insightor`:
 
 Optional request fields for `insightor`:
 
-- `dataset`: Langfuse dataset name. Defaults to `playground_set_v2` when omitted.
+- `dataset`: Qym dataset name. Defaults to `QYM_PRODUCT_EVAL_DEFAULT_DATASET` when omitted.
 
 Required server environment variables:
 

@@ -201,7 +201,7 @@ evaluator = Evaluator(
 
 Metrics can still read the original names (`sql_prompt`, `sql_context`) and the mapped names (`question`, `schema`).
 
-For a single-column CSV, the task keeps receiving the scalar value for backward compatibility, while metrics receive a named dictionary derived from the CSV schema. For example, `input_col="question"` gives the task `"What is AI?"` and gives metrics `{"question": "What is AI?"}`. If `input_mapping={"prompt": "question"}` is configured, metrics receive the resolved name: `{"question": "What is AI?"}`. Scalar inputs from dataset types that do not declare a column schema remain scalar because qym cannot infer a field name safely.
+For a single-column CSV, both the task and a metric's `input_data` parameter keep receiving the original scalar value for backward compatibility. The declared column name is also available as an individual metric parameter and judge placeholder. For example, `input_col="question"` keeps `input_data == "What is AI?"` while satisfying a metric parameter or judge placeholder named `question`. With `input_mapping={"prompt": "question"}`, the mapped name is exposed without changing `input_data`.
 
 ### Task with Model Routing (For Multi-Model)
 

@@ -26,6 +26,10 @@ class EvaluatorConfig(BaseModel):
     # (Pass@k, Pass^k, Avg@k, Max@k, Consistency, Reliability) are reported
     # with k = samples. See qym.core.reducers.
     samples: int = Field(default=1, ge=1)
+    # Publish pass@k / pass^k at this k, estimated (unbiased) from all
+    # `samples` stored passes — run 9, report pass@3. Must be <= samples.
+    # None keeps the historical behavior (k = samples).
+    report_k: Optional[int] = Field(default=None, ge=1)
     run_metadata: Dict[str, Any] = Field(default_factory=dict)
     should_stop: Optional[Callable[[], bool]] = Field(default=None, exclude=True)
     git_branch: Optional[str] = None   # Override auto-detected git branch

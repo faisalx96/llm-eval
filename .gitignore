@@ -44,6 +44,7 @@ wheels/
 # AI assistant settings (keep local only)
 .claude/
 .codex/
+.codex-work/
 .cursor/
 CLAUDE.md
 AIR_GAPPED_GUIDE.md
@@ -100,3 +101,9 @@ build-image.sh
 
 # Scratch / prototypes
 tmp/
+
+# Local evaluation exploration
+insightor_eval_qym_processed/
+scripts/build_insightor_dashboard_data.py
+scripts/build_insightor_dashboard_html.py
+scripts/insightor_eval_dashboard.template.html
